@@ -24,6 +24,20 @@ function normalizePhone(raw: any): string {
   return d;
 }
 
+// UazAPI (evento `groups`) repassa o GroupInfo do whatsmeow: quem sai fica
+// no array `Leave` (jids), e `Sender` indica quem executou a ação.
+function eventObj(body: any): any {
+  if (body?.event && typeof body.event === 'object') return body.event;
+  if (body?.data && typeof body.data === 'object') return body.data;
+  return {};
+}
+
+function leaveList(body: any): string[] {
+  const ev = eventObj(body);
+  const arr = body?.Leave || ev?.Leave || ev?.leave || [];
+  return Array.isArray(arr) ? arr : [];
+}
+
 function extractPhones(body: any): string[] {
   const candidates: any[] = [];
   if (Array.isArray(body?.participants)) candidates.push(...body.participants);
@@ -31,19 +45,37 @@ function extractPhones(body: any): string[] {
   if (Array.isArray(body?.payload?.participants)) candidates.push(...body.payload.participants);
   if (body?.participant) candidates.push(body.participant);
   if (body?.phone) candidates.push(body.phone);
+  candidates.push(...leaveList(body));
   return Array.from(new Set(candidates.map((p: any) => normalizePhone(typeof p === 'string' ? p : p?.id || p?.phone || p?.jid)).filter(Boolean)));
 }
 
 function extractAction(body: any): string {
-  const a = String(body?.action || body?.payload?.action || body?.event || '').toLowerCase();
+  const raw = body?.action || body?.payload?.action || (typeof body?.event === 'string' ? body.event : '');
+  const a = String(raw || '').toLowerCase();
   if (a.includes('leave')) return 'leave';
   if (a.includes('remove') || a.includes('kick')) return 'remove';
+
+  // Formato whatsmeow: Leave presente → saiu sozinho se o Sender é o próprio, removido caso contrário
+  const leaves = leaveList(body);
+  if (leaves.length) {
+    const ev = eventObj(body);
+    const senderDigits = digits(ev?.Sender || body?.Sender || '');
+    if (!senderDigits) return 'leave';
+    const allSelf = leaves.every((l: any) => {
+      const d = digits(typeof l === 'string' ? l : l?.id || l?.jid);
+      return d && d.slice(-10) === senderDigits.slice(-10);
+    });
+    return allSelf ? 'leave' : 'remove';
+  }
   return a || 'unknown';
 }
 
 function extractGroup(body: any): { jid: string; name: string | null } {
-  const jid = body?.groupJid || body?.chatId || body?.group?.id || body?.payload?.group?.id || body?.group_id || body?.id || '';
-  const name = body?.groupName || body?.group?.name || body?.payload?.group?.subject || null;
+  const ev = eventObj(body);
+  const jid = body?.groupJid || body?.chatId || body?.group?.id || body?.payload?.group?.id || body?.group_id
+    || ev?.JID || ev?.jid || body?.JID || body?.id || '';
+  const name = body?.groupName || body?.group?.name || body?.payload?.group?.subject
+    || ev?.Name || ev?.GroupName || null;
   return { jid: String(jid || ''), name: name ? String(name) : null };
 }
 
@@ -54,6 +86,11 @@ export async function handler(req: Request, res: Response) {
 
     // Só nos interessam saídas de participantes
     if (!['leave', 'remove'].includes(action)) {
+      // Loga o payload de eventos de grupo não reconhecidos pra mapear o formato real da UazAPI
+      const et = String(body?.EventType || body?.eventType || body?.type || '').toLowerCase();
+      if (et.includes('group')) {
+        console.log('[whatsapp-group-exit] evento groups sem leave/remove:', JSON.stringify(body).slice(0, 2000));
+      }
       return res.status(200).json({ success: true, skipped: true, reason: `action ${action} ignorado` });
     }
 

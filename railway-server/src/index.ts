@@ -212,6 +212,21 @@ app.post('/webhooks/sheet-lead-ingest/:token', async (req, res) => {
   }
 });
 
+// Rota pública UazAPI para eventos de grupo (saída/remoção de participantes).
+// A UazAPI não envia x-api-key, então a instância vem pela URL, igual /webhooks/uazapi.
+app.post('/webhooks/uazapi-group-exit/:instance_name', async (req, res) => {
+  req.body = {
+    ...(req.body || {}),
+    instance_name: req.body?.instance_name || req.body?.instanceName || req.body?.instance || req.params.instance_name,
+  };
+  try {
+    await whatsappGroupExit(req, res);
+  } catch (err) {
+    console.error('[webhooks/uazapi-group-exit] Error:', err);
+    res.status(200).json({ success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+  }
+});
+
 // Rota dinâmica para funções (protegida por x-api-key)
 app.post('/functions/:name', async (req, res) => {
   const { name } = req.params;
