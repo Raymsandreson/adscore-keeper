@@ -112,6 +112,7 @@ function EditableSwitch({ label, checked, onChange }: {
 const TABS = [
   { id: 'partes', label: 'Partes', icon: Users },
   { id: 'dados', label: 'Dados', icon: Scale },
+  { id: 'atividades', label: 'Atividades', icon: ClipboardList },
   { id: 'documentos', label: 'Documentos', icon: FolderOpen },
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
@@ -119,7 +120,6 @@ const TABS = [
   { id: 'marcos', label: 'Marcos', icon: Milestone },
   { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
   { id: 'campos', label: 'Campos', icon: Hash },
-  { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
   { id: 'envolvidos', label: 'Envolvidos', icon: Users },
