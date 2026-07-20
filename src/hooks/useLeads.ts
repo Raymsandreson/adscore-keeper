@@ -95,11 +95,15 @@ const DATE_ONLY_FIELDS = [
 
 const sanitizeLeadDateFields = <T extends Record<string, any>>(lead: T): T => {
   const sanitized: Record<string, any> = { ...lead };
-  for (const field of DATE_ONLY_FIELDS) {
-    if (field in sanitized && sanitized[field] !== null && sanitized[field] !== undefined) {
-      const normalized = normalizeDateInput(String(sanitized[field]));
-      sanitized[field] = normalized;
+  const keys = new Set<string>([...DATE_ONLY_FIELDS as readonly string[], ...Object.keys(sanitized).filter((k) => /_date$/.test(k))]);
+  for (const field of keys) {
+    const value = sanitized[field];
+    if (value === null || value === undefined || value === '') {
+      if (field in sanitized) sanitized[field] = null;
+      continue;
     }
+    if (typeof value !== 'string') continue;
+    sanitized[field] = normalizeDateInput(value);
   }
   return sanitized as T;
 };
