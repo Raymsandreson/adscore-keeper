@@ -23,6 +23,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   Briefcase, Search, Scale, ChevronDown, ChevronRight,
   Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
@@ -336,6 +337,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const navigate = useNavigate();
   const [processes, setProcesses] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
+  const [actStatusFilter, setActStatusFilter] = useState('all');
+  const [actProcessFilter, setActProcessFilter] = useState('all');
   const [mentionedProcesses, setMentionedProcesses] = useState<string[]>([]);
   const [registeringTitle, setRegisteringTitle] = useState<string | null>(null);
   const [registeringAll, setRegisteringAll] = useState(false);
@@ -382,12 +385,22 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         .is('deleted_at', null)
         .not('process_title', 'is', null)
         .limit(500),
-      externalSupabase.from('lead_activities')
-        .select('id, title, status, activity_type, deadline, assigned_to_name, process_title, created_at, completed_at')
-        .eq('case_id', legalCase.id)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false })
-        .limit(30),
+      // Histórico do caso: atividades com case_id deste caso OU atividades órfãs
+      // do lead (case_id nulo) — cobre atividades que perderam o vínculo de caso.
+      // Não mistura outros casos: as amarradas a outro caso já têm case_id.
+      (legalCase.lead_id
+        ? externalSupabase.from('lead_activities')
+            .select('id, title, status, activity_type, deadline, assigned_to_name, process_id, process_title, created_at, completed_at')
+            .or(`case_id.eq.${legalCase.id},and(lead_id.eq.${legalCase.lead_id},case_id.is.null)`)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(50)
+        : externalSupabase.from('lead_activities')
+            .select('id, title, status, activity_type, deadline, assigned_to_name, process_id, process_title, created_at, completed_at')
+            .eq('case_id', legalCase.id)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .limit(50)),
     ]).then(([procRes, leadRes, actRes, histRes]: any) => {
       if (histRes?.error) {
         console.error('[CasesPage] case activities load failed', { caseId: legalCase.id, error: histRes.error });
@@ -612,6 +625,24 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
     }
   };
 
+  // Status distintos presentes nas atividades (para o filtro)
+  const activityStatuses = useMemo(
+    () => Array.from(new Set(activities.map(a => a.status).filter(Boolean))),
+    [activities],
+  );
+
+  // Atividades após aplicar filtros de status e processo
+  const filteredActivities = useMemo(() => {
+    return activities.filter(a => {
+      if (actStatusFilter !== 'all' && a.status !== actStatusFilter) return false;
+      if (actProcessFilter !== 'all') {
+        if (actProcessFilter === 'none') return !a.process_id && !a.process_title;
+        return a.process_id === actProcessFilter;
+      }
+      return true;
+    });
+  }, [activities, actStatusFilter, actProcessFilter]);
+
   return (
     <>
       <Card className="overflow-hidden">
@@ -705,23 +736,32 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 </div>
               )}
 
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+              <Tabs defaultValue="processos" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 h-8">
+                  <TabsTrigger value="processos" className="text-xs gap-1.5">
                     <Scale className="h-3.5 w-3.5" /> Processos ({processes.length})
-                  </h4>
-                  {legalCase.lead_id && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-6 text-[10px] gap-1"
-                      onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
-                    >
-                      <Plus className="h-3 w-3" /> Cadastrar Processo
-                    </Button>
-                  )}
-                </div>
-                {processes.length === 0 && (
+                  </TabsTrigger>
+                  <TabsTrigger value="atividades" className="text-xs gap-1.5">
+                    <FileText className="h-3.5 w-3.5" /> Atividades ({activities.length})
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Aba: Processos */}
+                <TabsContent value="processos" className="mt-3 space-y-4">
+                  <div>
+                    <div className="flex items-center justify-end mb-2">
+                      {legalCase.lead_id && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-6 text-[10px] gap-1"
+                          onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
+                        >
+                          <Plus className="h-3 w-3" /> Cadastrar Processo
+                        </Button>
+                      )}
+                    </div>
+                    {processes.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-2">Nenhum processo neste caso.</p>
                 )}
                 <div className="space-y-2">
@@ -821,50 +861,78 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                     </p>
                   </div>
                 )}
-              </div>
-
-
-              {/* Atividades / Histórico do caso */}
-              <div>
-                <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-2">
-                  <FileText className="h-3.5 w-3.5" /> Atividades / Histórico ({activities.length})
-                </h4>
-                {activities.length === 0 ? (
-                  <p className="text-xs text-muted-foreground text-center py-2">Nenhuma atividade neste caso.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {activities.map(a => (
-                      <div
-                        key={a.id}
-                        className="border rounded-lg p-2 bg-card space-y-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={(e) => { e.stopPropagation(); navigate(`/?openActivity=${a.id}`); }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <p className="text-xs font-medium truncate flex-1 min-w-0">{a.title}</p>
-                          {a.status && (
-                            <Badge variant="outline" className="text-[9px] shrink-0">{a.status}</Badge>
-                          )}
-                        </div>
-                        <p className="text-[10px] text-muted-foreground truncate">
-                          {[
-                            a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : null,
-                            a.activity_type,
-                            a.assigned_to_name,
-                            a.process_title,
-                          ].filter(Boolean).join(' • ')}
-                        </p>
-                      </div>
-                    ))}
                   </div>
-                )}
-              </div>
 
-              {/* Workflow Board */}
-              <CaseWorkflowBoard
-                caseId={legalCase.id}
-                processes={processes}
-                onProcessUpdated={loadDetails}
-              />
+                  {/* Workflow Board dentro da aba Processos */}
+                  <CaseWorkflowBoard
+                    caseId={legalCase.id}
+                    processes={processes}
+                    onProcessUpdated={loadDetails}
+                  />
+                </TabsContent>
+
+                {/* Aba: Atividades / Histórico */}
+                <TabsContent value="atividades" className="mt-3 space-y-2">
+                  {/* Filtros: status e processo */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Select value={actStatusFilter} onValueChange={setActStatusFilter}>
+                      <SelectTrigger className="h-7 text-xs w-[140px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os status</SelectItem>
+                        {activityStatuses.map(s => (
+                          <SelectItem key={s} value={s}>{s}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={actProcessFilter} onValueChange={setActProcessFilter}>
+                      <SelectTrigger className="h-7 text-xs flex-1 min-w-[160px]"><SelectValue placeholder="Processo" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todos os processos</SelectItem>
+                        <SelectItem value="none">Sem processo</SelectItem>
+                        {processes.map(p => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.process_number || p.title || 'Processo'}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {activities.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-2">Nenhuma atividade neste caso.</p>
+                  ) : filteredActivities.length === 0 ? (
+                    <p className="text-xs text-muted-foreground text-center py-2">Nenhuma atividade com esses filtros.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {filteredActivities.map(a => (
+                        <div
+                          key={a.id}
+                          className="border rounded-lg p-2 bg-card space-y-0.5 cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={(e) => { e.stopPropagation(); navigate(`/?openActivity=${a.id}`); }}
+                        >
+                          <div className="flex items-center gap-2">
+                            <p className="text-xs font-medium truncate flex-1 min-w-0">{a.title}</p>
+                            {a.status && (
+                              <Badge variant="outline" className="text-[9px] shrink-0">{a.status}</Badge>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {[
+                              a.created_at ? new Date(a.created_at).toLocaleDateString('pt-BR') : null,
+                              a.activity_type,
+                              a.assigned_to_name,
+                              a.process_title,
+                            ].filter(Boolean).join(' • ')}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-[10px] text-muted-foreground text-right">
+                    Mostrando {filteredActivities.length} de {activities.length}
+                  </p>
+                </TabsContent>
+              </Tabs>
 
               {legalCase.lead_id && (
                 <AddProcessDialog
