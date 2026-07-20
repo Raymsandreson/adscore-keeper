@@ -46,7 +46,7 @@ describe('installLeadDateGuard', () => {
   });
 
   it('não interfere em outras tabelas', () => {
-    externalSupabase.from('contacts').insert({ birth_date: '2024' });
+    (externalSupabase.from('contacts') as any).insert({ birth_date: '2024' });
     expect(calls[0].values).toEqual({ birth_date: '2024' });
   });
 });
