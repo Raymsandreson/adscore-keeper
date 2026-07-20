@@ -15,7 +15,7 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mediaPreview, handleMediaThumbError } from '@/lib/whatsappMediaTransform';
@@ -34,6 +34,12 @@ import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
+import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { AITextActions } from '@/components/ui/AITextActions';
+import { WhatsAppMediaGallery } from '@/components/whatsapp/WhatsAppMediaGallery';
+import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
+import { WhatsAppActivitySheet } from '@/components/whatsapp/WhatsAppActivitySheet';
+import { bindDownload } from '@/lib/downloadFile';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -118,6 +124,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const [showZapSign, setShowZapSign] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
+  const [replySuggestOpen, setReplySuggestOpen] = useState(false);
+  const [replySuggestTarget, setReplySuggestTarget] = useState('');
+  const [showActivitySheet, setShowActivitySheet] = useState(false);
+  const [activityPrefill, setActivityPrefill] = useState('');
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -432,6 +442,34 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   const handleSelectNickname = (value: string) => {
     setSelectedNickname(value);
     if (phone) localStorage.setItem(`wa-selected-nickname:${phone}`, value);
+  };
+
+  // Mesmo contexto/estado usados no WhatsAppChat pra IA sugerir resposta.
+  const buildReplyContext = (): string => {
+    return (messages || [])
+      .filter(m => m && m.message_text && String(m.message_text).trim())
+      .slice(-20)
+      .map(m => {
+        const who = m.direction === 'outbound' ? 'Eu' : (contactName || 'Cliente');
+        return `${who}: ${String(m.message_text).trim()}`;
+      })
+      .join('\n');
+  };
+  const buildReplyState = () => {
+    const withText = (messages || []).filter(m => m && m.message_text && String(m.message_text).trim());
+    const last = withText[withText.length - 1];
+    const lastOutbound = [...withText].reverse().find(m => m.direction === 'outbound');
+    const lastClient = [...withText].reverse().find(m => m.direction !== 'outbound');
+    return {
+      pending: !!last && last.direction !== 'outbound',
+      lastOutboundText: lastOutbound ? String(lastOutbound.message_text).trim() : '',
+      lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
+    };
+  };
+
+  const openActivityFromMessage = (prefillText: string) => {
+    setActivityPrefill(prefillText);
+    setShowActivitySheet(true);
   };
 
   const buildFinalMessage = async (message: string): Promise<string> => {
@@ -1367,6 +1405,17 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
             </div>
 
             <div className="flex items-center gap-1 shrink-0 ml-2">
+              {!isGroupChat && phone && (
+                <WhatsAppCallRecorder
+                  phone={phone}
+                  contactName={linkedContact?.full_name || contactName}
+                  contactId={linkedContact?.id || null}
+                  leadId={linkedLead?.id || null}
+                  leadName={linkedLead?.lead_name || null}
+                  instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || null}
+                />
+              )}
+              <WhatsAppMediaGallery messages={messages as any} leadId={linkedLead?.id || null} />
               {isGroupChat && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1405,6 +1454,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => handleAction('create_case')}>
                     <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setActivityPrefill(''); setShowActivitySheet(true); }} className="text-green-600 dark:text-green-400">
+                    <ClipboardList className="h-4 w-4 mr-2" /> Criar Atividade
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleTogglePrivate} disabled={togglingPrivate}>
                     {isPrivate ? <LockOpen className="h-4 w-4 mr-2" /> : <Lock className="h-4 w-4 mr-2" />}
@@ -1663,9 +1715,72 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                               {msg.message_text}
                             </p>
                           )}
-                          <p className={cn("text-[9px] mt-0.5", isInbound ? "text-muted-foreground" : "text-primary-foreground/70")}>
-                            {format(parseISO(msg.created_at), 'HH:mm')}
-                          </p>
+                          <div className="flex items-center gap-0.5 mt-0.5 flex-wrap">
+                            <p className={cn("text-[9px] mr-1", isInbound ? "text-muted-foreground" : "text-primary-foreground/70")}>
+                              {format(parseISO(msg.created_at), 'HH:mm')}
+                            </p>
+                            {msg.message_text && (
+                              <>
+                                <button
+                                  type="button"
+                                  title="Copiar texto"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(msg.message_text!);
+                                    toast.success('Mensagem copiada!');
+                                  }}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                                    isInbound ? "text-muted-foreground" : "text-primary-foreground/70"
+                                  )}
+                                >
+                                  <Copy className="h-2.5 w-2.5" /> Copiar
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Sugerir resposta a esta mensagem com IA"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setReplySuggestTarget(msg.message_text || '');
+                                    setReplySuggestOpen(true);
+                                  }}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                                    isInbound ? "text-muted-foreground" : "text-primary-foreground/70"
+                                  )}
+                                >
+                                  <Sparkles className="h-2.5 w-2.5" /> Responder c/ IA
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Criar atividade a partir desta mensagem"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openActivityFromMessage(msg.message_text || '');
+                                  }}
+                                  className={cn(
+                                    "inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                                    isInbound ? "text-muted-foreground" : "text-primary-foreground/70"
+                                  )}
+                                >
+                                  <ClipboardList className="h-2.5 w-2.5" /> Atividade
+                                </button>
+                              </>
+                            )}
+                            {msg.media_url && (
+                              <button
+                                type="button"
+                                title="Baixar"
+                                onClick={(e) => bindDownload(msg.media_url!)(e)}
+                                className={cn(
+                                  "inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                                  isInbound ? "text-muted-foreground" : "text-primary-foreground/70"
+                                )}
+                              >
+                                <Download className="h-2.5 w-2.5" /> Baixar
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1807,6 +1922,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                 </DropdownMenuContent>
               </DropdownMenu>
               <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
+              <AITextActions value={newMessage} onChange={setNewMessage} />
+              <AISuggestReply buildContext={buildReplyContext} getState={buildReplyState} onApply={setNewMessage} />
+              {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
+              <AISuggestReply
+                buildContext={buildReplyContext}
+                getState={buildReplyState}
+                onApply={setNewMessage}
+                open={replySuggestOpen}
+                onOpenChange={setReplySuggestOpen}
+                targetMessage={replySuggestTarget}
+                hideTrigger
+              />
               <Textarea
                 ref={messageInputRef}
                 value={newMessage}
@@ -1929,6 +2056,17 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       />
     )}
     <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
+
+    {/* Criar atividade (mesmo formulário da aba WhatsApp) */}
+    <WhatsAppActivitySheet
+      open={showActivitySheet}
+      onOpenChange={(o) => { setShowActivitySheet(o); if (!o) setActivityPrefill(''); }}
+      defaultLeadId={linkedLead?.id}
+      defaultLeadName={linkedLead?.lead_name || undefined}
+      defaultContactId={linkedContact?.id}
+      defaultContactName={linkedContact?.full_name || contactName || undefined}
+      defaultDictationText={activityPrefill || undefined}
+    />
     </>
   );
 }
