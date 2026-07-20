@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
@@ -33,6 +33,9 @@ export interface FeedbackRow {
   process_id: string | null;
   process_title: string | null;
   activity_type: string | null;
+  status: string | null;
+  deadline: string | null;
+  rescheduled_to: string | null;
   updated_at: string;
 }
 
@@ -74,6 +77,26 @@ function stripHtml(s: string) {
   return (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Mesma regra da ActivitiesPage: atrasada = não concluída + prazo vencido; reagendada = status próprio.
+function situacaoBadge(row: FeedbackRow): { label: string; className: string } | null {
+  if (row.status === 'reagendada') {
+    let quando = '';
+    if (row.rescheduled_to) {
+      try { quando = ` p/ ${format(parseISO(row.rescheduled_to), 'dd/MM')}`; } catch { /* data inválida */ }
+    }
+    return { label: `🔁 Reagendada${quando}`, className: 'border-blue-300 bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-800' };
+  }
+  if (row.status !== 'concluida' && row.deadline) {
+    try {
+      const dias = differenceInCalendarDays(startOfDay(new Date()), startOfDay(parseISO(row.deadline)));
+      if (dias > 0) {
+        return { label: `⚠ Atrasada · venceu há ${dias === 1 ? '1 dia' : `${dias} dias`}`, className: 'border-red-300 bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300 dark:border-red-800' };
+      }
+    } catch { /* deadline inválido */ }
+  }
+  return null;
+}
+
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -105,7 +128,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       // Feedbacks onde sou observador OU criador.
       const { data, error } = await (externalSupabase as any)
         .from('lead_activities')
-        .select('id, title, feedback, feedback_rating, feedback_outcome, feedback_rated_by_name, feedback_rated_at, assigned_to, assigned_to_name, created_by, observer_ids, lead_id, lead_name, case_id, case_title, process_id, process_title, activity_type, updated_at')
+        .select('id, title, feedback, feedback_rating, feedback_outcome, feedback_rated_by_name, feedback_rated_at, assigned_to, assigned_to_name, created_by, observer_ids, lead_id, lead_name, case_id, case_title, process_id, process_title, activity_type, status, deadline, rescheduled_to, updated_at')
         .not('feedback', 'is', null)
         .neq('feedback', '')
         .is('deleted_at', null)
@@ -296,12 +319,18 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                   {columnRows(col.key).map(row => {
                     const d = getDraft(row.id, row);
                     const evaluated = !!row.feedback_outcome;
+                    const situacao = situacaoBadge(row);
                     return (
                       <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-2 shadow-sm">
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
                             <p className="text-[10px] text-muted-foreground truncate">{linkFor(row)}</p>
+                            {situacao && (
+                              <span className={cn('inline-block mt-1 rounded border px-1.5 py-0.5 text-[9px] font-medium', situacao.className)}>
+                                {situacao.label}
+                              </span>
+                            )}
                           </div>
                           <a
                             href={`/?openActivity=${row.id}`}
