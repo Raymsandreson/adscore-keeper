@@ -10,6 +10,7 @@ import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { fireOrphanMatchForLead } from '@/lib/fireOrphanMatchForLead';
 import { leadsCache } from './useLeadsCache';
+import { normalizeDateInput } from '@/utils/normalizeDateInput';
 
 export interface UseLeadsOptions {
   /** 'full' (default): legacy behavior - loads ALL leads, cached SWR. 'paged': on-demand pagination. */
@@ -79,6 +80,17 @@ const PAGE_SIZE = 1000;
 const LEAD_DELETED_EVENT = 'adscore:lead-deleted';
 const isAlreadyMissingLeadError = (error?: string) =>
   String(error || '').toLowerCase().includes('lead não encontrado no banco externo');
+
+const sanitizeLeadDateFields = (lead: Partial<Lead>): Partial<Lead> => {
+  const sanitized = { ...lead };
+  if ('accident_date' in sanitized) {
+    sanitized.accident_date = normalizeDateInput(sanitized.accident_date);
+  }
+  if ('expected_birth_date' in sanitized) {
+    sanitized.expected_birth_date = normalizeDateInput(sanitized.expected_birth_date);
+  }
+  return sanitized;
+};
 
 // ──────────────────────────────────────────────────────────────────────────
 // Poller compartilhado: 1 setInterval por adAccountId, qualquer número de
@@ -562,17 +574,18 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
     try {
       const externalUserId = user?.id ? await remapToExternal(user.id) : null;
+      const sanitizedLead = sanitizeLeadDateFields(lead);
       const { data, error } = await externalSupabase
         .from('leads')
         .insert([{
-          ...lead,
-          lead_status: lead.lead_status ?? 'no_response',
-          became_client_date: lead.became_client_date ?? null,
-          classification_date: lead.classification_date ?? null,
-          in_progress_date: lead.in_progress_date ?? null,
-          inviavel_date: lead.inviavel_date ?? null,
-          cancelled_date: lead.cancelled_date ?? null,
-          ad_account_id: adAccountId || lead.ad_account_id,
+          ...sanitizedLead,
+          lead_status: sanitizedLead.lead_status ?? 'no_response',
+          became_client_date: sanitizedLead.became_client_date ?? null,
+          classification_date: sanitizedLead.classification_date ?? null,
+          in_progress_date: sanitizedLead.in_progress_date ?? null,
+          inviavel_date: sanitizedLead.inviavel_date ?? null,
+          cancelled_date: sanitizedLead.cancelled_date ?? null,
+          ad_account_id: adAccountId || sanitizedLead.ad_account_id,
           created_by: externalUserId,
           updated_by: externalUserId,
         }])
@@ -657,7 +670,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   const updateLead = async (id: string, updates: Partial<Lead>, editSummary?: string) => {
     try {
       // Auto-set timestamps based on status
-      const timestampUpdates: Record<string, any> = { ...updates };
+      const timestampUpdates: Record<string, any> = sanitizeLeadDateFields(updates);
       if (updates.status === 'qualified' && !updates.qualified_at) {
         timestampUpdates.qualified_at = new Date().toISOString();
       }
