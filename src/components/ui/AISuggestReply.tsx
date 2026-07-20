@@ -57,6 +57,12 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   /** Esconde o botão gatilho interno (usado quando o pai controla a abertura). */
   hideTrigger?: boolean;
+  /**
+   * Persona da sugestão.
+   * 'client' (padrão) = atendente respondendo um cliente pelo WhatsApp.
+   * 'team' = colega respondendo outro colega no chat interno da equipe.
+   */
+  mode?: 'client' | 'team';
 }
 
 export function AISuggestReply({
@@ -69,7 +75,12 @@ export function AISuggestReply({
   open: controlledOpen,
   onOpenChange,
   hideTrigger,
+  mode = 'client',
 }: Props) {
+  const isTeam = mode === 'team';
+  // Palavras conforme a persona: quem é o interlocutor e quem sou "Eu".
+  const counterpart = isTeam ? 'colega' : 'cliente'; // a quem estou respondendo
+  const me = isTeam ? 'você' : 'atendente'; // quem sou "Eu" na transcrição
   const isControlled = controlledOpen !== undefined;
   const [internalOpen, setInternalOpen] = useState(false);
   const open = isControlled ? controlledOpen : internalOpen;
@@ -99,28 +110,40 @@ export function AISuggestReply({
     setLoading(true);
     try {
       const tonePrompt = TONES[toneKey]?.prompt || 'tom cordial e profissional';
-      // Âncora: a última fala do cliente é o que deve ser respondido (quando não há alvo explícito).
+      // Âncora: a última fala do interlocutor é o que deve ser respondido (quando não há alvo explícito).
       const anchorLine = !target?.trim() && clientMsg?.trim()
-        ? ` A ÚLTIMA mensagem enviada pelo cliente foi: "${clientMsg.trim()}". Sua resposta DEVE reagir diretamente a essa fala do cliente, e não a mensagens anteriores já respondidas.`
+        ? ` A ÚLTIMA mensagem enviada pelo ${counterpart} foi: "${clientMsg.trim()}". Sua resposta DEVE reagir diretamente a essa fala do ${counterpart}, e não a mensagens anteriores já respondidas.`
         : '';
       const targetLine = target?.trim()
-        ? ` O atendente quer responder ESPECIFICAMENTE a esta mensagem do cliente: "${target.trim()}". Foque a resposta nela; use o restante da conversa apenas como contexto.`
+        ? ` O ${me} quer responder ESPECIFICAMENTE a esta mensagem do ${counterpart}: "${target.trim()}". Foque a resposta nela; use o restante da conversa apenas como contexto.`
         : '';
-      // Evita que a IA reescreva/parafraseie a última mensagem que o atendente já enviou.
+      // Evita que a IA reescreva/parafraseie a última mensagem que "Eu" já enviei.
       const alreadyLine = already?.trim() && already.trim() !== target?.trim()
-        ? ` ATENÇÃO: o atendente JÁ enviou recentemente esta mensagem — NÃO a repita nem a reescreva com outras palavras: "${already.trim()}". Escreva apenas a CONTINUAÇÃO, respondendo ao que o cliente falou depois disso.`
+        ? ` ATENÇÃO: o ${me} JÁ enviou recentemente esta mensagem — NÃO a repita nem a reescreva com outras palavras: "${already.trim()}". Escreva apenas a CONTINUAÇÃO, respondendo ao que o ${counterpart} falou depois disso.`
         : '';
       const extraLine = extra.trim()
-        ? ` Instrução adicional do atendente: ${extra.trim()}.`
+        ? ` Instrução adicional do ${me}: ${extra.trim()}.`
         : '';
-      const custom_prompt =
-        `Você é o atendente de um escritório de advocacia previdenciário respondendo um cliente pelo WhatsApp. ` +
-        `Abaixo está o histórico da conversa (Eu = atendente, Cliente = a pessoa atendida). ` +
-        `Escreva APENAS a próxima mensagem que o atendente deve enviar como resposta, em ${tonePrompt}, ` +
-        `em português brasileiro, natural e claro. Responda ao que o CLIENTE falou por último e ainda não foi respondido. ` +
-        `Não escreva saudações repetidas se a conversa já começou, ` +
-        `não invente fatos jurídicos nem prometa prazos ou valores. Responda só com o texto da mensagem, sem aspas.` +
-        `${anchorLine}${targetLine}${alreadyLine}${extraLine}`;
+      const custom_prompt = isTeam
+        ? (
+          `Você é um membro da equipe de um escritório de advocacia trocando mensagens com um COLEGA no chat interno da equipe. ` +
+          `Abaixo está o histórico da conversa (Eu = você; o nome antes de cada fala é o colega que a enviou). ` +
+          `Escreva APENAS a próxima mensagem que você deve enviar ao colega, em ${tonePrompt}, ` +
+          `em português brasileiro, natural e direto, como se fala entre colegas de trabalho. ` +
+          `Responda ao que o colega falou por último e ainda não foi respondido. ` +
+          `Não escreva saudações repetidas se a conversa já começou, não invente fatos. ` +
+          `Responda só com o texto da mensagem, sem aspas.` +
+          `${anchorLine}${targetLine}${alreadyLine}${extraLine}`
+        )
+        : (
+          `Você é o atendente de um escritório de advocacia previdenciário respondendo um cliente pelo WhatsApp. ` +
+          `Abaixo está o histórico da conversa (Eu = atendente, Cliente = a pessoa atendida). ` +
+          `Escreva APENAS a próxima mensagem que o atendente deve enviar como resposta, em ${tonePrompt}, ` +
+          `em português brasileiro, natural e claro. Responda ao que o CLIENTE falou por último e ainda não foi respondido. ` +
+          `Não escreva saudações repetidas se a conversa já começou, ` +
+          `não invente fatos jurídicos nem prometa prazos ou valores. Responda só com o texto da mensagem, sem aspas.` +
+          `${anchorLine}${targetLine}${alreadyLine}${extraLine}`
+        );
 
       const { data, error } = await supabase.functions.invoke('ai-text-editor', {
         body: { text: ctx, action: 'custom', custom_prompt },
@@ -145,14 +168,25 @@ export function AISuggestReply({
     if (!ctx.trim()) return;
     setLoadingPend(true);
     try {
-      const custom_prompt =
-        `Analise o histórico desta conversa de WhatsApp entre atendente (Eu) e cliente. ` +
-        `Liste de forma objetiva, em tópicos curtos, as PENDÊNCIAS em aberto para o atendente não perder nada: ` +
-        `(1) perguntas do cliente ainda sem resposta; ` +
-        `(2) documentos ou informações que foram pedidos/prometidos e ainda faltam; ` +
-        `(3) próximos passos combinados. ` +
-        `Se não houver nenhuma pendência, responda exatamente: "Nenhuma pendência em aberto." ` +
-        `Não invente nada que não esteja na conversa.`;
+      const custom_prompt = isTeam
+        ? (
+          `Analise o histórico desta conversa do chat interno da equipe (Eu e um colega). ` +
+          `Liste de forma objetiva, em tópicos curtos, as PENDÊNCIAS em aberto para você não perder nada: ` +
+          `(1) perguntas do colega ainda sem resposta; ` +
+          `(2) tarefas ou informações que foram pedidas/prometidas e ainda faltam; ` +
+          `(3) próximos passos combinados. ` +
+          `Se não houver nenhuma pendência, responda exatamente: "Nenhuma pendência em aberto." ` +
+          `Não invente nada que não esteja na conversa.`
+        )
+        : (
+          `Analise o histórico desta conversa de WhatsApp entre atendente (Eu) e cliente. ` +
+          `Liste de forma objetiva, em tópicos curtos, as PENDÊNCIAS em aberto para o atendente não perder nada: ` +
+          `(1) perguntas do cliente ainda sem resposta; ` +
+          `(2) documentos ou informações que foram pedidos/prometidos e ainda faltam; ` +
+          `(3) próximos passos combinados. ` +
+          `Se não houver nenhuma pendência, responda exatamente: "Nenhuma pendência em aberto." ` +
+          `Não invente nada que não esteja na conversa.`
+        );
       const { data, error } = await supabase.functions.invoke('ai-text-editor', {
         body: { text: ctx, action: 'custom', custom_prompt },
       });
@@ -254,7 +288,7 @@ export function AISuggestReply({
                 <div>
                   <p className="font-medium text-emerald-800 dark:text-emerald-300">Sem resposta pendente</p>
                   <p className="text-xs text-muted-foreground">
-                    A última mensagem da conversa foi <strong>sua</strong> — o cliente ainda não respondeu.
+                    A última mensagem da conversa foi <strong>sua</strong> — o {counterpart} ainda não respondeu.
                     Veja abaixo o que ficou em aberto para não perder nada.
                   </p>
                 </div>

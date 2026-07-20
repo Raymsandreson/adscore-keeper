@@ -28,6 +28,8 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
+import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { Sparkles } from 'lucide-react';
 import type { TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
 interface TeamDirectChatPanelProps {
@@ -80,6 +82,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
   const [urgent, setUrgent] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
+  const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -164,6 +167,37 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
     onIntentHandled?.();
   }, [intent, onIntentHandled, setActiveConversationId]);
+
+  // Só mensagens de texto entram na transcrição da IA (ignora áudio/imagem/arquivo).
+  const textMessagesForAI = () =>
+    (messages || []).filter(
+      (m) => m.content && String(m.content).trim() && (!m.message_type || m.message_type === 'text'),
+    );
+
+  // Contexto p/ sugestão da IA: últimas falas de texto, em ordem cronológica.
+  // "Eu" = usuário atual; demais falas prefixadas pelo nome de quem enviou.
+  const buildReplyContext = (): string =>
+    textMessagesForAI()
+      .slice(-20)
+      .map((m) => {
+        const who = m.sender_id === user?.id ? 'Eu' : (m.sender_name || 'Colega');
+        return `${who}: ${String(m.content).trim()}`;
+      })
+      .join('\n');
+
+  // Estado p/ a IA saber se há resposta pendente e não repetir o que já mandei.
+  const buildReplyState = () => {
+    const withText = textMessagesForAI();
+    const last = withText[withText.length - 1];
+    const lastOutbound = [...withText].reverse().find((m) => m.sender_id === user?.id);
+    const lastOther = [...withText].reverse().find((m) => m.sender_id !== user?.id);
+    return {
+      // Pendente quando a última mensagem com texto NÃO é minha.
+      pending: !!last && last.sender_id !== user?.id,
+      lastOutboundText: lastOutbound ? String(lastOutbound.content).trim() : '',
+      lastClientText: lastOther ? String(lastOther.content).trim() : '',
+    };
+  };
 
   const handleSend = async () => {
     if (!messageText.trim()) return;
@@ -603,6 +637,20 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             onSelect={handleEntitySelect}
           />
 
+          {/* Sugestão de resposta por IA — mesma UX do WhatsApp (tom + ajuste), persona de equipe. */}
+          <AISuggestReply
+            mode="team"
+            hideTrigger
+            open={aiSuggestOpen}
+            onOpenChange={setAiSuggestOpen}
+            buildContext={buildReplyContext}
+            getState={buildReplyState}
+            onApply={(text) => {
+              setMessageText(text);
+              requestAnimationFrame(() => messageInputRef.current?.focus());
+            }}
+          />
+
           {replyingTo && (
             <div className="px-3 py-1.5 border-b bg-muted/40 flex items-start gap-2">
               <Reply className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
@@ -675,6 +723,16 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 title={urgent ? 'Mensagem marcada como URGENTE' : 'Marcar como urgente'}
               >
                 <AlertTriangle className={cn('h-4 w-4', urgent && 'animate-pulse')} />
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setAiSuggestOpen(true)}
+                title="Sugerir resposta com IA (baseada na conversa)"
+              >
+                <Sparkles className="h-4 w-4 text-primary" />
               </Button>
 
               <div className="relative flex-1 min-w-0">
