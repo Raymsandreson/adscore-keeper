@@ -131,8 +131,12 @@ export function useProcessCustomFields(workflowId?: string | null) {
     }
   };
 
-  // Valores de um processo específico (mapa por field_id)
-  const getFieldValues = async (processId: string): Promise<Record<string, ProcessCustomFieldValue>> => {
+  // Valores de um processo específico (mapa por field_id).
+  // useCallback é obrigatório: ProcessCustomFieldsForm usa esta função como
+  // dependência do useCallback/useEffect que carrega os valores. Sem
+  // identidade estável, o efeito re-dispara a cada render e vira loop
+  // infinito de fetch (medido: ~26k requisições em 1,5s).
+  const getFieldValues = useCallback(async (processId: string): Promise<Record<string, ProcessCustomFieldValue>> => {
     try {
       const { data, error } = await (db as any)
         .from('process_custom_field_values')
@@ -151,7 +155,7 @@ export function useProcessCustomFields(workflowId?: string | null) {
       console.error('Error fetching process field values:', error);
       return {};
     }
-  };
+  }, []);
 
   const saveFieldValue = async (
     processId: string,
