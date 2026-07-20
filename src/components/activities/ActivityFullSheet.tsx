@@ -100,6 +100,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formIsSystem, setFormIsSystem] = useState(false);
   const [formIsManagement, setFormIsManagement] = useState(false);
   const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
+  // Paridade com a ActivitiesPage (formulário único): co-assessores, observadores,
+  // campanha, feedback e reagendamento também existem quando aberto de Lead/Caso.
+  const [formCoAssignees, setFormCoAssignees] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
+  const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
+  const [loadedHadObservers, setLoadedHadObservers] = useState(false);
+  const [formCampaignId, setFormCampaignId] = useState('');
+  const [formFeedback, setFormFeedback] = useState('');
+  const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
   const [formCurrentStatus, setFormCurrentStatus] = useState('');
   const [formNextSteps, setFormNextSteps] = useState('');
@@ -222,6 +231,38 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormSolicitacao(act.solicitacao || '');
     setFormRespostaJuizo(act.resposta_juizo || '');
     setFormNotes(act.notes || '');
+    setFormCampaignId((act as any).crm_campaign_id || '');
+    setFormFeedback((act as any).feedback || '');
+    setFormRescheduledTo((act as any).rescheduled_to || '');
+
+    // Co-assessores e observadores: arrays gravados com UUIDs do Externo → Cloud.
+    const extIds = (act.assigned_to_ids as string[] | null) || [];
+    const extNames = ((act as any).assigned_to_names as string[] | null) || [];
+    if (extIds.length > 1) {
+      const primaryCloud = ((await remapToCloud(act.assigned_to)) as string) || '';
+      const cloudIds = await Promise.all(extIds.map((id) => remapToCloud(id)));
+      const co = cloudIds
+        .map((cid, i) => ({ user_id: (cid as string) || '', full_name: extNames[i] || '' }))
+        .filter((c) => c.user_id && c.user_id !== primaryCloud);
+      setFormCoAssignees(co);
+      setLoadedHadCoAssignees(true);
+    } else {
+      setFormCoAssignees([]);
+      setLoadedHadCoAssignees(false);
+    }
+    const obsExt = ((act as any).observer_ids as string[] | null) || [];
+    const obsNames = ((act as any).observer_names as string[] | null) || [];
+    if (obsExt.length > 0) {
+      const cloudIds = await Promise.all(obsExt.map((id) => remapToCloud(id)));
+      const obs = cloudIds
+        .map((cid, i) => ({ user_id: (cid as string) || '', full_name: obsNames[i] || '' }))
+        .filter((o) => o.user_id);
+      setFormObservers(obs);
+      setLoadedHadObservers(true);
+    } else {
+      setFormObservers([]);
+      setLoadedHadObservers(false);
+    }
     setLoading(false);
 
     // Dados de apoio em paralelo (não bloqueiam a UI)
@@ -269,6 +310,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormSolicitacao(d.solicitacao || '');
     setFormRespostaJuizo(d.resposta_juizo || '');
     setFormNotes(d.notes || '');
+    setFormCoAssignees([]); setLoadedHadCoAssignees(false);
+    setFormObservers([]); setLoadedHadObservers(false);
+    setFormCampaignId('');
+    setFormFeedback('');
+    setFormRescheduledTo('');
 
     if (d.lead_id) {
       externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', d.lead_id).then(({ data }) => setLeadCases((data as CaseRow[]) || []));
@@ -341,10 +387,45 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormDeadline(v);
     if (!formNotificationDate) setFormNotificationDate(v);
   };
+  // Seleção multi: 1º clique define o principal; cliques seguintes alternam co-responsáveis.
+  // Clicar no principal o desmarca (o 1º co-responsável, se houver, vira o principal).
+  // Virar responsável remove a pessoa dos observadores (papéis são exclusivos).
   const handleSelectAssignee = (userId: string) => {
     const member = teamMembers.find(m => m.user_id === userId);
-    setFormAssignedTo(userId);
-    setFormAssignedToName(member?.full_name || '');
+    const name = member?.full_name || '';
+    setFormObservers(prev => prev.filter(o => o.user_id !== userId));
+    if (formAssignedTo === userId) {
+      const [next, ...rest] = formCoAssignees;
+      setFormAssignedTo(next?.user_id || '');
+      setFormAssignedToName(next?.full_name || '');
+      setFormCoAssignees(rest);
+    } else if (formCoAssignees.some(c => c.user_id === userId)) {
+      setFormCoAssignees(prev => prev.filter(c => c.user_id !== userId));
+    } else if (!formAssignedTo) {
+      setFormAssignedTo(userId);
+      setFormAssignedToName(name);
+    } else {
+      setFormCoAssignees(prev => [...prev, { user_id: userId, full_name: name }]);
+    }
+  };
+  // Alterna a pessoa como OBSERVADORA (acompanha e recebe popups, sem ser cobrada).
+  // Virar observador remove a pessoa dos responsáveis.
+  const handleToggleObserver = (userId: string) => {
+    const member = teamMembers.find(m => m.user_id === userId);
+    const name = member?.full_name || '';
+    if (formObservers.some(o => o.user_id === userId)) {
+      setFormObservers(prev => prev.filter(o => o.user_id !== userId));
+      return;
+    }
+    if (formAssignedTo === userId) {
+      const [next, ...rest] = formCoAssignees;
+      setFormAssignedTo(next?.user_id || '');
+      setFormAssignedToName(next?.full_name || '');
+      setFormCoAssignees(rest);
+    } else if (formCoAssignees.some(c => c.user_id === userId)) {
+      setFormCoAssignees(prev => prev.filter(c => c.user_id !== userId));
+    }
+    setFormObservers(prev => [...prev, { user_id: userId, full_name: name }]);
   };
   const handleSelectLead = async (lid: string) => {
     let name = searchedLeads.find(l => l.id === lid)?.lead_name || '';
@@ -403,6 +484,19 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     client_name_override: formClientNameOverride || null,
     is_system: formIsSystem,
     is_management: formIsManagement,
+    crm_campaign_id: formCampaignId || null,
+    feedback: formFeedback || null,
+    rescheduled_to: formRescheduledTo || null,
+    // Arrays multi-assessor/observador: só entram quando há (ou quando a atividade
+    // carregada já tinha — para permitir limpar). Hook remapeia Cloud→Externo.
+    ...(formCoAssignees.length === 0 && !loadedHadCoAssignees ? {} : {
+      assigned_to_ids: [formAssignedTo, ...formCoAssignees.map(c => c.user_id)].filter(Boolean),
+      assigned_to_names: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean),
+    }),
+    ...(formObservers.length === 0 && !loadedHadObservers ? {} : {
+      observer_ids: formObservers.map(o => o.user_id),
+      observer_names: formObservers.map(o => o.full_name),
+    }),
   });
 
   const handleSave = async () => {
@@ -413,7 +507,17 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
     if (isCreate) {
       setSaving(true);
-      const created = await createActivity(buildPayload() as Partial<LeadActivity>);
+      const payload = buildPayload() as Partial<LeadActivity> & { observer_ids?: string[]; observer_names?: string[] };
+      // Quem cria a atividade entra como observador automaticamente (se não for responsável).
+      const { data: { user } } = await authClient.auth.getUser();
+      const uid = user?.id || '';
+      const isResponsible = uid && (formAssignedTo === uid || formCoAssignees.some(c => c.user_id === uid));
+      if (uid && !isResponsible && !formObservers.some(o => o.user_id === uid)) {
+        const myName = teamMembers.find(m => m.user_id === uid)?.full_name || '';
+        payload.observer_ids = [...(payload.observer_ids || []), uid];
+        payload.observer_names = [...(payload.observer_names || []), myName];
+      }
+      const created = await createActivity(payload);
       setSaving(false);
       if (created) {
         toast.success('Atividade criada.');
@@ -556,6 +660,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 setSelectedStepId={setSelectedStepId}
                 formTitle={formTitle} setFormTitle={setFormTitle}
                 formAssignedTo={formAssignedTo} handleSelectAssignee={handleSelectAssignee}
+                formCoAssignees={formCoAssignees}
+                formObservers={formObservers} onToggleObserver={handleToggleObserver}
+                formFeedback={formFeedback} setFormFeedback={setFormFeedback}
+                formRescheduledTo={formRescheduledTo} setFormRescheduledTo={setFormRescheduledTo}
+                formCampaignId={formCampaignId} setFormCampaignId={setFormCampaignId}
                 formType={formType} setFormType={setFormType}
                 formStatus={formStatus} setFormStatus={setFormStatus}
                 formPriority={formPriority} setFormPriority={setFormPriority}
