@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus
 } from 'lucide-react';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -253,6 +253,38 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       fetchActivities();
     }
   }, [activeTab, fetchActivities]);
+
+  // "Nova Atividade" na aba Atividades: abre o formulário único (ActivityFullSheet,
+  // modo criar) já vinculado a lead/caso/processo — sem IA, o usuário preenche.
+  const [openingNewActivity, setOpeningNewActivity] = useState(false);
+  const handleNewActivity = async () => {
+    if (openingNewActivity) return;
+    setOpeningNewActivity(true);
+    try {
+      const [leadRes, caseRes] = await Promise.all([
+        process?.lead_id
+          ? externalSupabase.from('leads').select('lead_name').eq('id', process.lead_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+        process?.case_id
+          ? externalSupabase.from('legal_cases').select('case_number, title').eq('id', process.case_id).maybeSingle()
+          : Promise.resolve({ data: null }),
+      ]);
+      const leadName = (leadRes.data as any)?.lead_name || undefined;
+      const c = caseRes.data as any;
+      setCreateDraft({
+        lead_id: process?.lead_id || undefined,
+        lead_name: leadName,
+        case_id: process?.case_id || undefined,
+        case_title: c ? `${c.case_number} - ${c.title}` : undefined,
+        process_id: process?.id || undefined,
+        process_title: form.title || process?.title || undefined,
+        workflow_id: form.workflow_id || process?.workflow_id || undefined,
+      });
+      setCreateSheetOpen(true);
+    } finally {
+      setOpeningNewActivity(false);
+    }
+  };
 
   // Auto-preenche "Responsável pelo processo" quando estiver vazio, usando o
   // último assessor com atividade ABERTA no processo (fallback: última CONCLUÍDA).
@@ -1141,6 +1173,17 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'atividades' && (
               <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                    <ClipboardList className="h-3.5 w-3.5 text-primary" />
+                    Atividades ({activities.length})
+                  </h4>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
+                    onClick={handleNewActivity} disabled={openingNewActivity}>
+                    {openingNewActivity ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                    Nova Atividade
+                  </Button>
+                </div>
                 {loadingActivities ? (
                   <div className="text-center py-6 text-muted-foreground text-xs">
                     <Loader2 className="h-4 w-4 animate-spin mx-auto mb-1" />
