@@ -1147,6 +1147,31 @@ ${scrapeData.content || ''}
       }
     }
 
+    // Validação obrigatória ao fechar: grupo WhatsApp vinculado + pelo menos 1 contato registrado.
+    if (leadOutcome === 'closed') {
+      const hasGroup = whatsappGroups.some(g => (g.group_jid || '').trim() || (g.group_link || '').trim());
+      if (!hasGroup) {
+        toast.error('Lead fechado precisa ter um grupo do WhatsApp vinculado.', {
+          description: 'Adicione o grupo na seção "Grupos WhatsApp" antes de salvar.',
+        });
+        setActiveTab('basic');
+        return;
+      }
+      if (!contactsPayload?.length) {
+        const { count, error: contactCountErr } = await externalSupabase
+          .from('contact_leads')
+          .select('contact_id', { count: 'exact', head: true })
+          .eq('lead_id', currentLead.id);
+        if (!contactCountErr && (count ?? 0) === 0) {
+          toast.error('Lead fechado precisa ter pelo menos 1 contato registrado.', {
+            description: 'Vincule um contato na aba "Contatos" antes de salvar.',
+          });
+          setActiveTab('contacts');
+          return;
+        }
+      }
+    }
+
     // Nº do Caso é AUTO-gerado pelo prefixo do produto ao fechar o lead.
     // Não há mais validação manual aqui — se faltar produto, avisamos no fluxo de criação do caso.
 
