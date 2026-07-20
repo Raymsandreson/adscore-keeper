@@ -45,7 +45,7 @@ export default function DestaquesPage() {
     setLoading(true);
     try {
       await ensureExternalSession();
-      const { data, error } = await externalSupabase
+      const { data, error } = await (externalSupabase as any)
         .from('lead_activities')
         .select('assigned_to, assigned_to_name, feedback_rating, feedback_outcome, feedback_rated_at')
         .not('feedback_outcome', 'is', null)
