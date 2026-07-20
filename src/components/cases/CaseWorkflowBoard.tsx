@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CheckCircle2, Circle, ChevronRight, ArrowRight, Workflow, ListChecks, MessageSquareText, ClipboardList, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { KanbanStage } from '@/hooks/useKanbanBoards';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -336,6 +337,7 @@ function ProcessStageChecklists({
   show: boolean;
   onToggleShow: () => void;
 }) {
+  const { user } = useAuthContext();
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -470,6 +472,18 @@ function ProcessStageChecklists({
         completed_at: allChecked ? new Date().toISOString() : null,
       })
       .eq('id', instance.id);
+
+    // #8: loga o passo recém-MARCADO por pessoa (user_activity_log no Externo via RPC).
+    const toggled = updatedItems.find(it => it.id === itemId);
+    if (toggled?.checked && user?.id) {
+      (externalSupabase as any).rpc('log_checklist_step', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_item_label: toggled.label,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[CaseWorkflowBoard] log de passo falhou:', res.error.message);
+      });
+    }
   };
 
   if (!loaded || instances.length === 0) return null;

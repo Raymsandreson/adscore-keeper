@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists } from '@/hooks/useChecklists';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
 
 interface Stage {
@@ -38,6 +39,7 @@ interface LeadFunnelProgressBarProps {
 }
 
 export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBarProps) {
+  const { user } = useAuthContext();
   const [stages, setStages] = useState<Stage[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
@@ -164,6 +166,19 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     if (error) {
       toast.error('Erro ao atualizar passo');
       return;
+    }
+
+    // #8: loga o passo recém-MARCADO por pessoa (user_activity_log via RPC).
+    // Fire-and-forget; só quando marca (não no desmarcar).
+    const toggled = updatedItems.find(it => it.id === itemId);
+    if (toggled?.checked && user?.id) {
+      (externalSupabase as any).rpc('log_checklist_step', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_item_label: toggled.label,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+      });
     }
 
     setInstances(prev => prev.map(i =>

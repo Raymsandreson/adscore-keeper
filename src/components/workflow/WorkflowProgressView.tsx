@@ -22,6 +22,7 @@ import { cn } from '@/lib/utils';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { ChecklistItem, LeadChecklistInstance, DocChecklistItem, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 
 interface WorkflowProgressViewProps {
@@ -64,6 +65,7 @@ export function WorkflowProgressView({
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
   const [docCheckStates, setDocCheckStates] = useState<Record<string, Record<string, boolean>>>({});
   const { logActivity } = useActivityLogger();
+  const { user: authUser } = useAuthContext();
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -259,6 +261,17 @@ export function WorkflowProgressView({
       entityId: leadId,
       metadata: { checklistId: instance.id, itemId, itemLabel: targetItem?.label },
     });
+
+    // #8: loga o passo recém-MARCADO no Externo (fonte dos dashboards) via RPC.
+    if (willBeChecked && authUser?.id) {
+      (supabase as any).rpc('log_checklist_step', {
+        p_user_id: authUser.id,
+        p_instance_id: instance.id,
+        p_item_label: targetItem?.label || 'Passo',
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
+      });
+    }
 
     const { error } = await supabase
       .from('lead_checklist_instances')
