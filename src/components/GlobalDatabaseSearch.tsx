@@ -158,6 +158,7 @@ export function GlobalDatabaseSearch() {
 
       // Leads
       (leadsRes.data || []).forEach((l: any) => {
+        if (l.deleted_at) return; // não mostrar leads mesclados/excluídos
         mapped.push({
           id: l.id,
           type: 'lead',
@@ -171,6 +172,7 @@ export function GlobalDatabaseSearch() {
 
       // Contacts
       (contactsRes.data || []).forEach((c: any) => {
+        if (c.deleted_at) return; // não mostrar contatos mesclados/excluídos
         mapped.push({
           id: c.id,
           type: 'contact',
