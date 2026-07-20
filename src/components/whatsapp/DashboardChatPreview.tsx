@@ -32,6 +32,7 @@ import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
@@ -800,9 +801,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         if (leadExtracted[field]) insertData[field] = leadExtracted[field];
       }
 
+      // Mesma rota do WhatsAppInbox: datas vêm da extração por IA e podem vir
+      // parciais ("2024"). Sanitiza antes do INSERT.
       const { data: newLead, error: leadError } = await externalSupabase
         .from('leads')
-        .insert(insertData)
+        .insert(sanitizeLeadDateFields(insertData))
         .select('*')
         .single();
       if (leadError) throw leadError;

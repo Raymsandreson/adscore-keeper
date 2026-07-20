@@ -4,11 +4,14 @@ import "./index.css";
 import { logAppInit } from "./utils/debugLogger";
 import { initSentry } from "./lib/sentry";
 import { installDbRoutingGuard } from "./integrations/supabase/install-db-routing-guard";
+import { installLeadDateGuard } from "./integrations/supabase/install-lead-date-guard";
 
 // Initialize Sentry before anything else
 initSentry();
 // Guard runtime: detecta uso do client Cloud para tabelas de negócio
 installDbRoutingGuard();
+// Guard runtime: normaliza colunas `date` em toda escrita na tabela leads
+installLeadDateGuard();
 
 const PRELOAD_RELOAD_KEY = "vite-preload-reload";
 const PREVIEW_CACHE_BUST_KEY = "preview-cache-busted-once";

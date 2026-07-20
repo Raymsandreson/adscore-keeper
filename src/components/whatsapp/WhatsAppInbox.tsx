@@ -57,6 +57,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -996,9 +997,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         }
       }
 
+      // A IA de extração devolve datas em texto livre e pode entregar só o ano
+      // ("2024"): sanitiza antes de tocar no banco (coluna date rejeita parcial).
       const { data, error } = await externalSupabase
         .from('leads')
-        .insert(insertData)
+        .insert(sanitizeLeadDateFields(insertData))
         .select('*')
         .single();
 
