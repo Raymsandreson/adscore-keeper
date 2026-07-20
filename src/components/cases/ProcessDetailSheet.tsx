@@ -26,6 +26,8 @@ import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
+import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFieldsForm';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -116,6 +118,7 @@ const TABS = [
   { id: 'datas', label: 'Datas', icon: Calendar },
   { id: 'marcos', label: 'Marcos', icon: Milestone },
   { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
+  { id: 'campos', label: 'Campos', icon: Hash },
   { id: 'atividades', label: 'Histórico', icon: ClipboardList },
   { id: 'config', label: 'Config', icon: Info },
   { id: 'notas', label: 'Notas', icon: FileText },
@@ -194,6 +197,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
   const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string }[]>([]);
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -406,6 +410,14 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         }
         return raw.data_ultima_movimentacao || fonte?.data_ultima_movimentacao || null;
       })(),
+      movimentacoes: (() => {
+        const movs = Array.isArray(raw.movimentacoes_detalhadas) && raw.movimentacoes_detalhadas.length
+          ? raw.movimentacoes_detalhadas
+          : (Array.isArray(raw.movimentacoes) && raw.movimentacoes.length
+              ? raw.movimentacoes
+              : (Array.isArray(fonte?.movimentacoes) ? fonte.movimentacoes : []));
+        return movs.length ? movs : null;
+      })(),
       quantidade_movimentacoes: raw.quantidade_movimentacoes || null,
       data_ultima_verificacao: raw.data_ultima_verificacao || null,
       audiencias: fonte?.audiencias || null,
@@ -575,6 +587,17 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const effectiveClientePolo = form.cliente_polo || detectedClientePolo || '';
   const audiencias = Array.isArray(form.audiencias) ? form.audiencias : [];
   const processosRelacionados = Array.isArray(form.processos_relacionados) ? form.processos_relacionados : [];
+  // Movimentações: a coluna `movimentacoes` só é gravada no cadastro. Em processos
+  // antigos / re-buscados ela fica vazia, mas a lista real vive no escavador_raw.
+  // Fallback pra não mostrar "nenhuma movimentação" quando o dado existe no raw.
+  const raw = form.escavador_raw || {};
+  const movimentacoesData = (Array.isArray(form.movimentacoes) && form.movimentacoes.length > 0)
+    ? form.movimentacoes
+    : (Array.isArray(raw.movimentacoes_detalhadas) && raw.movimentacoes_detalhadas.length > 0
+        ? raw.movimentacoes_detalhadas
+        : (Array.isArray(raw.movimentacoes) && raw.movimentacoes.length > 0
+            ? raw.movimentacoes
+            : (Array.isArray(raw.fontes?.[0]?.movimentacoes) ? raw.fontes[0].movimentacoes : [])));
 
   const innerContent = (
     <div className="flex flex-col h-full">
@@ -940,7 +963,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
 
             {activeTab === 'movimentacoes' && process?.id && (
-              <ProcessMovimentacoesTab processId={process.id} movimentacoes={form.movimentacoes} />
+              <ProcessMovimentacoesTab processId={process.id} movimentacoes={movimentacoesData} />
             )}
 
             {activeTab === 'atividades' && (
@@ -975,7 +998,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                       duration = days > 0 ? `${days} dia${days > 1 ? 's' : ''}` : '';
                     }
                     return (
-                      <div key={act.id} className={`border rounded-lg p-3 space-y-1.5 cursor-pointer hover:bg-muted/50 transition-colors ${isDone ? 'opacity-60' : 'border-primary/30'}`} onClick={() => navFn(`/?openActivity=${act.id}`)}>
+                      <div key={act.id} className={`border rounded-lg p-3 space-y-1.5 cursor-pointer hover:bg-muted/50 transition-colors ${isDone ? 'opacity-60' : 'border-primary/30'}`} onClick={() => setOpenActivityId(act.id)}>
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
                             {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Clock className="h-3.5 w-3.5 text-primary" />}
@@ -1012,7 +1035,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     onClick={async () => {
                       setGeneratingSummary(true);
                       try {
-                        const movs = Array.isArray(form.movimentacoes) ? form.movimentacoes.slice(0, 30) : [];
+                        const movs = Array.isArray(movimentacoesData) ? movimentacoesData.slice(0, 30) : [];
                         const movsTxt = movs.map((m: any, i: number) =>
                           `${i + 1}. [${m.data || m.data_hora || '?'}] ${m.tipo || ''} — ${(m.conteudo || m.titulo || m.descricao || '').toString().slice(0, 200)}`
                         ).join('\n');
@@ -1061,6 +1084,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 </div>
                 <EditableTextarea label="Resumo / Descrição" value={form.description || ''} onChange={v => set('description', v)} />
                 <EditableTextarea label="Notas Internas" value={form.notes || ''} onChange={v => set('notes', v)} />
+              </>
+            )}
+
+            {activeTab === 'campos' && (
+              <>
+                <h4 className="text-xs font-semibold flex items-center gap-1.5 mb-1">
+                  <Hash className="h-3.5 w-3.5 text-primary" />
+                  Campos do Processo
+                </h4>
+                {process?.id ? (
+                  <ProcessCustomFieldsForm processId={process.id} workflowId={form.workflow_id} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">Salve o processo para preencher os campos.</p>
+                )}
               </>
             )}
 
@@ -1136,6 +1173,15 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
           </div>
         </div>
+
+      {/* Formulário completo (único do sistema) — abre empilhado ao clicar numa atividade do Histórico */}
+      <ActivityFullSheet
+        open={!!openActivityId}
+        onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
+        activityId={openActivityId}
+        leadId={process?.lead_id || null}
+        onUpdated={fetchActivities}
+      />
     </div>
   );
 
