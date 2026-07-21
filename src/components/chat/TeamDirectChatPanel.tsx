@@ -52,6 +52,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [convSearch, setConvSearch] = useState('');
   const [newChatSearch, setNewChatSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'responder' | 'aguardando'>('all');
   const [teamGroups, setTeamGroups] = useState<{ name: string; memberIds: string[] }[]>([]);
 
   // Times pro filtro: usa os grupos "👥 {time}" sincronizados na aba Times
@@ -963,13 +964,32 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   // Conversation list
   const convQuery = convSearch.trim().toLowerCase();
   const activeTeamGroup = teamFilter === 'all' ? null : teamGroups.find(t => t.name === teamFilter);
-  const filteredConversations = conversations.filter(conv => {
+
+  // Status de pendência da conversa:
+  // 'responder'  → a última mensagem é de outra pessoa (em grupo, só se houver não lidas)
+  // 'aguardando' → a última mensagem é minha e ninguém respondeu ainda
+  const convPendingStatus = (conv: (typeof conversations)[number]): 'responder' | 'aguardando' | null => {
+    if (!conv.lastMessageSenderId || !user?.id) return null;
+    if (conv.lastMessageSenderId === user.id) return 'aguardando';
+    if (conv.type === 'direct') return 'responder';
+    return (conv.unreadCount || 0) > 0 ? 'responder' : null;
+  };
+
+  const teamFilteredConversations = conversations.filter(conv => {
     if (activeTeamGroup) {
       const inGroupName = conv.type === 'group' && (conv.name || '').includes(activeTeamGroup.name);
       const otherInTeam = conv.type === 'direct' && !!conv.otherMemberId
         && activeTeamGroup.memberIds.includes(conv.otherMemberId);
       if (!inGroupName && !otherInTeam) return false;
     }
+    return true;
+  });
+
+  const responderCount = teamFilteredConversations.filter(c => convPendingStatus(c) === 'responder').length;
+  const aguardandoCount = teamFilteredConversations.filter(c => convPendingStatus(c) === 'aguardando').length;
+
+  const filteredConversations = teamFilteredConversations.filter(conv => {
+    if (statusFilter !== 'all' && convPendingStatus(conv) !== statusFilter) return false;
     if (!convQuery) return true;
     const title = conv.type === 'group' ? (conv.name || 'Grupo') : (conv.otherMemberName || '');
     return title.toLowerCase().includes(convQuery)
@@ -1021,6 +1041,46 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             </SelectContent>
           </Select>
         )}
+        <div className="flex gap-1">
+          <button
+            type="button"
+            onClick={() => setStatusFilter('all')}
+            className={cn(
+              'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
+              statusFilter === 'all'
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
+            )}
+          >
+            Todas
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter(v => v === 'responder' ? 'all' : 'responder')}
+            title="Conversas em que a última mensagem é de outra pessoa — esperando VOCÊ responder"
+            className={cn(
+              'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors inline-flex items-center justify-center gap-1',
+              statusFilter === 'responder'
+                ? 'bg-amber-500 text-white border-amber-500'
+                : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/20'
+            )}
+          >
+            <Timer className="h-3 w-3" /> Responder{responderCount > 0 ? ` (${responderCount})` : ''}
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter(v => v === 'aguardando' ? 'all' : 'aguardando')}
+            title="Conversas em que a última mensagem é sua — esperando os OUTROS responderem"
+            className={cn(
+              'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors inline-flex items-center justify-center gap-1',
+              statusFilter === 'aguardando'
+                ? 'bg-sky-500 text-white border-sky-500'
+                : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/40 hover:bg-sky-500/20'
+            )}
+          >
+            <Reply className="h-3 w-3" /> Aguardando{aguardandoCount > 0 ? ` (${aguardandoCount})` : ''}
+          </button>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">
@@ -1034,19 +1094,28 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             <p>Nenhuma conversa ainda.<br/>Clique em <b>"Geral"</b> para o chat da equipe ou <b>"Nova"</b> para conversa direta.</p>
           </div>
         ) : filteredConversations.length === 0 ? (
-          <p className="text-xs text-muted-foreground text-center py-6">Nenhuma conversa com esse nome.</p>
+          <p className="text-xs text-muted-foreground text-center py-6">
+            {statusFilter === 'responder'
+              ? 'Nada pendente de resposta sua. 🎉'
+              : statusFilter === 'aguardando'
+                ? 'Ninguém te devendo resposta.'
+                : 'Nenhuma conversa com esse nome.'}
+          </p>
         ) : (
           <div className="divide-y">
             {filteredConversations.map(conv => {
               const title = conv.type === 'group' ? (conv.name || 'Grupo') : (conv.otherMemberName || 'Chat');
               const hasUnread = (conv.unreadCount || 0) > 0;
+              const pending = convPendingStatus(conv);
               return (
                 <button
                   key={conv.id}
                   onClick={() => setActiveConversationId(conv.id)}
                   className={cn(
                     'w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors flex items-center gap-3',
-                    hasUnread && 'bg-primary/5'
+                    hasUnread && 'bg-primary/5',
+                    pending === 'responder' && 'bg-amber-500/10 border-l-2 border-l-amber-500',
+                    pending === 'aguardando' && 'border-l-2 border-l-sky-500/70'
                   )}
                 >
                   <Avatar className="h-8 w-8 shrink-0">
@@ -1059,6 +1128,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       <span className="text-sm font-medium truncate">{title}</span>
                       {conv.type === 'group' && (
                         <Badge variant="secondary" className="text-[9px] h-4 px-1">grupo</Badge>
+                      )}
+                      {pending === 'responder' && (
+                        <span
+                          className="shrink-0 inline-flex items-center gap-1 px-1.5 h-4 rounded-full bg-amber-500 text-white text-[9px] font-bold"
+                          title="A última mensagem é de outra pessoa — esperando você responder"
+                        >
+                          <Timer className="h-2.5 w-2.5 animate-pulse" /> RESPONDER
+                        </span>
+                      )}
+                      {pending === 'aguardando' && (
+                        <span
+                          className="shrink-0 inline-flex items-center gap-1 px-1.5 h-4 rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-500/40 text-[9px] font-semibold"
+                          title="A última mensagem é sua — esperando os outros responderem"
+                        >
+                          <Reply className="h-2.5 w-2.5" /> aguardando
+                        </span>
                       )}
                     </div>
                     {conv.lastMessage && (

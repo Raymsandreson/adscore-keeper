@@ -15,6 +15,7 @@ export interface TeamConversation {
   otherMemberId?: string;
   lastMessage?: string;
   lastMessageAt?: string;
+  lastMessageSenderId?: string;
   unreadCount?: number;
 }
 
@@ -118,7 +119,7 @@ export function useTeamDirectChat() {
         convs.map(async (conv) => {
           const { data: lastMsg } = await externalSupabase
             .from('team_messages')
-            .select('content, created_at')
+            .select('content, created_at, sender_id')
             .eq('conversation_id', conv.id)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -152,6 +153,7 @@ export function useTeamDirectChat() {
             otherMemberId,
             lastMessage: lastMsg?.content || '',
             lastMessageAt: lastMsg?.created_at || conv.created_at,
+            lastMessageSenderId: (lastMsg as { sender_id?: string } | null)?.sender_id,
             unreadCount: count || 0,
           } as TeamConversation;
         })
