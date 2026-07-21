@@ -285,9 +285,31 @@ async function send(req: Request, res: Response) {
   return res.json({ success: allOk, results });
 }
 
+/** Cadastra o WhatsApp do membro direto do painel (atalho quando não há número). */
+async function setPhone(req: Request, res: Response) {
+  const { to_user_id, phone } = req.body || {};
+  if (!to_user_id || !phone) {
+    return res.status(400).json({ success: false, error: 'to_user_id e phone são obrigatórios' });
+  }
+  let digits = String(phone).replace(/\D/g, '');
+  if (digits.length === 10 || digits.length === 11) digits = `55${digits}`; // DDD + número → +55
+  if (digits.length < 12 || digits.length > 13) {
+    return res.status(400).json({ success: false, error: 'telefone inválido — informe DDD + número' });
+  }
+
+  const { data: updated, error } = await supabase
+    .from('profiles').update({ phone: digits }).eq('user_id', to_user_id).select('user_id');
+  if (error) throw error;
+  if (!updated?.length) {
+    return res.status(404).json({ success: false, error: 'perfil do membro não encontrado' });
+  }
+  return res.json({ success: true, phone_masked: `…${digits.slice(-4)}` });
+}
+
 export const handler = async (req: Request, res: Response) => {
   try {
     if (req.body?.mode === 'send') return await send(req, res);
+    if (req.body?.mode === 'set-phone') return await setPhone(req, res);
     return await analyze(req, res);
   } catch (err) {
     console.error('[performance-coach] Error:', err);

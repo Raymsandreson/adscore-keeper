@@ -69,6 +69,10 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
   const [hasWhatsapp, setHasWhatsapp] = useState(false);
   const [viaChat, setViaChat] = useState(true);
   const [viaWhatsapp, setViaWhatsapp] = useState(false);
+  // Atalho: cadastrar o WhatsApp do membro direto do painel quando não há número.
+  const [showPhoneForm, setShowPhoneForm] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+  const [savingPhone, setSavingPhone] = useState(false);
   const [meta, setMeta] = useState<{ position: number; total: number; ahead: AnalyzeResponse['ahead']; behind: AnalyzeResponse['behind'] } | null>(null);
   const [question, setQuestion] = useState('');
   const [sender, setSender] = useState<{ id: string; name: string } | null>(null);
@@ -169,6 +173,32 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
     }
   };
 
+  const savePhone = async () => {
+    const digits = phoneInput.replace(/\D/g, '');
+    if (!toUserId || digits.length < 10 || savingPhone) return;
+    setSavingPhone(true);
+    setError(null);
+    try {
+      const { data, error: err } = await cloudFunctions.invoke('performance-coach', {
+        body: { mode: 'set-phone', to_user_id: toUserId, phone: digits },
+      });
+      if (err || !data?.success) throw new Error(data?.error || err?.message || 'Falha ao salvar o número');
+      // Espelha no Cloud se a RLS deixar (perfil próprio); falha silenciosa se não.
+      try {
+        const normalized = digits.length <= 11 ? `55${digits}` : digits;
+        await supabase.from('profiles').update({ phone: normalized }).eq('user_id', toUserId);
+      } catch { /* melhor esforço */ }
+      setHasWhatsapp(true);
+      setViaWhatsapp(true);
+      setShowPhoneForm(false);
+      setPhoneInput('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Falha ao salvar o número');
+    } finally {
+      setSavingPhone(false);
+    }
+  };
+
   const sendDisabledReason = !sender
     ? 'Entre no sistema pra enviar (telão está sem login)'
     : !toUserId
@@ -265,9 +295,48 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
                       onChange={(e) => setViaWhatsapp(e.target.checked)}
                       className="h-4 w-4 accent-emerald-400"
                     />
-                    📱 WhatsApp {!hasWhatsapp && <span className="text-[10px] text-white/40">(sem número no perfil)</span>}
+                    📱 WhatsApp {!hasWhatsapp && <span className="text-[10px] text-white/40">(sem número)</span>}
                   </label>
+                  {!hasWhatsapp && toUserId && !showPhoneForm && (
+                    <button
+                      onClick={() => setShowPhoneForm(true)}
+                      className="rounded-full border border-emerald-400/40 px-3 py-1 text-[11px] font-bold text-emerald-400 transition hover:bg-emerald-400/10"
+                    >
+                      + Cadastrar número
+                    </button>
+                  )}
                 </div>
+
+                {/* Popup do atalho: cadastrar o WhatsApp do membro sem sair do painel */}
+                {showPhoneForm && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-emerald-400/30 bg-emerald-400/[0.06] p-2">
+                    <span className="text-[11px] font-bold text-emerald-400">
+                      WhatsApp de {row.nome.split(' ')[0]}:
+                    </span>
+                    <input
+                      value={phoneInput}
+                      onChange={(e) => setPhoneInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') savePhone(); }}
+                      placeholder="DDD + número (ex.: 86 99999-9999)"
+                      inputMode="tel"
+                      autoFocus
+                      className="flex-1 min-w-[12rem] rounded-full border border-white/10 bg-slate-950/60 px-3 py-1.5 text-sm outline-none placeholder:text-white/30 focus:border-emerald-400/50"
+                    />
+                    <button
+                      onClick={savePhone}
+                      disabled={phoneInput.replace(/\D/g, '').length < 10 || savingPhone}
+                      className="rounded-full bg-emerald-500 px-3 py-1.5 text-xs font-black text-white transition hover:bg-emerald-400 disabled:opacity-40"
+                    >
+                      {savingPhone ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Salvar'}
+                    </button>
+                    <button
+                      onClick={() => { setShowPhoneForm(false); setPhoneInput(''); }}
+                      className="rounded-full px-2 py-1.5 text-xs font-bold text-white/50 transition hover:text-white"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                )}
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[11px] text-white/40">
                     {sentAt
