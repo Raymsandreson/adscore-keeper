@@ -2866,6 +2866,13 @@ const ActivitiesPage = () => {
     />
   );
 
+  // Larguras das colunas laterais no modo edição (declaradas ANTES de qualquer early return
+  // para preservar a ordem dos hooks entre renders — inclusive o return do workflowMode).
+  const [weekColWidth, setWeekColWidth] = useState(220);
+  const [listColWidth, setListColWidth] = useState(400);
+  const weekColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+  const listColDragRef = useRef<{ startX: number; startW: number } | null>(null);
+
   if (workflowMode) {
     if (workflowFinished) {
       const completedCount = workflowCompleted.filter(w => w.action === 'completed' || w.action === 'completed_next').length;
@@ -3040,13 +3047,6 @@ const ActivitiesPage = () => {
     );
   }
 
-
-  // Larguras das colunas laterais no modo edição (declaradas ANTES de qualquer early return
-  // para preservar a ordem dos hooks entre renders).
-  const [weekColWidth, setWeekColWidth] = useState(220);
-  const [listColWidth, setListColWidth] = useState(400);
-  const weekColDragRef = useRef<{ startX: number; startW: number } | null>(null);
-  const listColDragRef = useRef<{ startX: number; startW: number } | null>(null);
 
   if (loading && activities.length === 0) {
     return (
