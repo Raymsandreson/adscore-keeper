@@ -37,7 +37,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp, ArrowRightLeft } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -286,6 +286,8 @@ export function TeamsManager() {
   const [showInactive, setShowInactive] = useState(false);
   const [managerIds, setManagerIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
+  // Cloud user_id do inativo cujo dialog de redistribuição foi aberto pela linha
+  const [redistributeFor, setRedistributeFor] = useState<string | null>(null);
 
   const { user } = useAuthContext();
 
@@ -657,6 +659,15 @@ export function TeamsManager() {
       {/* Diretoria — dá a direção aos gestores dos times */}
       <DirectorPicker people={people} />
 
+      {/* Instância controlada, aberta pelo botão "Atividades" na linha do inativo */}
+      <RedistributeActivitiesDialog
+        people={people}
+        inactiveIds={inactiveIds}
+        open={redistributeFor !== null}
+        onOpenChange={(o) => { if (!o) setRedistributeFor(null); }}
+        initialSourceId={redistributeFor}
+      />
+
       <div className="flex justify-end gap-2">
         <RedistributeActivitiesDialog people={people} inactiveIds={inactiveIds} />
         <Button variant="outline" size="sm" onClick={syncChatGroups} disabled={syncing}>
@@ -689,6 +700,17 @@ export function TeamsManager() {
                       {!active && <Badge variant="destructive" className="ml-2 text-[9px] h-4 px-1">inativo</Badge>}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
+                      {!active && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          title="Redistribuir atividades pendentes deste membro"
+                          onClick={() => setRedistributeFor(p.user_id)}
+                        >
+                          <ArrowRightLeft className="h-3.5 w-3.5 mr-1" />Atividades
+                        </Button>
+                      )}
                       {teams.length > 0 && (
                         <Popover>
                           <PopoverTrigger asChild>
