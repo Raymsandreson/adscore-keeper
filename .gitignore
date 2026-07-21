@@ -36,3 +36,6 @@ dist-ssr
 
 # Supabase CLI temp
 supabase/.temp/
+
+# Pacote de depósito INPI (guardar fora do repo)
+inpi-deposito-*.zip
