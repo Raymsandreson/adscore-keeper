@@ -925,9 +925,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "border-t-2 border-t-blue-400"
                              )}
                              draggable
-                             onDragStart={() => handleDragStart('objective', phaseIdx, objIdx)}
-                             onDragOver={(e) => handleDragOver(e, 'objective', phaseIdx, objIdx)}
-                             onDragEnd={handleDragEnd}
+                             onDragStart={(e) => { e.stopPropagation(); handleDragStart('objective', phaseIdx, objIdx); }}
+                             onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'objective', phaseIdx, objIdx); }}
+                             onDragEnd={(e) => { e.stopPropagation(); handleDragEnd(); }}
                            >
                              {/* Objective header */}
                              <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
