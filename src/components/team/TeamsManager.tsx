@@ -415,6 +415,22 @@ export function TeamsManager() {
         ...m,
         evaluated_metrics: (m.evaluated_metrics as string[]) || [],
       })));
+
+      // Espelha o snapshot no Externo — o telão /tv/atividades e a RPC
+      // tv_atividades_ranking leem teams/team_members de lá.
+      if (teamsData && teamsData.length > 0) {
+        try {
+          await ensureExternalSession();
+          await (externalSupabase as any).rpc('sync_teams_snapshot', {
+            p_teams: teamsData.map(t => ({
+              id: t.id, name: t.name, description: t.description, color: t.color,
+            })),
+            p_members: (membersData || []).map(m => ({ team_id: m.team_id, user_id: m.user_id })),
+          });
+        } catch (e) {
+          console.warn('[TeamsManager] sync_teams_snapshot:', e);
+        }
+      }
     } catch (error) {
       console.error('Error fetching teams:', error);
     } finally {
