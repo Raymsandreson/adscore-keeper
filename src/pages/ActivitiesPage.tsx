@@ -1271,15 +1271,19 @@ const ActivitiesPage = () => {
   useEffect(() => {
     const openActivityId = searchParams.get('openActivity');
     if (openActivityId && activities.length > 0) {
+      // Veio de uma menção do Chat da Equipe → abre o chat junto pra responder
+      const cameFromMention = searchParams.has('highlightMsg');
       const clearOpenActivityParam = () => {
         const newParams = new URLSearchParams(searchParams);
         newParams.delete('openActivity');
+        newParams.delete('highlightMsg');
         setSearchParams(newParams, { replace: true });
       };
 
       const activity = activities.find(a => a.id === openActivityId);
       if (activity) {
         handleOpenEdit(activity);
+        if (cameFromMention) setTeamChatOpen(true);
         clearOpenActivityParam();
         return;
       }
@@ -1298,6 +1302,7 @@ const ActivitiesPage = () => {
           }
 
           handleOpenEdit(data as LeadActivity);
+          if (cameFromMention) setTeamChatOpen(true);
           clearOpenActivityParam();
         });
     }
