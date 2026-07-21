@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer,
+  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer, Forward,
 } from 'lucide-react';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
 import { cloudFunctions } from '@/lib/functionRouter';
@@ -43,7 +43,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const navigate = useNavigate();
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
-    loading, sendingMessage, sendMessage, alertMessageAgain, dismissPending, startDirectChat, ensureGeneralChat,
+    loading, sendingMessage, sendMessage, sendMessageTo, alertMessageAgain, dismissPending, startDirectChat, ensureGeneralChat,
     otherMembersReadAt,
   } = useTeamDirectChat();
   const profiles = useProfilesList();
@@ -54,12 +54,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [teamFilter, setTeamFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'responder' | 'aguardando'>('all');
   const [teamGroups, setTeamGroups] = useState<{ name: string; memberIds: string[] }[]>([]);
+  const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
 
   // Times pro filtro: usa os grupos "👥 {time}" sincronizados na aba Times
   useEffect(() => {
     (async () => {
       try {
         await ensureExternalSession();
+        // Desativados (org_user_status) somem do chat: sem conversa nova,
+        // sem @menção e a conversa direta antiga fica oculta.
+        const { data: statusRows } = await (externalSupabase.from('org_user_status') as any)
+          .select('user_id').eq('active', false);
+        setInactiveIds(new Set(((statusRows as any[]) || []).map(r => r.user_id)));
         const { data: groups } = await (externalSupabase.from('team_conversations') as any)
           .select('id, name').eq('type', 'group').like('name', '👥 %');
         if (!groups?.length) return;
@@ -82,6 +88,9 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
+  const [forwardingMsg, setForwardingMsg] = useState<TeamMessage | null>(null);
+  const [forwardSearch, setForwardSearch] = useState('');
+  const [forwardSending, setForwardSending] = useState(false);
   const [urgent, setUrgent] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
@@ -95,12 +104,20 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   // Track which user_ids were @mentioned in the current draft
   const mentionedUsersRef = useRef<Map<string, string>>(new Map()); // name -> user_id
 
+  // Membro que saiu do escritório: desativado no org_user_status ou com o
+  // perfil apagado do Cloud (só avalia "apagado" depois dos profiles carregarem).
+  const isGoneUser = (uid?: string | null) => {
+    if (!uid) return false;
+    if (inactiveIds.has(uid)) return true;
+    return profiles.length > 0 && !profiles.some(p => p.user_id === uid);
+  };
+
   // Filtered members for @mention picker
   const mentionCandidates = (() => {
     if (mentionQuery === null) return [];
     const q = mentionQuery.toLowerCase().trim();
     return profiles
-      .filter(p => p.user_id !== user?.id)
+      .filter(p => p.user_id !== user?.id && !inactiveIds.has(p.user_id))
       .filter(p => !q || (p.full_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
       .slice(0, 6);
   })();
@@ -289,6 +306,58 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     mentionedUsersRef.current.clear();
     setReplyingTo(null);
     setUrgent(false);
+  };
+
+  // ===== Encaminhar mensagem =====
+  // O cabeçalho "↪️ Encaminhada de X por Y" vai no próprio content: fica legível
+  // no preview da conversa, no push e no contexto da IA, sem mudança de schema.
+  const FWD_PREFIX = '↪️ Encaminhada';
+  const parseForward = (content: string | null): { header: string | null; body: string } => {
+    const m = (content || '').match(/^(↪️ Encaminhada[^\n]*)(?:\n([\s\S]*))?$/);
+    if (!m) return { header: null, body: content || '' };
+    return { header: m[1], body: m[2] || '' };
+  };
+
+  const buildForwardContent = (msg: TeamMessage): string => {
+    const myName = profiles.find(p => p.user_id === user?.id)?.full_name || user?.email || 'Alguém';
+    const origName = msg.sender_id === user?.id ? myName : (msg.sender_name || 'Alguém');
+    const header = origName === myName
+      ? `${FWD_PREFIX} por ${myName}`
+      : `${FWD_PREFIX} de ${origName} por ${myName}`;
+    // Se a mensagem já era encaminhada, mantém só o conteúdo original (não empilha cabeçalhos)
+    const body = parseForward(msg.content).header ? parseForward(msg.content).body : (msg.content || '');
+    return body.trim() ? `${header}\n${body}` : header;
+  };
+
+  const doForward = async (targetConversationId: string) => {
+    if (!forwardingMsg || forwardSending) return;
+    setForwardSending(true);
+    try {
+      const msg = forwardingMsg;
+      await sendMessageTo(targetConversationId, buildForwardContent(msg), {
+        message_type: msg.message_type || 'text',
+        file_url: msg.file_url || undefined,
+        file_name: msg.file_name || undefined,
+        file_size: msg.file_size || undefined,
+        file_type: msg.file_type || undefined,
+        audio_duration: msg.audio_duration || undefined,
+        transcription: msg.transcription || undefined,
+      });
+      toast.success('Mensagem encaminhada');
+      setForwardingMsg(null);
+      setForwardSearch('');
+      setActiveConversationId(targetConversationId);
+    } catch (e) {
+      console.error('[TeamDirectChatPanel] Erro ao encaminhar:', e);
+      toast.error('Não foi possível encaminhar a mensagem');
+    } finally {
+      setForwardSending(false);
+    }
+  };
+
+  const handleForwardToUser = async (otherUserId: string) => {
+    const convId = await startDirectChat(otherUserId);
+    if (convId) await doForward(convId);
   };
 
   const scrollToMessage = (msgId: string) => {
@@ -528,9 +597,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   // Render message bubble content
   const renderMsgContent = (msg: TeamMessage, isMe: boolean) => {
+    const fwd = parseForward(msg.content);
+    const fwdHeader = fwd.header ? (
+      <div className="flex items-center gap-1 text-[10px] italic opacity-70 mb-0.5">
+        <Forward className="h-3 w-3 shrink-0" />
+        <span className="truncate">{fwd.header.replace('↪️ ', '')}</span>
+      </div>
+    ) : null;
+
     if (msg.message_type === 'audio' && msg.file_url) {
       return (
         <div>
+          {fwdHeader}
           <button
             onClick={() => toggleAudio(msg.id, msg.file_url!)}
             className="flex items-center gap-2 py-1 w-full"
@@ -559,12 +637,13 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     if (msg.message_type === 'image' && msg.file_url) {
       return (
         <div>
+          {fwdHeader}
           <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
             <img src={msg.file_url} alt={msg.file_name || 'Imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
           </a>
-          {msg.content && msg.content !== '📷 Imagem' && (
+          {fwd.body && fwd.body !== '📷 Imagem' && (
             <p className="text-sm mt-1 whitespace-pre-wrap break-words">
-              {renderMessageWithMentions(msg.content, handleMentionNavigate)}
+              {renderMessageWithMentions(fwd.body, handleMentionNavigate)}
             </p>
           )}
         </div>
@@ -573,32 +652,131 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
     if (msg.message_type === 'file' && msg.file_url) {
       return (
-        <a
-          href={msg.file_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-2 py-1 hover:opacity-80"
-        >
-          <FileText className="h-4 w-4 shrink-0" />
-          <div className="min-w-0 flex-1">
-            <div className="text-xs font-medium truncate">{msg.file_name || 'Arquivo'}</div>
-            {msg.file_size && (
-              <div className="text-[10px] opacity-60">
-                {(msg.file_size / 1024).toFixed(0)} KB
-              </div>
-            )}
-          </div>
-        </a>
+        <div>
+          {fwdHeader}
+          <a
+            href={msg.file_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 py-1 hover:opacity-80"
+          >
+            <FileText className="h-4 w-4 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium truncate">{msg.file_name || 'Arquivo'}</div>
+              {msg.file_size && (
+                <div className="text-[10px] opacity-60">
+                  {(msg.file_size / 1024).toFixed(0)} KB
+                </div>
+              )}
+            </div>
+          </a>
+        </div>
       );
     }
 
     // Text with entity mentions
     return (
-      <p className="text-sm whitespace-pre-wrap break-words">
-        {renderMessageWithMentions(msg.content || '', handleMentionNavigate)}
-      </p>
+      <div>
+        {fwdHeader}
+        <p className="text-sm whitespace-pre-wrap break-words">
+          {renderMessageWithMentions(fwd.body, handleMentionNavigate)}
+        </p>
+      </div>
     );
   };
+
+  // Forward target picker
+  if (forwardingMsg) {
+    const fq = forwardSearch.trim().toLowerCase();
+    const fwdPreview = forwardingMsg.content
+      || (forwardingMsg.message_type === 'image' ? '📷 Imagem'
+        : forwardingMsg.message_type === 'audio' ? '🎤 Áudio'
+        : forwardingMsg.message_type === 'file' ? `📎 ${forwardingMsg.file_name || 'Arquivo'}` : '...');
+    const groupConvs = conversations
+      .filter(c => c.type === 'group')
+      .filter(c => !fq || (c.name || '').toLowerCase().includes(fq));
+    const fwdProfiles = profiles
+      .filter(p => p.user_id !== user?.id && !isGoneUser(p.user_id))
+      .filter(p => !fq
+        || (p.full_name || '').toLowerCase().includes(fq)
+        || (p.email || '').toLowerCase().includes(fq));
+    return (
+      <div className="flex flex-col h-full">
+        <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+          <Button
+            variant="ghost" size="icon" className="h-7 w-7"
+            onClick={() => { setForwardingMsg(null); setForwardSearch(''); }}
+            disabled={forwardSending}
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Forward className="h-4 w-4 text-primary" />
+          <span className="text-sm font-medium">Encaminhar para...</span>
+          {forwardSending && <Loader2 className="h-4 w-4 animate-spin ml-auto" />}
+        </div>
+        <div className="shrink-0 px-3 py-1.5 border-b bg-muted/20">
+          <p className="text-[11px] text-muted-foreground truncate">
+            <b>{forwardingMsg.sender_name || 'Mensagem'}:</b> {fwdPreview}
+          </p>
+        </div>
+        <div className="shrink-0 px-3 py-2 border-b">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={forwardSearch}
+              onChange={e => setForwardSearch(e.target.value)}
+              placeholder="Buscar pessoa ou grupo..."
+              className="h-8 pl-8 text-sm"
+              autoFocus
+            />
+          </div>
+        </div>
+        <ScrollArea className="flex-1">
+          <div className="divide-y">
+            {groupConvs.length === 0 && fwdProfiles.length === 0 && (
+              <p className="text-xs text-muted-foreground text-center py-6">Ninguém encontrado com esse nome.</p>
+            )}
+            {groupConvs.map(c => (
+              <button
+                key={c.id}
+                disabled={forwardSending}
+                onClick={() => doForward(c.id)}
+                className="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3 disabled:opacity-50"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs bg-primary/20 text-primary">
+                    <Hash className="h-3.5 w-3.5" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium truncate flex-1">{c.name || 'Grupo'}</span>
+                <Badge variant="secondary" className="text-[9px] h-4 px-1 shrink-0">grupo</Badge>
+              </button>
+            ))}
+            {fwdProfiles.map(p => (
+              <button
+                key={p.user_id}
+                disabled={forwardSending}
+                onClick={() => handleForwardToUser(p.user_id)}
+                className="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3 disabled:opacity-50"
+              >
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className="text-xs bg-primary/20 text-primary">
+                    {getInitials(p.full_name || p.email || '?')}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium truncate">{p.full_name || p.email}</div>
+                  {p.email && p.full_name && (
+                    <div className="text-[10px] text-muted-foreground truncate">{p.email}</div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        </ScrollArea>
+      </div>
+    );
+  }
 
   // Active conversation
   if (activeConversationId) {
@@ -661,6 +839,14 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       >
                         <Reply className="h-3.5 w-3.5" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Encaminhar para outra pessoa ou grupo"
+                      >
+                        <Forward className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   )}
                   <div className={cn(
@@ -716,14 +902,24 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                     </div>
                   </div>
                   {!isMe && (
-                    <button
-                      type="button"
-                      onClick={() => setReplyingTo(msg)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-accent text-muted-foreground"
-                      title="Responder"
-                    >
-                      <Reply className="h-3.5 w-3.5" />
-                    </button>
+                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+                      <button
+                        type="button"
+                        onClick={() => setReplyingTo(msg)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Responder"
+                      >
+                        <Reply className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Encaminhar para outra pessoa ou grupo"
+                      >
+                        <Forward className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   )}
                 </div>
               );
@@ -928,7 +1124,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   if (showNewChat) {
     const newChatQuery = newChatSearch.trim().toLowerCase();
     const otherProfiles = profiles
-      .filter(p => p.user_id !== user?.id)
+      .filter(p => p.user_id !== user?.id && !inactiveIds.has(p.user_id))
       .filter(p => !newChatQuery
         || (p.full_name || '').toLowerCase().includes(newChatQuery)
         || (p.email || '').toLowerCase().includes(newChatQuery));
@@ -1030,6 +1226,9 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   };
 
   const teamFilteredConversations = conversations.filter(conv => {
+    // Conversa direta com quem saiu do escritório some da lista
+    // (histórico continua no banco; só deixa de aparecer).
+    if (conv.type === 'direct' && isGoneUser(conv.otherMemberId)) return false;
     if (activeTeamGroup) {
       const inGroupName = conv.type === 'group' && (conv.name || '').includes(activeTeamGroup.name);
       const otherInTeam = conv.type === 'direct' && !!conv.otherMemberId

@@ -295,7 +295,10 @@ export function useTeamDirectChat() {
     };
   }, [activeConversationId, user?.id]);
 
-  const sendMessage = useCallback(async (
+  // Envia pra uma conversa específica (usado também pelo "Encaminhar",
+  // que manda pra outra conversa sem precisar trocar a tela antes)
+  const sendMessageTo = useCallback(async (
+    conversationId: string,
     content: string,
     options?: {
       message_type?: string;
@@ -310,7 +313,7 @@ export function useTeamDirectChat() {
       is_urgent?: boolean;
     }
   ) => {
-    if (!activeConversationId || !user?.id) return;
+    if (!conversationId || !user?.id) return;
     if (!content.trim() && !options?.file_url) return;
 
     setSendingMessage(true);
@@ -325,7 +328,7 @@ export function useTeamDirectChat() {
         .maybeSingle();
 
       const { data: inserted, error } = await (externalSupabase.from('team_messages') as any).insert({
-        conversation_id: activeConversationId,
+        conversation_id: conversationId,
         sender_id: user.id,
         sender_name: profile?.full_name || user.email || 'Anônimo',
         content: content.trim() || null,
@@ -347,8 +350,8 @@ export function useTeamDirectChat() {
         return;
       }
 
-      // Optimistic: não esperar Realtime
-      if (inserted) {
+      // Optimistic: não esperar Realtime (só se a conversa de destino é a que está aberta)
+      if (inserted && conversationId === activeConversationId) {
         setMessages((prev) => prev.some(m => m.id === (inserted as TeamMessage).id) ? prev : [...prev, inserted as TeamMessage]);
       }
 
@@ -358,7 +361,7 @@ export function useTeamDirectChat() {
         const rows = mentionedIds.map(uid => ({
           message_id: (inserted as any).id,
           mentioned_user_id: uid,
-          conversation_id: activeConversationId,
+          conversation_id: conversationId,
         }));
         await (externalSupabase.from('team_chat_mentions') as any).insert(rows);
       }
@@ -366,14 +369,14 @@ export function useTeamDirectChat() {
       await externalSupabase
         .from('team_conversations')
         .update({ updated_at: new Date().toISOString() })
-        .eq('id', activeConversationId);
+        .eq('id', conversationId);
 
       // Web Push nativo para os membros da conversa (celular/notebook, mesmo com
       // a aba fechada). Não bloqueia o envio.
       if (inserted) {
         cloudFunctions.invoke('send-team-push', {
           body: {
-            conversation_id: activeConversationId,
+            conversation_id: conversationId,
             sender_id: user.id,
             sender_name: profile?.full_name || user.email || 'Equipe',
             content: content.trim() || '📎 Anexo',
@@ -390,6 +393,14 @@ export function useTeamDirectChat() {
       setSendingMessage(false);
     }
   }, [activeConversationId, user?.id, user?.email]);
+
+  const sendMessage = useCallback(async (
+    content: string,
+    options?: Parameters<typeof sendMessageTo>[2]
+  ) => {
+    if (!activeConversationId) return;
+    return sendMessageTo(activeConversationId, content, options);
+  }, [activeConversationId, sendMessageTo]);
 
   // Reenvia uma mensagem já enviada como urgente: o destinatário recebe o popup
   // vermelho com som novamente, mesmo que tenha fechado o anterior
@@ -511,6 +522,7 @@ export function useTeamDirectChat() {
     loading,
     sendingMessage,
     sendMessage,
+    sendMessageTo,
     alertMessageAgain,
     dismissPending,
     startDirectChat,
