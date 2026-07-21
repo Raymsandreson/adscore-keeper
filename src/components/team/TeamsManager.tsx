@@ -565,6 +565,8 @@ export function TeamsManager() {
 
   const unassignedPeople = profilesList.filter(
     p => !teamMembers.some(tm => tm.user_id === p.user_id || tm.user_id === p.id)
+      && !managerIds.has(p.user_id)
+      && !managerIds.has(p.id)
   );
 
   const getMemberMetrics = (teamId: string, userId: string): string[] => {
