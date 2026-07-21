@@ -97,6 +97,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     fetchStageLinks,
     linkChecklistToStage,
     unlinkChecklistFromStage,
+    updateStageLinkOrder,
   } = useChecklists();
   const { types: activityTypes } = useActivityTypes();
 
@@ -611,7 +612,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         const phaseLinks = existingLinks.filter(l => l.stage_id === phase.stageId);
         const wantedTemplateIds = new Set<string>();
 
-        for (const obj of phase.objectives) {
+        for (let objIdx = 0; objIdx < phase.objectives.length; objIdx++) {
+          const obj = phase.objectives[objIdx];
           let templateId = obj.templateId;
           const templateData = {
             name: obj.name,
@@ -629,9 +631,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
           if (templateId) {
             wantedTemplateIds.add(templateId);
-            const hasLink = phaseLinks.some(l => l.checklist_template_id === templateId);
-            if (!hasLink) {
-              await linkChecklistToStage(templateId, boardId, phase.stageId, { silent: true });
+            const existingLink = phaseLinks.find(l => l.checklist_template_id === templateId);
+            if (!existingLink) {
+              await linkChecklistToStage(templateId, boardId, phase.stageId, { silent: true, displayOrder: objIdx });
+            } else if (existingLink.display_order !== objIdx) {
+              await updateStageLinkOrder(existingLink.id, objIdx);
             }
           }
         }

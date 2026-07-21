@@ -220,7 +220,8 @@ export const useChecklists = () => {
       .from('checklist_stage_links')
       .select('*')
       .eq('board_id', boardId)
-      .order('display_order');
+      .order('display_order')
+      .order('created_at');
 
     if (error) {
       console.error('Error fetching stage links:', error);
@@ -229,7 +230,7 @@ export const useChecklists = () => {
     return (data || []) as ChecklistStageLink[];
   };
 
-  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string, { silent = false }: { silent?: boolean } = {}) => {
+  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string, { silent = false, displayOrder }: { silent?: boolean; displayOrder?: number } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_stage_links')
@@ -237,6 +238,7 @@ export const useChecklists = () => {
           checklist_template_id: templateId,
           board_id: boardId,
           stage_id: stageId,
+          ...(displayOrder !== undefined ? { display_order: displayOrder } : {}),
         });
 
       if (error) {
@@ -265,6 +267,15 @@ export const useChecklists = () => {
       console.error('Error unlinking checklist:', error);
       if (!silent) toast.error('Erro ao desvincular checklist');
     }
+  };
+
+  const updateStageLinkOrder = async (linkId: string, displayOrder: number) => {
+    const { error } = await supabase
+      .from('checklist_stage_links')
+      .update({ display_order: displayOrder })
+      .eq('id', linkId);
+
+    if (error) console.error('Error updating stage link order:', error);
   };
 
   // Lead Instances
@@ -407,6 +418,7 @@ export const useChecklists = () => {
     fetchStageLinks,
     linkChecklistToStage,
     unlinkChecklistFromStage,
+    updateStageLinkOrder,
     fetchLeadInstances,
     createLeadInstances,
     markStageInstancesReadonly,
