@@ -15,6 +15,12 @@ export interface FeatureGuideItem {
    * se não achar, mostra o balão centralizado.
    */
   selector?: string;
+  /**
+   * Texto alternativo pra localizar o elemento (quando o label do passo
+   * não é o texto literal do botão — ex.: label "Pílulas de navegação",
+   * anchor "Produtividade"). Também casa com placeholder/aria-label/title.
+   */
+  anchor?: string;
 }
 
 export interface FeatureGuideDef {
@@ -44,7 +50,7 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Telão (troféu)", description: "abre o ranking ao vivo do time (/tv/atividades)" },
       { label: "Play (Workflow)", description: "sessão sequencial: o sistema apresenta uma atividade por vez com cronômetro" },
       { label: "💬 Feedbacks", description: "feedbacks das atividades que você observa" },
-      { label: "Chips de filtro", description: "Assessor, Tipo, Fluxo, Lead, Contato, Caso, 'Cronômetro ativo' e busca; 'Limpar' zera tudo" },
+      { label: "Chips de filtro", anchor: "Assessor", description: "Assessor, Tipo, Fluxo, Lead, Contato, Caso, 'Cronômetro ativo' e busca; 'Limpar' zera tudo" },
       { label: "Calendário lateral", description: "selecionar dias vira filtro; tem botão de compartilhar o resumo do dia" },
       { label: "Concluir / Concluir + próxima", description: "encerra a atividade (e o cronômetro) e já abre a seguinte" },
       { label: "Enviar ao Grupo / Assessor", description: "monta a mensagem da atividade e envia no WhatsApp, com preview editável" },
@@ -58,8 +64,8 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Visão Geral",
     intro: "Portal de dashboards por funil e por processo — cada painel carrega quando você abre.",
     items: [
-      { label: "Cartões de Funis", description: "Acidente de Trabalho, BPC - Autismo, Auxílio Maternidade/Acidente/Doença, Seguro de Vida — clique pra abrir o dashboard" },
-      { label: "Cartões de Processos", description: "Acompanhamento Processual e Gerenciamento Acolhimento" },
+      { label: "Cartões de Funis", anchor: "Acidente de Trabalho", description: "Acidente de Trabalho, BPC - Autismo, Auxílio Maternidade/Acidente/Doença, Seguro de Vida — clique pra abrir o dashboard" },
+      { label: "Cartões de Processos", anchor: "Acompanhamento Processual", description: "Acompanhamento Processual e Gerenciamento Acolhimento" },
       { label: "Abrir Kanban", description: "dentro do funil, vai direto pro board de leads" },
       { label: "Voltar", description: "retorna à grade de seleção" },
     ],
@@ -79,7 +85,7 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Ficha do lead", description: "abas Básico, Contatos, Atividades, Acidente, Jurídico, Documentos, Financeiro, Chat IA e Chat Equipe" },
       { label: "Relatório", description: "relatório do funil selecionado" },
       { label: "Métricas e Funil de Conversão", description: "expande gráficos de conversão e tempo por etapa" },
-      { label: "Filtro de acolhedor", description: "mostra só os cards de um acolhedor" },
+      { label: "Filtro de acolhedor", anchor: "Todos os acolhedores", description: "mostra só os cards de um acolhedor" },
     ],
     tip: "Trabalhe arrastando os cards — o fechamento é automático: soltar em \"✅ Fechado\" já gera número de caso, cria o caso jurídico e sincroniza a etiqueta do WhatsApp. Pra lead novo, use o extrator de IA no \"Adicionar Lead\".",
   },
@@ -90,9 +96,9 @@ export const featureGuides: FeatureGuideDef[] = [
     intro: "Painel ao vivo da operação de acolhimento: KPIs, funil, aging e matriz acolhedor × fase.",
     items: [
       { label: "Seletor de Funil", description: "escolhe o funil analisado" },
-      { label: "KPIs", description: "No funil, Conversão real, Parados +90d, Sem dono" },
-      { label: "Funil + aging", description: "barras por etapa com mediana de dias e heatmap de tempo parado" },
-      { label: "Matriz acolhedor × fase", description: "clique numa célula pra listar os leads parados daquela interseção" },
+      { label: "KPIs", anchor: "No funil", description: "No funil, Conversão real, Parados +90d, Sem dono" },
+      { label: "Funil + aging", anchor: "Raio-x de aging", description: "barras por etapa com mediana de dias e heatmap de tempo parado" },
+      { label: "Matriz acolhedor × fase", anchor: "KPI por acolhedor", description: "clique numa célula pra listar os leads parados daquela interseção" },
       { label: "Ficha do lead", description: "botões Ligar, WhatsApp e 'Abrir no board'" },
     ],
     tip: "Vá direto na matriz: clique na célula com mais leads parados, abra a ficha de cada um e acione Ligar ou WhatsApp na hora.",
@@ -103,14 +109,14 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Contatos & Transmissão",
     intro: "Base de contatos, grupos de WhatsApp (com auditoria) e listas de transmissão.",
     items: [
-      { label: "Abas", description: "Contatos, Grupos e Listas" },
+      { label: "Abas", anchor: "Grupos", description: "Contatos, Grupos e Listas" },
       { label: "Novo Contato", description: "cadastro manual de contato" },
       { label: "Resolver duplicados", description: "busca e mescla contatos duplicados" },
       { label: "Classificar Clientes", description: "marca contatos de grupos de leads fechados como cliente" },
-      { label: "Modo auditoria (aba Grupos)", description: "tabela tipo planilha pra conferir vínculo grupo↔lead↔caso; lápis corrige o nº do funil e renomeia o grupo no WhatsApp" },
+      { label: "Modo auditoria (aba Grupos)", anchor: "Filtrar e ordenar", description: "tabela tipo planilha pra conferir vínculo grupo↔lead↔caso; lápis corrige o nº do funil e renomeia o grupo no WhatsApp" },
       { label: "Vincular lead (grupos órfãos)", description: "liga o grupo ao lead certo, ou cria um lead novo já vinculado" },
       { label: "Atualizar dados em lote", description: "busca data de criação e criador dos grupos na UazAPI" },
-      { label: "Nova Lista + Enviar", description: "selecione contatos → crie a lista → envie transmissão (instância + mídia + mensagem); dá pra atribuir Agente IA à lista" },
+      { label: "Nova Lista + Enviar", anchor: "Listas", description: "selecione contatos → crie a lista → envie transmissão (instância + mídia + mensagem); dá pra atribuir Agente IA à lista" },
     ],
     tip: "Pra auditar grupos: aba Grupos → Modo auditoria → resolva os divergentes e órfãos. Pra transmissão: selecione os contatos na aba Contatos → Nova Lista → Enviar.",
   },
@@ -124,8 +130,8 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Filtros Status e Núcleo", description: "Aberto/Em Andamento/Encerrado/Arquivado e núcleos ativos" },
       { label: "Exportar", description: "exporta os casos filtrados pra Google Sheets" },
       { label: "Ações do caso", description: "Editar, Encerrar, Em Andamento, Arquivar, Excluir" },
-      { label: "Aba Processos", description: "'Cadastrar Processo' e 'Cadastrar todos' pros processos citados em atividades sem cadastro" },
-      { label: "Aba Atividades", description: "filtro por Status (inclui '⚠ Atrasadas') e por Processo" },
+      { label: "Aba Processos", anchor: "Processos", description: "'Cadastrar Processo' e 'Cadastrar todos' pros processos citados em atividades sem cadastro" },
+      { label: "Aba Atividades", anchor: "Atividades", description: "filtro por Status (inclui '⚠ Atrasadas') e por Processo" },
       { label: "Editar Caso → processos automáticos", description: "checkboxes (Indenização, TRCT, Benefício INSS…) criam os processos e atribuem responsáveis" },
       { label: "Lead Vinculado", description: "clique abre a ficha do lead no board" },
     ],
@@ -138,7 +144,7 @@ export const featureGuides: FeatureGuideDef[] = [
     intro: "Gestão dos funis: métricas de conversão por funil e acesso ao Kanban.",
     items: [
       { label: "Criar Funil", description: "abre o construtor de funil (etapas, checklists)" },
-      { label: "Filtro de data no card", description: "presets Hoje/7d/30d/Tudo/Período, por data de cadastro ou de atualização" },
+      { label: "Filtro de data no card", anchor: "Hoje", description: "presets Hoje/7d/30d/Tudo/Período, por data de cadastro ou de atualização" },
       { label: "Abrir Kanban", description: "vai pro board de leads daquele funil" },
       { label: "Abrir (painel BPC)", description: "painel detalhado com funil clicável por etapa, KPIs e filtro de acolhedores, em tempo real" },
       { label: "Equipe / Editar", description: "gerencia o time do funil e edita as etapas" },
@@ -173,12 +179,12 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Processos",
     intro: "Central de processos judiciais e administrativos, com e-mails do PJe/INSS e planilha de perícias.",
     items: [
-      { label: "Aba Judiciais", description: "busca por número/parte/tribunal; clique no card abre os detalhes; lixeira exclui" },
-      { label: "Aba INSS Administrativo", description: "requerimentos vindos do Gmail; botão 'Órfãos' mostra os sem caso; menu 'Vincular' faz match automático por nome/CPF" },
+      { label: "Aba Judiciais", anchor: "Judiciais", description: "busca por número/parte/tribunal; clique no card abre os detalhes; lixeira exclui" },
+      { label: "Aba INSS Administrativo", anchor: "INSS Administrativo", description: "requerimentos vindos do Gmail; botão 'Órfãos' mostra os sem caso; menu 'Vincular' faz match automático por nome/CPF" },
       { label: "Vincular (card órfão)", description: "sugestões automáticas por requerimento/CPF/nome; '(criar caso)' gera o caso na hora" },
-      { label: "Aba Processual", description: "e-mails PJe/PUSH com badge automático 'Prazo'; switch 'Apenas PUSH'" },
-      { label: "Aba Sem movimento", description: "processos parados ≥30 dias por faixa e responsável, com 'Exportar CSV'" },
-      { label: "Aba Perícias", description: "todas as datas de perícia em ordem; 'Só futuras' mostra as próximas" },
+      { label: "Aba Processual", anchor: "Processual", description: "e-mails PJe/PUSH com badge automático 'Prazo'; switch 'Apenas PUSH'" },
+      { label: "Aba Sem movimento", anchor: "Sem movimento", description: "processos parados ≥30 dias por faixa e responsável, com 'Exportar CSV'" },
+      { label: "Aba Perícias", anchor: "Perícias", description: "todas as datas de perícia em ordem; 'Só futuras' mostra as próximas" },
       { label: "Sincronizar agora / Sincronizar", description: "puxa os e-mails recentes do INSS/PJe manualmente" },
     ],
     tip: "Rotina diária: aba INSS → \"Órfãos\" → vincular com as sugestões automáticas; aba Processual com \"Apenas PUSH\" ligado pra caçar os badges \"Prazo\"; semanalmente, \"Sem movimento\" na faixa 90+ dias.",
@@ -191,9 +197,9 @@ export const featureGuides: FeatureGuideDef[] = [
     items: [
       { label: "Nova audiência", description: "abre o formulário; clicar numa célula de dia já cria com a data preenchida" },
       { label: "Sincronizar planilha", description: "importa novas/atualizadas da planilha sem apagar as que só existem aqui" },
-      { label: "Filtros", description: "Tipo, Categoria, Status + busca por processo/caso/observações" },
+      { label: "Filtros", anchor: "Todos os tipos", description: "Tipo, Categoria, Status + busca por processo/caso/observações" },
       { label: "Criar atividade", description: "dentro da audiência, gera a atividade de preparação vinculada" },
-      { label: "‹ › e Hoje", description: "navegação de período" },
+      { label: "‹ › e Hoje", anchor: "Hoje", description: "navegação de período" },
     ],
     tip: "Visão Semana → clique no dia → preencha processo/hora/responsável → salve e já clique em \"Criar atividade\" pra gerar a tarefa de preparação.",
   },
@@ -203,9 +209,9 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Acompanhamento Processual",
     intro: "Dashboard de eficiência do fluxo jurídico: SLAs por fase, latência, gargalos e atrasos do dia.",
     items: [
-      { label: "Período", description: "abas Hoje / Semana / Mês" },
-      { label: "Cards de SLA", description: "tempo médio de tramitação por fase, com tendência" },
-      { label: "Fechamento → Protocolo", description: "gargalo de protocolo por categoria (fechados/protocolados/pendentes)" },
+      { label: "Período", anchor: "Semana", description: "abas Hoje / Semana / Mês" },
+      { label: "Cards de SLA", anchor: "Tempo médio de tramitação", description: "tempo médio de tramitação por fase, com tendência" },
+      { label: "Fechamento → Protocolo", anchor: "Fechamento do caso", description: "gargalo de protocolo por categoria (fechados/protocolados/pendentes)" },
       { label: "Atividades atrasadas — hoje", description: "filtro por responsável; clique na linha abre a atividade" },
       { label: "Relatório de Atividades", description: "produtividade por usuário (diária/semanal/mensal)" },
     ],
@@ -231,7 +237,7 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Dossiê INSS (Aux. Acidente / BPC)",
     intro: "Lê a pasta do caso no Drive, tria os documentos com IA e monta o dossiê em PDF único pra protocolar no INSS.",
     items: [
-      { label: "Busca do caso", description: "digite o título ou número PREV" },
+      { label: "Busca do caso", anchor: "Título do caso ou número PREV", description: "digite o título ou número PREV" },
       { label: "Analisar pasta do Drive", description: "a IA classifica cada documento (favorável/adverso/neutro) e bloqueia os sensíveis" },
       { label: "Recomendação da triagem", description: "diz se está protocolável e o que falta (documentos e campos)" },
       { label: "Checkbox por documento", description: "monte o dossiê só com os favoráveis" },
@@ -245,7 +251,7 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Gerar Procuração",
     intro: "Gera a procuração pelo telefone do cliente: a IA preenche os campos e envia pra assinatura (ZapSign) via WhatsApp.",
     items: [
-      { label: "Telefone (WhatsApp) + Abrir", description: "localiza a conversa/lead/contato pelo telefone e abre o popup do documento" },
+      { label: "Telefone (WhatsApp) + Abrir", anchor: "Telefone", description: "localiza a conversa/lead/contato pelo telefone e abre o popup do documento" },
       { label: "Enviar pela instância", description: "escolhe de qual número o documento sai" },
       { label: "Popup do documento", description: "revise os campos extraídos pela IA e os signatários antes de confirmar o envio" },
     ],
@@ -269,7 +275,7 @@ export const featureGuides: FeatureGuideDef[] = [
     intro: "Inbox unificada: conversas de todas as instâncias e do número oficial (WhatsJUD API), com IA de apoio.",
     items: [
       { label: "Abas WhatsApp / WhatsJUD API", description: "alternam entre as instâncias e o número oficial Meta" },
-      { label: "Seletor de instância", description: "filtra as conversas por número; bolinha verde = conectada" },
+      { label: "Seletor de instância", anchor: "Todas conectadas", description: "filtra as conversas por número; bolinha verde = conectada" },
       { label: "QR / Código / Reconectar", description: "pareia ou reconecta uma instância caída" },
       { label: "Sugerir resposta com IA", description: "em qualquer mensagem, a IA propõe a resposta pra você revisar" },
       { label: "Criar Lead + Contato", description: "a IA extrai os dados da conversa e cria o lead" },
@@ -300,7 +306,7 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Relatórios IA",
     intro: "Pergunte em português e a IA monta o relatório na hora (somente leitura; CPF mascarado).",
     items: [
-      { label: "Exemplos clicáveis", description: "ex.: 'Casos abertos por núcleo', 'Leads que viraram cliente esse mês'" },
+      { label: "Exemplos clicáveis", anchor: "Casos abertos por núcleo", description: "ex.: 'Casos abertos por núcleo', 'Leads que viraram cliente esse mês'" },
       { label: "Campo de pergunta", description: "Enter envia; o follow-up mantém o contexto da conversa" },
       { label: "Ver a consulta usada", description: "mostra o SQL que gerou a tabela" },
     ],
@@ -312,7 +318,7 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Equipe",
     intro: "Gestão da equipe: produtividade, metas, avaliações, membros, times, férias e permissões.",
     items: [
-      { label: "Pílulas de navegação", description: "Produtividade, Métricas, Metas, Avaliações, Tráfego, Membros, Times, Férias, Embaixadores, Carreira, Rotinas, WhatsApp, Cartões, Contas, Acessos, Perfis" },
+      { label: "Pílulas de navegação", anchor: "Produtividade", description: "Produtividade, Métricas, Metas, Avaliações, Tráfego, Membros, Times, Férias, Embaixadores, Carreira, Rotinas, WhatsApp, Cartões, Contas, Acessos, Perfis" },
       { label: "Membros", description: "cadastro e edição de pessoas" },
       { label: "Acessos / Perfis", description: "permissões por módulo e perfis de acesso" },
       { label: "Férias", description: "registra folgas — atividades não são atribuídas a quem está de folga" },
@@ -325,7 +331,7 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Analytics",
     intro: "Analytics de redes sociais (Instagram): contas, comentários, evolução, engajamento e seguidores.",
     items: [
-      { label: "Abas", description: "Contas, Busca, Comentários, Externos, Evolução, Dashboard, Plataformas, Estratégias, Seguidores" },
+      { label: "Abas", anchor: "Dashboard", description: "Contas, Busca, Comentários, Externos, Evolução, Dashboard, Plataformas, Estratégias, Seguidores" },
       { label: "Seletor de período", description: "nas abas Dashboard e Plataformas" },
     ],
   },
@@ -337,7 +343,7 @@ export const featureGuides: FeatureGuideDef[] = [
     items: [
       { label: "Conectar / Sincronizar", description: "conecta o banco via Pluggy e puxa até 24 meses de transações" },
       { label: "Filtro de período + filtros", description: "instituição, conta, cartão, contato, categoria" },
-      { label: "Aba Cartão → Pendentes", description: "fila de transações a categorizar — o coração da rotina" },
+      { label: "Aba Cartão → Pendentes", anchor: "Pendentes", description: "fila de transações a categorizar — o coração da rotina" },
       { label: "Por Dia / Lista", description: "visões com exportação" },
       { label: "Config (admin)", description: "permissões de cartão, categorias e contas de custo" },
       { label: "Lançamentos", description: "lançamento manual avulso" },
@@ -381,7 +387,7 @@ export const featureGuides: FeatureGuideDef[] = [
     intro: "Registro e acompanhamento de ligações: histórico, resultado, áudio, resumo por IA e retornos.",
     items: [
       { label: "Registrar", description: "nova ligação: tipo, resultado, lead, contato, duração e próximo passo" },
-      { label: "Cards do topo", description: "Hoje, Esta Semana, Taxa de Contato, Duração Média + alerta de retornos agendados" },
+      { label: "Cards do topo", anchor: "Taxa de Contato", description: "Hoje, Esta Semana, Taxa de Contato, Duração Média + alerta de retornos agendados" },
       { label: "Abas Lista / Timeline por Lead", description: "tabela geral ou histórico agrupado por lead" },
       { label: "Detalhe da ligação", description: "player de áudio, Resumo da IA, avaliação por estrelas e agendamento de retorno" },
     ],
@@ -393,9 +399,9 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Banco de Horas",
     intro: "Tempo cronometrado por membro e tipo de atividade: ativo, ocioso e pausas justificadas.",
     items: [
-      { label: "De / Até + Aplicar período", description: "define o intervalo do relatório" },
-      { label: "Filtros Time / Assessor / Tipo", description: "multi-seleção com busca" },
-      { label: "Totais", description: "Tempo ativo, Trabalho avulso, Tempo ocioso, Atividades, Membros" },
+      { label: "De / Até + Aplicar período", anchor: "Aplicar período", description: "define o intervalo do relatório" },
+      { label: "Filtros Time / Assessor / Tipo", anchor: "Assessor", description: "multi-seleção com busca" },
+      { label: "Totais", anchor: "Tempo ativo", description: "Tempo ativo, Trabalho avulso, Tempo ocioso, Atividades, Membros" },
       { label: "Exportar CSV", description: "baixa o detalhamento pro fechamento do banco de horas" },
     ],
     tip: "Período do mês → filtrar o time → \"Exportar CSV\" pro fechamento. Pausas justificadas (almoço/intervalo) não contam como ocioso.",
@@ -416,7 +422,7 @@ export const featureGuides: FeatureGuideDef[] = [
     title: "Destaques",
     intro: "Top 5 de avaliação dos clientes (média de estrelas dos feedbacks).",
     items: [
-      { label: "Período", description: "Últimos 30 dias ou Tudo" },
+      { label: "Período", anchor: "Últimos 30 dias", description: "Últimos 30 dias ou Tudo" },
       { label: "Modo TV", description: "tela cheia com atualização automática a cada 90s — feito pra telão" },
     ],
   },

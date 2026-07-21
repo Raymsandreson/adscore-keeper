@@ -50,7 +50,9 @@ function findTargetForLabel(label: string, selector?: string): HTMLElement | nul
     .filter((c) => c.length >= 3);
 
   const els = Array.from(
-    document.querySelectorAll<HTMLElement>('button, [role="button"], a, [role="tab"], label')
+    document.querySelectorAll<HTMLElement>(
+      'button, [role="button"], a, [role="tab"], label, summary, h1, h2, h3, h4, input, textarea'
+    )
   );
 
   for (const cand of candidates) {
@@ -58,6 +60,14 @@ function findTargetForLabel(label: string, selector?: string): HTMLElement | nul
     const el = els.find((e) => {
       const rect = e.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return false;
+      // placeholder (campos de busca) e aria-label/title (botões de ícone)
+      const attrs = [e.getAttribute("placeholder"), e.getAttribute("aria-label"), e.getAttribute("title")];
+      if (attrs.some((a) => {
+        if (!a) return false;
+        const al = a.trim().toLowerCase();
+        return al.includes(lc) || (al.length >= 6 && lc.includes(al));
+      })) return true;
+      if (e instanceof HTMLInputElement || e instanceof HTMLTextAreaElement) return false;
       const t = (e.textContent || "").trim().toLowerCase();
       // igual, ou contém com pouca sobra (evita casar com um container gigante)
       return t === lc || (t.includes(lc) && t.length <= lc.length + 20);
@@ -88,7 +98,7 @@ export function FeatureGuidePopup() {
         ...guide.items.map((i) => ({
           title: i.label,
           body: i.description,
-          anchorLabel: i.label,
+          anchorLabel: i.anchor ?? i.label,
           selector: i.selector,
         })),
         ...(guide.tip
