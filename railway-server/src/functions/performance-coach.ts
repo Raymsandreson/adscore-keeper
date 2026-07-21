@@ -22,6 +22,9 @@ import { aiChat } from '../lib/gemini';
 // crédito), claude-* → Anthropic. Trocar de provider = setar COACH_MODEL no Railway.
 const COACH_MODEL = process.env.COACH_MODEL || 'google/gemini-3.6-flash';
 
+// Base dos links curtos de atividade (rota /atv/:code no front resolve o prefixo).
+const APP_URL = (process.env.COACH_APP_URL || 'https://adscore-keeper.lovable.app').replace(/\/$/, '');
+
 interface RankRow {
   nome: string;
   passos: number;
@@ -97,7 +100,7 @@ async function personActivities(anyIds: string[], nome: string, sinceIso: string
 
   const [{ data: atrasadas }, { data: concluidas }, { count: abertas }] = await Promise.all([
     supabase.from('lead_activities')
-      .select('title, deadline, priority')
+      .select('id, title, deadline, priority, lead_id, lead_name, case_id, case_title, process_id, process_title')
       .is('deleted_at', null).is('completed_at', null).lt('deadline', today)
       .or(who).order('deadline', { ascending: true }).limit(10),
     supabase.from('lead_activities')
@@ -108,7 +111,39 @@ async function personActivities(anyIds: string[], nome: string, sinceIso: string
       .select('id', { count: 'exact', head: true })
       .is('deleted_at', null).is('completed_at', null).or(who),
   ]);
+  await fillVinculoNames(atrasadas || []);
   return { atrasadas: atrasadas || [], concluidas: concluidas || [], abertas: abertas || 0 };
+}
+
+/**
+ * ~5% das atividades têm lead_id/case_id/process_id mas o nome desnormalizado
+ * (lead_name/case_title/process_title) nulo — preenche por lookup em lote.
+ */
+async function fillVinculoNames(rows: any[]): Promise<void> {
+  const leadIds = [...new Set(rows.filter((r) => !r.lead_name && r.lead_id).map((r) => r.lead_id))];
+  const caseIds = [...new Set(rows.filter((r) => !r.case_title && r.case_id).map((r) => r.case_id))];
+  const procIds = [...new Set(rows.filter((r) => !r.process_title && r.process_id).map((r) => r.process_id))];
+  if (!leadIds.length && !caseIds.length && !procIds.length) return;
+
+  const [{ data: leads }, { data: cases }, { data: procs }] = await Promise.all([
+    leadIds.length
+      ? supabase.from('leads').select('id, lead_name').in('id', leadIds)
+      : Promise.resolve({ data: [] } as any),
+    caseIds.length
+      ? supabase.from('legal_cases').select('id, title').in('id', caseIds)
+      : Promise.resolve({ data: [] } as any),
+    procIds.length
+      ? supabase.from('lead_processes').select('id, title, process_number').in('id', procIds)
+      : Promise.resolve({ data: [] } as any),
+  ]);
+  const leadMap = new Map((leads || []).map((l: any) => [l.id, l.lead_name]));
+  const caseMap = new Map((cases || []).map((c: any) => [c.id, c.title]));
+  const procMap = new Map((procs || []).map((p: any) => [p.id, p.title || p.process_number]));
+  rows.forEach((r) => {
+    if (!r.lead_name && r.lead_id) r.lead_name = leadMap.get(r.lead_id) || null;
+    if (!r.case_title && r.case_id) r.case_title = caseMap.get(r.case_id) || null;
+    if (!r.process_title && r.process_id) r.process_title = procMap.get(r.process_id) || null;
+  });
 }
 
 /** IDs equivalentes da pessoa no Externo (auth_uuid_mapping cobre os dois sentidos). */
@@ -166,6 +201,20 @@ function diasAtraso(deadline: string): number {
   return Math.max(1, Math.round((Date.now() - new Date(deadline).getTime()) / 86400000));
 }
 
+/** A que a atividade está vinculada: caso/processo + lead, ou interna. */
+function vinculo(a: { lead_name?: string | null; case_title?: string | null; process_title?: string | null }): string {
+  const partes: string[] = [];
+  if (a.case_title) partes.push(`caso "${a.case_title}"`);
+  else if (a.process_title) partes.push(`processo "${a.process_title}"`);
+  if (a.lead_name) partes.push(`lead ${a.lead_name}`);
+  return partes.length ? partes.join(' do ') : 'atividade interna (sem lead/caso)';
+}
+
+/** Link curto clicável — /atv/:code resolve o prefixo do UUID no front. */
+function atvLink(id: string): string {
+  return `${APP_URL}/atv/${String(id).replace(/-/g, '').slice(0, 8)}`;
+}
+
 async function analyze(req: Request, res: Response) {
   const { nome, p_since, p_team_id, p_grupo, question, period_label } = req.body || {};
   if (!nome || !p_since) {
@@ -218,7 +267,7 @@ async function analyze(req: Request, res: Response) {
     `ATRASADAS MAIS ANTIGAS (em ordem de urgência):`,
     ...(acts.atrasadas.length
       ? acts.atrasadas.map((a: any) =>
-          `- ${a.title} (${diasAtraso(a.deadline)} dias de atraso${a.priority ? `, prioridade ${a.priority}` : ''})`)
+          `- ${a.title} — ${vinculo(a)} (${diasAtraso(a.deadline)} dias de atraso${a.priority ? `, prioridade ${a.priority}` : ''}) | link: ${atvLink(a.id)}`)
       : ['(nenhuma)']),
     `CONCLUÍDAS NO PERÍODO:`,
     ...(acts.concluidas.length ? acts.concluidas.map((a: any) => `- ${a.title}`) : ['(nenhuma)']),
@@ -245,10 +294,10 @@ FORMATO: a mensagem é lida de relance no celular. Seções curtas separadas por
 1. Primeira linha (sem cabeçalho): saudação de 1 frase reconhecendo algo REAL dos dados (uma atividade concluída pelo nome, uma melhora vs o período anterior). Se não houver nada, vá direto ao ponto sem elogio falso.
 2. "📊 VOCÊ × VOCÊ MESMO" — números de agora vs o mesmo ponto do período anterior (passos, concluídas, tempo ativo), dizendo se evoluiu ou caiu (use ▲ e ▼).
 3. "🏁 CORRIDA" — uma linha só: posição e quem está logo na frente/atrás — tempero, não o tema.
-4. "🚨 PRIORIDADES DE HOJE" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, PELO NOME e com os dias de atraso, em ordem de urgência. Isso é o coração da mensagem.
+4. "🚨 PRIORIDADES DE HOJE" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, em ordem de urgência. Cada item traz: o nome da atividade, A QUEM ela está vinculada COPIADO dos dados (lead, caso, processo ou "interna" — nunca invente), os dias de atraso e, na linha logo abaixo do item, o link fornecido nos dados copiado LITERALMENTE (nunca crie, encurte ou altere um link). Isso é o coração da mensagem.
 5. "⚙️ HÁBITO" — o hábito operacional a corrigir (marcar os passos do checklist ao concluir cada etapa / usar o cronômetro), em 1-2 frases, com o porquê de contar no ranking.
 6. "🤝" + fechamento de 1 frase colocando-se à disposição pra destravar qualquer coisa.
-Máx ~180 palavras. Emojis só nos cabeçalhos das seções (no máximo 1 extra no corpo do texto).`,
+Máx ~180 palavras (links não contam no limite). Emojis só nos cabeçalhos das seções (no máximo 1 extra no corpo do texto).`,
       },
       { role: 'user', content: prompt },
     ],

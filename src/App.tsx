@@ -194,6 +194,7 @@ const DbDriftPage = lazyRetry(() => import("./pages/DbDriftPage"), "DbDriftPage"
 const RecoverPhone55Page = lazyRetry(() => import("./pages/RecoverPhone55Page"), "RecoverPhone55Page");
 const DocumentReviewPage = lazyRetry(() => import("./pages/DocumentReviewPage"), "DocumentReviewPage");
 const AvaliacaoPage = lazyRetry(() => import("./pages/AvaliacaoPage"), "AvaliacaoPage");
+const AtvShortLinkPage = lazyRetry(() => import("./pages/AtvShortLinkPage"), "AtvShortLinkPage");
 const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPage");
 const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
 const CampaignsPage = lazyRetry(() => import("./pages/CampaignsPage"), "CampaignsPage");
@@ -278,6 +279,8 @@ function AppRoutes() {
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
         <Route path="/revisar/:token" element={<DocumentReviewPage />} />
         <Route path="/avaliar/:token" element={<AvaliacaoPage />} />
+        {/* Link curto de atividade (coach do telão etc.) — resolve e cai no /?openActivity= */}
+        <Route path="/atv/:code" element={<AtvShortLinkPage />} />
         {/* Telão do ranking de atividades — full-screen, sem sidebar */}
         <Route path="/tv/atividades" element={<ProtectedRoute><TvAtividadesPage /></ProtectedRoute>} />
 
