@@ -682,15 +682,41 @@ export function TeamsManager() {
                 const active = !inactiveIds.has(p.user_id);
                 return (
                   <div key={p.user_id} className={cn('flex items-center justify-between gap-2 p-2 rounded-md bg-muted/50', !active && 'opacity-60')}>
-                    <span className="text-sm truncate">
+                    <span className="text-sm truncate flex-1 min-w-0">
                       {p.full_name || p.email || 'Sem nome'}
                       {!active && <Badge variant="destructive" className="ml-2 text-[9px] h-4 px-1">inativo</Badge>}
                     </span>
-                    <Switch
-                      checked={active}
-                      onCheckedChange={(checked) => toggleActive(p, checked)}
-                      title={active ? 'Desativar acesso' : 'Reativar acesso'}
-                    />
+                    <div className="flex items-center gap-1 shrink-0">
+                      {teams.length > 0 && (
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <Button variant="ghost" size="sm" className="h-7 px-2 text-xs" title="Adicionar a um time">
+                              <UserPlus className="h-3.5 w-3.5 mr-1" />Time
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent align="end" className="w-56 p-1">
+                            <div className="text-[10px] uppercase text-muted-foreground px-2 py-1">Adicionar em</div>
+                            <div className="max-h-64 overflow-y-auto">
+                              {teams.map(t => (
+                                <button
+                                  key={t.id}
+                                  onClick={() => handleAddMember(t.id, p.user_id)}
+                                  className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-muted flex items-center gap-2"
+                                >
+                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: t.color }} />
+                                  <span className="truncate">{t.name}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
+                      <Switch
+                        checked={active}
+                        onCheckedChange={(checked) => toggleActive(p, checked)}
+                        title={active ? 'Desativar acesso' : 'Reativar acesso'}
+                      />
+                    </div>
                   </div>
                 );
               })}
