@@ -44,6 +44,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { TeamActivityTypesPicker } from './TeamActivityTypesPicker';
+import { RedistributeActivitiesDialog } from './RedistributeActivitiesDialog';
 import { TeamManagerPicker } from './TeamManagerPicker';
 import { DirectorPicker } from './DirectorPicker';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -656,7 +657,8 @@ export function TeamsManager() {
       {/* Diretoria — dá a direção aos gestores dos times */}
       <DirectorPicker people={people} />
 
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <RedistributeActivitiesDialog people={people} inactiveIds={inactiveIds} />
         <Button variant="outline" size="sm" onClick={syncChatGroups} disabled={syncing}>
           {syncing ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Users className="h-3.5 w-3.5 mr-1" />}
           Sincronizar grupos do chat (👥 por time)
