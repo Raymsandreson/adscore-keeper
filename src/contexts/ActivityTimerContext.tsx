@@ -21,9 +21,10 @@ const dbAny = db as unknown as SupabaseClient;
  * - Ao SAIR da atv (fechar) → dialog "Continuar contando ou pausar?".
  * - CONCLUIR encerra o cronômetro da atv (igual pausar).
  * - O tempo ENTRE atividades (nenhuma aberta) cai na linha de gap
- *   (activity_id null) e é dividido pela MESMA regra: com interação recente
- *   conta TRABALHO AVULSO (active_seconds) — atender WhatsApp, cadastrar
- *   atividade, consultar processo; sem interação conta OCIOSIDADE.
+ *   (activity_id null) e conta SEMPRE como OCIOSO: sem atividade vinculada não
+ *   há como justificar o tempo pela natureza do trabalho. Interação recente só
+ *   muda a mensagem (trabalhando sem vínculo x parado) e o prompt que abre —
+ *   quem está trabalhando é cobrado a vincular/criar a atividade.
  * - Persiste no Externo (activity_time_entries), flush absoluto a cada 30s.
  */
 
@@ -75,7 +76,7 @@ interface TimerEntry {
   /** Pausa justificada em andamento (kind === 'break'). */
   breakType?: BreakType | null;
   breakNote?: string | null;
-  /** kind === 'gap': está trabalhando sem atividade vinculada (interação recente). */
+  /** kind === 'gap': interagindo sem atividade vinculada (só mensagem/prompt — o tempo conta como ocioso do mesmo jeito). */
   gapWorking?: boolean;
 }
 
@@ -139,11 +140,11 @@ export function formatHMS(totalSeconds: number): string {
 }
 
 /**
- * Sem atividade aberta (linha de gap), decide se o segundo conta como TRABALHO
- * AVULSO ou como OCIOSO. Regra: ocioso é falta de INTERAÇÃO, não falta de
- * atividade vinculada — atender WhatsApp, cadastrar atividade ou consultar
- * processo é trabalho. Mesmos critérios do ramo 'activity' (segue contando com
- * a aba oculta; tela bloqueada e máquina suspensa viram ocioso).
+ * Sem atividade aberta (linha de gap), decide se a pessoa está INTERAGINDO com
+ * o sistema. NÃO muda a contagem — sem atividade vinculada todo segundo do gap
+ * é ocioso — só a mensagem do badge (trabalhando sem vínculo x parado) e o
+ * prompt que abre (vincular atividade x registrar pausa). Mesmos critérios do
+ * ramo 'activity' (tela bloqueada e máquina suspensa = não interagindo).
  */
 export function isGapWorking(opts: { idleFor: number; locked: boolean; deltaSec: number }): boolean {
   const suspended = opts.deltaSec >= 120; // gap grande entre ticks = PC dormiu
@@ -474,24 +475,26 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       }
 
       if (e.kind === 'gap') {
-        // Sem atividade aberta, mas o membro pode estar trabalhando (WhatsApp,
-        // cadastro de atividade, processos...). OCIOSO = sem interação, não
-        // "sem atividade": com mouse/teclado nos últimos IDLE_THRESHOLD conta
-        // TRABALHO AVULSO (active_seconds da linha de gap). Mesma regra do ramo
-        // 'activity' — inclusive seguir contando com a aba oculta.
+        // Sem atividade vinculada NADA conta como produtivo — sem uma atv
+        // aberta não dá pra justificar o tempo pela natureza do trabalho.
+        // Interação recente só muda a mensagem do badge e qual prompt abre.
         const gapWorking = isGapWorking({ idleFor, locked: lockedRef.current, deltaSec });
-        if (gapWorking) next.activeSeconds += deltaSec;
-        else next.idleSeconds += deltaSec;
-        next.gapWorking = gapWorking; // o badge alterna "trabalhando" x "ocioso"
+        next.idleSeconds += deltaSec;
+        next.gapWorking = gapWorking; // o badge alterna "sem atividade" x "ocioso"
 
-        // Nudge a cada 5 min de ociosidade REAL — abre o dialog "vai se
-        // ausentar?" (registrar pausa com previsão ou retomar). Trabalhando
-        // avulso não apita.
-        if (!gapWorking && next.idleSeconds - lastGapNudgeRef.current >= 300) {
+        // Nudge a cada 5 min de gap: trabalhando sem vínculo → seletor "qual
+        // atividade você está fazendo?"; parado de fato → "vai se ausentar?".
+        if (next.idleSeconds - lastGapNudgeRef.current >= 300) {
           lastGapNudgeRef.current = next.idleSeconds;
-          setAwayPrompt(true);
-          playAlarmSound();
-          notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min. Vai se ausentar? Registre uma pausa ou retome uma atividade.`);
+          if (gapWorking) {
+            setSwitchPrompt(true);
+            playAlarmSound();
+            notifyDesktop('⏱️ Sem atividade vinculada', 'Esse tempo NÃO está contando como produtivo. Vincule a atividade que você está fazendo ou crie uma por voz.');
+          } else {
+            setAwayPrompt(true);
+            playAlarmSound();
+            notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min. Vai se ausentar? Registre uma pausa ou retome uma atividade.`);
+          }
         }
         sync(next);
         if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
@@ -607,8 +610,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     startOfDay.setHours(0, 0, 0, 0);
     let entryId: string;
     let idleSeconds = 0;
-    // active_seconds do gap = trabalho avulso do dia. Precisa ser RESTAURADO ao
-    // retomar: sem isso o próximo flush gravaria 0 e apagaria o acumulado.
+    // active_seconds do gap: legado ("trabalho avulso" de antes da regra de
+    // vínculo obrigatório). Hoje não cresce mais, mas precisa ser RESTAURADO ao
+    // retomar — sem isso o próximo flush gravaria 0 e apagaria o histórico.
     let activeSeconds = 0;
     try {
       const { data: existing } = await dbAny.from('activity_time_entries')
