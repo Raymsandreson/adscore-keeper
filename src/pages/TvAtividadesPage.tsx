@@ -25,6 +25,7 @@ interface RankRow {
   chat_resp_seg: number | null;
   ativo_seg: number;
   ocioso_seg: number;
+  home_office?: boolean;
 }
 interface Resumo {
   trabalhando_h: number;
@@ -321,7 +322,7 @@ export default function TvAtividadesPage() {
             </div>
 
             {/* ===== Rodapé ===== */}
-            <Footer resumo={resumo} participantes={ranking.length} />
+            <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
           </>
         )}
       </div>
@@ -383,7 +384,10 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
       </div>
 
       <div className="mt-3 text-center px-1">
-        <div className="font-bold leading-tight text-sm md:text-lg line-clamp-2">{row.nome}</div>
+        <div className="font-bold leading-tight text-sm md:text-lg line-clamp-2">
+          {row.nome}
+          {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
+        </div>
         <div className={cn('mt-1 font-black leading-none', place === 1 ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl', cfg.num)}>
           {row.passos}
           <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
@@ -425,7 +429,10 @@ function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect
       <div className={cn('h-9 w-9 md:h-11 md:w-11 shrink-0 rounded-full flex items-center justify-center text-xs md:text-sm font-black', colorFor(row.nome))}>
         {initials(row.nome)}
       </div>
-      <div className="min-w-0 flex-1 font-semibold text-sm md:text-lg truncate">{row.nome}</div>
+      <div className="min-w-0 flex-1 font-semibold text-sm md:text-lg truncate">
+        {row.nome}
+        {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
+      </div>
       <Stat value={row.passos} label="passos" color="text-sky-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" />
@@ -458,9 +465,39 @@ function Stat({ value, label, color }: { value: number; label: string; color: st
 }
 
 /* ---------- Rodapé ---------- */
-function Footer({ resumo, participantes }: { resumo: Resumo | null; participantes: number }) {
+function Footer({ resumo, participantes, ranking }: { resumo: Resumo | null; participantes: number; ranking: RankRow[] }) {
+  // Escritório × home office: média de passos e concluídas por pessoa em cada
+  // regime. Só aparece quando os dois grupos têm gente no ranking do período.
+  const regime = useMemo(() => {
+    const home = ranking.filter(r => r.home_office);
+    const office = ranking.filter(r => !r.home_office);
+    if (!home.length || !office.length) return null;
+    const media = (rows: RankRow[], key: 'passos' | 'concluidas') =>
+      Math.round((rows.reduce((s, r) => s + r[key], 0) / rows.length) * 10) / 10;
+    return {
+      office: { n: office.length, passos: media(office, 'passos'), concluidas: media(office, 'concluidas') },
+      home: { n: home.length, passos: media(home, 'passos'), concluidas: media(home, 'concluidas') },
+    };
+  }, [ranking]);
+
   return (
-    <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="mt-6 space-y-3">
+      {regime && (
+        <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-1 rounded-xl bg-white/[0.04] border border-white/5 px-4 py-2.5 text-xs md:text-sm text-white/70">
+          <span className="font-black uppercase tracking-wider text-white/50">Escritório × Home office</span>
+          <span>
+            🏢 <b className="text-sky-400">{regime.office.passos}</b> passos ·{' '}
+            <b className="text-emerald-400">{regime.office.concluidas}</b> concl. /pessoa
+            <span className="text-white/40"> ({regime.office.n})</span>
+          </span>
+          <span>
+            🏠 <b className="text-sky-400">{regime.home.passos}</b> passos ·{' '}
+            <b className="text-emerald-400">{regime.home.concluidas}</b> concl. /pessoa
+            <span className="text-white/40"> ({regime.home.n})</span>
+          </span>
+        </div>
+      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <div className="grid grid-cols-3 gap-3 rounded-xl bg-white/[0.04] border border-white/5 p-4">
         <FooterStat value={resumo ? `${resumo.trabalhando_h}h` : '—'} label="Trabalhando (7d)" color="text-emerald-400" />
         <FooterStat value={resumo ? `${resumo.ocioso_h}h` : '—'} label="Ocioso (7d)" color="text-amber-400" />
@@ -475,6 +512,7 @@ function Footer({ resumo, participantes }: { resumo: Resumo | null; participante
           <span className="text-sky-400">◷</span>
           <span><b className="text-white/80">Passos</b>: contagem dos checklists marcados no período — com empate, a ordem cai pras concluídas, depois menos atrasadas, mais tempo ativo no cronômetro, menos tempo ocioso e, por fim, quem responde o chat interno mais rápido (média do período; respostas em até 8h). {participantes} no ranking.</span>
         </p>
+      </div>
       </div>
     </div>
   );

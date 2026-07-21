@@ -37,7 +37,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp, ArrowRightLeft } from 'lucide-react';
+import { Plus, Users, Trash2, UserPlus, UserMinus, Loader2, Pencil, LayoutGrid, Settings2, ChevronDown, ChevronUp, ArrowRightLeft, Home, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -79,7 +79,7 @@ interface TeamMemberEntry {
   created_at: string;
 }
 
-function CollapsibleMembers({ members: currentMembers, teamId, teamName, cargos, onCargoSave, getMemberMetrics, handleToggleMetric, handleRemoveMember, teamMembers, setTeamMembers, teamColor }: {
+function CollapsibleMembers({ members: currentMembers, teamId, teamName, cargos, onCargoSave, getMemberMetrics, handleToggleMetric, handleRemoveMember, teamMembers, setTeamMembers, teamColor, isHomeOffice, onToggleHomeOffice }: {
   members: { user_id: string; full_name: string | null; email: string | null }[];
   teamId: string;
   teamName: string;
@@ -91,6 +91,8 @@ function CollapsibleMembers({ members: currentMembers, teamId, teamName, cargos,
   teamMembers: TeamMemberEntry[];
   setTeamMembers: React.Dispatch<React.SetStateAction<TeamMemberEntry[]>>;
   teamColor: string;
+  isHomeOffice: (userId: string) => boolean;
+  onToggleHomeOffice: (member: { user_id: string; full_name: string | null; email: string | null }) => void;
 }) {
   const [expanded, setExpanded] = useState(true);
 
@@ -139,6 +141,19 @@ function CollapsibleMembers({ members: currentMembers, teamId, teamName, cargos,
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    title={isHomeOffice(m.user_id)
+                      ? 'Home office — clique pra marcar como escritório'
+                      : 'Escritório — clique pra marcar como home office'}
+                    onClick={() => onToggleHomeOffice(m)}
+                  >
+                    {isHomeOffice(m.user_id)
+                      ? <Home className="h-3.5 w-3.5 text-teal-500" />
+                      : <Building2 className="h-3.5 w-3.5 text-muted-foreground" />}
+                  </Button>
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button variant="ghost" size="icon" className="h-7 w-7">
@@ -283,6 +298,8 @@ export function TeamsManager() {
 
   const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
   const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
+  // Cloud user_id de quem trabalha em home office (org_user_status.home_office no Externo)
+  const [homeOfficeIds, setHomeOfficeIds] = useState<Set<string>>(new Set());
   const [showInactive, setShowInactive] = useState(false);
   const [managerIds, setManagerIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
@@ -298,10 +315,11 @@ export function TeamsManager() {
       await ensureExternalSession();
       const [{ data: cargoRows }, { data: statusRows }, { data: managerRows }] = await Promise.all([
         ((externalSupabase as any).from('team_member_cargos') as any).select('team_name, user_id, cargo'),
-        ((externalSupabase as any).from('org_user_status') as any).select('user_id, active'),
+        ((externalSupabase as any).from('org_user_status') as any).select('user_id, active, home_office'),
         ((externalSupabase as any).from('team_managers') as any).select('manager_user_id'),
       ]);
       setInactiveIds(new Set(((statusRows as any[]) || []).filter(r => r.active === false).map(r => r.user_id)));
+      setHomeOfficeIds(new Set(((statusRows as any[]) || []).filter(r => r.home_office === true).map(r => r.user_id)));
       setManagerIds(new Set(((managerRows as any[]) || []).map(r => r.manager_user_id).filter(Boolean)));
       const cargoMap: Record<string, string> = {};
       ((cargoRows as any[]) || []).forEach(r => { if (r.cargo) cargoMap[`${r.team_name}|${r.user_id}`] = r.cargo; });
@@ -334,6 +352,42 @@ export function TeamsManager() {
       toast.error('Erro ao alterar status de acesso');
     }
   }, []);
+
+  // team_members.user_id pode ser o auth user_id ou o id do profile (legado);
+  // org_user_status é chaveado pelo auth user_id do Cloud — resolve antes.
+  const resolveAuthId = useCallback((storedId: string) => {
+    const p = profilesList.find(pp => pp.user_id === storedId || pp.id === storedId);
+    return p?.user_id || storedId;
+  }, [profilesList]);
+
+  const isHomeOffice = useCallback(
+    (storedId: string) => homeOfficeIds.has(resolveAuthId(storedId)),
+    [homeOfficeIds, resolveAuthId],
+  );
+
+  const toggleHomeOffice = useCallback(async (member: { user_id: string; full_name: string | null; email: string | null }) => {
+    const authId = resolveAuthId(member.user_id);
+    const next = !homeOfficeIds.has(authId);
+    try {
+      await ensureExternalSession();
+      const { error } = await ((externalSupabase as any).from('org_user_status') as any).upsert({
+        user_id: authId,
+        name: member.full_name || member.email || null,
+        home_office: next,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (error) throw error;
+      setHomeOfficeIds(prev => {
+        const set = new Set(prev);
+        if (next) set.add(authId); else set.delete(authId);
+        return set;
+      });
+      toast.success(`${member.full_name || member.email}: ${next ? '🏠 home office' : '🏢 escritório'}`);
+    } catch (e) {
+      console.error('[TeamsManager] Failed to toggle home office:', e);
+      toast.error('Erro ao alterar regime de trabalho');
+    }
+  }, [homeOfficeIds, resolveAuthId]);
 
   const saveCargo = useCallback(async (teamName: string, userId: string, cargo: string) => {
     try {
@@ -834,6 +888,8 @@ export function TeamsManager() {
                       teamMembers={teamMembers}
                       setTeamMembers={setTeamMembers}
                       teamColor={team.color}
+                      isHomeOffice={isHomeOffice}
+                      onToggleHomeOffice={toggleHomeOffice}
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground text-center py-2">Nenhum membro alocado</p>

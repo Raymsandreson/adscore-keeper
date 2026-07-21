@@ -34,6 +34,7 @@ interface RankRow {
   chat_resp_seg: number | null;
   ativo_seg: number;
   ocioso_seg: number;
+  home_office?: boolean;
 }
 
 function seg(s: number | null | undefined): string {
@@ -256,7 +257,7 @@ async function analyze(req: Request, res: Response) {
 
   const prompt = [
     `PERÍODO: ${period_label || 'semana'} (desde ${p_since.slice(0, 10)})`,
-    `PESSOA: ${nome} — posição ${idx + 1} de ${ranking.length} no ranking`,
+    `PESSOA: ${nome} — posição ${idx + 1} de ${ranking.length} no ranking — regime: ${row.home_office ? 'home office' : 'escritório'}`,
     `NÚMEROS DELA AGORA: ${rowLine(row)}`,
     `ELA MESMA NO ${prevLabel.toUpperCase()}: ${prev.passos} passos, ${prev.concluidas} concluídas, ` +
       `tempo ativo ${seg(prev.ativo_seg)}, ocioso ${seg(prev.ocioso_seg)}`,
@@ -275,6 +276,15 @@ async function analyze(req: Request, res: Response) {
     `PERGUNTA DO DIRETOR: ${question || 'Por que essa pessoa está com esse desempenho no ranking?'}`,
   ].join('\n');
 
+  // Horas acima de 8h (cronômetro esquecido ligado / sem registro confiável)
+  // não vão pra MENSAGEM enviada à pessoa — a análise pro diretor vê tudo.
+  const H8 = 8 * 3600;
+  const ocultarHoras = row.ativo_seg > H8 || row.ocioso_seg > H8
+    || prev.ativo_seg > H8 || prev.ocioso_seg > H8;
+  const secaoVoceVsVoce = ocultarHoras
+    ? `2. "📊 VOCÊ × VOCÊ MESMO" — números de agora vs o mesmo ponto do período anterior (SOMENTE passos e concluídas), dizendo se evoluiu ou caiu (use ▲ e ▼). NÃO cite tempo ativo, tempo ocioso nem qualquer valor em horas em NENHUMA parte da mensagem — os tempos deste período passaram de 8h e ficam fora da mensagem (só a "analise" do diretor pode citá-los).`
+    : `2. "📊 VOCÊ × VOCÊ MESMO" — números de agora vs o mesmo ponto do período anterior (passos, concluídas, tempo ativo), dizendo se evoluiu ou caiu (use ▲ e ▼).`;
+
   const completion = await aiChat({
     model: COACH_MODEL,
     max_tokens: 1200,
@@ -292,7 +302,7 @@ Responda SOMENTE um JSON válido com duas chaves:
 "mensagem" (para enviar À PESSOA no chat interno e WhatsApp): escreva como escreveria o melhor gestor de um escritório jurídico de alta performance — direto, específico, respeitoso e com energia, SEM genérico motivacional. Fale diretamente com a pessoa (você).
 FORMATO: a mensagem é lida de relance no celular. Seções curtas separadas por UMA linha em branco, cada seção começando com cabeçalho próprio: emoji + título em MAIÚSCULAS. De uma passada de olho a pessoa já deve saber do que se trata. Estrutura obrigatória, nesta ordem:
 1. Primeira linha (sem cabeçalho): saudação de 1 frase reconhecendo algo REAL dos dados (uma atividade concluída pelo nome, uma melhora vs o período anterior). Se não houver nada, vá direto ao ponto sem elogio falso.
-2. "📊 VOCÊ × VOCÊ MESMO" — números de agora vs o mesmo ponto do período anterior (passos, concluídas, tempo ativo), dizendo se evoluiu ou caiu (use ▲ e ▼).
+${secaoVoceVsVoce}
 3. "🏁 CORRIDA" — uma linha só: posição e quem está logo na frente/atrás — tempero, não o tema.
 4. "🚨 PRIORIDADES DE HOJE" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, em ordem de urgência. Cada item traz: o nome da atividade, A QUEM ela está vinculada COPIADO dos dados (lead, caso, processo ou "interna" — nunca invente), os dias de atraso e, na linha logo abaixo do item, o link fornecido nos dados copiado LITERALMENTE (nunca crie, encurte ou altere um link). Isso é o coração da mensagem.
 5. "⚙️ HÁBITO" — o hábito operacional a corrigir (marcar os passos do checklist ao concluir cada etapa / usar o cronômetro), em 1-2 frases, com o porquê de contar no ranking.
