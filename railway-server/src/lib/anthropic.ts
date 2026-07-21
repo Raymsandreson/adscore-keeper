@@ -137,7 +137,7 @@ export async function anthropicChat(options: AnthropicCallOptions): Promise<any>
   if (!response.ok) {
     const errText = await response.text();
     console.error("Anthropic API error:", response.status, errText);
-    throw new AnthropicError(`Anthropic API error: ${response.status}`, response.status);
+    throw new AnthropicError(`Anthropic API error: ${response.status} — ${errText.slice(0, 300)}`, response.status);
   }
   const data = await response.json();
   return parseAnthropicResponse(data);
