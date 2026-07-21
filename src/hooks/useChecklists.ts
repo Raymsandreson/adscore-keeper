@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { askStepTiming } from '@/components/checklists/askStepTiming';
 
 export type ChecklistType = 'documentos' | 'requisitos' | 'perguntas' | 'verificacao' | 'outro';
 
@@ -398,14 +399,22 @@ export const useChecklists = () => {
     if (user?.id) {
       const prevById = new Map(prevItems.map(p => [p.id, !!p.checked]));
       const newlyChecked = items.filter(it => it.checked && !prevById.get(it.id));
-      for (const it of newlyChecked) {
-        // RPC nova (não está nos tipos gerados) → cast local.
-        (supabase as any).rpc('log_checklist_step', {
-          p_user_id: user.id,
-          p_instance_id: instanceId,
-          p_item_label: it.label,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[useChecklists] log de passo falhou:', res.error.message);
+      if (newlyChecked.length > 0) {
+        const userId = user.id;
+        // Pergunta se o passo é de agora ou registro antigo (retroativo não
+        // conta no ranking). O save acima já aconteceu; só o log espera.
+        askStepTiming(newlyChecked.length).then(retroactive => {
+          for (const it of newlyChecked) {
+            // RPC nova (não está nos tipos gerados) → cast local.
+            (supabase as any).rpc('log_checklist_step', {
+              p_user_id: userId,
+              p_instance_id: instanceId,
+              p_item_label: it.label,
+              p_retroactive: retroactive,
+            }).then((res: { error?: { message?: string } | null }) => {
+              if (res?.error) console.warn('[useChecklists] log de passo falhou:', res.error.message);
+            });
+          }
         });
       }
     }

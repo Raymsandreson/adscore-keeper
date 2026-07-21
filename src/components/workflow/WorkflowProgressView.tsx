@@ -23,6 +23,7 @@ import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { ChecklistItem, LeadChecklistInstance, DocChecklistItem, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { toast } from 'sonner';
 
 interface WorkflowProgressViewProps {
@@ -263,13 +264,19 @@ export function WorkflowProgressView({
     });
 
     // #8: loga o passo recém-MARCADO no Externo (fonte dos dashboards) via RPC.
+    // Antes do log, pergunta se o passo é de agora ou retroativo (não conta
+    // no ranking); o save abaixo não espera a resposta.
     if (willBeChecked && authUser?.id) {
-      (supabase as any).rpc('log_checklist_step', {
-        p_user_id: authUser.id,
-        p_instance_id: instance.id,
-        p_item_label: targetItem?.label || 'Passo',
-      }).then((res: { error?: { message?: string } | null }) => {
-        if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
+      const userId = authUser.id;
+      askStepTiming().then(retroactive => {
+        (supabase as any).rpc('log_checklist_step', {
+          p_user_id: userId,
+          p_instance_id: instance.id,
+          p_item_label: targetItem?.label || 'Passo',
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
+        });
       });
     }
 

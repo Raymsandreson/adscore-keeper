@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists } from '@/hooks/useChecklists';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
 
 interface Stage {
@@ -169,15 +170,20 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     // #8: loga o passo recém-MARCADO por pessoa (user_activity_log via RPC).
-    // Fire-and-forget; só quando marca (não no desmarcar).
+    // Fire-and-forget; só quando marca (não no desmarcar). Antes do log,
+    // pergunta se o passo é de agora ou retroativo (não conta no ranking).
     const toggled = updatedItems.find(it => it.id === itemId);
     if (toggled?.checked && user?.id) {
-      (externalSupabase as any).rpc('log_checklist_step', {
-        p_user_id: user.id,
-        p_instance_id: instance.id,
-        p_item_label: toggled.label,
-      }).then((res: { error?: { message?: string } | null }) => {
-        if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+      const userId = user.id;
+      askStepTiming().then(retroactive => {
+        (externalSupabase as any).rpc('log_checklist_step', {
+          p_user_id: userId,
+          p_instance_id: instance.id,
+          p_item_label: toggled.label,
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+        });
       });
     }
 
