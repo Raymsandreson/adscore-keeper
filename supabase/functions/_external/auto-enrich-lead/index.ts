@@ -2,9 +2,11 @@
 // A pasta supabase/functions/auto-enrich-lead/ contém o PROXY do Cloud — não confundir.
 // Deploy: via MCP/Management API no projeto Externo (inclui _shared/gemini.ts).
 //
-// v20: modos dry_run (extrai sem gravar, devolve extraído + valores atuais) e
-// apply_fields (grava só os campos confirmados pelo usuário, sem re-extrair).
-// Sem esses params o comportamento é idêntico ao v19 (webhook/zapsign não mudam).
+// v22 (deployada): modos dry_run (extrai sem gravar, devolve extraído + valores
+// atuais) e apply_fields (grava só os campos confirmados, sem re-extrair).
+// Sem esses params o comportamento é o mesmo do v19 (webhook/zapsign não mudam).
+// Também corrige: leitura do grupo (whatsapp_messages.phone é BARE) e a regra de
+// nome provisório, que renomeava leads cujo nome contém números.
 // @ts-ignore
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { geminiChat } from './_shared/gemini.ts';
@@ -23,6 +25,14 @@ const ACCIDENT_ONLY_FIELDS = new Set([
   'victim_name', 'main_company', 'damage_description', 'accident_date',
   'case_type', 'visit_city', 'visit_state', 'visit_address',
 ]);
+
+// Só considera "nome provisório" (sobrescrevível) quando o nome é de fato um
+// telefone/número. O teste antigo removia os não-dígitos antes de comparar, então
+// "FAMILIA 374 ... 16/04/26" era lido como numérico e o lead acabava renomeado.
+function isPlaceholderName(name?: string | null): boolean {
+  const v = (name || '').trim();
+  return !!v && /^[\d\s+()\-.]+$/.test(v);
+}
 
 function slugify(name: string): string {
   return (name || '')
@@ -70,6 +80,7 @@ Deno.serve(async (req)=>{
     const isAccidentBoard = /acident/i.test(boardName);
 
     let cleaned: Record<string, any> = {};
+    let msgCount = 0;
     if (isApply) {
       // Campos já extraídos e confirmados pelo usuário — não re-extrai.
       for (const [key, value] of Object.entries(apply_fields)){
@@ -78,7 +89,11 @@ Deno.serve(async (req)=>{
     } else {
       let messages = null;
       if (isGroupEnrich) {
-        const { data: groupMsgs } = await supabase.from('whatsapp_messages').select('direction, message_text, created_at, phone').eq('phone', group_jid).order('created_at', { ascending: true }).limit(200);
+        // whatsapp_messages.phone grava o grupo BARE (120363...), mas lead_whatsapp_groups
+        // guarda com @g.us. Consultar só com sufixo perde quase todas as mensagens.
+        const bareJid = String(group_jid).replace(/@g\.us$/i, '');
+        const { data: groupMsgs } = await supabase.from('whatsapp_messages').select('direction, message_text, created_at, phone').in('phone', [bareJid, `${bareJid}@g.us`]).order('created_at', { ascending: false }).limit(200);
+        if (groupMsgs) groupMsgs.reverse();
         if (!groupMsgs || groupMsgs.length === 0) return new Response(JSON.stringify({ ok: true, skipped: 'no_messages' }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });
@@ -104,6 +119,7 @@ Deno.serve(async (req)=>{
         });
         messages = privateMsgs;
       }
+      msgCount = messages.length;
       const conversationText = messages.map((m)=>`[${m.direction === 'outbound' ? 'Atendente' : 'Cliente'}]: ${m.message_text || ''}`).join('\n');
 
       // === Monta schema do prompt baseado no funil ===
@@ -206,7 +222,7 @@ REGRAS:
           current.visit_address = lr.visit_address;
           current.lead_status = lr.lead_status;
           // lead_name só é sobrescrito quando o atual é numérico (mesma regra do apply)
-          leadNameLocked = !(lr.lead_name && /^\d+$/.test(lr.lead_name.replace(/\D/g, '')));
+          leadNameLocked = !isPlaceholderName(lr.lead_name);
         }
         if (customFields.length > 0) {
           const { data: cfv } = await supabase.from('lead_custom_field_values')
@@ -220,6 +236,7 @@ REGRAS:
       }
       return new Response(JSON.stringify({
         ok: true, dry_run: true, extracted: cleaned, current, board: boardName,
+        messages_analyzed: msgCount,
         lead_name_locked: leadNameLocked,
         custom_fields: customFields.map((f) => ({ id: f.id, slug: f.slug, name: f.field_name, type: f.field_type })),
       }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
@@ -248,7 +265,7 @@ REGRAS:
       }
       if (cleaned.full_name || (isAccidentBoard && cleaned.victim_name)) {
         const { data: cl } = await supabase.from('leads').select('lead_name').eq('id', lead_id).single();
-        if (cl?.lead_name && /^\d+$/.test(cl.lead_name.replace(/\D/g, ''))) {
+        if (isPlaceholderName(cl?.lead_name)) {
           leadUpdate.lead_name = cleaned.full_name || cleaned.victim_name;
         }
       }
@@ -327,7 +344,7 @@ REGRAS:
       }
       if (cleaned.full_name) {
         const { data: cc } = await supabase.from('contacts').select('full_name').eq('id', contact_id).single();
-        if (cc?.full_name && /^\d+$/.test(cc.full_name.replace(/\D/g, ''))) contactUpdate.full_name = cleaned.full_name;
+        if (isPlaceholderName(cc?.full_name)) contactUpdate.full_name = cleaned.full_name;
       }
       if (Object.keys(contactUpdate).length > 0) {
         const { error } = await supabase.from('contacts').update(contactUpdate).eq('id', contact_id);
