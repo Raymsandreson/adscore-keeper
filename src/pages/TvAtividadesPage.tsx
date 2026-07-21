@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
-import { useSearchParams } from 'react-router-dom';
-import { Crown, RefreshCw, Maximize2, Minimize2, Trophy } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -82,6 +83,7 @@ function tempoLabel(s: number | null | undefined) {
 
 export default function TvAtividadesPage() {
   const [params, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const titulo = params.get('titulo') || 'Time Processual';
 
   const [period, setPeriod] = useState<Period>('semana');
@@ -92,6 +94,8 @@ export default function TvAtividadesPage() {
   const [loading, setLoading] = useState(false);
   const [tv, setTv] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  // Coach de desempenho: clicar num assessor abre o painel de análise + mensagem.
+  const [coach, setCoach] = useState<{ row: RankRow; rank: number } | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Relógio do cabeçalho.
@@ -237,6 +241,14 @@ export default function TvAtividadesPage() {
 
         {/* ===== Controles (escondem no telão) ===== */}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <button
+            onClick={() => navigate('/')}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 text-white/70 hover:text-white text-xs font-semibold px-3 py-1.5 transition"
+            title="Voltar para Atividades"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </button>
           <select
             value={teamId}
             onChange={e => onSelectTeam(e.target.value)}
@@ -286,12 +298,12 @@ export default function TvAtividadesPage() {
         ) : (
           <>
             {/* ===== Pódio ===== */}
-            <Podium podium={podium} />
+            <Podium podium={podium} onSelect={(row, rank) => setCoach({ row, rank })} />
 
             {/* ===== Lista 4..10 ===== */}
             <div className="mt-5 space-y-2">
               {list.map((r, i) => (
-                <ListRow key={r.nome} rank={i + 4} row={r} />
+                <ListRow key={r.nome} rank={i + 4} row={r} onSelect={() => setCoach({ row: r, rank: i + 4 })} />
               ))}
             </div>
 
@@ -300,26 +312,38 @@ export default function TvAtividadesPage() {
           </>
         )}
       </div>
+
+      {coach && (
+        <PerformanceCoachDialog
+          row={coach.row}
+          rank={coach.rank}
+          since={periodSince(period).toISOString()}
+          teamId={teamId && teamId !== GRUPO_GERENCIAL ? teamId : null}
+          grupo={teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null}
+          periodLabel={period === 'hoje' ? 'hoje' : period === 'mes' ? 'mês' : 'semana'}
+          onClose={() => setCoach(null)}
+        />
+      )}
     </div>
   );
 }
 
 /* ---------- Pódio ---------- */
-function Podium({ podium }: { podium: RankRow[] }) {
+function Podium({ podium, onSelect }: { podium: RankRow[]; onSelect: (row: RankRow, rank: number) => void }) {
   // Ordem visual: 2º (esq) · 1º (centro) · 3º (dir).
   const first = podium[0];
   const second = podium[1];
   const third = podium[2];
   return (
     <div className="mt-6 grid grid-cols-3 items-end gap-2 md:gap-4">
-      <PodiumSpot row={second} place={2} />
-      <PodiumSpot row={first} place={1} />
-      <PodiumSpot row={third} place={3} />
+      <PodiumSpot row={second} place={2} onSelect={onSelect} />
+      <PodiumSpot row={first} place={1} onSelect={onSelect} />
+      <PodiumSpot row={third} place={3} onSelect={onSelect} />
     </div>
   );
 }
 
-function PodiumSpot({ row, place }: { row: RankRow | undefined; place: 1 | 2 | 3 }) {
+function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place: 1 | 2 | 3; onSelect: (row: RankRow, rank: number) => void }) {
   if (!row) return <div />;
   const cfg = {
     1: { ring: 'ring-amber-400', glow: 'shadow-[0_0_45px_-5px] shadow-amber-400/60', bar: 'from-amber-400 to-amber-600', size: 'h-24 w-24 md:h-32 md:w-32 text-3xl md:text-4xl', barH: 'h-24 md:h-32', badge: 'bg-amber-400 text-slate-900', num: 'text-amber-300' },
@@ -328,8 +352,12 @@ function PodiumSpot({ row, place }: { row: RankRow | undefined; place: 1 | 2 | 3
   }[place];
 
   return (
-    <div className="flex flex-col items-center">
-      <div className="relative">
+    <div
+      className="flex flex-col items-center cursor-pointer group"
+      onClick={() => onSelect(row, place)}
+      title={`Analisar desempenho de ${row.nome}`}
+    >
+      <div className="relative transition-transform group-hover:scale-105">
         {place === 1 && (
           <Crown className="absolute -top-6 left-1/2 -translate-x-1/2 h-7 w-7 md:h-9 md:w-9 text-amber-400 drop-shadow" />
         )}
@@ -365,9 +393,13 @@ function PodiumSpot({ row, place }: { row: RankRow | undefined; place: 1 | 2 | 3
 }
 
 /* ---------- Linha da lista ---------- */
-function ListRow({ rank, row }: { rank: number; row: RankRow }) {
+function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect: () => void }) {
   return (
-    <div className="flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3">
+    <div
+      className="flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3 cursor-pointer transition hover:bg-white/[0.08]"
+      onClick={onSelect}
+      title={`Analisar desempenho de ${row.nome}`}
+    >
       <div className="w-5 text-center text-sm md:text-base font-bold text-white/40 tabular-nums">{rank}</div>
       <div className={cn('h-9 w-9 md:h-11 md:w-11 shrink-0 rounded-full flex items-center justify-center text-xs md:text-sm font-black', colorFor(row.nome))}>
         {initials(row.nome)}
