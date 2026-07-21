@@ -1,5 +1,5 @@
 import { externalSupabase } from './external-client';
-import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 export interface ConversationSummary {
   phone: string;
@@ -403,6 +403,12 @@ export async function linkConversationContactToLead(
     if (existingContact?.id) {
       contactId = existingContact.id;
       await linkMessagesToContact(phone, instanceName, contactId);
+    } else if (isWhatsAppGroupId(phone)) {
+      // Conversa de grupo não vira "contato": o phone aqui é o JID do grupo, não
+      // o número de uma pessoa. Vincula as mensagens ao lead e não cria contato.
+      // (Contato do cliente entra pelo ClosedCaseContactDialog / participantes.)
+      await linkMessagesToLead(phone, instanceName, leadId);
+      return null;
     } else {
       const { data: createdContact, error: createContactError } = await (externalSupabase as any)
         .from('contacts')

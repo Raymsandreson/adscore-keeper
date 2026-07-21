@@ -6,6 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Bot, BotOff, ChevronDown, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 interface Agent {
   id: string;
@@ -121,6 +122,8 @@ export function WhatsAppAgentToggle({ phone, instanceName }: Props) {
             phone,
             instance_name: instanceName,
             contact_name: (lastMsg as any)?.contact_name || phone,
+            // Grupo: a edge não deve criar contato com o JID como telefone.
+            is_group: isWhatsAppGroupId(phone),
           },
         }).then(res => {
           if (res.data?.executed > 0) {

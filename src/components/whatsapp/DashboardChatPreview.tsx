@@ -887,71 +887,77 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
         .is('lead_id', null);
 
-      const contactFullName = contactExtracted.full_name || contactName || 'Contato WhatsApp';
-      const { data: existingContact } = await externalSupabase
-        .from('contacts')
-        .select('id, full_name')
-        .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
-        .limit(1)
-        .maybeSingle();
-
-      let contactId: string;
-      if (existingContact) {
-        contactId = existingContact.id;
-        const contactUpdates: Record<string, any> = {};
-        if (contactExtracted.full_name && existingContact.full_name?.match(/^\d/)) contactUpdates.full_name = contactExtracted.full_name;
-        if (contactExtracted.email) contactUpdates.email = contactExtracted.email;
-        if (contactExtracted.city) contactUpdates.city = contactExtracted.city;
-        if (contactExtracted.state) contactUpdates.state = contactExtracted.state;
-        if (contactExtracted.cpf) contactUpdates.cpf = contactExtracted.cpf;
-        if (contactExtracted.birth_date) contactUpdates.birth_date = contactExtracted.birth_date;
-        if (Object.keys(contactUpdates).length > 0) {
-          await externalSupabase.from('contacts').update(contactUpdates).eq('id', contactId);
-        }
-      } else {
-        const contactInsert: Record<string, any> = {
-          full_name: contactFullName,
-          phone: phone,
-          created_by: extCreatedBy,
-        };
-        if (contactExtracted.email) contactInsert.email = contactExtracted.email;
-        if (contactExtracted.city) contactInsert.city = contactExtracted.city;
-        if (contactExtracted.state) contactInsert.state = contactExtracted.state;
-        if (contactExtracted.cpf) contactInsert.cpf = contactExtracted.cpf;
-        if (contactExtracted.birth_date) contactInsert.birth_date = contactExtracted.birth_date;
-        if (contactExtracted.neighborhood) contactInsert.neighborhood = contactExtracted.neighborhood;
-        if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
-
-        const { data: newContact, error: contactError } = await externalSupabase
+      // Conversa de grupo: o phone é o JID do grupo. Cria só o lead (com
+      // whatsapp_group_id acima) e pula o contato — senão nasce um "contato" com
+      // o nome e o ID do grupo. O contato do cliente entra pelos participantes.
+      if (!isGroupChat) {
+        const contactFullName = contactExtracted.full_name || contactName || 'Contato WhatsApp';
+        const { data: existingContact } = await externalSupabase
           .from('contacts')
-          .insert([contactInsert] as any)
-          .select('id')
-          .single();
-        if (contactError) throw contactError;
-        contactId = newContact.id;
+          .select('id, full_name')
+          .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+          .limit(1)
+          .maybeSingle();
+
+        let contactId: string;
+        if (existingContact) {
+          contactId = existingContact.id;
+          const contactUpdates: Record<string, any> = {};
+          if (contactExtracted.full_name && existingContact.full_name?.match(/^\d/)) contactUpdates.full_name = contactExtracted.full_name;
+          if (contactExtracted.email) contactUpdates.email = contactExtracted.email;
+          if (contactExtracted.city) contactUpdates.city = contactExtracted.city;
+          if (contactExtracted.state) contactUpdates.state = contactExtracted.state;
+          if (contactExtracted.cpf) contactUpdates.cpf = contactExtracted.cpf;
+          if (contactExtracted.birth_date) contactUpdates.birth_date = contactExtracted.birth_date;
+          if (Object.keys(contactUpdates).length > 0) {
+            await externalSupabase.from('contacts').update(contactUpdates).eq('id', contactId);
+          }
+        } else {
+          const contactInsert: Record<string, any> = {
+            full_name: contactFullName,
+            phone: phone,
+            created_by: extCreatedBy,
+          };
+          if (contactExtracted.email) contactInsert.email = contactExtracted.email;
+          if (contactExtracted.city) contactInsert.city = contactExtracted.city;
+          if (contactExtracted.state) contactInsert.state = contactExtracted.state;
+          if (contactExtracted.cpf) contactInsert.cpf = contactExtracted.cpf;
+          if (contactExtracted.birth_date) contactInsert.birth_date = contactExtracted.birth_date;
+          if (contactExtracted.neighborhood) contactInsert.neighborhood = contactExtracted.neighborhood;
+          if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
+
+          const { data: newContact, error: contactError } = await externalSupabase
+            .from('contacts')
+            .insert([contactInsert] as any)
+            .select('id')
+            .single();
+          if (contactError) throw contactError;
+          contactId = newContact.id;
+        }
+
+        await externalSupabase.from('contact_leads').insert({
+          contact_id: contactId,
+          lead_id: newLead.id,
+          relationship_to_victim: 'Vítima',
+        });
+
+        await externalSupabase
+          .from('whatsapp_messages')
+          .update({ contact_id: contactId })
+          .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
+          .is('contact_id', null);
+
+        if (existingContact) {
+          setLinkedContact({ id: existingContact.id, full_name: existingContact.full_name, phone } as Contact);
+        } else {
+          setLinkedContact({ id: contactId, full_name: contactFullName, phone } as Contact);
+        }
       }
-
-      await externalSupabase.from('contact_leads').insert({
-        contact_id: contactId,
-        lead_id: newLead.id,
-        relationship_to_victim: 'Vítima',
-      });
-
-      await externalSupabase
-        .from('whatsapp_messages')
-        .update({ contact_id: contactId })
-        .or(`phone.eq.${phone},phone.eq.${normalizedPhone}`)
-        .is('contact_id', null);
 
       setLinkedLead(newLead as Lead);
-      if (existingContact) {
-        setLinkedContact({ id: existingContact.id, full_name: existingContact.full_name, phone } as Contact);
-      } else {
-        setLinkedContact({ id: contactId, full_name: contactFullName, phone } as Contact);
-      }
       onConversationUpdated?.();
 
-      toast.success('Lead e contato criados com dados da conversa!');
+      toast.success(isGroupChat ? 'Lead criado com o grupo vinculado!' : 'Lead e contato criados com dados da conversa!');
     } catch (e: any) {
       console.error('Error creating lead+contact:', e);
       toast.error('Erro ao criar lead: ' + (e.message || ''));

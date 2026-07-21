@@ -1012,58 +1012,65 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
       if (error) throw error;
 
-      // Use already-extracted contact data
-      const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
-      
-      // Check if contact with same phone already exists
-      const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
-      const { data: existingContact } = await externalSupabase
-        .from('contacts')
-        .select('id, full_name')
-        .or(`phone.eq.${selectedConversation.phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
-        .limit(1)
-        .maybeSingle();
+      // Conversa de grupo: o phone é o JID do grupo, não o número de uma pessoa.
+      // Cria o lead (já com whatsapp_group_id acima) e NÃO cria contato — senão
+      // nasce um "contato" com o nome do grupo e o JID no telefone. O contato do
+      // cliente entra depois pelos participantes / ClosedCaseContactDialog.
+      if (!isGroupChat) {
+        // Use already-extracted contact data
+        const contactName = contactExtracted.full_name || selectedConversation.contact_name || 'Contato WhatsApp';
 
-      let contactId: string;
-      if (existingContact) {
-        contactId = existingContact.id;
-        toast.info(`Contato "${existingContact.full_name}" já existente foi vinculado`);
-      } else {
-        const contactInsert: Record<string, any> = {
-          full_name: contactName,
-          phone: selectedConversation.phone,
-          created_by: extCreatedBy,
-        };
-        if (contactExtracted.email) contactInsert.email = contactExtracted.email;
-        if (contactExtracted.city) contactInsert.city = contactExtracted.city;
-        if (contactExtracted.state) contactInsert.state = contactExtracted.state;
-        if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
-
-        const { data: newContact, error: contactError } = await externalSupabase
+        // Check if contact with same phone already exists
+        const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
+        const { data: existingContact } = await externalSupabase
           .from('contacts')
-          .insert([contactInsert] as any)
-          .select('id')
-          .single();
-        if (contactError) throw contactError;
-        contactId = newContact.id;
+          .select('id, full_name')
+          .or(`phone.eq.${selectedConversation.phone},phone.eq.${normalizedPhone},phone.ilike.%${normalizedPhone.slice(-8)}%`)
+          .limit(1)
+          .maybeSingle();
+
+        let contactId: string;
+        if (existingContact) {
+          contactId = existingContact.id;
+          toast.info(`Contato "${existingContact.full_name}" já existente foi vinculado`);
+        } else {
+          const contactInsert: Record<string, any> = {
+            full_name: contactName,
+            phone: selectedConversation.phone,
+            created_by: extCreatedBy,
+          };
+          if (contactExtracted.email) contactInsert.email = contactExtracted.email;
+          if (contactExtracted.city) contactInsert.city = contactExtracted.city;
+          if (contactExtracted.state) contactInsert.state = contactExtracted.state;
+          if (contactExtracted.instagram_url) contactInsert.instagram_url = contactExtracted.instagram_url;
+
+          const { data: newContact, error: contactError } = await externalSupabase
+            .from('contacts')
+            .insert([contactInsert] as any)
+            .select('id')
+            .single();
+          if (contactError) throw contactError;
+          contactId = newContact.id;
+        }
+
+        // Link contact to lead
+        await externalSupabase.from('contact_leads').insert({
+          contact_id: contactId,
+          lead_id: data.id,
+          relationship_to_victim: 'Vítima',
+        });
+
+        // Link contact to conversation
+        await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
       }
 
-      // Link contact to lead
-      await externalSupabase.from('contact_leads').insert({
-        contact_id: contactId,
-        lead_id: data.id,
-        relationship_to_victim: 'Vítima',
-      });
-
-      // Link contact to conversation
-      await linkToContact(selectedConversation.phone, contactId, selectedConversation.instance_name);
       await linkToLead(selectedConversation.phone, data.id, selectedConversation.instance_name);
 
       setEditingLead(data as Lead);
       setShowLeadPanel(true);
       setShowBoardPicker(false);
-      
-      toast.success('Lead e contato criados com dados da conversa!');
+
+      toast.success(isGroupChat ? 'Lead criado com o grupo vinculado!' : 'Lead e contato criados com dados da conversa!');
     } catch (e) {
       console.error(e);
       toast.error('Erro ao criar lead');
@@ -1074,6 +1081,15 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
   const handleCreateContact = async () => {
     if (!selectedConversation) return;
+    // Grupo não é contato: o phone é o JID do grupo. Cadastrar aqui geraria um
+    // "contato" com o nome e o ID do grupo. Para clientes de um grupo, use o
+    // fluxo de participantes / caso fechado.
+    if (isWhatsAppGroupId(selectedConversation.phone)) {
+      toast.error('Esta conversa é um grupo, não um contato individual.', {
+        description: 'Para cadastrar o cliente, use "Sincronizar contatos do grupo" ou o cadastro de caso fechado.',
+      });
+      return;
+    }
     const extracted = await extractConversationData('contact');
     const normalizedPhone = selectedConversation.phone.replace(/\D/g, '');
     try {
