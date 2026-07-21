@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -56,6 +56,16 @@ const statusColors: Record<string, string> = {
   arquivado: 'bg-muted text-muted-foreground',
 };
 
+/**
+ * Neutraliza os caracteres que quebram o parser de filtros do PostgREST
+ * (`,` e `()` separam termos no `or=`) e o `%`, que viraria curinga do ilike.
+ * Antes o caminho principal só limpava `,()` e o auxiliar limpava `,()%` —
+ * digitar `%` se comportava diferente em cada um.
+ */
+function safeFilter(s: string) {
+  return s.replace(/[,()%]/g, ' ');
+}
+
 const statusLabels: Record<string, string> = {
   aberto: 'Aberto',
   em_andamento: 'Em Andamento',
@@ -68,6 +78,11 @@ export default function CasesPage() {
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  // Só o valor debounced dispara fetch: sem isso, digitar "silva" rodava a
+  // busca inteira 5 vezes (2 páginas de legal_cases + 2 queries auxiliares
+  // cada uma).
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  const fetchSeqRef = useRef(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [nucleusFilter, setNucleusFilter] = useState('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -118,6 +133,10 @@ export default function CasesPage() {
   };
 
   const fetchCases = useCallback(async () => {
+    // Guarda de corrida: a busca dispara vários fetches sobrepostos e o último
+    // a *responder* não é necessariamente o último a ser *pedido*. Sem isso a
+    // lista ficava mostrando o resultado de um termo anterior.
+    const seq = ++fetchSeqRef.current;
     setLoading(true);
     try {
       const buildBase = () => {
@@ -131,7 +150,8 @@ export default function CasesPage() {
         return q;
       };
 
-      const q = search.trim();
+      const q = debouncedSearch.trim();
+      const safe = safeFilter(q);
 
       // Paginate in chunks of 1000 to bypass PostgREST db-max-rows cap on Externo.
       const PAGE = 1000;
@@ -140,7 +160,6 @@ export default function CasesPage() {
       for (let from = 0; from < HARD_CAP; from += PAGE) {
         let query = buildBase().range(from, from + PAGE - 1);
         if (q) {
-          const safe = q.replace(/[,()]/g, ' ');
           query = query.or(
             [
               `title.ilike.%${safe}%`,
@@ -151,6 +170,7 @@ export default function CasesPage() {
         }
         const { data, error } = await query;
         if (error) throw error;
+        if (seq !== fetchSeqRef.current) return; // busca mais nova já partiu
         const rows = data || [];
         aggregated.push(...rows);
         if (rows.length < PAGE) break;
@@ -165,13 +185,22 @@ export default function CasesPage() {
       }));
 
       if (q) {
-        const lower = q.toLowerCase();
-        const { data: leadMatches } = await externalSupabase
+        // Mesmo termo que foi pro banco: sem isso o filtro client-side
+        // procurava um `%`/`,` literal que o ilike nem chegou a buscar.
+        const lower = safe.trim().toLowerCase();
+        let leadQuery = externalSupabase
           .from('legal_cases')
           .select('*, specialized_nuclei(name, prefix, color), leads!inner(lead_name)')
-          .ilike('leads.lead_name', `%${safeFilter(q)}%`)
+          .ilike('leads.lead_name', `%${safe}%`)
           .is('deleted_at', null)
           .limit(500);
+        // Antes esta query ignorava os filtros da barra: buscar por nome com
+        // "Núcleo = X" selecionado trazia casos de outros núcleos.
+        if (statusFilter !== 'all') leadQuery = leadQuery.eq('status', statusFilter);
+        if (nucleusFilter !== 'all') leadQuery = leadQuery.eq('nucleus_id', nucleusFilter);
+        const { data: leadMatches, error: leadErr } = await leadQuery;
+        if (leadErr) throw leadErr;
+        if (seq !== fetchSeqRef.current) return;
         const extra = (leadMatches || []).map((c: any) => ({
           ...c,
           nucleus_name: c.specialized_nuclei?.name,
@@ -184,13 +213,20 @@ export default function CasesPage() {
 
         // Casos encontrados pelo número/título do processo (lead_processes).
         // O nº CNJ mora aqui, não em legal_cases — sem isso, buscar por CNJ não acha nada.
-        const { data: procMatches } = await externalSupabase
+        let procQuery = externalSupabase
           .from('lead_processes')
           .select('case_id, legal_cases!inner(*, specialized_nuclei(name, prefix, color), leads(lead_name))')
-          .or(`process_number.ilike.%${safeFilter(q)}%,title.ilike.%${safeFilter(q)}%`)
+          .or(`process_number.ilike.%${safe}%,title.ilike.%${safe}%`)
           .is('deleted_at', null)
           .not('case_id', 'is', null)
           .limit(500);
+        if (statusFilter !== 'all') procQuery = procQuery.eq('legal_cases.status', statusFilter);
+        if (nucleusFilter !== 'all') procQuery = procQuery.eq('legal_cases.nucleus_id', nucleusFilter);
+        // O erro era descartado: quando esta query falhava, buscar por número
+        // CNJ simplesmente não achava nada e ninguém ficava sabendo.
+        const { data: procMatches, error: procErr } = await procQuery;
+        if (procErr) throw procErr;
+        if (seq !== fetchSeqRef.current) return;
         const procCaseIds = new Set<string>();
         for (const pm of (procMatches || []) as any[]) {
           const c = pm.legal_cases;
@@ -219,16 +255,18 @@ export default function CasesPage() {
 
       setCases(mapped);
     } catch (err) {
-      console.error(err);
+      if (seq !== fetchSeqRef.current) return; // erro de uma busca já superada
+      console.error('[CasesPage] fetchCases failed', err);
       toast.error('Erro ao carregar casos');
     } finally {
-      setLoading(false);
+      if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [search, statusFilter, nucleusFilter]);
+  }, [debouncedSearch, statusFilter, nucleusFilter]);
 
-  function safeFilter(s: string) {
-    return s.replace(/[,()%]/g, ' ');
-  }
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
 
   // Rota /cases/:caseId → carrega e expande só esse caso (substitui a antiga
   // página de detalhe; busca global e página de atividades apontam pra cá).
@@ -1152,22 +1190,31 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         </DialogContent>
       </Dialog>
 
-      <ProcessDetailSheet
-        open={!!selectedProcess}
-        onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
-        process={selectedProcess}
-        onUpdated={onCaseUpdated}
-        mode="dialog"
-        defaultTab="atividades"
-      />
+      {/* Montados só quando abertos. Antes ficavam sempre no DOM: com ~1.600
+          casos na lista, os hooks de config desses dois componentes (OABs,
+          tipos de atividade, perfis, campos) disparavam ~5 requisições por
+          item — ~8.000 no load da página, o que saturava o navegador. Mesmo
+          padrão já usado em ProcessesPage. */}
+      {selectedProcess && (
+        <ProcessDetailSheet
+          open
+          onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
+          process={selectedProcess}
+          onUpdated={onCaseUpdated}
+          mode="dialog"
+          defaultTab="atividades"
+        />
+      )}
 
       {/* Detalhe da atividade em aba lateral com formulário completo */}
-      <ActivityFullSheet
-        open={!!selectedActivityId}
-        onOpenChange={(open) => { if (!open) setSelectedActivityId(null); }}
-        activityId={selectedActivityId}
-        onUpdated={loadDetails}
-      />
+      {selectedActivityId && (
+        <ActivityFullSheet
+          open
+          onOpenChange={(open) => { if (!open) setSelectedActivityId(null); }}
+          activityId={selectedActivityId}
+          onUpdated={loadDetails}
+        />
+      )}
     </>
   );
 }

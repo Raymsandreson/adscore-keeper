@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
 import { externalSupabase as supabase } from '@/integrations/supabase/external-client';
+import { useSharedFetch, setSharedData } from '@/lib/sharedFetch';
 
 export interface ActivityFieldSetting {
   id: string;
@@ -17,38 +17,37 @@ const DEFAULT_FIELDS: ActivityFieldSetting[] = [
   { id: '4', field_key: 'notes', label: 'Observações', display_order: 4, include_in_message: false, placeholder: 'Notas adicionais...' },
 ];
 
+const CACHE_KEY = 'activity_field_settings';
+
 export function useActivityFieldSettings() {
-  const [fields, setFields] = useState<ActivityFieldSetting[]>(DEFAULT_FIELDS);
-  const [loading, setLoading] = useState(true);
-
-  const fetchFields = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('activity_field_settings')
-      .select('*')
-      .order('display_order');
-    
-    if (!error && data && data.length > 0) {
-      setFields(data as ActivityFieldSetting[]);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { fetchFields(); }, [fetchFields]);
+  const { data: fields, loading, refetch } = useSharedFetch<ActivityFieldSetting[]>(
+    CACHE_KEY,
+    async () => {
+      const { data, error } = await supabase
+        .from('activity_field_settings')
+        .select('*')
+        .order('display_order');
+      if (error) throw error;
+      // Tabela vazia continua caindo nos campos padrão, como antes.
+      return data && data.length > 0 ? (data as ActivityFieldSetting[]) : DEFAULT_FIELDS;
+    },
+    DEFAULT_FIELDS,
+  );
 
   const updateField = async (id: string, updates: Partial<ActivityFieldSetting>) => {
     const { error } = await supabase
       .from('activity_field_settings')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', id);
-    
+
     if (!error) {
-      setFields(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+      setSharedData(CACHE_KEY, fields.map(f => f.id === id ? { ...f, ...updates } : f));
     }
     return { error };
   };
 
   const reorderFields = async (reordered: ActivityFieldSetting[]) => {
-    setFields(reordered);
+    setSharedData(CACHE_KEY, reordered);
     for (let i = 0; i < reordered.length; i++) {
       await supabase
         .from('activity_field_settings')
@@ -59,5 +58,5 @@ export function useActivityFieldSettings() {
 
   const sortedFields = [...fields].sort((a, b) => a.display_order - b.display_order);
 
-  return { fields: sortedFields, loading, updateField, reorderFields, refetch: fetchFields };
+  return { fields: sortedFields, loading, updateField, reorderFields, refetch };
 }

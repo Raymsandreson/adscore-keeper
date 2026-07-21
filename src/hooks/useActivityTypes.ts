@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
 import { externalSupabase as supabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
+import { useSharedFetch, setSharedData } from '@/lib/sharedFetch';
 
 export interface ActivityType {
   id: string;
@@ -15,22 +16,22 @@ export interface ActivityType {
   team_ids: string[];
 }
 
+const CACHE_KEY = 'activity_types';
+const EMPTY: ActivityType[] = [];
+
 export function useActivityTypes() {
-  const [types, setTypes] = useState<ActivityType[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const refetch = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('activity_types')
-      .select('*')
-      .order('display_order', { ascending: true });
-    if (!error && data) {
-      setTypes(data.map((t: any) => ({ ...t, team_ids: t.team_ids ?? [] })) as ActivityType[]);
-    }
-    setLoading(false);
-  }, []);
-
-  useEffect(() => { refetch(); }, [refetch]);
+  const { data: types, loading, refetch } = useSharedFetch<ActivityType[]>(
+    CACHE_KEY,
+    async () => {
+      const { data, error } = await supabase
+        .from('activity_types')
+        .select('*')
+        .order('display_order', { ascending: true });
+      if (error) throw error;
+      return (data || []).map((t: any) => ({ ...t, team_ids: t.team_ids ?? [] })) as ActivityType[];
+    },
+    EMPTY,
+  );
 
   const addType = useCallback(async (label: string, color: string, teamIds: string[] = []) => {
     const key = `custom_${Date.now()}`;
@@ -62,7 +63,7 @@ export function useActivityTypes() {
   }, [refetch]);
 
   const reorder = useCallback(async (reordered: ActivityType[]) => {
-    setTypes(reordered);
+    setSharedData(CACHE_KEY, reordered);
     await Promise.all(
       reordered.map((t, i) =>
         supabase.from('activity_types').update({ display_order: i } as any).eq('id', t.id)

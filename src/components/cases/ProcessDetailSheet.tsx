@@ -670,8 +670,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     }
   };
 
-  if (!process) return null;
-
+  // ATENÇÃO: nenhum early return antes daqui. O componente fica montado com
+  // process=null (a CasesPage passa selectedProcess, que começa null); se o
+  // return acontecer antes de algum hook, clicar num processo renderiza mais
+  // hooks que no render anterior => React #310.
   const envolvidos = Array.isArray(form.envolvidos) ? form.envolvidos : [];
   // Polo do cliente detectado automaticamente pela OAB do advogado (usuário do sistema).
   const detectedClientePolo = detectClientPolo(envolvidos, systemOabs);
@@ -787,6 +789,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       setCreatingMovKey(null);
     }
   }, [creatingMovKey, process, form.title, form.process_number, form.workflow_id, form.workflow_name, movimentacoesData, activityTypes]);
+
+  // Único early return do componente — depois de todos os hooks.
+  if (!process) return null;
 
   const innerContent = (
     <div className="flex flex-col h-full">
