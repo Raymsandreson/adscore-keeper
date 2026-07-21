@@ -383,6 +383,10 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
           <span className="text-orange-400 font-bold">{tempoLabel(row.ocioso_seg)}</span> ocioso ·{' '}
           <span className="text-violet-400 font-bold">{chatRespLabel(row.chat_resp_seg)}</span> chat
         </div>
+        {/* Dica de clique — espaço reservado pra não deslocar o pódio no hover */}
+        <div className="mt-1 h-4 text-[10px] font-black uppercase tracking-wider text-amber-300 opacity-0 group-hover:opacity-100 transition-opacity">
+          🏁 Clique pra analisar &amp; mandar mensagem
+        </div>
       </div>
 
       <div className={cn('mt-3 w-full max-w-[9rem] rounded-t-lg bg-gradient-to-b flex items-start justify-center pt-2', cfg.bar, cfg.barH)}>
@@ -396,10 +400,14 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
 function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect: () => void }) {
   return (
     <div
-      className="flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3 cursor-pointer transition hover:bg-white/[0.08]"
+      className="relative group flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3 cursor-pointer transition hover:bg-white/[0.08]"
       onClick={onSelect}
       title={`Analisar desempenho de ${row.nome}`}
     >
+      {/* Dica de clique — aparece por cima das colunas no hover */}
+      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 rounded-full bg-amber-400 px-3 py-1 text-[11px] font-black text-slate-900 shadow-lg">
+        🏁 Analisar &amp; mandar mensagem
+      </span>
       <div className="w-5 text-center text-sm md:text-base font-bold text-white/40 tabular-nums">{rank}</div>
       <div className={cn('h-9 w-9 md:h-11 md:w-11 shrink-0 rounded-full flex items-center justify-center text-xs md:text-sm font-black', colorFor(row.nome))}>
         {initials(row.nome)}

@@ -53,16 +53,17 @@ function extractJson(text: string): any | null {
   try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
 }
 
-async function resolvePerson(nome: string): Promise<{ userId: string | null; anyIds: string[] }> {
+async function resolvePerson(nome: string): Promise<{ userId: string | null; anyIds: string[]; phone: string | null }> {
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, user_id, full_name')
+    .select('id, user_id, full_name, phone')
     .ilike('full_name', `%${nome}%`)
     .limit(5);
   const exact = (profiles || []).find((p) => (p.full_name || '').trim().toLowerCase() === nome.trim().toLowerCase());
   const p = exact || (profiles || [])[0];
-  if (!p) return { userId: null, anyIds: [] };
-  return { userId: p.user_id, anyIds: [...new Set([p.user_id, p.id].filter(Boolean))] as string[] };
+  if (!p) return { userId: null, anyIds: [], phone: null };
+  const phone = (p.phone || '').replace(/\D/g, '') || null;
+  return { userId: p.user_id, anyIds: [...new Set([p.user_id, p.id].filter(Boolean))] as string[], phone };
 }
 
 async function personActivities(anyIds: string[], nome: string, sinceIso: string) {
@@ -165,6 +166,8 @@ Responda SOMENTE um JSON válido com duas chaves:
     analise: parsed.analise,
     mensagem: parsed.mensagem,
     to_user_id: person.userId,
+    // Só o indicador — o número em si não vai pro telão.
+    has_whatsapp: !!person.phone,
   });
 }
 
@@ -194,25 +197,74 @@ async function findOrCreateDirectConversation(a: string, b: string): Promise<str
   return created.id;
 }
 
+/** Manda texto pro WhatsApp pessoal do membro via UazAPI (1ª instância ativa). */
+async function sendWhatsAppToMember(toUserId: string, text: string): Promise<{ ok: boolean; error?: string }> {
+  const { data: profile } = await supabase
+    .from('profiles').select('phone').eq('user_id', toUserId).maybeSingle();
+  const phone = (profile?.phone || '').replace(/\D/g, '');
+  if (!phone) return { ok: false, error: 'membro sem telefone cadastrado no perfil' };
+
+  const { data: instances } = await supabase
+    .from('whatsapp_instances')
+    .select('instance_token, base_url')
+    .eq('is_active', true)
+    .limit(1);
+  const inst = instances?.[0];
+  if (!inst) return { ok: false, error: 'nenhuma instância de WhatsApp ativa' };
+
+  const base = (inst.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
+  const resp = await fetch(`${base}/send/text`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+    body: JSON.stringify({ number: phone, text }),
+  });
+  if (!resp.ok) {
+    const body = await resp.text().catch(() => '');
+    return { ok: false, error: `UazAPI ${resp.status}: ${body.slice(0, 150)}` };
+  }
+  return { ok: true };
+}
+
 async function send(req: Request, res: Response) {
-  const { to_user_id, message, sender_id, sender_name } = req.body || {};
+  const { to_user_id, message, sender_id, sender_name, via_chat = true, via_whatsapp = false } = req.body || {};
   if (!to_user_id || !message || !sender_id) {
     return res.status(400).json({ success: false, error: 'to_user_id, message e sender_id são obrigatórios' });
   }
+  if (!via_chat && !via_whatsapp) {
+    return res.status(400).json({ success: false, error: 'escolha ao menos um canal (via_chat/via_whatsapp)' });
+  }
 
-  const convId = await findOrCreateDirectConversation(sender_id, to_user_id);
-  const { error } = await supabase.from('team_messages').insert({
-    conversation_id: convId,
-    sender_id,
-    sender_name: sender_name || null,
-    content: message,
-    message_type: 'text',
-  });
-  if (error) throw error;
-  await supabase.from('team_conversations')
-    .update({ updated_at: new Date().toISOString() }).eq('id', convId);
+  const results: { chat?: { ok: boolean; error?: string }; whatsapp?: { ok: boolean; error?: string } } = {};
 
-  return res.json({ success: true, conversation_id: convId });
+  if (via_chat) {
+    try {
+      const convId = await findOrCreateDirectConversation(sender_id, to_user_id);
+      const { error } = await supabase.from('team_messages').insert({
+        conversation_id: convId,
+        sender_id,
+        sender_name: sender_name || null,
+        content: message,
+        message_type: 'text',
+      });
+      if (error) throw error;
+      await supabase.from('team_conversations')
+        .update({ updated_at: new Date().toISOString() }).eq('id', convId);
+      results.chat = { ok: true };
+    } catch (err) {
+      results.chat = { ok: false, error: err instanceof Error ? err.message : 'falha no chat' };
+    }
+  }
+
+  if (via_whatsapp) {
+    try {
+      results.whatsapp = await sendWhatsAppToMember(to_user_id, message);
+    } catch (err) {
+      results.whatsapp = { ok: false, error: err instanceof Error ? err.message : 'falha no WhatsApp' };
+    }
+  }
+
+  const allOk = Object.values(results).every((r) => r.ok);
+  return res.json({ success: allOk, results });
 }
 
 export const handler = async (req: Request, res: Response) => {

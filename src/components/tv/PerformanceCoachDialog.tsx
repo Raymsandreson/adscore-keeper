@@ -45,6 +45,16 @@ interface AnalyzeResponse {
   analise: string;
   mensagem: string;
   to_user_id: string | null;
+  has_whatsapp?: boolean;
+  error?: string;
+}
+
+interface SendResponse {
+  success: boolean;
+  results?: {
+    chat?: { ok: boolean; error?: string };
+    whatsapp?: { ok: boolean; error?: string };
+  };
   error?: string;
 }
 
@@ -56,6 +66,9 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
   const [mensagem, setMensagem] = useState('');
   const [mensagemEdited, setMensagemEdited] = useState(false);
   const [toUserId, setToUserId] = useState<string | null>(null);
+  const [hasWhatsapp, setHasWhatsapp] = useState(false);
+  const [viaChat, setViaChat] = useState(true);
+  const [viaWhatsapp, setViaWhatsapp] = useState(false);
   const [meta, setMeta] = useState<{ position: number; total: number; ahead: AnalyzeResponse['ahead']; behind: AnalyzeResponse['behind'] } | null>(null);
   const [question, setQuestion] = useState('');
   const [sender, setSender] = useState<{ id: string; name: string } | null>(null);
@@ -92,6 +105,7 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
     }
     setMeta({ position: data.position, total: data.total, ahead: data.ahead, behind: data.behind });
     setToUserId(data.to_user_id);
+    setHasWhatsapp(!!data.has_whatsapp);
     setHistory((h) => [...h, {
       question: q || `Por que ${row.nome.split(' ')[0]} está com esse desempenho?`,
       answer: data.analise,
@@ -121,20 +135,32 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
   };
 
   const sendMessage = async () => {
-    if (!sender || !toUserId || !mensagem.trim() || sending) return;
+    if (!sender || !toUserId || !mensagem.trim() || sending || (!viaChat && !viaWhatsapp)) return;
     setSending(true);
     setError(null);
     try {
-      const { data, error: err } = await cloudFunctions.invoke('performance-coach', {
+      const { data, error: err } = await cloudFunctions.invoke<SendResponse>('performance-coach', {
         body: {
           mode: 'send',
           to_user_id: toUserId,
           message: mensagem.trim(),
           sender_id: sender.id,
           sender_name: sender.name,
+          via_chat: viaChat,
+          via_whatsapp: viaWhatsapp,
         },
       });
-      if (err || !data?.success) throw new Error(data?.error || err?.message || 'Falha ao enviar');
+      if (err || !data) throw new Error(err?.message || 'Falha ao enviar');
+      const r = data.results || {};
+      const fails: string[] = [];
+      if (r.chat && !r.chat.ok) fails.push(`chat: ${r.chat.error || 'falhou'}`);
+      if (r.whatsapp && !r.whatsapp.ok) fails.push(`WhatsApp: ${r.whatsapp.error || 'falhou'}`);
+      if (fails.length) {
+        const okChannels = [r.chat?.ok && 'chat interno', r.whatsapp?.ok && 'WhatsApp'].filter(Boolean);
+        throw new Error(
+          (okChannels.length ? `Enviado no ${okChannels.join(' e ')}, mas ` : '') + fails.join(' · ')
+        );
+      }
       setSentAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao enviar');
@@ -220,15 +246,40 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
                   rows={6}
                   className="mt-2 w-full resize-y rounded-lg border border-white/10 bg-slate-950/60 p-3 text-sm leading-relaxed outline-none focus:border-amber-400/50"
                 />
+                {/* Canais de envio */}
+                <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+                  <label className="flex cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={viaChat}
+                      onChange={(e) => setViaChat(e.target.checked)}
+                      className="h-4 w-4 accent-amber-400"
+                    />
+                    💬 Chat interno
+                  </label>
+                  <label className={cn('flex items-center gap-2', hasWhatsapp ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed')}>
+                    <input
+                      type="checkbox"
+                      checked={viaWhatsapp}
+                      disabled={!hasWhatsapp}
+                      onChange={(e) => setViaWhatsapp(e.target.checked)}
+                      className="h-4 w-4 accent-emerald-400"
+                    />
+                    📱 WhatsApp {!hasWhatsapp && <span className="text-[10px] text-white/40">(sem número no perfil)</span>}
+                  </label>
+                </div>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                   <span className="text-[11px] text-white/40">
                     {sentAt
-                      ? `✅ Enviado às ${sentAt} no chat interno`
-                      : sendDisabledReason || `Vai pro privado de ${row.nome.split(' ')[0]} no chat interno, em seu nome`}
+                      ? `✅ Enviado às ${sentAt}`
+                      : sendDisabledReason
+                        || (!viaChat && !viaWhatsapp
+                          ? 'Escolha ao menos um canal'
+                          : `Vai pro ${[viaChat && 'privado do chat interno', viaWhatsapp && 'WhatsApp'].filter(Boolean).join(' e ')} de ${row.nome.split(' ')[0]}, em seu nome`)}
                   </span>
                   <button
                     onClick={sendMessage}
-                    disabled={!!sendDisabledReason || !mensagem.trim() || sending || !!sentAt}
+                    disabled={!!sendDisabledReason || !mensagem.trim() || sending || !!sentAt || (!viaChat && !viaWhatsapp)}
                     className={cn(
                       'flex items-center gap-2 rounded-full px-4 py-2 text-sm font-black transition',
                       sentAt
