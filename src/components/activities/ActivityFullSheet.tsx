@@ -31,6 +31,9 @@ export interface ActivityDraft {
   title?: string;
   activity_type?: string;
   priority?: string;
+  deadline?: string;
+  assigned_to?: string;
+  assigned_to_name?: string;
   lead_id?: string;
   lead_name?: string;
   case_id?: string;
@@ -294,10 +297,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormType(d.activity_type || '');
     setFormStatus('pendente');
     setFormPriority(d.priority || 'normal');
-    setFormDeadline('');
+    setFormDeadline(d.deadline || '');
     setFormNotificationDate('');
-    setFormAssignedTo('');
-    setFormAssignedToName('');
+    setFormAssignedTo(d.assigned_to || '');
+    setFormAssignedToName(d.assigned_to_name || '');
     setFormMatrixQuadrant('');
     setFormLeadId(d.lead_id || '');
     setFormLeadName(d.lead_name || '');

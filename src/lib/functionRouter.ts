@@ -46,6 +46,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'transcribe-team-audio': 'railway',
   'extract-activity-from-document': 'railway',
   'dictate-activity': 'railway',
+  'chat-to-activity': 'railway',
   'activity-from-movement': 'railway',
   'suggest-step-actions': 'railway',
   'wipe-instance-agent-labels': 'railway',

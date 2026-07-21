@@ -1,5 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useTeamDirectChat, TeamMessage } from '@/hooks/useTeamDirectChat';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
+import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
+
+// Formulário COMPLETO de atividade (único do sistema) — lazy pra não pesar o chat.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
@@ -91,6 +98,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [forwardingMsg, setForwardingMsg] = useState<TeamMessage | null>(null);
   const [forwardSearch, setForwardSearch] = useState('');
   const [forwardSending, setForwardSending] = useState(false);
+  // "Criar atividade a partir do chat": seleção de mensagens + rascunho da IA
+  const [activitySelectMode, setActivitySelectMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const [creatingActivityDraft, setCreatingActivityDraft] = useState(false);
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft | null>(null);
+  const [activitySheetOpen, setActivitySheetOpen] = useState(false);
   const [urgent, setUrgent] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
@@ -358,6 +371,96 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const handleForwardToUser = async (otherUserId: string) => {
     const convId = await startDirectChat(otherUserId);
     if (convId) await doForward(convId);
+  };
+
+  // ===== Criar atividade a partir de mensagens do chat =====
+  const { types: activityTypes } = useActivityTypes();
+
+  const startActivitySelection = (msg: TeamMessage) => {
+    setActivitySelectMode(true);
+    setSelectedMsgIds(new Set([msg.id]));
+  };
+
+  const toggleMsgSelection = (msgId: string) => {
+    setSelectedMsgIds(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
+      return next;
+    });
+  };
+
+  const cancelActivitySelection = () => {
+    setActivitySelectMode(false);
+    setSelectedMsgIds(new Set());
+  };
+
+  // Texto de uma mensagem pro contexto da IA (áudio usa a transcrição)
+  const msgTextForAI = (m: TeamMessage): string => {
+    if (m.message_type === 'audio') return m.transcription?.trim() || '🎤 Áudio (sem transcrição)';
+    if (m.message_type === 'image') return m.content && m.content !== '📷 Imagem' ? m.content : '📷 Imagem';
+    if (m.message_type === 'file') return `📎 Arquivo: ${m.file_name || 'sem nome'}`;
+    return m.content || '';
+  };
+
+  const createActivityFromSelection = async () => {
+    const selected = messages
+      .filter(m => selectedMsgIds.has(m.id))
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    if (selected.length === 0) {
+      toast.error('Selecione pelo menos uma mensagem');
+      return;
+    }
+    setCreatingActivityDraft(true);
+    try {
+      const myName = profiles.find(p => p.user_id === user?.id)?.full_name || user?.email || 'Eu';
+      const transcript = selected
+        .map(m => {
+          const who = m.sender_id === user?.id ? myName : (m.sender_name || 'Colega');
+          return `${who}: ${msgTextForAI(m)}`;
+        })
+        .join('\n');
+      const memberNames = profiles
+        .filter(p => !isGoneUser(p.user_id))
+        .map(p => p.full_name)
+        .filter(Boolean) as string[];
+
+      const { data, error } = await cloudFunctions.invoke('chat-to-activity', {
+        body: {
+          transcript,
+          activity_types: activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label })),
+          member_names: memberNames,
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar o rascunho da atividade');
+
+      const f = data.fields || {};
+      // Assessor sugerido pela IA → user_id (match exato de nome; o usuário pode trocar no formulário)
+      const assigneeProfile = f.assignee_name
+        ? profiles.find(p => (p.full_name || '').trim().toLowerCase() === String(f.assignee_name).trim().toLowerCase())
+        : null;
+
+      setActivityDraft({
+        title: f.title || '',
+        activity_type: f.activity_type || '',
+        priority: f.priority || 'normal',
+        deadline: f.deadline || undefined,
+        lead_name: f.lead_name || undefined,
+        assigned_to: assigneeProfile?.user_id || undefined,
+        assigned_to_name: assigneeProfile?.full_name || undefined,
+        what_was_done: f.what_was_done || '',
+        current_status_notes: f.current_status || '',
+        next_steps: f.next_steps || '',
+        notes: [f.notes || '', `— Origem: chat interno —\n${transcript}`].filter(Boolean).join('\n\n'),
+      });
+      setActivitySheetOpen(true);
+      cancelActivitySelection();
+    } catch (e: any) {
+      console.error('[TeamDirectChatPanel] Erro ao gerar atividade do chat:', e);
+      toast.error(e?.message || 'Não foi possível gerar a atividade');
+    } finally {
+      setCreatingActivityDraft(false);
+    }
   };
 
   const scrollToMessage = (msgId: string) => {
@@ -815,13 +918,27 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               const isMe = msg.sender_id === user?.id;
               const repliedMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null;
               const isHighlighted = highlightMsgId === msg.id;
+              const isSelected = activitySelectMode && selectedMsgIds.has(msg.id);
               return (
                 <div
                   key={msg.id}
                   data-msg-id={msg.id}
-                  className={cn('group flex items-end gap-1', isMe ? 'justify-end' : 'justify-start')}
+                  onClick={activitySelectMode ? () => toggleMsgSelection(msg.id) : undefined}
+                  className={cn(
+                    'group flex items-end gap-1',
+                    isMe ? 'justify-end' : 'justify-start',
+                    activitySelectMode && 'cursor-pointer'
+                  )}
                 >
-                  {isMe && (
+                  {activitySelectMode && !isMe && (
+                    <span className={cn(
+                      'shrink-0 w-4 h-4 rounded-full border flex items-center justify-center self-center',
+                      isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/40'
+                    )}>
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </span>
+                  )}
+                  {isMe && !activitySelectMode && (
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
                       <button
                         type="button"
@@ -847,6 +964,14 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       >
                         <Forward className="h-3.5 w-3.5" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => startActivitySelection(msg)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Criar atividade a partir desta mensagem (dá pra selecionar mais)"
+                      >
+                        <ClipboardList className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   )}
                   <div className={cn(
@@ -855,7 +980,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       ? 'bg-primary text-primary-foreground rounded-br-sm'
                       : 'bg-muted rounded-bl-sm',
                     msg.is_urgent && 'ring-1 ring-destructive',
-                    isHighlighted && 'ring-2 ring-yellow-400'
+                    isHighlighted && 'ring-2 ring-yellow-400',
+                    isSelected && 'ring-2 ring-primary'
                   )}>
                     {!isMe && (
                       <div className="text-[10px] font-semibold opacity-70 mb-0.5">
@@ -901,7 +1027,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       })()}
                     </div>
                   </div>
-                  {!isMe && (
+                  {!isMe && !activitySelectMode && (
                     <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
                       <button
                         type="button"
@@ -919,7 +1045,23 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       >
                         <Forward className="h-3.5 w-3.5" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => startActivitySelection(msg)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Criar atividade a partir desta mensagem (dá pra selecionar mais)"
+                      >
+                        <ClipboardList className="h-3.5 w-3.5" />
+                      </button>
                     </div>
+                  )}
+                  {activitySelectMode && isMe && (
+                    <span className={cn(
+                      'shrink-0 w-4 h-4 rounded-full border flex items-center justify-center self-center order-first',
+                      isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/40'
+                    )}>
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </span>
                   )}
                 </div>
               );
@@ -953,6 +1095,36 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               requestAnimationFrame(() => messageInputRef.current?.focus());
             }}
           />
+
+          {activitySelectMode && (
+            <div className="px-3 py-2 border-b bg-primary/5 flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-primary shrink-0" />
+              <span className="text-xs flex-1">
+                <b>{selectedMsgIds.size}</b> mensagem{selectedMsgIds.size === 1 ? '' : 's'} selecionada{selectedMsgIds.size === 1 ? '' : 's'} — toque nas mensagens pra incluir/remover
+              </span>
+              <Button
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={createActivityFromSelection}
+                disabled={creatingActivityDraft || selectedMsgIds.size === 0}
+              >
+                {creatingActivityDraft
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Sparkles className="h-3.5 w-3.5" />}
+                Criar atividade
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={cancelActivitySelection}
+                disabled={creatingActivityDraft}
+                title="Cancelar seleção"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
 
           {awaitingReply && !isRecording && (
             <div className="px-3 py-1.5 border-b bg-amber-500/10 flex items-center gap-2">
@@ -1116,6 +1288,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             </div>
           )}
         </div>
+
+        {/* Formulário COMPLETO de atividade (aba lateral), pré-preenchido pela IA
+            a partir das mensagens selecionadas. O usuário revisa, escolhe o
+            assessor (qualquer membro) e cria de fato. */}
+        {activityDraft && (
+          <Suspense fallback={null}>
+            <ActivityFullSheet
+              open={activitySheetOpen}
+              mode="create"
+              draft={activityDraft}
+              activityId={null}
+              onOpenChange={(o) => { if (!o) { setActivitySheetOpen(false); setActivityDraft(null); } }}
+              onCreated={() => toast.success('Atividade criada a partir do chat!')}
+            />
+          </Suspense>
+        )}
       </div>
     );
   }
