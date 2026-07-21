@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
@@ -104,16 +105,28 @@ export default function TvAtividadesPage() {
     return () => clearInterval(id);
   }, []);
 
-  // Times pro seletor (leitura do Externo; ordena por nome).
+  // Times pro seletor + espelho pro Externo.
+  // Lê do Cloud (fonte de verdade, atualizada pela aba Times) e replica o
+  // snapshot no Externo pra RPC tv_atividades_ranking casar por team_id.
   useEffect(() => {
     (async () => {
       try {
-        await ensureExternalSession();
-        const { data: res } = await (externalSupabase as any)
-          .from('teams')
-          .select('id, name')
-          .order('name', { ascending: true });
-        setTeams((res || []) as { id: string; name: string }[]);
+        const [{ data: teamsData }, { data: membersData }] = await Promise.all([
+          supabase.from('teams').select('id, name').order('name', { ascending: true }),
+          supabase.from('team_members').select('team_id, user_id'),
+        ]);
+        setTeams((teamsData || []) as { id: string; name: string }[]);
+        if (teamsData && teamsData.length > 0) {
+          try {
+            await ensureExternalSession();
+            await (externalSupabase as any).rpc('sync_teams_snapshot', {
+              p_teams: teamsData.map(t => ({ id: t.id, name: t.name })),
+              p_members: (membersData || []).map(m => ({ team_id: m.team_id, user_id: m.user_id })),
+            });
+          } catch (e) {
+            console.warn('[TvAtividades] sync_teams_snapshot:', e);
+          }
+        }
       } catch (e) {
         console.warn('[TvAtividades] teams load:', e);
       }
