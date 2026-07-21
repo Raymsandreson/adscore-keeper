@@ -23,6 +23,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
+import { TimeOffAssigneeWarning } from '@/components/activities/TimeOffAssigneeWarning';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
@@ -968,6 +969,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               </Popover>
             );
           })()}
+          <TimeOffAssigneeWarning
+            assignedIds={[props.formAssignedTo, ...(props.formCoAssignees || []).map(c => c.user_id)]}
+            deadline={props.formDeadline}
+          />
         </div>
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider inline-flex items-center gap-1 leading-none h-[14px]">

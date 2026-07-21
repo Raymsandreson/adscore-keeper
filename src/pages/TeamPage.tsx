@@ -19,6 +19,7 @@ import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel'
 import { MetricsManager } from '@/components/team/MetricsManager';
 import { AmbassadorCentral } from '@/components/ambassadors/AmbassadorCentral';
 import { AccessProfilesManager } from '@/components/team/AccessProfilesManager';
+import { TimeOffManager } from '@/components/team/TimeOffManager';
 import { cn } from '@/lib/utils';
 import {
   Users,
@@ -38,6 +39,7 @@ import {
   Activity,
   Handshake,
   Shield,
+  CalendarOff,
 } from 'lucide-react';
 
 interface TabDef {
@@ -55,6 +57,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'traffic', label: 'Tráfego', icon: TrendingUp },
   { key: 'members', label: 'Membros', icon: Users },
   { key: 'teams', label: 'Times', icon: UsersRound },
+  { key: 'timeoff', label: 'Férias', icon: CalendarOff },
   { key: 'ambassadors', label: 'Embaixadores', icon: Handshake },
   { key: 'career', label: 'Carreira', icon: GraduationCap },
   { key: 'routines', label: 'Rotinas', icon: CalendarClock },
@@ -74,6 +77,7 @@ function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: 
     case 'traffic': return <TrafficActivityPanel />;
     case 'members': return <TeamManagement />;
     case 'teams': return <TeamsManager />;
+    case 'timeoff': return <TimeOffManager />;
     case 'ambassadors': return <AmbassadorCentral />;
     case 'career': return <CareerPlanManager />;
     case 'routines': return <MemberRoutineManager />;

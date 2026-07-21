@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { supabase as cloudSupabase } from '@/integrations/supabase/client';
-import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, remapToCloud, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { getTimeOffConflicts, describeTimeOff } from '@/lib/timeOff';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -199,6 +200,22 @@ export function useLeadActivities() {
 
       const { data: { user } } = await cloudSupabase.auth.getUser();
       const cloudUserId = user?.id || null;
+
+      // Férias/compensação/folga (aba Férias da equipe): não deixa criar
+      // atividade com prazo dentro de ausência registrada de qualquer responsável.
+      // Roda antes do remap — a tabela member_time_off guarda Cloud UUIDs.
+      const timeOffConflicts = await getTimeOffConflicts(
+        [activity.assigned_to || cloudUserId, ...(activity.assigned_to_ids || [])],
+        activity.deadline,
+      );
+      if (timeOffConflicts.length > 0) {
+        const who = timeOffConflicts
+          .map(c => `${c.user_name || 'Responsável'} — ${describeTimeOff(c)}`)
+          .join('; ');
+        toast.error(`Prazo cai em ausência registrada: ${who}. Escolha outra data ou outro responsável.`, { duration: 8000 });
+        return null;
+      }
+
       const extUserId = await remapToExternal(cloudUserId);
       const extAssignedTo = await remapToExternal(activity.assigned_to || cloudUserId);
 
@@ -379,6 +396,34 @@ export function useLeadActivities() {
   const updateActivity = async (id: string, updates: Partial<LeadActivity>) => {
     try {
       const { data: { user } } = await cloudSupabase.auth.getUser();
+
+      // Mesmo bloqueio de ausência da criação, quando prazo ou responsáveis mudam.
+      // updates traz Cloud UUIDs; a linha no banco guarda ids do Externo (remap de volta).
+      if ('deadline' in updates || 'assigned_to' in updates || 'assigned_to_ids' in updates) {
+        let deadline = 'deadline' in updates ? updates.deadline : undefined;
+        let cloudIds: (string | null)[] = ('assigned_to' in updates || 'assigned_to_ids' in updates)
+          ? [updates.assigned_to || null, ...(updates.assigned_to_ids || [])]
+          : [];
+        if (deadline === undefined || cloudIds.length === 0) {
+          const { data: row } = await externalSupabase
+            .from('lead_activities')
+            .select('deadline, assigned_to, assigned_to_ids')
+            .eq('id', id)
+            .maybeSingle();
+          if (deadline === undefined) deadline = (row as any)?.deadline || null;
+          if (cloudIds.length === 0) {
+            const extIds = [(row as any)?.assigned_to, ...(((row as any)?.assigned_to_ids) || [])].filter(Boolean) as string[];
+            cloudIds = await Promise.all(extIds.map(eid => remapToCloud(eid)));
+          }
+        }
+        const conflicts = await getTimeOffConflicts(cloudIds, deadline);
+        if (conflicts.length > 0) {
+          const who = conflicts.map(c => `${c.user_name || 'Responsável'} — ${describeTimeOff(c)}`).join('; ');
+          toast.error(`Prazo cai em ausência registrada: ${who}. Escolha outra data ou outro responsável.`, { duration: 8000 });
+          return;
+        }
+      }
+
       const extUserId = await remapToExternal(user?.id || null);
 
       // Remap assigned_to se estiver sendo atualizado (UI passa Cloud UUID)
