@@ -7,7 +7,7 @@ import { componentTagger } from "lovable-tagger";
 export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
-    port: 8080,
+    port: Number(process.env.PORT) || 8080,
   },
   // Auth uses Lovable Cloud (env vars from .env) - external DB is accessed via edge functions only
   plugins: [
