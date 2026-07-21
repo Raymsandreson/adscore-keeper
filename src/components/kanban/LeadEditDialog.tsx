@@ -263,6 +263,7 @@ export function LeadEditDialog({
   const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [editingSourceLabel, setEditingSourceLabel] = useState('');
   const [whatsappGroups, setWhatsappGroups] = useState<Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>([]);
+  const [groupRemovalIdx, setGroupRemovalIdx] = useState<number | null>(null);
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
   const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string; instanceId?: string } | null>(null);
@@ -437,9 +438,11 @@ export function LeadEditDialog({
     // Outcome
     setCaseNumber(leadAny.case_number || '');
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
-    // Use lead_status field as primary source of truth
+    // Use lead_status field as primary source of truth.
+    // Exceção: se became_client_date está setado, o lead fechou de fato (tem caso/became client)
+    // — não deixar um lead_status='no_response' dessincronizado mascarar o fechamento.
     const leadStatus = leadAny.lead_status;
-    if (leadStatus === 'no_response') {
+    if (leadStatus === 'no_response' && !leadAny.became_client_date) {
       setLeadOutcome('no_response');
       setLeadOutcomeDate('');
     } else if (leadStatus === 'closed' || leadAny.became_client_date) {
@@ -1123,6 +1126,47 @@ ${scrapeData.content || ''}
     }
   };
 
+  // Remoção de grupo: se o usuário confirmar que é caso fechado, o lead vira Fechado
+  // com data de fechamento = data de criação do grupo. O grupo é MANTIDO vinculado
+  // (lead fechado exige grupo — validação do handleSave).
+  const handleGroupRemovalClosedCase = async () => {
+    const idx = groupRemovalIdx;
+    if (idx === null) return;
+    const g = whatsappGroups[idx];
+    setGroupRemovalIdx(null);
+    // Data de criação do grupo: 1) data no nome do grupo (dd/mm/aa), 2) primeira mensagem do grupo, 3) hoje
+    let closeDate = '';
+    const nameSource = g?.group_name || g?.label || '';
+    const dateMatches = nameSource.match(/(\d{2})\/(\d{2})\/(\d{2,4})/g);
+    const lastDate = dateMatches?.[dateMatches.length - 1];
+    if (lastDate) {
+      const [d, m, y] = lastDate.split('/');
+      const iso = `${y.length === 2 ? `20${y}` : y}-${m}-${d}`;
+      if (!isNaN(new Date(`${iso}T00:00:00`).getTime())) closeDate = iso;
+    }
+    if (!closeDate && g?.group_jid) {
+      try {
+        const bareJid = g.group_jid.replace('@g.us', '');
+        const { data: firstMsg } = await externalSupabase
+          .from('whatsapp_messages')
+          .select('created_at')
+          .eq('phone', bareJid)
+          .order('created_at', { ascending: true })
+          .limit(1);
+        if (firstMsg?.[0]?.created_at) closeDate = String(firstMsg[0].created_at).slice(0, 10);
+      } catch (err) {
+        console.warn('Falha ao buscar primeira mensagem do grupo:', err);
+      }
+    }
+    if (!closeDate) closeDate = new Date().toISOString().slice(0, 10);
+    setLeadOutcome('closed');
+    setLeadOutcomeDate(closeDate);
+    const [yy, mm, dd] = closeDate.split('-');
+    toast.info(`Lead marcado como Fechado (data ${dd}/${mm}/${yy} — criação do grupo).`, {
+      description: 'O grupo foi mantido vinculado: lead fechado exige grupo. Cadastre o processo do caso antes de salvar.',
+    });
+  };
+
   const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
     if (!currentLead) return;
 
@@ -1167,6 +1211,27 @@ ${scrapeData.content || ''}
             description: 'Vincule um contato na aba "Contatos" antes de salvar.',
           });
           setActiveTab('contacts');
+          return;
+        }
+      }
+      // Não existe caso fechado sem processo: se o lead já tem caso, exige ao menos 1 processo.
+      // (Se ainda não tem caso, o fluxo abaixo cria o caso e para na aba Casos — a trava pega no próximo salvar.)
+      const { data: closingCases, error: closingCasesErr } = await externalSupabase
+        .from('legal_cases')
+        .select('id')
+        .eq('lead_id', currentLead.id)
+        .limit(1);
+      if (!closingCasesErr && closingCases && closingCases.length > 0) {
+        const { count: processCount, error: processCountErr } = await externalSupabase
+          .from('lead_processes')
+          .select('id', { count: 'exact', head: true })
+          .eq('lead_id', currentLead.id)
+          .is('deleted_at', null);
+        if (!processCountErr && (processCount ?? 0) === 0) {
+          toast.error('Não existe caso fechado sem processo.', {
+            description: 'Cadastre o processo vinculado ao caso na aba "Casos" antes de salvar o lead como fechado.',
+          });
+          setActiveTab('casos');
           return;
         }
       }
@@ -1715,6 +1780,9 @@ ${scrapeData.content || ''}
           </div>
         </Header>
 
+        {/* Corpo rolável: tudo entre header e footer rola junto; o footer fica fixo na base */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 space-y-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-muted/30">
+
         {/* Resumo fixo: Lead + Casos vinculados */}
         <div className="flex-shrink-0 rounded-md border bg-muted/40 px-3 py-2 space-y-1.5">
           <div className="flex items-start gap-2">
@@ -1870,7 +1938,7 @@ ${scrapeData.content || ''}
         )}
 
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col">
           <div className="w-full flex-shrink-0">
             <TabsList className="flex flex-wrap h-auto gap-1 p-1 bg-muted">
               {isTabVisible('basic') && (
@@ -1946,10 +2014,7 @@ ${scrapeData.content || ''}
             </TabsList>
           </div>
 
-          <div 
-            className="overflow-y-scroll pr-3 mt-4 scrollbar-thin scrollbar-thumb-border scrollbar-track-muted/30" 
-            style={{ height: 'calc(90vh - 280px)', minHeight: '300px' }}
-          >
+          <div className="pr-3 mt-4">
             {/* Basic Info Tab */}
             <TabsContent value="basic" className="space-y-4 mt-0">
               {activeTab === 'basic' && (<>
@@ -2461,7 +2526,7 @@ ${scrapeData.content || ''}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           )}
-                          <Button type="button" variant="ghost" size="sm" onClick={() => setWhatsappGroups(prev => prev.filter((_, i) => i !== idx))}>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setGroupRemovalIdx(idx)}>
                             <X className="h-3 w-3" />
                           </Button>
                         </div>
@@ -3324,8 +3389,9 @@ ${scrapeData.content || ''}
             </TabsContent>
           </div>
         </Tabs>
+        </div>
 
-        <Footer className="mt-4 flex-row sm:justify-between gap-2">
+        <Footer className="mt-4 flex-shrink-0 flex-row sm:justify-between gap-2 border-t pt-4">
           {currentLead ? (
             <Button
               variant="outline"
@@ -3362,6 +3428,40 @@ ${scrapeData.content || ''}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deleting ? 'Excluindo...' : 'Excluir'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={groupRemovalIdx !== null} onOpenChange={(open) => { if (!open) setGroupRemovalIdx(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Esse grupo é de um caso fechado?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {groupRemovalIdx !== null && (
+                  <>Grupo: <strong>{whatsappGroups[groupRemovalIdx]?.group_name || whatsappGroups[groupRemovalIdx]?.label || whatsappGroups[groupRemovalIdx]?.group_jid || 'sem nome'}</strong>.{' '}</>
+                )}
+                Se for caso fechado, o lead será marcado como <strong>Fechado</strong> com a data de criação do grupo, o grupo continuará vinculado e será obrigatório cadastrar o processo do caso antes de salvar.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  const idx = groupRemovalIdx;
+                  setGroupRemovalIdx(null);
+                  if (idx !== null) setWhatsappGroups(prev => prev.filter((_, i) => i !== idx));
+                }}
+              >
+                Não, só remover
+              </Button>
+              <AlertDialogAction
+                onClick={(e) => { e.preventDefault(); handleGroupRemovalClosedCase(); }}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                Sim, é caso fechado
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
