@@ -56,6 +56,17 @@ const FIELD_LABELS: Record<keyof ContactForm, string> = {
 const REQUIRED_FIELDS: Array<keyof ContactForm> = ['full_name', 'phone'];
 const RECOMMENDED_FIELDS: Array<keyof ContactForm> = ['cpf'];
 
+// Muitos "contatos" na base são, na verdade, o registro do GRUPO: o phone guarda
+// o JID (120363…, 18 dígitos) e o nome costuma ser o nome do lead. Boa parte tem
+// whatsapp_group_id NULL, então checar só esse campo não basta. Telefone
+// brasileiro com DDI tem no máximo 13 dígitos — daí o corte em 15.
+function isGroupLikeContact(c: any): boolean {
+  if (!c) return false;
+  if (c.whatsapp_group_id) return true;
+  const digits = String(c.phone || '').replace(/\D/g, '');
+  return /^120363\d{6,}$/.test(digits) || digits.length >= 15;
+}
+
 interface Props {
   open: boolean;
   leadId: string;
@@ -92,20 +103,22 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
         try { await ensureExternalSession(); } catch { /* segue como anon */ }
 
         // Contato já vinculado ao lead? Completa em vez de duplicar.
+        // Pega TODOS os vínculos e descarta os que são registro de grupo — senão o
+        // formulário abre com o nome do lead e o JID do grupo no campo Telefone, e
+        // o "Confirmar e atualizar" sobrescreveria o registro do grupo.
         let base: ContactForm = { ...EMPTY_FORM };
         try {
           const { data: links } = await (externalSupabase as any)
             .from('contact_leads')
             .select('contact_id')
-            .eq('lead_id', leadId)
-            .limit(1);
-          const cid = links?.[0]?.contact_id;
-          if (cid) {
-            const { data: c } = await externalSupabase
+            .eq('lead_id', leadId);
+          const cids = (links || []).map((l: any) => l.contact_id).filter(Boolean);
+          if (cids.length > 0) {
+            const { data: rows } = await externalSupabase
               .from('contacts')
-              .select('id, full_name, phone, cpf, rg, birth_date, email, profession, cep, street, street_number, complement, neighborhood, city, state, notes')
-              .eq('id', cid)
-              .maybeSingle();
+              .select('id, full_name, phone, whatsapp_group_id, cpf, rg, birth_date, email, profession, cep, street, street_number, complement, neighborhood, city, state, notes')
+              .in('id', cids);
+            const c = (rows || []).find((row: any) => !isGroupLikeContact(row));
             if (c) {
               if (!cancelled) setExistingContactId((c as any).id);
               (Object.keys(EMPTY_FORM) as Array<keyof ContactForm>).forEach((k) => {
@@ -227,6 +240,12 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
   const handleSave = async () => {
     if (missingRequired.length > 0) {
       toast.error(`Preencha para confirmar: ${missingRequired.map(k => FIELD_LABELS[k]).join(', ')}`);
+      return;
+    }
+    if (isGroupLikeContact({ phone: form.phone })) {
+      toast.error('O campo Telefone está com o ID do grupo, não com o número do cliente.', {
+        description: 'Informe o telefone de quem contratou — o número aparece na lista de membros do grupo.',
+      });
       return;
     }
     setSaving(true);
