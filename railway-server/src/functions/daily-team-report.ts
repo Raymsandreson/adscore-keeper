@@ -15,12 +15,14 @@
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { anthropicChat } from '../lib/anthropic';
+import { aiChat } from '../lib/gemini';
 
 // Fallback se org_directors estiver vazia
 const FALLBACK_DIRECTOR_ID = process.env.REPORT_DIRECTOR_USER_ID || '79c5c9d1-8629-4831-83cf-c86a7178521c';
 const REPORT_SENDER_NAME = '🤖 Relatório Diário';
-const REPORT_MODEL = process.env.REPORT_MODEL || 'claude-sonnet-4-6';
+// aiChat roteia por prefixo: google/* → Gemini (GOOGLE_AI_API_KEY, com crédito),
+// claude-* → Anthropic (sem crédito em jul/2026). Trocar = setar REPORT_MODEL.
+const REPORT_MODEL = process.env.REPORT_MODEL || 'google/gemini-2.5-flash';
 const MAX_MSGS_PER_TEAM = 120;
 
 interface MemberIdentity {
@@ -219,7 +221,7 @@ export const handler = async (req: Request, res: Response) => {
           ...(teamMsgs.length ? teamMsgs : ['(nenhuma mensagem nas últimas 24h)']),
         ].join('\n');
 
-        const completion = await anthropicChat({
+        const completion = await aiChat({
           model: REPORT_MODEL,
           max_tokens: 1500,
           temperature: 0.3,
@@ -261,7 +263,7 @@ export const handler = async (req: Request, res: Response) => {
 
     // Relatório de diretoria — avaliação dos gestores
     try {
-      const completion = await anthropicChat({
+      const completion = await aiChat({
         model: REPORT_MODEL,
         max_tokens: 1800,
         temperature: 0.3,
