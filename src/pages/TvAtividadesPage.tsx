@@ -19,6 +19,7 @@ interface RankRow {
   concluidas: number;
   atrasadas: number;
   aprov_pct: number | null;
+  chat_resp_seg: number | null;
 }
 interface Resumo {
   trabalhando_h: number;
@@ -60,6 +61,13 @@ function cap(s: string) {
 }
 function aprovLabel(v: number | null) {
   return v == null ? '—' : `${v}%`;
+}
+// Média de resposta no chat interno, em segundos → rótulo curto pro telão.
+function chatRespLabel(s: number | null | undefined) {
+  if (s == null) return '—';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`;
 }
 
 export default function TvAtividadesPage() {
@@ -206,6 +214,8 @@ export default function TvAtividadesPage() {
           <span>2º <span className="text-emerald-400">Concluídas</span></span>
           <span className="text-white/30">·</span>
           <span>3º <span className="text-rose-400">Menos Atrasadas</span></span>
+          <span className="text-white/30">·</span>
+          <span>4º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Controles (escondem no telão) ===== */}
@@ -322,7 +332,8 @@ function PodiumSpot({ row, place }: { row: RankRow | undefined; place: 1 | 2 | 3
         <div className="mt-1 text-[10px] md:text-xs text-white/60">
           <span className="text-sky-400 font-bold">{row.passos}</span> passos ·{' '}
           <span className="text-rose-400 font-bold">{row.atrasadas}</span> atras. ·{' '}
-          <span className="text-emerald-400 font-bold">{aprovLabel(row.aprov_pct)}</span> aprov.
+          <span className="text-emerald-400 font-bold">{aprovLabel(row.aprov_pct)}</span> aprov. ·{' '}
+          <span className="text-violet-400 font-bold">{chatRespLabel(row.chat_resp_seg)}</span> chat
         </div>
       </div>
 
@@ -345,6 +356,10 @@ function ListRow({ rank, row }: { rank: number; row: RankRow }) {
       <Stat value={row.passos} label="passos" color="text-sky-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" />
+      <div className="w-14 md:w-20 text-right">
+        <span className="text-base md:text-xl font-black tabular-nums text-violet-400">{chatRespLabel(row.chat_resp_seg)}</span>
+        <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">chat</span>
+      </div>
       <div className="w-12 md:w-16 text-right">
         <div className="text-base md:text-xl font-black text-amber-400 tabular-nums">{aprovLabel(row.aprov_pct)}</div>
       </div>
@@ -377,7 +392,7 @@ function Footer({ resumo, participantes }: { resumo: Resumo | null; participante
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Passos</b>: contagem dos checklists marcados no período — com empate, a ordem cai pras concluídas, depois menos atrasadas. {participantes} no ranking.</span>
+          <span><b className="text-white/80">Passos</b>: contagem dos checklists marcados no período — com empate, a ordem cai pras concluídas, depois menos atrasadas, e por fim quem responde o chat interno mais rápido (média do período; respostas em até 8h). {participantes} no ranking.</span>
         </p>
       </div>
     </div>

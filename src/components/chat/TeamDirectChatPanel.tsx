@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search,
+  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer,
 } from 'lucide-react';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
 import { cloudFunctions } from '@/lib/functionRouter';
@@ -198,6 +198,58 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       lastOutboundText: lastOutbound ? String(lastOutbound.content).trim() : '',
       lastClientText: lastOther ? String(lastOther.content).trim() : '',
     };
+  };
+
+  // ===== Tempo de resposta do chat interno =====
+  // A média é calculada no banco (RPC team_chat_my_response_avg, 30 dias,
+  // respostas em até 8h) — mesmo número que entra como critério de desempate
+  // no ranking de atividades (/tv/atividades).
+  const [myAvgResp, setMyAvgResp] = useState<number | null>(null);
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const { data } = await (externalSupabase.rpc as any)('team_chat_my_response_avg', {
+          _user_id: user.id,
+        });
+        setMyAvgResp(typeof data === 'number' ? data : null);
+      } catch (e) {
+        console.error('[TeamDirectChatPanel] média de resposta:', e);
+      }
+    })();
+  }, [user?.id, activeConversationId]);
+
+  const fmtAvg = (s: number | null) => {
+    if (s == null) return '—';
+    if (s < 60) return `${s}s`;
+    if (s < 3600) return `${Math.round(s / 60)} min`;
+    return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`;
+  };
+
+  // Cronômetro: se a última mensagem da conversa aberta é de outra pessoa,
+  // conta o tempo até eu responder — é esse intervalo que vira a média.
+  const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
+  const awaitingReply = !!(activeConversationId && lastMsg && lastMsg.sender_id !== user?.id);
+  const [awaitingElapsed, setAwaitingElapsed] = useState(0);
+  useEffect(() => {
+    if (!awaitingReply || !lastMsg) {
+      setAwaitingElapsed(0);
+      return;
+    }
+    const t0 = new Date(lastMsg.created_at).getTime();
+    const update = () => setAwaitingElapsed(Math.max(0, Math.floor((Date.now() - t0) / 1000)));
+    update();
+    const id = setInterval(update, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [awaitingReply, lastMsg?.id]);
+
+  const fmtElapsed = (s: number) => {
+    if (s >= 3600) {
+      return `${Math.floor(s / 3600)}:${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    }
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
 
   const handleSend = async () => {
@@ -542,6 +594,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             </AvatarFallback>
           </Avatar>
           <span className="text-sm font-medium truncate">{convTitle}</span>
+          <span
+            className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
+            title="Sua média de tempo pra responder o chat interno (30 dias, respostas em até 8h). Conta como critério de desempate no ranking de atividades."
+          >
+            <Timer className="h-3 w-3" /> média {fmtAvg(myAvgResp)}
+          </span>
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
@@ -674,6 +732,21 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               requestAnimationFrame(() => messageInputRef.current?.focus());
             }}
           />
+
+          {awaitingReply && !isRecording && (
+            <div className="px-3 py-1.5 border-b bg-amber-500/10 flex items-center gap-2">
+              <Timer className="h-3.5 w-3.5 text-amber-500 animate-pulse shrink-0" />
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                Aguardando sua resposta há <b className="tabular-nums">{fmtElapsed(awaitingElapsed)}</b>
+              </span>
+              <span
+                className="ml-auto text-[10px] text-muted-foreground shrink-0"
+                title="Média dos últimos 30 dias (respostas em até 8h). Entra no ranking de atividades como critério de desempate."
+              >
+                sua média: <b>{fmtAvg(myAvgResp)}</b>
+              </span>
+            </div>
+          )}
 
           {replyingTo && (
             <div className="px-3 py-1.5 border-b bg-muted/40 flex items-start gap-2">
@@ -906,7 +979,15 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   return (
     <div className="flex flex-col h-full">
       <div className="shrink-0 flex items-center justify-between px-3 py-2 border-b bg-muted/30">
-        <span className="text-xs font-medium text-muted-foreground">Conversas</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="text-xs font-medium text-muted-foreground">Conversas</span>
+          <span
+            className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/80 truncate"
+            title="Sua média de tempo pra responder o chat interno (30 dias, respostas em até 8h). Conta como critério de desempate no ranking de atividades."
+          >
+            <Timer className="h-3 w-3 shrink-0" /> média {fmtAvg(myAvgResp)}
+          </span>
+        </div>
         <div className="flex gap-1">
           <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={ensureGeneralChat}>
             <Users className="h-3.5 w-3.5" /> Geral
