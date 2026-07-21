@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, Sparkles, UserPlus, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 interface ContactForm {
   full_name: string;
@@ -57,14 +58,15 @@ const REQUIRED_FIELDS: Array<keyof ContactForm> = ['full_name', 'phone'];
 const RECOMMENDED_FIELDS: Array<keyof ContactForm> = ['cpf'];
 
 // Muitos "contatos" na base são, na verdade, o registro do GRUPO: o phone guarda
-// o JID (120363…, 18 dígitos) e o nome costuma ser o nome do lead. Boa parte tem
-// whatsapp_group_id NULL, então checar só esse campo não basta. Telefone
-// brasileiro com DDI tem no máximo 13 dígitos — daí o corte em 15.
+// o JID (120363…, 18 dígitos; ou o formato antigo, 22 dígitos) e o nome costuma
+// ser o nome do lead. Boa parte tem whatsapp_group_id NULL, então checar só esse
+// campo não basta — daí o isWhatsAppGroupId, que corta em 17 dígitos.
+// Não usar um corte menor: a base tem telefone internacional legítimo com 15
+// dígitos (ex.: China, DDI 86), que seria classificado como grupo por engano.
 function isGroupLikeContact(c: any): boolean {
   if (!c) return false;
   if (c.whatsapp_group_id) return true;
-  const digits = String(c.phone || '').replace(/\D/g, '');
-  return /^120363\d{6,}$/.test(digits) || digits.length >= 15;
+  return isWhatsAppGroupId(c.phone);
 }
 
 interface Props {
@@ -177,7 +179,16 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
         let lastReason: string | null = null;
         for (const instanceName of rankedInstances.slice(0, 3)) {
           const { data, error } = await cloudFunctions.invoke<any>('extract-conversation-data', {
-            body: { phone: bareJid, instance_name: instanceName, limit_messages: 500 },
+            // include_documents: lê também as imagens/PDFs do grupo (RG, procuração,
+            // comprovante) via OCR — é de onde saem profissão, cidade/UF e endereço
+            // quando o cliente só mandou o documento sem digitar nada.
+            body: {
+              phone: bareJid,
+              instance_name: instanceName,
+              targetType: 'contact',
+              limit_messages: 500,
+              include_documents: true,
+            },
           });
           if (cancelled) return;
           if (error) { lastReason = error.message || 'erro na extração'; continue; }
