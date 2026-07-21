@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
 // aplica a regra de ordenação: 1º PASSOS → 2º CONCLUÍDAS → 3º menos ATRASADAS
-// → 4º RESPOSTA NO CHAT → 5º mais TEMPO ATIVO → 6º menos OCIOSO.
+// → 4º mais TEMPO ATIVO → 5º menos OCIOSO → 6º RESPOSTA NO CHAT.
 // Feito para rodar num telão em fullscreen; auto-atualiza sozinho.
 
 type Period = 'hoje' | 'semana' | 'mes';
@@ -228,11 +228,11 @@ export default function TvAtividadesPage() {
           <span className="text-white/30">·</span>
           <span>3º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>4º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>4º <span className="text-teal-400">Mais Tempo Ativo</span></span>
           <span className="text-white/30">·</span>
-          <span>5º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>5º <span className="text-orange-400">Menos Ocioso</span></span>
           <span className="text-white/30">·</span>
-          <span>6º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>6º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Controles (escondem no telão) ===== */}
@@ -351,9 +351,9 @@ function PodiumSpot({ row, place }: { row: RankRow | undefined; place: 1 | 2 | 3
           <span className="text-emerald-400 font-bold">{row.concluidas}</span> concl. ·{' '}
           <span className="text-rose-400 font-bold">{row.atrasadas}</span> atras. ·{' '}
           <span className="text-emerald-400 font-bold">{aprovLabel(row.aprov_pct)}</span> aprov. ·{' '}
-          <span className="text-violet-400 font-bold">{chatRespLabel(row.chat_resp_seg)}</span> chat ·{' '}
           <span className="text-teal-400 font-bold">{tempoLabel(row.ativo_seg)}</span> ativo ·{' '}
-          <span className="text-orange-400 font-bold">{tempoLabel(row.ocioso_seg)}</span> ocioso
+          <span className="text-orange-400 font-bold">{tempoLabel(row.ocioso_seg)}</span> ocioso ·{' '}
+          <span className="text-violet-400 font-bold">{chatRespLabel(row.chat_resp_seg)}</span> chat
         </div>
       </div>
 
@@ -377,16 +377,16 @@ function ListRow({ rank, row }: { rank: number; row: RankRow }) {
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" />
       <div className="w-14 md:w-20 text-right">
-        <span className="text-base md:text-xl font-black tabular-nums text-violet-400">{chatRespLabel(row.chat_resp_seg)}</span>
-        <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">chat</span>
-      </div>
-      <div className="w-14 md:w-20 text-right">
         <span className="text-base md:text-xl font-black tabular-nums text-teal-400">{tempoLabel(row.ativo_seg)}</span>
         <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">ativo</span>
       </div>
       <div className="w-14 md:w-20 text-right">
         <span className="text-base md:text-xl font-black tabular-nums text-orange-400">{tempoLabel(row.ocioso_seg)}</span>
         <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">ocioso</span>
+      </div>
+      <div className="w-14 md:w-20 text-right">
+        <span className="text-base md:text-xl font-black tabular-nums text-violet-400">{chatRespLabel(row.chat_resp_seg)}</span>
+        <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">chat</span>
       </div>
       <div className="w-12 md:w-16 text-right">
         <div className="text-base md:text-xl font-black text-amber-400 tabular-nums">{aprovLabel(row.aprov_pct)}</div>
@@ -420,7 +420,7 @@ function Footer({ resumo, participantes }: { resumo: Resumo | null; participante
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Passos</b>: contagem dos checklists marcados no período — com empate, a ordem cai pras concluídas, depois menos atrasadas, quem responde o chat interno mais rápido (média do período; respostas em até 8h), mais tempo ativo no cronômetro e, por fim, menos tempo ocioso. {participantes} no ranking.</span>
+          <span><b className="text-white/80">Passos</b>: contagem dos checklists marcados no período — com empate, a ordem cai pras concluídas, depois menos atrasadas, mais tempo ativo no cronômetro, menos tempo ocioso e, por fim, quem responde o chat interno mais rápido (média do período; respostas em até 8h). {participantes} no ranking.</span>
         </p>
       </div>
     </div>
