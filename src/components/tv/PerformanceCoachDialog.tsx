@@ -185,6 +185,8 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
           (okChannels.length ? `Enviado no ${okChannels.join(' e ')}, mas ` : '') + fails.join(' · ')
         );
       }
+      // Erro global do servidor sem detalhe por canal — não pode virar "Enviado".
+      if (data.success === false) throw new Error(data.error || 'Falha ao enviar');
       setSentAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Falha ao enviar');

@@ -122,6 +122,13 @@ async function expandIds(anyIds: string[]): Promise<string[]> {
   return [...all];
 }
 
+/** Traduz um id do Externo pro UUID do Cloud — o chat interno guarda membros com Cloud UUID. */
+async function toCloudUuid(id: string): Promise<string> {
+  const { data } = await supabase
+    .from('auth_uuid_mapping').select('cloud_uuid').eq('ext_uuid', id).maybeSingle();
+  return data?.cloud_uuid || id;
+}
+
 interface PrevMetrics { passos: number; concluidas: number; ativo_seg: number; ocioso_seg: number }
 
 /**
@@ -296,20 +303,46 @@ async function findOrCreateDirectConversation(a: string, b: string): Promise<str
   return created.id;
 }
 
-/** Manda texto pro WhatsApp pessoal do membro via UazAPI (1ª instância ativa). */
-async function sendWhatsAppToMember(toUserId: string, text: string): Promise<{ ok: boolean; error?: string }> {
-  const { data: profile } = await supabase
-    .from('profiles').select('phone').eq('user_id', toUserId).maybeSingle();
-  const phone = (profile?.phone || '').replace(/\D/g, '');
+/** Normaliza BR pra comparação: 55 + DDD + últimos 8 dígitos (ignora o nono dígito). */
+function phoneKey(raw: string | null | undefined): string | null {
+  const d = String(raw || '').replace(/\D/g, '');
+  if (d.length < 10) return null;
+  const local = d.startsWith('55') ? d.slice(2) : d;
+  return `55${local.slice(0, 2)}${local.slice(-8)}`;
+}
+
+/**
+ * Manda texto pro WhatsApp pessoal do membro via UazAPI.
+ * A instância de saída é a do PRÓPRIO remetente (owner_phone bate com o telefone
+ * do perfil dele) ou a definida em COACH_WHATSAPP_INSTANCE — nunca uma instância
+ * aleatória: a mensagem fala em nome do diretor.
+ */
+async function sendWhatsAppToMember(toUserId: string, text: string, senderId: string): Promise<{ ok: boolean; error?: string }> {
+  const memberIds = await expandIds([toUserId]);
+  const { data: memberProfiles } = await supabase
+    .from('profiles').select('phone').in('user_id', memberIds);
+  const phone = (memberProfiles || []).map((p) => (p.phone || '').replace(/\D/g, '')).find(Boolean) || '';
   if (!phone) return { ok: false, error: 'membro sem telefone cadastrado no perfil' };
 
   const { data: instances } = await supabase
     .from('whatsapp_instances')
-    .select('instance_token, base_url')
-    .eq('is_active', true)
-    .limit(1);
-  const inst = instances?.[0];
-  if (!inst) return { ok: false, error: 'nenhuma instância de WhatsApp ativa' };
+    .select('instance_name, instance_token, base_url, owner_phone')
+    .eq('is_active', true);
+  const envName = process.env.COACH_WHATSAPP_INSTANCE;
+  let inst = envName ? (instances || []).find((i) => i.instance_name === envName) : undefined;
+  if (!inst) {
+    const senderIds = await expandIds([senderId]);
+    const { data: senderProfiles } = await supabase
+      .from('profiles').select('phone').in('user_id', senderIds);
+    const senderKey = (senderProfiles || []).map((p) => phoneKey(p.phone)).find(Boolean);
+    if (senderKey) inst = (instances || []).find((i) => phoneKey(i.owner_phone) === senderKey);
+  }
+  if (!inst) {
+    return {
+      ok: false,
+      error: 'instância do remetente não encontrada — cadastre o owner_phone da sua instância ou defina COACH_WHATSAPP_INSTANCE',
+    };
+  }
 
   const base = (inst.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
   const resp = await fetch(`${base}/send/text`, {
@@ -337,10 +370,14 @@ async function send(req: Request, res: Response) {
 
   if (via_chat) {
     try {
-      const convId = await findOrCreateDirectConversation(sender_id, to_user_id);
+      // O chat interno guarda membros com o UUID do Cloud; to_user_id pode vir
+      // do profiles do Externo (foi o bug que mandava a msg pra conversa invisível).
+      const chatSenderId = await toCloudUuid(sender_id);
+      const chatToId = await toCloudUuid(to_user_id);
+      const convId = await findOrCreateDirectConversation(chatSenderId, chatToId);
       const { error } = await supabase.from('team_messages').insert({
         conversation_id: convId,
-        sender_id,
+        sender_id: chatSenderId,
         sender_name: sender_name || null,
         content: message,
         message_type: 'text',
@@ -356,7 +393,7 @@ async function send(req: Request, res: Response) {
 
   if (via_whatsapp) {
     try {
-      results.whatsapp = await sendWhatsAppToMember(to_user_id, message);
+      results.whatsapp = await sendWhatsAppToMember(to_user_id, message, sender_id);
     } catch (err) {
       results.whatsapp = { ok: false, error: err instanceof Error ? err.message : 'falha no WhatsApp' };
     }
