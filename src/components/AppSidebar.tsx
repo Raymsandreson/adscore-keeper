@@ -116,7 +116,6 @@ export function AppSidebar() {
 
   const quickLinks: NavItem[] = [
     { id: "activities", label: "Atividades", icon: <ClipboardList className="h-4 w-4" />, path: "/", color: "text-emerald-600" },
-    { id: "tv-atividades", label: "Telão de Atividades", icon: <Trophy className="h-4 w-4" />, path: "/tv/atividades", color: "text-amber-500" },
     { id: "noticias", label: "Notícias", icon: <Newspaper className="h-4 w-4" />, path: "/noticias", color: "text-amber-500" },
     { id: "calls", label: "Ligações", icon: <Phone className="h-4 w-4" />, path: "/calls", color: "text-blue-500" },
     

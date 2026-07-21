@@ -70,6 +70,7 @@ export default function TvAtividadesPage() {
   const [teamId, setTeamId] = useState<string>(params.get('team') || ''); // '' = todos os times
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<Payload | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(false);
   const [tv, setTv] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -119,6 +120,7 @@ export default function TvAtividadesPage() {
       });
       if (error) throw error;
       setData((res || { ranking: [], resumo: null, gerado_em: '' }) as Payload);
+      setUpdatedAt(new Date());
     } catch (e) {
       console.error('[TvAtividades] load error:', e);
     } finally {
@@ -180,6 +182,11 @@ export default function TvAtividadesPage() {
               <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400" />
             </span>
             <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Ao Vivo</span>
+            {updatedAt && (
+              <span className="text-[10px] text-white/40 tabular-nums" title="Atualiza sozinho a cada 45 segundos">
+                atualizado {format(updatedAt, 'HH:mm:ss')}
+              </span>
+            )}
           </div>
 
           <div className="text-right shrink-0">

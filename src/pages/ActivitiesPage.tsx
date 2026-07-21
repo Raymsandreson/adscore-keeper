@@ -3065,6 +3065,14 @@ const ActivitiesPage = () => {
               <List className="h-3.5 w-3.5" />
               Lista
             </button>
+            <button
+              onClick={() => navigate('/tv/atividades')}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all bg-amber-400 text-slate-900 shadow-sm hover:bg-amber-300"
+              title="Telão de Atividades — ranking ao vivo do time (modo TV)"
+            >
+              <Trophy className="h-3.5 w-3.5" />
+              Telão
+            </button>
           </div>
           <Button variant="ghost" size="sm" className="h-8 text-primary-foreground hover:bg-primary-foreground/10 gap-1" onClick={() => setFeedbackFunnelOpen(true)} title="Feedbacks das suas atividades (você observa)">
             💬 Feedbacks
