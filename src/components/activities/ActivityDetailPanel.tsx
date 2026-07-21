@@ -28,6 +28,7 @@ import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
+import { closedCaseAskedLeads } from '@/components/activities/ClosedCaseAskGate';
 import type { Lead } from '@/hooks/useLeads';
 import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
 
@@ -114,8 +115,8 @@ const statusActivityColors: Record<string, string> = {
   concluida: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
 };
 
-// Leads já perguntados ("é caso fechado?") nesta sessão — evita repetir a cada atividade aberta.
-const closedCaseAskedLeads = new Set<string>();
+// Leads já perguntados ("é caso fechado?") nesta sessão vivem em closedCaseAskedLeads
+// (importado do ClosedCaseAskGate), para não repetir a pergunta entre as duas telas.
 
 function LinkContactButton({ leadId, onLinked }: { leadId: string; onLinked: () => void }) {
   const [open, setOpen] = useState(false);

@@ -52,6 +52,7 @@ import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
 import { ActivityDetailPanel } from '@/components/activities/ActivityDetailPanel';
+import { ClosedCaseAskGate } from '@/components/activities/ClosedCaseAskGate';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
@@ -343,6 +344,10 @@ const ActivitiesPage = () => {
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
+  // Retorno agendado (datetime-local, fuso do navegador) — vira callback_at (ISO) no banco.
+  const [formCallbackAt, setFormCallbackAt] = useState('');
+  // Gravação automática ao chegar via popup "Ligar agora" (?callNow=1).
+  const [callRecorderAutoStart, setCallRecorderAutoStart] = useState(false);
   const [formNotes, setFormNotes] = useState('');
   const [formRepeatWeekDays, setFormRepeatWeekDays] = useState<number[]>([]);
   const [formStatus, setFormStatus] = useState('pendente');
@@ -767,6 +772,7 @@ const ActivitiesPage = () => {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     setFormDeadline(todayStr);
     setFormNotificationDate(todayStr);
+    setFormCallbackAt('');
     setFormNotes('');
     setFormRepeatWeekDays([]);
     setFormStatus('pendente');
@@ -1014,6 +1020,7 @@ const ActivitiesPage = () => {
         observer_names: observers.map(o => o.full_name),
       } : {}),
       ...(groupId ? { assignment_group_id: groupId } : {}),
+      ...(formCallbackAt ? { callback_at: new Date(formCallbackAt).toISOString() } : {}),
     };
 
     // Variações de data: dias da semana repetidos ou o prazo único do form.
@@ -1193,6 +1200,7 @@ const ActivitiesPage = () => {
     await hydrateCoAssignees(activity);
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
+    setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
@@ -1275,17 +1283,25 @@ const ActivitiesPage = () => {
     if (openActivityId && activities.length > 0) {
       // Veio de uma menção do Chat da Equipe → abre o chat junto pra responder
       const cameFromMention = searchParams.has('highlightMsg');
+      // Veio do popup/WhatsApp de retorno agendado ("Ligar agora") → abre já gravando a ligação.
+      const callNow = searchParams.get('callNow') === '1';
       const clearOpenActivityParam = () => {
         const newParams = new URLSearchParams(searchParams);
         newParams.delete('openActivity');
         newParams.delete('highlightMsg');
+        newParams.delete('callNow');
         setSearchParams(newParams, { replace: true });
+      };
+      const startCallNow = () => {
+        setCallRecorderAutoStart(true);
+        setCallRecorderOpen(true);
       };
 
       const activity = activities.find(a => a.id === openActivityId);
       if (activity) {
         handleOpenEdit(activity);
         if (cameFromMention) setTeamChatOpen(true);
+        if (callNow) startCallNow();
         clearOpenActivityParam();
         return;
       }
@@ -1305,6 +1321,7 @@ const ActivitiesPage = () => {
 
           handleOpenEdit(data as LeadActivity);
           if (cameFromMention) setTeamChatOpen(true);
+          if (callNow) startCallNow();
           clearOpenActivityParam();
         });
     }
@@ -1358,6 +1375,15 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
       feedback: formFeedback || null,
       rescheduled_to: formRescheduledTo || null,
+      // Só entra no update quando MUDOU — senão todo save zeraria o carimbo
+      // callback_notified_at e o lembrete dispararia de novo.
+      ...(() => {
+        const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
+        const prevRaw = (selectedActivity as any).callback_at || null;
+        const prevMs = prevRaw ? new Date(prevRaw).getTime() : null;
+        const nextMs = nextIso ? new Date(nextIso).getTime() : null;
+        return prevMs !== nextMs ? { callback_at: nextIso } : {};
+      })(),
       ...buildAssigneesPayload(),
       ...buildObserversPayload(),
     } as any);
@@ -1705,6 +1731,7 @@ const ActivitiesPage = () => {
     await hydrateCoAssignees(activity);
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
+    setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
@@ -2820,6 +2847,7 @@ const ActivitiesPage = () => {
       formStatus={formStatus} setFormStatus={setFormStatus}
       formPriority={formPriority} setFormPriority={setFormPriority}
       formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
+      formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
       formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
       formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
       formLeadId={formLeadId} formLeadName={formLeadName}
@@ -2889,6 +2917,10 @@ const ActivitiesPage = () => {
   // normal quanto no Play Work — antes, no workflow, os botões não tinham onde abrir.
   const linkedRecordSheets = (
     <>
+      {/* Pergunta "é caso fechado?" ao abrir atividade de lead com grupo e sem resultado.
+          O ActivityDetailPanel (que já tinha o gatilho) não é montado nesta tela. */}
+      <ClosedCaseAskGate leadId={formLeadId} leadName={formLeadName} />
+
       {/* Lead Edit Sheet */}
       {formLeadId && (
         <LeadEditDialog
@@ -4792,7 +4824,8 @@ const ActivitiesPage = () => {
                   <ActivityCallRecorder
                         triggerClassName="sr-only"
                         open={callRecorderOpen}
-                        onOpenChange={setCallRecorderOpen}
+                        onOpenChange={(o) => { setCallRecorderOpen(o); if (!o) setCallRecorderAutoStart(false); }}
+                        autoStart={callRecorderAutoStart}
                         activityId={selectedActivity?.id}
                         leadId={formLeadId}
                         caseId={formCaseId}
