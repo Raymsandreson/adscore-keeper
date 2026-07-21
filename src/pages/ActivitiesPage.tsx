@@ -395,6 +395,8 @@ const ActivitiesPage = () => {
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
+  // Aba inicial do sheet do lead: 'casos' quando aberto pelo botão Caso do workflow.
+  const [leadSheetTab, setLeadSheetTab] = useState<string | undefined>(undefined);
   const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null; private_phone?: string | null } | null>(null);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   // Áudio da gravação (Preenchimento por Áudio) pendente pra envio direto no botão WA.
@@ -2892,6 +2894,7 @@ const ActivitiesPage = () => {
         <LeadEditDialog
           open={showLeadSheet}
           onOpenChange={setShowLeadSheet}
+          initialTab={leadSheetTab}
           lead={{ id: formLeadId, lead_name: formLeadName } as any}
           onSave={async (leadId, updates) => {
             const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
@@ -3102,7 +3105,7 @@ const ActivitiesPage = () => {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs gap-1"
-                      onClick={() => setShowLeadSheet(true)}
+                      onClick={() => { setLeadSheetTab(undefined); setShowLeadSheet(true); }}
                       title={formLeadName ? `Abrir lead: ${formLeadName}` : 'Abrir lead'}
                     >
                       <User className="h-3 w-3" /> Lead
@@ -3113,7 +3116,12 @@ const ActivitiesPage = () => {
                       variant="outline"
                       size="sm"
                       className="h-7 text-xs gap-1"
-                      onClick={() => window.open(`/cases/${formCaseId}`, '_blank')}
+                      onClick={() => {
+                        // Aba lateral: sheet do lead direto na aba Casos (não há sheet
+                        // próprio de caso). Sem lead vinculado, cai pra página do caso.
+                        if (formLeadId) { setLeadSheetTab('casos'); setShowLeadSheet(true); }
+                        else window.open(`/cases/${formCaseId}`, '_blank');
+                      }}
                       title={formCaseTitle ? `Abrir caso: ${formCaseTitle}` : 'Abrir caso'}
                     >
                       <Briefcase className="h-3 w-3" /> Caso
@@ -4699,7 +4707,7 @@ const ActivitiesPage = () => {
                         {formLeadId && (
                           <button
                             type="button"
-                            onClick={() => setShowLeadSheet(true)}
+                            onClick={() => { setLeadSheetTab(undefined); setShowLeadSheet(true); }}
                             className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary"
                             title="Editar lead"
                           >
