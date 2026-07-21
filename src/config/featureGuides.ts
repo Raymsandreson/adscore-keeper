@@ -16,11 +16,13 @@ export interface FeatureGuideItem {
    */
   selector?: string;
   /**
-   * Texto alternativo pra localizar o elemento (quando o label do passo
-   * não é o texto literal do botão — ex.: label "Pílulas de navegação",
-   * anchor "Produtividade"). Também casa com placeholder/aria-label/title.
+   * Texto(s) pra localizar o elemento (quando o label do passo não é o texto
+   * literal do botão — ex.: label "Pílulas de navegação", anchor "Produtividade").
+   * Também casa com placeholder/aria-label/title. Aceita lista: tenta em ordem —
+   * útil pra recurso oculto, apontando como fallback o botão que revela ele
+   * (ex.: ["Preencher com", "Nova Atividade"]).
    */
-  anchor?: string;
+  anchor?: string | string[];
 }
 
 export interface FeatureGuideDef {
@@ -44,7 +46,7 @@ export const featureGuides: FeatureGuideDef[] = [
     intro: "Sua central de trabalho diário: criar, cronometrar e concluir atividades vinculadas a Lead, Caso, Processo ou Contato.",
     items: [
       { label: "Nova Atividade", description: "abre a ficha de criação; vincule Lead/Caso e defina Tipo e Assessor" },
-      { label: "Preencher com → Preenchimento por Áudio", description: "grava a ligação ou seu ditado e a IA transcreve e preenche os campos sozinha" },
+      { label: "Preencher com → Preenchimento por Áudio", anchor: ["Preencher com", "Nova Atividade"], description: "grava a ligação ou seu ditado e a IA transcreve e preenche os campos sozinha" },
       { label: "Chat IA", description: "cria a atividade conversando com a IA" },
       { label: "Blocos / Lista", description: "alterna a visualização das atividades" },
       { label: "Telão (troféu)", description: "abre o ranking ao vivo do time (/tv/atividades)" },
@@ -52,8 +54,8 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "💬 Feedbacks", description: "feedbacks das atividades que você observa" },
       { label: "Chips de filtro", anchor: "Assessor", description: "Assessor, Tipo, Fluxo, Lead, Contato, Caso, 'Cronômetro ativo' e busca; 'Limpar' zera tudo" },
       { label: "Calendário lateral", description: "selecionar dias vira filtro; tem botão de compartilhar o resumo do dia" },
-      { label: "Concluir / Concluir + próxima", description: "encerra a atividade (e o cronômetro) e já abre a seguinte" },
-      { label: "Enviar ao Grupo / Assessor", description: "monta a mensagem da atividade e envia no WhatsApp, com preview editável" },
+      { label: "Concluir / Concluir + próxima", anchor: ["Concluir", "Nova Atividade"], description: "encerra a atividade (e o cronômetro) e já abre a seguinte" },
+      { label: "Enviar ao Grupo / Assessor", anchor: ["Enviar ao Grupo", "Nova Atividade"], description: "monta a mensagem da atividade e envia no WhatsApp, com preview editável" },
       { label: "Cronômetro automático", description: "abrir uma atividade sua liga o cronômetro sozinho; abrir a de outro assessor é só consulta" },
     ],
     tip: "O jeito mais fácil de registrar é gravar a atividade por áudio: Nova Atividade → \"Preencher com → Preenchimento por Áudio\" → fale o que foi feito → a IA preenche tudo → revise e clique em Criar. Nos vazios do dia, use o microfone \"O que faço?\" do cronômetro flutuante.",
@@ -113,9 +115,9 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Novo Contato", description: "cadastro manual de contato" },
       { label: "Resolver duplicados", description: "busca e mescla contatos duplicados" },
       { label: "Classificar Clientes", description: "marca contatos de grupos de leads fechados como cliente" },
-      { label: "Modo auditoria (aba Grupos)", anchor: "Filtrar e ordenar", description: "tabela tipo planilha pra conferir vínculo grupo↔lead↔caso; lápis corrige o nº do funil e renomeia o grupo no WhatsApp" },
-      { label: "Vincular lead (grupos órfãos)", description: "liga o grupo ao lead certo, ou cria um lead novo já vinculado" },
-      { label: "Atualizar dados em lote", description: "busca data de criação e criador dos grupos na UazAPI" },
+      { label: "Modo auditoria (aba Grupos)", anchor: ["Filtrar e ordenar", "Grupos"], description: "tabela tipo planilha pra conferir vínculo grupo↔lead↔caso; lápis corrige o nº do funil e renomeia o grupo no WhatsApp" },
+      { label: "Vincular lead (grupos órfãos)", anchor: ["Vincular lead", "Grupos"], description: "liga o grupo ao lead certo, ou cria um lead novo já vinculado" },
+      { label: "Atualizar dados em lote", anchor: ["Atualizar dados em lote", "Grupos"], description: "busca data de criação e criador dos grupos na UazAPI" },
       { label: "Nova Lista + Enviar", anchor: "Listas", description: "selecione contatos → crie a lista → envie transmissão (instância + mídia + mensagem); dá pra atribuir Agente IA à lista" },
     ],
     tip: "Pra auditar grupos: aba Grupos → Modo auditoria → resolva os divergentes e órfãos. Pra transmissão: selecione os contatos na aba Contatos → Nova Lista → Enviar.",
@@ -181,11 +183,11 @@ export const featureGuides: FeatureGuideDef[] = [
     items: [
       { label: "Aba Judiciais", anchor: "Judiciais", description: "busca por número/parte/tribunal; clique no card abre os detalhes; lixeira exclui" },
       { label: "Aba INSS Administrativo", anchor: "INSS Administrativo", description: "requerimentos vindos do Gmail; botão 'Órfãos' mostra os sem caso; menu 'Vincular' faz match automático por nome/CPF" },
-      { label: "Vincular (card órfão)", description: "sugestões automáticas por requerimento/CPF/nome; '(criar caso)' gera o caso na hora" },
+      { label: "Vincular (card órfão)", anchor: ["Vincular", "INSS Administrativo"], description: "sugestões automáticas por requerimento/CPF/nome; '(criar caso)' gera o caso na hora" },
       { label: "Aba Processual", anchor: "Processual", description: "e-mails PJe/PUSH com badge automático 'Prazo'; switch 'Apenas PUSH'" },
       { label: "Aba Sem movimento", anchor: "Sem movimento", description: "processos parados ≥30 dias por faixa e responsável, com 'Exportar CSV'" },
       { label: "Aba Perícias", anchor: "Perícias", description: "todas as datas de perícia em ordem; 'Só futuras' mostra as próximas" },
-      { label: "Sincronizar agora / Sincronizar", description: "puxa os e-mails recentes do INSS/PJe manualmente" },
+      { label: "Sincronizar agora / Sincronizar", anchor: ["Sincronizar", "INSS Administrativo"], description: "puxa os e-mails recentes do INSS/PJe manualmente" },
     ],
     tip: "Rotina diária: aba INSS → \"Órfãos\" → vincular com as sugestões automáticas; aba Processual com \"Apenas PUSH\" ligado pra caçar os badges \"Prazo\"; semanalmente, \"Sem movimento\" na faixa 90+ dias.",
   },
@@ -198,7 +200,7 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Nova audiência", description: "abre o formulário; clicar numa célula de dia já cria com a data preenchida" },
       { label: "Sincronizar planilha", description: "importa novas/atualizadas da planilha sem apagar as que só existem aqui" },
       { label: "Filtros", anchor: "Todos os tipos", description: "Tipo, Categoria, Status + busca por processo/caso/observações" },
-      { label: "Criar atividade", description: "dentro da audiência, gera a atividade de preparação vinculada" },
+      { label: "Criar atividade", anchor: ["Criar atividade", "Nova audiência"], description: "dentro da audiência, gera a atividade de preparação vinculada" },
       { label: "‹ › e Hoje", anchor: "Hoje", description: "navegação de período" },
     ],
     tip: "Visão Semana → clique no dia → preencha processo/hora/responsável → salve e já clique em \"Criar atividade\" pra gerar a tarefa de preparação.",
@@ -239,9 +241,9 @@ export const featureGuides: FeatureGuideDef[] = [
     items: [
       { label: "Busca do caso", anchor: "Título do caso ou número PREV", description: "digite o título ou número PREV" },
       { label: "Analisar pasta do Drive", description: "a IA classifica cada documento (favorável/adverso/neutro) e bloqueia os sensíveis" },
-      { label: "Recomendação da triagem", description: "diz se está protocolável e o que falta (documentos e campos)" },
+      { label: "Recomendação da triagem", anchor: ["Recomendação da triagem", "Analisar pasta do Drive"], description: "diz se está protocolável e o que falta (documentos e campos)" },
       { label: "Checkbox por documento", description: "monte o dossiê só com os favoráveis" },
-      { label: "Baixar dossiê (PDF)", description: "gera o PDF combinado pronto pro protocolo manual" },
+      { label: "Baixar dossiê (PDF)", anchor: ["Baixar dossiê", "Analisar pasta do Drive"], description: "gera o PDF combinado pronto pro protocolo manual" },
     ],
     tip: "Buscar o caso → \"Analisar pasta do Drive\" → conferir a recomendação → marcar os favoráveis → \"Baixar dossiê (PDF)\".",
   },
@@ -253,7 +255,7 @@ export const featureGuides: FeatureGuideDef[] = [
     items: [
       { label: "Telefone (WhatsApp) + Abrir", anchor: "Telefone", description: "localiza a conversa/lead/contato pelo telefone e abre o popup do documento" },
       { label: "Enviar pela instância", description: "escolhe de qual número o documento sai" },
-      { label: "Popup do documento", description: "revise os campos extraídos pela IA e os signatários antes de confirmar o envio" },
+      { label: "Popup do documento", anchor: ["Abrir"], description: "revise os campos extraídos pela IA e os signatários antes de confirmar o envio" },
     ],
     tip: "Digite o telefone com DDD → \"Abrir\" → revise os campos → confirme. A IA preenche a partir dos dados do lead/conversa.",
   },
@@ -277,10 +279,10 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Abas WhatsApp / WhatsJUD API", description: "alternam entre as instâncias e o número oficial Meta" },
       { label: "Seletor de instância", anchor: "Todas conectadas", description: "filtra as conversas por número; bolinha verde = conectada" },
       { label: "QR / Código / Reconectar", description: "pareia ou reconecta uma instância caída" },
-      { label: "Sugerir resposta com IA", description: "em qualquer mensagem, a IA propõe a resposta pra você revisar" },
-      { label: "Criar Lead + Contato", description: "a IA extrai os dados da conversa e cria o lead" },
-      { label: "Criar Caso Jurídico", description: "'Preencher com IA a partir da conversa' monta título, descrição e detecta processos (CNJ/INSS)" },
-      { label: "Atualizar com IA", description: "completa os campos do lead/contato com o que apareceu na conversa" },
+      { label: "Sugerir resposta com IA", anchor: ["Sugerir resposta", "WhatsApp"], description: "em qualquer mensagem (menu da mensagem), a IA propõe a resposta pra você revisar" },
+      { label: "Criar Lead + Contato", anchor: ["Criar Lead + Contato", "WhatsApp"], description: "no menu de criação da conversa: a IA extrai os dados e cria o lead" },
+      { label: "Criar Caso Jurídico", anchor: ["Criar Caso Jurídico", "WhatsApp"], description: "no menu de criação da conversa: 'Preencher com IA' monta título, descrição e detecta processos (CNJ/INSS)" },
+      { label: "Atualizar com IA", anchor: ["Atualizar com IA", "WhatsApp"], description: "no menu de criação da conversa: completa os campos do lead/contato com o que apareceu" },
       { label: "Mudar etiqueta / etapa", description: "sincroniza a etiqueta do WhatsApp com a etapa do Kanban" },
       { label: "Criar atividade a partir da mensagem", description: "transforma a mensagem em atividade vinculada" },
       { label: "Salvar mídia no Drive", description: "guarda o arquivo na pasta do lead, classificado por IA" },

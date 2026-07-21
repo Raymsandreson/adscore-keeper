@@ -24,8 +24,8 @@ function saveDismissed(map: Record<string, boolean>) {
 interface TourStep {
   title: string;
   body: string;
-  /** Texto usado pra localizar o botão na tela (ou seletor CSS explícito) */
-  anchorLabel?: string;
+  /** Textos tentados em ordem pra localizar o elemento (o 1º é o próprio recurso; os demais, botões que o revelam) */
+  anchorLabels?: string[];
   selector?: string;
   isIntro?: boolean;
   isTip?: boolean;
@@ -90,6 +90,8 @@ export function FeatureGuidePopup() {
   const [open, setOpen] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
+  // true quando o destaque caiu num botão "revelador" (o recurso fica dentro dele)
+  const [viaReveal, setViaReveal] = useState(false);
   const targetRef = useRef<HTMLElement | null>(null);
 
   const steps: TourStep[] = guide
@@ -98,7 +100,7 @@ export function FeatureGuidePopup() {
         ...guide.items.map((i) => ({
           title: i.label,
           body: i.description,
-          anchorLabel: i.anchor ?? i.label,
+          anchorLabels: i.anchor ? (Array.isArray(i.anchor) ? i.anchor : [i.anchor]) : [i.label],
           selector: i.selector,
         })),
         ...(guide.tip
@@ -122,8 +124,17 @@ export function FeatureGuidePopup() {
       return;
     }
     const step = steps[stepIndex];
-    const el = step.anchorLabel ? findTargetForLabel(step.anchorLabel, step.selector) : null;
+    let el: HTMLElement | null = null;
+    let matchedIdx = 0;
+    for (const [idx, anchor] of (step.anchorLabels ?? []).entries()) {
+      el = findTargetForLabel(anchor, idx === 0 ? step.selector : undefined);
+      if (el) {
+        matchedIdx = idx;
+        break;
+      }
+    }
     targetRef.current = el;
+    setViaReveal(!!el && matchedIdx > 0);
     if (el) el.scrollIntoView({ block: "center", behavior: "smooth" });
 
     const update = () => {
@@ -242,6 +253,11 @@ export function FeatureGuidePopup() {
               {!step.isIntro && !step.isTip && !rect && (
                 <p className="text-[10px] text-muted-foreground/70 mt-1 italic">
                   (procure este recurso na tela — ele pode estar dentro de um menu)
+                </p>
+              )}
+              {!step.isIntro && !step.isTip && rect && viaReveal && (
+                <p className="text-[10px] text-muted-foreground/70 mt-1 italic">
+                  (este recurso fica dentro do botão destacado)
                 </p>
               )}
 
