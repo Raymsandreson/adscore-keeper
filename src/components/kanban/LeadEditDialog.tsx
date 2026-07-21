@@ -1273,7 +1273,11 @@ ${scrapeData.content || ''}
   // "é um caso fechado?" (uma vez por abertura do dialog).
   useEffect(() => {
     if (!open || !currentLead?.id || saving) return;
-    if (leadOutcome) return;
+    // "sem resposta" conta como indefinido apenas quando o fechamento já foi
+    // confirmado fora do dialog (pergunta ao abrir a atividade). Abrir o lead
+    // direto continua só perguntando quando o resultado está em branco.
+    const outcomeBlocks = leadOutcome && !(autoConfirmClosedCase && leadOutcome === 'no_response');
+    if (outcomeBlocks) return;
     const hasGroup = whatsappGroups.some(g => (g.group_jid || '').trim() || (g.group_link || '').trim());
     if (!hasGroup) return;
     if (closedCaseAskedRef.current.has(currentLead.id)) return;

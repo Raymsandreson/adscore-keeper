@@ -28,7 +28,7 @@ import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
-import { closedCaseAskedLeads } from '@/components/activities/ClosedCaseAskGate';
+import { closedCaseAskedLeads, shouldAskClosedCase } from '@/components/activities/ClosedCaseAskGate';
 import type { Lead } from '@/hooks/useLeads';
 import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
 
@@ -273,8 +273,7 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
     if (!leadId || !lead || lead.id !== leadId) return;
     if (closedCaseAskedLeads.has(leadId)) return;
     const l = lead as any;
-    const hasOutcome = !!(l.lead_status || l.became_client_date || l.cancelled_date || l.inviavel_date || l.in_progress_date);
-    if (hasOutcome) return;
+    if (!shouldAskClosedCase(l)) return;
     let cancelled = false;
     (async () => {
       try {

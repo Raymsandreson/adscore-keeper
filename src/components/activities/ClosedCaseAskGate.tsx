@@ -19,6 +19,37 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
  */
 export const closedCaseAskedLeads = new Set<string>();
 
+/**
+ * Regra única de "vale perguntar se é caso fechado?" (usada aqui e no
+ * ActivityDetailPanel). Pressupõe que o lead TEM grupo de WhatsApp vinculado —
+ * quem chama verifica o grupo antes.
+ *
+ * Perguntamos quando o lead ainda não tem desfecho de verdade:
+ *  - `no_response` ("sem resposta") conta como indefinido mesmo com datas
+ *    preenchidas: é justamente a contradição que queremos resolver (lead com
+ *    grupo ativo e became_client_date, mas parado em "sem resposta").
+ *  - status vazio só pergunta se também não houver nenhuma data de desfecho.
+ *  - closed / inviavel / refused / cancelled / in_progress já têm resultado.
+ */
+export function shouldAskClosedCase(lead: any): boolean {
+  if (!lead) return false;
+  const status = String(lead.lead_status || '').trim();
+
+  if (status && status !== 'no_response') return false;
+
+  if (!status) {
+    const hasOutcomeDate = !!(
+      lead.became_client_date ||
+      lead.cancelled_date ||
+      lead.inviavel_date ||
+      lead.in_progress_date
+    );
+    if (hasOutcomeDate) return false;
+  }
+
+  return true;
+}
+
 interface ClosedCaseAskGateProps {
   leadId: string | null | undefined;
   leadName?: string | null;
@@ -54,14 +85,7 @@ export function ClosedCaseAskGate({ leadId, leadName, onLeadSaved }: ClosedCaseA
         if (cancelled || !l) return;
 
         const anyLead = l as any;
-        const hasOutcome = !!(
-          anyLead.lead_status ||
-          anyLead.became_client_date ||
-          anyLead.cancelled_date ||
-          anyLead.inviavel_date ||
-          anyLead.in_progress_date
-        );
-        if (hasOutcome) return;
+        if (!shouldAskClosedCase(anyLead)) return;
 
         let hasGroup = !!(anyLead.whatsapp_group_id || anyLead.group_link);
         if (!hasGroup) {
@@ -95,7 +119,9 @@ export function ClosedCaseAskGate({ leadId, leadName, onLeadSaved }: ClosedCaseA
             <AlertDialogTitle>Esse lead é de um caso fechado?</AlertDialogTitle>
             <AlertDialogDescription>
               O lead <strong>{leadName || lead?.lead_name || 'sem nome'}</strong> tem grupo do WhatsApp
-              vinculado mas o Resultado do Lead está em branco. Se for caso fechado, o cadastro do lead
+              vinculado mas o Resultado do Lead está{' '}
+              {lead?.lead_status === 'no_response' ? <strong>“sem resposta”</strong> : 'em branco'}. Se
+              for caso fechado, o cadastro do lead
               abre já marcado como <strong>Fechado</strong> (data de criação do grupo), com cadastro do
               contato do cliente por IA e exigência do processo do caso.
             </AlertDialogDescription>
