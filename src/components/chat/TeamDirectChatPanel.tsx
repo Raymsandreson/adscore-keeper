@@ -228,10 +228,34 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`;
   };
 
-  // Cronômetro: se a última mensagem da conversa aberta é de outra pessoa,
-  // conta o tempo até eu responder — é esse intervalo que vira a média.
+  // Cronômetro: no PRIVADO, se a última mensagem é de outra pessoa, conta o
+  // tempo até eu responder. Em GRUPO só conta se a última mensagem me
+  // @mencionou — mesma regra da média/ranking (RPC team_chat_my_response_avg).
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-  const awaitingReply = !!(activeConversationId && lastMsg && lastMsg.sender_id !== user?.id);
+  const activeConvType = conversations.find(c => c.id === activeConversationId)?.type ?? null;
+  const lastMsgFromOther = !!(activeConversationId && lastMsg && lastMsg.sender_id !== user?.id);
+  const [lastMsgMentionsMe, setLastMsgMentionsMe] = useState(false);
+  useEffect(() => {
+    setLastMsgMentionsMe(false);
+    if (!lastMsgFromOther || !lastMsg || !user?.id || activeConvType !== 'group') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const { data } = await (externalSupabase.from('team_chat_mentions') as any)
+          .select('id')
+          .eq('message_id', lastMsg.id)
+          .eq('mentioned_user_id', user.id)
+          .limit(1);
+        if (!cancelled) setLastMsgMentionsMe(!!(data as any[])?.length);
+      } catch {
+        // sem confirmação de menção, não mostra o cronômetro
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastMsg?.id, lastMsgFromOther, activeConvType, user?.id]);
+  const awaitingReply = lastMsgFromOther && (activeConvType === 'direct' || lastMsgMentionsMe);
   const [awaitingElapsed, setAwaitingElapsed] = useState(0);
   useEffect(() => {
     if (!awaitingReply || !lastMsg) {
