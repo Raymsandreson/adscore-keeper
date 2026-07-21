@@ -23,6 +23,12 @@ export interface FeatureGuideItem {
    * (ex.: ["Preencher com", "Nova Atividade"]).
    */
   anchor?: string | string[];
+  /**
+   * Seletor CSS do botão que revela o recurso (menu/dropdown fechado).
+   * Usado só quando selector/anchor não acham nada — o tour destaca esse
+   * botão com a nota "este recurso fica dentro do botão destacado".
+   */
+  revealSelector?: string;
 }
 
 export interface FeatureGuideDef {
@@ -279,13 +285,13 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Abas WhatsApp / WhatsJUD API", description: "alternam entre as instâncias e o número oficial Meta" },
       { label: "Seletor de instância", selector: '[data-tour="instance-selector"]', anchor: "Todas conectadas", description: "filtra as conversas por número; bolinha verde = conectada" },
       { label: "QR / Código / Reconectar", description: "pareia ou reconecta uma instância caída" },
-      { label: "Sugerir resposta com IA", anchor: ["Sugerir resposta", "WhatsApp"], description: "em qualquer mensagem (menu da mensagem), a IA propõe a resposta pra você revisar" },
-      { label: "Criar Lead + Contato", anchor: ["Criar Lead + Contato", "WhatsApp"], description: "no menu de criação da conversa: a IA extrai os dados e cria o lead" },
-      { label: "Criar Caso Jurídico", anchor: ["Criar Caso Jurídico", "WhatsApp"], description: "no menu de criação da conversa: 'Preencher com IA' monta título, descrição e detecta processos (CNJ/INSS)" },
-      { label: "Atualizar com IA", anchor: ["Atualizar com IA", "WhatsApp"], description: "no menu de criação da conversa: completa os campos do lead/contato com o que apareceu" },
-      { label: "Mudar etiqueta / etapa", description: "sincroniza a etiqueta do WhatsApp com a etapa do Kanban" },
-      { label: "Criar atividade a partir da mensagem", description: "transforma a mensagem em atividade vinculada" },
-      { label: "Salvar mídia no Drive", description: "guarda o arquivo na pasta do lead, classificado por IA" },
+      { label: "Sugerir resposta com IA", anchor: "Sugerir resposta", description: "em qualquer mensagem (menu da mensagem), a IA propõe a resposta pra você revisar" },
+      { label: "Criar Lead + Contato", anchor: "Criar Lead + Contato", revealSelector: '[data-tour="chat-menu"]', description: "no menu ⋮ da conversa: a IA extrai os dados e cria o lead" },
+      { label: "Criar Caso Jurídico", anchor: "Criar Caso Jurídico", revealSelector: '[data-tour="chat-menu"]', description: "no menu ⋮ da conversa: 'Preencher com IA' monta título, descrição e detecta processos (CNJ/INSS)" },
+      { label: "Atualizar com IA", anchor: "Atualizar com IA", revealSelector: '[data-tour="chat-menu"]', description: "no menu ⋮ da conversa: completa os campos do lead/contato com o que apareceu" },
+      { label: "Mudar etiqueta / etapa", selector: '[data-tour="chat-stage"]', description: "sincroniza a etiqueta do WhatsApp com a etapa do Kanban" },
+      { label: "Criar atividade a partir da mensagem", revealSelector: '[data-tour="chat-attach"]', description: "no menu do clipe (anexar): transforma a mensagem em atividade vinculada" },
+      { label: "Salvar mídia no Drive", revealSelector: '[data-tour="chat-menu"]', description: "guarda o arquivo na pasta do lead, classificado por IA ('Selecionar mídias p/ Drive' no menu ⋮)" },
       { label: "Lote", description: "seleção em massa de conversas → 'Criar Leads em Lote'" },
     ],
     tip: "Deixe a IA trabalhar: responda com \"Sugerir resposta com IA\", e quando o lead evoluir use \"Criar Lead + Contato\" → \"Criar Caso Jurídico\" — tudo preenchido a partir da própria conversa.",

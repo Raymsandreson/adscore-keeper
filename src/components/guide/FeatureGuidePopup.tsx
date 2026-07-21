@@ -27,6 +27,8 @@ interface TourStep {
   /** Textos tentados em ordem pra localizar o elemento (o 1º é o próprio recurso; os demais, botões que o revelam) */
   anchorLabels?: string[];
   selector?: string;
+  /** Seletor do botão que revela o recurso (menu/dropdown) — usado se nada acima achar */
+  revealSelector?: string;
   isIntro?: boolean;
   isTip?: boolean;
 }
@@ -111,6 +113,7 @@ export function FeatureGuidePopup() {
           body: i.description,
           anchorLabels: i.anchor ? (Array.isArray(i.anchor) ? i.anchor : [i.anchor]) : [i.label],
           selector: i.selector,
+          revealSelector: i.revealSelector,
         })),
         ...(guide.tip
           ? [{ title: "Jeito mais prático", body: guide.tip, isTip: true }]
@@ -140,6 +143,13 @@ export function FeatureGuidePopup() {
       if (el) {
         matchedIdx = idx;
         break;
+      }
+    }
+    if (!el && step.revealSelector) {
+      const rev = document.querySelector<HTMLElement>(step.revealSelector);
+      if (rev && isActuallyVisible(rev)) {
+        el = rev;
+        matchedIdx = 1; // conta como revelador → mostra a nota "fica dentro do botão"
       }
     }
     targetRef.current = el;

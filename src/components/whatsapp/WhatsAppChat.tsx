@@ -2580,6 +2580,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <div
                 className="h-6 inline-flex items-center gap-1 px-1.5 rounded-full bg-muted/60 border border-border"
                 title="Mudar etiqueta no WhatsApp e a etapa no Kanban"
+                data-tour="chat-stage"
                 onClick={(e) => e.stopPropagation()}
               >
                 <StageLabelSelect
@@ -2680,7 +2681,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8" data-tour="chat-menu">
                 <MoreVertical className="h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
@@ -4258,7 +4259,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             {/* Attach menu with internal options */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground">
+                <Button variant="ghost" size="icon" className="h-10 w-10 shrink-0 text-muted-foreground" data-tour="chat-attach" title="Anexar">
                   {uploadingMedia ? <Loader2 className="h-4 w-4 animate-spin" /> : <Paperclip className="h-4 w-4" />}
                 </Button>
               </DropdownMenuTrigger>
