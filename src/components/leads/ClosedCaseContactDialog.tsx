@@ -123,30 +123,60 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
           if (!cancelled) setExtractError('Grupo sem JID identificado — preencha os campos manualmente.');
           return;
         }
+        // Toda instância do escritório que está no grupo grava sua PRÓPRIA cópia das
+        // mensagens. A instância da mensagem mais recente costuma ser a que entrou
+        // por último no grupo — ela não tem o histórico antigo (onde o cliente mandou
+        // CPF/endereço). Por isso ranqueamos por cobertura: mais mensagens primeiro,
+        // empate decidido pela que começou antes.
         const { data: instRows, error: instErr } = await externalSupabase
           .from('whatsapp_messages')
-          .select('instance_name')
+          .select('instance_name, created_at')
           .in('phone', [bareJid, `${bareJid}@g.us`])
           .not('instance_name', 'is', null)
-          .order('created_at', { ascending: false })
-          .limit(1);
+          .order('created_at', { ascending: true })
+          .limit(2000);
         if (instErr) throw instErr;
-        const instanceName = instRows?.[0]?.instance_name;
-        if (!instanceName) {
+
+        const byInstance = new Map<string, { count: number; first: string }>();
+        for (const row of (instRows || []) as any[]) {
+          const name = row.instance_name as string;
+          const prev = byInstance.get(name);
+          if (prev) prev.count += 1;
+          else byInstance.set(name, { count: 1, first: row.created_at });
+        }
+        const rankedInstances = [...byInstance.entries()]
+          .sort((a, b) => b[1].count - a[1].count || String(a[1].first).localeCompare(String(b[1].first)))
+          .map(([name]) => name);
+
+        if (rankedInstances.length === 0) {
           if (!cancelled) setExtractError('Nenhuma mensagem encontrada no grupo — preencha manualmente.');
           return;
         }
 
-        const { data, error } = await cloudFunctions.invoke<any>('extract-conversation-data', {
-          body: { phone: bareJid, instance_name: instanceName, limit_messages: 500 },
-        });
-        if (error) throw error;
-        if (cancelled) return;
-        const extracted = data?.data;
-        if (!extracted || typeof extracted !== 'object') {
-          setExtractError(data?.reason === 'no_messages'
+        // Tenta as instâncias com maior cobertura até vir algo aproveitável.
+        // Só cai para a próxima quando a anterior não trouxe nada — evita gastar
+        // chamadas de IA à toa.
+        let extracted: any = null;
+        let lastReason: string | null = null;
+        for (const instanceName of rankedInstances.slice(0, 3)) {
+          const { data, error } = await cloudFunctions.invoke<any>('extract-conversation-data', {
+            body: { phone: bareJid, instance_name: instanceName, limit_messages: 500 },
+          });
+          if (cancelled) return;
+          if (error) { lastReason = error.message || 'erro na extração'; continue; }
+          const candidate = data?.data;
+          if (candidate && typeof candidate === 'object'
+            && Object.values(candidate).some((v) => v !== null && v !== undefined && String(v).trim())) {
+            extracted = candidate;
+            break;
+          }
+          lastReason = data?.reason === 'no_messages' ? 'no_messages' : lastReason;
+        }
+
+        if (!extracted) {
+          setExtractError(lastReason === 'no_messages'
             ? 'Nenhuma mensagem encontrada no grupo — preencha manualmente.'
-            : 'IA não retornou dados estruturados — preencha manualmente.');
+            : 'IA não encontrou dados na conversa — preencha manualmente.');
           return;
         }
 
