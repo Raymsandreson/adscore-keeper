@@ -67,6 +67,8 @@ import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppB
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
 import { ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
 import { LeadAIChatExtractor } from '@/components/leads/LeadAIChatExtractor';
+const EnrichReviewDialog = lazy(() => import('@/components/leads/EnrichReviewDialog').then(m => ({ default: m.EnrichReviewDialog })));
+import type { EnrichReviewData } from '@/components/leads/EnrichReviewDialog';
 import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
 import { useAutoLinkGroupByName } from '@/hooks/useAutoLinkGroupByName';
 import { cn } from '@/lib/utils';
@@ -283,6 +285,8 @@ export function LeadEditDialog({
   } | null>(null);
   const [caseSyncApplying, setCaseSyncApplying] = useState(false);
   const [unifiedEditorOpen, setUnifiedEditorOpen] = useState(false);
+  const [enrichReview, setEnrichReview] = useState<EnrichReviewData | null>(null);
+  const [enrichApplying, setEnrichApplying] = useState(false);
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
@@ -838,6 +842,57 @@ export function LeadEditDialog({
     }
     
     toast.success('Dados extraídos aplicados ao formulário!');
+  };
+
+  // Aplica os campos confirmados no EnrichReviewDialog: grava via auto-enrich-lead
+  // (apply_fields) e sincroniza o formulário aberto pro Salvar não sobrescrever.
+  const handleEnrichApply = async (selected: Record<string, any>) => {
+    if (!currentLead || !enrichReview) return;
+    setEnrichApplying(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-enrich-lead', {
+        body: { lead_id: currentLead.id, group_jid: enrichReview.groupJid, apply_fields: selected },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      if (selected.full_name) setLeadName(selected.full_name);
+      if (selected.email) setLeadEmail(selected.email);
+      if (selected.notes) setNotes(selected.notes);
+      if (selected.victim_name) setVictimName(selected.victim_name);
+      if (selected.main_company) setMainCompany(selected.main_company);
+      if (selected.damage_description) setDamageDescription(selected.damage_description);
+      if (selected.accident_date) { const nd = normalizeDateInput(selected.accident_date); if (nd) setAccidentDate(nd); }
+      if (selected.case_type) setCaseType(selected.case_type);
+      if (selected.visit_city) setVisitCity(selected.visit_city);
+      if (selected.visit_state) { setVisitState(selected.visit_state); setVisitRegion(stateToRegion[selected.visit_state] || ''); }
+      if (selected.visit_address) setVisitAddress(selected.visit_address);
+      if (selected.lead_status) {
+        const mapped = selected.lead_status === 'unviable' ? 'inviavel' : selected.lead_status;
+        setLeadOutcome(mapped as any);
+        if (selected.lead_status_reason) setLeadOutcomeReason(selected.lead_status_reason);
+      }
+      const bySlug = new Map(enrichReview.customFields.map((f) => [f.slug, f]));
+      setLocalFieldValues((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(selected)) {
+          const f = bySlug.get(k);
+          if (!f) continue;
+          next[f.id] = {
+            type: f.type as FieldType,
+            value: f.type === 'number' ? Number(v) : f.type === 'checkbox' ? Boolean(v) : String(v),
+          };
+        }
+        return next;
+      });
+      leadFieldValuesCache.delete(currentLead.id);
+      const applied = Object.keys(selected).filter((k) => k !== 'lead_status_reason').length;
+      toast.success(`${applied} campo(s) aplicado(s) ao lead.`);
+      setEnrichReview(null);
+    } catch (err: any) {
+      toast.error('Erro ao aplicar: ' + (err?.message || 'Erro'));
+    } finally {
+      setEnrichApplying(false);
+    }
   };
 
   const handleAnalyzeViability = async (linkToUse?: string) => {
@@ -2503,25 +2558,40 @@ ${scrapeData.content || ''}
 
                                 <DropdownMenuItem onClick={async () => {
                                   try {
-                                    toast.info('Enriquecendo lead, caso e processo a partir da conversa do grupo...');
+                                    toast.info('Analisando conversa do grupo com IA...');
                                     const { data, error } = await supabase.functions.invoke('auto-enrich-lead', {
                                       body: {
                                         lead_id: currentLead.id,
                                         group_jid: g.group_jid,
                                         force: true,
+                                        dry_run: true,
                                       },
                                     });
                                     if (error) throw error;
                                     if (data?.skipped) {
                                       toast.warning('Enriquecimento ignorado: ' + (data.skipped === 'no_messages' ? 'sem mensagens no grupo' : data.skipped));
-                                    } else {
-                                      toast.success(data?.message || 'Lead, caso e processo enriquecidos com sucesso!');
+                                      return;
                                     }
+                                    // dry_run: nada gravado ainda → revisão. Fallback: função
+                                    // antiga ignora dry_run e grava direto → mostra o que aplicou.
+                                    const extracted = data?.dry_run ? data.extracted : data?.enriched;
+                                    if (!extracted || Object.keys(extracted).length === 0) {
+                                      toast.warning('A IA não encontrou informações na conversa.');
+                                      return;
+                                    }
+                                    setEnrichReview({
+                                      extracted,
+                                      current: data?.current || {},
+                                      customFields: data?.custom_fields || [],
+                                      leadNameLocked: data?.lead_name_locked !== false,
+                                      alreadyApplied: !data?.dry_run,
+                                      groupJid: g.group_jid,
+                                    });
                                   } catch (err: any) {
                                     toast.error('Erro ao enriquecer: ' + (err.message || 'Erro'));
                                   }
                                 }}>
-                                  <Sparkles className="h-4 w-4 mr-2" /> Enriquecer lead, caso e processo
+                                  <Sparkles className="h-4 w-4 mr-2" /> Enriquecer lead com IA (com revisão)
                                 </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
@@ -3560,6 +3630,19 @@ ${scrapeData.content || ''}
             boardId={currentLead.board_id || selectedBoardId || ''}
             boardName={boards.find(b => b.id === (currentLead.board_id || selectedBoardId))?.name}
             adAccountId={adAccountId}
+          />
+        </Suspense>
+      )}
+
+      {/* Revisão do enriquecimento por IA (dry-run → confirmar individual/lote) */}
+      {enrichReview && (
+        <Suspense fallback={null}>
+          <EnrichReviewDialog
+            open={!!enrichReview}
+            onOpenChange={(o) => { if (!o && !enrichApplying) setEnrichReview(null); }}
+            data={enrichReview}
+            applying={enrichApplying}
+            onApply={handleEnrichApply}
           />
         </Suspense>
       )}
