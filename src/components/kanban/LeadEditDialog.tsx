@@ -3498,12 +3498,16 @@ ${scrapeData.content || ''}
                   leadId={lead.id}
                   leadName={(currentLead as any)?.lead_name || lead.lead_name || 'Lead'}
                   whatsappGroupId={(currentLead as any)?.whatsapp_group_id || (lead as any).whatsapp_group_id || null}
-                  customFields={customFields.map((f) => ({
-                    id: f.id,
-                    name: f.field_name,
-                    type: f.field_type,
-                    options: f.field_options,
-                  }))}
+                  customFields={customFields
+                    // Só os campos deste funil (+ globais). Sem isso a IA recebia os
+                    // campos de TODOS os funis e gravava valor em campo invisível aqui.
+                    .filter((f) => !f.board_id || f.board_id === layoutBoardId)
+                    .map((f) => ({
+                      id: f.id,
+                      name: f.field_name,
+                      type: f.field_type,
+                      options: f.field_options,
+                    }))}
                   onApplyExtractedFields={async (values) => {
                     await saveAllFieldValues(lead.id, values as any);
                     setLocalFieldValues((prev) => ({ ...prev, ...values }));
