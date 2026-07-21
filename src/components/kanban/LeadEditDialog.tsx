@@ -266,6 +266,8 @@ export function LeadEditDialog({
   const [editingSourceLabel, setEditingSourceLabel] = useState('');
   const [whatsappGroups, setWhatsappGroups] = useState<Array<{ id?: string; group_link: string; group_jid: string; group_name: string; label: string }>>([]);
   const [groupRemovalIdx, setGroupRemovalIdx] = useState<number | null>(null);
+  const [askClosedCaseOpen, setAskClosedCaseOpen] = useState(false);
+  const closedCaseAskedRef = useRef<Set<string>>(new Set());
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
   const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string; instanceId?: string } | null>(null);
@@ -1181,14 +1183,10 @@ ${scrapeData.content || ''}
     }
   };
 
-  // Remoção de grupo: se o usuário confirmar que é caso fechado, o lead vira Fechado
-  // com data de fechamento = data de criação do grupo. O grupo é MANTIDO vinculado
-  // (lead fechado exige grupo — validação do handleSave).
-  const handleGroupRemovalClosedCase = async () => {
-    const idx = groupRemovalIdx;
-    if (idx === null) return;
-    const g = whatsappGroups[idx];
-    setGroupRemovalIdx(null);
+  // Caso fechado confirmado (na remoção de grupo ou na pergunta ao abrir): o lead vira
+  // Fechado com data de fechamento = data de criação do grupo. O grupo é MANTIDO
+  // vinculado (lead fechado exige grupo — validação do handleSave).
+  const markClosedFromGroup = async (g?: { group_link: string; group_jid: string; group_name: string; label: string }) => {
     // Data de criação do grupo: 1) data no nome do grupo (dd/mm/aa), 2) primeira mensagem do grupo, 3) hoje
     let closeDate = '';
     const nameSource = g?.group_name || g?.label || '';
@@ -1221,6 +1219,33 @@ ${scrapeData.content || ''}
       description: 'O grupo foi mantido vinculado: lead fechado exige grupo. Cadastre o processo do caso antes de salvar.',
     });
   };
+
+  const handleGroupRemovalClosedCase = async () => {
+    const idx = groupRemovalIdx;
+    if (idx === null) return;
+    const g = whatsappGroups[idx];
+    setGroupRemovalIdx(null);
+    await markClosedFromGroup(g);
+  };
+
+  // Pergunta automática ao abrir: lead com grupo vinculado e sem resultado marcado →
+  // "é um caso fechado?" (uma vez por abertura do dialog).
+  useEffect(() => {
+    if (!open || !currentLead?.id || saving) return;
+    if (leadOutcome) return;
+    const hasGroup = whatsappGroups.some(g => (g.group_jid || '').trim() || (g.group_link || '').trim());
+    if (!hasGroup) return;
+    if (closedCaseAskedRef.current.has(currentLead.id)) return;
+    closedCaseAskedRef.current.add(currentLead.id);
+    setAskClosedCaseOpen(true);
+  }, [open, currentLead?.id, whatsappGroups, leadOutcome, saving]);
+
+  useEffect(() => {
+    if (!open) {
+      closedCaseAskedRef.current = new Set();
+      setAskClosedCaseOpen(false);
+    }
+  }, [open]);
 
   const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
     if (!currentLead) return;
@@ -3529,6 +3554,37 @@ ${scrapeData.content || ''}
               </Button>
               <AlertDialogAction
                 onClick={(e) => { e.preventDefault(); handleGroupRemovalClosedCase(); }}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                Sim, é caso fechado
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <AlertDialog open={askClosedCaseOpen} onOpenChange={setAskClosedCaseOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Esse lead é de um caso fechado?</AlertDialogTitle>
+              <AlertDialogDescription>
+                O lead tem grupo do WhatsApp vinculado
+                {(() => {
+                  const g = whatsappGroups.find(x => (x.group_jid || '').trim() || (x.group_link || '').trim());
+                  const nm = g?.group_name || g?.label || '';
+                  return nm ? <> (<strong>{nm}</strong>)</> : null;
+                })()}
+                {' '}mas o Resultado do Lead está em branco. Se for caso fechado, o lead será marcado como <strong>Fechado</strong> com a data de criação do grupo e será obrigatório cadastrar o processo do caso antes de salvar.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Não</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  setAskClosedCaseOpen(false);
+                  const g = whatsappGroups.find(x => (x.group_jid || '').trim() || (x.group_link || '').trim());
+                  markClosedFromGroup(g);
+                }}
                 className="bg-green-600 text-white hover:bg-green-700"
               >
                 Sim, é caso fechado
