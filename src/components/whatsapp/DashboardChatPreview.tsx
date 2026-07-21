@@ -79,6 +79,8 @@ interface Props {
   phone: string | null;
   contactName: string | null;
   instanceName: string | null;
+  /** Telefone do contato do lead — habilita alternar entre o grupo e o privado unificado (todas as instâncias). */
+  privatePhone?: string | null;
   hasLead: boolean;
   hasContact: boolean;
   wasResponded: boolean;
@@ -89,8 +91,37 @@ interface Props {
   campaignStageId?: string | null;
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone, contactName, instanceName, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId }: Props) {
   const { user, profile } = useAuthContext();
+  // Visão alternável: conversa principal (grupo) vs privado unificado — todas as conversas
+  // individuais da equipe com o contato, sem filtrar instância.
+  const [viewMode, setViewMode] = useState<'main' | 'private'>('main');
+  const canTogglePrivate = !!(privatePhone && phoneProp && privatePhone.replace(/\D/g, '') !== phoneProp.replace(/\D/g, ''));
+  const isPrivateAllView = viewMode === 'private' && canTogglePrivate;
+  const phone = (isPrivateAllView ? privatePhone : phoneProp) ?? null;
+  const [instanceOwners, setInstanceOwners] = useState<Record<string, string>>({});
+  const [sendAsInstance, setSendAsInstance] = useState<string>('');
+  // No privado unificado o envio precisa sair de uma instância explícita; fora dele, mantém o comportamento antigo.
+  const preferredInstanceName = isPrivateAllView && sendAsInstance ? sendAsInstance : instanceName;
+
+  useEffect(() => {
+    setViewMode('main');
+    setSendAsInstance('');
+  }, [open, phoneProp]);
+
+  useEffect(() => {
+    if (!open || !canTogglePrivate) return;
+    supabase
+      .from('whatsapp_instances')
+      .select('instance_name, owner_name')
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data || []).forEach((i: any) => {
+          if (i.instance_name) map[i.instance_name.toLowerCase()] = i.owner_name || i.instance_name;
+        });
+        setInstanceOwners(map);
+      });
+  }, [open, canTogglePrivate]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -192,7 +223,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         .from('whatsapp_messages')
         .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name, external_message_id')
         .eq('phone', normalizedPhone);
-      if (instanceName) {
+      // No privado unificado NÃO filtra instância: queremos as conversas de todos os membros.
+      if (instanceName && !isPrivateAllView) {
         const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
         query = query.in('instance_name', variants);
       }
@@ -376,7 +408,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         filter: `phone=eq.${normalizedPhone}`,
       }, (payload) => {
         const msg = payload.new as any;
-        if (instanceName && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
+        if (instanceName && !isPrivateAllView && msg.instance_name && msg.instance_name.toLowerCase() !== instanceName.toLowerCase()) return;
         const incomingMsgId = typeof msg.external_message_id === 'string' ? msg.external_message_id.split(':').pop() : null;
         setMessages(prev => {
           const alreadyExists = incomingMsgId
@@ -500,7 +532,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
   };
 
   const resolveInstanceId = async (): Promise<string | undefined> => {
-    const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+    const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
     if (msgInstanceName) {
       const { data: inst } = await supabase
         .from('whatsapp_instances')
@@ -525,7 +557,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     try {
       const instanceId = await resolveInstanceId();
       const finalMessage = await buildFinalMessage(newMessage.trim());
-      const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+      const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
@@ -621,7 +653,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       const mediaUrl = urlData.publicUrl;
 
       const instanceId = await resolveInstanceId();
-      const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+      const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
@@ -689,7 +721,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
           const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           const mediaUrl = urlData.publicUrl;
           const instanceId = await resolveInstanceId();
-          const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+          const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
           const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
             body: {
               action: 'send_media',
@@ -974,7 +1006,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
       }
 
       let instanceId: string | undefined;
-      const msgInstanceName = instanceName || messages.find(m => m.instance_name)?.instance_name;
+      const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
       if (msgInstanceName) {
         const { data: inst } = await supabase
           .from('whatsapp_instances')
@@ -1236,6 +1268,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
     }
   };
 
+  // Instâncias presentes na conversa privada unificada (pra rotular e escolher por onde enviar).
+  const privateInstances = useMemo(() => {
+    if (!isPrivateAllView) return [] as string[];
+    return Array.from(new Set(messages.map(m => m.instance_name).filter(Boolean))) as string[];
+  }, [messages, isPrivateAllView]);
+
+  useEffect(() => {
+    if (!isPrivateAllView || sendAsInstance) return;
+    const last = [...messages].reverse().find(m => m.instance_name);
+    if (last?.instance_name) setSendAsInstance(last.instance_name);
+  }, [messages, isPrivateAllView, sendAsInstance]);
+
   // Merge messages and call records into unified timeline
   const timelineItems = useMemo(() => {
     const items: Array<{ type: 'message'; data: Message } | { type: 'call'; data: CallRecord }> = [];
@@ -1321,6 +1365,27 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                 {phone && !isGroupChat && contactName && <span className="text-xs text-muted-foreground">{phone}</span>}
                 {instanceName && <span className="text-[10px] text-muted-foreground">• {instanceName}</span>}
               </div>
+              {canTogglePrivate && (
+                <div className="flex items-center gap-1 mt-1.5">
+                  <Button
+                    variant={viewMode === 'main' ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-6 px-2 text-[11px] gap-1"
+                    onClick={() => setViewMode('main')}
+                  >
+                    <Users className="h-3 w-3" /> Grupo
+                  </Button>
+                  <Button
+                    variant={viewMode === 'private' ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-6 px-2 text-[11px] gap-1"
+                    onClick={() => setViewMode('private')}
+                    title="Conversas privadas de todos os membros da equipe com o contato, unificadas"
+                  >
+                    <User className="h-3 w-3" /> Privado (equipe)
+                  </Button>
+                </div>
+              )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                 {hasLead && (
                   <Badge
@@ -1701,6 +1766,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
                             setSelectedMsgId(msg.id);
                           }}
                         >
+                          {isPrivateAllView && msg.instance_name && (() => {
+                            const owner = instanceOwners[msg.instance_name.toLowerCase()] || msg.instance_name;
+                            return (
+                              <p className={cn('text-[9px] font-semibold mb-0.5', isInbound ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary-foreground/80')}>
+                                {isInbound ? `Cliente → ${owner}` : owner}
+                              </p>
+                            );
+                          })()}
                           {renderMediaContent(msg)}
                           {!msg.media_url && msg.media_type && !msg.message_text && (
                             <span className="italic text-[10px] opacity-70">
@@ -1796,6 +1869,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone, contactName, i
         <div className="px-4 pb-4 pt-2 shrink-0 border-t space-y-2">
           {/* Identity row */}
           <div className="flex items-center justify-end gap-2 flex-wrap">
+            {isPrivateAllView && privateInstances.length > 1 && (
+              <Select value={sendAsInstance} onValueChange={setSendAsInstance}>
+                <SelectTrigger className="h-7 w-[170px] text-xs" title="Por qual número da equipe a resposta será enviada">
+                  <SelectValue placeholder="Enviar pela instância" />
+                </SelectTrigger>
+                <SelectContent>
+                  {privateInstances.map(inst => (
+                    <SelectItem key={inst} value={inst}>{instanceOwners[inst.toLowerCase()] || inst}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             {identifySender && (
               <>
                 <Select value={nameFormat} onValueChange={handleNameFormatChange}>

@@ -395,7 +395,7 @@ const ActivitiesPage = () => {
   const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
   const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
-  const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null } | null>(null);
+  const [waChatPreview, setWaChatPreview] = useState<{ phone: string; contact_name: string | null; instance_name: string | null; private_phone?: string | null } | null>(null);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   // Áudio da gravação (Preenchimento por Áudio) pendente pra envio direto no botão WA.
   const [pendingAudio, setPendingAudio] = useState<{ url: string; seconds: number } | null>(null);
@@ -4804,6 +4804,8 @@ const ActivitiesPage = () => {
                               phone: target,
                               contact_name: formLeadName || null,
                               instance_name: null,
+                              // Grupo vinculado + telefone do lead → permite alternar pro privado unificado da equipe.
+                              private_phone: hasGroup && leadPreview?.lead_phone ? leadPreview.lead_phone : null,
                             });
                           } else {
                             setGroupSearchOpen(true);
@@ -5578,6 +5580,7 @@ const ActivitiesPage = () => {
         phone={waChatPreview?.phone || null}
         contactName={waChatPreview?.contact_name || null}
         instanceName={waChatPreview?.instance_name || null}
+        privatePhone={waChatPreview?.private_phone || null}
         hasLead={!!formLeadId}
         hasContact={false}
         wasResponded={false}
