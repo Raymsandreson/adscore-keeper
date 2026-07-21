@@ -59,6 +59,7 @@ Pular etapas só vale para mudanças triviais (typo, remover `console.log`, reno
 - `npm run build`, `npm run lint`, `npm test`
 - `git status`, `git diff`, `git log`
 - `git push` — autorização durável do usuário (jun/2026): empurrar direto sem perguntar. Ainda mostrar o diff resumido no resumo pós-push.
+- Sincronizar main no início de toda sessão — autorização durável do usuário (jul/2026): rodar `git fetch origin` + `git merge --ff-only origin/main` antes da primeira edição, sem pedir. Só fast-forward: se houver divergência ou conflito com o working tree, parar e avisar em vez de forçar.
 
 ### Sempre pedir confirmação explícita:
 - `git commit` incluindo arquivos que você não editou nesta sessão
