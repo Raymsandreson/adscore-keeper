@@ -282,7 +282,9 @@ export function TeamsManager() {
 
   const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
   const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
+  const [managerIds, setManagerIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
+
   const { user } = useAuthContext();
 
   // Cargos e status de acesso moram no Supabase Externo.
