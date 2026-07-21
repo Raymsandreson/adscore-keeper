@@ -154,6 +154,8 @@ interface LeadEditDialogProps {
   boards?: KanbanBoard[];
   mode?: 'dialog' | 'sheet';
   initialTab?: string;
+  /** Caso fechado já confirmado fora do dialog (ex.: pergunta na atividade) — pula a pergunta e marca direto. */
+  autoConfirmClosedCase?: boolean;
 }
 
 const brazilianStates = [
@@ -224,6 +226,7 @@ export function LeadEditDialog({
   boards = [],
   mode = 'dialog',
   initialTab,
+  autoConfirmClosedCase = false,
 }: LeadEditDialogProps) {
   // Basic fields state
   const [sheetWidth, setSheetWidth] = useState<number>(() => {
@@ -1244,8 +1247,14 @@ ${scrapeData.content || ''}
     if (!hasGroup) return;
     if (closedCaseAskedRef.current.has(currentLead.id)) return;
     closedCaseAskedRef.current.add(currentLead.id);
-    setAskClosedCaseOpen(true);
-  }, [open, currentLead?.id, whatsappGroups, leadOutcome, saving]);
+    if (autoConfirmClosedCase) {
+      // Confirmação já veio de fora (ex.: pergunta ao abrir a atividade) — marca direto.
+      const g = whatsappGroups.find(x => (x.group_jid || '').trim() || (x.group_link || '').trim());
+      markClosedFromGroup(g);
+    } else {
+      setAskClosedCaseOpen(true);
+    }
+  }, [open, currentLead?.id, whatsappGroups, leadOutcome, saving, autoConfirmClosedCase]);
 
   useEffect(() => {
     if (!open) {
@@ -3036,7 +3045,7 @@ ${scrapeData.content || ''}
             <TabsContent value="contacts" className="mt-0">
               {activeTab === 'contacts' && (
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
-                  <LeadLinkedContacts leadId={lead.id} />
+                  <LeadLinkedContacts leadId={lead.id} onSearchInGroup={handleSearchContactsInGroup} />
                 </Suspense>
               )}
             </TabsContent>

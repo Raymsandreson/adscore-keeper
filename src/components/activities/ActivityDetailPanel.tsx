@@ -8,6 +8,16 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import {
   ExternalLink, MapPin, Building2, Phone, Mail, User, Calendar,
@@ -104,6 +114,9 @@ const statusActivityColors: Record<string, string> = {
   concluida: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
 };
 
+// Leads já perguntados ("é caso fechado?") nesta sessão — evita repetir a cada atividade aberta.
+const closedCaseAskedLeads = new Set<string>();
+
 function LinkContactButton({ leadId, onLinked }: { leadId: string; onLinked: () => void }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -196,6 +209,8 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('detalhes');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
+  const [askClosedCase, setAskClosedCase] = useState(false);
+  const [autoConfirmClosedCase, setAutoConfirmClosedCase] = useState(false);
 
   const fetchLeadData = useCallback(async () => {
     if (!leadId) {
@@ -250,6 +265,36 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
   useEffect(() => {
     fetchLeadData();
   }, [fetchLeadData]);
+
+  // Ao abrir a atividade: lead com grupo WhatsApp vinculado e sem resultado marcado →
+  // pergunta "é caso fechado?" aqui mesmo, sem precisar entrar no lead.
+  useEffect(() => {
+    if (!leadId || !lead || lead.id !== leadId) return;
+    if (closedCaseAskedLeads.has(leadId)) return;
+    const l = lead as any;
+    const hasOutcome = !!(l.lead_status || l.became_client_date || l.cancelled_date || l.inviavel_date || l.in_progress_date);
+    if (hasOutcome) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        let hasGroup = !!(l.whatsapp_group_id || l.group_link);
+        if (!hasGroup) {
+          const { count } = await (externalSupabase as any)
+            .from('lead_whatsapp_groups')
+            .select('id', { count: 'exact', head: true })
+            .eq('lead_id', leadId);
+          hasGroup = (count ?? 0) > 0;
+        }
+        if (!cancelled && hasGroup && !closedCaseAskedLeads.has(leadId)) {
+          closedCaseAskedLeads.add(leadId);
+          setAskClosedCase(true);
+        }
+      } catch (err) {
+        console.warn('Falha ao checar grupo do lead para pergunta de caso fechado:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [leadId, lead]);
 
   // Ao abrir uma atividade vinculada a um lead, dispara o mesmo gatilho de
   // atualização de documentos do grupo WhatsApp (silencioso, idempotente).
@@ -643,12 +688,45 @@ export function ActivityDetailPanel({ leadId, leadName, currentActivityId, onNav
         </TabsContent>
       </Tabs>
 
+      {/* Pergunta "é caso fechado?" ao abrir atividade de lead com grupo e sem resultado */}
+      <AlertDialog open={askClosedCase} onOpenChange={setAskClosedCase}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Esse lead é de um caso fechado?</AlertDialogTitle>
+            <AlertDialogDescription>
+              O lead <strong>{leadName || lead?.lead_name || 'sem nome'}</strong> tem grupo do WhatsApp
+              vinculado mas o Resultado do Lead está em branco. Se for caso fechado, o cadastro do lead
+              abre já marcado como <strong>Fechado</strong> (data de criação do grupo), com cadastro do
+              contato do cliente por IA e exigência do processo do caso.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Não</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                setAskClosedCase(false);
+                setAutoConfirmClosedCase(true);
+                setShowLeadSheet(true);
+              }}
+              className="bg-green-600 text-white hover:bg-green-700"
+            >
+              Sim, é caso fechado
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Lead Edit Sheet */}
       {leadId && (
         <LeadEditDialog
           open={showLeadSheet}
-          onOpenChange={setShowLeadSheet}
+          onOpenChange={(o) => {
+            setShowLeadSheet(o);
+            if (!o) setAutoConfirmClosedCase(false);
+          }}
           lead={lead as any}
+          autoConfirmClosedCase={autoConfirmClosedCase}
           onSave={async (leadId, updates) => {
             const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
             if (error) throw error;
