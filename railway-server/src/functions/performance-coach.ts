@@ -240,14 +240,15 @@ Responda SOMENTE um JSON válido com duas chaves:
 
 "analise" (para o diretor): responda a pergunta dele com base APENAS nos dados fornecidos, em português do Brasil, direto, máx ~120 palavras. Aponte qual critério está puxando a pessoa pra cima ou pra baixo e compare a pessoa COM ELA MESMA no período anterior (melhorou ou piorou, em quê). Se os dados não permitirem concluir a causa, diga o que os dados mostram e o que vale perguntar à pessoa. Não invente fatos.
 
-"mensagem" (para enviar À PESSOA no chat interno): escreva como escreveria o melhor gestor de um escritório jurídico de alta performance — direto, específico, respeitoso e com energia, SEM genérico motivacional. Fale diretamente com a pessoa (você). Estrutura obrigatória, nesta ordem:
-1. Abertura curta reconhecendo algo REAL dos dados (uma atividade concluída pelo nome, uma melhora vs o período anterior). Se não houver nada, vá direto ao ponto sem elogio falso.
-2. Comparação dela COM ELA MESMA: cite os números de agora vs o ${'mesmo ponto do período anterior'} (passos, concluídas, tempo ativo) e diga se evoluiu ou caiu.
-3. Uma linha só de contexto da corrida (posição e quem está logo na frente/atrás) — tempero, não o tema.
-4. "Prioridades de hoje:" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, PELO NOME e com os dias de atraso, em ordem de urgência. Isso é o coração da mensagem.
-5. O hábito operacional a corrigir (marcar os passos do checklist ao concluir cada etapa / usar o cronômetro), explicando em uma frase por que isso conta no ranking.
-6. Fechamento colocando-se à disposição pra destravar qualquer coisa.
-Máx ~170 palavras. No máximo 2 emojis na mensagem inteira.`,
+"mensagem" (para enviar À PESSOA no chat interno e WhatsApp): escreva como escreveria o melhor gestor de um escritório jurídico de alta performance — direto, específico, respeitoso e com energia, SEM genérico motivacional. Fale diretamente com a pessoa (você).
+FORMATO: a mensagem é lida de relance no celular. Seções curtas separadas por UMA linha em branco, cada seção começando com cabeçalho próprio: emoji + título em MAIÚSCULAS. De uma passada de olho a pessoa já deve saber do que se trata. Estrutura obrigatória, nesta ordem:
+1. Primeira linha (sem cabeçalho): saudação de 1 frase reconhecendo algo REAL dos dados (uma atividade concluída pelo nome, uma melhora vs o período anterior). Se não houver nada, vá direto ao ponto sem elogio falso.
+2. "📊 VOCÊ × VOCÊ MESMO" — números de agora vs o mesmo ponto do período anterior (passos, concluídas, tempo ativo), dizendo se evoluiu ou caiu (use ▲ e ▼).
+3. "🏁 CORRIDA" — uma linha só: posição e quem está logo na frente/atrás — tempero, não o tema.
+4. "🚨 PRIORIDADES DE HOJE" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, PELO NOME e com os dias de atraso, em ordem de urgência. Isso é o coração da mensagem.
+5. "⚙️ HÁBITO" — o hábito operacional a corrigir (marcar os passos do checklist ao concluir cada etapa / usar o cronômetro), em 1-2 frases, com o porquê de contar no ranking.
+6. "🤝" + fechamento de 1 frase colocando-se à disposição pra destravar qualquer coisa.
+Máx ~180 palavras. Emojis só nos cabeçalhos das seções (no máximo 1 extra no corpo do texto).`,
       },
       { role: 'user', content: prompt },
     ],
