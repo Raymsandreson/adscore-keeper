@@ -333,11 +333,11 @@ function PodiumSpot({ row, place }: { row: RankRow | undefined; place: 1 | 2 | 3
       <div className="mt-3 text-center px-1">
         <div className="font-bold leading-tight text-sm md:text-lg line-clamp-2">{row.nome}</div>
         <div className={cn('mt-1 font-black leading-none', place === 1 ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl', cfg.num)}>
-          {row.concluidas}
-          <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">concl</span>
+          {row.passos}
+          <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
         </div>
         <div className="mt-1 text-[10px] md:text-xs text-white/60">
-          <span className="text-sky-400 font-bold">{row.passos}</span> passos ·{' '}
+          <span className="text-emerald-400 font-bold">{row.concluidas}</span> concl. ·{' '}
           <span className="text-rose-400 font-bold">{row.atrasadas}</span> atras. ·{' '}
           <span className="text-emerald-400 font-bold">{aprovLabel(row.aprov_pct)}</span> aprov. ·{' '}
           <span className="text-violet-400 font-bold">{chatRespLabel(row.chat_resp_seg)}</span> chat
