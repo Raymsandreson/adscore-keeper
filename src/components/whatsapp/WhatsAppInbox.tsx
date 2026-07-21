@@ -1564,7 +1564,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
         {!isMinimal && inboxTab !== 'cloud_api' && instances.length > 0 && (
           <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
-            <SelectTrigger className="w-52 h-8 text-xs ml-0 md:ml-2">
+            <SelectTrigger data-tour="instance-selector" className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
             </SelectTrigger>

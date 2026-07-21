@@ -277,7 +277,7 @@ export const featureGuides: FeatureGuideDef[] = [
     intro: "Inbox unificada: conversas de todas as instâncias e do número oficial (WhatsJUD API), com IA de apoio.",
     items: [
       { label: "Abas WhatsApp / WhatsJUD API", description: "alternam entre as instâncias e o número oficial Meta" },
-      { label: "Seletor de instância", anchor: "Todas conectadas", description: "filtra as conversas por número; bolinha verde = conectada" },
+      { label: "Seletor de instância", selector: '[data-tour="instance-selector"]', anchor: "Todas conectadas", description: "filtra as conversas por número; bolinha verde = conectada" },
       { label: "QR / Código / Reconectar", description: "pareia ou reconecta uma instância caída" },
       { label: "Sugerir resposta com IA", anchor: ["Sugerir resposta", "WhatsApp"], description: "em qualquer mensagem (menu da mensagem), a IA propõe a resposta pra você revisar" },
       { label: "Criar Lead + Contato", anchor: ["Criar Lead + Contato", "WhatsApp"], description: "no menu de criação da conversa: a IA extrai os dados e cria o lead" },
