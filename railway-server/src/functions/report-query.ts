@@ -53,8 +53,8 @@ const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_K
 // Primário = Gemini Flash (Anthropic sem crédito em jul/2026 — cada chamada ao
 // Claude falhava e caía no fallback, pagando a latência da tentativa perdida).
 // Fallback = Gemini Pro. Voltar pro Claude = setar REPORT_QUERY_MODEL.
-const PRIMARY_MODEL = process.env.REPORT_QUERY_MODEL || 'google/gemini-2.5-flash';
-const FALLBACK_MODEL = process.env.REPORT_QUERY_FALLBACK_MODEL || 'google/gemini-2.5-pro';
+const PRIMARY_MODEL = process.env.REPORT_QUERY_MODEL || 'google/gemini-3.6-flash';
+const FALLBACK_MODEL = process.env.REPORT_QUERY_FALLBACK_MODEL || 'google/gemini-3.1-pro-preview';
 // Bootstrap: e-mails que sempre têm acesso (dono/diretoria), separados por vírgula.
 const ADMIN_EMAILS = (process.env.REPORT_ADMIN_EMAILS || 'processual@rprudencioadv.com')
   .split(',').map((e) => e.trim().toLowerCase()).filter(Boolean);

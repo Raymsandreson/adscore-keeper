@@ -6,7 +6,7 @@
 import type { RequestHandler } from 'express';
 import { geminiChat } from '../lib/gemini';
 
-const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
+const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 
 interface ChecklistItem { label?: string; checked?: boolean; }
 interface StepContext {

@@ -23,7 +23,7 @@ async function humanizeStatusChange(input: {
   try {
     const prompt = `Você é uma atendente jurídica gentil. Escreva uma mensagem de WhatsApp CURTA (máx 4 linhas), em português brasileiro simples — entendível por alguém com baixa escolaridade — informando que o pedido do INSS teve uma atualização.\n\nDe: ${input.from || 'sem status anterior'}\nPara: ${input.to}\nNome do cliente (se houver): ${input.nome || ''}\nBenefício (se houver): ${input.beneficio || ''}\n\nRegras:\n- Sem termos técnicos jurídicos.\n- Sem citar "requerimento", use "pedido".\n- Explique em 1 linha o que esse status significa na prática.\n- Termine com algo tipo "vamos te orientar" ou "te avisaremos os próximos passos".\n- Use 1 ou 2 emojis no total, no máximo.\n- Não use saudações como "Bom dia" (não sabemos a hora).`;
     const j = await geminiChat({
-      model: 'google/gemini-2.5-flash',
+      model: 'google/gemini-3.6-flash',
       messages: [{ role: 'user', content: prompt }],
       max_tokens: 200,
     });

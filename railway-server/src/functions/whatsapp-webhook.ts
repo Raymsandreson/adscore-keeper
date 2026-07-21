@@ -120,7 +120,7 @@ async function triggerProactiveFirstMessage(
     let aiText = '';
     try {
       const aiResp = await geminiChat({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-3.6-flash',
         messages: [
           { role: 'system', content: system },
           { role: 'user', content: hasHistory
@@ -613,7 +613,7 @@ function getFileExtension(contentType: string, messageType: string): string {
 async function transcribeCallAudio(audioUrl: string, _apiKey: string): Promise<{ summary: string; transcript: string } | null> {
   try {
     const data = await geminiChat({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-3.6-flash",
       messages: [
         { role: "system", content: "Você é um assistente jurídico de um CRM de advocacia. Transcreva o áudio da chamada e forneça um resumo objetivo." },
         {

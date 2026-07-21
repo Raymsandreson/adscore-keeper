@@ -15,12 +15,17 @@ function isAnthropicModel(model?: string): boolean {
 }
 
 const MODEL_MAP: Record<string, string> = {
-  "google/gemini-2.5-flash": "gemini-2.5-flash",
-  "google/gemini-2.5-flash-lite": "gemini-2.5-flash-lite",
-  "google/gemini-2.5-pro": "gemini-2.5-pro",
-  "google/gemini-3-flash-preview": "gemini-2.5-flash",
-  "google/gemini-3.1-pro-preview": "gemini-2.5-pro",
-  "google/gemini-3.1-flash-image-preview": "gemini-2.5-flash",
+  // Família 2.5 desliga em 16/10/2026 — aliases legados redirecionam pros
+  // substitutos oficiais (ai.google.dev/gemini-api/docs/deprecations), pra
+  // strings antigas gravadas em agentes/env não quebrarem no shutdown.
+  "google/gemini-2.5-flash": "gemini-3.6-flash",
+  "google/gemini-2.5-flash-lite": "gemini-3.1-flash-lite",
+  "google/gemini-2.5-pro": "gemini-3.1-pro-preview",
+  "google/gemini-3-flash-preview": "gemini-3.6-flash",
+  "google/gemini-3.1-pro-preview": "gemini-3.1-pro-preview",
+  "google/gemini-3.1-flash-image-preview": "gemini-3.6-flash",
+  "google/gemini-3.6-flash": "gemini-3.6-flash",
+  "google/gemini-3.1-flash-lite": "gemini-3.1-flash-lite",
 };
 
 function cleanParametersForGoogle(params: any): any {
@@ -94,7 +99,7 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
   const GOOGLE_AI_API_KEY = process.env.GOOGLE_AI_API_KEY;
   if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY not configured");
 
-  const googleModel = MODEL_MAP[options.model || "google/gemini-2.5-flash"] || "gemini-2.5-flash";
+  const googleModel = MODEL_MAP[options.model || "google/gemini-3.6-flash"] || "gemini-3.6-flash";
 
   let systemText = "";
   const otherMessages: any[] = [];

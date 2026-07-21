@@ -20,7 +20,7 @@ import { aiChat } from '../lib/gemini';
 
 // aiChat roteia pelo prefixo: google/* → Gemini (GOOGLE_AI_API_KEY, que já tem
 // crédito), claude-* → Anthropic. Trocar de provider = setar COACH_MODEL no Railway.
-const COACH_MODEL = process.env.COACH_MODEL || 'google/gemini-2.5-flash';
+const COACH_MODEL = process.env.COACH_MODEL || 'google/gemini-3.6-flash';
 
 interface RankRow {
   nome: string;

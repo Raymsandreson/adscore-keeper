@@ -10,7 +10,7 @@ import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 import { geminiChat } from '../lib/gemini';
 
-const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
+const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 
 const LEAD_FIELDS = [
   'lead_name', 'victim_name', 'lead_email', 'city', 'state', 'neighborhood',

@@ -22,7 +22,7 @@ const FALLBACK_DIRECTOR_ID = process.env.REPORT_DIRECTOR_USER_ID || '79c5c9d1-86
 const REPORT_SENDER_NAME = '🤖 Relatório Diário';
 // aiChat roteia por prefixo: google/* → Gemini (GOOGLE_AI_API_KEY, com crédito),
 // claude-* → Anthropic (sem crédito em jul/2026). Trocar = setar REPORT_MODEL.
-const REPORT_MODEL = process.env.REPORT_MODEL || 'google/gemini-2.5-flash';
+const REPORT_MODEL = process.env.REPORT_MODEL || 'google/gemini-3.6-flash';
 const MAX_MSGS_PER_TEAM = 120;
 
 interface MemberIdentity {

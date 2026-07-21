@@ -243,7 +243,7 @@ async function sendCallFollowupAudio(
     let aiResult: any;
     try {
       aiResult = await geminiChat({
-        model: 'google/gemini-2.5-flash',
+        model: 'google/gemini-3.6-flash',
         messages: [
           {
             role: 'system',

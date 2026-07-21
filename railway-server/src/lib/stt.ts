@@ -71,7 +71,7 @@ export async function transcribeAudio(
     const prompt = sttPrompt || DEFAULT_STT_PROMPT;
 
     const result = await geminiChat({
-      model: "google/gemini-2.5-flash",
+      model: "google/gemini-3.6-flash",
       messages: [
         { role: "system", content: prompt },
         {

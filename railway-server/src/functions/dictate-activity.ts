@@ -13,7 +13,7 @@ import type { RequestHandler } from 'express';
 import { transcribeAudio } from '../lib/stt';
 import { geminiChat } from '../lib/gemini';
 
-const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
+const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 
 interface ActivityTypeOption { key: string; label: string; }
 

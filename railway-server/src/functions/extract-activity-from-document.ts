@@ -11,7 +11,7 @@
 import type { RequestHandler } from 'express';
 import { geminiChat } from '../lib/gemini';
 
-const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-2.5-flash';
+const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 const MAX_BYTES = 15 * 1024 * 1024; // 15 MB — teto seguro pra inlineData do Gemini.
 
 interface PreviousActivity {
