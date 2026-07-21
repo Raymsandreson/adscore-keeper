@@ -346,6 +346,9 @@ export function ActivityTimerOverlay() {
     ? current.activeSeconds - current.estimateMinutes * 60
     : -1;
   const isOver = over >= 0;
+  // Gap com interação recente = trabalho avulso (WhatsApp, cadastro, processo).
+  // Só vira "ocioso" de fato quando a pessoa para.
+  const gapWorking = current?.kind === 'gap' && current.gapWorking !== false;
 
   // Tick só para re-renderizar o badge a cada segundo.
   const [, force] = useState(0);
@@ -379,11 +382,17 @@ export function ActivityTimerOverlay() {
 
       {/* Minimizado: o cronômetro nunca some — fica só o relógio; clique expande */}
       {current && hidden && (() => {
-        const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
+        const seconds = current.kind === 'activity'
+          ? current.activeSeconds
+          : current.kind === 'gap' && gapWorking
+            ? current.activeSeconds
+            : current.idleSeconds;
         const palette = current.kind === 'activity'
           ? `border bg-background/95 ${isOver ? 'text-red-600 dark:text-red-400' : ''}`
           : current.kind === 'gap'
-            ? 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
+            ? (gapWorking
+                ? 'border border-emerald-300/50 bg-emerald-50/95 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-200'
+                : 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200')
             : 'border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200';
         // Clique fica no contêiner (não num botão interno): o drag faz
         // setPointerCapture no pointerdown e o click é reentregue ao próprio
@@ -405,7 +414,9 @@ export function ActivityTimerOverlay() {
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
             )}
-            {current.kind === 'gap' && <Coffee className="h-3 w-3" />}
+            {current.kind === 'gap' && (gapWorking
+              ? <Clock className="h-3 w-3" />
+              : <Coffee className="h-3 w-3" />)}
             {current.kind === 'break' && <UtensilsCrossed className="h-3 w-3" />}
             <span className="flex items-center gap-1.5 font-mono text-sm tabular-nums font-semibold">
               {formatHMS(seconds)}
@@ -505,17 +516,35 @@ export function ActivityTimerOverlay() {
           onPointerDown={drag.onPointerDown}
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
-          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
-          title="Arraste para mover · tempo ocioso entre atividades"
+          className={`fixed z-[60] flex flex-col gap-0.5 rounded-2xl border px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing ${
+            gapWorking
+              ? 'border-emerald-300/50 bg-emerald-50/95 dark:bg-emerald-950/60'
+              : 'border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60'
+          }`}
+          title={gapWorking
+            ? 'Arraste para mover · trabalho sem atividade vinculada (contando como produtivo)'
+            : 'Arraste para mover · tempo ocioso entre atividades'}
         >
           <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
           <div className="flex items-center gap-1.5">
-          <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
-          <Coffee className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-          <span className="font-mono text-sm tabular-nums font-bold text-amber-800 dark:text-amber-200">
-            {formatHMS(current.idleSeconds)}
-          </span>
-          <span className="text-xs font-medium text-amber-800 dark:text-amber-200 hidden sm:inline">ocioso</span>
+          <GripVertical className={`h-3.5 w-3.5 ${gapWorking ? 'text-emerald-700/50 dark:text-emerald-300/50' : 'text-amber-700/50 dark:text-amber-300/50'}`} />
+          {gapWorking ? (
+            <>
+              <Clock className="h-3.5 w-3.5 text-emerald-700 dark:text-emerald-300" />
+              <span className="font-mono text-sm tabular-nums font-bold text-emerald-800 dark:text-emerald-200">
+                {formatHMS(current.activeSeconds)}
+              </span>
+              <span className="text-xs font-medium text-emerald-800 dark:text-emerald-200 hidden sm:inline">sem atividade</span>
+            </>
+          ) : (
+            <>
+              <Coffee className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
+              <span className="font-mono text-sm tabular-nums font-bold text-amber-800 dark:text-amber-200">
+                {formatHMS(current.idleSeconds)}
+              </span>
+              <span className="text-xs font-medium text-amber-800 dark:text-amber-200 hidden sm:inline">ocioso</span>
+            </>
+          )}
           {lastActivity && (
             <button
               type="button"

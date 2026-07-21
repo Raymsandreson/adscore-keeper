@@ -20,8 +20,10 @@ const dbAny = db as unknown as SupabaseClient;
  *   seletor "qual atividade agora?".
  * - Ao SAIR da atv (fechar) → dialog "Continuar contando ou pausar?".
  * - CONCLUIR encerra o cronômetro da atv (igual pausar).
- * - O tempo ENTRE atividades (nenhuma aberta, mas presente na tela) é
- *   contabilizado como OCIOSIDADE do membro (linha de gap, activity_id null).
+ * - O tempo ENTRE atividades (nenhuma aberta) cai na linha de gap
+ *   (activity_id null) e é dividido pela MESMA regra: com interação recente
+ *   conta TRABALHO AVULSO (active_seconds) — atender WhatsApp, cadastrar
+ *   atividade, consultar processo; sem interação conta OCIOSIDADE.
  * - Persiste no Externo (activity_time_entries), flush absoluto a cada 30s.
  */
 
@@ -73,6 +75,8 @@ interface TimerEntry {
   /** Pausa justificada em andamento (kind === 'break'). */
   breakType?: BreakType | null;
   breakNote?: string | null;
+  /** kind === 'gap': está trabalhando sem atividade vinculada (interação recente). */
+  gapWorking?: boolean;
 }
 
 interface ActivityTimerCtx {
@@ -132,6 +136,18 @@ export function formatHMS(totalSeconds: number): string {
   const sec = s % 60;
   const pad = (n: number) => n.toString().padStart(2, '0');
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+}
+
+/**
+ * Sem atividade aberta (linha de gap), decide se o segundo conta como TRABALHO
+ * AVULSO ou como OCIOSO. Regra: ocioso é falta de INTERAÇÃO, não falta de
+ * atividade vinculada — atender WhatsApp, cadastrar atividade ou consultar
+ * processo é trabalho. Mesmos critérios do ramo 'activity' (segue contando com
+ * a aba oculta; tela bloqueada e máquina suspensa viram ocioso).
+ */
+export function isGapWorking(opts: { idleFor: number; locked: boolean; deltaSec: number }): boolean {
+  const suspended = opts.deltaSec >= 120; // gap grande entre ticks = PC dormiu
+  return opts.idleFor < IDLE_THRESHOLD_MS && !opts.locked && !suspended;
 }
 
 async function resolveUser(): Promise<{ userId: string; userName: string } | null> {
@@ -458,10 +474,20 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       }
 
       if (e.kind === 'gap') {
-        // Ocioso entre atividades. Em vez de só apitar, abre o dialog "vai se
-        // ausentar?" (registrar pausa com previsão ou retomar). Nudge a cada 5 min.
-        next.idleSeconds += deltaSec;
-        if (next.idleSeconds - lastGapNudgeRef.current >= 300) {
+        // Sem atividade aberta, mas o membro pode estar trabalhando (WhatsApp,
+        // cadastro de atividade, processos...). OCIOSO = sem interação, não
+        // "sem atividade": com mouse/teclado nos últimos IDLE_THRESHOLD conta
+        // TRABALHO AVULSO (active_seconds da linha de gap). Mesma regra do ramo
+        // 'activity' — inclusive seguir contando com a aba oculta.
+        const gapWorking = isGapWorking({ idleFor, locked: lockedRef.current, deltaSec });
+        if (gapWorking) next.activeSeconds += deltaSec;
+        else next.idleSeconds += deltaSec;
+        next.gapWorking = gapWorking; // o badge alterna "trabalhando" x "ocioso"
+
+        // Nudge a cada 5 min de ociosidade REAL — abre o dialog "vai se
+        // ausentar?" (registrar pausa com previsão ou retomar). Trabalhando
+        // avulso não apita.
+        if (!gapWorking && next.idleSeconds - lastGapNudgeRef.current >= 300) {
           lastGapNudgeRef.current = next.idleSeconds;
           setAwayPrompt(true);
           playAlarmSound();
@@ -581,15 +607,19 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     startOfDay.setHours(0, 0, 0, 0);
     let entryId: string;
     let idleSeconds = 0;
+    // active_seconds do gap = trabalho avulso do dia. Precisa ser RESTAURADO ao
+    // retomar: sem isso o próximo flush gravaria 0 e apagaria o acumulado.
+    let activeSeconds = 0;
     try {
       const { data: existing } = await dbAny.from('activity_time_entries')
-        .select('id, idle_seconds')
+        .select('id, idle_seconds, active_seconds')
         .eq('user_id', u.userId).is('activity_id', null)
         .gte('started_at', startOfDay.toISOString())
         .order('started_at', { ascending: false }).limit(1).maybeSingle();
       if (existing) {
         entryId = existing.id;
         idleSeconds = existing.idle_seconds || 0;
+        activeSeconds = existing.active_seconds || 0;
         await dbAny.from('activity_time_entries')
           .update({ status: 'running', ended_at: new Date().toISOString() }).eq('id', entryId);
       } else {
@@ -608,7 +638,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     sync({
       kind: 'gap', entryId, activityId: null, activityType: '', activityTitle: GAP_TITLE,
       leadName: null, userId: u.userId, userName: u.userName,
-      activeSeconds: 0, idleSeconds, status: 'running', estimateMinutes: null,
+      activeSeconds, idleSeconds, status: 'running', estimateMinutes: null,
+      gapWorking: true, // o gap começa logo após uma interação; o loop reavalia em 1s
     });
     announceTakeover();
     pauseOtherSessions(u.userId, entryId);

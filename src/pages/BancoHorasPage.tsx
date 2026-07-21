@@ -53,7 +53,9 @@ export default function BancoHorasPage() {
     types.forEach((t) => m.set(t.key, t.label));
     return (k: string) => {
       if (k.startsWith('pausa:')) return `Pausa · ${BREAK_LABELS[k.slice(6) as BreakType] || k.slice(6)}`;
-      return k ? (m.get(k) || k) : 'Entre atividades (ocioso)';
+      // Linha de gap (activity_type vazio): mistura trabalho sem atividade
+      // vinculada (ativo) com ociosidade real (ocioso) — as colunas separam.
+      return k ? (m.get(k) || k) : 'Trabalho avulso (sem atividade)';
     };
   }, [types]);
 
@@ -184,9 +186,12 @@ export default function BancoHorasPage() {
     const active = aggregated.reduce((s, a) => s + a.active, 0);
     // Pausas justificadas (almoço/intervalo/compensação) não contam como ocioso
     const idle = aggregated.reduce((s, a) => s + (a.activityType.startsWith('pausa:') ? 0 : a.idle), 0);
+    // Parcela do ativo que veio da linha de gap: produtivo, mas sem atividade
+    // vinculada (atendimento no WhatsApp, cadastro, consulta de processo...).
+    const loose = aggregated.reduce((s, a) => s + (a.activityType === '' ? a.active : 0), 0);
     const acts = new Set<string>();
     aggregated.forEach((a) => a.activities.forEach((id) => acts.add(id)));
-    return { active, idle, acts: acts.size, members: byMember.length };
+    return { active, idle, loose, acts: acts.size, members: byMember.length };
   }, [aggregated, byMember.length]);
 
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
@@ -289,8 +294,9 @@ export default function BancoHorasPage() {
       </Card>
 
       {/* Totais */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <StatCard icon={<Clock className="h-4 w-4 text-emerald-500" />} label="Tempo ativo" value={formatHMS(totals.active)} />
+        <StatCard icon={<Clock className="h-4 w-4 text-sky-500" />} label="Trabalho avulso" value={formatHMS(totals.loose)} />
         <StatCard icon={<Coffee className="h-4 w-4 text-amber-500" />} label="Tempo ocioso" value={formatHMS(totals.idle)} />
         <StatCard icon={<RefreshCw className="h-4 w-4 text-blue-500" />} label="Atividades" value={String(totals.acts)} />
         <StatCard icon={<Users className="h-4 w-4 text-indigo-500" />} label="Membros" value={String(totals.members)} />
