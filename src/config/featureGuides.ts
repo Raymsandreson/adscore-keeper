@@ -9,6 +9,12 @@ export interface FeatureGuideItem {
   label: string;
   /** O que ele faz, em 1 linha */
   description: string;
+  /**
+   * Seletor CSS opcional pro tour destacar o elemento exato.
+   * Sem seletor, o tour tenta achar o botão pelo texto do label;
+   * se não achar, mostra o balão centralizado.
+   */
+  selector?: string;
 }
 
 export interface FeatureGuideDef {
