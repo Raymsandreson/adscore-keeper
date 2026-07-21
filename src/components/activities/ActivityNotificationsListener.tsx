@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   mention: '@ Você foi mencionado',
   incompleto: '⚠️ Feedback marcado como incompleto',
   praise: '🌟 Seu trabalho foi elogiado',
+  cobranca: '⏰ Cobrança de atividade atrasada',
 };
 
 /**
@@ -31,12 +32,78 @@ export function ActivityNotificationsListener() {
     let cancelled = false;
     let channel: ReturnType<typeof externalSupabase.channel> | null = null;
 
+    // Marca a notificação como lida/vista (best-effort) — alimenta o "visto" no card do observador.
+    const markSeen = (id: string) => {
+      externalSupabase
+        .from('activity_notifications' as never)
+        .update({ read_at: new Date().toISOString() } as never)
+        .eq('id', id)
+        .then(() => {});
+    };
+
+    type Notif = {
+      id: string;
+      activity_id: string | null;
+      type: string;
+      title: string | null;
+      body: string | null;
+      actor_name: string | null;
+    };
+
+    const render = (n: Notif) => {
+      // Cobrança: o próprio título já carrega o nível (❗ Importante / 🚨 Urgente).
+      // Mostra em destaque (toast de alerta, mais persistente) para não passar batido.
+      const isCobranca = n.type === 'cobranca';
+      const heading = isCobranca && n.title ? n.title : (TYPE_LABELS[n.type] || '🔔 Atividade');
+      const parts = [
+        !isCobranca && n.title ? `“${n.title}”` : '',
+        n.body || '',
+        n.actor_name ? `— ${n.actor_name}` : '',
+      ].filter(Boolean);
+      const opts = {
+        description: parts.join('\n'),
+        duration: isCobranca ? 30000 : 15000,
+        action: n.activity_id
+          ? {
+              label: 'Abrir atividade',
+              onClick: () => {
+                markSeen(n.id);
+                window.location.assign(`/?openActivity=${n.activity_id}`);
+              },
+            }
+          : undefined,
+      };
+      if (isCobranca) {
+        toast.warning(heading, opts);
+        // Cobrança exibida = vista pelo responsável; registra o "visto" para o observador.
+        markSeen(n.id);
+      } else {
+        toast(heading, opts);
+      }
+    };
+
     (async () => {
       try {
         await ensureExternalSession();
         await ensureRemapCache();
         const extId = await remapToExternal(user.id);
         if (!extId || cancelled) return;
+
+        // Cobranças pendentes (ainda não vistas): aparecem assim que o responsável
+        // loga/abre o app, mesmo que estivesse offline quando foram enviadas.
+        try {
+          const { data: pend } = await (externalSupabase as any)
+            .from('activity_notifications')
+            .select('id, activity_id, type, title, body, actor_name')
+            .eq('recipient_id', extId)
+            .eq('type', 'cobranca')
+            .is('read_at', null)
+            .order('created_at', { ascending: true })
+            .limit(10);
+          if (!cancelled) (pend || []).forEach((n: Notif) => render(n));
+        } catch (e) {
+          console.warn('[ActivityNotificationsListener] cobranças pendentes falhou:', e);
+        }
 
         channel = externalSupabase
           .channel('activity-notifications-' + user.id)
@@ -48,40 +115,7 @@ export function ActivityNotificationsListener() {
               table: 'activity_notifications',
               filter: `recipient_id=eq.${extId}`,
             },
-            (payload) => {
-              const n = payload.new as {
-                id: string;
-                activity_id: string | null;
-                type: string;
-                title: string | null;
-                body: string | null;
-                actor_name: string | null;
-              };
-              const heading = TYPE_LABELS[n.type] || '🔔 Atividade';
-              const parts = [
-                n.title ? `“${n.title}”` : '',
-                n.body || '',
-                n.actor_name ? `— ${n.actor_name}` : '',
-              ].filter(Boolean);
-              toast(heading, {
-                description: parts.join('\n'),
-                duration: 15000,
-                action: n.activity_id
-                  ? {
-                      label: 'Abrir atividade',
-                      onClick: () => {
-                        // Marca como lida (best-effort) e abre no painel lateral.
-                        externalSupabase
-                          .from('activity_notifications' as never)
-                          .update({ read_at: new Date().toISOString() } as never)
-                          .eq('id', n.id)
-                          .then(() => {});
-                        window.location.assign(`/?openActivity=${n.activity_id}`);
-                      },
-                    }
-                  : undefined,
-              });
-            }
+            (payload) => render(payload.new as Notif)
           )
           .subscribe();
       } catch (e) {
