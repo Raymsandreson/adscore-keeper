@@ -1709,12 +1709,28 @@ const ActivitiesPage = () => {
     setFormContactName(activity.contact_name || '');
     setFormClientNameOverride((activity as any).client_name_override || '');
     setFormMatrixQuadrant((activity as any).matrix_quadrant || '');
+    // Caso/processo/fluxo/campanha: sem hidratar, o Concluir do workflow salvava
+    // case_id/process_id do form anterior (obsoleto) por cima da atividade atual.
+    setFormCaseId((activity as any).case_id || '');
+    setFormCaseTitle((activity as any).case_title || '');
+    setFormProcessId((activity as any).process_id || '');
+    setFormProcessTitle((activity as any).process_title || '');
+    setFormWorkflowId((activity as any).workflow_id || '');
+    setFormCampaignId((activity as any).crm_campaign_id || '');
+    setCaseProcesses([]);
+    if ((activity as any).case_id) {
+      externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao').eq('case_id', (activity as any).case_id).then(({ data }) => {
+        setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos, data_ultima_movimentacao: p.data_ultima_movimentacao })));
+      });
+    }
     if (activity.lead_id) {
       try {
-        const [linkedData, leadPreviewRes] = await Promise.all([
+        const [casesData, linkedData, leadPreviewRes] = await Promise.all([
+          externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]);
+        setLeadCases(casesData.data || []);
         let boardName: string | null = null;
         if (leadPreviewRes.data?.board_id) {
           const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
@@ -2866,6 +2882,80 @@ const ActivitiesPage = () => {
     />
   );
 
+  // Sheets laterais dos registros vinculados (lead, processo, WhatsApp grupo/privado).
+  // Declarados antes do early return do workflow pra montarem tanto na edição
+  // normal quanto no Play Work — antes, no workflow, os botões não tinham onde abrir.
+  const linkedRecordSheets = (
+    <>
+      {/* Lead Edit Sheet */}
+      {formLeadId && (
+        <LeadEditDialog
+          open={showLeadSheet}
+          onOpenChange={setShowLeadSheet}
+          lead={{ id: formLeadId, lead_name: formLeadName } as any}
+          onSave={async (leadId, updates) => {
+            const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
+            if (error) throw error;
+            setShowLeadSheet(false);
+          }}
+          mode="sheet"
+        />
+      )}
+
+      {/* Process Detail Sheet — Últimas movimentações */}
+      {showProcessSheetId && processSheetData && (
+        <Suspense fallback={null}>
+          <ProcessDetailSheet
+            open={!!showProcessSheetId}
+            onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
+            process={processSheetData}
+            onUpdated={applyUpdatedCaseProcess}
+            defaultTab="atividades"
+          />
+        </Suspense>
+      )}
+
+      {/* Preview de conversa do WhatsApp inline (mesmo componente do Monitor IA / Contatos) */}
+      <DashboardChatPreview
+        open={!!waChatPreview}
+        onOpenChange={(open) => { if (!open) setWaChatPreview(null); }}
+        phone={waChatPreview?.phone || null}
+        contactName={waChatPreview?.contact_name || null}
+        instanceName={waChatPreview?.instance_name || null}
+        privatePhone={waChatPreview?.private_phone || null}
+        hasLead={!!formLeadId}
+        hasContact={false}
+        wasResponded={false}
+        responseTimeMinutes={null}
+      />
+
+      {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead) */}
+      {formLeadId && (
+        <LeadGroupSearchDialog
+          open={groupSearchOpen}
+          onOpenChange={setGroupSearchOpen}
+          leadId={formLeadId}
+          contactPhone={leadPreview?.lead_phone || undefined}
+          instanceName={undefined}
+          leadName={formLeadName || ''}
+          onGroupSelected={async (g) => {
+            try {
+              const { error } = await externalSupabase
+                .from('leads')
+                .update({ whatsapp_group_id: g.jid })
+                .eq('id', formLeadId);
+              if (error) throw error;
+              setLeadPreview((prev) => prev ? { ...prev, whatsapp_group_id: g.jid } : prev);
+              toast.success('Grupo vinculado ao lead.');
+            } catch (e: any) {
+              toast.error('Falha ao vincular grupo: ' + (e?.message || 'erro desconhecido'));
+            }
+          }}
+        />
+      )}
+    </>
+  );
+
   // Larguras das colunas laterais no modo edição (declaradas ANTES de qualquer early return
   // para preservar a ordem dos hooks entre renders — inclusive o return do workflowMode).
   const [weekColWidth, setWeekColWidth] = useState(220);
@@ -3004,6 +3094,85 @@ const ActivitiesPage = () => {
                   )}
                 </div>
               </div>
+              {/* Acesso rápido aos registros vinculados sem sair do workflow */}
+              {(formLeadId || formCaseId || formProcessId) && (
+                <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                  {formLeadId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setShowLeadSheet(true)}
+                      title={formLeadName ? `Abrir lead: ${formLeadName}` : 'Abrir lead'}
+                    >
+                      <User className="h-3 w-3" /> Lead
+                    </Button>
+                  )}
+                  {formCaseId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => window.open(`/cases/${formCaseId}`, '_blank')}
+                      title={formCaseTitle ? `Abrir caso: ${formCaseTitle}` : 'Abrir caso'}
+                    >
+                      <Briefcase className="h-3 w-3" /> Caso
+                    </Button>
+                  )}
+                  {formProcessId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setShowProcessSheetId(formProcessId)}
+                      title={formProcessTitle ? `Abrir processo: ${formProcessTitle}` : 'Abrir processo'}
+                    >
+                      <FileText className="h-3 w-3" /> Processo
+                    </Button>
+                  )}
+                  {formLeadId && (() => {
+                    const hasGroup = !!leadPreview?.whatsapp_group_id;
+                    const hasPhone = !!leadPreview?.lead_phone;
+                    const hasAnyWa = hasGroup || hasPhone;
+                    return (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={`h-7 text-xs gap-1 ${
+                          hasAnyWa
+                            ? 'text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-950/30'
+                            : 'text-muted-foreground/60 border-border hover:text-muted-foreground hover:bg-muted/50'
+                        }`}
+                        onClick={() => {
+                          if (hasAnyWa) {
+                            const target = leadPreview?.whatsapp_group_id || leadPreview?.lead_phone || '';
+                            if (!target) return;
+                            setWaChatPreview({
+                              phone: target,
+                              contact_name: formLeadName || null,
+                              instance_name: null,
+                              // Grupo vinculado + telefone do lead → permite alternar pro privado unificado da equipe.
+                              private_phone: hasGroup && leadPreview?.lead_phone ? leadPreview.lead_phone : null,
+                            });
+                          } else {
+                            setGroupSearchOpen(true);
+                          }
+                        }}
+                        title={
+                          hasGroup
+                            ? 'Abrir grupo do WhatsApp vinculado'
+                            : hasPhone
+                              ? 'Abrir conversa do WhatsApp'
+                              : 'Vincular grupo do WhatsApp ao lead'
+                        }
+                      >
+                        <MessageCircle className="h-3 w-3" />
+                        {hasGroup ? 'Grupo WA' : hasPhone ? 'WhatsApp' : 'Vincular WA'}
+                      </Button>
+                    );
+                  })()}
+                </div>
+              )}
             </CardHeader>
           </Card>
 
@@ -3043,6 +3212,8 @@ const ActivitiesPage = () => {
             </CardContent>
           </Card>
         </div>
+
+        {linkedRecordSheets}
       </div>
     );
   }
@@ -5542,33 +5713,7 @@ const ActivitiesPage = () => {
           );
         }}
       />
-      {/* Lead Edit Sheet */}
-      {formLeadId && (
-        <LeadEditDialog
-          open={showLeadSheet}
-          onOpenChange={setShowLeadSheet}
-          lead={{ id: formLeadId, lead_name: formLeadName } as any}
-          onSave={async (leadId, updates) => {
-            const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
-            if (error) throw error;
-            setShowLeadSheet(false);
-          }}
-          mode="sheet"
-        />
-      )}
-
-      {/* Process Detail Sheet — Últimas movimentações */}
-      {showProcessSheetId && processSheetData && (
-        <Suspense fallback={null}>
-          <ProcessDetailSheet
-            open={!!showProcessSheetId}
-            onOpenChange={(o) => { if (!o) setShowProcessSheetId(null); }}
-            process={processSheetData}
-            onUpdated={applyUpdatedCaseProcess}
-            defaultTab="atividades"
-          />
-        </Suspense>
-      )}
+      {linkedRecordSheets}
 
       <CompleteAndNotifyDialog
         open={completeNotifyOpen}
@@ -5576,20 +5721,6 @@ const ActivitiesPage = () => {
         onConfirm={handleCompleteAndCreateNextWithNotify}
         leadId={formLeadId || null}
         buildMsg={buildMsg}
-      />
-
-      {/* Preview de conversa do WhatsApp inline (mesmo componente do Monitor IA / Contatos) */}
-      <DashboardChatPreview
-        open={!!waChatPreview}
-        onOpenChange={(open) => { if (!open) setWaChatPreview(null); }}
-        phone={waChatPreview?.phone || null}
-        contactName={waChatPreview?.contact_name || null}
-        instanceName={waChatPreview?.instance_name || null}
-        privatePhone={waChatPreview?.private_phone || null}
-        hasLead={!!formLeadId}
-        hasContact={false}
-        wasResponded={false}
-        responseTimeMinutes={null}
       />
 
       <AssessorSummaryShareDialog
@@ -5601,33 +5732,6 @@ const ActivitiesPage = () => {
         selectedCalDays={selectedCalDays}
         allKnownActivityTypes={allKnownActivityTypes}
       />
-
-      {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead) */}
-      {formLeadId && (
-        <LeadGroupSearchDialog
-          open={groupSearchOpen}
-          onOpenChange={setGroupSearchOpen}
-          leadId={formLeadId}
-          contactPhone={leadPreview?.lead_phone || undefined}
-          instanceName={undefined}
-          leadName={formLeadName || ''}
-          onGroupSelected={async (g) => {
-            try {
-              const { error } = await externalSupabase
-                .from('leads')
-                .update({ whatsapp_group_id: g.jid })
-                .eq('id', formLeadId);
-              if (error) throw error;
-              setLeadPreview((prev) => prev ? { ...prev, whatsapp_group_id: g.jid } : prev);
-              toast.success('Grupo vinculado ao lead.');
-            } catch (e: any) {
-              toast.error('Falha ao vincular grupo: ' + (e?.message || 'erro desconhecido'));
-            }
-          }}
-        />
-      )}
-
-
 
       {/* Popup fullscreen de Parabéns ao concluir a última atividade do bloco */}
       {celebrateBlock && (
