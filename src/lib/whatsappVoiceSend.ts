@@ -2,8 +2,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/functionRouter';
 
 /**
- * Envia um áudio (URL pública) como mensagem de voz (PTT) no WhatsApp,
- * transcodificando para ogg/opus antes para que apareça como voice-note e não como arquivo.
+ * Envia um áudio (URL pública) como mensagem de voz (PTT) no WhatsApp.
+ * O arquivo vai como foi gravado — quem converte para ogg/opus é a UazAPI.
  *
  * @param audioUrl URL pública do áudio original (webm/mp4 do MediaRecorder).
  * @param target JID de grupo OU número de telefone/E.164.
@@ -17,23 +17,19 @@ export async function sendVoiceToWa(
   leadId?: string | null,
   instanceIdOverride?: string | null,
 ): Promise<void> {
-  let mediaUrl = audioUrl;
-  let mediaType = 'audio/ogg';
-
-  // 1) Transcodifica pra ogg/opus (obrigatório pro WhatsApp reconhecer como PTT).
-  try {
-    const { data: tx, error: txErr } = await cloudFunctions.invoke('transcode-audio-opus', {
-      body: { url: audioUrl, folder: 'activity-audio' },
-    });
-    if (!txErr && tx?.success && tx?.url) {
-      mediaUrl = tx.url;
-      mediaType = tx.mime || 'audio/ogg';
-    } else {
-      console.warn('[sendVoiceToWa] transcode falhou, enviando original:', tx?.error || txErr?.message);
-    }
-  } catch (txe) {
-    console.warn('[sendVoiceToWa] transcode exceção, enviando original:', txe);
-  }
+  // 1) Envia a gravação ORIGINAL, sem transcodificar.
+  //    Reencodar localmente com ffmpeg/libopus produz um ogg que o WhatsApp iOS
+  //    não reproduz ("Este áudio não está mais disponível"). Verificado em
+  //    21/07/2026 com 16k/32k/64k/128k e com -application lowdelay: todos falham
+  //    no iPhone e tocam no Android/Web. Mandando o arquivo original, a UazAPI
+  //    reencoda no formato dela, que toca nas três plataformas.
+  const mediaUrl = audioUrl;
+  const ext = (audioUrl.split('?')[0].split('.').pop() || '').toLowerCase();
+  const mediaType =
+    ext === 'mp4' || ext === 'm4a' ? 'audio/mp4'
+    : ext === 'ogg' ? 'audio/ogg'
+    : ext === 'mp3' ? 'audio/mpeg'
+    : 'audio/webm';
 
   // 2) Descobre instância: usa o override do chamador, ou o default do profile.
   let instanceId: string | undefined = instanceIdOverride || undefined;
