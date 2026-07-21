@@ -197,6 +197,7 @@ const LeadsMapPage = lazyRetry(() => import("./pages/LeadsMapPage"), "LeadsMapPa
 const AcolhimentoPage = lazyRetry(() => import("./pages/AcolhimentoPage"), "AcolhimentoPage");
 const CampaignsPage = lazyRetry(() => import("./pages/CampaignsPage"), "CampaignsPage");
 const CampaignDetailPage = lazyRetry(() => import("./pages/CampaignDetailPage"), "CampaignDetailPage");
+const TvAtividadesPage = lazyRetry(() => import("./pages/TvAtividadesPage"), "TvAtividadesPage");
 
 
 const queryClient = new QueryClient({
@@ -276,6 +277,8 @@ function AppRoutes() {
         <Route path="/booking/:configId/:token" element={<BookingPage />} />
         <Route path="/revisar/:token" element={<DocumentReviewPage />} />
         <Route path="/avaliar/:token" element={<AvaliacaoPage />} />
+        {/* Telão do ranking de atividades — full-screen, sem sidebar */}
+        <Route path="/tv/atividades" element={<ProtectedRoute><TvAtividadesPage /></ProtectedRoute>} />
 
         {/* All other routes with sidebar layout */}
         <Route path="*" element={<SidebarLayout />} />
