@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -6,13 +6,24 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail, AlertTriangle } from "lucide-react";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail, AlertTriangle, Loader2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ListPagination from "@/components/processes/ListPagination";
 import { format } from "date-fns";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 25;
+
+/**
+ * Só as colunas que a lista renderiza e a busca varre. `select("*")` traz 69
+ * colunas — 5,5 MB por load contra 0,5 MB aqui. O ProcessDetailSheet monta o
+ * formulário inteiro a partir do objeto recebido, então a linha completa é
+ * buscada no clique (ver `openProcess`), não aqui.
+ */
+const LIST_COLUMNS =
+  "id, title, process_number, process_type, status, situacao, tribunal_sigla, classe, " +
+  "polo_ativo, polo_passivo, data_distribuicao, data_ultima_movimentacao, case_id, " +
+  "lead_id, valor_causa_formatado, created_at, legal_cases(case_number, title)";
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
 const ProcessualEmailsTab = lazy(() => import("@/components/processes/ProcessualEmailsTab"));
@@ -35,6 +46,11 @@ interface Process {
   lead_id: string;
   valor_causa_formatado: string | null;
   created_at: string;
+  legal_cases?: { case_number: string; title: string } | null;
+}
+
+function errMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }
 
 export default function ProcessesPage() {
@@ -45,9 +61,70 @@ export default function ProcessesPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedProcess, setSelectedProcess] = useState<any>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
+  const loadProcesses = useCallback(async () => {
+    setLoading(true);
+    try {
+      // O PostgREST corta em 1.000 linhas por request. Sem paginar, os 545
+      // processos mais antigos (de 1.545 ativos) nunca chegavam na tela — e
+      // como a busca desta aba é client-side sobre esta lista, eles também
+      // eram inacháveis pela barra de pesquisa.
+      const PAGE = 1000;
+      const HARD_CAP = 20000;
+      const all: Process[] = [];
+      for (let from = 0; from < HARD_CAP; from += PAGE) {
+        const { data, error } = await externalSupabase
+          .from("lead_processes")
+          .select(LIST_COLUMNS)
+          .is('deleted_at', null)
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const rows = (data || []) as unknown as Process[];
+        all.push(...rows);
+        if (rows.length < PAGE) break;
+      }
+      setProcesses(all);
+    } catch (err) {
+      // Antes o erro era descartado e a tela só ficava vazia.
+      console.error('[ProcessesPage] loadProcesses failed', err);
+      toast.error('Erro ao carregar processos: ' + errMessage(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadProcesses();
+  }, [loadProcesses]);
+
+  // A lista traz só as colunas de exibição; o sheet precisa da linha inteira
+  // (o formulário de edição é montado a partir dela). 1,7 KB, ~150 ms.
+  const openingRef = useRef(false);
+  const openProcess = useCallback(async (p: Process) => {
+    if (openingRef.current) return;
+    openingRef.current = true;
+    setOpeningId(p.id);
+    try {
+      const { data, error } = await externalSupabase
+        .from("lead_processes")
+        .select("*")
+        .eq('id', p.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.error('Processo não encontrado — pode ter sido excluído.');
+        return;
+      }
+      setSelectedProcess({ ...data, legal_cases: p.legal_cases });
+    } catch (err) {
+      console.error('[ProcessesPage] openProcess failed', err);
+      toast.error('Erro ao abrir processo: ' + errMessage(err));
+    } finally {
+      openingRef.current = false;
+      setOpeningId(null);
+    }
   }, []);
 
   // Auto-open process from URL param
@@ -55,20 +132,9 @@ export default function ProcessesPage() {
     const openId = searchParams.get('openProcess');
     if (openId && processes.length > 0 && !selectedProcess) {
       const found = processes.find(p => p.id === openId);
-      if (found) setSelectedProcess(found);
+      if (found) openProcess(found);
     }
-  }, [searchParams, processes]);
-
-  const loadProcesses = async () => {
-    setLoading(true);
-    const { data } = await externalSupabase
-      .from("lead_processes")
-      .select("*, legal_cases(case_number, title)")
-      .is('deleted_at', null)
-      .order("created_at", { ascending: false });
-    setProcesses(data || []);
-    setLoading(false);
-  };
+  }, [searchParams, processes, selectedProcess, openProcess]);
 
   const filtered = processes.filter((p) => {
     if (!search) return true;
@@ -167,7 +233,7 @@ export default function ProcessesPage() {
                 <Card
                   key={p.id}
                   className="hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => setSelectedProcess(p)}
+                  onClick={() => openProcess(p)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -237,7 +303,11 @@ export default function ProcessesPage() {
                       </div>
 
                       <div className="flex flex-col items-center gap-1 shrink-0">
-                        <ExternalLink className="h-4 w-4 text-muted-foreground mt-1" />
+                        {openingId === p.id ? (
+                          <Loader2 className="h-4 w-4 text-muted-foreground mt-1 animate-spin" />
+                        ) : (
+                          <ExternalLink className="h-4 w-4 text-muted-foreground mt-1" />
+                        )}
                         <Button
                           variant="ghost"
                           size="icon"
