@@ -184,31 +184,36 @@ export function ChecklistTemplatesManager({ open, onOpenChange }: ChecklistTempl
       items: formItems,
     };
 
-    let templateId: string;
-    if (editingTemplate) {
-      await updateTemplate(editingTemplate.id, data);
-      templateId = editingTemplate.id;
-    } else {
-      const created = await createTemplate(data);
-      templateId = created?.id;
-      if (!templateId) { resetForm(); return; }
-    }
-
-    // Sync stage links
-    const currentKeys = new Set(existingLinks.map(l => `${l.board_id}::${l.stage_id}`));
-
-    for (const link of existingLinks) {
-      const key = `${link.board_id}::${link.stage_id}`;
-      if (!linkedStages.has(key)) {
-        await unlinkChecklistFromStage(link.id);
+    // O hook já mostra toast de erro; aqui só abortamos mantendo o form aberto pra retry.
+    try {
+      let templateId: string;
+      if (editingTemplate) {
+        await updateTemplate(editingTemplate.id, data);
+        templateId = editingTemplate.id;
+      } else {
+        const created = await createTemplate(data);
+        templateId = created?.id;
+        if (!templateId) { resetForm(); return; }
       }
-    }
 
-    for (const key of linkedStages) {
-      if (!currentKeys.has(key)) {
-        const [boardId, stageId] = key.split('::');
-        await linkChecklistToStage(templateId, boardId, stageId);
+      // Sync stage links
+      const currentKeys = new Set(existingLinks.map(l => `${l.board_id}::${l.stage_id}`));
+
+      for (const link of existingLinks) {
+        const key = `${link.board_id}::${link.stage_id}`;
+        if (!linkedStages.has(key)) {
+          await unlinkChecklistFromStage(link.id);
+        }
       }
+
+      for (const key of linkedStages) {
+        if (!currentKeys.has(key)) {
+          const [boardId, stageId] = key.split('::');
+          await linkChecklistToStage(templateId, boardId, stageId);
+        }
+      }
+    } catch {
+      return;
     }
 
     resetForm();

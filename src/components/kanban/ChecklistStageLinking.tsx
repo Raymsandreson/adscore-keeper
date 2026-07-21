@@ -47,13 +47,22 @@ export function ChecklistStageLinking({ boardId, stages }: ChecklistStageLinking
 
   const handleLink = async () => {
     if (!selectedStage || !selectedTemplate) return;
-    await linkChecklistToStage(selectedTemplate, boardId, selectedStage);
+    // O hook já mostra toast de erro; abortamos mantendo a seleção pra retry.
+    try {
+      await linkChecklistToStage(selectedTemplate, boardId, selectedStage);
+    } catch {
+      return;
+    }
     await loadLinks();
     setSelectedTemplate('');
   };
 
   const handleUnlink = async (linkId: string) => {
-    await unlinkChecklistFromStage(linkId);
+    try {
+      await unlinkChecklistFromStage(linkId);
+    } catch {
+      return;
+    }
     await loadLinks();
   };
 

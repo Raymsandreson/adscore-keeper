@@ -195,6 +195,7 @@ export const useChecklists = () => {
     } catch (error) {
       console.error('Error updating checklist:', error);
       if (!silent) toast.error('Erro ao atualizar checklist');
+      throw error;
     }
   };
 
@@ -252,6 +253,7 @@ export const useChecklists = () => {
     } catch (error) {
       console.error('Error linking checklist:', error);
       if (!silent) toast.error('Erro ao vincular checklist');
+      throw error;
     }
   };
 
@@ -266,6 +268,7 @@ export const useChecklists = () => {
     } catch (error) {
       console.error('Error unlinking checklist:', error);
       if (!silent) toast.error('Erro ao desvincular checklist');
+      throw error;
     }
   };
 
