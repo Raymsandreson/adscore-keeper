@@ -43,7 +43,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const navigate = useNavigate();
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
-    loading, sendingMessage, sendMessage, alertMessageAgain, startDirectChat, ensureGeneralChat,
+    loading, sendingMessage, sendMessage, alertMessageAgain, dismissPending, startDirectChat, ensureGeneralChat,
     otherMembersReadAt,
   } = useTeamDirectChat();
   const profiles = useProfilesList();
@@ -989,11 +989,41 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const convQuery = convSearch.trim().toLowerCase();
   const activeTeamGroup = teamFilter === 'all' ? null : teamGroups.find(t => t.name === teamFilter);
 
+  // Mensagem de encerramento não deixa pendência: curta, sem pergunta e dentro
+  // da lista de fechamentos comuns (ou só emoji/pontuação, ex.: "👍").
+  const CLOSING_WORDS = new Set([
+    'ok', 'okay', 'okk', 'oks', 'blz', 'beleza', 'obrigado', 'obrigada', 'brigado', 'brigada',
+    'valeu', 'vlw', 'feito', 'ta bom', 'tá bom', 'ta bem', 'tá bem', 'ta otimo', 'tá ótimo',
+    'perfeito', 'show', 'certo', 'combinado', 'de nada', 'disponha', 'boa', 'top', 'joia',
+    'jóia', 'tmj', 'é isso', 'isso', 'entendido', 'anotado', 'ciente', 'ja foi', 'já foi',
+    'resolvido', 'pode deixar', 'deixa comigo', 'tudo certo', 'sim', 'uhum', 'aham',
+    'obg', 'obrigado!', 'maravilha', 'otimo', 'ótimo', 'excelente', 'fechado', 'fechou',
+  ]);
+  const isClosingMessage = (text: string): boolean => {
+    const t = (text || '').trim().toLowerCase();
+    if (!t || t.length > 40 || t.includes('?')) return false;
+    // remove emojis e pontuação pra comparar só o texto
+    const cleaned = t
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]/gu, '')
+      .replace(/[!.,…:;~]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return true; // só emoji/pontuação (ex.: "👍", "✅")
+    return CLOSING_WORDS.has(cleaned);
+  };
+
   // Status de pendência da conversa:
   // 'responder'  → a última mensagem é de outra pessoa (em grupo, só se houver não lidas)
   // 'aguardando' → a última mensagem é minha e ninguém respondeu ainda
+  // null         → sem pendência: mensagem de fechamento ("ok", "obrigado", "👍")
+  //                ou dispensada no "✓ Resolvido" (até chegar mensagem nova)
   const convPendingStatus = (conv: (typeof conversations)[number]): 'responder' | 'aguardando' | null => {
     if (!conv.lastMessageSenderId || !user?.id) return null;
+    if (
+      conv.pendingDismissedAt && conv.lastMessageAt
+      && new Date(conv.pendingDismissedAt) >= new Date(conv.lastMessageAt)
+    ) return null;
+    if (isClosingMessage(conv.lastMessage || '')) return null;
     if (conv.lastMessageSenderId === user.id) return 'aguardando';
     if (conv.type === 'direct') return 'responder';
     return (conv.unreadCount || 0) > 0 ? 'responder' : null;
@@ -1180,11 +1210,36 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                         {format(new Date(conv.lastMessageAt), 'dd/MM HH:mm', { locale: ptBR })}
                       </span>
                     )}
-                    {hasUnread && (
-                      <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
-                        {conv.unreadCount}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1">
+                      {pending && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={(e) => { e.stopPropagation(); dismissPending(conv.id); }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              dismissPending(conv.id);
+                            }
+                          }}
+                          title="Marcar como resolvida — some dos pendentes até chegar mensagem nova"
+                          className={cn(
+                            'w-5 h-5 rounded-full border flex items-center justify-center transition-colors',
+                            pending === 'responder'
+                              ? 'border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-amber-500 hover:text-white'
+                              : 'border-sky-500/50 text-sky-600 dark:text-sky-400 hover:bg-sky-500 hover:text-white'
+                          )}
+                        >
+                          <Check className="h-3 w-3" />
+                        </span>
+                      )}
+                      {hasUnread && (
+                        <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center">
+                          {conv.unreadCount}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </button>
               );

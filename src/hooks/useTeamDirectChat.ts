@@ -17,6 +17,7 @@ export interface TeamConversation {
   lastMessageAt?: string;
   lastMessageSenderId?: string;
   unreadCount?: number;
+  pendingDismissedAt?: string | null;
 }
 
 export interface TeamMessage {
@@ -58,7 +59,7 @@ export function useTeamDirectChat() {
 
       const { data: memberships, error: membershipsError } = await externalSupabase
         .from('team_conversation_members')
-        .select('conversation_id, last_read_at')
+        .select('conversation_id, last_read_at, pending_dismissed_at')
         .eq('user_id', user.id);
 
       if (membershipsError) {
@@ -74,8 +75,10 @@ export function useTeamDirectChat() {
 
       const convIds = memberships.map((m) => m.conversation_id);
       const lastReadMap: Record<string, string> = {};
+      const dismissedMap: Record<string, string | null> = {};
       memberships.forEach((m) => {
         lastReadMap[m.conversation_id] = m.last_read_at || '';
+        dismissedMap[m.conversation_id] = (m as { pending_dismissed_at?: string | null }).pending_dismissed_at || null;
       });
 
       const { data: convs, error: conversationsError } = await externalSupabase
@@ -155,6 +158,7 @@ export function useTeamDirectChat() {
             lastMessageAt: lastMsg?.created_at || conv.created_at,
             lastMessageSenderId: (lastMsg as { sender_id?: string } | null)?.sender_id,
             unreadCount: count || 0,
+            pendingDismissedAt: dismissedMap[conv.id] || null,
           } as TeamConversation;
         })
       );
@@ -410,6 +414,33 @@ export function useTeamDirectChat() {
     }
   }, []);
 
+  // "✓ Resolvido": dispensa a pendência (responder/aguardando) desta conversa
+  // pro usuário atual. A pendência volta sozinha quando chegar mensagem nova.
+  const dismissPending = useCallback(async (conversationId: string) => {
+    if (!user?.id) return;
+
+    const dismissedAt = new Date().toISOString();
+    // Otimista: some da lista na hora
+    setConversations(prev => prev.map(c =>
+      c.id === conversationId ? { ...c, pendingDismissedAt: dismissedAt } : c
+    ));
+
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase.from('team_conversation_members') as any)
+        .update({ pending_dismissed_at: dismissedAt })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+    } catch (e) {
+      console.error('Error dismissing pending:', e);
+      setConversations(prev => prev.map(c =>
+        c.id === conversationId ? { ...c, pendingDismissedAt: null } : c
+      ));
+      toast.error('Não foi possível marcar como resolvida');
+    }
+  }, [user?.id]);
+
   const startDirectChat = useCallback(async (otherUserId: string) => {
     if (!user?.id) return null;
 
@@ -481,6 +512,7 @@ export function useTeamDirectChat() {
     sendingMessage,
     sendMessage,
     alertMessageAgain,
+    dismissPending,
     startDirectChat,
     ensureGeneralChat,
     fetchConversations,
