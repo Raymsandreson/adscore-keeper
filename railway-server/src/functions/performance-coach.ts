@@ -62,7 +62,23 @@ async function resolvePerson(nome: string): Promise<{ userId: string | null; any
     .ilike('full_name', `%${nome}%`)
     .limit(5);
   const exact = (profiles || []).find((p) => (p.full_name || '').trim().toLowerCase() === nome.trim().toLowerCase());
-  const p = exact || (profiles || [])[0];
+  let p = exact || (profiles || [])[0];
+
+  // No grupo gerencial o nome do ranking vem de org_directors/team_managers,
+  // que nem sempre bate com profiles.full_name (ex.: perfil com username).
+  if (!p) {
+    const [{ data: dirs }, { data: mgrs }] = await Promise.all([
+      supabase.from('org_directors').select('user_id, name').ilike('name', `%${nome}%`).limit(1),
+      supabase.from('team_managers').select('manager_user_id, manager_name').ilike('manager_name', `%${nome}%`).limit(1),
+    ]);
+    const userId = dirs?.[0]?.user_id || mgrs?.[0]?.manager_user_id;
+    if (userId) {
+      const { data: byId } = await supabase
+        .from('profiles').select('id, user_id, full_name, phone').eq('user_id', userId).maybeSingle();
+      p = byId || { id: userId, user_id: userId, full_name: nome, phone: null };
+    }
+  }
+
   if (!p) return { userId: null, anyIds: [], phone: null };
   const phone = (p.phone || '').replace(/\D/g, '') || null;
   return { userId: p.user_id, anyIds: [...new Set([p.user_id, p.id].filter(Boolean))] as string[], phone };
