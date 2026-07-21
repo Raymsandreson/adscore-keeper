@@ -40,66 +40,63 @@ export function LeadAIChatExtractor({ leadId, leadPhone, whatsappGroups, onDataE
   const hasGroup = !!groupJid;
   const hasPhone = !!leadPhone?.trim();
 
-  const buildPrompt = (messagesText: string) => `Analise a conversa de WhatsApp abaixo e extraia dados estruturados sobre um possível caso jurídico.
+  type FetchedConversation = {
+    // Linhas no shape de visible_messages da extract-conversation-data (Railway).
+    rows: Array<{ direction?: string | null; contact_name?: string | null; message_text?: string | null; created_at?: string | null }>;
+    // phone/instance_name como estão gravados em whatsapp_messages — obrigatórios na edge.
+    phone: string;
+    instanceName: string;
+  };
 
-Retorne APENAS um JSON válido com os campos disponíveis (deixe vazio o que não souber):
-{
-  "victim_name": "nome completo da vítima",
-  "victim_age": número,
-  "accident_date": "YYYY-MM-DD",
-  "case_type": "tipo do caso (ex: acidente de trabalho, BPC, maternidade, trânsito)",
-  "accident_address": "endereço do fato",
-  "damage_description": "descrição do dano/situação em 1-2 frases",
-  "contractor_company": "empresa contratante",
-  "main_company": "empresa principal",
-  "sector": "setor",
-  "liability_type": "tipo de responsabilidade",
-  "legal_viability": "viabilidade jurídica (Alta/Média/Baixa)",
-  "visit_city": "cidade",
-  "visit_state": "UF (2 letras)"
-}
-
-CONVERSA:
-${messagesText}`;
-
-  const fetchMessages = async (): Promise<string> => {
-    const max = limit === 'all' ? 5000 : parseInt(limit, 10);
+  const fetchMessages = async (): Promise<FetchedConversation> => {
+    // A função corta visible_messages nas últimas 300; buscar além disso é desperdício.
+    const max = limit === 'all' ? 300 : parseInt(limit, 10);
     // Sem sessão, o RLS do Externo limita anon às últimas 168h (policy de realtime).
     // A sessão anônima autenticada (auth.uid() não-nulo) libera o histórico completo.
     try { await ensureExternalSession(); } catch { /* segue como anon — pega ao menos 7 dias */ }
 
+    let data: Array<Record<string, any>> | null = null;
     if (source === 'group') {
       const jid = groupJid;
       if (!jid) throw new Error('Lead não tem grupo de WhatsApp identificável (sem JID e sem número de grupo)');
       // Cobre os dois formatos em que o grupo pode estar gravado.
-      const { data, error } = await externalSupabase
+      const res = await externalSupabase
         .from('whatsapp_messages')
-        .select('created_at, direction, contact_name, message_text')
+        .select('created_at, direction, contact_name, message_text, phone, instance_name')
         .in('phone', [jid, `${jid}@g.us`])
         .order('created_at', { ascending: false })
         .limit(max);
-      if (error) throw error;
-      const rows = (data || []).slice().reverse();
-      return rows
-        .map(r => `[${r.created_at}] ${r.contact_name || (r.direction === 'outbound' ? 'Equipe' : 'Cliente')}: ${r.message_text || ''}`)
-        .join('\n');
+      if (res.error) throw res.error;
+      data = res.data;
     } else {
       const phone = (leadPhone || '').replace(/\D/g, '');
       if (!phone) throw new Error('Lead não tem telefone do contato');
       const last8 = phone.slice(-8);
-      const { data, error } = await externalSupabase
+      const res = await externalSupabase
         .from('whatsapp_messages')
-        .select('created_at, direction, contact_name, message_text, phone')
+        .select('created_at, direction, contact_name, message_text, phone, instance_name')
         .ilike('phone', `%${last8}%`)
         .not('phone', 'like', '%@g.us')
         .order('created_at', { ascending: false })
         .limit(max);
-      if (error) throw error;
-      const rows = (data || []).slice().reverse();
-      return rows
-        .map(r => `[${r.created_at}] ${r.direction === 'outbound' ? 'Equipe' : (r.contact_name || 'Cliente')}: ${r.message_text || ''}`)
-        .join('\n');
+      if (res.error) throw res.error;
+      data = res.data;
     }
+
+    const desc = data || [];
+    // phone/instance_name reais, tirados da mensagem mais recente que tem instância —
+    // é o par que a edge usa pra complementar a busca no banco.
+    const newest = desc.find(r => r.instance_name);
+    return {
+      rows: desc.slice().reverse().map(r => ({
+        direction: r.direction,
+        contact_name: r.contact_name,
+        message_text: r.message_text,
+        created_at: r.created_at,
+      })),
+      phone: String(newest?.phone || desc[0]?.phone || '').replace(/@g\.us$/i, ''),
+      instanceName: String(newest?.instance_name || ''),
+    };
   };
 
   const handleExtract = async () => {
@@ -113,23 +110,32 @@ ${messagesText}`;
     }
     setLoading(true);
     try {
-      const messagesText = await fetchMessages();
-      if (!messagesText.trim()) {
+      const { rows, phone, instanceName } = await fetchMessages();
+      if (rows.length === 0) {
         toast.warning('Nenhuma mensagem encontrada para extrair');
         return;
       }
+      if (!phone || !instanceName) {
+        toast.warning('Mensagens sem instância de WhatsApp identificada — não dá para extrair');
+        return;
+      }
 
+      // Contrato da extract-conversation-data (Railway; fallback Externo exige o
+      // mesmo phone + instance_name): a função monta o prompt, não aceita customPrompt.
+      // NÃO passar lead_id/contact_id — gravaria direto no banco sem confirmação.
       const { data, error } = await cloudFunctions.invoke<any>('extract-conversation-data', {
         body: {
-          targetType: 'lead_data',
-          customPrompt: buildPrompt(messagesText),
+          phone,
+          instance_name: instanceName,
+          targetType: 'lead',
+          visible_messages: rows,
         },
       });
       if (error) throw error;
+      if (data?.success === false) throw new Error(data?.error || 'extração falhou');
 
-      // Função retorna { success, data: {...campos...} } ou direto o objeto
-      const extracted = data?.data || data;
-      if (!extracted || typeof extracted !== 'object') {
+      const extracted = data?.data;
+      if (!extracted || typeof extracted !== 'object' || Object.keys(extracted).length === 0) {
         toast.warning('IA não retornou dados estruturados');
         return;
       }
@@ -188,7 +194,7 @@ ${messagesText}`;
               <SelectContent>
                 <SelectItem value="50">Últimas 50</SelectItem>
                 <SelectItem value="200">Últimas 200</SelectItem>
-                <SelectItem value="all">Todas (até 5000)</SelectItem>
+                <SelectItem value="all">Todas (até 300 — limite da IA)</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-[11px] text-muted-foreground mt-1">
