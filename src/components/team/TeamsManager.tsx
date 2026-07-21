@@ -282,6 +282,7 @@ export function TeamsManager() {
 
   const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
   const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
+  const [showInactive, setShowInactive] = useState(false);
   const [managerIds, setManagerIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
 
@@ -568,6 +569,8 @@ export function TeamsManager() {
       && !managerIds.has(p.user_id)
       && !managerIds.has(p.id)
   );
+  const unassignedActive = unassignedPeople.filter(p => !inactiveIds.has(p.user_id));
+  const unassignedInactive = unassignedPeople.filter(p => inactiveIds.has(p.user_id));
 
   const getMemberMetrics = (teamId: string, userId: string): string[] => {
     const entry = teamMembers.find(tm => tm.team_id === teamId && tm.user_id === userId);
@@ -667,10 +670,7 @@ export function TeamsManager() {
             <CardTitle className="text-base flex items-center gap-2">
               <UserMinus className="h-4 w-4 text-muted-foreground" />
               Sem time
-              <Badge variant="secondary">{unassignedPeople.length}</Badge>
-              {inactiveIds.size > 0 && (
-                <Badge variant="destructive" className="text-[10px]">{inactiveIds.size} desativado{inactiveIds.size !== 1 ? 's' : ''}</Badge>
-              )}
+              <Badge variant="secondary">{unassignedActive.length}</Badge>
             </CardTitle>
             <CardDescription>
               Pessoas com login que não estão em nenhum time. Desative quem saiu da equipe — a pessoa é deslogada ao abrir o sistema.
@@ -678,7 +678,7 @@ export function TeamsManager() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-1.5 sm:grid-cols-2">
-              {unassignedPeople.map(p => {
+              {(showInactive ? [...unassignedActive, ...unassignedInactive] : unassignedActive).map(p => {
                 const active = !inactiveIds.has(p.user_id);
                 return (
                   <div key={p.user_id} className={cn('flex items-center justify-between gap-2 p-2 rounded-md bg-muted/50', !active && 'opacity-60')}>
@@ -721,6 +721,16 @@ export function TeamsManager() {
                 );
               })}
             </div>
+            {unassignedInactive.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2 h-7 text-xs text-muted-foreground"
+                onClick={() => setShowInactive(v => !v)}
+              >
+                {showInactive ? 'Ocultar' : 'Mostrar'} {unassignedInactive.length} desativado{unassignedInactive.length !== 1 ? 's' : ''}
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
