@@ -64,6 +64,7 @@ import { handler as activityFromMovement } from './functions/activity-from-movem
 import { handler as nearbyEstablishments } from './functions/nearby-establishments';
 import { handler as dailyTeamReport } from './functions/daily-team-report';
 import { handler as reportQuery } from './functions/report-query';
+import { handler as performanceCoach } from './functions/performance-coach';
 
 
 
@@ -122,6 +123,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'nearby-establishments': nearbyEstablishments,
   'daily-team-report': dailyTeamReport,
   'report-query': reportQuery,
+  'performance-coach': performanceCoach,
 };
 
 const app = express();
