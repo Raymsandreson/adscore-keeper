@@ -36,10 +36,20 @@ interface TourStep {
  * passo. Tenta o label inteiro, sem parênteses/emoji e cada parte de "A / B".
  * Não achou → o balão aparece centralizado (sem destaque), e o tour segue.
  */
+/** Visível de verdade — exclui botões de hover (opacity-0 até o mouse passar), que têm rect > 0 */
+function isActuallyVisible(el: HTMLElement): boolean {
+  const rect = el.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return false;
+  if (typeof el.checkVisibility === "function") {
+    return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+  }
+  return true;
+}
+
 function findTargetForLabel(label: string, selector?: string): HTMLElement | null {
   if (selector) {
     const el = document.querySelector<HTMLElement>(selector);
-    if (el && el.getBoundingClientRect().width > 0) return el;
+    if (el && isActuallyVisible(el)) return el;
   }
 
   const noEmoji = label
@@ -58,8 +68,7 @@ function findTargetForLabel(label: string, selector?: string): HTMLElement | nul
   for (const cand of candidates) {
     const lc = cand.toLowerCase();
     const el = els.find((e) => {
-      const rect = e.getBoundingClientRect();
-      if (rect.width === 0 || rect.height === 0) return false;
+      if (!isActuallyVisible(e)) return false;
       // placeholder (campos de busca) e aria-label/title (botões de ícone)
       const attrs = [e.getAttribute("placeholder"), e.getAttribute("aria-label"), e.getAttribute("title")];
       if (attrs.some((a) => {
