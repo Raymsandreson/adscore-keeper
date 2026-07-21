@@ -282,7 +282,9 @@ export function TeamsManager() {
 
   const [cargos, setCargos] = useState<Record<string, string>>({}); // `${team_name}|${user_id}` -> cargo
   const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
+  const [managerIds, setManagerIds] = useState<Set<string>>(new Set());
   const [syncing, setSyncing] = useState(false);
+
   const { user } = useAuthContext();
 
   // Cargos e status de acesso moram no Supabase Externo.
@@ -290,11 +292,13 @@ export function TeamsManager() {
   const fetchOrg = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const [{ data: cargoRows }, { data: statusRows }] = await Promise.all([
+      const [{ data: cargoRows }, { data: statusRows }, { data: managerRows }] = await Promise.all([
         ((externalSupabase as any).from('team_member_cargos') as any).select('team_name, user_id, cargo'),
         ((externalSupabase as any).from('org_user_status') as any).select('user_id, active'),
+        ((externalSupabase as any).from('team_managers') as any).select('manager_user_id'),
       ]);
       setInactiveIds(new Set(((statusRows as any[]) || []).filter(r => r.active === false).map(r => r.user_id)));
+      setManagerIds(new Set(((managerRows as any[]) || []).map(r => r.manager_user_id).filter(Boolean)));
       const cargoMap: Record<string, string> = {};
       ((cargoRows as any[]) || []).forEach(r => { if (r.cargo) cargoMap[`${r.team_name}|${r.user_id}`] = r.cargo; });
       setCargos(cargoMap);
@@ -561,6 +565,8 @@ export function TeamsManager() {
 
   const unassignedPeople = profilesList.filter(
     p => !teamMembers.some(tm => tm.user_id === p.user_id || tm.user_id === p.id)
+      && !managerIds.has(p.user_id)
+      && !managerIds.has(p.id)
   );
 
   const getMemberMetrics = (teamId: string, userId: string): string[] => {
