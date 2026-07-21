@@ -125,15 +125,21 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
   const genConfig: any = {};
   if (options.max_tokens) genConfig.maxOutputTokens = options.max_tokens;
   if (options.temperature !== undefined) genConfig.temperature = options.temperature;
-  // Gemini 2.5 "thinking" consome tokens do maxOutputTokens antes de gerar texto,
-  // o que causa truncamento (ex.: resposta cortada no meio da palavra). Para chamadas
-  // de texto puro (sem tools), desabilita o thinking pra todo o orçamento ir pro texto.
+  // O "thinking" consome tokens do maxOutputTokens antes de gerar texto, o que
+  // causa truncamento (ex.: resposta cortada no meio da palavra). Para chamadas
+  // de texto puro (sem tools), reduz o thinking ao mínimo pra o orçamento ir pro texto.
+  // Família 3.x não aceita thinkingBudget (400 INVALID_ARGUMENT) — usa thinkingLevel;
+  // o 3.1-pro-preview não tem "minimal", o mínimo dele é "low".
   // Callers que precisam de reasoning podem passar `thinking_budget` explicitamente.
+  const isGemini3 = googleModel.startsWith("gemini-3");
+  const minLevel = googleModel.includes("pro") ? "low" : "minimal";
   const thinkingBudget = (options as any).thinking_budget;
   if (typeof thinkingBudget === "number") {
-    genConfig.thinkingConfig = { thinkingBudget };
+    genConfig.thinkingConfig = isGemini3
+      ? { thinkingLevel: thinkingBudget > 0 ? "high" : minLevel }
+      : { thinkingBudget };
   } else if (!options.tools?.length) {
-    genConfig.thinkingConfig = { thinkingBudget: 0 };
+    genConfig.thinkingConfig = isGemini3 ? { thinkingLevel: minLevel } : { thinkingBudget: 0 };
   }
   if (Object.keys(genConfig).length > 0) body.generationConfig = genConfig;
 
