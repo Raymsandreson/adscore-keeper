@@ -922,6 +922,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           call_summaries: callContext || undefined,
           custom_fields: customFields && customFields.length > 0 ? customFields : undefined,
           visible_messages: visibleMessages,
+          // Só no contato: manda também as imagens/PDFs da conversa pro OCR, que é
+          // de onde saem profissão, cidade/UF, CPF/RG e endereço quando o cliente
+          // mandou o documento sem digitar nada. Fica fora do lead porque
+          // multimodal custa caro e o lead não depende de documento pessoal.
+          include_documents: targetType === 'contact',
         },
       });
       if (error) throw error;

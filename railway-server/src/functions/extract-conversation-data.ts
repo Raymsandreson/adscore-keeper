@@ -4,8 +4,15 @@
 // Substitui a edge function Cloud `extract-conversation-data` que era um
 // proxy pro Externo. Aqui consultamos o Externo direto e chamamos a Lovable AI Gateway.
 //
-// Body: { phone, instance_name, targetType: 'lead'|'contact', extra_context?, call_summaries? }
+// Body: { phone, instance_name, targetType: 'lead'|'contact', extra_context?, call_summaries?,
+//         include_documents?, max_documents? }
 // Retorno: HTTP 200 { success, data?: {...}, error? }
+//
+// include_documents (default false): quando true, anexa ao prompt as imagens e
+// PDFs enviados na conversa/grupo (RG, CNH, procuração, comprovante de endereço)
+// para o Gemini ler via OCR multimodal. Fica opt-in porque multiplica o custo da
+// chamada — só os gatilhos manuais ligam. Os chamadores automáticos
+// (create-whatsapp-group, zapsign-webhook) seguem em modo texto puro.
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
 import { geminiChat } from '../lib/gemini';
@@ -82,7 +89,7 @@ function extractNearestMaternityDate(text: string): string | null {
   return toIsoDate(pool[0]);
 }
 
-function buildSchemaPrompt(targetType: 'lead' | 'contact', customFields: CustomFieldSpec[] = []): string {
+function buildSchemaPrompt(targetType: 'lead' | 'contact', customFields: CustomFieldSpec[] = [], hasDocs = false): string {
   const fields = targetType === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
   let prompt = `Retorne APENAS um objeto JSON puro (sem markdown, sem \`\`\`) com as chaves padrão: ${fields.join(', ')}.
 Inclua somente as chaves cujo valor você conseguiu inferir COM CONFIANÇA da conversa/contexto.
@@ -94,7 +101,14 @@ Datas no formato YYYY-MM-DD. Telefones somente dígitos. CPF/RG somente dígitos
   }
 
   if (targetType === 'contact') {
-    prompt += `\nPara o contato principal (titular da conversa), procure agressivamente CPF, RG, data de nascimento, endereço completo (CEP, rua, número, complemento, bairro, cidade, estado) que apareçam em qualquer mensagem, foto de documento (texto OCR), PDF anexado ou áudio transcrito.`;
+    prompt += `\nPara o contato principal (titular da conversa), procure agressivamente CPF, RG, data de nascimento, profissão, endereço completo (CEP, rua, número, complemento, bairro, cidade, estado) que apareçam em qualquer mensagem de texto ou áudio transcrito.`;
+  }
+
+  if (hasDocs) {
+    prompt += `\n\nDOCUMENTOS ANEXADOS: junto desta mensagem vão imagens e/ou PDFs enviados nessa mesma conversa (RG, CNH, CPF, procuração, contrato, comprovante de residência, carteira de trabalho). LEIA cada um e extraia os campos deles — o documento é a fonte MAIS CONFIÁVEL, tem prioridade sobre o que foi digitado no chat.
+- Profissão: a carteira de trabalho, o contracheque e a procuração costumam trazer a profissão/cargo. Use o termo do documento.
+- Cidade/estado: use o endereço do titular no documento (comprovante de residência, RG, procuração). NÃO use a cidade do cartório, do emissor do documento nem do escritório.
+- Só preencha o que estiver LEGÍVEL no documento. Documento borrado/cortado: omita a chave em vez de adivinhar.`;
   }
 
   if (customFields.length > 0) {
@@ -145,6 +159,121 @@ async function fetchRecentMessages(phone: string, instance: string, limit = 120)
   return lines.join('\n').slice(0, 60000);
 }
 
+// ============================================================
+// Documentos da conversa (OCR multimodal)
+// ============================================================
+
+// Gemini aceita inlineData só nesses mimes. Vídeo/áudio/office ficam de fora —
+// áudio já entra pelo transcript (o webhook grava a transcrição em message_text).
+const DOC_MIMES = new Set([
+  'application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/heif',
+]);
+const MAX_DOC_BYTES = 8 * 1024 * 1024;
+
+// URL do CDN do WhatsApp é blob AES — baixar direto devolve lixo binário. O
+// webhook normalmente já re-hospeda a mídia decriptada no Storage e grava essa
+// URL; quando a decriptação falhou, sobra a original, que precisa ser ignorada.
+// Mesma heurística de whatsapp-webhook.ts:300.
+function isEncryptedWhatsAppUrl(url?: string | null): boolean {
+  if (typeof url !== 'string') return false;
+  if (/\.enc(?:\?|$)/i.test(url)) return true;
+  if (/^https?:\/\/(?:[a-z0-9-]+\.)*whatsapp\.net\//i.test(url)) return true;
+  return false;
+}
+
+// Extensão → mime. Necessário porque ~900 documentos no Storage têm media_type
+// nulo no banco e só a URL diz o que é (`...9927.pdf`, `...8811.webp`).
+// `.bin` fica de fora de propósito: tipo desconhecido, não vale mandar pro modelo.
+const EXT_MIME: Record<string, string> = {
+  pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg',
+  webp: 'image/webp', heic: 'image/heic', heif: 'image/heif',
+};
+
+function normalizeDocMime(mediaType?: string | null, messageType?: string | null, url?: string | null): string | null {
+  const raw = String(mediaType || '').toLowerCase().split(';')[0].trim();
+  if (DOC_MIMES.has(raw)) return raw === 'image/jpg' ? 'image/jpeg' : raw;
+  if (raw.includes('pdf')) return 'application/pdf';
+
+  // media_type ausente ou genérico (application/octet-stream): tenta a extensão.
+  const ext = String(url || '').split('?')[0].split('.').pop()?.toLowerCase() || '';
+  if (EXT_MIME[ext]) return EXT_MIME[ext];
+
+  // Último recurso: só quando o WhatsApp classificou como imagem. Documento sem
+  // mime nem extensão conhecida (docx, zip, .bin) é descartado.
+  if (String(messageType || '').toLowerCase() === 'image') return 'image/jpeg';
+  if (raw.startsWith('image/')) return 'image/jpeg';
+  return null;
+}
+
+async function toDataUri(url: string, mime: string): Promise<string | null> {
+  if (url.startsWith('data:')) return url;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(20000) });
+    if (!r.ok) {
+      console.warn('[extract-conversation-data] doc fetch', r.status, url.slice(0, 120));
+      return null;
+    }
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (buf.length < 100 || buf.length > MAX_DOC_BYTES) {
+      console.warn('[extract-conversation-data] doc ignorado por tamanho:', buf.length);
+      return null;
+    }
+    // Content-type do Storage vence quando é específico; senão mantém o do banco.
+    const ct = String(r.headers.get('content-type') || '').toLowerCase().split(';')[0].trim();
+    const finalMime = DOC_MIMES.has(ct) ? (ct === 'image/jpg' ? 'image/jpeg' : ct) : mime;
+    return `data:${finalMime};base64,${buf.toString('base64')}`;
+  } catch (e: any) {
+    console.warn('[extract-conversation-data] doc fetch err:', String(e?.message || e).slice(0, 200));
+    return null;
+  }
+}
+
+type ConversationDoc = { dataUri: string; label: string };
+
+// Pega os documentos MAIS RECENTES da conversa: procuração/RG costumam vir no
+// começo do atendimento, mas o volume de mídia antiga (foto de acidente, print)
+// não compensa o custo — por isso o teto e a ordem decrescente.
+async function fetchConversationDocuments(
+  phone: string,
+  instance: string,
+  maxDocs: number,
+): Promise<ConversationDoc[]> {
+  const { data, error } = await ext
+    .from('whatsapp_messages')
+    .select('media_url, media_type, message_type, created_at')
+    .eq('phone', phone)
+    .ilike('instance_name', instance)
+    .not('media_url', 'is', null)
+    .in('message_type', ['image', 'document'])
+    .order('created_at', { ascending: false })
+    .limit(80);
+  if (error) {
+    console.warn('[extract-conversation-data] fetch docs err:', error.message);
+    return [];
+  }
+
+  const candidates: Array<{ url: string; mime: string; label: string }> = [];
+  const seen = new Set<string>();
+  for (const m of (data || []) as any[]) {
+    const url = m.media_url as string;
+    if (!url || seen.has(url) || isEncryptedWhatsAppUrl(url)) continue;
+    const mime = normalizeDocMime(m.media_type, m.message_type, url);
+    if (!mime) continue;
+    seen.add(url);
+    const ts = m.created_at ? String(m.created_at).slice(0, 10) : 's/data';
+    candidates.push({ url, mime, label: `${m.message_type === 'document' ? 'documento' : 'imagem'} de ${ts}` });
+    if (candidates.length >= maxDocs) break;
+  }
+
+  const fetched = await Promise.all(
+    candidates.map(async (c) => {
+      const dataUri = await toDataUri(c.url, c.mime);
+      return dataUri ? { dataUri, label: c.label } : null;
+    }),
+  );
+  return fetched.filter(Boolean) as ConversationDoc[];
+}
+
 function buildTranscriptFromVisibleMessages(messages: VisibleMessage[]): string {
   const lines = messages
     .slice(-300)
@@ -158,7 +287,7 @@ function buildTranscriptFromVisibleMessages(messages: VisibleMessage[]): string 
   return lines.join('\n').slice(0, 80000);
 }
 
-async function callAI(systemPrompt: string, userPrompt: string): Promise<Record<string, any>> {
+async function callAI(systemPrompt: string, userContent: string | any[]): Promise<Record<string, any>> {
   if (!process.env.GOOGLE_AI_API_KEY) throw new Error('GOOGLE_AI_API_KEY ausente no Railway');
   let parsed: any;
   try {
@@ -166,7 +295,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<Record<
       model: MODEL,
       messages: [
         { role: 'system', content: systemPrompt + '\n\nIMPORTANTE: Responda APENAS com JSON válido, sem markdown.' },
-        { role: 'user', content: userPrompt },
+        { role: 'user', content: userContent },
       ],
       temperature: 0.2,
     });
@@ -201,7 +330,7 @@ function whitelist(obj: Record<string, any>, allowed: string[]): Record<string, 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { phone, instance_name, targetType, extra_context, call_summaries, custom_fields, visible_messages } = (req.body || {}) as {
+    const { phone, instance_name, targetType, extra_context, call_summaries, custom_fields, visible_messages, include_documents, max_documents } = (req.body || {}) as {
       phone?: string;
       instance_name?: string;
       targetType?: 'lead' | 'contact';
@@ -209,6 +338,8 @@ export const handler: RequestHandler = async (req, res) => {
       call_summaries?: string;
       custom_fields?: CustomFieldSpec[];
       visible_messages?: VisibleMessage[];
+      include_documents?: boolean;
+      max_documents?: number;
     };
 
     if (!phone || !instance_name) return ok({ success: false, error: 'phone e instance_name obrigatórios' });
@@ -218,15 +349,30 @@ export const handler: RequestHandler = async (req, res) => {
     const visibleTranscript = Array.isArray(visible_messages) ? buildTranscriptFromVisibleMessages(visible_messages) : '';
     const dbTranscript = await fetchRecentMessages(phone, normalizeInstance(instance_name));
     const transcript = [visibleTranscript && '=== MENSAGENS JÁ CARREGADAS NA TELA ===\n' + visibleTranscript, dbTranscript && '=== MENSAGENS BUSCADAS NO BANCO ===\n' + dbTranscript].filter(Boolean).join('\n\n');
-    if (!transcript && !extra_context && !call_summaries) {
-      return ok({ success: true, data: {} });
+
+    // Documentos entram só quando o chamador pede (gatilho manual). Falha ao
+    // baixar não derruba a extração — degrada pro modo texto puro.
+    const maxDocs = Math.max(1, Math.min(8, Number(max_documents) || 6));
+    let docs: ConversationDoc[] = [];
+    if (include_documents === true) {
+      try {
+        docs = await fetchConversationDocuments(phone, normalizeInstance(instance_name), maxDocs);
+      } catch (e: any) {
+        console.warn('[extract-conversation-data] docs falharam, seguindo só com texto:', String(e?.message || e).slice(0, 200));
+      }
+    }
+
+    if (!transcript && !extra_context && !call_summaries && docs.length === 0) {
+      return ok({ success: true, data: {}, reason: 'no_messages' });
     }
 
     const callBlock = [extra_context, call_summaries].filter(Boolean).join('\n\n').slice(0, 30000);
     const systemPrompt = [
       'Você é um extrator de dados estruturados para um CRM jurídico brasileiro (cobre acidentes de trabalho, previdenciário, maternidade e outros).',
-      'Analisa transcrições do WhatsApp e resumos de ligações telefônicas.',
-      buildSchemaPrompt(target, customs),
+      docs.length > 0
+        ? 'Analisa transcrições do WhatsApp, resumos de ligações telefônicas e documentos (imagens/PDFs) enviados na conversa.'
+        : 'Analisa transcrições do WhatsApp e resumos de ligações telefônicas.',
+      buildSchemaPrompt(target, customs, docs.length > 0),
     ].join('\n\n');
 
     const userParts: string[] = [];
@@ -238,10 +384,24 @@ export const handler: RequestHandler = async (req, res) => {
       userParts.push('=== CONVERSA WHATSAPP (mais antiga → mais recente) ===');
       userParts.push(transcript);
     }
-    userParts.push('\nExtraia os campos solicitados a partir de TODO o material acima (conversa + ligações).');
+    if (docs.length > 0) {
+      userParts.push(`=== DOCUMENTOS ANEXADOS (${docs.length}) ===`);
+      userParts.push(docs.map((d, i) => `${i + 1}. ${d.label}`).join('\n'));
+    }
+    userParts.push(
+      docs.length > 0
+        ? '\nExtraia os campos solicitados a partir de TODO o material acima (conversa + ligações + documentos anexados).'
+        : '\nExtraia os campos solicitados a partir de TODO o material acima (conversa + ligações).',
+    );
 
     const userPrompt = userParts.join('\n\n');
-    const raw = await callAI(systemPrompt, userPrompt);
+    const userContent = docs.length > 0
+      ? [
+        { type: 'text', text: userPrompt },
+        ...docs.map(d => ({ type: 'image_url', image_url: { url: d.dataUri } })),
+      ]
+      : userPrompt;
+    const raw = await callAI(systemPrompt, userContent);
     const allowed = target === 'lead' ? LEAD_FIELDS : CONTACT_FIELDS;
     const data: Record<string, any> = whitelist(raw, allowed);
 
@@ -282,7 +442,7 @@ export const handler: RequestHandler = async (req, res) => {
       if (identified.length > 0) data.identified_contacts = identified;
     }
 
-    return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0 } });
+    return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, documents_read: docs.length, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0, documents: docs.map(d => d.label) } });
   } catch (e: any) {
     console.error('[extract-conversation-data] error:', e);
     return ok({ success: false, error: e?.message || String(e) });
