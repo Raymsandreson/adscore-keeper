@@ -63,11 +63,12 @@ function aprovLabel(v: number | null) {
 }
 
 export default function TvAtividadesPage() {
-  const [params] = useSearchParams();
+  const [params, setSearchParams] = useSearchParams();
   const titulo = params.get('titulo') || 'Time Processual';
-  const teamId = params.get('team'); // opcional: filtra por um time específico
 
   const [period, setPeriod] = useState<Period>('semana');
+  const [teamId, setTeamId] = useState<string>(params.get('team') || ''); // '' = todos os times
+  const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(false);
   const [tv, setTv] = useState(false);
@@ -79,6 +80,34 @@ export default function TvAtividadesPage() {
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Times pro seletor (leitura do Externo; ordena por nome).
+  useEffect(() => {
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const { data: res } = await (externalSupabase as any)
+          .from('teams')
+          .select('id, name')
+          .order('name', { ascending: true });
+        setTeams((res || []) as { id: string; name: string }[]);
+      } catch (e) {
+        console.warn('[TvAtividades] teams load:', e);
+      }
+    })();
+  }, []);
+
+  const onSelectTeam = useCallback((id: string) => {
+    setTeamId(id);
+    const next = new URLSearchParams(params);
+    if (id) next.set('team', id); else next.delete('team');
+    setSearchParams(next, { replace: true });
+  }, [params, setSearchParams]);
+
+  const selectedTeamName = useMemo(
+    () => teams.find(t => t.id === teamId)?.name,
+    [teams, teamId],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,7 +170,7 @@ export default function TvAtividadesPage() {
               R. <span className="text-amber-400">Prudêncio.</span>
             </div>
             <div className="mt-1 text-[10px] md:text-xs font-semibold uppercase tracking-widest text-white/50 truncate">
-              Atividades · {titulo}
+              Atividades · {selectedTeamName || titulo}
             </div>
           </div>
 
@@ -173,7 +202,18 @@ export default function TvAtividadesPage() {
         </div>
 
         {/* ===== Controles (escondem no telão) ===== */}
-        <div className="mt-3 flex items-center justify-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <select
+            value={teamId}
+            onChange={e => onSelectTeam(e.target.value)}
+            className="rounded-full bg-white/10 text-white text-xs font-semibold px-3 py-1.5 outline-none border border-white/10 max-w-[60vw] md:max-w-[16rem] [&>option]:text-slate-900"
+            title="Filtrar por time"
+          >
+            <option value="">Todos os times</option>
+            {teams.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
           <div className="flex items-center rounded-full bg-white/10 p-0.5 gap-0.5">
             {(['hoje', 'semana', 'mes'] as Period[]).map(p => (
               <button
