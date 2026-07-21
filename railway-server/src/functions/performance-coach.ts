@@ -16,9 +16,11 @@
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { anthropicChat } from '../lib/anthropic';
+import { aiChat } from '../lib/gemini';
 
-const COACH_MODEL = process.env.REPORT_MODEL || 'claude-sonnet-4-6';
+// aiChat roteia pelo prefixo: google/* → Gemini (GOOGLE_AI_API_KEY, que já tem
+// crédito), claude-* → Anthropic. Trocar de provider = setar COACH_MODEL no Railway.
+const COACH_MODEL = process.env.COACH_MODEL || 'google/gemini-2.5-flash';
 
 interface RankRow {
   nome: string;
@@ -130,7 +132,7 @@ async function analyze(req: Request, res: Response) {
     `PERGUNTA DO DIRETOR: ${question || 'Por que essa pessoa está com esse desempenho no ranking?'}`,
   ].join('\n');
 
-  const completion = await anthropicChat({
+  const completion = await aiChat({
     model: COACH_MODEL,
     max_tokens: 1200,
     temperature: 0.5,
