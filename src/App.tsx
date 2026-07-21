@@ -29,6 +29,7 @@ import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
 import { OrgMetaSync } from "@/components/OrgMetaSync";
 import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
 import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
+import { FeatureGuidePopup } from "@/components/guide/FeatureGuidePopup";
 import WhatsAppPage from "@/pages/WhatsAppPage";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
@@ -309,6 +310,7 @@ function SidebarLayout() {
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
             <ActivityTimerOverlay />
+            <FeatureGuidePopup />
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
