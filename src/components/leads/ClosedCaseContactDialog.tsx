@@ -115,58 +115,38 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
         }
         if (!cancelled) setForm(base);
 
-        // Extração IA a partir da conversa do grupo
+        // Extração IA a partir da conversa do grupo.
+        // Contrato da edge extract-conversation-data (Externo v18): exige phone +
+        // instance_name; ela mesma busca as mensagens e extrai os dados cadastrais.
+        // NÃO passar lead_id/contact_id — a função gravaria direto sem confirmação.
         if (!bareJid) {
           if (!cancelled) setExtractError('Grupo sem JID identificado — preencha os campos manualmente.');
           return;
         }
-        const { data: msgs, error: msgErr } = await externalSupabase
+        const { data: instRows, error: instErr } = await externalSupabase
           .from('whatsapp_messages')
-          .select('created_at, direction, contact_name, message_text')
+          .select('instance_name')
           .in('phone', [bareJid, `${bareJid}@g.us`])
+          .not('instance_name', 'is', null)
           .order('created_at', { ascending: false })
-          .limit(500);
-        if (msgErr) throw msgErr;
-        const conversation = (msgs || []).slice().reverse()
-          .map(r => `[${r.created_at}] ${r.contact_name || (r.direction === 'outbound' ? 'Equipe' : 'Cliente')}: ${r.message_text || ''}`)
-          .join('\n');
-        if (!conversation.trim()) {
+          .limit(1);
+        if (instErr) throw instErr;
+        const instanceName = instRows?.[0]?.instance_name;
+        if (!instanceName) {
           if (!cancelled) setExtractError('Nenhuma mensagem encontrada no grupo — preencha manualmente.');
           return;
         }
 
-        const prompt = `Analise a conversa de WhatsApp abaixo entre a equipe do escritório e o CLIENTE (e familiares). Extraia o máximo de dados cadastrais DO CLIENTE (a pessoa atendida, não os membros da equipe).
-
-Retorne APENAS um JSON válido com os campos (deixe "" o que não souber, NUNCA invente):
-{
-  "full_name": "nome completo do cliente",
-  "phone": "telefone pessoal do cliente com DDD, só dígitos",
-  "cpf": "CPF só dígitos",
-  "rg": "RG",
-  "birth_date": "YYYY-MM-DD",
-  "email": "e-mail",
-  "profession": "profissão",
-  "cep": "CEP só dígitos",
-  "street": "rua/logradouro",
-  "street_number": "número",
-  "complement": "complemento",
-  "neighborhood": "bairro",
-  "city": "cidade",
-  "state": "UF (2 letras)",
-  "notes": "observações relevantes sobre o cliente em 1-2 frases"
-}
-
-CONVERSA:
-${conversation}`;
-
         const { data, error } = await cloudFunctions.invoke<any>('extract-conversation-data', {
-          body: { targetType: 'contact_data', customPrompt: prompt },
+          body: { phone: bareJid, instance_name: instanceName, limit_messages: 500 },
         });
         if (error) throw error;
-        const extracted = data?.data || data;
         if (cancelled) return;
+        const extracted = data?.data;
         if (!extracted || typeof extracted !== 'object') {
-          setExtractError('IA não retornou dados estruturados — preencha manualmente.');
+          setExtractError(data?.reason === 'no_messages'
+            ? 'Nenhuma mensagem encontrada no grupo — preencha manualmente.'
+            : 'IA não retornou dados estruturados — preencha manualmente.');
           return;
         }
 
