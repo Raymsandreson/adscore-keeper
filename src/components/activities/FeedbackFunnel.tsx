@@ -54,6 +54,7 @@ interface LateRow {
   status: string | null;
   deadline: string | null;
   rescheduled_to: string | null;
+  assigned_to: string | null;          // responsável (ext UUID) — alvo da cobrança
   assigned_to_name: string | null;
   lead_name: string | null;
   case_title: string | null;
@@ -151,6 +152,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [draft, setDraft] = useState<Record<string, { rating: number; justification: string; praise: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [listeningId, setListeningId] = useState<string | null>(null);
+  // Cobranças enviadas nesta sessão (id da atividade → nível), p/ evitar spam e dar retorno visual.
+  const [nudged, setNudged] = useState<Record<string, 'importante' | 'urgente'>>({});
+  const [nudgingId, setNudgingId] = useState<string | null>(null);
   const recognitionRef = useRef<any>(null);
 
   const load = useCallback(async () => {
@@ -180,7 +184,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       todayStart.setHours(0, 0, 0, 0);
       const { data: late, error: lateErr } = await (externalSupabase as any)
         .from('lead_activities')
-        .select('id, title, status, deadline, rescheduled_to, assigned_to_name, lead_name, case_title, process_title')
+        .select('id, title, status, deadline, rescheduled_to, assigned_to, assigned_to_name, lead_name, case_title, process_title')
         .is('deleted_at', null)
         .or(`observer_ids.cs.{${eid}},created_by.eq.${eid}`)
         .or(`status.eq.reagendada,and(status.neq.concluida,deadline.lt.${todayStart.toISOString()})`)
@@ -247,6 +251,43 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       } as any);
     } catch (e) {
       console.warn('[FeedbackFunnel] notify falhou:', e);
+    }
+  };
+
+  // Cobrança de atividade atrasada: o observador aperta e o responsável recebe um
+  // popup (via activity_notifications → ActivityNotificationsListener) marcando a
+  // atividade como importante ou urgente, com ação de abrir a atividade.
+  const nudgeLate = async (row: LateRow, level: 'importante' | 'urgente') => {
+    if (!row.assigned_to) { toast.error('Esta atividade não tem responsável para cobrar.'); return; }
+    if (row.assigned_to === extId) { toast.info('Você é o responsável por esta atividade.'); return; }
+    setNudgingId(row.id);
+    try {
+      const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user?.id || '').maybeSingle();
+      const myName = (prof as any)?.full_name || null;
+      const venceu = row.deadline ? ` (venceu ${format(parseISO(row.deadline), 'dd/MM')})` : '';
+      const heading = level === 'urgente' ? '🚨 URGENTE — atividade atrasada' : '❗ Importante — atividade atrasada';
+      const contexto = row.lead_name || row.case_title || row.process_title || '';
+      const body = `“${row.title}”${venceu} está atrasada${contexto ? ` · ${contexto}` : ''}. Priorize a conclusão.`;
+      const { error } = await externalSupabase.from('activity_notifications' as any).insert({
+        activity_id: row.id,
+        recipient_id: row.assigned_to,
+        recipient_name: row.assigned_to_name,
+        type: 'cobranca',
+        title: heading,
+        body,
+        actor_id: extId,
+        actor_name: myName,
+      } as any);
+      if (error) throw error;
+      setNudged(prev => ({ ...prev, [row.id]: level }));
+      toast.success(level === 'urgente'
+        ? `🚨 Cobrança URGENTE enviada para ${row.assigned_to_name || 'o responsável'}.`
+        : `❗ Cobrança de importância enviada para ${row.assigned_to_name || 'o responsável'}.`);
+    } catch (e: any) {
+      console.error('[FeedbackFunnel] nudgeLate error:', e);
+      toast.error('Erro ao enviar a cobrança.');
+    } finally {
+      setNudgingId(null);
     }
   };
 
@@ -391,6 +432,35 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
           <p className="text-[10px] text-red-700 dark:text-red-400 font-medium">
             ⚠ Venceu {row.deadline ? format(parseISO(row.deadline), 'dd/MM') : ''}{dias > 0 ? ` · há ${dias === 1 ? '1 dia' : `${dias} dias`}` : ''}
           </p>
+        )}
+        {/* Cobrar o responsável: dispara popup (importante/urgente) para ele fazer a atividade atrasada. */}
+        {!reag && row.assigned_to && row.assigned_to !== extId && (
+          nudged[row.id] === 'urgente' ? (
+            <p className="text-[10px] text-red-700 dark:text-red-400 font-medium">🚨 Cobrado como urgente ✓</p>
+          ) : (
+            <div className="flex items-center gap-1 pt-0.5">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 flex-1 text-[10px] gap-0.5 border-amber-300 text-amber-700 dark:text-amber-400"
+                disabled={nudgingId === row.id || nudged[row.id] === 'importante'}
+                onClick={() => nudgeLate(row, 'importante')}
+                title="Avisar o responsável que é importante"
+              >
+                {nudged[row.id] === 'importante' ? '✓ Importante' : '❗ Importante'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 flex-1 text-[10px] gap-0.5 border-red-400 text-red-700 dark:text-red-400"
+                disabled={nudgingId === row.id}
+                onClick={() => nudgeLate(row, 'urgente')}
+                title="Avisar o responsável que é urgente"
+              >
+                🚨 Urgente
+              </Button>
+            </div>
+          )
         )}
       </div>
     );

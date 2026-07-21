@@ -13,6 +13,7 @@ const TYPE_LABELS: Record<string, string> = {
   mention: '@ Você foi mencionado',
   incompleto: '⚠️ Feedback marcado como incompleto',
   praise: '🌟 Seu trabalho foi elogiado',
+  cobranca: '⏰ Cobrança de atividade atrasada',
 };
 
 /**
@@ -57,15 +58,18 @@ export function ActivityNotificationsListener() {
                 body: string | null;
                 actor_name: string | null;
               };
-              const heading = TYPE_LABELS[n.type] || '🔔 Atividade';
+              // Cobrança: o próprio título já carrega o nível (❗ Importante / 🚨 Urgente).
+              // Mostra em destaque (toast de alerta, mais persistente) para não passar batido.
+              const isCobranca = n.type === 'cobranca';
+              const heading = isCobranca && n.title ? n.title : (TYPE_LABELS[n.type] || '🔔 Atividade');
               const parts = [
-                n.title ? `“${n.title}”` : '',
+                !isCobranca && n.title ? `“${n.title}”` : '',
                 n.body || '',
                 n.actor_name ? `— ${n.actor_name}` : '',
               ].filter(Boolean);
-              toast(heading, {
+              const opts = {
                 description: parts.join('\n'),
-                duration: 15000,
+                duration: isCobranca ? 30000 : 15000,
                 action: n.activity_id
                   ? {
                       label: 'Abrir atividade',
@@ -80,7 +84,9 @@ export function ActivityNotificationsListener() {
                       },
                     }
                   : undefined,
-              });
+              };
+              if (isCobranca) toast.warning(heading, opts);
+              else toast(heading, opts);
             }
           )
           .subscribe();
