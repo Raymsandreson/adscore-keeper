@@ -134,29 +134,45 @@ function normalizeInstance(s: string): string {
   return String(s || '').toLowerCase().trim();
 }
 
-async function fetchRecentMessages(phone: string, instance: string, limit = 120): Promise<string> {
+// ATENÇÃO: só colunas que existem em whatsapp_messages. Esta função pediu
+// `sender_name` (que nunca existiu na tabela) por muito tempo: o PostgREST
+// devolvia 400, o catch abaixo engolia e retornava transcript vazio — toda
+// extração que dependia do banco rodava às cegas e respondia "no_messages"
+// mesmo com centenas de mensagens. Por isso o erro agora é propagado.
+// Colunas reais: id, phone, contact_name, message_text, message_type, media_url,
+// media_type, direction, status, contact_id, lead_id, external_message_id,
+// metadata, created_at, read_at, instance_name, instance_token, campaign_id,
+// campaign_name, action_source, action_source_detail.
+type FetchedTranscript = { transcript: string; title: string | null; error: string | null };
+
+async function fetchRecentMessages(phone: string, instance: string, limit = 120): Promise<FetchedTranscript> {
   const { data, error } = await ext
     .from('whatsapp_messages')
-    .select('direction, sender_name, message_text, message_type, created_at')
+    .select('direction, contact_name, message_text, message_type, created_at')
     .eq('phone', phone)
     .ilike('instance_name', instance)
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) {
-    console.warn('[extract-conversation-data] fetch msgs err:', error.message);
-    return '';
+    console.error('[extract-conversation-data] fetch msgs err:', error.message);
+    return { transcript: '', title: null, error: error.message };
   }
-  if (!data || data.length === 0) return '';
+  if (!data || data.length === 0) return { transcript: '', title: null, error: null };
+
+  // Em grupo, contact_name guarda o TÍTULO do grupo (não o remetente). O título é
+  // contexto valioso: o padrão do escritório embute nome do cliente e cidade.
+  const title = (data.find((m: any) => String(m.contact_name || '').trim()) as any)?.contact_name?.trim() || null;
+
   const lines = data
     .slice()
     .reverse()
     .map((m: any) => {
-      const who = m.direction === 'outbound' ? 'ATENDENTE' : (m.sender_name || 'CLIENTE');
+      const who = m.direction === 'outbound' ? 'ATENDENTE' : 'CLIENTE';
       const ts = m.created_at ? new Date(m.created_at).toISOString().slice(0, 16).replace('T', ' ') : '';
       const txt = (m.message_text || `[${m.message_type || 'mídia'}]`).toString().slice(0, 800);
       return `[${ts}] ${who}: ${txt}`;
     });
-  return lines.join('\n').slice(0, 60000);
+  return { transcript: lines.join('\n').slice(0, 60000), title, error: null };
 }
 
 // ============================================================
@@ -347,7 +363,8 @@ export const handler: RequestHandler = async (req, res) => {
     const customs: CustomFieldSpec[] = (target === 'lead' && Array.isArray(custom_fields)) ? custom_fields.filter(c => c && c.id && c.label) : [];
 
     const visibleTranscript = Array.isArray(visible_messages) ? buildTranscriptFromVisibleMessages(visible_messages) : '';
-    const dbTranscript = await fetchRecentMessages(phone, normalizeInstance(instance_name));
+    const db = await fetchRecentMessages(phone, normalizeInstance(instance_name));
+    const dbTranscript = db.transcript;
     const transcript = [visibleTranscript && '=== MENSAGENS JÁ CARREGADAS NA TELA ===\n' + visibleTranscript, dbTranscript && '=== MENSAGENS BUSCADAS NO BANCO ===\n' + dbTranscript].filter(Boolean).join('\n\n');
 
     // Documentos entram só quando o chamador pede (gatilho manual). Falha ao
@@ -362,7 +379,10 @@ export const handler: RequestHandler = async (req, res) => {
       }
     }
 
+    // Erro de consulta não pode se disfarçar de "conversa vazia" — foi assim que a
+    // coluna inexistente passou despercebida. Sem material E com erro = falha.
     if (!transcript && !extra_context && !call_summaries && docs.length === 0) {
+      if (db.error) return ok({ success: false, error: `falha ao ler mensagens: ${db.error}` });
       return ok({ success: true, data: {}, reason: 'no_messages' });
     }
 
@@ -376,6 +396,17 @@ export const handler: RequestHandler = async (req, res) => {
     ].join('\n\n');
 
     const userParts: string[] = [];
+    if (db.title) {
+      // O título do grupo segue um padrão interno que embute nome do cliente e
+      // cidade (ex.: "✅Prev 06 |Fulano de Tal| Teresina-Pi |29/10/2025/ MILLA").
+      // Mas embute TAMBÉM o código do caso e o apelido do assessor responsável —
+      // daí a lista explícita do que NÃO é nome de cliente.
+      userParts.push('=== TÍTULO DA CONVERSA/GRUPO ===');
+      userParts.push(String(db.title).slice(0, 300));
+      userParts.push(`Esse título é do escritório e costuma trazer, entre barras/pipes, o NOME DO CLIENTE e a CIDADE-UF.
+NÃO confunda com: código do caso ("Prev 06", "PREV 542", "ATV 12"), data, emoji de status, nem o primeiro nome do ASSESSOR responsável (costuma vir por último, em caixa alta, depois da data).
+Use o título só quando a conversa e os documentos não contradisserem. Se não der pra separar cliente de assessor com segurança, omita o campo.`);
+    }
     if (callBlock) {
       userParts.push('=== CONTEXTO DE LIGAÇÕES (CallFace) ===');
       userParts.push(callBlock);
@@ -442,7 +473,7 @@ export const handler: RequestHandler = async (req, res) => {
       if (identified.length > 0) data.identified_contacts = identified;
     }
 
-    return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, documents_read: docs.length, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0, documents: docs.map(d => d.label) } });
+    return ok({ success: true, data, model: MODEL, target, message_count: transcript ? transcript.split('\n').length : 0, documents_read: docs.length, source: { visible_messages: Array.isArray(visible_messages) ? visible_messages.length : 0, db: dbTranscript ? dbTranscript.split('\n').length : 0, documents: docs.map(d => d.label), title: db.title, db_error: db.error } });
   } catch (e: any) {
     console.error('[extract-conversation-data] error:', e);
     return ok({ success: false, error: e?.message || String(e) });
