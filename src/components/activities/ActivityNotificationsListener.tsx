@@ -14,6 +14,7 @@ const TYPE_LABELS: Record<string, string> = {
   incompleto: '⚠️ Feedback marcado como incompleto',
   praise: '🌟 Seu trabalho foi elogiado',
   cobranca: '⏰ Cobrança de atividade atrasada',
+  abertura: '👀 Atividade aberta pelo responsável',
 };
 
 /**

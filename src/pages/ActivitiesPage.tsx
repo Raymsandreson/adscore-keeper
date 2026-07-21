@@ -1093,7 +1093,66 @@ const ActivitiesPage = () => {
     return unassigned || activity.assigned_to === myExt || !!(myExt && ids?.includes(myExt));
   }, [user?.id]);
 
+  // Receipt de abertura p/ cobranças: se esta atividade tem cobrança pra mim (responsável),
+  // registra uma notificação "abertura" pra quem cobrou (popup em tempo real no funil de
+  // feedbacks, que cronometra abertura → conclusão) e marca a cobrança como vista.
+  const registerCobrancaOpened = async (activity: LeadActivity) => {
+    try {
+      const myExt = (await remapToExternal(user?.id || null)) as string | null;
+      if (!myExt || activity.assigned_to !== myExt) return;
+      const { data: cobs } = await (externalSupabase as any)
+        .from('activity_notifications')
+        .select('id, actor_id, actor_name, created_at, read_at')
+        .eq('activity_id', activity.id)
+        .eq('type', 'cobranca')
+        .eq('recipient_id', myExt)
+        .order('created_at', { ascending: false });
+      if (!cobs?.length) return;
+      const { data: abs } = await (externalSupabase as any)
+        .from('activity_notifications')
+        .select('recipient_id, created_at')
+        .eq('activity_id', activity.id)
+        .eq('type', 'abertura')
+        .eq('actor_id', myExt);
+      // Última cobrança por autor; só registra abertura se ainda não registrei depois dela.
+      const lastByActor = new Map<string, { created_at: string; actor_name: string | null }>();
+      for (const c of cobs as any[]) {
+        if (c.actor_id && !lastByActor.has(c.actor_id)) lastByActor.set(c.actor_id, c);
+      }
+      const actorName = resolveUserName(user?.id || null);
+      const rows: any[] = [];
+      for (const [actorId, cob] of lastByActor) {
+        const jaAbriu = ((abs || []) as any[]).some(a => a.recipient_id === actorId && a.created_at > cob.created_at);
+        if (!jaAbriu) {
+          rows.push({
+            activity_id: activity.id,
+            recipient_id: actorId,
+            recipient_name: cob.actor_name || null,
+            type: 'abertura',
+            title: activity.title || 'Atividade',
+            body: 'O responsável abriu a atividade agora — cronômetro de execução iniciado.',
+            actor_id: myExt,
+            actor_name: actorName,
+          });
+        }
+      }
+      if (rows.length) await (externalSupabase as any).from('activity_notifications').insert(rows);
+      // Abrir a atividade também vale como "visto" da cobrança.
+      const unread = (cobs as any[]).filter(c => !c.read_at).map(c => c.id);
+      if (unread.length) {
+        await (externalSupabase as any)
+          .from('activity_notifications')
+          .update({ read_at: new Date().toISOString() })
+          .in('id', unread);
+      }
+    } catch (e) {
+      console.warn('[registerCobrancaOpened] falhou:', e);
+    }
+  };
+
   const handleOpenEdit = async (activity: LeadActivity) => {
+    // Cobrança pendente nesta atividade? Registra a abertura (não bloqueia a UI).
+    void registerCobrancaOpened(activity);
     // Tempo total já registrado nesta atv (aparece no editor e na mensagem WA)
     setActivityTotalSecs(0);
     (externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient)

@@ -38,6 +38,7 @@ export interface FeedbackRow {
   status: string | null;
   deadline: string | null;
   rescheduled_to: string | null;
+  completed_at: string | null;
   updated_at: string;
 }
 
@@ -107,6 +108,18 @@ function stripHtml(s: string) {
   return (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Duração legível do cronômetro abertura → conclusão (ex.: 2d 3h, 1h05min, 12:34).
+function fmtDur(ms: number) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d > 0) return `${d}d ${h}h${m > 0 ? ` ${m}min` : ''}`;
+  if (h > 0) return `${h}h${String(m).padStart(2, '0')}min`;
+  return `${m}:${String(sec).padStart(2, '0')} min`;
+}
+
 // Mesma regra da ActivitiesPage: atrasada = não concluída + prazo vencido; reagendada = status próprio.
 function situacaoBadge(row: FeedbackRow): { label: string; className: string } | null {
   if (row.status === 'reagendada') {
@@ -155,6 +168,12 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [nudgingId, setNudgingId] = useState<string | null>(null);
   // Última cobrança por atividade (persistida): quando foi dada e se já foi vista pelo responsável.
   const [cobrancas, setCobrancas] = useState<Record<string, { created_at: string; read_at: string | null; level: 'importante' | 'urgente' }>>({});
+  // Última abertura da atividade pelo responsável (type='abertura') — início do cronômetro.
+  const [aberturas, setAberturas] = useState<Record<string, string>>({});
+  // Tick do cronômetro ao vivo (1s) enquanto o funil está aberto.
+  const [now, setNow] = useState(() => Date.now());
+  // Ids das atividades exibidas — filtro client-side dos eventos realtime.
+  const trackedIdsRef = useRef<Set<string>>(new Set());
   const recognitionRef = useRef<any>(null);
 
   const load = useCallback(async () => {
@@ -169,7 +188,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       // Feedbacks onde sou observador OU criador.
       const { data, error } = await (externalSupabase as any)
         .from('lead_activities')
-        .select('id, title, feedback, feedback_rating, feedback_outcome, feedback_rated_by_name, feedback_rated_at, assigned_to, assigned_to_name, created_by, observer_ids, lead_id, lead_name, case_id, case_title, process_id, process_title, activity_type, status, deadline, rescheduled_to, updated_at')
+        .select('id, title, feedback, feedback_rating, feedback_outcome, feedback_rated_by_name, feedback_rated_at, assigned_to, assigned_to_name, created_by, observer_ids, lead_id, lead_name, case_id, case_title, process_id, process_title, activity_type, status, deadline, rescheduled_to, completed_at, updated_at')
         .not('feedback', 'is', null)
         .neq('feedback', '')
         .is('deleted_at', null)
@@ -193,29 +212,38 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       if (lateErr) throw lateErr;
       setLateRows((late || []) as LateRow[]);
 
-      // Receipts das cobranças (última + se já foi vista) das atrasadas exibidas.
-      const lateIds = (late || []).map((r: any) => r.id);
-      if (lateIds.length) {
-        const { data: cob } = await (externalSupabase as any)
+      // Receipts das cobranças (última + se já foi vista) e das aberturas pelo
+      // responsável (início do cronômetro) — de todas as atividades exibidas.
+      const allIds = Array.from(new Set([...(late || []).map((r: any) => r.id), ...(data || []).map((r: any) => r.id)]));
+      trackedIdsRef.current = new Set(allIds);
+      if (allIds.length) {
+        const { data: notifs } = await (externalSupabase as any)
           .from('activity_notifications')
-          .select('activity_id, created_at, read_at, title')
-          .eq('type', 'cobranca')
-          .in('activity_id', lateIds)
+          .select('activity_id, type, created_at, read_at, title')
+          .in('type', ['cobranca', 'abertura'])
+          .in('activity_id', allIds)
           .order('created_at', { ascending: false });
         const map: Record<string, { created_at: string; read_at: string | null; level: 'importante' | 'urgente' }> = {};
-        for (const c of (cob || [])) {
-          // Ordenado desc → a 1ª ocorrência de cada atividade é a cobrança mais recente.
-          if (!map[c.activity_id]) {
-            map[c.activity_id] = {
-              created_at: c.created_at,
-              read_at: c.read_at,
-              level: /URGENTE/i.test(c.title || '') ? 'urgente' : 'importante',
-            };
+        const abMap: Record<string, string> = {};
+        for (const c of (notifs || [])) {
+          // Ordenado desc → a 1ª ocorrência de cada atividade é a mais recente.
+          if (c.type === 'cobranca') {
+            if (!map[c.activity_id]) {
+              map[c.activity_id] = {
+                created_at: c.created_at,
+                read_at: c.read_at,
+                level: /URGENTE/i.test(c.title || '') ? 'urgente' : 'importante',
+              };
+            }
+          } else if (!abMap[c.activity_id]) {
+            abMap[c.activity_id] = c.created_at;
           }
         }
         setCobrancas(map);
+        setAberturas(abMap);
       } else {
         setCobrancas({});
+        setAberturas({});
       }
     } catch (e: any) {
       console.error('[FeedbackFunnel] load error:', e);
@@ -226,6 +254,55 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   }, [user?.id]);
 
   useEffect(() => { if (open) load(); }, [open, load]);
+
+  // Tick de 1s pro cronômetro ao vivo dos cards com abertura registrada.
+  useEffect(() => {
+    if (!open || Object.keys(aberturas).length === 0) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [open, aberturas]);
+
+  // Tempo real enquanto o funil está aberto: abertura pelo responsável (INSERT
+  // p/ mim), "visto" da cobrança (UPDATE read_at) e conclusão/feedback da
+  // atividade (UPDATE em lead_activities) — sem precisar recarregar na mão.
+  useEffect(() => {
+    if (!open || !extId) return;
+    const channel = externalSupabase
+      .channel('feedback-funnel-live-' + extId)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'activity_notifications', filter: `recipient_id=eq.${extId}` },
+        (payload) => {
+          const n = payload.new as any;
+          if (n?.type === 'abertura' && n.activity_id) {
+            setAberturas(prev => ({ ...prev, [n.activity_id]: n.created_at }));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'activity_notifications' },
+        (payload) => {
+          const n = payload.new as any;
+          if (n?.type === 'cobranca' && n.activity_id && n.read_at && trackedIdsRef.current.has(n.activity_id)) {
+            setCobrancas(prev => (prev[n.activity_id] && !prev[n.activity_id].read_at
+              ? { ...prev, [n.activity_id]: { ...prev[n.activity_id], read_at: n.read_at } }
+              : prev));
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'lead_activities' },
+        (payload) => {
+          const a = payload.new as any;
+          // Atividade acompanhada mudou (concluída, reagendada, feedback…) → re-bucket.
+          if (a?.id && trackedIdsRef.current.has(a.id)) load();
+        }
+      )
+      .subscribe();
+    return () => { externalSupabase.removeChannel(channel); };
+  }, [open, extId, load]);
 
   const getDraft = (id: string, row: FeedbackRow) =>
     draft[id] || { rating: row.feedback_rating || 0, justification: '', praise: '' };
@@ -496,6 +573,14 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                   )}
                 </p>
               )}
+              {/* Abertura pelo responsável → cronômetro ao vivo até concluir. */}
+              {aberturas[row.id] && (
+                <p className="text-[9px] leading-tight">
+                  <span className="text-blue-600 dark:text-blue-400 font-medium">👀 Aberta {format(parseISO(aberturas[row.id]), 'dd/MM HH:mm')}</span>
+                  {' · '}
+                  <span className="font-semibold tabular-nums text-foreground">⏱ {fmtDur(now - parseISO(aberturas[row.id]).getTime())} em andamento</span>
+                </p>
+              )}
             </div>
           );
         })()}
@@ -535,6 +620,13 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         <p className="text-[10px] text-muted-foreground">
           Retorno de <strong>{row.assigned_to_name || '—'}</strong>
         </p>
+        {/* Cronômetro abertura → conclusão: quanto tempo levou depois de abrir a atividade cobrada. */}
+        {aberturas[row.id] && row.completed_at && parseISO(row.completed_at).getTime() > parseISO(aberturas[row.id]).getTime() && (
+          <p className="text-[9px] leading-tight text-muted-foreground">
+            ⏱ Feita em <strong className="text-foreground">{fmtDur(parseISO(row.completed_at).getTime() - parseISO(aberturas[row.id]).getTime())}</strong> após a abertura
+            <span className="text-blue-600 dark:text-blue-400"> (aberta {format(parseISO(aberturas[row.id]), 'dd/MM HH:mm')})</span>
+          </p>
+        )}
 
         {evaluated ? (
           <div className="flex items-center justify-between text-[10px] text-muted-foreground">
