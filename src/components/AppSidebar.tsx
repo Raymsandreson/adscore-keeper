@@ -335,7 +335,7 @@ export function AppSidebar() {
                 tooltip="Chat"
               >
                 <span className="relative">
-                  <MessageCircle className="h-4 w-4" />
+                  <MessageCircle className="h-4 w-4 text-blue-500" />
                   {unreadMentions > 0 && (
                     <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-destructive text-destructive-foreground text-[8px] font-bold flex items-center justify-center">
                       {unreadMentions > 9 ? '9+' : unreadMentions}

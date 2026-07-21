@@ -59,9 +59,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   }, [onOpenChange]);
 
   const handleMentionClick = async (mention: typeof mentions[0]) => {
+    // Abrir já dá ciência automaticamente — sem passo extra
     if (!mention.is_read) {
-      toast.info('Clique em "Dar ciência" antes de abrir a menção.');
-      return;
+      void markAsRead(mention.id);
     }
 
     try {
