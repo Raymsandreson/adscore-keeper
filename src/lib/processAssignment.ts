@@ -139,32 +139,73 @@ export interface AndamentoActivityInput {
   extCreatedBy: string | null;
 }
 
+/** `%` e `_` em título de processo viram curinga no ilike e casam com atividade alheia. */
+function escapeLike(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/[%_]/g, (c) => `\\${c}`);
+}
+
 export async function createOrAttachAndamentoActivity(
   input: AndamentoActivityInput,
 ): Promise<{ ok: boolean; mode: 'inserted' | 'attached' | 'skipped'; error?: string }> {
   const title = `Dar andamento - ${input.processTitle}`;
   const today = new Date().toISOString().slice(0, 10);
+  const description = `Atividade criada automaticamente para o processo: ${input.processTitle}`;
 
-  // Procura uma atividade pendente equivalente (case-insensitive) para esse lead.
+  // Sem process_id a atividade nasce órfã: o lápis "Editar processo" não abre
+  // nada, o nº do processo não aparece e o usuário não consegue editá-la.
+  // Falhar visível é melhor do que gerar mais uma inútil.
+  if (!input.processId) {
+    return { ok: false, mode: 'skipped', error: 'processo não retornou id — atividade não criada' };
+  }
+
+  // O caller nem sempre tem o título do caso à mão (AddProcessDialog só recebe
+  // o caseId). Busca aqui para que case_title nunca fique nulo.
+  let caseTitle = input.caseTitle?.trim() || null;
+  if (input.caseId && !caseTitle) {
+    try {
+      const { data: c } = await externalSupabase
+        .from('legal_cases')
+        .select('title')
+        .eq('id', input.caseId)
+        .maybeSingle();
+      caseTitle = (c?.title || '').trim() || null;
+    } catch {
+      // segue sem o título; o vínculo por case_id é o que importa
+    }
+  }
+
+  // Reaproveita uma atividade pendente equivalente. A busca é restrita ao caso:
+  // títulos como "Organizar docs" se repetem entre casos do mesmo lead e, sem
+  // esse filtro, o caso B adotava a atividade do caso A — B ficava sem atividade
+  // nenhuma (retornando ok) e A trocava de responsável.
   try {
-    const { data: existing } = await externalSupabase
+    let q = externalSupabase
       .from('lead_activities')
-      .select('id, case_id, process_id')
+      .select('id')
       .eq('lead_id', input.leadId)
       .eq('status', 'pendente')
       .is('deleted_at', null)
-      .ilike('title', title)
+      .ilike('title', escapeLike(title));
+    q = input.caseId ? q.eq('case_id', input.caseId) : q.is('case_id', null);
+
+    const { data: existing } = await q
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
     if (existing?.id) {
+      // Reescreve o vínculo inteiro. Antes só preenchia quando estava NULL, o
+      // que deixava atividade apontando para processo errado sem conserto.
       const updates: any = {
         assigned_to: input.extAssignedTo,
         assigned_to_name: input.assignedName,
+        process_id: input.processId,
         process_title: input.processTitle,
+        description,
       };
-      if (!existing.case_id && input.caseId) updates.case_id = input.caseId;
-      if (!existing.process_id && input.processId) updates.process_id = input.processId;
+      if (input.caseId) updates.case_id = input.caseId;
+      if (caseTitle) updates.case_title = caseTitle;
+
       const { error: upErr } = await externalSupabase
         .from('lead_activities')
         .update(updates)
@@ -180,7 +221,7 @@ export async function createOrAttachAndamentoActivity(
   const payload: any = {
     lead_id: input.leadId,
     title,
-    description: `Atividade criada automaticamente para o processo: ${input.processTitle}`,
+    description,
     activity_type: 'tarefa',
     status: 'pendente',
     priority: 'normal',
@@ -192,7 +233,7 @@ export async function createOrAttachAndamentoActivity(
     process_title: input.processTitle,
   };
   if (input.caseId) payload.case_id = input.caseId;
-  if (input.caseTitle) payload.case_title = input.caseTitle;
+  if (caseTitle) payload.case_title = caseTitle;
 
   const { error: insErr } = await externalSupabase.from('lead_activities').insert(payload);
   if (insErr) return { ok: false, mode: 'inserted', error: insErr.message };

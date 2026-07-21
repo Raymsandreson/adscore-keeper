@@ -116,6 +116,9 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
             created_by: extUserId,
             deadline: new Date().toISOString().slice(0, 10),
             process_id: savedProcess.id,
+            // Sem process_title a atividade não mostra de que processo é, e a
+            // adoção de órfãs do CasesPage (que casa por process_title) não pega.
+            process_title: title.trim(),
           } as any);
           toast.success('Atividade "Dar andamento" criada automaticamente');
         } catch (actErr) {

@@ -652,7 +652,10 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             // e não só na atividade "Dar andamento".
             const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
 
-            const { data: savedProcess } = await externalSupabase.from('lead_processes').insert({
+            // O erro do insert era descartado: quando ele falhava, savedProcess
+            // vinha undefined e a atividade nascia sem process_id, órfã e sem
+            // ninguém saber. Agora estoura e cai no catch abaixo, que avisa.
+            const { data: savedProcess, error: procErr } = await externalSupabase.from('lead_processes').insert({
               lead_id: legalCase.lead_id,
               case_id: legalCase.id,
               process_type: 'administrativo',
@@ -664,6 +667,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               workflow_name: inheritedWorkflowName,
               responsible_user_id: extAssignedTo,
             } as any).select('id').single();
+            if (procErr) throw procErr;
+            if (!savedProcess?.id) throw new Error('processo criado sem id');
 
             // Adota atividades-fantasma cujo process_title bate com este título (case-insensitive)
             if (savedProcess?.id) {
