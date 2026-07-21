@@ -62,6 +62,7 @@ const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHi
 
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
 import { CloseLeadGroupDialog, CloseLeadContactPayload } from '@/components/leads/CloseLeadGroupDialog';
+import { ClosedCaseContactDialog } from '@/components/leads/ClosedCaseContactDialog';
 const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
 import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppButton';
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
@@ -268,6 +269,8 @@ export function LeadEditDialog({
   const [groupRemovalIdx, setGroupRemovalIdx] = useState<number | null>(null);
   const [askClosedCaseOpen, setAskClosedCaseOpen] = useState(false);
   const closedCaseAskedRef = useRef<Set<string>>(new Set());
+  const closedCaseConfirmedRef = useRef(false);
+  const [contactExtractGroup, setContactExtractGroup] = useState<{ jid: string; name: string } | null>(null);
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
   const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string; instanceId?: string } | null>(null);
@@ -1218,6 +1221,10 @@ ${scrapeData.content || ''}
     toast.info(`Lead marcado como Fechado (data ${dd}/${mm}/${yy} — criação do grupo).`, {
       description: 'O grupo foi mantido vinculado: lead fechado exige grupo. Cadastre o processo do caso antes de salvar.',
     });
+    // Caso fechado confirmado nesta sessão: cadastrar contato do cliente (com IA)
+    // e não deixar sair sem processo cadastrado (guardedOpenChange).
+    closedCaseConfirmedRef.current = true;
+    setContactExtractGroup({ jid: g?.group_jid || '', name: g?.group_name || g?.label || '' });
   };
 
   const handleGroupRemovalClosedCase = async () => {
@@ -1243,9 +1250,36 @@ ${scrapeData.content || ''}
   useEffect(() => {
     if (!open) {
       closedCaseAskedRef.current = new Set();
+      closedCaseConfirmedRef.current = false;
       setAskClosedCaseOpen(false);
+      setContactExtractGroup(null);
     }
   }, [open]);
+
+  // Não existe caso fechado sem processo: quando o fechamento foi confirmado nesta
+  // sessão, o dialog só fecha depois de existir processo cadastrado (ou se o usuário
+  // desmarcar o resultado Fechado).
+  const guardedOpenChange = async (o: boolean) => {
+    if (!o && closedCaseConfirmedRef.current && leadOutcome === 'closed' && currentLead?.id) {
+      try {
+        const { count, error } = await externalSupabase
+          .from('lead_processes')
+          .select('id', { count: 'exact', head: true })
+          .eq('lead_id', currentLead.id)
+          .is('deleted_at', null);
+        if (!error && (count ?? 0) === 0) {
+          toast.error('Não existe caso fechado sem processo.', {
+            description: 'Cadastre o processo na aba "Casos" antes de sair — ou desmarque o resultado Fechado.',
+          });
+          setActiveTab('casos');
+          return;
+        }
+      } catch (err) {
+        console.warn('Falha ao checar processos na saída:', err);
+      }
+    }
+    onOpenChange(o);
+  };
 
   const handleSave = async (contactsPayload?: CloseLeadContactPayload[]) => {
     if (!currentLead) return;
@@ -1795,7 +1829,7 @@ ${scrapeData.content || ''}
 
   return (
     <>
-    <Wrapper open={open} onOpenChange={onOpenChange}>
+    <Wrapper open={open} onOpenChange={guardedOpenChange}>
       <Content className={contentClassName} style={sheetContentStyle} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
         {mode === 'sheet' && (
           <div
@@ -3498,7 +3532,7 @@ ${scrapeData.content || ''}
             </Button>
           ) : <span />}
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
+            <Button variant="outline" onClick={() => guardedOpenChange(false)}>
               Cancelar
             </Button>
             <Button onClick={handleSaveClick} disabled={saving}>
@@ -3594,6 +3628,16 @@ ${scrapeData.content || ''}
         </AlertDialog>
       </Content>
     </Wrapper>
+
+      {currentLead && (
+        <ClosedCaseContactDialog
+          open={!!contactExtractGroup}
+          leadId={currentLead.id}
+          groupJid={contactExtractGroup?.jid}
+          groupName={contactExtractGroup?.name}
+          onClose={() => setContactExtractGroup(null)}
+        />
+      )}
 
       {currentLead && (
         <CloseLeadGroupDialog
