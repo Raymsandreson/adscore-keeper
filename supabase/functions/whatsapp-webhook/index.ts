@@ -1820,9 +1820,14 @@ Deno.serve(async (req) => {
     }
 
     // ========== AUTO-REGISTER CONTACT IF NOT FOUND (inbound, individual chats only) ==========
+    // Guarda dupla: a flag isGroup mais o formato do phone. O webhook remove o
+    // sufixo @g.us antes de gravar, então um JID de grupo chega como 120363…
+    // (18+ dígitos). Sem a checagem numérica, um payload sem wa_isGroup criava
+    // "contato" com o JID no telefone. Espelha a guarda que já existe no Railway.
+    const looksLikeGroupJid = normalizedPhone.length >= 17 || normalizedPhone.startsWith("120363");
     if (
       !contactId && direction === "inbound" && normalizedPhone.length >= 10 &&
-      !isGroup
+      !isGroup && !looksLikeGroupJid
     ) {
       try {
         // Check if this phone belongs to one of our WhatsApp instances
@@ -2236,9 +2241,13 @@ Deno.serve(async (req) => {
                   .eq("id", leadId);
               }
 
-              // Also create or link contact
+              // Also create or link contact.
+              // Guarda de grupo: mesmo em CTWA, não gravar JID de grupo como phone.
+              const ctwaDigits = String(phone || "").replace(/\D/g, "");
+              const ctwaLooksLikeGroup = ctwaDigits.length >= 17 || ctwaDigits.startsWith("120363");
               if (
-                !contactId && leadId && (autoLink.auto_create_contact !== false)
+                !contactId && leadId && (autoLink.auto_create_contact !== false) &&
+                !ctwaLooksLikeGroup
               ) {
                 const { data: newContact } = await supabase
                   .from("contacts")

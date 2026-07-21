@@ -237,6 +237,18 @@ Deno.serve(async (req) => {
           case 'create_contact': {
             if (!normalizedMainPhone) { results.push({ type: 'create_contact', skipped: 'no phone' }); break; }
 
+            // Nunca criar contato para conversa de GRUPO: o phone aqui é o JID do
+            // grupo (120363…, 18+ dígitos), não o número de uma pessoa. Isso vinha
+            // criando "contatos" com o nome do grupo e o JID no telefone. Os
+            // participantes já entram por registerGroupParticipants (com
+            // whatsapp_group_id preenchido). Checa a flag E o formato do phone —
+            // telefone individual tem no máximo 15 dígitos.
+            const looksLikeGroupJid = normalizedMainPhone.length >= 17 || normalizedMainPhone.startsWith('120363');
+            if (is_group || looksLikeGroupJid) {
+              results.push({ type: 'create_contact', skipped: 'group conversation', phone: normalizedMainPhone });
+              break;
+            }
+
             const { data: existing } = await supabase
               .from('contacts')
               .select('id')

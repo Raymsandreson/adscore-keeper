@@ -41,6 +41,10 @@ serve(async (req) => {
     const phoneMap = new Map<string, { phone: string; contact_name: string | null; instance_name: string }>();
     (allMsgs || []).forEach((m: any) => {
       const norm = m.phone?.replace(/\D/g, "");
+      // O filtro "%@g.us" acima é inócuo: o webhook remove o sufixo antes de
+      // gravar, então grupos chegam como 120363… (18+ dígitos). Descarta aqui
+      // pelo formato — telefone individual tem no máximo 15 dígitos.
+      if (norm && (norm.length >= 17 || norm.startsWith("120363"))) return;
       if (norm && !phoneMap.has(norm)) {
         phoneMap.set(norm, { phone: m.phone, contact_name: m.contact_name, instance_name: m.instance_name });
       }
