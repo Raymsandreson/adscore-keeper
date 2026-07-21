@@ -50,7 +50,11 @@ const FIELD_LABELS: Record<keyof ContactForm, string> = {
 };
 
 // Campos obrigatórios pra confirmar o cadastro do contato do cliente.
-const REQUIRED_FIELDS: Array<keyof ContactForm> = ['full_name', 'phone', 'cpf'];
+// CPF ficou de fora: em grupo onde o cliente nunca digitou o CPF (só mandou a
+// procuração em PDF), exigir aqui travava o cadastro do contato — e sem contato
+// o lead fechado não salva. Fica como campo destacado, para completar depois.
+const REQUIRED_FIELDS: Array<keyof ContactForm> = ['full_name', 'phone'];
+const RECOMMENDED_FIELDS: Array<keyof ContactForm> = ['cpf'];
 
 interface Props {
   open: boolean;
@@ -213,6 +217,10 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
     () => REQUIRED_FIELDS.filter((k) => !form[k].trim()),
     [form],
   );
+  const missingRecommended = useMemo(
+    () => RECOMMENDED_FIELDS.filter((k) => !form[k].trim()),
+    [form],
+  );
 
   const setField = (k: keyof ContactForm, v: string) => setForm(prev => ({ ...prev, [k]: v }));
 
@@ -328,6 +336,12 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
               {missingRequired.length > 0 && (
                 <div className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-xs text-destructive">
                   Para confirmar, preencha: <strong>{missingRequired.map(k => FIELD_LABELS[k]).join(', ')}</strong>
+                </div>
+              )}
+              {missingRecommended.length > 0 && (
+                <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  Falta <strong>{missingRecommended.map(k => FIELD_LABELS[k]).join(', ')}</strong> — dá para
+                  cadastrar assim mesmo e completar depois.
                 </div>
               )}
               <div className="grid grid-cols-2 gap-3">

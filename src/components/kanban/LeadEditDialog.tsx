@@ -273,6 +273,7 @@ export function LeadEditDialog({
   const [askClosedCaseOpen, setAskClosedCaseOpen] = useState(false);
   const closedCaseAskedRef = useRef<Set<string>>(new Set());
   const closedCaseConfirmedRef = useRef(false);
+  const [confirmExitNoProcessOpen, setConfirmExitNoProcessOpen] = useState(false);
   const [contactExtractGroup, setContactExtractGroup] = useState<{ jid: string; name: string } | null>(null);
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
@@ -1305,6 +1306,8 @@ ${scrapeData.content || ''}
   // desmarcar o resultado Fechado).
   const guardedOpenChange = async (o: boolean) => {
     if (!o && closedCaseConfirmedRef.current && leadOutcome === 'closed' && currentLead?.id) {
+      // Já estamos perguntando — clique fora repetido não re-dispara a checagem.
+      if (confirmExitNoProcessOpen) return;
       try {
         const { count, error } = await externalSupabase
           .from('lead_processes')
@@ -1312,10 +1315,10 @@ ${scrapeData.content || ''}
           .eq('lead_id', currentLead.id)
           .is('deleted_at', null);
         if (!error && (count ?? 0) === 0) {
-          toast.error('Não existe caso fechado sem processo.', {
-            description: 'Cadastre o processo na aba "Casos" antes de sair — ou desmarque o resultado Fechado.',
-          });
-          setActiveTab('casos');
+          // Avisa, mas não prende: o "Fechado" ainda é estado local (markClosedFromGroup
+          // não grava), então sair aqui não deixa caso fechado sem processo no banco.
+          // Quem barra de verdade é o handleSave, na hora de salvar.
+          setConfirmExitNoProcessOpen(true);
           return;
         }
       } catch (err) {
@@ -3671,6 +3674,43 @@ ${scrapeData.content || ''}
               >
                 Sim, é caso fechado
               </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Saída com "Fechado" marcado nesta sessão e nenhum processo cadastrado.
+            Avisa e deixa escolher — o "Fechado" ainda não foi gravado, então sair
+            não deixa caso fechado sem processo no banco. */}
+        <AlertDialog open={confirmExitNoProcessOpen} onOpenChange={setConfirmExitNoProcessOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Sair sem cadastrar o processo?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Você marcou este lead como <strong>Fechado</strong> nesta sessão, mas ainda não há
+                processo cadastrado. Não existe caso fechado sem processo — se sair agora, o
+                fechamento <strong>não será salvo</strong> e o lead continua como estava.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  setConfirmExitNoProcessOpen(false);
+                  setActiveTab('casos');
+                }}
+                className="bg-green-600 text-white hover:bg-green-700"
+              >
+                Cadastrar caso e processo
+              </AlertDialogAction>
+              <AlertDialogCancel
+                onClick={() => {
+                  setConfirmExitNoProcessOpen(false);
+                  closedCaseConfirmedRef.current = false;
+                  onOpenChange(false);
+                }}
+              >
+                Sair sem salvar
+              </AlertDialogCancel>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
