@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2, MessagesSquare, Combine, X, ShieldCheck } from 'lucide-react';
+import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2, MessagesSquare, Combine, X, ShieldCheck, Check } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import ImportGroupDocsDialog from '@/components/leads/ImportGroupDocsDialog';
@@ -27,6 +27,9 @@ interface DriveFile {
   webViewLink: string;
   iconLink?: string;
   thumbnailLink?: string;
+  /** Análise IA persistida no próprio arquivo do Drive (lead-drive v5+). */
+  ai_analysis?: Analysis | null;
+  ai_analyzed_at?: string | null;
 }
 
 interface Analysis {
@@ -37,6 +40,8 @@ interface Analysis {
   description?: string;
   confidence?: 'alta' | 'média' | 'baixa' | string;
   extracted_fields?: Array<{ field_id: string; value: string }>;
+  /** Dados achados no documento que não têm campo neste funil — só informativo. */
+  other_findings?: Array<{ label: string; value: string }>;
 }
 
 export interface DocCustomFieldDef {
@@ -76,6 +81,12 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   const [reprocessing, setReprocessing] = useState(false);
   const [importGroupOpen, setImportGroupOpen] = useState(false);
   const [analyses, setAnalyses] = useState<Record<string, Analysis>>({});
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const batchAbort = useRef(false);
+  const [batchSummaryOpen, setBatchSummaryOpen] = useState(false);
+  const [batchResults, setBatchResults] = useState<Array<{ file: DriveFile; analysis: Analysis }>>([]);
+  const [batchSelected, setBatchSelected] = useState<Record<string, boolean>>({});
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -145,7 +156,14 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
       const list: DriveFile[] = data.files || [];
       setFiles(list);
       setFolderUrl(data.folder_url);
-      setAnalyses({});
+      // A análise vem persistida no arquivo do Drive (lead-drive v5+). Hidratar
+      // aqui é o que faz a tela lembrar quais documentos já foram extraídos —
+      // antes o state era zerado e tudo voltava a parecer "não analisado".
+      const hydrated: Record<string, Analysis> = {};
+      for (const f of list) {
+        if (f.ai_analysis && typeof f.ai_analysis === 'object') hydrated[f.id] = f.ai_analysis;
+      }
+      setAnalyses(hydrated);
       setSelectedIds((prev) => prev.filter((id) => list.some((f) => f.id === id)));
     } catch (e: any) {
       console.error('[LeadDocumentsTab] load error', e);
@@ -222,15 +240,17 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   const [selectedExtracted, setSelectedExtracted] = useState<Record<string, boolean>>({});
   const [applyingFields, setApplyingFields] = useState(false);
 
-  async function handleAnalyze(f: DriveFile) {
-    setAnalyzingId(f.id);
-    try {
-      const cfPayload = (customFields || []).map((c) => ({
-        id: c.id,
-        name: c.name,
-        type: c.type,
-        options: c.options,
-      }));
+  const cfPayload = useMemo(
+    () => (customFields || []).map((c) => ({ id: c.id, name: c.name, type: c.type, options: c.options })),
+    [customFields],
+  );
+
+  /**
+   * Roda a análise IA de um arquivo. `force` reprocessa mesmo se já houver
+   * análise gravada no Drive; `silent` não abre o diálogo (usado pelo lote).
+   */
+  const runAnalyze = useCallback(
+    async (f: DriveFile, opts: { force?: boolean } = {}): Promise<Analysis> => {
       const { data, error } = await supabase.functions.invoke('lead-drive', {
         body: {
           action: 'analyze_file',
@@ -238,17 +258,31 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
           lead_name: leadName,
           file_id: f.id,
           custom_fields: cfPayload,
+          force: !!opts.force,
         },
       });
       if (error) throw error;
       if ((data as any)?.error) throw new Error((data as any).error);
       const analysis = ((data as any).analysis || {}) as Analysis;
       const renamed = (data as any).renamed as string | null;
-      setAnalysisResult({ file: { ...f, name: renamed || f.name }, analysis });
       setAnalyses((prev) => ({ ...prev, [f.id]: analysis }));
-      if (renamed) {
-        setFiles((prev) => prev.map((x) => (x.id === f.id ? { ...x, name: renamed } : x)));
-      }
+      setFiles((prev) =>
+        prev.map((x) =>
+          x.id === f.id
+            ? { ...x, ...(renamed ? { name: renamed } : {}), ai_analysis: analysis, ai_analyzed_at: new Date().toISOString() }
+            : x,
+        ),
+      );
+      return analysis;
+    },
+    [leadId, leadName, cfPayload],
+  );
+
+  async function handleAnalyze(f: DriveFile, opts: { force?: boolean } = {}) {
+    setAnalyzingId(f.id);
+    try {
+      const analysis = await runAnalyze(f, opts);
+      setAnalysisResult({ file: f, analysis });
       // pré-selecionar todos os campos extraídos
       const sel: Record<string, boolean> = {};
       (analysis.extracted_fields || []).forEach((ef) => { sel[ef.field_id] = true; });
@@ -259,6 +293,119 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
       toast.error(`Erro ao analisar: ${err.message || err}`);
     } finally {
       setAnalyzingId(null);
+    }
+  }
+
+  /** Abre o diálogo com a análise já gravada, sem gastar nova chamada de IA. */
+  function openStoredAnalysis(f: DriveFile) {
+    const analysis = analyses[f.id];
+    if (!analysis) return;
+    setAnalysisResult({ file: f, analysis });
+    const sel: Record<string, boolean> = {};
+    (analysis.extracted_fields || []).forEach((ef) => { sel[ef.field_id] = true; });
+    setSelectedExtracted(sel);
+    setAnalysisOpen(true);
+  }
+
+  const pendingFiles = useMemo(() => files.filter((f) => !analyses[f.id]), [files, analyses]);
+
+  /**
+   * Extrai em lote todos os documentos ainda não analisados.
+   * Concorrência 3: o gateway do Drive + Gemini aguentam, e mantém o tempo
+   * total baixo sem disparar 429 (a edge já tem retry, mas evitar é melhor).
+   */
+  async function handleAnalyzeAll() {
+    const queue = [...pendingFiles];
+    if (queue.length === 0) {
+      toast.info('Todos os documentos já foram extraídos.');
+      return;
+    }
+    batchAbort.current = false;
+    setBatchRunning(true);
+    setBatchProgress({ done: 0, total: queue.length });
+    const results: Array<{ file: DriveFile; analysis: Analysis }> = [];
+    const failures: string[] = [];
+    let cursor = 0;
+
+    const worker = async () => {
+      while (cursor < queue.length && !batchAbort.current) {
+        const f = queue[cursor++];
+        try {
+          const analysis = await runAnalyze(f);
+          results.push({ file: f, analysis });
+        } catch (e: any) {
+          console.error('[LeadDocumentsTab] batch analyze error', f.name, e);
+          failures.push(f.name);
+        } finally {
+          setBatchProgress((p) => ({ ...p, done: p.done + 1 }));
+        }
+      }
+    };
+
+    try {
+      await Promise.all(Array.from({ length: Math.min(3, queue.length) }, worker));
+      if (failures.length) {
+        toast.warning(`${results.length} extraído(s), ${failures.length} falharam: ${failures.slice(0, 3).join(', ')}`);
+      } else if (!batchAbort.current) {
+        toast.success(`${results.length} documento(s) extraído(s)`);
+      }
+      const withFields = results.filter((r) => (r.analysis.extracted_fields || []).length > 0);
+      if (withFields.length && onApplyExtractedFields) {
+        setBatchResults(withFields);
+        // Pré-seleciona 1 valor por campo: o primeiro documento que trouxe aquele
+        // campo vence. Documento repetido (frente/verso) não sobrescreve.
+        const sel: Record<string, boolean> = {};
+        const seenField = new Set<string>();
+        for (const r of withFields) {
+          for (const ef of r.analysis.extracted_fields || []) {
+            const key = `${r.file.id}:${ef.field_id}`;
+            sel[key] = !seenField.has(ef.field_id);
+            seenField.add(ef.field_id);
+          }
+        }
+        setBatchSelected(sel);
+        setBatchSummaryOpen(true);
+      }
+    } finally {
+      setBatchRunning(false);
+    }
+  }
+
+  /** Aplica no lead os campos marcados no resumo do lote. */
+  async function handleApplyBatch() {
+    if (!onApplyExtractedFields) return;
+    const defs = customFields || [];
+    const values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }> = {};
+    for (const r of batchResults) {
+      for (const ef of r.analysis.extracted_fields || []) {
+        if (!batchSelected[`${r.file.id}:${ef.field_id}`]) continue;
+        const def = defs.find((d) => d.id === ef.field_id);
+        if (!def) continue;
+        let v: string | number | boolean | null = ef.value;
+        if (def.type === 'number') {
+          const n = Number(String(ef.value).replace(',', '.'));
+          v = Number.isFinite(n) ? n : null;
+        } else if (def.type === 'checkbox') {
+          v = String(ef.value).toLowerCase() === 'true';
+        } else if (def.type === 'date') {
+          v = ef.value || null;
+        }
+        values[ef.field_id] = { type: def.type, value: v };
+      }
+    }
+    if (Object.keys(values).length === 0) {
+      toast.info('Nenhum campo selecionado');
+      return;
+    }
+    setApplyingFields(true);
+    try {
+      await onApplyExtractedFields(values);
+      toast.success(`${Object.keys(values).length} campo(s) atualizado(s)`);
+      setBatchSummaryOpen(false);
+    } catch (e: any) {
+      toast.error(`Erro ao aplicar: ${e.message || e}`);
+    } finally {
+      setApplyingFields(false);
     }
   }
 
@@ -361,6 +508,29 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
           <Button
             variant="outline"
             size="sm"
+            onClick={handleAnalyzeAll}
+            disabled={batchRunning || loading || pendingFiles.length === 0}
+            title="Analisa com IA todos os documentos ainda não extraídos, um após o outro"
+          >
+            {batchRunning ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 mr-1" />
+            )}
+            {batchRunning
+              ? `Extraindo ${batchProgress.done}/${batchProgress.total}…`
+              : pendingFiles.length > 0
+                ? `Extrair todos com IA (${pendingFiles.length})`
+                : 'Tudo extraído'}
+          </Button>
+          {batchRunning && (
+            <Button variant="ghost" size="sm" onClick={() => { batchAbort.current = true; }}>
+              <X className="h-3.5 w-3.5 mr-1" /> Parar
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
             onClick={handleReprocess}
             disabled={reprocessing}
             title="Busca a procuração assinada mais recente, extrai dados via IA e sobe o PDF na pasta Drive"
@@ -450,6 +620,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
           <div className="border rounded-lg divide-y">
             {files.map((f) => {
               const a = analyses[f.id];
+              const done = !!a;
               const smartLabel = a?.document_type
                 ? `${a.document_type}${a.holder_name ? ' — ' + a.holder_name : ''}`
                 : null;
@@ -478,22 +649,48 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
                     <div className="text-xs text-muted-foreground flex items-center gap-2 flex-wrap">
                       <span>{new Date(f.modifiedTime).toLocaleString('pt-BR')}{f.size && ` · ${formatBytes(f.size)}`}</span>
                       {smartLabel && <span className="opacity-60 truncate">· {f.name}</span>}
+                      {done && (
+                        <Badge variant="outline" className="h-4 px-1 gap-0.5 text-[10px] border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
+                          <Check className="h-2.5 w-2.5" /> IA extraída
+                        </Badge>
+                      )}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleAnalyze(f)}
-                    disabled={analyzingId === f.id}
-                    title="Ver análise detalhada"
-                  >
-                    {analyzingId === f.id ? (
-                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3.5 w-3.5 mr-1" />
-                    )}
-                    Detalhes IA
-                  </Button>
+                  {done ? (
+                    <>
+                      <Button variant="ghost" size="sm" onClick={() => openStoredAnalysis(f)} title="Ver a análise já extraída (não gasta IA)">
+                        Ver detalhes
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleAnalyze(f, { force: true })}
+                        disabled={analyzingId === f.id || batchRunning}
+                        title="Reanalisar com IA"
+                      >
+                        {analyzingId === f.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAnalyze(f)}
+                      disabled={analyzingId === f.id || batchRunning}
+                      title="Extrair dados deste documento com IA"
+                    >
+                      {analyzingId === f.id ? (
+                        <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      Detalhes IA
+                    </Button>
+                  )}
                   <Button variant="ghost" size="icon" onClick={() => handleDelete(f)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
@@ -610,6 +807,23 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
                 );
               })()}
 
+              {(analysisResult.analysis.other_findings || []).length > 0 && (
+                <div className="border-t pt-3 space-y-2">
+                  <div className="text-xs font-semibold text-muted-foreground">
+                    Também encontrado no documento
+                    <span className="font-normal"> · sem campo neste funil, não é aplicado</span>
+                  </div>
+                  <div className="space-y-1">
+                    {(analysisResult.analysis.other_findings || []).map((of, i) => (
+                      <div key={`${of.label}-${i}`} className="text-sm px-2 py-1 rounded bg-muted/40">
+                        <span className="text-xs text-muted-foreground">{of.label}: </span>
+                        <span className="break-words">{of.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 pt-2">
                 <Button variant="outline" size="sm" asChild>
                   <a href={analysisResult.file.webViewLink} target="_blank" rel="noreferrer">
@@ -626,6 +840,63 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={batchSummaryOpen} onOpenChange={(o) => !applyingFields && setBatchSummaryOpen(o)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Campos detectados na extração em lote
+            </DialogTitle>
+            <DialogDescription>
+              {batchResults.length} documento(s) trouxeram dados. Marque o que deve ir para os campos do lead.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-[55vh] overflow-auto space-y-3">
+            {batchResults.map((r) => {
+              const defs = customFields || [];
+              const rows = (r.analysis.extracted_fields || [])
+                .map((ef) => ({ ef, def: defs.find((d) => d.id === ef.field_id) }))
+                .filter((x) => x.def);
+              if (rows.length === 0) return null;
+              return (
+                <div key={r.file.id} className="border rounded-lg p-2 space-y-1">
+                  <div className="text-xs font-semibold truncate">
+                    {r.analysis.document_type || r.file.name}
+                    {r.analysis.holder_name ? ` — ${r.analysis.holder_name}` : ''}
+                  </div>
+                  {rows.map(({ ef, def }) => {
+                    const key = `${r.file.id}:${ef.field_id}`;
+                    return (
+                      <label key={key} className="flex items-start gap-2 text-sm p-1.5 rounded hover:bg-muted/40 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={!!batchSelected[key]}
+                          onChange={(e) => setBatchSelected((p) => ({ ...p, [key]: e.target.checked }))}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-muted-foreground">{def!.name}</div>
+                          <div className="font-medium break-words">{ef.value}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setBatchSummaryOpen(false)} disabled={applyingFields}>
+              Fechar
+            </Button>
+            <Button size="sm" onClick={handleApplyBatch} disabled={applyingFields}>
+              {applyingFields ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
+              Aplicar aos campos
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

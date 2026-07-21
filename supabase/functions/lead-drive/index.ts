@@ -13,7 +13,7 @@ const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
 const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
-const FUNCTION_VERSION = 4; // v4: retry automático em 5xx/429 do gateway do Drive (503 transitório era engolido silenciosamente)
+const FUNCTION_VERSION = 5; // v5: análise IA persistida no arquivo (description + appProperties.ai_at); list_files devolve ai_analysis
 
 // Retry automático para falhas transitórias do gateway do Google Drive.
 // Envolvemos o fetch global para não precisar tocar em ~30 call sites.
@@ -77,6 +77,94 @@ async function driveJson(path: string, init: RequestInit = {}) {
   const data = text ? JSON.parse(text) : null;
   if (!res.ok) throw new Error(`drive request failed [${res.status}]: ${text}`);
   return data;
+}
+
+// ---------------------------------------------------------------------------
+// Persistência da análise IA no próprio arquivo do Drive.
+// Antes, a análise só existia no state do React e sumia a cada reload — o
+// usuário reclicava "Detalhes IA" e a gente pagava Gemini de novo no mesmo doc.
+// Agora o resultado vira `description` do arquivo (campo do Drive, ~4 KB) com um
+// prefixo que identifica o bloco nosso, e `appProperties.ai_at` marca a data.
+// ---------------------------------------------------------------------------
+const AI_DESC_PREFIX = "[AI]";
+
+/**
+ * Instrução de extração dos campos personalizados do CRM.
+ *
+ * As regras de PAPEL existem porque a IA vinha preenchendo "REPRESENTANTE LEGAL"
+ * com o nome do advogado outorgado na procuração. O advogado/sociedade que RECEBE
+ * poderes nunca é dado do cliente — representante legal é quem representa o
+ * titular incapaz/menor (mãe, pai, tutor, curador).
+ */
+function buildFieldsInstruction(
+  cfList: Array<{ id: string; name: string; type: string; options?: string[] }>,
+): string {
+  if (!cfList.length) return "";
+  const list = cfList
+    .map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`)
+    .join("\n");
+  return `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.
+
+REGRAS DE PAPEL (obrigatórias):
+1. Em procuração, contrato de honorários ou substabelecimento, o(a) advogado(a), o escritório e a sociedade de advogados são os OUTORGADOS (quem recebe poderes). Nunca use o nome deles como valor de campo algum do cliente — nem "representante legal", nem "responsável", nem "titular".
+2. "Representante legal" = a pessoa física que representa o titular/beneficiário incapaz ou menor de idade (mãe, pai, tutor, curador), ou seja, quem OUTORGA em nome do beneficiário. Se o titular for maior e capaz (assina por si), deixe o campo vazio.
+3. Só preencha um campo quando o papel da pessoa no documento corresponder exatamente ao rótulo do campo. Na dúvida entre duas pessoas, omita o campo.
+
+Campos:
+${list}
+
+Por fim, devolva em "other_findings" (máx. 8 itens, { label, value }) os dados relevantes do titular/beneficiário que o documento mostra mas que NÃO têm campo correspondente na lista acima (ex.: nome da mãe, data de nascimento, benefício). É só informativo — nunca inclua dados do advogado/outorgado nem repita algo já devolvido em extracted_fields.`;
+}
+
+function parseStoredAnalysis(description?: string | null): any | null {
+  if (!description) return null;
+  const idx = description.indexOf(AI_DESC_PREFIX);
+  if (idx === -1) return null;
+  const raw = description.slice(idx + AI_DESC_PREFIX.length).trim();
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveAnalysisToDrive(fileId: string, analysis: any): Promise<boolean> {
+  try {
+    const compact = {
+      document_type: analysis?.document_type ?? null,
+      document_subtype: analysis?.document_subtype ?? null,
+      holder_name: analysis?.holder_name ?? null,
+      holder_cpf: analysis?.holder_cpf ?? null,
+      description: typeof analysis?.description === "string" ? analysis.description.slice(0, 1500) : null,
+      confidence: analysis?.confidence ?? null,
+      extracted_fields: Array.isArray(analysis?.extracted_fields) ? analysis.extracted_fields : [],
+      other_findings: Array.isArray(analysis?.other_findings) ? analysis.other_findings.slice(0, 8) : [],
+    };
+    // Drive limita `description` a ~4 KB. Se estourar (muito campo extraído),
+    // derruba os extracted_fields e mantém a identificação do documento.
+    let body = `${AI_DESC_PREFIX}${JSON.stringify(compact)}`;
+    // Ordem de sacrifício: primeiro o informativo (other_findings), depois os campos.
+    if (body.length > 3800) body = `${AI_DESC_PREFIX}${JSON.stringify({ ...compact, other_findings: [] })}`;
+    if (body.length > 3800) body = `${AI_DESC_PREFIX}${JSON.stringify({ ...compact, other_findings: [], extracted_fields: [] })}`;
+    if (body.length > 3800) body = body.slice(0, 3800);
+
+    const res = await fetch(`${GATEWAY}/files/${fileId}?fields=id`, {
+      method: "PATCH",
+      headers: gwHeaders({ "Content-Type": "application/json" }),
+      // PATCH de appProperties faz merge por chave: content_hash / dedup_key /
+      // lead_id já gravados no upload continuam intactos.
+      body: JSON.stringify({ description: body, appProperties: { ai_at: new Date().toISOString() } }),
+    });
+    if (!res.ok) {
+      console.warn(`[lead-drive] AI_ANALYSIS_PERSIST_FAILED ${JSON.stringify({ file_id: fileId, status: res.status, error: await res.text() })}`);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn("[lead-drive] AI_ANALYSIS_PERSIST_ERROR", e);
+    return false;
+  }
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -273,7 +361,7 @@ Deno.serve(async (req) => {
       const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
       const q = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
       const res = await fetch(
-        `${GATEWAY}/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime,webViewLink,iconLink,thumbnailLink)&orderBy=modifiedTime desc`,
+        `${GATEWAY}/files?q=${q}&fields=files(id,name,mimeType,size,modifiedTime,webViewLink,iconLink,thumbnailLink,description,appProperties)&orderBy=modifiedTime desc`,
         { headers: gwHeaders() },
       );
       if (!res.ok) throw new Error(`drive list failed [${res.status}]: ${await res.text()}`);
@@ -285,6 +373,13 @@ Deno.serve(async (req) => {
         if (seenFiles.has(key)) return false;
         seenFiles.add(key);
         return true;
+      }).map((file: any) => {
+        // Análise IA persistida (ver saveAnalysisToDrive). `description` guarda o
+        // JSON; `appProperties.ai_at` é o marcador de "já extraído" que sobrevive
+        // a rename e a mover de pasta. Sem isso a tela reprocessava tudo do zero.
+        const analysis = parseStoredAnalysis(file.description);
+        const { description: _d, appProperties: ap, ...rest } = file;
+        return { ...rest, ai_analysis: analysis, ai_analyzed_at: ap?.ai_at || null };
       });
       return new Response(
         JSON.stringify({ folder_id: folderId, folder_url: `https://drive.google.com/drive/folders/${folderId}`, files, _functionVersion: FUNCTION_VERSION }),
@@ -636,26 +731,44 @@ Deno.serve(async (req) => {
     if (action === "analyze_file") {
       // Baixa um arquivo do Drive e usa Gemini Vision para identificar tipo + titular.
       // Opcionalmente extrai valores para campos personalizados informados em `custom_fields`.
-      const { file_id, custom_fields } = body as {
+      const { file_id, custom_fields, force } = body as {
         file_id?: string;
         custom_fields?: Array<{ id: string; name: string; type: string; options?: string[] }>;
+        force?: boolean;
       };
       if (!file_id) throw new Error("file_id required");
       const cfList = Array.isArray(custom_fields) ? custom_fields.filter((f) => f && f.id && f.name) : [];
 
       // Get file metadata before downloading bytes; large files can exceed worker memory.
-      const metaRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,mimeType,size`, { headers: gwHeaders() });
+      const metaRes = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,mimeType,size,description,appProperties`, { headers: gwHeaders() });
       if (!metaRes.ok) throw new Error(`drive meta failed [${metaRes.status}]: ${await metaRes.text()}`);
       const meta = await metaRes.json();
+
+      // Já analisado antes? Devolve o que está gravado e não gasta Gemini de novo.
+      // `force: true` (botão "Reanalisar") ignora o cache.
+      const cached = force ? null : parseStoredAnalysis(meta.description);
+      if (cached) {
+        return new Response(JSON.stringify({
+          ok: true,
+          file: { id: meta.id, name: meta.name, mimeType: meta.mimeType, size: meta.size },
+          analysis: cached,
+          renamed: null,
+          cached: true,
+          analyzed_at: meta.appProperties?.ai_at || null,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
       const fileSize = Number(meta.size || 0);
       if (fileSize > MAX_ANALYZE_BYTES) {
+        const analysis = {
+          document_type: "Outro",
+          description: `Arquivo ${meta.name} é maior que 8 MB e não foi analisado automaticamente para evitar limite de memória.`,
+          confidence: "baixa",
+        };
+        await saveAnalysisToDrive(file_id, analysis);
         return new Response(JSON.stringify({
           success: true,
-          analysis: {
-            document_type: "Outro",
-            description: `Arquivo ${meta.name} é maior que 8 MB e não foi analisado automaticamente para evitar limite de memória.`,
-            confidence: "baixa",
-          },
+          analysis,
           renamed: false,
           skipped_reason: "file_too_large",
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -683,9 +796,7 @@ Deno.serve(async (req) => {
         }
         const b64 = btoa(bin);
         const dataUrl = `data:${meta.mimeType};base64,${b64}`;
-        const fieldsInstr = cfList.length
-          ? `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.\nCampos:\n${cfList.map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`).join("\n")}`
-          : "";
+        const fieldsInstr = buildFieldsInstruction(cfList);
         userContent = [
           { type: "text", text: `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}${fieldsInstr}` },
           { type: "image_url", image_url: { url: dataUrl } },
@@ -712,19 +823,19 @@ Deno.serve(async (req) => {
         } catch (e) {
           console.error("[lead-drive] docx extract failed:", e);
         }
-        const fieldsInstr = cfList.length
-          ? `\n\nALÉM DISSO, extraia valores para os seguintes CAMPOS PERSONALIZADOS do CRM, somente se o documento mostrar a informação. Devolva no array "extracted_fields" com { field_id, value } (value sempre como string; datas em formato ISO YYYY-MM-DD; checkbox como "true"/"false"). Não invente; omita o campo se a informação não estiver clara.\nCampos:\n${cfList.map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`).join("\n")}`
-          : "";
+        const fieldsInstr = buildFieldsInstruction(cfList);
         userContent = `Identifique o tipo deste documento, o titular e descreva brevemente. Nome do arquivo: ${meta.name}${fieldsInstr}\n\nConteúdo extraído do DOCX:\n\n${text || "(não foi possível extrair texto)"}`;
       } else {
         // Tipo não suportado pela IA — devolve análise neutra sem chamar Gemini
+        const analysis = {
+          document_type: "Outro",
+          description: `Arquivo ${meta.name} (${meta.mimeType}) não pôde ser analisado automaticamente.`,
+          confidence: "baixa",
+        };
+        await saveAnalysisToDrive(file_id, analysis);
         return new Response(JSON.stringify({
           success: true,
-          analysis: {
-            document_type: "Outro",
-            description: `Arquivo ${meta.name} (${meta.mimeType}) não pôde ser analisado automaticamente.`,
-            confidence: "baixa",
-          },
+          analysis,
           renamed: false,
           skipped_reason: `unsupported_mime:${meta.mimeType}`,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -771,6 +882,19 @@ Deno.serve(async (req) => {
                         value: { type: "string", description: "Sempre como string. Datas em YYYY-MM-DD. Checkbox como 'true'/'false'." },
                       },
                       required: ["field_id", "value"],
+                      additionalProperties: false,
+                    },
+                  },
+                  other_findings: {
+                    type: "array",
+                    description: "Dados relevantes do titular/beneficiário achados no documento que NÃO têm campo correspondente na lista de campos personalizados. Só informativo, máximo 8. Nunca dados do advogado/outorgado.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        label: { type: "string", description: "Rótulo curto em português. Ex: 'Nome da mãe'." },
+                        value: { type: "string" },
+                      },
+                      required: ["label", "value"],
                       additionalProperties: false,
                     },
                   },
@@ -880,8 +1004,12 @@ Deno.serve(async (req) => {
         console.warn("auto-rename skipped:", e);
       }
 
+      // Grava a análise no arquivo. Feito DEPOIS do rename para que o PATCH de
+      // description não brigue com o PATCH de name na mesma revisão do Drive.
+      const persisted = await saveAnalysisToDrive(file_id, analysis);
+
       return new Response(
-        JSON.stringify({ ok: true, file: meta, analysis, renamed }),
+        JSON.stringify({ ok: true, file: meta, analysis, renamed, cached: false, persisted }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
