@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { toast } from 'sonner';
-import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock, Trash2 } from 'lucide-react';
+import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, UserPlus, Heart, Mic, PhoneCall, Clock, Trash2, UsersRound } from 'lucide-react';
 import { logAudit } from '@/hooks/useAuditLog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
@@ -51,6 +51,8 @@ interface LinkedContact {
 
 interface LeadLinkedContactsProps {
   leadId: string;
+  /** Abre a busca de participantes do grupo de WhatsApp vinculado ao lead. */
+  onSearchInGroup?: () => void;
 }
 
 // Module-level cache: instant render on re-open
@@ -136,7 +138,7 @@ export const invalidateLeadLinkedContactsCache = (leadId: string) => {
   contactsRequests.delete(leadId);
 };
 
-export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
+export function LeadLinkedContacts({ leadId, onSearchInGroup }: LeadLinkedContactsProps) {
   const cached = contactsCache.get(leadId);
   const [contacts, setContacts] = useState<LinkedContact[]>(() => cached?.contacts || []);
   const [loading, setLoading] = useState(() => !cached);
@@ -415,6 +417,19 @@ export function LeadLinkedContacts({ leadId }: LeadLinkedContactsProps) {
             )}
           </h4>
           <div className="flex gap-1">
+            {onSearchInGroup && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => { setShowSearch(false); setShowCreate(false); onSearchInGroup(); }}
+                title="Buscar participantes do grupo de WhatsApp vinculado a este lead"
+              >
+                <UsersRound className="h-3 w-3 mr-1" />
+                Do grupo
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"

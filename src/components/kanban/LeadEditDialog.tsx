@@ -654,6 +654,37 @@ export function LeadEditDialog({
     setLocalFieldValues(initial);
   };
 
+  // Busca manual de contatos entre os participantes do grupo de WhatsApp do lead.
+  // Reusa o mesmo GroupContactSyncDialog que o auto-sync do handleSave dispara.
+  const handleSearchContactsInGroup = async () => {
+    const group = whatsappGroups.find((g) => (g.group_jid || '').trim());
+    if (!group) {
+      toast.error('Nenhum grupo de WhatsApp vinculado a este lead', {
+        description: 'Vincule um grupo na aba Básico antes de buscar contatos por ele.',
+      });
+      return;
+    }
+
+    let userInstanceId: string | undefined;
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('default_instance_id')
+          .eq('user_id', authUser.id)
+          .maybeSingle();
+        userInstanceId = (profile as any)?.default_instance_id || undefined;
+      }
+    } catch {}
+
+    setSyncGroupData({
+      jid: group.group_jid.trim(),
+      name: group.group_name || group.label || '',
+      instanceId: userInstanceId,
+    });
+  };
+
   const loadLeadGroups = async (leadId: string, leadSnapshot: any) => {
     const { data: groups } = await externalSupabase
       .from('lead_whatsapp_groups')
