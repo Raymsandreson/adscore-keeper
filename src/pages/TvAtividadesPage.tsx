@@ -34,6 +34,9 @@ interface Payload {
 
 const REFRESH_MS = 45_000;
 const LIST_MAX = 7; // linhas abaixo do pódio (posições 4..10)
+// Valor sentinela no seletor de time: só gestores de time + diretoria
+// (team_managers + org_directors no Externo; a RPC resolve via p_grupo).
+const GRUPO_GERENCIAL = 'gerencial';
 
 // Paleta estável por nome (cada assessor sempre com a mesma cor de avatar).
 const AVATAR_COLORS = [
@@ -114,7 +117,9 @@ export default function TvAtividadesPage() {
   }, [params, setSearchParams]);
 
   const selectedTeamName = useMemo(
-    () => teams.find(t => t.id === teamId)?.name,
+    () => teamId === GRUPO_GERENCIAL
+      ? 'Gerencial e Diretoria'
+      : teams.find(t => t.id === teamId)?.name,
     [teams, teamId],
   );
 
@@ -124,7 +129,8 @@ export default function TvAtividadesPage() {
       await ensureExternalSession();
       const { data: res, error } = await (externalSupabase as any).rpc('tv_atividades_ranking', {
         p_since: periodSince(period).toISOString(),
-        p_team_id: teamId || null,
+        p_team_id: teamId && teamId !== GRUPO_GERENCIAL ? teamId : null,
+        p_grupo: teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null,
       });
       if (error) throw error;
       setData((res || { ranking: [], resumo: null, gerado_em: '' }) as Payload);
@@ -227,6 +233,7 @@ export default function TvAtividadesPage() {
             title="Filtrar por time"
           >
             <option value="">Todos os times</option>
+            <option value={GRUPO_GERENCIAL}>Gerencial e Diretoria</option>
             {teams.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
