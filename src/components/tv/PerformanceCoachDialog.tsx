@@ -26,6 +26,20 @@ interface QA {
   answer: string;
 }
 
+function fmtSeg(s: number | null | undefined): string {
+  if (!s) return '0';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`;
+}
+
+// Seta do comparativo: melhorou (verde) / piorou (vermelho) / igual.
+function Delta({ antes, agora, menorMelhor = false }: { antes: number; agora: number; menorMelhor?: boolean }) {
+  if (antes === agora) return <span className="text-white/40">=</span>;
+  const melhorou = menorMelhor ? agora < antes : agora > antes;
+  return <span className={melhorou ? 'text-emerald-400' : 'text-rose-400'}>{agora > antes ? '▲' : '▼'}</span>;
+}
+
 interface Props {
   row: CoachRow;
   rank: number;
@@ -46,6 +60,8 @@ interface AnalyzeResponse {
   mensagem: string;
   to_user_id: string | null;
   has_whatsapp?: boolean;
+  prev?: { passos: number; concluidas: number; ativo_seg: number; ocioso_seg: number } | null;
+  prev_label?: string;
   error?: string;
 }
 
@@ -74,6 +90,8 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
   const [phoneInput, setPhoneInput] = useState('');
   const [savingPhone, setSavingPhone] = useState(false);
   const [meta, setMeta] = useState<{ position: number; total: number; ahead: AnalyzeResponse['ahead']; behind: AnalyzeResponse['behind'] } | null>(null);
+  const [prev, setPrev] = useState<AnalyzeResponse['prev']>(null);
+  const [prevLabel, setPrevLabel] = useState('período anterior');
   const [question, setQuestion] = useState('');
   const [sender, setSender] = useState<{ id: string; name: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -110,6 +128,8 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
     setMeta({ position: data.position, total: data.total, ahead: data.ahead, behind: data.behind });
     setToUserId(data.to_user_id);
     setHasWhatsapp(!!data.has_whatsapp);
+    setPrev(data.prev || null);
+    if (data.prev_label) setPrevLabel(data.prev_label);
     setHistory((h) => [...h, {
       question: q || `Por que ${row.nome.split(' ')[0]} está com esse desempenho?`,
       answer: data.analise,
@@ -264,11 +284,26 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
                 </button>
               </div>
 
-              {/* Mensagem sugerida (Corrida Maluca) */}
+              {/* Ele × ele mesmo — mesmo ponto do período anterior */}
+              {prev && (
+                <div className="rounded-xl bg-white/[0.04] border border-white/5 px-4 py-3 text-sm">
+                  <div className="text-[11px] font-black uppercase tracking-wider text-teal-400">
+                    📊 {row.nome.split(' ')[0]} × ele mesmo ({prevLabel})
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-white/80">
+                    <span>passos {prev.passos} → <b>{row.passos}</b> <Delta antes={prev.passos} agora={row.passos} /></span>
+                    <span>concl. {prev.concluidas} → <b>{row.concluidas}</b> <Delta antes={prev.concluidas} agora={row.concluidas} /></span>
+                    <span>ativo {fmtSeg(prev.ativo_seg)} → <b>{fmtSeg(row.ativo_seg)}</b> <Delta antes={prev.ativo_seg} agora={row.ativo_seg} /></span>
+                    <span>ocioso {fmtSeg(prev.ocioso_seg)} → <b>{fmtSeg(row.ocioso_seg)}</b> <Delta antes={prev.ocioso_seg} agora={row.ocioso_seg} menorMelhor /></span>
+                  </div>
+                </div>
+              )}
+
+              {/* Mensagem sugerida */}
               <div className="rounded-xl border border-amber-400/30 bg-amber-400/[0.06] p-4">
                 <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-amber-400">
                   <Sparkles className="h-4 w-4" />
-                  Mensagem sugerida — 🏁 Corrida da {periodLabel}
+                  Mensagem sugerida — prioridades &amp; evolução ({periodLabel})
                 </div>
                 <textarea
                   value={mensagem}

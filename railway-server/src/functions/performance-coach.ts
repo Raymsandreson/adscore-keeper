@@ -84,16 +84,20 @@ async function resolvePerson(nome: string): Promise<{ userId: string | null; any
   return { userId: p.user_id, anyIds: [...new Set([p.user_id, p.id].filter(Boolean))] as string[], phone };
 }
 
-async function personActivities(anyIds: string[], nome: string, sinceIso: string) {
-  const today = new Date().toISOString().slice(0, 10);
+function whoFilter(anyIds: string[], nome: string): string {
   const safeName = nome.replace(/"/g, '');
-  const who = anyIds.length
+  return anyIds.length
     ? `assigned_to.in.(${anyIds.join(',')}),assigned_to_name.eq."${safeName}"`
     : `assigned_to_name.eq."${safeName}"`;
+}
+
+async function personActivities(anyIds: string[], nome: string, sinceIso: string) {
+  const today = new Date().toISOString().slice(0, 10);
+  const who = whoFilter(anyIds, nome);
 
   const [{ data: atrasadas }, { data: concluidas }, { count: abertas }] = await Promise.all([
     supabase.from('lead_activities')
-      .select('title, deadline')
+      .select('title, deadline, priority')
       .is('deleted_at', null).is('completed_at', null).lt('deadline', today)
       .or(who).order('deadline', { ascending: true }).limit(10),
     supabase.from('lead_activities')
@@ -105,6 +109,54 @@ async function personActivities(anyIds: string[], nome: string, sinceIso: string
       .is('deleted_at', null).is('completed_at', null).or(who),
   ]);
   return { atrasadas: atrasadas || [], concluidas: concluidas || [], abertas: abertas || 0 };
+}
+
+/** IDs equivalentes da pessoa no Externo (auth_uuid_mapping cobre os dois sentidos). */
+async function expandIds(anyIds: string[]): Promise<string[]> {
+  if (!anyIds.length) return anyIds;
+  const { data } = await supabase
+    .from('auth_uuid_mapping').select('cloud_uuid, ext_uuid')
+    .or(`cloud_uuid.in.(${anyIds.join(',')}),ext_uuid.in.(${anyIds.join(',')})`);
+  const all = new Set(anyIds);
+  (data || []).forEach((m) => { if (m.cloud_uuid) all.add(m.cloud_uuid); if (m.ext_uuid) all.add(m.ext_uuid); });
+  return [...all];
+}
+
+interface PrevMetrics { passos: number; concluidas: number; ativo_seg: number; ocioso_seg: number }
+
+/**
+ * Métricas da pessoa no MESMO PONTO do período anterior (ex.: terça 12h da
+ * semana passada), pra comparação dela com ela mesma — não só com os outros.
+ */
+async function personPrevMetrics(allIds: string[], nome: string, prevStart: Date, prevEnd: Date): Promise<PrevMetrics> {
+  const who = whoFilter(allIds, nome);
+  const [{ count: passos }, { count: concluidas }, { data: tempos }] = await Promise.all([
+    allIds.length
+      ? supabase.from('user_activity_log')
+          .select('id', { count: 'exact', head: true })
+          .eq('action_type', 'checklist_item_checked')
+          .in('user_id', allIds)
+          .gte('created_at', prevStart.toISOString()).lt('created_at', prevEnd.toISOString())
+      : Promise.resolve({ count: 0 } as any),
+    supabase.from('lead_activities')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null).or(who)
+      .gte('completed_at', prevStart.toISOString()).lt('completed_at', prevEnd.toISOString()),
+    allIds.length
+      ? supabase.from('activity_time_entries')
+          .select('active_seconds, idle_seconds')
+          .in('user_id', allIds)
+          .gte('started_at', prevStart.toISOString()).lt('started_at', prevEnd.toISOString())
+          .limit(2000)
+      : Promise.resolve({ data: [] } as any),
+  ]);
+  const ativo = (tempos || []).reduce((s: number, t: any) => s + (t.active_seconds || 0), 0);
+  const ocioso = (tempos || []).reduce((s: number, t: any) => s + (t.idle_seconds || 0), 0);
+  return { passos: passos || 0, concluidas: concluidas || 0, ativo_seg: ativo, ocioso_seg: ocioso };
+}
+
+function diasAtraso(deadline: string): number {
+  return Math.max(1, Math.round((Date.now() - new Date(deadline).getTime()) / 86400000));
 }
 
 async function analyze(req: Request, res: Response) {
@@ -130,18 +182,37 @@ async function analyze(req: Request, res: Response) {
   const behind = idx < ranking.length - 1 ? ranking[idx + 1] : null;
 
   const person = await resolvePerson(nome);
-  const acts = await personActivities(person.anyIds, nome, p_since);
+  const allIds = await expandIds(person.anyIds);
+  const acts = await personActivities(allIds, nome, p_since);
+
+  // Mesmo ponto do período anterior: [início anterior, início anterior + tempo já decorrido].
+  const periodMs = period_label === 'hoje' ? 86400000
+    : period_label === 'mês' || period_label === 'mes' ? 30 * 86400000
+    : 7 * 86400000;
+  const sinceDate = new Date(p_since);
+  const elapsed = Math.max(0, Date.now() - sinceDate.getTime());
+  const prevStart = new Date(sinceDate.getTime() - periodMs);
+  const prevEnd = new Date(prevStart.getTime() + elapsed);
+  const prevLabel = period_label === 'hoje' ? 'ontem no mesmo horário'
+    : period_label === 'mês' || period_label === 'mes' ? 'mesmo ponto do mês passado'
+    : 'mesmo ponto da semana passada';
+  const prev = await personPrevMetrics(allIds, nome, prevStart, prevEnd);
 
   const prompt = [
     `PERÍODO: ${period_label || 'semana'} (desde ${p_since.slice(0, 10)})`,
     `PESSOA: ${nome} — posição ${idx + 1} de ${ranking.length} no ranking`,
-    `NÚMEROS DELA: ${rowLine(row)}`,
+    `NÚMEROS DELA AGORA: ${rowLine(row)}`,
+    `ELA MESMA NO ${prevLabel.toUpperCase()}: ${prev.passos} passos, ${prev.concluidas} concluídas, ` +
+      `tempo ativo ${seg(prev.ativo_seg)}, ocioso ${seg(prev.ocioso_seg)}`,
     ahead ? `NA FRENTE (posição ${idx}): ${ahead.nome} — ${rowLine(ahead)}` : `Ela é a LÍDER do ranking.`,
     behind ? `ATRÁS (posição ${idx + 2}): ${behind.nome} — ${rowLine(behind)}` : `Ela é a ÚLTIMA do ranking.`,
     ``,
     `ATIVIDADES DELA: ${acts.abertas} abertas no total.`,
-    `ATRASADAS MAIS ANTIGAS:`,
-    ...(acts.atrasadas.length ? acts.atrasadas.map((a: any) => `- ${a.title} (venceu ${a.deadline})`) : ['(nenhuma)']),
+    `ATRASADAS MAIS ANTIGAS (em ordem de urgência):`,
+    ...(acts.atrasadas.length
+      ? acts.atrasadas.map((a: any) =>
+          `- ${a.title} (${diasAtraso(a.deadline)} dias de atraso${a.priority ? `, prioridade ${a.priority}` : ''})`)
+      : ['(nenhuma)']),
     `CONCLUÍDAS NO PERÍODO:`,
     ...(acts.concluidas.length ? acts.concluidas.map((a: any) => `- ${a.title}`) : ['(nenhuma)']),
     ``,
@@ -160,9 +231,16 @@ async function analyze(req: Request, res: Response) {
 Responda SOMENTE um JSON válido com duas chaves:
 {"analise": "...", "mensagem": "..."}
 
-"analise" (para o diretor): responda a pergunta dele com base APENAS nos dados fornecidos, em português do Brasil, direto, máx ~120 palavras. Aponte qual critério está puxando a pessoa pra cima ou pra baixo (ex.: 0 passos = não marca checklist; muito ocioso no cronômetro; atrasadas acumuladas). Se os dados não permitirem concluir a causa, diga o que os dados mostram e o que vale perguntar à pessoa. Não invente fatos.
+"analise" (para o diretor): responda a pergunta dele com base APENAS nos dados fornecidos, em português do Brasil, direto, máx ~120 palavras. Aponte qual critério está puxando a pessoa pra cima ou pra baixo e compare a pessoa COM ELA MESMA no período anterior (melhorou ou piorou, em quê). Se os dados não permitirem concluir a causa, diga o que os dados mostram e o que vale perguntar à pessoa. Não invente fatos.
 
-"mensagem" (para enviar À PESSOA no chat interno): estilo locutor de Corrida Maluca 🏁 — animado, curto (máx ~90 palavras), diz a posição dela na corrida da ${'semana'}, quem está logo na frente/atrás e por qual diferença. Se está bem (pódio/subindo), dê os parabéns com energia; se está mal, alerte com bom humor e SEM humilhar — é mensagem de chefe pra colaborador, respeitosa. Feche com 1 dica concreta tirada dos dados (ex.: "marca os passos do checklist", "conclui as 3 atrasadas mais antigas"). Use emojis de corrida (🏁🏎️💨🏆) com moderação. Fale diretamente com a pessoa (você).`,
+"mensagem" (para enviar À PESSOA no chat interno): escreva como escreveria o melhor gestor de um escritório jurídico de alta performance — direto, específico, respeitoso e com energia, SEM genérico motivacional. Fale diretamente com a pessoa (você). Estrutura obrigatória, nesta ordem:
+1. Abertura curta reconhecendo algo REAL dos dados (uma atividade concluída pelo nome, uma melhora vs o período anterior). Se não houver nada, vá direto ao ponto sem elogio falso.
+2. Comparação dela COM ELA MESMA: cite os números de agora vs o ${'mesmo ponto do período anterior'} (passos, concluídas, tempo ativo) e diga se evoluiu ou caiu.
+3. Uma linha só de contexto da corrida (posição e quem está logo na frente/atrás) — tempero, não o tema.
+4. "Prioridades de hoje:" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, PELO NOME e com os dias de atraso, em ordem de urgência. Isso é o coração da mensagem.
+5. O hábito operacional a corrigir (marcar os passos do checklist ao concluir cada etapa / usar o cronômetro), explicando em uma frase por que isso conta no ranking.
+6. Fechamento colocando-se à disposição pra destravar qualquer coisa.
+Máx ~170 palavras. No máximo 2 emojis na mensagem inteira.`,
       },
       { role: 'user', content: prompt },
     ],
@@ -186,6 +264,9 @@ Responda SOMENTE um JSON válido com duas chaves:
     to_user_id: person.userId,
     // Só o indicador — o número em si não vai pro telão.
     has_whatsapp: !!person.phone,
+    // Ela × ela mesma no mesmo ponto do período anterior (pro telão exibir).
+    prev,
+    prev_label: prevLabel,
   });
 }
 
