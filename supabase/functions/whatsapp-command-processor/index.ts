@@ -588,16 +588,25 @@ serve(async (req) => {
     // Fetch group conversation if is_group and group_id
     let groupConversationContext = "";
     if (is_group && group_id) {
-      const { data: groupMsgs } = await supabase
+      // ATENÇÃO: whatsapp_messages NÃO tem coluna sender_name. Pedir por ela dava
+      // 400 no PostgREST; sem destructure do error, groupMsgs vinha null e o
+      // contexto do grupo era descartado em silêncio. Mesmo bug de
+      // extract-conversation-data. Colunas reais: direction, contact_name,
+      // message_text, message_type, media_url, media_type, created_at, etc.
+      // contact_name guarda o TÍTULO do grupo, não o remetente — por isso o
+      // rótulo cai pro papel (Atendente/Participante), que é o que dá pra afirmar.
+      const { data: groupMsgs, error: groupErr } = await supabase
         .from("whatsapp_messages")
-        .select("direction, message_text, sender_name, created_at")
+        .select("direction, message_text, message_type, created_at")
         .eq("phone", group_id)
         .order("created_at", { ascending: false })
         .limit(100);
-      if (groupMsgs && groupMsgs.length > 0) {
+      if (groupErr) {
+        console.error("[whatsapp-command-processor] erro ao ler grupo:", groupErr.message);
+      } else if (groupMsgs && groupMsgs.length > 0) {
         const lines = groupMsgs.reverse().map((m: any) => {
-          const sender = m.sender_name || (m.direction === 'outbound' ? 'Atendente' : 'Participante');
-          return `[${sender}]: ${m.message_text || ''}`;
+          const sender = m.direction === 'outbound' ? 'Atendente' : 'Participante';
+          return `[${sender}]: ${m.message_text || `[${m.message_type || 'mídia'}]`}`;
         });
         groupConversationContext = `\n\nCONTEXTO DA CONVERSA DO GRUPO (últimas ${groupMsgs.length} mensagens):\n${lines.join("\n")}`;
       }
