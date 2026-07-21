@@ -152,9 +152,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [draft, setDraft] = useState<Record<string, { rating: number; justification: string; praise: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
   const [listeningId, setListeningId] = useState<string | null>(null);
-  // Cobranças enviadas nesta sessão (id da atividade → nível), p/ evitar spam e dar retorno visual.
-  const [nudged, setNudged] = useState<Record<string, 'importante' | 'urgente'>>({});
   const [nudgingId, setNudgingId] = useState<string | null>(null);
+  // Última cobrança por atividade (persistida): quando foi dada e se já foi vista pelo responsável.
+  const [cobrancas, setCobrancas] = useState<Record<string, { created_at: string; read_at: string | null; level: 'importante' | 'urgente' }>>({});
   const recognitionRef = useRef<any>(null);
 
   const load = useCallback(async () => {
@@ -192,6 +192,31 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         .limit(300);
       if (lateErr) throw lateErr;
       setLateRows((late || []) as LateRow[]);
+
+      // Receipts das cobranças (última + se já foi vista) das atrasadas exibidas.
+      const lateIds = (late || []).map((r: any) => r.id);
+      if (lateIds.length) {
+        const { data: cob } = await (externalSupabase as any)
+          .from('activity_notifications')
+          .select('activity_id, created_at, read_at, title')
+          .eq('type', 'cobranca')
+          .in('activity_id', lateIds)
+          .order('created_at', { ascending: false });
+        const map: Record<string, { created_at: string; read_at: string | null; level: 'importante' | 'urgente' }> = {};
+        for (const c of (cob || [])) {
+          // Ordenado desc → a 1ª ocorrência de cada atividade é a cobrança mais recente.
+          if (!map[c.activity_id]) {
+            map[c.activity_id] = {
+              created_at: c.created_at,
+              read_at: c.read_at,
+              level: /URGENTE/i.test(c.title || '') ? 'urgente' : 'importante',
+            };
+          }
+        }
+        setCobrancas(map);
+      } else {
+        setCobrancas({});
+      }
     } catch (e: any) {
       console.error('[FeedbackFunnel] load error:', e);
       toast.error('Erro ao carregar feedbacks');
@@ -279,7 +304,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         actor_name: myName,
       } as any);
       if (error) throw error;
-      setNudged(prev => ({ ...prev, [row.id]: level }));
+      setCobrancas(prev => ({ ...prev, [row.id]: { created_at: new Date().toISOString(), read_at: null, level } }));
       toast.success(level === 'urgente'
         ? `🚨 Cobrança URGENTE enviada para ${row.assigned_to_name || 'o responsável'}.`
         : `❗ Cobrança de importância enviada para ${row.assigned_to_name || 'o responsável'}.`);
@@ -434,34 +459,46 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
           </p>
         )}
         {/* Cobrar o responsável: dispara popup (importante/urgente) para ele fazer a atividade atrasada. */}
-        {!reag && row.assigned_to && row.assigned_to !== extId && (
-          nudged[row.id] === 'urgente' ? (
-            <p className="text-[10px] text-red-700 dark:text-red-400 font-medium">🚨 Cobrado como urgente ✓</p>
-          ) : (
-            <div className="flex items-center gap-1 pt-0.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 flex-1 text-[10px] gap-0.5 border-amber-300 text-amber-700 dark:text-amber-400"
-                disabled={nudgingId === row.id || nudged[row.id] === 'importante'}
-                onClick={() => nudgeLate(row, 'importante')}
-                title="Avisar o responsável que é importante"
-              >
-                {nudged[row.id] === 'importante' ? '✓ Importante' : '❗ Importante'}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 flex-1 text-[10px] gap-0.5 border-red-400 text-red-700 dark:text-red-400"
-                disabled={nudgingId === row.id}
-                onClick={() => nudgeLate(row, 'urgente')}
-                title="Avisar o responsável que é urgente"
-              >
-                🚨 Urgente
-              </Button>
+        {!reag && row.assigned_to && row.assigned_to !== extId && (() => {
+          const cob = cobrancas[row.id];
+          return (
+            <div className="space-y-1 pt-0.5">
+              <div className="flex items-center gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 flex-1 text-[10px] gap-0.5 border-amber-300 text-amber-700 dark:text-amber-400"
+                  disabled={nudgingId === row.id}
+                  onClick={() => nudgeLate(row, 'importante')}
+                  title="Avisar o responsável que é importante"
+                >
+                  ❗ Importante
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-6 flex-1 text-[10px] gap-0.5 border-red-400 text-red-700 dark:text-red-400"
+                  disabled={nudgingId === row.id}
+                  onClick={() => nudgeLate(row, 'urgente')}
+                  title="Avisar o responsável que é urgente"
+                >
+                  🚨 Urgente
+                </Button>
+              </div>
+              {cob && (
+                <p className="text-[9px] leading-tight text-muted-foreground">
+                  {cob.level === 'urgente' ? '🚨' : '❗'} Cobrado {format(parseISO(cob.created_at), 'dd/MM HH:mm')}
+                  {' · '}
+                  {cob.read_at ? (
+                    <span className="text-green-600 dark:text-green-400 font-medium">✓ visto {format(parseISO(cob.read_at), 'dd/MM HH:mm')}</span>
+                  ) : (
+                    <span className="text-amber-600 dark:text-amber-400">aguardando visualização</span>
+                  )}
+                </p>
+              )}
             </div>
-          )
-        )}
+          );
+        })()}
       </div>
     );
   };
