@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeftRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
@@ -410,7 +411,11 @@ export function ActivityTimerOverlay() {
   // (snapToEdge), então não cobre conteúdo — e o usuário pode movê-lo à vontade.
   // (O "dock" na barra de produtividade prendia o badge e não deixava arrastar.)
   const docked = false;
-  const dock = (el: ReactNode) => el;
+  // Portala o badge para o body: preso dentro de <main> (SidebarLayout) ele fica
+  // num contexto de empilhamento e qualquer Dialog (portalado como irmão do #root)
+  // pinta por cima, mesmo com z menor. Fora, no body, o z-[9990] vence o z-50 do
+  // Dialog e o cronômetro fica SEMPRE por cima. (skill: ui-sem-sobreposicao)
+  const dock = (el: ReactNode) => (typeof document !== 'undefined' ? createPortal(el, document.body) : el);
   const floatWrap = 'fixed z-[9990] shadow-lg backdrop-blur touch-none ';
   const grab = 'cursor-grab active:cursor-grabbing';
   const dragAttrs = {
@@ -914,7 +919,12 @@ function SwitchActivityDialog({
         .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at, callback_at')
         .is('deleted_at', null)
         .neq('status', 'concluida');
-      if (myExt) q = q.or(`assigned_to.eq.${myExt},assigned_to_ids.cs.{${myExt}}`);
+      // Minhas pendentes = atribuídas a mim (principal OU co-assessor) OU sem
+      // responsável. O pool não atribuído conta como "minha" na tela de Atividades
+      // (isMine). Sem o assigned_to.is.null, atividades com assigned_to vazio (a
+      // maioria — o responsável real mora no lead) sumiam e o diálogo dizia
+      // "nenhuma pendente". Mesmo critério do useLeadActivities.
+      if (myExt) q = q.or(`assigned_to.eq.${myExt},assigned_to_ids.cs.{${myExt}},assigned_to.is.null`);
       if (term.trim()) q = q.ilike('title', `%${term.trim()}%`);
       q = q.order('updated_at', { ascending: false }).limit(50);
       const { data } = await q;
