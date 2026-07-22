@@ -21,6 +21,7 @@ import { ConfirmDialogDateFields } from '@/components/activities/ConfirmDialogDa
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
@@ -593,8 +594,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
   // Audio recording
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
+
       // Determine supported mimeType
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
@@ -605,8 +606,8 @@ export function ActivityChatSheet({ open, onOpenChange, activityId, leadId, acti
             : '';
 
       const mediaRecorder = mimeType
-        ? new MediaRecorder(stream, { mimeType })
-        : new MediaRecorder(stream);
+        ? new MediaRecorder(stream, { mimeType, audioBitsPerSecond: VOICE_RECORDER_BITRATE })
+        : new MediaRecorder(stream, { audioBitsPerSecond: VOICE_RECORDER_BITRATE });
       
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];

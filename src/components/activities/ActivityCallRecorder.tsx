@@ -8,6 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 
 export interface ActivityCallContext {
@@ -221,7 +222,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     let displayStream: MediaStream | null = null;
     try {
       if (source !== 'system') {
-        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
       }
       if (source !== 'mic') {
         // Áudio interno: o navegador só entrega junto de uma captura de tela/aba.
@@ -276,7 +277,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
         : MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
           : 'audio/mp4';
-      const recorder = new MediaRecorder(recordStream, { mimeType });
+      const recorder = new MediaRecorder(recordStream, { mimeType, audioBitsPerSecond: VOICE_RECORDER_BITRATE });
       mediaRecorderRef.current = recorder;
       chunksRef.current = [];
       recorder.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };

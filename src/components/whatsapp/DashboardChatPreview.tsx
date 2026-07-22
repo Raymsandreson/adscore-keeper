@@ -18,6 +18,7 @@ import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { mediaPreview, handleMediaThumbError } from '@/lib/whatsappMediaTransform';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -694,13 +695,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const startRecording = async () => {
     if (!phone) return;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm')
           ? 'audio/webm'
           : 'audio/mp4';
-      const mediaRecorder = new MediaRecorder(stream, { mimeType });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType, audioBitsPerSecond: VOICE_RECORDER_BITRATE });
       audioChunksRef.current = [];
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) audioChunksRef.current.push(e.data);

@@ -18,6 +18,7 @@ import { FastForward, FileText } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
+import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { bindDownload } from '@/lib/downloadFile';
 import { mediaThumb, mediaPreview, handleMediaThumbError, THUMB_SUFFIX } from '@/lib/whatsappMediaTransform';
 import { SessionFieldEditor } from './SessionFieldEditor';
@@ -2253,7 +2254,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Audio recording
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
 
       // Cloud API (Meta) NÃO aceita audio/webm — só ogg/mpeg/mp4/amr/aac.
       // Para conversas Cloud, grava direto em audio/ogg;codecs=opus (suportado em Chromium/Firefox).
@@ -2264,7 +2265,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       const chosenMime = (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(preferredMime))
         ? preferredMime
         : fallbackMime;
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime });
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: chosenMime, audioBitsPerSecond: VOICE_RECORDER_BITRATE });
       const outMime = chosenMime.startsWith('audio/ogg') ? 'audio/ogg' : 'audio/webm';
       const ext = outMime === 'audio/ogg' ? 'ogg' : 'webm';
       audioChunksRef.current = [];
