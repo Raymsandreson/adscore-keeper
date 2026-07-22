@@ -12,34 +12,44 @@
 export type InssResultado = 'deferido' | 'indeferido';
 
 export type StageKey =
-  | 'exigencia' | 'analise' | 'deferido' | 'indeferido'
-  | 'concluida' | 'pendente' | 'cancelada' | 'outros';
+  | 'protocolo_analise' | 'exig_aberta' | 'exig_cumprida'
+  | 'deferido' | 'indeferido' | 'cancelada' | 'sem_veredito';
 
-/** Estágio canônico a partir de status + veredito (espelha o front). */
-export function stageOf(p: { current_status?: string | null; resultado?: string | null }): StageKey {
+/**
+ * Marco previdenciário atual (espelha o front). "Pendente" conta como análise;
+ * protocolado/análise ficam juntos (INSS não emite status protocolado puro);
+ * "exigência cumprida" = em análise mas já passou por exigência (Set passouExig).
+ */
+export function stageOf(
+  p: { id?: string; current_status?: string | null; resultado?: string | null },
+  passouExig?: Set<string>,
+): StageKey {
   const s = (p.current_status || '').toLowerCase();
-  if (s.includes('exig')) return 'exigencia';
+  if (s.includes('exig')) return 'exig_aberta';
   if (s.includes('cancel')) return 'cancelada';
   if (s.includes('conclu')) {
     if (p.resultado === 'deferido') return 'deferido';
     if (p.resultado === 'indeferido') return 'indeferido';
-    return 'concluida';
+    return 'sem_veredito';
   }
-  if (s.includes('pend')) return 'pendente';
-  if (s.includes('anali') || s.includes('anális')) return 'analise';
-  return 'outros';
+  return (p.id && passouExig?.has(p.id)) ? 'exig_cumprida' : 'protocolo_analise';
 }
 
 export const STAGE_LABELS: Record<StageKey, string> = {
-  exigencia: 'Exigência',
-  analise: 'Em análise',
+  protocolo_analise: 'Protocolado / Em análise',
+  exig_aberta: 'Exigência (aberta)',
+  exig_cumprida: 'Exigência cumprida',
   deferido: 'Deferido',
   indeferido: 'Indeferido',
-  concluida: 'Concluída (sem veredito)',
-  pendente: 'Pendente',
   cancelada: 'Cancelada',
-  outros: 'Outros',
+  sem_veredito: 'Concluída (sem veredito)',
 };
+
+/** Ordem dos marcos na jornada do requerimento (para exibição). */
+export const STAGE_ORDER: StageKey[] = [
+  'protocolo_analise', 'exig_aberta', 'exig_cumprida',
+  'deferido', 'indeferido', 'cancelada', 'sem_veredito',
+];
 
 /**
  * Classifica o resultado de um requerimento CONCLUÍDO pelo texto do Despacho.
