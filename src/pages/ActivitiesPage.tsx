@@ -344,6 +344,7 @@ const ActivitiesPage = () => {
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
+  const [formMeetingAt, setFormMeetingAt] = useState('');
   // Retorno agendado (datetime-local, fuso do navegador) — vira callback_at (ISO) no banco.
   const [formCallbackAt, setFormCallbackAt] = useState('');
   // Gravação automática ao chegar via popup "Ligar agora" (?callNow=1).
@@ -773,6 +774,7 @@ const ActivitiesPage = () => {
     setFormDeadline(todayStr);
     setFormNotificationDate(todayStr);
     setFormCallbackAt('');
+    setFormMeetingAt('');
     setFormNotes('');
     setFormRepeatWeekDays([]);
     setFormStatus('pendente');
@@ -1021,6 +1023,7 @@ const ActivitiesPage = () => {
       } : {}),
       ...(groupId ? { assignment_group_id: groupId } : {}),
       ...(formCallbackAt ? { callback_at: new Date(formCallbackAt).toISOString() } : {}),
+      ...(isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) && formMeetingAt ? { meeting_at: formMeetingAt } : {}),
     };
 
     // Variações de data: dias da semana repetidos ou o prazo único do form.
@@ -1201,6 +1204,7 @@ const ActivitiesPage = () => {
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
     setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
+    setFormMeetingAt((((activity as any).meeting_at as string | null) || '').slice(0, 16));
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
@@ -1384,6 +1388,8 @@ const ActivitiesPage = () => {
         const nextMs = nextIso ? new Date(nextIso).getTime() : null;
         return prevMs !== nextMs ? { callback_at: nextIso } : {};
       })(),
+      // Reunião: grava/limpa o horário conforme o tipo (detecção por rótulo, key custom_ no Externo).
+      meeting_at: isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
       ...buildAssigneesPayload(),
       ...buildObserversPayload(),
     } as any);
@@ -1732,6 +1738,7 @@ const ActivitiesPage = () => {
     setFormDeadline(activity.deadline || '');
     setFormNotificationDate(activity.notification_date || '');
     setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
+    setFormMeetingAt((((activity as any).meeting_at as string | null) || '').slice(0, 16));
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
     setFormContactId(activity.contact_id || '');
@@ -2861,6 +2868,7 @@ const ActivitiesPage = () => {
       formPriority={formPriority} setFormPriority={setFormPriority}
       formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
       formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
+      formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
       formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
       formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
       formLeadId={formLeadId} formLeadName={formLeadName}
