@@ -3022,6 +3022,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <ScrollArea className="max-h-[200px]">
                 <div className="space-y-0.5">
                   {leads
+                    // Oculta o lead j\u00e1 selecionado da lista: ele aparece na caixa de
+                    // confirma\u00e7\u00e3o acima (com o X). Sem isso, o mesmo lead aparece 2x.
+                    .filter(l => l.id !== selectedLeadId)
                     .filter(l => {
                       if (!leadSearchQuery) return true;
                       const normalize = (v?: string | null) => (v ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
