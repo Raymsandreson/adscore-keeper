@@ -52,6 +52,10 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [stages, setStages] = useState<Stage[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
   const [instances, setInstances] = useState<ChecklistInstance[]>([]);
+  // Ordem projetada dos objetivos por fase: `${stage_id}::${template_id}` → display_order.
+  // Sem isso a lista sai por created_at (objetivo novo pula pro topo e o funil
+  // parece "começar" no último objetivo adicionado).
+  const [linkOrder, setLinkOrder] = useState<Record<string, number>>({});
   const [expanded, setExpanded] = useState(false);
   const [_loading, setLoading] = useState(true);
   const [viewingStageId, setViewingStageId] = useState<string | null>(null);
@@ -67,13 +71,21 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     try {
-      const [boardRes, historyRes, leadRes] = await Promise.all([
+      const [boardRes, historyRes, leadRes, linksRes] = await Promise.all([
         externalSupabase.from('kanban_boards').select('stages, board_type, name').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
         externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
+        externalSupabase.from('checklist_stage_links').select('stage_id, checklist_template_id, display_order').eq('board_id', boardId),
       ]);
       setBoardName((boardRes.data as any)?.name || '');
       setBoardType((boardRes.data as any)?.board_type || '');
+
+      // Mapa da ordem projetada de cada objetivo dentro da fase.
+      const orderMap: Record<string, number> = {};
+      ((linksRes.data as any[]) || []).forEach(l => {
+        orderMap[`${l.stage_id}::${l.checklist_template_id}`] = l.display_order ?? 0;
+      });
+      setLinkOrder(orderMap);
 
       // Lead is "closed" only when we're showing its sales funnel (not a process workflow)
       const leadData = leadRes.data as any;
@@ -267,8 +279,20 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
   const activeViewStageId = viewingStageId || currentStageId;
 
-  // Get instances for the viewed stage
-  const currentStageInstances = instances.filter(i => i.stage_id === activeViewStageId);
+  // Get instances for the viewed stage, na ordem projetada do fluxo (display_order),
+  // não na ordem de criação. Órfãos (template sem link na fase) vão pro fim.
+  const currentStageInstances = useMemo(() => {
+    const orderOf = (i: ChecklistInstance) =>
+      linkOrder[`${i.stage_id}::${i.checklist_template_id}`] ?? Number.MAX_SAFE_INTEGER;
+    return instances
+      .filter(i => i.stage_id === activeViewStageId)
+      .slice()
+      .sort((a, b) => {
+        const diff = orderOf(a) - orderOf(b);
+        if (diff !== 0) return diff;
+        return ((a as any).created_at || '').localeCompare((b as any).created_at || '');
+      });
+  }, [instances, activeViewStageId, linkOrder]);
 
   if (!boardId || stages.length === 0) return null;
 
