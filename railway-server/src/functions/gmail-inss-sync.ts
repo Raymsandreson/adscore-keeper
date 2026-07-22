@@ -488,6 +488,7 @@ export const handler: RequestHandler = async (req, res) => {
             email_subject: subject,
             email_snippet: msg.snippet ? decodeEntities(msg.snippet).slice(0, 500) : undefined,
             gmail_message_id: item.id,
+            despacho: parsed.despacho,
             notified: false,
           } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
         if (histErr) {

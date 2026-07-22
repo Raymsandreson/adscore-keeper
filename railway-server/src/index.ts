@@ -47,6 +47,7 @@ import { handler as gmailMessageBody } from './functions/gmail-message-body';
 import { handler as backfillInssResultado } from './functions/backfill-inss-resultado';
 import { handler as inssReport } from './functions/inss-report';
 import { handler as sendEmail } from './functions/send-email';
+import { handler as backfillInssExigencia } from './functions/backfill-inss-exigencia';
 import { handler as matchInssOrphans } from './functions/match-inss-orphans';
 import { handler as autoLinkInssByName } from './functions/auto-link-inss-by-name';
 import { handler as bulkLinkInssByCpf } from './functions/bulk-link-inss-by-cpf';
@@ -107,6 +108,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'backfill-inss-resultado': backfillInssResultado,
   'inss-report': inssReport,
   'send-email': sendEmail,
+  'backfill-inss-exigencia': backfillInssExigencia,
   'notify-inss-update': notifyInssUpdate,
   'match-inss-orphans': matchInssOrphans,
   'auto-link-inss-by-name': autoLinkInssByName,
