@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -55,6 +55,48 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set());
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<WorkflowNodeRef | null>(null);
+
+  // "Mãozinha": arrastar o canvas para movê-lo (fluxograma e mapa mental).
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const panState = useRef<{ x: number; y: number; left: number; top: number; moved: boolean } | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+
+  const onPanStart = useCallback((e: React.MouseEvent) => {
+    if (e.button !== 0) return; // só botão esquerdo
+    const el = scrollRef.current;
+    if (!el) return;
+    panState.current = { x: e.clientX, y: e.clientY, left: el.scrollLeft, top: el.scrollTop, moved: false };
+    setIsPanning(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isPanning) return;
+    const onMove = (e: MouseEvent) => {
+      const el = scrollRef.current;
+      const p = panState.current;
+      if (!el || !p) return;
+      const dx = e.clientX - p.x;
+      const dy = e.clientY - p.y;
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) p.moved = true;
+      el.scrollLeft = p.left - dx;
+      el.scrollTop = p.top - dy;
+    };
+    const onUp = () => setIsPanning(false);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [isPanning]);
+
+  // Se houve arrasto, cancela o clique que selecionaria um nó no modo edição.
+  const onCanvasClickCapture = useCallback((e: React.MouseEvent) => {
+    if (panState.current?.moved) {
+      e.stopPropagation();
+      panState.current.moved = false;
+    }
+  }, []);
 
   // Limpa estado ao fechar ou trocar de board.
   useEffect(() => {
@@ -170,7 +212,15 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
           )}
 
           <div className="flex-1 min-h-0 flex">
-            <div className="flex-1 min-h-0 overflow-auto bg-muted/20 [background-image:radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] [background-size:22px_22px]">
+            <div
+              ref={scrollRef}
+              onMouseDown={isCanvas ? onPanStart : undefined}
+              onClickCapture={isCanvas ? onCanvasClickCapture : undefined}
+              className={cn(
+                'flex-1 min-h-0 overflow-auto bg-muted/20 [background-image:radial-gradient(circle,hsl(var(--border))_1px,transparent_1px)] [background-size:22px_22px]',
+                isCanvas && (isPanning ? 'cursor-grabbing select-none' : 'cursor-grab'),
+              )}
+            >
               {isLoading ? (
                 <div className="h-full flex items-center justify-center text-muted-foreground gap-2">
                   <Loader2 className="h-5 w-5 animate-spin" />
