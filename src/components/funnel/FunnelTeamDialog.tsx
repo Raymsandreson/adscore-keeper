@@ -38,33 +38,60 @@ export function FunnelTeamDialog({ open, onOpenChange, boardId, boardName }: Pro
   const [pool, setPool] = useState<PoolRow[]>([]);
   const [members, setMembers] = useState<MemberOption[]>([]);
   const [search, setSearch] = useState('');
+  // Times (Cloud) que têm este funil como board_id — fonte da composição.
+  const [linkedTeams, setLinkedTeams] = useState<string[]>([]);
 
   const load = async () => {
     setLoading(true);
     try {
       await ensureRemapCache();
 
-      const { data: roles } = await authClient
-        .from('user_roles')
-        .select('user_id, role');
-      const ids = Array.from(new Set((roles || []).map(r => r.user_id)));
+      // 1. Times donos deste funil (teams.board_id no Cloud).
+      const { data: teamRows } = await authClient
+        .from('teams')
+        .select('id, name')
+        .eq('board_id', boardId);
+      const teamIds = (teamRows || []).map((t: any) => t.id);
+      setLinkedTeams((teamRows || []).map((t: any) => t.name));
 
-      const { data: profiles } = ids.length
-        ? await authClient.from('profiles').select('user_id, full_name, email').in('user_id', ids)
+      // 2. Membros desses times. team_members.user_id guarda ora o auth
+      //    user_id, ora o id do profile (legado) — resolvemos os dois.
+      const { data: tmRows } = teamIds.length
+        ? await authClient.from('team_members').select('user_id, team_id').in('team_id', teamIds)
         : { data: [] as any[] };
-      const pmap = new Map((profiles || []).map(p => [p.user_id, p]));
+      const storedIds = Array.from(new Set((tmRows || []).map((r: any) => r.user_id)));
 
-      const opts: MemberOption[] = (roles || []).map(r => ({
-        cloud_uuid: r.user_id,
-        full_name: pmap.get(r.user_id)?.full_name ?? null,
-        email: pmap.get(r.user_id)?.email ?? null,
-        role: r.role,
-      }));
-      // dedupe by cloud_uuid keeping admin role first
+      // 3. Perfis casando por user_id OU id (legado).
+      const [{ data: profByUser }, { data: profById }] = storedIds.length
+        ? await Promise.all([
+            authClient.from('profiles').select('id, user_id, full_name, email').in('user_id', storedIds),
+            authClient.from('profiles').select('id, user_id, full_name, email').in('id', storedIds),
+          ])
+        : [{ data: [] as any[] }, { data: [] as any[] }];
+      const profiles = [...(profByUser || []), ...(profById || [])];
+
+      // 4. Papéis só pra badge "admin".
+      const authIds = Array.from(new Set(profiles.map((p: any) => p.user_id)));
+      const { data: roles } = authIds.length
+        ? await authClient.from('user_roles').select('user_id, role').in('user_id', authIds)
+        : { data: [] as any[] };
+      const roleMap = new Map<string, string>();
+      for (const r of (roles || []) as any[]) {
+        if (roleMap.get(r.user_id) !== 'admin') roleMap.set(r.user_id, r.role);
+      }
+
+      // Monta as opções chaveadas pelo cloud auth uuid (dedupe).
       const dedup = new Map<string, MemberOption>();
-      for (const o of opts) {
-        const prev = dedup.get(o.cloud_uuid);
-        if (!prev || o.role === 'admin') dedup.set(o.cloud_uuid, o);
+      for (const storedId of storedIds) {
+        const p = profiles.find((pp: any) => pp.user_id === storedId || pp.id === storedId);
+        const cloudUuid = p?.user_id || storedId;
+        if (dedup.has(cloudUuid)) continue;
+        dedup.set(cloudUuid, {
+          cloud_uuid: cloudUuid,
+          full_name: p?.full_name ?? null,
+          email: p?.email ?? null,
+          role: roleMap.get(cloudUuid) ?? 'user',
+        });
       }
       setMembers(Array.from(dedup.values()));
 
@@ -208,7 +235,9 @@ export function FunnelTeamDialog({ open, onOpenChange, boardId, boardName }: Pro
             <div className="space-y-1.5">
               {rowsForDisplay.length === 0 && (
                 <div className="text-sm text-muted-foreground text-center py-6">
-                  Nenhum membro encontrado.
+                  {linkedTeams.length === 0
+                    ? 'Nenhum time está vinculado a este funil. Vincule um time ao funil em Times para escolher quem entra no rodízio.'
+                    : 'Nenhum membro encontrado.'}
                 </div>
               )}
               {rowsForDisplay.map(({ member, row }) => {
