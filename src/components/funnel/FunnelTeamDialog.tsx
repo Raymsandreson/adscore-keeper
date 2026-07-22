@@ -30,6 +30,8 @@ interface MemberOption {
   full_name: string | null;
   email: string | null;
   role: string;
+  team_name: string | null;   // time (Cloud) a que pertence neste funil
+  joined_at: string | null;   // team_members.created_at — desde quando
 }
 
 export function FunnelTeamDialog({ open, onOpenChange, boardId, boardName }: Props) {
@@ -52,14 +54,27 @@ export function FunnelTeamDialog({ open, onOpenChange, boardId, boardName }: Pro
         .select('id, name')
         .eq('board_id', boardId);
       const teamIds = (teamRows || []).map((t: any) => t.id);
+      const teamNameById = new Map<string, string>((teamRows || []).map((t: any) => [t.id, t.name]));
       setLinkedTeams((teamRows || []).map((t: any) => t.name));
 
       // 2. Membros desses times. team_members.user_id guarda ora o auth
       //    user_id, ora o id do profile (legado) — resolvemos os dois.
       const { data: tmRows } = teamIds.length
-        ? await authClient.from('team_members').select('user_id, team_id').in('team_id', teamIds)
+        ? await authClient.from('team_members').select('user_id, team_id, created_at').in('team_id', teamIds)
         : { data: [] as any[] };
       const storedIds = Array.from(new Set((tmRows || []).map((r: any) => r.user_id)));
+
+      // Vínculo mais antigo de cada membro (time + desde quando).
+      const membershipByStored = new Map<string, { team_name: string | null; joined_at: string | null }>();
+      for (const r of (tmRows || []) as any[]) {
+        const prev = membershipByStored.get(r.user_id);
+        if (!prev || (r.created_at && prev.joined_at && r.created_at < prev.joined_at)) {
+          membershipByStored.set(r.user_id, {
+            team_name: teamNameById.get(r.team_id) ?? null,
+            joined_at: r.created_at ?? null,
+          });
+        }
+      }
 
       // 3. Perfis casando por user_id OU id (legado).
       const [{ data: profByUser }, { data: profById }] = storedIds.length
@@ -86,11 +101,14 @@ export function FunnelTeamDialog({ open, onOpenChange, boardId, boardName }: Pro
         const p = profiles.find((pp: any) => pp.user_id === storedId || pp.id === storedId);
         const cloudUuid = p?.user_id || storedId;
         if (dedup.has(cloudUuid)) continue;
+        const membership = membershipByStored.get(storedId);
         dedup.set(cloudUuid, {
           cloud_uuid: cloudUuid,
           full_name: p?.full_name ?? null,
           email: p?.email ?? null,
           role: roleMap.get(cloudUuid) ?? 'user',
+          team_name: membership?.team_name ?? null,
+          joined_at: membership?.joined_at ?? null,
         });
       }
       setMembers(Array.from(dedup.values()));
@@ -265,6 +283,15 @@ export function FunnelTeamDialog({ open, onOpenChange, boardId, boardName }: Pro
                       </div>
                       {member.email && (
                         <div className="text-[11px] text-muted-foreground truncate">{member.email}</div>
+                      )}
+                      {(member.team_name || member.joined_at) && (
+                        <div className="text-[11px] text-muted-foreground/80 truncate">
+                          {member.team_name && <span>Time: {member.team_name}</span>}
+                          {member.team_name && member.joined_at && <span> · </span>}
+                          {member.joined_at && (
+                            <span>desde {new Date(member.joined_at).toLocaleDateString('pt-BR')}</span>
+                          )}
+                        </div>
                       )}
                     </div>
 
