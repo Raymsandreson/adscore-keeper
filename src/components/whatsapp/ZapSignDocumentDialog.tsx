@@ -607,6 +607,13 @@ export function ZapSignDocumentDialog({
             f.para = today;
             f.source = 'crm';
           }
+          // AUXÍLIO ACIDENTE: parcelas vincendas tem padrão 12 (modelo do escritório).
+          // Pré-preenche pra IA não inventar valor — extractDataWithAI só sobrescreve
+          // campo vazio, então o 12 fica; o usuário edita se o caso pedir outro número.
+          if (lower.includes('parcelas') && lower.includes('vincendas')) {
+            f.para = '12';
+            f.source = 'manual';
+          }
         });
         setTemplateFields(fields);
         fieldVars = fields.map(f => f.de).filter(Boolean);
