@@ -136,7 +136,7 @@ function BreakMenu({ className, onStart, onEndShift }: { className?: string; onS
         </button>
       </PopoverTrigger>
       <PopoverContent
-        align="end" side="top" className="w-64 p-2"
+        align="end" side="top" className="w-64 p-2 z-[9999]"
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
       >
@@ -181,7 +181,7 @@ function EstimateControl({
           <span className="tabular-nums">{label}{estimateMinutes ? ` · ${estimateMinutes}m` : ''}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-56 p-2" onPointerDown={(e) => e.stopPropagation()}>
+      <PopoverContent align="end" className="w-56 p-2 z-[9999]" onPointerDown={(e) => e.stopPropagation()}>
         <div className="text-xs font-medium mb-1.5">Previsão de tempo</div>
         <div className="flex flex-wrap gap-1 mb-2">
           {ESTIMATE_CHIPS.map((m) => (
@@ -330,7 +330,7 @@ function TeamPanelButton({ className, onOpenActivity }: { className?: string; on
         align="end"
         side="top"
         collisionPadding={8}
-        className="p-0 w-auto overflow-hidden"
+        className="p-0 w-auto overflow-hidden z-[9999]"
         onPointerDown={(e) => e.stopPropagation()}
         onPointerMove={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
@@ -411,7 +411,7 @@ export function ActivityTimerOverlay() {
         <button
           type="button"
           onClick={startShift}
-          className="fixed bottom-4 left-4 z-[60] flex items-center gap-1.5 rounded-full border border-emerald-300/60 bg-emerald-50/95 dark:bg-emerald-950/60 px-3 py-2 shadow-lg backdrop-blur text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
+          className="fixed bottom-4 left-4 z-[9990] flex items-center gap-1.5 rounded-full border border-emerald-300/60 bg-emerald-50/95 dark:bg-emerald-950/60 px-3 py-2 shadow-lg backdrop-blur text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
           title="Registrar entrada — o cronômetro e o ocioso só contam com o expediente aberto"
         >
           <Play className="h-4 w-4" />
@@ -438,7 +438,7 @@ export function ActivityTimerOverlay() {
             onPointerMove={drag.onPointerMove}
             onPointerUp={drag.onPointerUp}
             onClick={() => { if (!drag.wasDragged()) showTimer(); }}
-            className={`fixed z-[60] flex items-center gap-1.5 rounded-full px-2.5 py-1 shadow-lg backdrop-blur touch-none select-none cursor-pointer hover:opacity-90 ${palette}`}
+            className={`fixed z-[9990] flex items-center gap-1.5 rounded-full px-2.5 py-1 shadow-lg backdrop-blur touch-none select-none cursor-pointer hover:opacity-90 ${palette}`}
             title="Cronômetro minimizado · clique para expandir · arraste para mover"
           >
             {current.kind === 'activity' && (
@@ -466,7 +466,7 @@ export function ActivityTimerOverlay() {
           onPointerDown={drag.onPointerDown}
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
-          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          className="fixed z-[9990] flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
           title="Arraste para mover · clique no tempo para abrir a atividade"
         >
           <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
@@ -553,7 +553,7 @@ export function ActivityTimerOverlay() {
           onPointerDown={drag.onPointerDown}
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
-          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          className="fixed z-[9990] flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
           title={gapWorking
             ? 'Arraste para mover · sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
             : 'Arraste para mover · tempo ocioso entre atividades'}
@@ -623,7 +623,7 @@ export function ActivityTimerOverlay() {
           onPointerDown={drag.onPointerDown}
           onPointerMove={drag.onPointerMove}
           onPointerUp={drag.onPointerUp}
-          className="fixed z-[60] flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          className="fixed z-[9990] flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
           title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
         >
           <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
