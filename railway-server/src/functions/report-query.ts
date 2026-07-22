@@ -88,9 +88,20 @@ leads (16k) — leads do CRM / clientes captados. tem deleted_at.
   id, lead_name, lead_phone, lead_email, status, lead_status, source, city, state,
   case_type, victim_name, accident_date, cpf, rg, created_at, became_client_date,
   processual_responsible_id (uuid → profiles.user_id: O RESPONSÁVEL PROCESSUAL do cliente/lead),
-  acolhedor (texto), board_id (uuid→kanban_boards), lead_number.
+  acolhedor (texto), board_id (uuid→kanban_boards: O FUNIL onde o lead está), lead_number.
   IMPORTANTE: o responsável processual do escritório fica AQUI, no lead (processual_responsible_id),
   e é herdado pelos processos e casos daquele lead (via lead_id). Sempre junte por profiles.user_id.
+  FUNIL/PIPELINE: "funil X" ou "pipeline X" = leads cujo board_id aponta pra um kanban_boards
+    com aquele nome. Ex.: "funil BPC" = leads JOIN kanban_boards b ON b.id=l.board_id WHERE b.name ILIKE '%bpc%'.
+  lead_status (VOCABULÁRIO REAL, em inglês — use estes valores exatos, não invente):
+    'closed' = FECHADO (o que o usuário chama de "fechado"/"ganho"/"cliente fechado");
+    'no_response' = sem resposta;  'refused' = recusou;  'inviavel' = inviável;
+    'cancelled' = cancelado;  'in_progress' = em andamento.
+    Para "fechados" use l.lead_status = 'closed'.
+  status (texto) = a COLUNA atual do lead dentro do funil/kanban (nomes gerados, ex.:
+    'procuracao_assinada', 'prospecção_e_triagem_...'). NÃO é o mesmo que lead_status. Para "fechado"
+    prefira lead_status='closed'; para etapa específica do funil, filtre status ILIKE '%termo%'.
+  became_client_date = data em que virou cliente (preenchida quando fechou contrato).
 
 lead_activities (30k) — ATIVIDADES/tarefas. tem deleted_at.
   id, title, description, activity_type, status, priority, deadline, notification_date,
@@ -114,18 +125,29 @@ lead_processes (1.5k) — PROCESSOS judiciais vinculados a lead. tem deleted_at.
   RESPONSÁVEL: NÃO use responsible_user_id (quase sempre nulo). O responsável vem do LEAD:
   junte lead_processes.lead_id → leads.id → leads.processual_responsible_id → profiles.user_id.
 
-inss_admin_processes (600) — PROCESSOS ADMINISTRATIVOS INSS. tem deleted_at.
+inss_admin_processes (600) — PROCESSOS/REQUERIMENTOS ADMINISTRATIVOS no INSS. tem deleted_at.
   id, requerimento_number, benefit_number, current_status, benefit_type,
   nome_segurado, cpf_segurado, protocol_date, case_id, lead_id, last_email_at, created_at.
+  ESTA é a fonte da verdade de "protocolo administrativo".
+  "protocolado administrativamente" = protocol_date IS NOT NULL.
+  "NÃO protocolado / sem protocolo administrativo" = NÃO existir aqui um registro do lead com protocol_date
+    preenchido. Padrão: NOT EXISTS (SELECT 1 FROM inss_admin_processes i WHERE i.lead_id = l.id
+    AND i.deleted_at IS NULL AND i.protocol_date IS NOT NULL). Junte por lead_id (ou case_id).
+  current_status (vocabulário real): 'Exigência', 'Concluída', 'Em análise'/'Em Análise', 'Cancelada', 'Pendente'.
 
 hearings (500) — AUDIÊNCIAS. tem deleted_at.
   id, process_number, hearing_type, category, hearing_date, hearing_time, status, location,
   assigned_user_id (texto), lead_id, legal_case_id, created_at.
 
-case_process_tracking (2k) — controle de processos BPC/acolhimento (planilha importada).
+case_process_tracking (2k) — planilha LEGADA importada. USO LIMITADO.
   id, cliente, caso, cpf, tipo, acolhedor, numero_processo, pendencia, status_processo,
   data_protocolo_cancelamento, protocolado, tempo_dias, data_decisao_final, pago_acolhedor, created_at.
   (não tem deleted_at)
+  ATENÇÃO: colunas status_processo, protocolado e tipo estão QUASE SEMPRE NULAS (dados nunca migrados).
+  NÃO use esta tabela para responder "fechado", "protocolado" ou "tipo/funil BPC" — daria 0 resultados.
+  Para status do cliente use leads.lead_status; para funil use kanban_boards; para protocolo
+  administrativo use inss_admin_processes.protocol_date. Só use case_process_tracking se o pedido citar
+  explicitamente acolhedor/pagamento de acolhedor (pago_acolhedor) ou tempo_dias.
 
 process_movements (250) — marcos/movimentações processuais (append-only).
   id, process_id (→lead_processes), lead_id, numero_cnj, tipo_movimentacao, marco_ordem,
@@ -142,7 +164,9 @@ profiles (2.7k) — USUÁRIOS/equipe (para resolver responsáveis por nome).
   quando não casar por id, tente também a coluna de texto *_name).
 
 specialized_nuclei — núcleos. id, name.
-kanban_boards — funis/quadros. id, name, board_type.
+kanban_boards — FUNIS/quadros do CRM. id, name, board_type ('funnel' = funil de captação, 'workflow' = fluxo operacional).
+  É a tabela dos FUNIS. Leads se ligam por leads.board_id. Para "funil BPC/LOAS" filtre name ILIKE '%bpc%'
+  (existem "BPC - Autismo" e "Fluxo BPC - Administrativo"). Para outros: name ILIKE '%acidente%', '%maternidade%' etc.
 activity_types — tipos de atividade. id, key, label.
 
 == DICAS DE JOIN P/ RESPONSÁVEL (padrões testados neste banco) ==
@@ -168,6 +192,19 @@ activity_types — tipos de atividade. id, key, label.
             SELECT 1 FROM unnest(a.assigned_to_names) n WHERE n ILIKE '%joão manoel%'))
     ORDER BY a.deadline ASC NULLS LAST LIMIT 500;
 - Clientes/leads de um responsável: leads l JOIN profiles pr ON pr.user_id = l.processual_responsible_id WHERE pr.full_name ILIKE '%nome%'.
+- Leads de um FUNIL fechados e SEM protocolo administrativo (ex.: "funil BPC fechados não protocolados"):
+    SELECT l.lead_name, l.lead_phone, b.name AS funil, l.became_client_date,
+           pr.full_name AS responsavel
+    FROM leads l
+    JOIN kanban_boards b ON b.id = l.board_id
+    LEFT JOIN profiles pr ON pr.user_id = l.processual_responsible_id
+    WHERE l.deleted_at IS NULL
+      AND b.name ILIKE '%bpc%'
+      AND l.lead_status = 'closed'
+      AND NOT EXISTS (
+        SELECT 1 FROM inss_admin_processes i
+        WHERE i.lead_id = l.id AND i.deleted_at IS NULL AND i.protocol_date IS NOT NULL)
+    ORDER BY l.became_client_date DESC NULLS LAST LIMIT 500;
 `.trim();
 
 const SYSTEM_PROMPT = `Você é um gerador de relatórios SQL para um escritório de advocacia brasileiro.
