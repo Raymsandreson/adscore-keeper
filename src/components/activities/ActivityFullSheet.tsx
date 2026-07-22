@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { format, parseISO } from 'date-fns';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToCloud, remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { authClient } from '@/integrations/supabase';
@@ -91,6 +92,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formMeetingAt, setFormMeetingAt] = useState('');
+  // Retorno agendado (datetime-local, fuso do navegador) — vira callback_at (ISO) no banco.
+  const [formCallbackAt, setFormCallbackAt] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState('');
@@ -222,6 +225,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormNotificationDate(act.notification_date || '');
     // meeting_at é timestamptz; datetime-local espera YYYY-MM-DDTHH:mm
     setFormMeetingAt((((act as any).meeting_at as string | null) || '').slice(0, 16));
+    setFormCallbackAt((act as any).callback_at ? format(parseISO((act as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
     setFormAssignedTo(((await remapToCloud(act.assigned_to)) as string) || '');
     setFormAssignedToName(act.assigned_to_name || '');
     setFormMatrixQuadrant(act.matrix_quadrant || '');
@@ -303,6 +307,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormDeadline(d.deadline || '');
     setFormNotificationDate('');
     setFormMeetingAt('');
+    setFormCallbackAt('');
     setFormAssignedTo(d.assigned_to || '');
     setFormAssignedToName(d.assigned_to_name || '');
     setFormMatrixQuadrant('');
@@ -503,6 +508,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     crm_campaign_id: formCampaignId || null,
     feedback: formFeedback || null,
     rescheduled_to: formRescheduledTo || null,
+    // Retorno agendado: só entra quando MUDOU — senão todo save zeraria o carimbo
+    // callback_notified_at e o lembrete dispararia de novo.
+    ...(() => {
+      const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
+      const prevRaw = (selectedActivity as any)?.callback_at || null;
+      const prevMs = prevRaw ? new Date(prevRaw).getTime() : null;
+      const nextMs = nextIso ? new Date(nextIso).getTime() : null;
+      return prevMs !== nextMs ? { callback_at: nextIso } : {};
+    })(),
     // Arrays multi-assessor/observador: só entram quando há (ou quando a atividade
     // carregada já tinha — para permitir limpar). Hook remapeia Cloud→Externo.
     ...(formCoAssignees.length === 0 && !loadedHadCoAssignees ? {} : {
@@ -576,8 +590,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
       <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
-          <div className="flex items-center justify-between gap-2">
-            <SheetTitle className="text-base truncate">{formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}</SheetTitle>
+          <div className="flex items-start justify-between gap-2">
+            <SheetTitle
+              className="text-base font-semibold leading-snug line-clamp-2 flex-1 min-w-0"
+              title={formTitle || undefined}
+            >
+              {formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}
+            </SheetTitle>
             <div className="flex items-center gap-1">
               {/* Preencher com IA (áudio/documento) — mesma função da ActivitiesPage */}
               <Popover open={preencherOpen} onOpenChange={setPreencherOpen}>
@@ -851,6 +870,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formStatus={formStatus} setFormStatus={setFormStatus}
                 formPriority={formPriority} setFormPriority={setFormPriority}
                 formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
+                formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
                 formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
                 formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
                 formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
