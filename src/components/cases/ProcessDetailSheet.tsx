@@ -929,7 +929,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
       {/* Tab navigation */}
       <div className="shrink-0 border-b">
-        <div className="flex flex-wrap gap-0.5 px-2 py-1.5">
+        <div className="flex flex-nowrap overflow-x-auto scrollbar-hide snap-x md:flex-wrap md:overflow-x-visible gap-0.5 px-2 py-1.5">
             {TABS.map(tab => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
@@ -938,7 +938,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
+                  className={`flex shrink-0 snap-start items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
                     isActive
                       ? 'bg-primary text-primary-foreground'
                       : 'text-muted-foreground hover:bg-muted hover:text-foreground'
