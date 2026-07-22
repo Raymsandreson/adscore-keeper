@@ -409,8 +409,11 @@ export function ActivityTimerOverlay() {
 
   // Cronômetro SEMPRE flutuante e arrastável. Ele já cola na borda mais próxima
   // (snapToEdge), então não cobre conteúdo — e o usuário pode movê-lo à vontade.
-  // (O "dock" na barra de produtividade prendia o badge e não deixava arrastar.)
-  const docked = false;
+  // Maximizado x minimizado é controlado só por `hidden`:
+  //   hidden=true  → pill compacto (só o relógio)
+  //   hidden=false → cronômetro grande flutuante (todos os controles)
+  // (Antes existia um `docked` fixo em false que matava o modo grande — não dava
+  //  pra maximizar de jeito nenhum.)
   // Portala o badge para o body: preso dentro de <main> (SidebarLayout) ele fica
   // num contexto de empilhamento e qualquer Dialog (portalado como irmão do #root)
   // pinta por cima, mesmo com z menor. Fora, no body, o z-[9990] vence o z-50 do
@@ -441,11 +444,10 @@ export function ActivityTimerOverlay() {
         </button>
       )}
 
-      {/* Minimizado: o cronômetro nunca some — fica só o relógio; clique expande */}
-      {/* Pill compacto (só o tempo): quando minimizado OU quando não há barra pra dockar.
-          Sem a barra, o cronômetro NUNCA flutua grande sobre o conteúdo — no máximo este
-          pill minúsculo colado na borda. (skill: ui-sem-sobreposicao) */}
-      {current && (hidden || !docked) && (() => {
+      {/* Minimizado: o cronômetro nunca some — fica só o relógio; clique expande.
+          Pill compacto (só o tempo) quando hidden=true. Clicar chama showTimer()
+          (hidden=false) e o badge grande aparece no lugar. (skill: ui-sem-sobreposicao) */}
+      {current && hidden && (() => {
         const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
         const palette = current.kind === 'activity'
           ? `border bg-background/95 ${isOver ? 'text-red-600 dark:text-red-400' : ''}`
@@ -460,7 +462,7 @@ export function ActivityTimerOverlay() {
             {...dragAttrs}
             onClick={() => { if (!drag.wasDragged()) showTimer(); }}
             className={`${floatWrap}flex items-center gap-1.5 rounded-full px-2.5 py-1 select-none cursor-pointer hover:opacity-90 ${palette}`}
-            title={docked ? 'Cronômetro minimizado · clique para expandir' : 'Cronômetro minimizado · clique para expandir · arraste para mover'}
+            title="Cronômetro minimizado · clique para expandir · arraste para mover"
           >
             {current.kind === 'activity' && (
               <span className="relative flex h-2 w-2">
@@ -480,15 +482,15 @@ export function ActivityTimerOverlay() {
         );
       })()}
 
-      {current && current.kind === 'activity' && !hidden && docked && dock(
+      {current && current.kind === 'activity' && !hidden && dock(
         <div
           {...dragAttrs}
           className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
-          title={docked ? 'Clique no tempo para abrir a atividade' : 'Arraste para mover · clique no tempo para abrir a atividade'}
+          title="Arraste para mover · clique no tempo para abrir a atividade"
         >
-          {!docked && <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />}
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
           <div className="flex items-center gap-1.5">
-          {!docked && <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />}
+          <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -563,7 +565,7 @@ export function ActivityTimerOverlay() {
         </Suspense>
       )}
 
-      {current && current.kind === 'gap' && !hidden && docked && dock(
+      {current && current.kind === 'gap' && !hidden && dock(
         <div
           {...dragAttrs}
           className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
@@ -571,9 +573,9 @@ export function ActivityTimerOverlay() {
             ? 'Sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
             : 'Tempo ocioso entre atividades'}
         >
-          {!docked && <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />}
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
           <div className="flex items-center gap-1.5">
-          {!docked && <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />}
+          <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
           {gapWorking ? (
             <>
               <Clock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
@@ -629,15 +631,15 @@ export function ActivityTimerOverlay() {
       )}
 
 
-      {current && current.kind === 'break' && !hidden && docked && dock(
+      {current && current.kind === 'break' && !hidden && dock(
         <div
           {...dragAttrs}
           className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
           title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
         >
-          {!docked && <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />}
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
           <div className="flex items-center gap-1.5">
-          {!docked && <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />}
+          <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />
           <UtensilsCrossed className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />
           {(() => {
             const eta = current.estimateMinutes || 0;
