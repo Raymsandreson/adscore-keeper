@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type
 import { createPortal } from 'react-dom';
 import { ArrowLeftRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
-import { db } from '@/integrations/supabase';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 
@@ -913,21 +913,25 @@ function SwitchActivityDialog({
     if (!open) { setTerm(''); setRows([]); return; }
     setLoading(true);
     const t = setTimeout(async () => {
-      // Só as pendentes DO responsável atual (assigned_to único ou dentro do array
-      // assigned_to_ids). myExt = UUID do usuário no Externo. Mesmo critério da
-      // tela de Atividades (ActivitiesPage). Sem remap, cai no fallback (todas).
+      // RLS de lead_activities exige auth.uid() IS NOT NULL. Sem a sessão anônima
+      // do Externo estabelecida, a query volta 0 linhas e o diálogo dizia "nenhuma
+      // pendente" mesmo com atividades atribuídas. Garante a sessão antes.
+      try { await ensureExternalSession(); } catch { /* RLS pode negar; segue */ }
+
+      // Filtro pelo ASSESSOR RESPONSÁVEL PELA ATIVIDADE (não o do processo/lead nem
+      // o pool sem dono). assigned_to guarda o ext_uuid; incluímos também o user.id
+      // (cloud) por robustez caso o remap não esteja quente. Co-assessores casam
+      // via assigned_to_ids. Nas pendentes, todo nome vem junto com o UUID — então
+      // filtrar por UUID cobre 100% sem precisar casar por nome.
       const myExt = await remapToExternal(user?.id || null);
+      const mine = Array.from(new Set([myExt, user?.id].filter(Boolean))) as string[];
+
       let q = db
         .from('lead_activities')
         .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at, callback_at')
         .is('deleted_at', null)
         .neq('status', 'concluida');
-      // Minhas pendentes = atribuídas a mim (principal OU co-assessor) OU sem
-      // responsável. O pool não atribuído conta como "minha" na tela de Atividades
-      // (isMine). Sem o assigned_to.is.null, atividades com assigned_to vazio (a
-      // maioria — o responsável real mora no lead) sumiam e o diálogo dizia
-      // "nenhuma pendente". Mesmo critério do useLeadActivities.
-      if (myExt) q = q.or(`assigned_to.eq.${myExt},assigned_to_ids.cs.{${myExt}},assigned_to.is.null`);
+      if (mine.length) q = q.or(`assigned_to.in.(${mine.join(',')}),assigned_to_ids.ov.{${mine.join(',')}}`);
       if (term.trim()) q = q.ilike('title', `%${term.trim()}%`);
       q = q.order('updated_at', { ascending: false }).limit(50);
       const { data } = await q;
