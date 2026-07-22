@@ -41,7 +41,40 @@ interface InssProcess {
   last_email_at: string | null;
   last_email_subject: string | null;
   created_at: string;
+  resultado?: string | null;
+  servico?: string | null;
 }
+
+// Estágio canônico de um requerimento, derivado do status + veredito.
+// "Concluída" sozinha não diz se foi deferido/indeferido — isso vem de `resultado`
+// (extraído do Despacho). Enquanto o veredito não chega, cai em "concluida".
+type StageKey =
+  | "exigencia" | "analise" | "deferido" | "indeferido"
+  | "concluida" | "pendente" | "cancelada" | "outros";
+
+const stageOf = (p: { current_status?: string | null; resultado?: string | null }): StageKey => {
+  const s = (p.current_status || "").toLowerCase();
+  if (s.includes("exig")) return "exigencia";
+  if (s.includes("cancel")) return "cancelada";
+  if (s.includes("conclu")) {
+    if (p.resultado === "deferido") return "deferido";
+    if (p.resultado === "indeferido") return "indeferido";
+    return "concluida";
+  }
+  if (s.includes("pend")) return "pendente";
+  if (s.includes("anali") || s.includes("anális")) return "analise";
+  return "outros";
+};
+
+const STAGES: { key: StageKey; label: string; cls: string }[] = [
+  { key: "exigencia",  label: "Exigência",   cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
+  { key: "analise",    label: "Em análise",  cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
+  { key: "deferido",   label: "Deferido",    cls: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
+  { key: "indeferido", label: "Indeferido",  cls: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
+  { key: "concluida",  label: "Concluída (sem veredito)", cls: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
+  { key: "pendente",   label: "Pendente",    cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
+  { key: "cancelada",  label: "Cancelada",   cls: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+];
 
 interface InssHistoryRow {
   id: string;
@@ -248,6 +281,7 @@ export default function InssAdminProcessesTab() {
   const [backfillStatus, setBackfillStatus] = useState("");
   const [search, setSearch] = useState("");
   const [showOnlyOrphans, setShowOnlyOrphans] = useState(false);
+  const [stageFilter, setStageFilter] = useState<StageKey | null>(null);
   const [historyByProc, setHistoryByProc] = useState<Record<string, InssHistoryRow[]>>({});
   const [linkingProc, setLinkingProc] = useState<InssProcess | null>(null);
 
@@ -390,9 +424,21 @@ export default function InssAdminProcessesTab() {
     }
   };
 
+  // Contagem por estágio sobre TODOS os processos (não só a página), para o
+  // painel de topo. useMemo porque a lista pode passar de centenas de itens.
+  const stageCounts = useMemo(() => {
+    const acc: Record<StageKey, number> = {
+      exigencia: 0, analise: 0, deferido: 0, indeferido: 0,
+      concluida: 0, pendente: 0, cancelada: 0, outros: 0,
+    };
+    for (const p of processes) acc[stageOf(p)]++;
+    return acc;
+  }, [processes]);
+
   const filtered = useMemo(() => {
     let list = processes;
     if (showOnlyOrphans) list = list.filter((p) => !p.case_id);
+    if (stageFilter) list = list.filter((p) => stageOf(p) === stageFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -404,13 +450,13 @@ export default function InssAdminProcessesTab() {
       );
     }
     return list;
-  }, [processes, search, showOnlyOrphans]);
+  }, [processes, search, showOnlyOrphans, stageFilter]);
 
   // Paginação client-side (25/página)
   const PAGE_SIZE = 25;
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  useEffect(() => { setPage(1); }, [search, showOnlyOrphans]);
+  useEffect(() => { setPage(1); }, [search, showOnlyOrphans, stageFilter]);
   useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
   const paged = useMemo(
     () => filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
@@ -1215,6 +1261,36 @@ export default function InssAdminProcessesTab() {
           />
         </div>
       </div>
+
+      {/* Relatório por estágio — clique num cartão pra filtrar a lista. */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+        {STAGES.map((st) => {
+          const active = stageFilter === st.key;
+          return (
+            <button
+              key={st.key}
+              type="button"
+              onClick={() => setStageFilter((cur) => (cur === st.key ? null : st.key))}
+              className={`rounded-lg border p-2 text-left transition-colors ${
+                active ? "border-primary ring-1 ring-primary" : "border-border hover:bg-muted/50"
+              }`}
+              title={`Filtrar por ${st.label}`}
+            >
+              <div className="text-2xl font-bold tabular-nums leading-none">{stageCounts[st.key]}</div>
+              <Badge className={`${st.cls} mt-1 whitespace-normal text-left`}>{st.label}</Badge>
+            </button>
+          );
+        })}
+      </div>
+      {stageFilter && (
+        <button
+          type="button"
+          onClick={() => setStageFilter(null)}
+          className="text-xs text-primary hover:underline"
+        >
+          ← limpar filtro de estágio
+        </button>
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-muted-foreground">Carregando...</div>
