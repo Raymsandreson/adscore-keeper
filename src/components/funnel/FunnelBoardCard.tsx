@@ -8,7 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch } from "lucide-react";
+import { WorkflowVisualizationDialog } from "@/components/workflow/WorkflowVisualizationDialog";
 import { db as supabase } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
 import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
@@ -69,6 +70,7 @@ export function FunnelBoardCard({
   onEdit,
 }: FunnelBoardCardProps) {
   const navigate = useNavigate();
+  const [showVisualization, setShowVisualization] = useState(false);
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
@@ -459,6 +461,10 @@ export function FunnelBoardCard({
         )}
 
         <div className="flex justify-end gap-2 pt-1">
+          <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowVisualization(true)}>
+            <GitBranch className="h-3.5 w-3.5 mr-1.5" />
+            Fluxograma
+          </Button>
           <Button variant="outline" size="sm" className="text-xs" onClick={onOpenTeam}>
             <Users className="h-3.5 w-3.5 mr-1.5" />
             Equipe
@@ -474,6 +480,12 @@ export function FunnelBoardCard({
           </Button>
         </div>
       </CardContent>
+
+      <WorkflowVisualizationDialog
+        board={board}
+        open={showVisualization}
+        onOpenChange={setShowVisualization}
+      />
     </Card>
   );
 }

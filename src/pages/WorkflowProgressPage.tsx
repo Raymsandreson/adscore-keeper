@@ -7,11 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, X, RefreshCw, Settings2, Plus, Pencil, Trash2 } from 'lucide-react';
+import { ArrowLeft, Search, X, RefreshCw, Settings2, Plus, Pencil, Trash2, GitBranch } from 'lucide-react';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
+import { WorkflowVisualizationDialog } from '@/components/workflow/WorkflowVisualizationDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
@@ -40,6 +41,7 @@ const WorkflowProgressPage = () => {
   const [workflowPage, setWorkflowPage] = useState(1);
   const [editingWorkflow, setEditingWorkflow] = useState<KanbanBoard | null>(null);
   const [createNewMode, setCreateNewMode] = useState(false);
+  const [vizBoard, setVizBoard] = useState<KanbanBoard | null>(null);
   const WORKFLOWS_PER_PAGE = 6;
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -212,6 +214,15 @@ const WorkflowProgressPage = () => {
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{board.description}</p>
                           )}
                           <div className="flex items-center gap-2 mt-3 pt-2 border-t">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="flex-1 text-xs h-8"
+                              onClick={() => setVizBoard(board)}
+                            >
+                              <GitBranch className="h-3 w-3 mr-1" /> Visualizar
+                            </Button>
+                            <div className="w-px h-5 bg-border" />
                             <Button
                               variant="ghost"
                               size="sm"
@@ -449,6 +460,13 @@ const WorkflowProgressPage = () => {
         onWorkflowSaved={fetchData}
         initialEditBoardId={editingWorkflow?.id || null}
         initialCreateNew={createNewMode}
+      />
+
+      {/* Visualização (fluxograma / mapa mental) */}
+      <WorkflowVisualizationDialog
+        board={vizBoard}
+        open={!!vizBoard}
+        onOpenChange={(open) => { if (!open) setVizBoard(null); }}
       />
     </div>
   );
