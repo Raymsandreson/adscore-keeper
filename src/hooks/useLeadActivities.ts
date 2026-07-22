@@ -35,6 +35,8 @@ export interface LeadActivity {
   rescheduled_to?: string | null;
   deadline: string | null;
   notification_date: string | null;
+  /** Data e hora da reunião (só quando activity_type = 'reuniao'). timestamptz no Externo. */
+  meeting_at?: string | null;
   completed_at: string | null;
   completed_by: string | null;
   completed_by_name: string | null;
@@ -255,6 +257,7 @@ export function useLeadActivities() {
           assigned_to_name: activity.assigned_to_name || null,
           deadline: activity.deadline || null,
           notification_date: activity.notification_date || null,
+          meeting_at: activity.meeting_at || null,
           notes: activity.notes || null,
           created_by: extUserId,
           contact_id: activity.contact_id || null,

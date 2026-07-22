@@ -186,6 +186,7 @@ interface ActivityFormCompactProps {
   formPriority: string; setFormPriority: (v: string) => void;
   formDeadline: string; handleDeadlineChange: (v: string) => void;
   formNotificationDate: string; setFormNotificationDate: (v: string) => void;
+  formMeetingAt: string; setFormMeetingAt: (v: string) => void;
   formMatrixQuadrant: string; setFormMatrixQuadrant: (v: string) => void;
   formLeadId: string; formLeadName: string;
   formContactId: string; formContactName: string;
@@ -1005,6 +1006,19 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             </div>
           )}
         </div>
+        {props.formType === 'reuniao' && (
+          <div className="col-span-full">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+              📆 Data e hora da reunião
+            </span>
+            <Input
+              type="datetime-local"
+              value={props.formMeetingAt}
+              onChange={e => props.setFormMeetingAt(e.target.value)}
+              className="h-8 text-xs mt-0.5"
+            />
+          </div>
+        )}
         <div className="col-span-full">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
             Fluxo de Trabalho {(props.formIsSystem || props.formIsManagement) ? '(opcional)' : '*'}

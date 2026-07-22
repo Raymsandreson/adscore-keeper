@@ -90,6 +90,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formPriority, setFormPriority] = useState('normal');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
+  const [formMeetingAt, setFormMeetingAt] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState('');
@@ -219,6 +220,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormPriority(act.priority || 'normal');
     setFormDeadline(act.deadline || '');
     setFormNotificationDate(act.notification_date || '');
+    // meeting_at é timestamptz; datetime-local espera YYYY-MM-DDTHH:mm
+    setFormMeetingAt((((act as any).meeting_at as string | null) || '').slice(0, 16));
     setFormAssignedTo(((await remapToCloud(act.assigned_to)) as string) || '');
     setFormAssignedToName(act.assigned_to_name || '');
     setFormMatrixQuadrant(act.matrix_quadrant || '');
@@ -299,6 +302,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormPriority(d.priority || 'normal');
     setFormDeadline(d.deadline || '');
     setFormNotificationDate('');
+    setFormMeetingAt('');
     setFormAssignedTo(d.assigned_to || '');
     setFormAssignedToName(d.assigned_to_name || '');
     setFormMatrixQuadrant('');
@@ -481,6 +485,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     assigned_to_name: formAssignedToName || null,
     deadline: formDeadline || null,
     notification_date: formNotificationDate || null,
+    // Só persiste horário de reunião quando o tipo é "reuniao" (evita valor órfão se trocar o tipo).
+    meeting_at: formType === 'reuniao' ? (formMeetingAt || null) : null,
     notes: formNotes || null,
     status: formStatus,
     contact_id: formContactId || null,
@@ -846,6 +852,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formPriority={formPriority} setFormPriority={setFormPriority}
                 formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
                 formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
+                formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
                 formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
                 formLeadId={formLeadId} formLeadName={formLeadName}
                 formContactId={formContactId} formContactName={formContactName}
