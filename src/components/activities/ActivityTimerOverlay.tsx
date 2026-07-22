@@ -800,7 +800,97 @@ export function ActivityTimerOverlay() {
   );
 }
 
-interface PickRow { id: string; title: string; activity_type: string | null; lead_name: string | null; }
+interface PickRow {
+  id: string;
+  title: string;
+  activity_type: string | null;
+  lead_name: string | null;
+  status?: string | null;
+  priority?: string | null;
+  deadline?: string | null;
+  notification_date?: string | null;
+  meeting_at?: string | null;
+  callback_at?: string | null;
+}
+
+/** Data-chave de "quando fazer": reunião/retorno (têm hora marcada) > prazo > lembrete. */
+function keyDate(r: PickRow): Date | null {
+  const raw = r.meeting_at || r.callback_at || r.deadline || r.notification_date;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+type Bucket = { key: string; label: string; rows: PickRow[] };
+
+/** Agrupa pendentes por faixa de prazo relativa a hoje (o "minicalendário"). */
+function bucketize(rows: PickRow[]): Bucket[] {
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dayMs = 86400000;
+  const startTomorrow = startToday + dayMs;
+  const startAfterTomorrow = startToday + 2 * dayMs;
+  // Fim da semana (domingo 23:59) a partir de hoje.
+  const endOfWeek = startToday + (7 - now.getDay()) * dayMs;
+
+  const defs: Array<{ key: string; label: string; test: (t: number | null) => boolean }> = [
+    { key: 'atrasadas', label: '⚠️ Atrasadas', test: (t) => t !== null && t < startToday },
+    { key: 'hoje', label: 'Hoje', test: (t) => t !== null && t >= startToday && t < startTomorrow },
+    { key: 'amanha', label: 'Amanhã', test: (t) => t !== null && t >= startTomorrow && t < startAfterTomorrow },
+    { key: 'semana', label: 'Esta semana', test: (t) => t !== null && t >= startAfterTomorrow && t <= endOfWeek },
+    { key: 'depois', label: 'Depois', test: (t) => t !== null && t > endOfWeek },
+    { key: 'sem-prazo', label: 'Sem prazo', test: (t) => t === null },
+  ];
+
+  const buckets: Bucket[] = defs.map((d) => ({ key: d.key, label: d.label, rows: [] }));
+  for (const r of rows) {
+    const t = keyDate(r)?.getTime() ?? null;
+    const def = defs.find((d) => d.test(t))!;
+    buckets.find((b) => b.key === def.key)!.rows.push(r);
+  }
+  // Ordena dentro de cada faixa: por data-chave asc; "Sem prazo" mantém a ordem recebida.
+  for (const b of buckets) {
+    if (b.key === 'sem-prazo') continue;
+    b.rows.sort((a, c) => (keyDate(a)!.getTime()) - (keyDate(c)!.getTime()));
+  }
+  return buckets.filter((b) => b.rows.length > 0);
+}
+
+function fmtWhen(d: Date | null): string | null {
+  if (!d) return null;
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const time = d.getHours() || d.getMinutes()
+    ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+    : '';
+  if (sameDay) return time ? `hoje ${time}` : 'hoje';
+  const date = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  return time ? `${date} ${time}` : date;
+}
+
+function PickButton({ r, onPick }: { r: PickRow; onPick: (a: PickRow) => void }) {
+  const when = fmtWhen(keyDate(r));
+  const overdue = (() => { const d = keyDate(r); return d ? d.getTime() < Date.now() : false; })();
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(r)}
+      className="w-full text-left py-2 hover:bg-accent rounded px-2 transition-colors flex items-start justify-between gap-2"
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium truncate">{r.title}</div>
+        <div className="text-xs text-muted-foreground truncate">
+          {[r.activity_type, r.lead_name].filter(Boolean).join(' · ') || '—'}
+        </div>
+      </div>
+      {when && (
+        <span className={`shrink-0 text-[11px] tabular-nums mt-0.5 ${overdue ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-muted-foreground'}`}>
+          {when}
+        </span>
+      )}
+    </button>
+  );
+}
 
 function SwitchActivityDialog({
   open, onPick, onClose,
@@ -819,11 +909,11 @@ function SwitchActivityDialog({
     const t = setTimeout(async () => {
       let q = db
         .from('lead_activities')
-        .select('id, title, activity_type, lead_name')
+        .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at, callback_at')
         .is('deleted_at', null)
         .neq('status', 'concluida')
         .order('updated_at', { ascending: false })
-        .limit(20);
+        .limit(50);
       if (term.trim()) q = q.ilike('title', `%${term.trim()}%`);
       const { data } = await q;
       setRows((data as PickRow[]) || []);
@@ -832,7 +922,8 @@ function SwitchActivityDialog({
     return () => clearTimeout(t);
   }, [term, open]);
 
-  const hint = useMemo(() => (term ? 'Resultados' : 'Atividades recentes'), [term]);
+  // Sem busca → agrupa por prazo (minicalendário). Com busca → lista plana de resultados.
+  const buckets = useMemo(() => (term.trim() ? [] : bucketize(rows)), [rows, term]);
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -840,7 +931,7 @@ function SwitchActivityDialog({
         <DialogHeader>
           <DialogTitle>Qual atividade você está fazendo agora?</DialogTitle>
           <DialogDescription>
-            Selecione para o cronômetro continuar fiel ao seu trabalho. Você também pode fechar sem escolher.
+            Suas atividades pendentes, organizadas por prazo. Escolha uma para o cronômetro trocar — sem sair para a tela de Atividades.
           </DialogDescription>
         </DialogHeader>
         <div className="relative">
@@ -853,24 +944,31 @@ function SwitchActivityDialog({
             className="pl-8"
           />
         </div>
-        <div className="text-[11px] uppercase tracking-wide text-muted-foreground mt-1">{hint}</div>
-        <div className="max-h-72 overflow-y-auto -mx-2 px-2 divide-y">
+        <div className="max-h-80 overflow-y-auto -mx-2 px-2">
           {loading && <div className="py-6 text-center text-sm text-muted-foreground">Carregando…</div>}
           {!loading && rows.length === 0 && (
-            <div className="py-6 text-center text-sm text-muted-foreground">Nada encontrado.</div>
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              {term.trim() ? 'Nada encontrado.' : 'Nenhuma atividade pendente.'}
+            </div>
           )}
-          {rows.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              onClick={() => onPick(r)}
-              className="w-full text-left py-2 hover:bg-accent rounded px-2 transition-colors"
-            >
-              <div className="text-sm font-medium truncate">{r.title}</div>
-              <div className="text-xs text-muted-foreground truncate">
-                {[r.activity_type, r.lead_name].filter(Boolean).join(' · ') || '—'}
+
+          {/* Busca ativa: lista plana */}
+          {!loading && term.trim() && (
+            <div className="divide-y">
+              {rows.map((r) => <PickButton key={r.id} r={r} onPick={onPick} />)}
+            </div>
+          )}
+
+          {/* Sem busca: grupos por prazo */}
+          {!loading && !term.trim() && buckets.map((b) => (
+            <div key={b.key} className="mb-1">
+              <div className="sticky top-0 z-10 bg-background/95 backdrop-blur py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+                {b.label} <span className="opacity-60">· {b.rows.length}</span>
               </div>
-            </button>
+              <div className="divide-y">
+                {b.rows.map((r) => <PickButton key={r.id} r={r} onPick={onPick} />)}
+              </div>
+            </div>
           ))}
         </div>
         <DialogFooter>
