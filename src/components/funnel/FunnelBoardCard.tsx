@@ -485,6 +485,7 @@ export function FunnelBoardCard({
         board={board}
         open={showVisualization}
         onOpenChange={setShowVisualization}
+        onEdit={onEdit}
       />
     </Card>
   );

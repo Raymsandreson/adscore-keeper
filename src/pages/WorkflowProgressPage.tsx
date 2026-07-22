@@ -462,11 +462,12 @@ const WorkflowProgressPage = () => {
         initialCreateNew={createNewMode}
       />
 
-      {/* Visualização (fluxograma / mapa mental) */}
+      {/* Visualização (fluxograma / mapa mental / detalhes) */}
       <WorkflowVisualizationDialog
         board={vizBoard}
         open={!!vizBoard}
         onOpenChange={(open) => { if (!open) setVizBoard(null); }}
+        onEdit={() => { if (vizBoard) { setEditingWorkflow(vizBoard); setShowConfig(true); } }}
       />
     </div>
   );
