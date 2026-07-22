@@ -225,12 +225,20 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           phases.flatMap(p => p.objectives.flatMap(o => o.items)).map(s => [s.id, s])
         );
 
+        // templateId só é confiável se já existia antes da edição — a IA às
+        // vezes trunca/inventa ids, e um id inválido quebra o save (uuid
+        // malformado no update ou FK violada ao vincular na fase). Id
+        // desconhecido vira undefined → o save cria um template novo.
+        const validTemplateIds = new Set(
+          phases.flatMap(p => p.objectives.map(o => o.templateId)).filter(Boolean)
+        );
+
         const editedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
           stageId: phase.stageId,
           stageName: phase.stageName,
           stageColor: phase.stageColor || '#3b82f6',
           objectives: (phase.objectives || []).map((obj: any) => ({
-            templateId: obj.templateId || undefined,
+            templateId: validTemplateIds.has(obj.templateId) ? obj.templateId : undefined,
             name: obj.name,
             description: obj.description || '',
             is_mandatory: obj.is_mandatory || false,
@@ -562,6 +570,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const lastSyncedSnapshotRef = useRef<string>('');
   const isPersistingRef = useRef(false);
   const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'pending' | 'saving' | 'saved' | 'error'>('idle');
+  const [autosaveError, setAutosaveError] = useState<string>('');
 
   const buildSnapshot = (name: string, desc: string, ph: PhaseConfig[]) =>
     JSON.stringify({
@@ -695,6 +704,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         onWorkflowSaved?.();
       } else {
         setAutosaveStatus('saved');
+        setAutosaveError('');
         // Refresh leve do cache — sem refazer a tela
         fetchTemplates();
       }
@@ -702,10 +712,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       return boardId;
     } catch (error) {
       console.error('Error saving workflow:', error);
+      const msg = (error as { message?: string })?.message || '';
       if (silent) {
         setAutosaveStatus('error');
+        setAutosaveError(msg);
       } else {
-        toast.error('Erro ao salvar fluxo');
+        toast.error(`Erro ao salvar fluxo${msg ? `: ${msg}` : ''}`);
       }
       return null;
     } finally {
@@ -759,6 +771,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     if (viewMode !== 'edit' || !editingBoardId) {
       lastSyncedSnapshotRef.current = '';
       setAutosaveStatus('idle');
+      setAutosaveError('');
       if (autosaveTimerRef.current) {
         window.clearTimeout(autosaveTimerRef.current);
         autosaveTimerRef.current = null;
@@ -1250,7 +1263,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     )}
                     aria-live="polite"
                   >
-                    {autosaveStatus === 'error' && '⚠ falha ao sincronizar'}
+                    {autosaveStatus === 'error' && (
+                      <span title={autosaveError || undefined}>
+                        ⚠ falha ao sincronizar{autosaveError ? `: ${autosaveError.slice(0, 120)}` : ''}
+                      </span>
+                    )}
                   </span>
                 )}
                 <Button variant="outline" onClick={() => {
