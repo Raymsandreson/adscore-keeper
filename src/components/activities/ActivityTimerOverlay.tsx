@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { ArrowLeftRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 // Aba lateral com a atividade cronometrada (carregada sob demanda ao clicar no cronômetro).
 const ActivityFullSheet = lazy(() =>
@@ -405,24 +406,20 @@ export function ActivityTimerOverlay() {
   const [teamViewActivityId, setTeamViewActivityId] = useState<string | null>(null);
   const timedActivityId = current?.kind === 'activity' ? current.activityId : null;
 
-  // Dock: se a barra de produtividade (sticky, em fluxo) está montada, o cronômetro
-  // é renderizado DENTRO dela via portal — nunca cobre conteúdo. Sem a barra, volta
-  // ao modo flutuante colado na borda. (skill: ui-sem-sobreposicao)
-  // Reavaliado a cada tick de 1s (força re-render), então pega a barra ao montar/desmontar.
-  const dockSlot = typeof document !== 'undefined' ? document.getElementById('activity-timer-dock') : null;
-  const docked = !!dockSlot;
-  const dock = (el: ReactNode) => (dockSlot ? createPortal(el, dockSlot) : el);
-  const floatWrap = docked ? '' : 'fixed z-[9990] shadow-lg backdrop-blur touch-none ';
-  const grab = docked ? '' : 'cursor-grab active:cursor-grabbing';
-  const dragAttrs = docked
-    ? {}
-    : {
-        ref: drag.setElRef,
-        style: drag.style,
-        onPointerDown: drag.onPointerDown,
-        onPointerMove: drag.onPointerMove,
-        onPointerUp: drag.onPointerUp,
-      };
+  // Cronômetro SEMPRE flutuante e arrastável. Ele já cola na borda mais próxima
+  // (snapToEdge), então não cobre conteúdo — e o usuário pode movê-lo à vontade.
+  // (O "dock" na barra de produtividade prendia o badge e não deixava arrastar.)
+  const docked = false;
+  const dock = (el: ReactNode) => el;
+  const floatWrap = 'fixed z-[9990] shadow-lg backdrop-blur touch-none ';
+  const grab = 'cursor-grab active:cursor-grabbing';
+  const dragAttrs = {
+    ref: drag.setElRef,
+    style: drag.style,
+    onPointerDown: drag.onPointerDown,
+    onPointerMove: drag.onPointerMove,
+    onPointerUp: drag.onPointerUp,
+  };
 
   return (
     <>
@@ -899,6 +896,7 @@ function SwitchActivityDialog({
   onPick: (a: PickRow | null) => void | Promise<void>;
   onClose: () => void;
 }) {
+  const { user } = useAuthContext();
   const [term, setTerm] = useState('');
   const [rows, setRows] = useState<PickRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -907,20 +905,24 @@ function SwitchActivityDialog({
     if (!open) { setTerm(''); setRows([]); return; }
     setLoading(true);
     const t = setTimeout(async () => {
+      // Só as pendentes DO responsável atual (assigned_to único ou dentro do array
+      // assigned_to_ids). myExt = UUID do usuário no Externo. Mesmo critério da
+      // tela de Atividades (ActivitiesPage). Sem remap, cai no fallback (todas).
+      const myExt = await remapToExternal(user?.id || null);
       let q = db
         .from('lead_activities')
         .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at, callback_at')
         .is('deleted_at', null)
-        .neq('status', 'concluida')
-        .order('updated_at', { ascending: false })
-        .limit(50);
+        .neq('status', 'concluida');
+      if (myExt) q = q.or(`assigned_to.eq.${myExt},assigned_to_ids.cs.{${myExt}}`);
       if (term.trim()) q = q.ilike('title', `%${term.trim()}%`);
+      q = q.order('updated_at', { ascending: false }).limit(50);
       const { data } = await q;
       setRows((data as PickRow[]) || []);
       setLoading(false);
     }, 300);
     return () => clearTimeout(t);
-  }, [term, open]);
+  }, [term, open, user?.id]);
 
   // Sem busca → agrupa por prazo (minicalendário). Com busca → lista plana de resultados.
   const buckets = useMemo(() => (term.trim() ? [] : bucketize(rows)), [rows, term]);
