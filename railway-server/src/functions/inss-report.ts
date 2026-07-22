@@ -16,7 +16,7 @@ import { stageOf, STAGE_LABELS, STAGE_ORDER, type StageKey } from '../lib/inss-d
 const REPORT_TO_DEFAULT = 'adm@rprudencioadv.com';
 
 const STAGE_COLORS: Record<StageKey, string> = {
-  protocolo_analise: '#1d4ed8', exig_aberta: '#c2410c', exig_cumprida: '#b45309',
+  protocolado: '#7c3aed', analise: '#1d4ed8', exig_aberta: '#c2410c', exig_cumprida: '#b45309',
   deferido: '#15803d', indeferido: '#b91c1c', cancelada: '#4b5563', sem_veredito: '#0f766e',
 };
 
@@ -55,10 +55,6 @@ export const handler: RequestHandler = async (req, res) => {
       if (!p.case_id) orfaos++;
     }
 
-    // Movimentações nas últimas 24h (por last_email_at).
-    const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-    const mov24h = rows.filter((p) => p.last_email_at && new Date(p.last_email_at).getTime() >= dayAgo).length;
-
     const hoje = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date());
 
     const rowsHtml = STAGE_ORDER.filter((k) => counts[k] > 0).map((k) => `
@@ -73,7 +69,7 @@ export const handler: RequestHandler = async (req, res) => {
     const html = `
       <div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:640px;margin:0 auto;color:#111;">
         <h2 style="margin:0 0 4px;">Relatório de Benefícios — INSS Administrativo</h2>
-        <p style="margin:0 0 16px;color:#666;font-size:13px;">${esc(hoje)} · ${total} requerimentos ativos · ${mov24h} com movimentação nas últimas 24h</p>
+        <p style="margin:0 0 16px;color:#666;font-size:13px;">${esc(hoje)} · ${total} requerimentos ativos</p>
         <table style="border-collapse:collapse;width:100%;font-size:14px;">
           <thead>
             <tr><th style="text-align:left;padding:8px 12px;border-bottom:2px solid #111;">Marco</th>
@@ -96,7 +92,7 @@ export const handler: RequestHandler = async (req, res) => {
         </p>
       </div>`;
 
-    const payload = { total, orfaos, mov_24h: mov24h, por_marco: counts };
+    const payload = { total, orfaos, por_marco: counts };
 
     if (!send) {
       return res.status(200).json({ success: true, sent: false, ...payload, html });

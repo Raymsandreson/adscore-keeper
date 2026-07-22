@@ -170,7 +170,10 @@ function parseInssSubject(subject: string, body: string): {
     subject.match(/\[INSS\]\s+(.+?)(?:\s*$)/i);
   if (statusMatch) {
     let s = statusMatch[1].trim();
-    if (/realizado com sucesso/i.test(s)) s = 'Em análise';
+    // "Requerimento realizado com sucesso" = e-mail inicial do protocolo. É um
+    // marco próprio (Protocolado), com Data do Protocolo no corpo. Só vira análise
+    // quando o INSS manda um "alterado para Em análise" depois.
+    if (/realizado com sucesso/i.test(s)) s = 'Protocolado';
     out.status = s;
   }
 

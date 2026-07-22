@@ -12,19 +12,20 @@
 export type InssResultado = 'deferido' | 'indeferido';
 
 export type StageKey =
-  | 'protocolo_analise' | 'exig_aberta' | 'exig_cumprida'
+  | 'protocolado' | 'analise' | 'exig_aberta' | 'exig_cumprida'
   | 'deferido' | 'indeferido' | 'cancelada' | 'sem_veredito';
 
 /**
- * Marco previdenciário atual (espelha o front). "Pendente" conta como análise;
- * protocolado/análise ficam juntos (INSS não emite status protocolado puro);
- * "exigência cumprida" = em análise mas já passou por exigência (Set passouExig).
+ * Marco previdenciário atual (espelha o front). "Protocolado" = e-mail inicial
+ * "realizado com sucesso"; "Pendente" conta como análise; "exigência cumprida"
+ * = em análise mas já passou por exigência (Set passouExig).
  */
 export function stageOf(
   p: { id?: string; current_status?: string | null; resultado?: string | null },
   passouExig?: Set<string>,
 ): StageKey {
   const s = (p.current_status || '').toLowerCase();
+  if (s.includes('protocol')) return 'protocolado';
   if (s.includes('exig')) return 'exig_aberta';
   if (s.includes('cancel')) return 'cancelada';
   if (s.includes('conclu')) {
@@ -32,11 +33,12 @@ export function stageOf(
     if (p.resultado === 'indeferido') return 'indeferido';
     return 'sem_veredito';
   }
-  return (p.id && passouExig?.has(p.id)) ? 'exig_cumprida' : 'protocolo_analise';
+  return (p.id && passouExig?.has(p.id)) ? 'exig_cumprida' : 'analise';
 }
 
 export const STAGE_LABELS: Record<StageKey, string> = {
-  protocolo_analise: 'Protocolado / Em análise',
+  protocolado: 'Protocolado',
+  analise: 'Em análise',
   exig_aberta: 'Exigência (aberta)',
   exig_cumprida: 'Exigência cumprida',
   deferido: 'Deferido',
@@ -47,7 +49,7 @@ export const STAGE_LABELS: Record<StageKey, string> = {
 
 /** Ordem dos marcos na jornada do requerimento (para exibição). */
 export const STAGE_ORDER: StageKey[] = [
-  'protocolo_analise', 'exig_aberta', 'exig_cumprida',
+  'protocolado', 'analise', 'exig_aberta', 'exig_cumprida',
   'deferido', 'indeferido', 'cancelada', 'sem_veredito',
 ];
 

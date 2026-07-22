@@ -51,7 +51,7 @@ interface InssProcess {
 // concluir → conta como análise. "Exigência cumprida" = está em análise mas já
 // passou por exigência (precisa do histórico, daí o Set passouExig).
 type StageKey =
-  | "protocolo_analise" | "exig_aberta" | "exig_cumprida"
+  | "protocolado" | "analise" | "exig_aberta" | "exig_cumprida"
   | "deferido" | "indeferido" | "cancelada" | "sem_veredito";
 
 const stageOf = (
@@ -59,6 +59,7 @@ const stageOf = (
   passouExig: Set<string>,
 ): StageKey => {
   const s = (p.current_status || "").toLowerCase();
+  if (s.includes("protocol")) return "protocolado";
   if (s.includes("exig")) return "exig_aberta";
   if (s.includes("cancel")) return "cancelada";
   if (s.includes("conclu")) {
@@ -66,12 +67,13 @@ const stageOf = (
     if (p.resultado === "indeferido") return "indeferido";
     return "sem_veredito";
   }
-  // Em análise / pendente / outros — separa quem já passou por exigência.
-  return passouExig.has(p.id) ? "exig_cumprida" : "protocolo_analise";
+  // Em análise / pendente — separa quem já passou por exigência.
+  return passouExig.has(p.id) ? "exig_cumprida" : "analise";
 };
 
 const STAGES: { key: StageKey; label: string; cls: string }[] = [
-  { key: "protocolo_analise", label: "Protocolado / Em análise", cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
+  { key: "protocolado",   label: "Protocolado",          cls: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300" },
+  { key: "analise",       label: "Em análise",           cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
   { key: "exig_aberta",   label: "Exigência (aberta)",   cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
   { key: "exig_cumprida", label: "Exigência cumprida",   cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
   { key: "deferido",   label: "Deferido",    cls: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
@@ -107,6 +109,7 @@ const RAILWAY_BASE =
 
 const statusVariant = (s?: string | null) => {
   const v = (s || "").toLowerCase();
+  if (v.includes("protocol")) return "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300";
   if (v.includes("exig")) return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300";
   if (v.includes("conclu")) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
   if (v.includes("inde")) return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
@@ -442,7 +445,7 @@ export default function InssAdminProcessesTab() {
   // painel de topo. useMemo porque a lista pode passar de centenas de itens.
   const stageCounts = useMemo(() => {
     const acc: Record<StageKey, number> = {
-      protocolo_analise: 0, exig_aberta: 0, exig_cumprida: 0,
+      protocolado: 0, analise: 0, exig_aberta: 0, exig_cumprida: 0,
       deferido: 0, indeferido: 0, cancelada: 0, sem_veredito: 0,
     };
     for (const p of processes) acc[stageOf(p, passouExig)]++;
@@ -1277,7 +1280,7 @@ export default function InssAdminProcessesTab() {
       </div>
 
       {/* Relatório por estágio — clique num cartão pra filtrar a lista. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2">
         {STAGES.map((st) => {
           const active = stageFilter === st.key;
           return (
