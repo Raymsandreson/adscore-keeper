@@ -3,10 +3,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, ClipboardList } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { useChecklists } from '@/hooks/useChecklists';
+import { useChecklists, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
@@ -17,11 +17,19 @@ interface Stage {
   color: string;
 }
 
+interface DocChecklistItem {
+  id: string;
+  label: string;
+  checked?: boolean;
+  type?: string;
+}
+
 interface ChecklistItem {
   id: string;
   label: string;
   description?: string;
   checked?: boolean;
+  docChecklist?: DocChecklistItem[];
 }
 
 interface ChecklistInstance {
@@ -191,6 +199,35 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       i.id === instance.id
         ? { ...i, items: updatedItems, is_completed: updatedItems.every(item => item.checked) }
         : i
+    ));
+  };
+
+  // Marca/desmarca um item do checklist ASSOCIADO ao passo (docChecklist).
+  // É sub-item: persiste só o doc.checked no JSON de items; NÃO altera a
+  // conclusão do passo (is_completed) nem entra no ranking (log_checklist_step).
+  const handleToggleDocItem = async (instance: ChecklistInstance, itemId: string, docId: string) => {
+    if (instance.is_readonly) return;
+
+    const updatedItems = instance.items.map(item => {
+      if (item.id !== itemId) return item;
+      const docs = (item.docChecklist || []).map(d =>
+        d.id === docId ? { ...d, checked: !d.checked } : d
+      );
+      return { ...item, docChecklist: docs };
+    });
+
+    const { error } = await externalSupabase
+      .from('lead_checklist_instances')
+      .update({ items: JSON.parse(JSON.stringify(updatedItems)) })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao atualizar checklist do passo');
+      return;
+    }
+
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id ? { ...i, items: updatedItems } : i
     ));
   };
 
@@ -411,29 +448,73 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                         : 0;
 
                       return (
-                        <label
-                          key={item.id}
-                          className="flex items-start gap-2 py-0.5 text-xs cursor-pointer hover:bg-accent/50 rounded px-1 -mx-1"
-                        >
-                          <Checkbox
-                            checked={item.checked || false}
-                            onCheckedChange={() => handleToggleItem(instance, item.id)}
-                            className="mt-0.5"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <span className={cn(item.checked && "line-through text-muted-foreground")}>
-                              {item.label}
-                            </span>
-                            {item.description && (
-                              <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
+                        <div key={item.id} className="space-y-0.5">
+                          <label
+                            className={cn(
+                              "flex items-start gap-2 py-0.5 text-xs rounded px-1 -mx-1",
+                              instance.is_readonly ? "cursor-default" : "cursor-pointer hover:bg-accent/50",
                             )}
-                          </div>
-                          {stepWeight > 0 && (
-                            <span className="text-[9px] text-muted-foreground shrink-0 mt-0.5">
-                              {stepWeight.toFixed(1)}%
-                            </span>
-                          )}
-                        </label>
+                          >
+                            <Checkbox
+                              checked={item.checked || false}
+                              onCheckedChange={() => handleToggleItem(instance, item.id)}
+                              disabled={instance.is_readonly}
+                              className="mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span className={cn(item.checked && "line-through text-muted-foreground")}>
+                                {item.label}
+                              </span>
+                              {item.description && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
+                              )}
+                            </div>
+                            {stepWeight > 0 && (
+                              <span className="text-[9px] text-muted-foreground shrink-0 mt-0.5">
+                                {stepWeight.toFixed(1)}%
+                              </span>
+                            )}
+                          </label>
+
+                          {/* Checklist associado ao passo (documentos/requisitos/etc.):
+                              antes nem aparecia aqui — agora é visível e marcável. */}
+                          {item.docChecklist && item.docChecklist.length > 0 && (() => {
+                            const checklistType = item.docChecklist[0]?.type || 'documentos';
+                            const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
+                            const docDone = item.docChecklist.filter(d => d.checked).length;
+                            return (
+                              <div className="ml-6 p-1.5 rounded bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
+                                <div className="flex items-center gap-1 mb-0.5">
+                                  <ClipboardList className="h-2.5 w-2.5 text-orange-600 dark:text-orange-400" />
+                                  <span className="text-[9px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">
+                                    {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
+                                  </span>
+                                </div>
+                                <div className="space-y-0.5">
+                                  {item.docChecklist.map(doc => (
+                                    <label
+                                      key={doc.id}
+                                      className={cn(
+                                        "flex items-center gap-1.5 text-[11px] py-0.5",
+                                        instance.is_readonly ? "cursor-default" : "cursor-pointer",
+                                      )}
+                                    >
+                                      <Checkbox
+                                        checked={doc.checked || false}
+                                        onCheckedChange={() => handleToggleDocItem(instance, item.id, doc.id)}
+                                        disabled={instance.is_readonly}
+                                        className="h-3 w-3"
+                                      />
+                                      <span className={cn(doc.checked && "line-through text-muted-foreground")}>
+                                        {doc.label}
+                                      </span>
+                                    </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                        </div>
                       );
                     })}
                   </div>
