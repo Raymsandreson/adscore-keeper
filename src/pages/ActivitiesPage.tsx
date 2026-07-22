@@ -2385,10 +2385,11 @@ const ActivitiesPage = () => {
     const list = activeRoutine.length === 0
       ? ACTIVITY_TYPES.map(t => ({ value: t.value, label: t.label }))
       : allKnownActivityTypes.filter(t => routineKeys.has(t.value)).map(t => ({ value: t.value, label: t.label }));
-    // "Reunião" sempre disponível no seletor (usada em atividade interna/agenda),
-    // mesmo quando não faz parte da rotina do assessor. Detecta por rótulo (a key
+    // "Reunião" fura o filtro de rotina APENAS quando a atividade é Interna (de
+    // equipe): reuniões internas não fazem parte da rotina do assessor. Fora do
+    // modo interno, o seletor segue exatamente a rotina. Detecta por rótulo (a key
     // no Externo é custom_..., não a seed 'reuniao') via isMeetingType.
-    if (!list.some(t => isMeetingType(t.value, t.label))) {
+    if (formIsSystem && !list.some(t => isMeetingType(t.value, t.label))) {
       const meetings = allKnownActivityTypes.filter(t => isMeetingType(t.value, t.label));
       // Prefere a "Reunião" real do banco (key custom_...) à seed 'reuniao', pra
       // novas reuniões caírem no mesmo tipo das já existentes.
@@ -2396,7 +2397,7 @@ const ActivitiesPage = () => {
       if (meeting) list.push({ value: meeting.value, label: meeting.label });
     }
     return list;
-  }, [activeRoutine, allKnownActivityTypes]);
+  }, [activeRoutine, allKnownActivityTypes, formIsSystem]);
 
   const suggestActivityType = useCallback(async (title: string) => {
     if (!title || title.trim().length < 5) return;
