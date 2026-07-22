@@ -25,7 +25,7 @@ IMPORTANTE:
 - Preserve todos os IDs existentes (stageId, item ids)
 - Gere checklists (docChecklist) com 2-5 itens para novos passos
 - Tipos: "documentos", "requisitos", "perguntas", "verificacao", "outro"
-- Passos podem ter "answers" (pergunta com respostas): concluir o passo exige escolher uma resposta, e cada resposta pode ter nextStageId ("__finalize__" para finalizar, ou id de fase para mover). Preserve as answers existentes; se o usuário pedir uma pergunta com desdobramento, use answers em vez de nextStageId no passo.
+- Passos e itens de docChecklist podem ter "answers" (pergunta com respostas): concluir exige escolher uma resposta, e cada resposta pode ter nextStageId ("__finalize__" para finalizar, ou id de fase para mover). Preserve as answers existentes; se o usuário pedir uma pergunta com desdobramento, use answers em vez de nextStageId.
 
 ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join(', ')}` : ''}`;
 
@@ -104,6 +104,19 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                                         id: { type: "string" },
                                         label: { type: "string" },
                                         type: { type: "string", enum: ["documentos", "requisitos", "perguntas", "verificacao", "outro"] },
+                                        nextStageId: { type: "string" },
+                                        answers: {
+                                          type: "array",
+                                          items: {
+                                            type: "object",
+                                            properties: {
+                                              id: { type: "string" },
+                                              label: { type: "string" },
+                                              nextStageId: { type: "string" },
+                                            },
+                                            required: ["id", "label"],
+                                          },
+                                        },
                                       },
                                       required: ["id", "label", "type"],
                                     },

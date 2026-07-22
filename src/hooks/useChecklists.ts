@@ -20,6 +20,7 @@ export interface DocChecklistItem {
   checked?: boolean;
   type?: ChecklistType;
   nextStageId?: string;
+  answers?: StepAnswerOption[]; // pergunta com respostas: o destino vem da resposta escolhida (ignora nextStageId)
 }
 
 // Campos da atividade que podem ter modelo de mensagem por passo.

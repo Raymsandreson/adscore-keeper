@@ -245,7 +245,20 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 ? step.answers.map((a: Partial<StepAnswerOption>) => ({ id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId || undefined }))
                 : prevStepsById.get(step.id)?.answers,
               docChecklist: step.docChecklist?.length
-                ? step.docChecklist.map((d: any) => ({ id: d.id || crypto.randomUUID(), label: d.label, type: d.type || 'documentos', nextStageId: d.nextStageId }))
+                ? step.docChecklist.map((d: any) => {
+                    // Mesma proteção das answers de passo: se a IA devolver o item
+                    // sem os campos que não conhece, restaura do estado anterior.
+                    const prevDoc = prevStepsById.get(step.id)?.docChecklist?.find(pd => pd.id === d.id);
+                    return {
+                      id: d.id || crypto.randomUUID(),
+                      label: d.label,
+                      type: d.type || 'documentos',
+                      nextStageId: d.nextStageId ?? prevDoc?.nextStageId,
+                      answers: d.answers?.length
+                        ? d.answers.map((a: Partial<StepAnswerOption>) => ({ id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId || undefined }))
+                        : prevDoc?.answers,
+                    };
+                  })
                 : undefined,
             })),
             isExpanded: true,
@@ -1399,7 +1412,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     <X className="h-3.5 w-3.5" />
                   </Button>
                 </div>
-                {/* Mover para fase */}
+                {/* Mover para fase — só quando o item não tem respostas configuradas */}
+                {!item.answers?.length && (
                 <div className="flex items-center gap-2 ml-7">
                   <Label className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">Mover para:</Label>
                   <Select
@@ -1432,6 +1446,85 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+                )}
+
+                {/* Respostas da pergunta — cada resposta com seu destino */}
+                <div className="ml-7 space-y-1">
+                  {(item.answers || []).map(answer => (
+                    <div key={answer.id} className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-purple-500 flex-shrink-0" title="Resposta">↳</span>
+                      <Input
+                        value={answer.label}
+                        onChange={e => setDocChecklistDialog(prev => prev ? {
+                          ...prev,
+                          items: prev.items.map(i => i.id === item.id
+                            ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, label: e.target.value } : a) }
+                            : i),
+                        } : null)}
+                        placeholder="Texto da resposta..."
+                        className="h-6 text-xs flex-1"
+                      />
+                      <Select
+                        value={answer.nextStageId || '__none__'}
+                        onValueChange={v => setDocChecklistDialog(prev => prev ? {
+                          ...prev,
+                          items: prev.items.map(i => i.id === item.id
+                            ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, nextStageId: v === '__none__' ? undefined : v } : a) }
+                            : i),
+                        } : null)}
+                      >
+                        <SelectTrigger className="h-6 text-[10px] w-32 flex-shrink-0">
+                          <SelectValue placeholder="Não mover" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">
+                            <span className="text-muted-foreground">Não mover</span>
+                          </SelectItem>
+                          <SelectItem value="__finalize__">
+                            <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
+                              <span className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500" />
+                              ✅ Finalizar
+                            </div>
+                          </SelectItem>
+                          {phases.map(p => (
+                            <SelectItem key={p.stageId} value={p.stageId}>
+                              <div className="flex items-center gap-1.5">
+                                <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                                {p.stageName}
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-5 w-5 text-destructive/70 hover:text-destructive flex-shrink-0"
+                        onClick={() => setDocChecklistDialog(prev => prev ? {
+                          ...prev,
+                          items: prev.items.map(i => i.id === item.id
+                            ? { ...i, answers: (i.answers || []).filter(a => a.id !== answer.id) }
+                            : i),
+                        } : null)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="flex items-center gap-1 text-[10px] text-purple-600 dark:text-purple-400 hover:underline"
+                    onClick={() => setDocChecklistDialog(prev => prev ? {
+                      ...prev,
+                      items: prev.items.map(i => i.id === item.id
+                        ? { ...i, answers: [...(i.answers || []), { id: crypto.randomUUID(), label: '' }] }
+                        : i),
+                    } : null)}
+                  >
+                    <Plus className="h-3 w-3" />
+                    Adicionar resposta {!item.answers?.length && '(pergunta com desdobramento)'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -1483,8 +1576,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             <Button variant="outline" size="sm" onClick={() => { setDocChecklistDialog(null); setNewDocItem(''); }}>Cancelar</Button>
             <Button size="sm" onClick={() => {
               if (docChecklistDialog) {
-                // Apply the type to all items
-                const typedItems = docChecklistDialog.items.map(item => ({ ...item, type: item.type || docChecklistDialog.checklistType }));
+                // Apply the type to all items; descarta respostas vazias e,
+                // quando há respostas, o destino do item passa a ser delas.
+                const typedItems = docChecklistDialog.items.map(item => {
+                  const answers = (item.answers || []).filter(a => a.label.trim());
+                  return {
+                    ...item,
+                    type: item.type || docChecklistDialog.checklistType,
+                    answers: answers.length > 0 ? answers : undefined,
+                    nextStageId: answers.length > 0 ? undefined : item.nextStageId,
+                  };
+                });
                 updateStepDocChecklist(docChecklistDialog.phaseIdx, docChecklistDialog.objIdx, docChecklistDialog.stepId, typedItems);
                 setDocChecklistDialog(null);
                 setNewDocItem('');

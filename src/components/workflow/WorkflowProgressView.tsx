@@ -66,6 +66,9 @@ export function WorkflowProgressView({
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
   const [expandedObjectives, setExpandedObjectives] = useState<Set<string>>(new Set());
   const [docCheckStates, setDocCheckStates] = useState<Record<string, Record<string, boolean>>>({});
+  // Resposta escolhida por item de checklist do passo (itemId → docId → answerId).
+  // Assim como o docCheckStates, é estado local da sessão (não persiste).
+  const [docAnswerStates, setDocAnswerStates] = useState<Record<string, Record<string, string>>>({});
   const { logActivity } = useActivityLogger();
   const { user: authUser } = useAuthContext();
 
@@ -764,9 +767,13 @@ export function WorkflowProgressView({
                                                   <div className="space-y-1">
                                                     {item.docChecklist.map(doc => {
                                                       const isDocChecked = docCheckStates[item.id]?.[doc.id] || false;
+                                                      const docHasAnswers = !!doc.answers?.length;
+                                                      const chosenAnswer = docHasAnswers
+                                                        ? doc.answers!.find(a => a.id === docAnswerStates[item.id]?.[doc.id])
+                                                        : undefined;
                                                       return (
+                                                        <div key={doc.id}>
                                                         <label
-                                                          key={doc.id}
                                                           className={cn(
                                                             "flex items-center gap-2 p-1.5 rounded cursor-pointer hover:bg-orange-100/50 dark:hover:bg-orange-900/20 transition-colors",
                                                             isDocChecked && "opacity-60"
@@ -775,6 +782,11 @@ export function WorkflowProgressView({
                                                           <Checkbox
                                                             checked={isDocChecked}
                                                             onCheckedChange={(checked) => {
+                                                              // Pergunta com respostas: marcar exige escolher uma resposta
+                                                              if (checked && docHasAnswers) {
+                                                                toast.info('Escolha uma das respostas abaixo');
+                                                                return;
+                                                              }
                                                               setDocCheckStates(prev => ({
                                                                 ...prev,
                                                                 [item.id]: {
@@ -782,8 +794,15 @@ export function WorkflowProgressView({
                                                                   [doc.id]: !!checked,
                                                                 },
                                                               }));
+                                                              // Desmarcar limpa a resposta escolhida
+                                                              if (!checked && docHasAnswers) {
+                                                                setDocAnswerStates(prev => ({
+                                                                  ...prev,
+                                                                  [item.id]: { ...prev[item.id], [doc.id]: '' },
+                                                                }));
+                                                              }
                                                               // Conditional branching for doc checklist items
-                                                              if (checked && doc.nextStageId) {
+                                                              if (checked && doc.nextStageId && !docHasAnswers) {
                                                                 applyStageRouting(doc.nextStageId);
                                                               }
                                                             }}
@@ -795,7 +814,13 @@ export function WorkflowProgressView({
                                                           )}>
                                                             {doc.label}
                                                           </span>
-                                                          {doc.nextStageId && (() => {
+                                                          {docHasAnswers && (
+                                                            <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 flex-shrink-0">
+                                                              <HelpCircle className="h-2 w-2" />
+                                                              Pergunta
+                                                            </Badge>
+                                                          )}
+                                                          {doc.nextStageId && !docHasAnswers && (() => {
                                                             if (doc.nextStageId === '__finalize__') {
                                                               return (
                                                                 <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">
@@ -812,6 +837,57 @@ export function WorkflowProgressView({
                                                             ) : null;
                                                           })()}
                                                         </label>
+
+                                                        {/* Respostas da pergunta: escolher marca o item e roteia pelo destino da resposta */}
+                                                        {docHasAnswers && !isDocChecked && (
+                                                          <div className="ml-7 mt-1 mb-1 flex flex-col gap-1">
+                                                            {doc.answers!.map(ans => (
+                                                              <Button
+                                                                key={ans.id}
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="h-auto min-h-6 justify-between text-xs px-2 py-1"
+                                                                onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setDocCheckStates(prev => ({
+                                                                    ...prev,
+                                                                    [item.id]: { ...prev[item.id], [doc.id]: true },
+                                                                  }));
+                                                                  setDocAnswerStates(prev => ({
+                                                                    ...prev,
+                                                                    [item.id]: { ...prev[item.id], [doc.id]: ans.id },
+                                                                  }));
+                                                                  if (ans.nextStageId) {
+                                                                    applyStageRouting(ans.nextStageId);
+                                                                  }
+                                                                }}
+                                                              >
+                                                                <span className="text-left whitespace-normal">{ans.label}</span>
+                                                                {ans.nextStageId === '__finalize__' ? (
+                                                                  <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0 ml-2">
+                                                                    ✅ Finalizar
+                                                                  </Badge>
+                                                                ) : ans.nextStageId ? (() => {
+                                                                  const targetStage = board.stages.find(s => s.id === ans.nextStageId);
+                                                                  return targetStage ? (
+                                                                    <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 flex-shrink-0 ml-2">
+                                                                      <ArrowRight className="h-2 w-2" />
+                                                                      {targetStage.name}
+                                                                    </Badge>
+                                                                  ) : null;
+                                                                })() : null}
+                                                              </Button>
+                                                            ))}
+                                                          </div>
+                                                        )}
+
+                                                        {/* Resposta escolhida */}
+                                                        {docHasAnswers && isDocChecked && chosenAnswer && (
+                                                          <p className="ml-7 text-[10px] text-purple-600 dark:text-purple-400">
+                                                            Resposta: <span className="font-medium">{chosenAnswer.label}</span>
+                                                          </p>
+                                                        )}
+                                                        </div>
                                                       );
                                                     })}
                                                   </div>
