@@ -14,7 +14,7 @@ const ALERT_PRESETS = [
   'Podemos falar rapidinho? Me chama.',
   'Retome as atividades, por favor.',
 ];
-import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2 } from 'lucide-react';
+import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
@@ -59,6 +59,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
   const [groups, setGroups] = useState<TeamGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [query, setQuery] = useState('');
   const [view, setView] = useState<PanelView>('now');
   const { types: activityTypes } = useActivityTypes();
   const typeLabel = useCallback((key: string | null) => {
@@ -266,13 +267,28 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
     [groups],
   );
 
-  // Com filtro ativo, esconde membros fora do status e times que ficarem vazios.
+  // Filtros do "Time agora": status (chips) + busca por texto (nome do membro
+  // ou nome do time). Se a busca casar o nome do time, mostra o time inteiro;
+  // senão, filtra pelos membros que casam. Times vazios somem.
   const visibleGroups = useMemo(() => {
-    if (statusFilter === 'all') return groups;
-    return groups
-      .map(g => ({ ...g, members: g.members.filter(m => m.state === statusFilter) }))
-      .filter(g => g.members.length > 0);
-  }, [groups, statusFilter]);
+    const q = query.trim().toLowerCase();
+    let gs = groups;
+    if (statusFilter !== 'all') {
+      gs = gs
+        .map(g => ({ ...g, members: g.members.filter(m => m.state === statusFilter) }))
+        .filter(g => g.members.length > 0);
+    }
+    if (q) {
+      gs = gs
+        .map(g => (
+          g.name.toLowerCase().includes(q)
+            ? g
+            : { ...g, members: g.members.filter(m => m.name.toLowerCase().includes(q)) }
+        ))
+        .filter(g => g.members.length > 0);
+    }
+    return gs;
+  }, [groups, statusFilter, query]);
 
   // Ranking do dia: membros únicos (podem estar em mais de um time)
   const allMembers = useMemo(() => {
@@ -342,6 +358,27 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
           ))}
         </div>
         )}
+        {view === 'now' && (
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Buscar membro ou time…"
+              className="h-7 pl-7 pr-7 text-xs"
+            />
+            {query && (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent"
+                title="Limpar busca"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
         <div className="px-3 py-2 space-y-3">
@@ -391,7 +428,8 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
           )}
           {view === 'now' && !loading && visibleGroups.length === 0 && (
             <div className="py-6 text-center text-muted-foreground text-sm">
-              {statusFilter === 'all' ? 'Nenhum membro encontrado.'
+              {query.trim() ? `Nada encontrado para "${query.trim()}".`
+                : statusFilter === 'all' ? 'Nenhum membro encontrado.'
                 : statusFilter === 'working' ? 'Ninguém em atividade agora.' : 'Ninguém ocioso agora.'}
             </div>
           )}
