@@ -682,6 +682,10 @@ export function UserProductivityBanner() {
           ))}
         </div>
 
+        {/* Dock do cronômetro — renderizado aqui (em fluxo, sem cobrir conteúdo)
+            pelo ActivityTimerOverlay via portal. (skill: ui-sem-sobreposicao) */}
+        <div id="activity-timer-dock" className="flex items-center min-w-0 overflow-x-auto flex-shrink" />
+
         {/* Session time */}
         <div className="flex items-center gap-1 flex-shrink-0">
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />

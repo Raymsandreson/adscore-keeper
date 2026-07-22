@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { ArrowLeftRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
@@ -404,6 +405,25 @@ export function ActivityTimerOverlay() {
   const [teamViewActivityId, setTeamViewActivityId] = useState<string | null>(null);
   const timedActivityId = current?.kind === 'activity' ? current.activityId : null;
 
+  // Dock: se a barra de produtividade (sticky, em fluxo) está montada, o cronômetro
+  // é renderizado DENTRO dela via portal — nunca cobre conteúdo. Sem a barra, volta
+  // ao modo flutuante colado na borda. (skill: ui-sem-sobreposicao)
+  // Reavaliado a cada tick de 1s (força re-render), então pega a barra ao montar/desmontar.
+  const dockSlot = typeof document !== 'undefined' ? document.getElementById('activity-timer-dock') : null;
+  const docked = !!dockSlot;
+  const dock = (el: ReactNode) => (dockSlot ? createPortal(el, dockSlot) : el);
+  const floatWrap = docked ? '' : 'fixed z-[9990] shadow-lg backdrop-blur touch-none ';
+  const grab = docked ? '' : 'cursor-grab active:cursor-grabbing';
+  const dragAttrs = docked
+    ? {}
+    : {
+        ref: drag.setElRef,
+        style: drag.style,
+        onPointerDown: drag.onPointerDown,
+        onPointerMove: drag.onPointerMove,
+        onPointerUp: drag.onPointerUp,
+      };
+
   return (
     <>
       {/* Fora do expediente: só o botão de bater o ponto (nada conta, nada bipa) */}
@@ -430,16 +450,12 @@ export function ActivityTimerOverlay() {
         // Clique fica no contêiner (não num botão interno): o drag faz
         // setPointerCapture no pointerdown e o click é reentregue ao próprio
         // contêiner — botão interno nunca receberia o clique.
-        return (
+        return dock(
           <div
-            ref={drag.setElRef}
-            style={drag.style}
-            onPointerDown={drag.onPointerDown}
-            onPointerMove={drag.onPointerMove}
-            onPointerUp={drag.onPointerUp}
+            {...dragAttrs}
             onClick={() => { if (!drag.wasDragged()) showTimer(); }}
-            className={`fixed z-[9990] flex items-center gap-1.5 rounded-full px-2.5 py-1 shadow-lg backdrop-blur touch-none select-none cursor-pointer hover:opacity-90 ${palette}`}
-            title="Cronômetro minimizado · clique para expandir · arraste para mover"
+            className={`${floatWrap}flex items-center gap-1.5 rounded-full px-2.5 py-1 select-none cursor-pointer hover:opacity-90 ${palette}`}
+            title={docked ? 'Cronômetro minimizado · clique para expandir' : 'Cronômetro minimizado · clique para expandir · arraste para mover'}
           >
             {current.kind === 'activity' && (
               <span className="relative flex h-2 w-2">
@@ -459,19 +475,15 @@ export function ActivityTimerOverlay() {
         );
       })()}
 
-      {current && current.kind === 'activity' && !hidden && (
+      {current && current.kind === 'activity' && !hidden && dock(
         <div
-          ref={drag.setElRef}
-          style={drag.style}
-          onPointerDown={drag.onPointerDown}
-          onPointerMove={drag.onPointerMove}
-          onPointerUp={drag.onPointerUp}
-          className="fixed z-[9990] flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
-          title="Arraste para mover · clique no tempo para abrir a atividade"
+          {...dragAttrs}
+          className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
+          title={docked ? 'Clique no tempo para abrir a atividade' : 'Arraste para mover · clique no tempo para abrir a atividade'}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          {!docked && <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />}
           <div className="flex items-center gap-1.5">
-          <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
+          {!docked && <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />}
           <span className="relative flex h-2.5 w-2.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
@@ -546,21 +558,17 @@ export function ActivityTimerOverlay() {
         </Suspense>
       )}
 
-      {current && current.kind === 'gap' && !hidden && (
+      {current && current.kind === 'gap' && !hidden && dock(
         <div
-          ref={drag.setElRef}
-          style={drag.style}
-          onPointerDown={drag.onPointerDown}
-          onPointerMove={drag.onPointerMove}
-          onPointerUp={drag.onPointerUp}
-          className="fixed z-[9990] flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          {...dragAttrs}
+          className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
           title={gapWorking
-            ? 'Arraste para mover · sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
-            : 'Arraste para mover · tempo ocioso entre atividades'}
+            ? 'Sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
+            : 'Tempo ocioso entre atividades'}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          {!docked && <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />}
           <div className="flex items-center gap-1.5">
-          <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
+          {!docked && <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />}
           {gapWorking ? (
             <>
               <Clock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
@@ -616,19 +624,15 @@ export function ActivityTimerOverlay() {
       )}
 
 
-      {current && current.kind === 'break' && !hidden && (
+      {current && current.kind === 'break' && !hidden && dock(
         <div
-          ref={drag.setElRef}
-          style={drag.style}
-          onPointerDown={drag.onPointerDown}
-          onPointerMove={drag.onPointerMove}
-          onPointerUp={drag.onPointerUp}
-          className="fixed z-[9990] flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 shadow-lg backdrop-blur touch-none select-none cursor-grab active:cursor-grabbing"
+          {...dragAttrs}
+          className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
           title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          {!docked && <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />}
           <div className="flex items-center gap-1.5">
-          <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />
+          {!docked && <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />}
           <UtensilsCrossed className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />
           {(() => {
             const eta = current.estimateMinutes || 0;
