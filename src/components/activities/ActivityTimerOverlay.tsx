@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense } from 'react';
-import { Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db } from '@/integrations/supabase';
 
@@ -31,6 +31,21 @@ function VoiceActivityButton({ className, onClick, label }: { className?: string
     >
       <Mic className="h-3.5 w-3.5" />
       {label && <span className="text-[11px] font-medium">{label}</span>}
+    </button>
+  );
+}
+
+/** Botão que abre o seletor de atividade sob demanda (trocar/escolher a atividade atual, sem abrir o menu). */
+function SwitchActivityButton({ className, onClick }: { className?: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      className={className}
+      title="Trocar de atividade — escolher qual você está fazendo agora, sem abrir o menu"
+    >
+      <ArrowLeftRight className="h-3.5 w-3.5" />
     </button>
   );
 }
@@ -361,6 +376,8 @@ export function ActivityTimerOverlay() {
   const drag = useDraggablePosition();
   const [sheetOpen, setSheetOpen] = useState(false);
   const [voiceOpen, setVoiceOpen] = useState(false);
+  // Seletor de troca de atividade aberto sob demanda (botão ⇄ no badge).
+  const [switchOpen, setSwitchOpen] = useState(false);
   // Atv de um MEMBRO aberta pelo painel Time agora — sheet fora do badge
   // (dentro dele o drag sequestraria os cliques via pointer capture).
   const [teamViewActivityId, setTeamViewActivityId] = useState<string | null>(null);
@@ -456,6 +473,10 @@ export function ActivityTimerOverlay() {
             estimateMinutes={current.estimateMinutes}
             activeSeconds={current.activeSeconds}
             onSet={setEstimate}
+          />
+          <SwitchActivityButton
+            className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
+            onClick={() => setSwitchOpen(true)}
           />
           <button
             type="button"
@@ -554,6 +575,10 @@ export function ActivityTimerOverlay() {
             className="ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
             onClick={() => setVoiceOpen(true)}
             label="O que faço?"
+          />
+          <SwitchActivityButton
+            className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            onClick={() => setSwitchOpen(true)}
           />
           <TeamPanelButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onOpenActivity={setTeamViewActivityId} />
           <button
@@ -724,8 +749,13 @@ export function ActivityTimerOverlay() {
         </DialogContent>
       </Dialog>
 
-      {/* Seletor de atividade "agora" */}
-      <SwitchActivityDialog open={switchPrompt} onPick={switchTo} onClose={dismissSwitch} />
+      {/* Seletor de atividade "agora" — abre sozinho por ociosidade (switchPrompt)
+          ou sob demanda pelo botão ⇄ no badge (switchOpen). */}
+      <SwitchActivityDialog
+        open={switchPrompt || switchOpen}
+        onPick={async (a) => { setSwitchOpen(false); await switchTo(a); }}
+        onClose={() => { setSwitchOpen(false); dismissSwitch(); }}
+      />
 
       {/* Registro rápido por voz — "o que você está fazendo" (documenta o dia).
           Ao criar, inicia o cronômetro na atividade nova e abre a ficha dela. */}
