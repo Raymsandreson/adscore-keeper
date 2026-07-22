@@ -634,9 +634,11 @@ export function TeamsManager() {
     return entry?.evaluated_metrics || [];
   };
 
-  const getBoardName = (boardIdVal: string | null) => {
+  const getBoardInfo = (boardIdVal: string | null) => {
     if (!boardIdVal) return null;
-    return boards.find(b => b.id === boardIdVal)?.name || null;
+    const b = boards.find(bb => bb.id === boardIdVal);
+    if (!b) return null;
+    return { name: b.name, label: b.board_type === 'workflow' ? 'Fluxo' : 'Funil' };
   };
 
   if (loading) {
@@ -825,7 +827,7 @@ export function TeamsManager() {
           {teams.map(team => {
             const currentMembers = getTeamMembers(team.id);
             const available = getAvailableMembers(team.id);
-            const boardName = getBoardName(team.board_id);
+            const boardInfo = getBoardInfo(team.board_id);
             return (
               <Card key={team.id}>
                 <CardHeader className="pb-3">
@@ -865,10 +867,10 @@ export function TeamsManager() {
                   </div>
                   <div className="flex flex-col gap-1">
                     {team.description && <CardDescription>{team.description}</CardDescription>}
-                    {boardName && (
+                    {boardInfo && (
                       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                         <LayoutGrid className="h-3 w-3" />
-                        <span>Funil: <strong className="text-foreground">{boardName}</strong></span>
+                        <span>{boardInfo.label}: <strong className="text-foreground">{boardInfo.name}</strong></span>
                       </div>
                     )}
                   </div>
