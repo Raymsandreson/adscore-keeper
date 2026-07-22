@@ -93,6 +93,8 @@ export const handler: RequestHandler = async (req, res) => {
 
     const stats = { scanned: procList.length, deferido: 0, indeferido: 0, indefinido: 0, sem_email: 0, sem_despacho: 0, erros: 0, updated: 0 };
     const samples: Array<{ req: string; resultado: string | null; servico: string | null }> = [];
+    // Amostras dos que TÊM despacho mas não classificaram — para calibrar a regex.
+    const indefinidos: Array<{ req: string; despacho: string }> = [];
 
     // 3) Processa em pool de concorrência limitada.
     let cursor = 0;
@@ -110,7 +112,11 @@ export const handler: RequestHandler = async (req, res) => {
           const resultado = classifyResultado(despacho);
           if (resultado === 'deferido') stats.deferido++;
           else if (resultado === 'indeferido') stats.indeferido++;
-          else { stats.indefinido++; if (!despacho) stats.sem_despacho++; }
+          else {
+            stats.indefinido++;
+            if (!despacho) stats.sem_despacho++;
+            else if (indefinidos.length < 30) indefinidos.push({ req: proc.requerimento_number, despacho: despacho.slice(0, 300) });
+          }
           if (samples.length < 8) samples.push({ req: proc.requerimento_number, resultado: resultado || null, servico: servico || null });
 
           if (!dryRun && (resultado || servico || despacho)) {
@@ -129,7 +135,7 @@ export const handler: RequestHandler = async (req, res) => {
     };
     await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
-    return res.status(200).json({ success: true, dry_run: dryRun, ...stats, samples });
+    return res.status(200).json({ success: true, dry_run: dryRun, ...stats, samples, indefinidos });
   } catch (err: any) {
     return res.status(200).json({ success: false, error: err?.message || String(err) });
   }
