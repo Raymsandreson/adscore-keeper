@@ -11,6 +11,36 @@
 
 export type InssResultado = 'deferido' | 'indeferido';
 
+export type StageKey =
+  | 'exigencia' | 'analise' | 'deferido' | 'indeferido'
+  | 'concluida' | 'pendente' | 'cancelada' | 'outros';
+
+/** Estágio canônico a partir de status + veredito (espelha o front). */
+export function stageOf(p: { current_status?: string | null; resultado?: string | null }): StageKey {
+  const s = (p.current_status || '').toLowerCase();
+  if (s.includes('exig')) return 'exigencia';
+  if (s.includes('cancel')) return 'cancelada';
+  if (s.includes('conclu')) {
+    if (p.resultado === 'deferido') return 'deferido';
+    if (p.resultado === 'indeferido') return 'indeferido';
+    return 'concluida';
+  }
+  if (s.includes('pend')) return 'pendente';
+  if (s.includes('anali') || s.includes('anális')) return 'analise';
+  return 'outros';
+}
+
+export const STAGE_LABELS: Record<StageKey, string> = {
+  exigencia: 'Exigência',
+  analise: 'Em análise',
+  deferido: 'Deferido',
+  indeferido: 'Indeferido',
+  concluida: 'Concluída (sem veredito)',
+  pendente: 'Pendente',
+  cancelada: 'Cancelada',
+  outros: 'Outros',
+};
+
 /**
  * Classifica o resultado de um requerimento CONCLUÍDO pelo texto do Despacho.
  * Padrões observados nos e-mails reais:
@@ -22,8 +52,11 @@ export type InssResultado = 'deferido' | 'indeferido';
 export function classifyResultado(despacho?: string | null): InssResultado | undefined {
   if (!despacho) return undefined;
   const d = despacho.toLowerCase();
-  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b/.test(d)) return 'indeferido';
-  if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito/.test(d)) return 'deferido';
+  // Desfavorável — checado primeiro: contém negações ("não foi prorrogado",
+  // "não foi aprovado") que enganariam a checagem de deferido feita antes.
+  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b|n[ãa]o foi prorrogad|n[ãa]o cumprimento da exig|n[ãa]o (foi )?aprovad/.test(d)) return 'indeferido';
+  // Favorável — inclui prorrogação concedida e aprovação de benefício.
+  if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito|\bprorrogad[oa]\b|\baprovad[oa]\b/.test(d)) return 'deferido';
   return undefined;
 }
 

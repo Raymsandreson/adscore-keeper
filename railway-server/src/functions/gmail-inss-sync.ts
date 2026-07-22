@@ -120,8 +120,8 @@ function parseBrDate(s: string): string | undefined {
 function classifyResultado(despacho?: string): 'deferido' | 'indeferido' | undefined {
   if (!despacho) return undefined;
   const d = despacho.toLowerCase();
-  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b/.test(d)) return 'indeferido';
-  if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito/.test(d)) return 'deferido';
+  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b|n[ãa]o foi prorrogad|n[ãa]o cumprimento da exig|n[ãa]o (foi )?aprovad/.test(d)) return 'indeferido';
+  if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito|\bprorrogad[oa]\b|\baprovad[oa]\b/.test(d)) return 'deferido';
   return undefined;
 }
 
