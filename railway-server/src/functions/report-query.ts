@@ -27,18 +27,25 @@ import { aiChat } from '../lib/gemini';
  * Devolve { completion, engine } pra deixar visível qual motor respondeu.
  */
 async function callLLM(messages: any[]): Promise<{ completion: any; engine: string }> {
+  // thinking_budget: 0 → força thinkingLevel mínimo. Sem isso, o Gemini 3.x roda
+  // com thinking dinâmico (alto) quando há tools e, em perguntas complexas, consome
+  // todo o max_tokens no raciocínio ANTES de emitir o functionCall — a resposta volta
+  // sem tool_call e o handler joga "IA não retornou uma consulta". max_tokens folgado
+  // (era 1200) garante espaço pra SQL longa + explicação mesmo com algum thinking residual.
   try {
     const completion = await aiChat({
-      model: PRIMARY_MODEL, max_tokens: 1200, temperature: 0, messages,
+      model: PRIMARY_MODEL, max_tokens: 3000, temperature: 0, messages,
       tools: [emitSqlTool], tool_choice: { function: { name: 'emit_sql' } },
+      thinking_budget: 0,
     });
     return { completion, engine: PRIMARY_MODEL };
   } catch (primaryErr) {
     console.warn(`[report-query] primário (${PRIMARY_MODEL}) falhou, tentando fallback ${FALLBACK_MODEL}:`,
       primaryErr instanceof Error ? primaryErr.message : primaryErr);
     const completion = await aiChat({
-      model: FALLBACK_MODEL, max_tokens: 1200, temperature: 0, messages,
+      model: FALLBACK_MODEL, max_tokens: 3000, temperature: 0, messages,
       tools: [emitSqlTool], tool_choice: { function: { name: 'emit_sql' } },
+      thinking_budget: 0,
     });
     return { completion, engine: FALLBACK_MODEL };
   }

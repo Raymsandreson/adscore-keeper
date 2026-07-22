@@ -91,6 +91,8 @@ export interface GeminiCallOptions {
   temperature?: number;
   stream?: boolean;
   signal?: AbortSignal;
+  /** Controla o "thinking" do Gemini 3.x: 0 (ou <=0) = nível mínimo, >0 = high. */
+  thinking_budget?: number;
 }
 
 export async function callGemini(options: GeminiCallOptions): Promise<Response> {
