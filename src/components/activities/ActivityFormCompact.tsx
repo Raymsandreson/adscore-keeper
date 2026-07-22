@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useCampaigns, useCreateCampaign } from '@/hooks/useCampaigns';
+import { isMeetingType } from '@/hooks/useActivityTypes';
 import { Megaphone } from 'lucide-react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
@@ -1006,7 +1007,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             </div>
           )}
         </div>
-        {props.formType === 'reuniao' && (
+        {isMeetingType(props.formType, props.routineActivityTypes.find(t => t.value === props.formType)?.label) && (
           <div className="col-span-full">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
               📆 Data e hora da reunião

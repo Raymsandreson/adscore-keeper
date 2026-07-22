@@ -19,6 +19,18 @@ export interface ActivityType {
 const CACHE_KEY = 'activity_types';
 const EMPTY: ActivityType[] = [];
 
+/**
+ * Detecta o tipo "Reunião" de forma robusta. No Externo (kmedldlepwiityjsdahz) o tipo
+ * é uma linha custom (key `custom_...`), NÃO a seed `reuniao` — então casar só pela key
+ * não funciona. Casa pela key seed OU pelo rótulo normalizado (sem acento/maiúsculas),
+ * pra funcionar em qualquer banco.
+ */
+export function isMeetingType(key?: string | null, label?: string | null): boolean {
+  if (key === 'reuniao') return true;
+  const norm = (label || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
+  return norm === 'reuniao';
+}
+
 export function useActivityTypes() {
   const { data: types, loading, refetch } = useSharedFetch<ActivityType[]>(
     CACHE_KEY,

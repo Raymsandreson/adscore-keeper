@@ -14,7 +14,7 @@ import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
-import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
@@ -485,8 +485,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     assigned_to_name: formAssignedToName || null,
     deadline: formDeadline || null,
     notification_date: formNotificationDate || null,
-    // Só persiste horário de reunião quando o tipo é "reuniao" (evita valor órfão se trocar o tipo).
-    meeting_at: formType === 'reuniao' ? (formMeetingAt || null) : null,
+    // Só persiste horário quando o tipo é Reunião (detecção por rótulo — no Externo a key é custom_...).
+    meeting_at: isMeetingType(formType, activityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
     notes: formNotes || null,
     status: formStatus,
     contact_id: formContactId || null,
