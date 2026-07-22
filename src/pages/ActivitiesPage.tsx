@@ -63,7 +63,7 @@ import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activitie
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
-import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -2381,9 +2381,21 @@ const ActivitiesPage = () => {
     // Sem rotina do assessor: mostra só os tipos base (jurídicos padrão), não
     // todos os tipos custom do sistema (ex.: tipos de marketing). Assessores com
     // rotina configurada continuam vendo exatamente os tipos da rotina deles.
-    if (activeRoutine.length === 0) return ACTIVITY_TYPES.map(t => ({ value: t.value, label: t.label }));
     const routineKeys = new Set(activeRoutine.map(c => c.activityType));
-    return allKnownActivityTypes.filter(t => routineKeys.has(t.value));
+    const list = activeRoutine.length === 0
+      ? ACTIVITY_TYPES.map(t => ({ value: t.value, label: t.label }))
+      : allKnownActivityTypes.filter(t => routineKeys.has(t.value)).map(t => ({ value: t.value, label: t.label }));
+    // "Reunião" sempre disponível no seletor (usada em atividade interna/agenda),
+    // mesmo quando não faz parte da rotina do assessor. Detecta por rótulo (a key
+    // no Externo é custom_..., não a seed 'reuniao') via isMeetingType.
+    if (!list.some(t => isMeetingType(t.value, t.label))) {
+      const meetings = allKnownActivityTypes.filter(t => isMeetingType(t.value, t.label));
+      // Prefere a "Reunião" real do banco (key custom_...) à seed 'reuniao', pra
+      // novas reuniões caírem no mesmo tipo das já existentes.
+      const meeting = meetings.find(t => t.value !== 'reuniao') ?? meetings[0];
+      if (meeting) list.push({ value: meeting.value, label: meeting.label });
+    }
+    return list;
   }, [activeRoutine, allKnownActivityTypes]);
 
   const suggestActivityType = useCallback(async (title: string) => {
