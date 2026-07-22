@@ -130,6 +130,15 @@ interface ActivityTimerCtx {
 
 const Ctx = createContext<ActivityTimerCtx | null>(null);
 
+/**
+ * Data de HOJE no calendário de Brasília (YYYY-MM-DD). Casa com o default de
+ * work_date no banco ((now() at time zone 'America/Sao_Paulo')::date) e com o
+ * "início do dia" que o cliente usa. É a chave de partição por dia do cronômetro.
+ */
+export function brasiliaToday(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
 export function formatHMS(totalSeconds: number): string {
   const s = Math.max(0, Math.floor(totalSeconds));
   const h = Math.floor(s / 3600);
@@ -377,13 +386,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const refreshDayBase = useCallback(async () => {
     const u = await getUser();
     if (!u) return;
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
     try {
       const { data } = await dbAny.from('activity_time_entries')
         .select('id, active_seconds, idle_seconds, break_type')
         .eq('user_id', u.userId)
-        .gte('started_at', startOfDay.toISOString());
+        .eq('work_date', brasiliaToday());
       const curId = entryRef.current?.entryId;
       let active = 0, idle = 0;
       for (const r of ((data as { id: string; active_seconds: number; idle_seconds: number; break_type: string | null }[]) || [])) {
@@ -609,8 +616,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     const u = await getUser();
     if (!u) { sync(null); return; }
     await ensureExternalSession().catch(() => {});
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
+    const today = brasiliaToday();
     let entryId: string;
     let idleSeconds = 0;
     // active_seconds do gap: legado ("trabalho avulso" de antes da regra de
@@ -620,8 +626,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     try {
       const { data: existing } = await dbAny.from('activity_time_entries')
         .select('id, idle_seconds, active_seconds')
-        .eq('user_id', u.userId).is('activity_id', null)
-        .gte('started_at', startOfDay.toISOString())
+        .eq('user_id', u.userId).is('activity_id', null).is('break_type', null)
+        .eq('work_date', today)
         .order('started_at', { ascending: false }).limit(1).maybeSingle();
       if (existing) {
         entryId = existing.id;
@@ -634,6 +640,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
           activity_id: null, activity_type: null, activity_title: GAP_TITLE, lead_name: null,
           user_id: u.userId, user_name: u.userName,
           started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0, status: 'running',
+          work_date: today,
         }).select('id').single();
         if (error || !data) { sync(null); return; }
         entryId = (data as { id: string }).id;
@@ -713,9 +720,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       let activeSeconds = 0;
       let idleSeconds = 0;
       let estimateMinutes: number | null = activity.estimated_minutes ?? null;
+      // Retomada por DIA: só reaproveita a linha desta atv se for de HOJE. Num dia
+      // novo cria linha zerada (work_date = hoje) em vez de retomar o acumulado de
+      // dias anteriores — é isto que evita a atv aparecer com "5h" logo de manhã.
+      const today = brasiliaToday();
       const { data: rows } = await dbAny.from('activity_time_entries')
         .select('id, active_seconds, idle_seconds, started_at, estimated_minutes')
-        .eq('activity_id', activity.id).eq('user_id', u.userId)
+        .eq('activity_id', activity.id).eq('user_id', u.userId).eq('work_date', today)
         .order('active_seconds', { ascending: false })
         .limit(10);
       const existing = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
@@ -735,7 +746,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
           lead_name: activity.lead_name || null,
           user_id: u.userId, user_name: u.userName,
           started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0, status: 'running',
-          estimated_minutes: estimateMinutes,
+          estimated_minutes: estimateMinutes, work_date: today,
         }).select('id').single();
         if (error || !data) {
           console.error('[activity-timer] insert falhou:', error);
@@ -842,6 +853,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       user_id: u.userId, user_name: u.userName,
       started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0,
       status: 'running', break_type: type, break_note: note || null, estimated_minutes: eta,
+      work_date: brasiliaToday(),
     }).select('id').single();
     if (error || !data) { console.warn('[activity-timer] pausa falhou:', error); sync(null); return; }
     lastFlushRef.current = Date.now();
@@ -936,12 +948,20 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       // Reidrata a sessão running (activity > break > gap) para não parar no reload.
       try {
         const { data: running } = await dbAny.from('activity_time_entries')
-          .select('id, activity_id, activity_type, activity_title, lead_name, active_seconds, idle_seconds, estimated_minutes, break_type, break_note, started_at')
+          .select('id, activity_id, activity_type, activity_title, lead_name, active_seconds, idle_seconds, estimated_minutes, break_type, break_note, started_at, work_date')
           .eq('user_id', u.userId).eq('status', 'running')
           .order('started_at', { ascending: false }).limit(1).maybeSingle();
-        type R = { id: string; activity_id: string | null; activity_type: string | null; activity_title: string | null; lead_name: string | null; active_seconds: number | null; idle_seconds: number | null; estimated_minutes: number | null; break_type: BreakType | null; break_note: string | null };
+        type R = { id: string; activity_id: string | null; activity_type: string | null; activity_title: string | null; lead_name: string | null; active_seconds: number | null; idle_seconds: number | null; estimated_minutes: number | null; break_type: BreakType | null; break_note: string | null; work_date: string | null };
         const row = running as R | null;
-        if (row && !entryRef.current && !otherOwnerRef.current) {
+        // Sessão 'running' de um dia anterior (a pessoa não fechou o cronômetro):
+        // não retoma acumulando no dia velho — pausa e deixa o expediente de hoje
+        // começar limpo no gap. Sem isto, o tempo de ontem vazaria pro dia de hoje.
+        if (row && row.work_date && row.work_date !== brasiliaToday()) {
+          try {
+            await dbAny.from('activity_time_entries')
+              .update({ status: 'paused', ended_at: new Date().toISOString() }).eq('id', row.id);
+          } catch { /* melhor esforço */ }
+        } else if (row && !entryRef.current && !otherOwnerRef.current) {
           const kind: TimerEntry['kind'] = row.activity_id ? 'activity' : (row.break_type ? 'break' : 'gap');
           lastFlushRef.current = Date.now();
           lastInteractionRef.current = Date.now();

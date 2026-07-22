@@ -189,7 +189,11 @@ async function personPrevMetrics(allIds: string[], nome: string, prevStart: Date
       ? supabase.from('activity_time_entries')
           .select('active_seconds, idle_seconds')
           .in('user_id', allIds)
-          .gte('started_at', prevStart.toISOString()).lt('started_at', prevEnd.toISOString())
+          // Partição por dia (work_date): antes o filtro por started_at somava o
+          // acumulado vitalício da linha, deslocando a comparação. Granularidade
+          // de dia (calendário Brasília) — suficiente pra "mesmo ponto semana passada".
+          .gte('work_date', prevStart.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
+          .lte('work_date', prevEnd.toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }))
           .limit(2000)
       : Promise.resolve({ data: [] } as any),
   ]);

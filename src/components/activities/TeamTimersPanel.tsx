@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
-import { formatHMS, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
+import { formatHMS, brasiliaToday, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
@@ -125,13 +125,12 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
       const cloudToExt = new Map<string, string>();
       cloudIds.forEach((cid, i) => { if (extIds[i]) cloudToExt.set(cid, extIds[i] as string); });
 
-      // 3) Sessões de hoje (Externo) — status ao vivo + totais do dia por membro
-      const startOfDay = new Date();
-      startOfDay.setHours(0, 0, 0, 0);
-      const iso = startOfDay.toISOString();
+      // 3) Sessões de HOJE (Externo) — status ao vivo + totais do dia por membro.
+      // Filtra por work_date (partição por dia): antes somava active_seconds
+      // vitalício de qualquer linha "tocada hoje", inflando o total (ex.: 12h50).
       const { data: entries } = await dbAny.from('activity_time_entries')
         .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at, break_type, break_note')
-        .or(`ended_at.gte.${iso},started_at.gte.${iso}`);
+        .eq('work_date', brasiliaToday());
 
       type Entry = {
         user_id: string; activity_id: string | null; activity_title: string | null;

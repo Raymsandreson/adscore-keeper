@@ -104,15 +104,16 @@ export default function BancoHorasPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const fromTs = new Date(`${from}T00:00:00`).toISOString();
-      const toTs = new Date(`${to}T23:59:59`).toISOString();
+      // Período pela partição por dia (work_date): antes o filtro por started_at
+      // lançava o acumulado vitalício da linha inteiro no dia em que começou,
+      // inflando/deslocando o banco de horas. work_date é o dia real do tempo.
       const all: RawEntry[] = [];
       for (let offset = 0; ; offset += PAGE) {
         const { data, error } = await dbAny
           .from('activity_time_entries')
           .select('user_id, user_name, activity_id, activity_type, active_seconds, idle_seconds, break_type')
-          .gte('started_at', fromTs)
-          .lte('started_at', toTs)
+          .gte('work_date', from)
+          .lte('work_date', to)
           .order('started_at', { ascending: false })
           .range(offset, offset + PAGE - 1);
         if (error) throw error;
