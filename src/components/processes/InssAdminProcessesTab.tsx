@@ -45,35 +45,39 @@ interface InssProcess {
   servico?: string | null;
 }
 
-// Estágio canônico de um requerimento, derivado do status + veredito.
-// "Concluída" sozinha não diz se foi deferido/indeferido — isso vem de `resultado`
-// (extraído do Despacho). Enquanto o veredito não chega, cai em "concluida".
+// Marcos previdenciários na ordem da jornada do requerimento. O INSS não emite
+// status "Protocolado" (o e-mail inicial "realizado com sucesso" já é análise),
+// então protocolado e em análise ficam juntos. "Pendente" é transitório antes de
+// concluir → conta como análise. "Exigência cumprida" = está em análise mas já
+// passou por exigência (precisa do histórico, daí o Set passouExig).
 type StageKey =
-  | "exigencia" | "analise" | "deferido" | "indeferido"
-  | "concluida" | "pendente" | "cancelada" | "outros";
+  | "protocolo_analise" | "exig_aberta" | "exig_cumprida"
+  | "deferido" | "indeferido" | "cancelada" | "sem_veredito";
 
-const stageOf = (p: { current_status?: string | null; resultado?: string | null }): StageKey => {
+const stageOf = (
+  p: { id: string; current_status?: string | null; resultado?: string | null },
+  passouExig: Set<string>,
+): StageKey => {
   const s = (p.current_status || "").toLowerCase();
-  if (s.includes("exig")) return "exigencia";
+  if (s.includes("exig")) return "exig_aberta";
   if (s.includes("cancel")) return "cancelada";
   if (s.includes("conclu")) {
     if (p.resultado === "deferido") return "deferido";
     if (p.resultado === "indeferido") return "indeferido";
-    return "concluida";
+    return "sem_veredito";
   }
-  if (s.includes("pend")) return "pendente";
-  if (s.includes("anali") || s.includes("anális")) return "analise";
-  return "outros";
+  // Em análise / pendente / outros — separa quem já passou por exigência.
+  return passouExig.has(p.id) ? "exig_cumprida" : "protocolo_analise";
 };
 
 const STAGES: { key: StageKey; label: string; cls: string }[] = [
-  { key: "exigencia",  label: "Exigência",   cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
-  { key: "analise",    label: "Em análise",  cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
+  { key: "protocolo_analise", label: "Protocolado / Em análise", cls: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" },
+  { key: "exig_aberta",   label: "Exigência (aberta)",   cls: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300" },
+  { key: "exig_cumprida", label: "Exigência cumprida",   cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
   { key: "deferido",   label: "Deferido",    cls: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
   { key: "indeferido", label: "Indeferido",  cls: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
-  { key: "concluida",  label: "Concluída (sem veredito)", cls: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
-  { key: "pendente",   label: "Pendente",    cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
   { key: "cancelada",  label: "Cancelada",   cls: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+  { key: "sem_veredito", label: "Concluída (sem veredito)", cls: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
 ];
 
 interface InssHistoryRow {
@@ -282,6 +286,7 @@ export default function InssAdminProcessesTab() {
   const [search, setSearch] = useState("");
   const [showOnlyOrphans, setShowOnlyOrphans] = useState(false);
   const [stageFilter, setStageFilter] = useState<StageKey | null>(null);
+  const [passouExig, setPassouExig] = useState<Set<string>>(new Set());
   const [historyByProc, setHistoryByProc] = useState<Record<string, InssHistoryRow[]>>({});
   const [linkingProc, setLinkingProc] = useState<InssProcess | null>(null);
 
@@ -407,6 +412,15 @@ export default function InssAdminProcessesTab() {
     }));
     setProcesses(flat as any);
     setLoading(false);
+
+    // Set de quem já passou por exigência (para separar "exigência cumprida"
+    // de "em análise inicial" no painel). Query leve: só process_id.
+    const { data: exigRows } = await db
+      .from("inss_status_history" as any)
+      .select("process_id")
+      .ilike("to_status", "exig%")
+      .limit(10000);
+    setPassouExig(new Set((exigRows || []).map((r: any) => r.process_id).filter(Boolean)));
   };
 
   const loadHistory = async (procId: string) => {
@@ -428,17 +442,17 @@ export default function InssAdminProcessesTab() {
   // painel de topo. useMemo porque a lista pode passar de centenas de itens.
   const stageCounts = useMemo(() => {
     const acc: Record<StageKey, number> = {
-      exigencia: 0, analise: 0, deferido: 0, indeferido: 0,
-      concluida: 0, pendente: 0, cancelada: 0, outros: 0,
+      protocolo_analise: 0, exig_aberta: 0, exig_cumprida: 0,
+      deferido: 0, indeferido: 0, cancelada: 0, sem_veredito: 0,
     };
-    for (const p of processes) acc[stageOf(p)]++;
+    for (const p of processes) acc[stageOf(p, passouExig)]++;
     return acc;
-  }, [processes]);
+  }, [processes, passouExig]);
 
   const filtered = useMemo(() => {
     let list = processes;
     if (showOnlyOrphans) list = list.filter((p) => !p.case_id);
-    if (stageFilter) list = list.filter((p) => stageOf(p) === stageFilter);
+    if (stageFilter) list = list.filter((p) => stageOf(p, passouExig) === stageFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
@@ -450,7 +464,7 @@ export default function InssAdminProcessesTab() {
       );
     }
     return list;
-  }, [processes, search, showOnlyOrphans, stageFilter]);
+  }, [processes, search, showOnlyOrphans, stageFilter, passouExig]);
 
   // Paginação client-side (25/página)
   const PAGE_SIZE = 25;
