@@ -239,6 +239,18 @@ function useDraggablePosition() {
     return { x: Math.max(4, Math.min(x, maxX)), y: Math.max(4, Math.min(y, maxY)) };
   };
 
+  // Cola na borda vertical (esquerda/direita) mais próxima do centro do badge.
+  // Assim o cronômetro flutuante nunca descansa no meio do conteúdo — fica só nas
+  // margens, sem cobrir títulos/campos. (skill: ui-sem-sobreposicao)
+  const snapToEdge = (x: number, y: number) => {
+    const el = elRef.current;
+    const w = el?.offsetWidth ?? 160;
+    const c = clamp(x, y);
+    const center = c.x + w / 2;
+    const snappedX = center < window.innerWidth / 2 ? 4 : Math.max(4, window.innerWidth - w - 4);
+    return { x: snappedX, y: c.y };
+  };
+
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const el = e.currentTarget;
     elRef.current = el;
@@ -266,7 +278,9 @@ function useDraggablePosition() {
     draggingRef.current = false;
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
     if (movedRef.current) {
-      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(pos)); } catch { /* ignora */ }
+      const snapped = pos ? snapToEdge(pos.x, pos.y) : pos;
+      if (snapped) setPos(snapped);
+      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(snapped)); } catch { /* ignora */ }
     }
   }, [pos]);
 
@@ -275,6 +289,13 @@ function useDraggablePosition() {
     const onResize = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Corrige posição salva antiga que tenha ficado no meio do conteúdo:
+  // ao montar, puxa o badge para a borda mais próxima. (skill: ui-sem-sobreposicao)
+  useEffect(() => {
+    setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const wasDragged = () => movedRef.current;
