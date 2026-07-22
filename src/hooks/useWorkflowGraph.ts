@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { db as supabase } from '@/integrations/supabase';
 import type { KanbanBoard } from '@/hooks/useKanbanBoards';
-import type { ChecklistItem } from '@/hooks/useChecklists';
+import type { ChecklistItem, DocChecklistItem } from '@/hooks/useChecklists';
 
 /**
  * Monta o "grafo" de um fluxo/funil para visualização (fluxograma e mapa
@@ -22,9 +22,11 @@ export interface WorkflowGraphAnswer {
 export interface WorkflowGraphStep {
   id: string;
   label: string;
+  description?: string;
   activityType?: string;
   nextStageId?: string;
   answers?: WorkflowGraphAnswer[];
+  docChecklist?: DocChecklistItem[];
 }
 
 export interface WorkflowGraphObjective {
@@ -105,6 +107,7 @@ export function useWorkflowGraph(board: KanbanBoard | null | undefined, enabled 
             steps: items.map(step => ({
               id: step.id,
               label: step.label,
+              description: step.description,
               activityType: step.activityType,
               nextStageId: step.nextStageId,
               answers: step.answers?.map(a => ({
@@ -112,6 +115,7 @@ export function useWorkflowGraph(board: KanbanBoard | null | undefined, enabled 
                 label: a.label,
                 nextStageId: a.nextStageId,
               })),
+              docChecklist: step.docChecklist,
             })),
           };
         });
@@ -146,6 +150,17 @@ export interface WorkflowEdge {
 }
 
 export const FINALIZE_ID = '__finalize__';
+
+/** Resolve o rótulo/cor de um destino de roteamento (fase, finalizar ou nulo). */
+export function resolveTarget(
+  graph: WorkflowGraph,
+  id: string | undefined
+): { name: string; color: string; isFinalize: boolean } | null {
+  if (!id) return null;
+  if (id === FINALIZE_ID) return { name: 'Finalizar', color: '#22c55e', isFinalize: true };
+  const s = graph.stages.find(x => x.id === id);
+  return s ? { name: s.name, color: s.color, isFinalize: false } : null;
+}
 
 /**
  * Extrai as arestas explícitas (roteamento configurado nos passos) e completa

@@ -11,42 +11,56 @@ import { Button } from '@/components/ui/button';
 import {
   GitBranch,
   Network,
+  ListTree,
   ZoomIn,
   ZoomOut,
   Maximize,
   Loader2,
+  Pencil,
 } from 'lucide-react';
 import type { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useWorkflowGraph } from '@/hooks/useWorkflowGraph';
 import { WorkflowFlowchart, FlowchartLegend } from './WorkflowFlowchart';
 import { WorkflowMindMap } from './WorkflowMindMap';
+import { WorkflowDetails } from './WorkflowDetails';
 
 interface Props {
   board: KanbanBoard | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Quando fornecido, exibe o botão "Editar" que abre o editor do fluxo. */
+  onEdit?: () => void;
 }
+
+type View = 'flowchart' | 'mindmap' | 'details';
 
 const ZOOM_MIN = 0.4;
 const ZOOM_MAX = 2;
 const ZOOM_STEP = 0.2;
 
 /**
- * Dialog de visualização do fluxo/funil em dois formatos:
+ * Dialog de visualização do fluxo/funil:
  *   • Fluxograma — sequência de fases com ramificações condicionais
  *   • Mapa mental — árvore fase → objetivo → passo
- * Ambos em SVG puro, com zoom e scroll.
+ *   • Detalhes — checklists, tipo de atividade, mover/finalizar e respostas
+ * Botão "Editar" reaproveita o WorkflowBuilder existente (via onEdit).
  */
-export function WorkflowVisualizationDialog({ board, open, onOpenChange }: Props) {
+export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit }: Props) {
   const { data: graph, isLoading, error } = useWorkflowGraph(board, open);
   const [zoom, setZoom] = useState(1);
-  const [view, setView] = useState<'flowchart' | 'mindmap'>('flowchart');
+  const [view, setView] = useState<View>('flowchart');
 
   const zoomIn = useCallback(() => setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2))), []);
   const zoomOut = useCallback(() => setZoom(z => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2))), []);
   const zoomReset = useCallback(() => setZoom(1), []);
 
   const typeLabel = board?.board_type === 'workflow' ? 'Fluxo de Trabalho' : 'Funil de Vendas';
+  const isCanvas = view === 'flowchart' || view === 'mindmap';
+
+  const handleEdit = () => {
+    onOpenChange(false);
+    onEdit?.();
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -57,11 +71,11 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange }: Props
             Visualização — {board?.name}
           </DialogTitle>
           <DialogDescription className="text-xs">
-            {typeLabel} · fluxograma e mapa mental das fases, objetivos e passos.
+            {typeLabel} · fluxograma, mapa mental e detalhes das fases, objetivos e passos.
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs value={view} onValueChange={v => setView(v as typeof view)} className="flex-1 flex flex-col min-h-0">
+        <Tabs value={view} onValueChange={v => setView(v as View)} className="flex-1 flex flex-col min-h-0">
           <div className="flex items-center justify-between gap-2 px-5 py-2 border-b flex-wrap">
             <TabsList className="h-8">
               <TabsTrigger value="flowchart" className="text-xs gap-1.5">
@@ -72,21 +86,35 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange }: Props
                 <Network className="h-3.5 w-3.5" />
                 Mapa Mental
               </TabsTrigger>
+              <TabsTrigger value="details" className="text-xs gap-1.5">
+                <ListTree className="h-3.5 w-3.5" />
+                Detalhes
+              </TabsTrigger>
             </TabsList>
 
-            <div className="flex items-center gap-1">
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomOut} title="Diminuir zoom">
-                <ZoomOut className="h-3.5 w-3.5" />
-              </Button>
-              <span className="text-[11px] text-muted-foreground w-10 text-center tabular-nums">
-                {Math.round(zoom * 100)}%
-              </span>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomIn} title="Aumentar zoom">
-                <ZoomIn className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomReset} title="Zoom 100%">
-                <Maximize className="h-3.5 w-3.5" />
-              </Button>
+            <div className="flex items-center gap-2">
+              {isCanvas && (
+                <div className="flex items-center gap-1">
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomOut} title="Diminuir zoom">
+                    <ZoomOut className="h-3.5 w-3.5" />
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground w-10 text-center tabular-nums">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomIn} title="Aumentar zoom">
+                    <ZoomIn className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomReset} title="Zoom 100%">
+                    <Maximize className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
+              {onEdit && (
+                <Button size="sm" className="h-7 text-xs" onClick={handleEdit}>
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                  Editar
+                </Button>
+              )}
             </div>
           </div>
 
@@ -101,17 +129,24 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange }: Props
                 Erro ao carregar a estrutura do fluxo.
               </div>
             ) : graph ? (
-              <div
-                className="p-6 origin-top-left transition-transform"
-                style={{ transform: `scale(${zoom})`, width: 'max-content' }}
-              >
-                <TabsContent value="flowchart" className="mt-0">
-                  <WorkflowFlowchart graph={graph} />
+              <>
+                {isCanvas && (
+                  <div
+                    className="p-6 origin-top-left transition-transform"
+                    style={{ transform: `scale(${zoom})`, width: 'max-content' }}
+                  >
+                    <TabsContent value="flowchart" className="mt-0">
+                      <WorkflowFlowchart graph={graph} />
+                    </TabsContent>
+                    <TabsContent value="mindmap" className="mt-0">
+                      <WorkflowMindMap graph={graph} />
+                    </TabsContent>
+                  </div>
+                )}
+                <TabsContent value="details" className="mt-0 p-5">
+                  <WorkflowDetails graph={graph} />
                 </TabsContent>
-                <TabsContent value="mindmap" className="mt-0">
-                  <WorkflowMindMap graph={graph} />
-                </TabsContent>
-              </div>
+              </>
             ) : null}
           </div>
 
