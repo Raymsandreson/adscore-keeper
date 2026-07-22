@@ -32,6 +32,15 @@ export const ACTIVITY_MESSAGE_FIELDS: { key: string; label: string; placeholder:
   { key: 'notes', label: 'Observações', placeholder: 'Ex: {{lead_name}} prefere ser contatado após as 18h.' },
 ];
 
+// Resposta configurável de um passo-pergunta. O destino usa a mesma
+// semântica do nextStageId do passo: undefined = não mover,
+// '__finalize__' = finalizar, ou id de fase para mover.
+export interface StepAnswerOption {
+  id: string;
+  label: string;
+  nextStageId?: string;
+}
+
 export interface ChecklistItem {
   id: string;
   label: string;
@@ -40,6 +49,8 @@ export interface ChecklistItem {
   activityType?: string; // tipo de atividade associado a este passo
   script?: string; // script de contato para este passo
   nextStageId?: string; // ao concluir, mover lead para esta fase
+  answers?: StepAnswerOption[]; // se presente, o passo é uma pergunta: concluir = escolher resposta, e o destino vem da resposta (ignora nextStageId)
+  selectedAnswerId?: string; // resposta escolhida na instância do lead
   docChecklist?: DocChecklistItem[]; // checklist de documentação
   // Modelo de mensagem por campo da atividade gerada neste passo.
   // Chaves correspondem a ACTIVITY_MESSAGE_FIELDS (current_status, what_was_done, next_steps, notes).

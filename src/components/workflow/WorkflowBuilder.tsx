@@ -41,9 +41,10 @@ import {
   Loader2,
   PenLine,
   ChevronUp,
+  HelpCircle,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
+import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
 import { TEMPLATE_VARIABLES } from '@/hooks/useActivityMessageTemplates';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -112,6 +113,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
   const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, TemplateVariation[]>; activeTab: string } | null>(null);
+  const [answersDialog, setAnswersDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; answers: StepAnswerOption[] } | null>(null);
+  const [newAnswerLabel, setNewAnswerLabel] = useState('');
   const [newDocItem, setNewDocItem] = useState('');
   const [dragItem, setDragItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
   const [dragOverItem, setDragOverItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
@@ -198,6 +201,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 script: s.script,
                 activityType: s.activityType,
                 nextStageId: s.nextStageId,
+                answers: s.answers,
                 docChecklist: s.docChecklist,
               })),
             })),
@@ -215,6 +219,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         if (error) throw error;
         if (data.error) throw new Error(data.error);
 
+        // A IA pode devolver os passos sem campos que ela não conhece —
+        // guarda os passos atuais por id pra não perder as respostas configuradas.
+        const prevStepsById = new Map<string, ChecklistItem>(
+          phases.flatMap(p => p.objectives.flatMap(o => o.items)).map(s => [s.id, s])
+        );
+
         const editedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
           stageId: phase.stageId,
           stageName: phase.stageName,
@@ -231,6 +241,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               script: step.script || undefined,
               activityType: step.activityType || undefined,
               nextStageId: step.nextStageId || undefined,
+              answers: step.answers?.length
+                ? step.answers.map((a: Partial<StepAnswerOption>) => ({ id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId || undefined }))
+                : prevStepsById.get(step.id)?.answers,
               docChecklist: step.docChecklist?.length
                 ? step.docChecklist.map((d: any) => ({ id: d.id || crypto.randomUUID(), label: d.label, type: d.type || 'documentos', nextStageId: d.nextStageId }))
                 : undefined,
@@ -464,6 +477,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const updateStepNextStage = (phaseIdx: number, objIdx: number, stepId: string, nextStageId: string) => {
     updateObjective(phaseIdx, objIdx, {
       items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, nextStageId: nextStageId || undefined } : s),
+    });
+  };
+
+  const updateStepAnswers = (phaseIdx: number, objIdx: number, stepId: string, answers: StepAnswerOption[]) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s =>
+        s.id === stepId
+          // Com respostas configuradas o destino vem da resposta escolhida,
+          // então o nextStageId do próprio passo é limpo pra não rotear em dobro.
+          ? { ...s, answers: answers.length > 0 ? answers : undefined, nextStageId: answers.length > 0 ? undefined : s.nextStageId }
+          : s
+      ),
     });
   };
 
@@ -1039,6 +1064,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             <Button
                                               variant="ghost"
                                               size="icon"
+                                              className={cn("h-6 w-6 flex-shrink-0", step.answers?.length ? "text-purple-500" : "text-muted-foreground")}
+                                              title={step.answers?.length ? `Pergunta com ${step.answers.length} resposta(s)` : "Transformar em pergunta com respostas"}
+                                              onClick={() => setAnswersDialog({ phaseIdx, objIdx, stepId: step.id, answers: step.answers ? step.answers.map(a => ({ ...a })) : [] })}
+                                            >
+                                              <HelpCircle className="h-3.5 w-3.5" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
                                               className={cn("h-6 w-6 flex-shrink-0", step.docChecklist?.length ? "text-orange-500" : "text-muted-foreground")}
                                               title={step.docChecklist?.length ? `Checklist (${step.docChecklist.length})` : "Adicionar checklist"}
                                               onClick={() => {
@@ -1124,6 +1158,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                           {/* Ramificação condicional - mover para fase */}
                                           <div className="flex items-center gap-2">
                                             <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Mover para:</Label>
+                                            {step.answers?.length ? (
+                                              <button
+                                                type="button"
+                                                className="flex-1 text-left text-[11px] text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+                                                title="O destino é definido pela resposta escolhida. Clique para editar as respostas."
+                                                onClick={() => setAnswersDialog({ phaseIdx, objIdx, stepId: step.id, answers: step.answers!.map(a => ({ ...a })) })}
+                                              >
+                                                <HelpCircle className="h-3 w-3 flex-shrink-0" />
+                                                Definido pelas respostas da pergunta ({step.answers.length})
+                                              </button>
+                                            ) : (
                                             <Select
                                               value={step.nextStageId || '__none__'}
                                               onValueChange={v => updateStepNextStage(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
@@ -1151,6 +1196,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                                 ))}
                                               </SelectContent>
                                             </Select>
+                                            )}
                                           </div>
                                         </div>
                                       ))
@@ -1446,6 +1492,138 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               }
             }}>
               Salvar Checklist
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Pergunta com respostas configuráveis */}
+    <Dialog open={!!answersDialog} onOpenChange={(open) => { if (!open) { setAnswersDialog(null); setNewAnswerLabel(''); } }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <HelpCircle className="h-5 w-5 text-purple-500" />
+            Pergunta com Respostas
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            O passo vira uma pergunta: para concluí-lo, o usuário escolhe uma das respostas abaixo. Cada resposta pode finalizar o lead ou movê-lo para outra fase — igual ao "Mover para" de hoje, mas decidido pela resposta.
+          </p>
+
+          {/* Respostas existentes */}
+          <div className="space-y-1.5 max-h-[300px] overflow-y-auto">
+            {(answersDialog?.answers || []).map((answer, idx) => (
+              <div key={answer.id} className="p-2 rounded-md border bg-muted/20 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="flex-shrink-0 h-5 w-5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-[10px] font-bold flex items-center justify-center">
+                    {idx + 1}
+                  </span>
+                  <Input
+                    value={answer.label}
+                    onChange={e => setAnswersDialog(prev => prev ? {
+                      ...prev,
+                      answers: prev.answers.map(a => a.id === answer.id ? { ...a, label: e.target.value } : a),
+                    } : null)}
+                    placeholder="Texto da resposta..."
+                    className="h-7 text-sm flex-1"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0"
+                    onClick={() => setAnswersDialog(prev => prev ? { ...prev, answers: prev.answers.filter(a => a.id !== answer.id) } : null)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 ml-7">
+                  <Label className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">Se escolhida:</Label>
+                  <Select
+                    value={answer.nextStageId || '__none__'}
+                    onValueChange={v => setAnswersDialog(prev => prev ? {
+                      ...prev,
+                      answers: prev.answers.map(a => a.id === answer.id ? { ...a, nextStageId: v === '__none__' ? undefined : v } : a),
+                    } : null)}
+                  >
+                    <SelectTrigger className="h-6 text-[10px] flex-1">
+                      <SelectValue placeholder="Não mover" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground">Não mover</span>
+                      </SelectItem>
+                      <SelectItem value="__finalize__">
+                        <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
+                          <span className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500" />
+                          ✅ Finalizar
+                        </div>
+                      </SelectItem>
+                      {phases.map(p => (
+                        <SelectItem key={p.stageId} value={p.stageId}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                            {p.stageName}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            ))}
+            {(answersDialog?.answers || []).length === 0 && (
+              <p className="text-xs text-muted-foreground italic text-center py-2">Nenhuma resposta adicionada — sem respostas, o passo volta a ser um checkbox normal</p>
+            )}
+          </div>
+
+          {/* Adicionar resposta */}
+          <div className="flex gap-2">
+            <Input
+              value={newAnswerLabel}
+              onChange={e => setNewAnswerLabel(e.target.value)}
+              placeholder="Ex: Sim, tem interesse / Não tem interesse..."
+              className="flex-1 text-sm"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && newAnswerLabel.trim()) {
+                  setAnswersDialog(prev => prev ? {
+                    ...prev,
+                    answers: [...prev.answers, { id: crypto.randomUUID(), label: newAnswerLabel.trim() }],
+                  } : null);
+                  setNewAnswerLabel('');
+                }
+              }}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (newAnswerLabel.trim()) {
+                  setAnswersDialog(prev => prev ? {
+                    ...prev,
+                    answers: [...prev.answers, { id: crypto.randomUUID(), label: newAnswerLabel.trim() }],
+                  } : null);
+                  setNewAnswerLabel('');
+                }
+              }}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" size="sm" onClick={() => { setAnswersDialog(null); setNewAnswerLabel(''); }}>Cancelar</Button>
+            <Button size="sm" onClick={() => {
+              if (answersDialog) {
+                const validAnswers = answersDialog.answers.filter(a => a.label.trim());
+                updateStepAnswers(answersDialog.phaseIdx, answersDialog.objIdx, answersDialog.stepId, validAnswers);
+                setAnswersDialog(null);
+                setNewAnswerLabel('');
+                toast.success(validAnswers.length > 0 ? 'Pergunta salva!' : 'Pergunta removida — passo voltou a ser checkbox');
+              }
+            }}>
+              Salvar Pergunta
             </Button>
           </div>
         </div>

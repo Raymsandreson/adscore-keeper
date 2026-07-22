@@ -17,6 +17,7 @@ import {
   ArrowRight,
   MessageSquareText,
   ClipboardList,
+  HelpCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
@@ -115,21 +116,24 @@ export function WorkflowProgressView({
         setTemplateInfo(info);
       }
 
-      // Sync: merge new template items into existing instances
+      // Sync: reflete o template nas instâncias — adiciona passos novos,
+      // remove os excluídos e atualiza a configuração dos existentes
+      // (respostas de pergunta, script, destino etc.), preservando só o
+      // estado do lead (checked / resposta escolhida).
       const updatedParsed = [...parsed];
       for (const instance of updatedParsed) {
         const template = templatesFullData.find(t => t.id === instance.checklist_template_id);
         if (!template) continue;
         const templateItems = (template.items as unknown as ChecklistItem[]) || [];
-        const existingIds = new Set(instance.items.map(i => i.id));
-        const newItems = templateItems.filter(ti => !existingIds.has(ti.id)).map(ti => ({ ...ti, checked: false }));
-        
-        // Also remove items that no longer exist in template
-        const templateItemIds = new Set(templateItems.map(ti => ti.id));
-        const filteredItems = instance.items.filter(i => templateItemIds.has(i.id));
+        const instanceById = new Map(instance.items.map(i => [i.id, i]));
+        const mergedItems = templateItems.map(ti => {
+          const existing = instanceById.get(ti.id);
+          return existing
+            ? { ...ti, checked: existing.checked || false, selectedAnswerId: existing.selectedAnswerId }
+            : { ...ti, checked: false };
+        });
 
-        if (newItems.length > 0 || filteredItems.length !== instance.items.length) {
-          const mergedItems = [...filteredItems, ...newItems];
+        if (JSON.stringify(mergedItems) !== JSON.stringify(instance.items)) {
           instance.items = mergedItems;
           // Update in DB
           await supabase
@@ -238,14 +242,46 @@ export function WorkflowProgressView({
     });
   };
 
+  // Roteamento condicional compartilhado entre passo comum (nextStageId),
+  // sub-item de checklist e passo-pergunta (destino da resposta escolhida).
+  const applyStageRouting = (destStageId: string) => {
+    if (!onStageChange) return;
+    if (destStageId === '__finalize__') {
+      const closedStage = board.stages.find(s =>
+        ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.id.toLowerCase()) ||
+        ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.name.toLowerCase())
+      );
+      const target = closedStage || board.stages[board.stages.length - 1];
+      if (target) {
+        onStageChange(target.id);
+        toast.success(`Lead finalizado! Movido para: ${target.name}`);
+      }
+    } else {
+      const targetStage = board.stages.find(s => s.id === destStageId);
+      if (targetStage) {
+        onStageChange(destStageId);
+        toast.success(`Lead movido para: ${targetStage.name}`);
+      }
+    }
+  };
+
   const handleToggleItem = async (instance: LeadChecklistInstance, itemId: string) => {
     if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
 
     const targetItem = instance.items.find(i => i.id === itemId);
     const willBeChecked = !targetItem?.checked;
 
+    // Passo-pergunta: concluir exige escolher uma das respostas configuradas.
+    if (willBeChecked && targetItem?.answers?.length) {
+      toast.info('Escolha uma das respostas para concluir este passo');
+      return;
+    }
+
     const updatedItems = instance.items.map(item =>
-      item.id === itemId ? { ...item, checked: !item.checked } : item
+      item.id === itemId
+        // Desmarcar um passo-pergunta também limpa a resposta escolhida.
+        ? { ...item, checked: !item.checked, selectedAnswerId: item.checked ? undefined : item.selectedAnswerId }
+        : item
     );
     const allChecked = updatedItems.every(i => i.checked);
 
@@ -296,31 +332,72 @@ export function WorkflowProgressView({
     }
 
     // Conditional branching: if step has nextStageId and was just checked, move lead
-    if (willBeChecked && targetItem?.nextStageId && onStageChange) {
-      if (targetItem.nextStageId === '__finalize__') {
-        // Find the closed/done stage
-        const closedStage = board.stages.find(s =>
-          ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.id.toLowerCase()) ||
-          ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.name.toLowerCase())
-        );
-        if (closedStage) {
-          onStageChange(closedStage.id);
-          toast.success(`Lead finalizado! Movido para: ${closedStage.name}`);
-        } else {
-          // Use last stage as fallback
-          const lastStage = board.stages[board.stages.length - 1];
-          if (lastStage) {
-            onStageChange(lastStage.id);
-            toast.success(`Lead finalizado! Movido para: ${lastStage.name}`);
-          }
-        }
-      } else {
-        const targetStage = board.stages.find(s => s.id === targetItem.nextStageId);
-        if (targetStage) {
-          onStageChange(targetItem.nextStageId);
-          toast.success(`Lead movido para: ${targetStage.name}`);
-        }
-      }
+    // (passo-pergunta roteia pela resposta escolhida em handleAnswerQuestion, não aqui)
+    if (willBeChecked && targetItem?.nextStageId && !targetItem?.answers?.length) {
+      applyStageRouting(targetItem.nextStageId);
+    }
+  };
+
+  // Passo-pergunta: escolher a resposta conclui o passo, grava a resposta
+  // e roteia (finalizar / mover de fase) conforme o destino configurado nela.
+  const handleAnswerQuestion = async (instance: LeadChecklistInstance, itemId: string, answerId: string) => {
+    if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
+
+    const targetItem = instance.items.find(i => i.id === itemId);
+    const answer = targetItem?.answers?.find(a => a.id === answerId);
+    if (!targetItem || !answer) return;
+
+    const updatedItems = instance.items.map(item =>
+      item.id === itemId ? { ...item, checked: true, selectedAnswerId: answerId } : item
+    );
+    const allChecked = updatedItems.every(i => i.checked);
+
+    // Optimistic update
+    setInstances(prev => prev.map(inst =>
+      inst.id === instance.id
+        ? { ...inst, items: updatedItems, is_completed: allChecked }
+        : inst
+    ));
+
+    logActivity({
+      actionType: 'checklist_item_checked',
+      entityType: 'lead',
+      entityId: leadId,
+      metadata: { checklistId: instance.id, itemId, itemLabel: targetItem.label, answerId, answerLabel: answer.label },
+    });
+
+    // Mesmo log de passo dos checkboxes comuns, com a resposta no rótulo.
+    if (authUser?.id) {
+      const userId = authUser.id;
+      askStepTiming().then(retroactive => {
+        (supabase as any).rpc('log_checklist_step', {
+          p_user_id: userId,
+          p_instance_id: instance.id,
+          p_item_label: `${targetItem.label} — ${answer.label}`,
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
+        });
+      });
+    }
+
+    const { error } = await supabase
+      .from('lead_checklist_instances')
+      .update({
+        items: JSON.parse(JSON.stringify(updatedItems)),
+        is_completed: allChecked,
+        completed_at: allChecked ? new Date().toISOString() : null,
+      })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao registrar resposta');
+      loadData();
+      return;
+    }
+
+    if (answer.nextStageId) {
+      applyStageRouting(answer.nextStageId);
     }
   };
 
@@ -569,7 +646,13 @@ export function WorkflowProgressView({
                                                     Próximo
                                                   </Badge>
                                                 )}
-                                                {item.nextStageId && (() => {
+                                                {item.answers && item.answers.length > 0 && (
+                                                  <Badge variant="secondary" className="text-[9px] h-4 gap-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                                    <HelpCircle className="h-2.5 w-2.5" />
+                                                    Pergunta
+                                                  </Badge>
+                                                )}
+                                                {item.nextStageId && !item.answers?.length && (() => {
                                                   if (item.nextStageId === '__finalize__') {
                                                     return (
                                                       <Badge variant="secondary" className="text-[9px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
@@ -590,6 +673,52 @@ export function WorkflowProgressView({
                                               {item.description && (
                                                 <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-snug line-clamp-2 italic">
                                                   {item.description}
+                                                </p>
+                                              )}
+
+                                              {/* Pergunta: escolher resposta conclui o passo e roteia pelo destino dela */}
+                                              {item.answers && item.answers.length > 0 && !item.checked && !isReadonly && (
+                                                <div className="mt-2 p-2.5 rounded-md bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40">
+                                                  <div className="flex items-center gap-1.5 mb-1.5">
+                                                    <HelpCircle className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                                                    <span className="text-[10px] font-semibold text-purple-700 dark:text-purple-400 uppercase tracking-wide">Escolha uma resposta</span>
+                                                  </div>
+                                                  <div className="flex flex-col gap-1.5">
+                                                    {item.answers.map(ans => (
+                                                      <Button
+                                                        key={ans.id}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-auto min-h-7 justify-between text-xs px-2.5 py-1.5"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleAnswerQuestion(objective.instance, item.id, ans.id);
+                                                        }}
+                                                      >
+                                                        <span className="text-left whitespace-normal">{ans.label}</span>
+                                                        {ans.nextStageId === '__finalize__' ? (
+                                                          <Badge variant="secondary" className="text-[9px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0 ml-2">
+                                                            ✅ Finalizar
+                                                          </Badge>
+                                                        ) : ans.nextStageId ? (() => {
+                                                          const targetStage = board.stages.find(s => s.id === ans.nextStageId);
+                                                          return targetStage ? (
+                                                            <Badge variant="secondary" className="text-[9px] h-4 gap-1 flex-shrink-0 ml-2">
+                                                              <ArrowRight className="h-2.5 w-2.5" />
+                                                              {targetStage.name}
+                                                            </Badge>
+                                                          ) : null;
+                                                        })() : null}
+                                                      </Button>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              )}
+
+                                              {/* Resposta escolhida (passo-pergunta concluído) */}
+                                              {item.answers && item.answers.length > 0 && item.checked && (
+                                                <p className="text-[11px] text-purple-600 dark:text-purple-400 mt-1">
+                                                  Resposta: <span className="font-medium">{item.answers.find(a => a.id === item.selectedAnswerId)?.label || '—'}</span>
                                                 </p>
                                               )}
 
@@ -654,23 +783,8 @@ export function WorkflowProgressView({
                                                                 },
                                                               }));
                                                               // Conditional branching for doc checklist items
-                                                              if (checked && doc.nextStageId && onStageChange) {
-                                                                if (doc.nextStageId === '__finalize__') {
-                                                                  const closedStage = board.stages.find(s =>
-                                                                    ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'].includes(s.name.toLowerCase())
-                                                                  );
-                                                                  const target = closedStage || board.stages[board.stages.length - 1];
-                                                                  if (target) {
-                                                                    onStageChange(target.id);
-                                                                    toast.success(`Lead finalizado! Movido para: ${target.name}`);
-                                                                  }
-                                                                } else {
-                                                                  const targetStage = board.stages.find(s => s.id === doc.nextStageId);
-                                                                  if (targetStage) {
-                                                                    onStageChange(doc.nextStageId);
-                                                                    toast.success(`Lead movido para: ${targetStage.name}`);
-                                                                  }
-                                                                }
+                                                              if (checked && doc.nextStageId) {
+                                                                applyStageRouting(doc.nextStageId);
                                                               }
                                                             }}
                                                             className="flex-shrink-0"
