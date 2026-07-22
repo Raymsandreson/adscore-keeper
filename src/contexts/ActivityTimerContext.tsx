@@ -294,6 +294,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const sync = useCallback((e: TimerEntry | null) => {
     entryRef.current = e;
     setCurrent(e ? { ...e } : null);
+    // Diagnóstico da troca de atividade: rastreia cada mudança de estado do timer
+    // (revela se a troca sincronizou a nova atv e se algo re-afirma a antiga).
+    console.debug('[activity-timer] sync →', e ? `${e.kind}:${e.activityTitle}` : 'null', e?.activityId ?? '');
   }, []);
 
   // Solta o cronômetro desta aba em silêncio (outra aba/janela assumiu).
@@ -683,16 +686,17 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       }
       return;
     }
-    if (busyRef.current) return;
+    if (busyRef.current) { console.warn('[activity-timer] troca ignorada: operação anterior ainda em andamento (busy)'); return; }
     busyRef.current = true;
     try {
+      console.debug('[activity-timer] iniciando troca para', activity.id, activity.title);
       // Encerra o que estava rodando (outra atv ou o gap) salvando o tempo.
       rememberLast();
       if (entryRef.current) await flush('paused');
 
-      await ensureExternalSession().catch(() => {});
+      try { await ensureExternalSession(); } catch (e) { console.error('[activity-timer] sessão externa falhou (o insert pode ser bloqueado por RLS):', e); }
       const u = await getUser();
-      if (!u) { console.warn('[activity-timer] sem usuário — timer não iniciado'); sync(null); return; }
+      if (!u) { console.error('[activity-timer] sem usuário — timer não iniciado'); toast.error('Não consegui trocar de atividade: sessão sem usuário. Recarregue a página.'); sync(null); return; }
 
       // Bater ponto automático: abrir atividade sem expediente aberto registra a entrada.
       if (!shiftIdRef.current) {
@@ -733,7 +737,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
           started_at: new Date().toISOString(), active_seconds: 0, idle_seconds: 0, status: 'running',
           estimated_minutes: estimateMinutes,
         }).select('id').single();
-        if (error || !data) { console.warn('[activity-timer] insert falhou:', error); return; }
+        if (error || !data) {
+          console.error('[activity-timer] insert falhou:', error);
+          toast.error(`Não consegui trocar de atividade: ${error?.message || 'falha ao salvar o tempo (verifique a conexão/sessão)'}`);
+          return;
+        }
         entryId = (data as { id: string }).id;
       }
 
@@ -756,6 +764,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
         Notification.requestPermission().catch(() => {});
       }
+    } catch (err) {
+      console.error('[activity-timer] troca de atividade falhou:', err);
+      toast.error(`Não consegui trocar de atividade: ${(err as Error)?.message || 'erro inesperado'}`);
     } finally {
       busyRef.current = false;
     }
