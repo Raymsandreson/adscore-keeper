@@ -108,6 +108,41 @@ function parseBrDate(s: string): string | undefined {
   return `${m[3]}-${m[2]}-${m[1]}`; // ISO yyyy-mm-dd
 }
 
+/**
+ * Classifica o resultado de um requerimento CONCLUÍDO a partir do texto do
+ * Despacho. O INSS não manda "deferido/indeferido" no assunto — só "Concluída".
+ * O veredito real está no Despacho do corpo. Padrões observados nos e-mails reais:
+ *   deferido   → "foi concedido", "requerimento solicitado foi concedido"
+ *   indeferido → "não foi reconhecido o direito", "indeferimento", "foi negado"
+ * Checa indeferido primeiro: "não foi reconhecido" contém "reconhecido" e
+ * enganaria uma checagem de deferido feita antes.
+ */
+function classifyResultado(despacho?: string): 'deferido' | 'indeferido' | undefined {
+  if (!despacho) return undefined;
+  const d = despacho.toLowerCase();
+  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b/.test(d)) return 'indeferido';
+  if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito/.test(d)) return 'deferido';
+  return undefined;
+}
+
+/** Extrai o valor do campo "Despacho:" do corpo, até o rodapé do e-mail. */
+function extractDespacho(body: string): string | undefined {
+  const m = body.match(
+    /despacho\s*:\s*([\s\S]+?)(?:\s*(?:[ÉE] poss[íi]vel acompanhar|Atenciosamente,|https?:\/\/meu\.inss|Instituto Nacional do Seguro Social\s*-\s*INSS\s*$)|$)/i,
+  );
+  if (!m) return undefined;
+  const v = m[1].replace(/\s+/g, ' ').trim();
+  return v ? v.slice(0, 4000) : undefined;
+}
+
+/** Extrai o campo "Serviço:" (tipo real do benefício) do corpo. */
+function extractServico(body: string): string | undefined {
+  const m = body.match(/servi[çc]o\s*:\s*([^\n]+?)(?:\s+Data do Protocolo|\s+Unidade respons|\n|$)/i);
+  if (!m) return undefined;
+  const v = m[1].replace(/\s+/g, ' ').trim();
+  return v ? v.slice(0, 200) : undefined;
+}
+
 function parseInssSubject(subject: string, body: string): {
   requerimento?: string;
   status?: string;
@@ -116,6 +151,9 @@ function parseInssSubject(subject: string, body: string): {
   beneficio?: string;
   beneficio_num?: string;
   protocol_date?: string;
+  servico?: string;
+  despacho?: string;
+  resultado?: 'deferido' | 'indeferido';
 } {
   const out: any = {};
 
@@ -166,6 +204,13 @@ function parseInssSubject(subject: string, body: string): {
     body.match(/data\s+de\s+entrada[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i) ||
     body.match(/protocolado\s+em[:\s]+(\d{2}[\/\-]\d{2}[\/\-]\d{4})/i);
   if (protoMatch) out.protocol_date = parseBrDate(protoMatch[1]);
+
+  // Serviço (tipo real do benefício) e Despacho (veredito). O resultado
+  // deferido/indeferido só é confiável quando o requerimento está Concluído.
+  out.servico = extractServico(body);
+  out.despacho = extractDespacho(body);
+  const statusConcluido = /conclu[íi]d/i.test(out.status || '');
+  if (statusConcluido) out.resultado = classifyResultado(out.despacho);
 
   return out;
 }
@@ -393,6 +438,11 @@ export const handler: RequestHandler = async (req, res) => {
               benefit_type: parsed.beneficio || undefined,
               benefit_number: parsed.beneficio_num || undefined,
               protocol_date: parsed.protocol_date || undefined,
+              servico: parsed.servico || undefined,
+              despacho: parsed.despacho || undefined,
+              // resultado só é sobrescrito quando o e-mail atual traz veredito;
+              // um e-mail posterior sem despacho não apaga o resultado já gravado.
+              resultado: parsed.resultado || undefined,
               last_email_at: receivedAt,
               last_email_subject: subject,
             })
@@ -408,6 +458,9 @@ export const handler: RequestHandler = async (req, res) => {
               benefit_type: parsed.beneficio,
               benefit_number: parsed.beneficio_num,
               protocol_date: parsed.protocol_date,
+              servico: parsed.servico,
+              despacho: parsed.despacho,
+              resultado: parsed.resultado,
               last_email_at: receivedAt,
               last_email_subject: subject,
             })

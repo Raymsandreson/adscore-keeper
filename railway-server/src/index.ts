@@ -44,6 +44,7 @@ import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
 import { handler as gmailMessageBody } from './functions/gmail-message-body';
+import { handler as backfillInssResultado } from './functions/backfill-inss-resultado';
 import { handler as matchInssOrphans } from './functions/match-inss-orphans';
 import { handler as autoLinkInssByName } from './functions/auto-link-inss-by-name';
 import { handler as bulkLinkInssByCpf } from './functions/bulk-link-inss-by-cpf';
@@ -101,6 +102,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'meta-call-queue-processor': metaCallQueueProcessor,
   'gmail-inss-sync': gmailInssSync,
   'gmail-message-body': gmailMessageBody,
+  'backfill-inss-resultado': backfillInssResultado,
   'notify-inss-update': notifyInssUpdate,
   'match-inss-orphans': matchInssOrphans,
   'auto-link-inss-by-name': autoLinkInssByName,
