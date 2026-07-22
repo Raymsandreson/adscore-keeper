@@ -442,7 +442,10 @@ export function ActivityTimerOverlay() {
       )}
 
       {/* Minimizado: o cronômetro nunca some — fica só o relógio; clique expande */}
-      {current && hidden && (() => {
+      {/* Pill compacto (só o tempo): quando minimizado OU quando não há barra pra dockar.
+          Sem a barra, o cronômetro NUNCA flutua grande sobre o conteúdo — no máximo este
+          pill minúsculo colado na borda. (skill: ui-sem-sobreposicao) */}
+      {current && (hidden || !docked) && (() => {
         const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
         const palette = current.kind === 'activity'
           ? `border bg-background/95 ${isOver ? 'text-red-600 dark:text-red-400' : ''}`
@@ -477,7 +480,7 @@ export function ActivityTimerOverlay() {
         );
       })()}
 
-      {current && current.kind === 'activity' && !hidden && dock(
+      {current && current.kind === 'activity' && !hidden && docked && dock(
         <div
           {...dragAttrs}
           className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
@@ -560,7 +563,7 @@ export function ActivityTimerOverlay() {
         </Suspense>
       )}
 
-      {current && current.kind === 'gap' && !hidden && dock(
+      {current && current.kind === 'gap' && !hidden && docked && dock(
         <div
           {...dragAttrs}
           className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
@@ -626,7 +629,7 @@ export function ActivityTimerOverlay() {
       )}
 
 
-      {current && current.kind === 'break' && !hidden && dock(
+      {current && current.kind === 'break' && !hidden && docked && dock(
         <div
           {...dragAttrs}
           className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
