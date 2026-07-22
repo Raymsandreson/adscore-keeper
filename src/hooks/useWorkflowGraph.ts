@@ -27,11 +27,15 @@ export interface WorkflowGraphStep {
   nextStageId?: string;
   answers?: WorkflowGraphAnswer[];
   docChecklist?: DocChecklistItem[];
+  /** Passo bruto original — usado na edição para não perder campos (script,
+   *  messageTemplates, etc.) que a visualização não exibe. */
+  raw: ChecklistItem;
 }
 
 export interface WorkflowGraphObjective {
   templateId: string;
   name: string;
+  description: string;
   isMandatory: boolean;
   steps: WorkflowGraphStep[];
 }
@@ -50,6 +54,19 @@ export interface WorkflowGraph {
   stages: WorkflowGraphStage[];
 }
 
+/** Referência semântica de um nó do mapa, usada na edição in-loco. */
+export interface WorkflowNodeRef {
+  kind: 'stage' | 'objective' | 'step';
+  stageId: string;
+  templateId?: string;
+  stepId?: string;
+}
+
+export function sameNodeRef(a?: WorkflowNodeRef | null, b?: WorkflowNodeRef | null): boolean {
+  if (!a || !b) return false;
+  return a.kind === b.kind && a.stageId === b.stageId && a.templateId === b.templateId && a.stepId === b.stepId;
+}
+
 interface DBLink {
   stage_id: string;
   checklist_template_id: string;
@@ -59,6 +76,7 @@ interface DBLink {
 interface DBTemplate {
   id: string;
   name: string;
+  description: string | null;
   is_mandatory: boolean | null;
   items: unknown;
 }
@@ -86,7 +104,7 @@ export function useWorkflowGraph(board: KanbanBoard | null | undefined, enabled 
       if (templateIds.length > 0) {
         const { data: templates, error: tplError } = await supabase
           .from('checklist_templates')
-          .select('id, name, is_mandatory, items')
+          .select('id, name, description, is_mandatory, items')
           .in('id', templateIds);
         if (tplError) throw tplError;
         templateMap = new Map((templates || []).map(t => [t.id, t as DBTemplate]));
@@ -103,6 +121,7 @@ export function useWorkflowGraph(board: KanbanBoard | null | undefined, enabled 
           return {
             templateId: link.checklist_template_id,
             name: tpl?.name || 'Objetivo',
+            description: tpl?.description || '',
             isMandatory: !!tpl?.is_mandatory,
             steps: items.map(step => ({
               id: step.id,
@@ -116,6 +135,7 @@ export function useWorkflowGraph(board: KanbanBoard | null | undefined, enabled 
                 nextStageId: a.nextStageId,
               })),
               docChecklist: step.docChecklist,
+              raw: step,
             })),
           };
         });
