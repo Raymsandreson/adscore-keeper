@@ -1422,17 +1422,22 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </div>
       </div>
 
-        {/* Conteúdo da aba — inline no desktop; painel lateral (drawer) no mobile */}
+        {/* Conteúdo da aba — inline no desktop; bottom sheet no mobile.
+            Sobe de baixo e "abraça" o conteúdo: abas curtas ficam baixas (sem
+            espaço vazio); abas longas crescem até 90% da tela e rolam por dentro. */}
         {isMobile ? (
           <Sheet open={mobileContentOpen} onOpenChange={setMobileContentOpen}>
-            <SheetContent side="right" className="w-full max-w-none p-0 flex flex-col gap-0">
+            <SheetContent side="bottom" className="max-h-[90dvh] p-0 flex flex-col gap-0 rounded-t-2xl">
               <div className="sr-only"><SheetHeader><SheetTitle>{TABS.find(t => t.id === activeTab)?.label ?? 'Detalhes'}</SheetTitle></SheetHeader></div>
-              <div className="shrink-0 flex items-center gap-2 border-b px-2 py-2">
-                <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => setMobileContentOpen(false)}>
-                  <ChevronLeft className="h-4 w-4" />
-                  <span className="text-xs">Voltar</span>
-                </Button>
-                <span className="text-sm font-semibold truncate">{TABS.find(t => t.id === activeTab)?.label}</span>
+              <div className="shrink-0">
+                <div className="mx-auto mt-2 h-1.5 w-10 rounded-full bg-muted" />
+                <div className="flex items-center gap-2 border-b px-2 py-2">
+                  <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => setMobileContentOpen(false)}>
+                    <ChevronLeft className="h-4 w-4" />
+                    <span className="text-xs">Voltar</span>
+                  </Button>
+                  <span className="text-sm font-semibold truncate">{TABS.find(t => t.id === activeTab)?.label}</span>
+                </div>
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
                 <div className="space-y-3 pt-3">
