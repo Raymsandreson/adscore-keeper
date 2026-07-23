@@ -52,7 +52,7 @@ Você pode:
 - Consultar leads e seus status
 - Criar novas atividades/tarefas
 - Consultar progresso de metas
-- *Criar leads* no sistema (funis de vendas ou fluxos de trabalho)
+- *Criar leads* no sistema (funis de vendas ou POPs)
 - *Editar/atualizar leads* existentes (nome, valor, responsável, etapa, etc.)
 - *Criar contatos* no sistema
 - *Vincular contatos a leads* existentes

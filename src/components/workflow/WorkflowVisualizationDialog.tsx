@@ -126,7 +126,7 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
     });
   }, []);
 
-  const typeLabel = board?.board_type === 'workflow' ? 'Fluxo de Trabalho' : 'Funil de Vendas';
+  const typeLabel = board?.board_type === 'workflow' ? 'POP' : 'Funil de Vendas';
   const isCanvas = view === 'flowchart' || view === 'mindmap';
 
   const handleFullEditor = () => {

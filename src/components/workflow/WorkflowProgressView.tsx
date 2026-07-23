@@ -155,7 +155,7 @@ export function WorkflowProgressView({
       setExpandedPhases(new Set([currentStageId]));
     } catch (error) {
       console.error('Error loading workflow data:', error);
-      toast.error('Erro ao carregar fluxo de trabalho');
+      toast.error('Erro ao carregar POP');
     } finally {
       setLoading(false);
     }
@@ -432,7 +432,7 @@ export function WorkflowProgressView({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12 text-muted-foreground">
-        Carregando fluxo de trabalho...
+        Carregando POP...
       </div>
     );
   }
@@ -486,7 +486,7 @@ export function WorkflowProgressView({
             onClick={() => setViewMode('full')}
           >
             <Eye className="h-3.5 w-3.5 mr-1" />
-            Fluxo Completo
+            POP Completo
           </Button>
         </div>
       </div>

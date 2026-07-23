@@ -117,7 +117,7 @@ export function OnboardingCaseConfig({ boardId }: Props) {
         </div>
         <p className="text-[11px] text-muted-foreground">
           Quando o lead deste funil fechar, o sistema cria automaticamente os processos jurídicos abaixo
-          dentro do caso. Cada fluxo de trabalho selecionado vira um processo com seu núcleo correspondente
+          dentro do caso. Cada POP selecionado vira um processo com seu núcleo correspondente
           e suas atividades iniciais.
         </p>
 
@@ -134,11 +134,11 @@ export function OnboardingCaseConfig({ boardId }: Props) {
 
         {autoCreate && (
           <div className="space-y-3 pl-2 border-l-2 border-primary/20 ml-1">
-            <Label className="text-[11px] text-muted-foreground">Selecione os fluxos de trabalho:</Label>
+            <Label className="text-[11px] text-muted-foreground">Selecione os POPs:</Label>
 
             {workflowBoards.length === 0 && (
               <p className="text-[10px] text-muted-foreground text-center py-2">
-                Nenhum fluxo de trabalho cadastrado. Crie fluxos na página de Configurações.
+                Nenhum POP cadastrado. Crie POPs na página de Configurações.
               </p>
             )}
 

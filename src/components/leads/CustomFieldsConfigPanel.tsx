@@ -488,14 +488,14 @@ export function CustomFieldsConfigPanel({
           </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Escolha em quais fluxos de trabalho o campo "{pendingFieldData?.field_name}" deve aparecer.
+              Escolha em quais POPs o campo "{pendingFieldData?.field_name}" deve aparecer.
             </p>
 
             {/* Current board info */}
             {currentBoard && (
               <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/20">
                 <div className="w-3 h-3 rounded-full" style={{ backgroundColor: currentBoard.stages?.[0]?.color || '#3b82f6' }} />
-                <span className="text-sm font-medium">Fluxo atual: {currentBoard.name}</span>
+                <span className="text-sm font-medium">POP atual: {currentBoard.name}</span>
               </div>
             )}
 
@@ -536,7 +536,7 @@ export function CustomFieldsConfigPanel({
                   className="accent-primary"
                 />
                 <div>
-                  <span className="text-sm font-medium">Todos os fluxos de trabalho</span>
+                  <span className="text-sm font-medium">Todos os POPs</span>
                   <p className="text-xs text-muted-foreground">Campo global visível em todos os funis</p>
                 </div>
               </label>

@@ -158,7 +158,7 @@ Pedido do usuário: ${aiPrompt}`,
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5" />
-            Modelos de Mensagem por Funil / Fluxo
+            Modelos de Mensagem por Funil / POP
           </DialogTitle>
         </DialogHeader>
 
@@ -218,7 +218,7 @@ Pedido do usuário: ${aiPrompt}`,
                   </Select>
                 </div>
                 <div>
-                  <Label className="text-xs">Fluxo de Trabalho</Label>
+                  <Label className="text-xs">POP</Label>
                   <Select value={editWorkflowId} onValueChange={setEditWorkflowId}>
                     <SelectTrigger className="h-8"><SelectValue placeholder="Nenhum" /></SelectTrigger>
                     <SelectContent>

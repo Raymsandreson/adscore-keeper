@@ -234,7 +234,7 @@ export function GlobalDatabaseSearch() {
           type: 'workflow',
           title: w.name || 'Fluxo sem nome',
           subtitle: w.description || '',
-          extra: w.board_type === 'workflow' ? 'Fluxo de Trabalho' : 'Funil de Vendas',
+          extra: w.board_type === 'workflow' ? 'POP' : 'Funil de Vendas',
           date: w.updated_at,
           raw: w,
         });

@@ -119,7 +119,7 @@ export default function CampaignForm({ open, onOpenChange, campaign, onSaved }: 
             </div>
           </div>
           <div>
-            <Label>Fluxo de trabalho</Label>
+            <Label>POP</Label>
             <Select value={form.board_id || 'none'} onValueChange={(v) => setForm({ ...form, board_id: v === 'none' ? '' : v })}>
               <SelectTrigger><SelectValue placeholder="Selecionar fluxo" /></SelectTrigger>
               <SelectContent>

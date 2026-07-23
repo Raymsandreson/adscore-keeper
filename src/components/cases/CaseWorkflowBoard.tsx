@@ -119,7 +119,7 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
     return (
       <div className="text-center py-4 text-xs text-muted-foreground">
         <Workflow className="h-5 w-5 mx-auto mb-1 opacity-40" />
-        Nenhum quadro do tipo "Fluxo de Trabalho" configurado.
+        Nenhum quadro do tipo "POP" configurado.
         <br />
         <span className="text-[10px]">Crie um quadro com tipo "workflow" nas configurações do Kanban.</span>
       </div>
@@ -130,7 +130,7 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <Workflow className="h-4 w-4 text-primary" />
-        <h4 className="text-xs font-semibold">Fluxo de Trabalho</h4>
+        <h4 className="text-xs font-semibold">POP</h4>
         {workflowBoards.length > 1 && (
           <Select value={selectedBoardId || undefined} onValueChange={handleSelectBoard}>
             <SelectTrigger className="h-7 text-xs w-[180px]">

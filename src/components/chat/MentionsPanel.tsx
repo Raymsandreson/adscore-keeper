@@ -32,7 +32,7 @@ const entityLabels: Record<string, string> = {
   lead: 'Lead',
   activity: 'Atividade',
   contact: 'Contato',
-  workflow: 'Fluxo',
+  workflow: 'POP',
   whatsapp: 'WhatsApp',
 };
 

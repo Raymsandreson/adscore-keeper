@@ -960,7 +960,7 @@ const ActivitiesPage = () => {
       return;
     }
     if (!formWorkflowId && !formIsSystem && !formIsManagement) {
-      toast.error('Selecione um fluxo de trabalho para continuar');
+      toast.error('Selecione um POP para continuar');
       return;
     }
 
@@ -3552,7 +3552,7 @@ const ActivitiesPage = () => {
             <Button variant={filterWorkflow.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
               <Layers className="h-3 w-3" />
               {filterWorkflow.length === 0
-                ? 'Fluxo'
+                ? 'POP'
                 : filterWorkflow.length === 1
                   ? (workflowOptions.find(w => w.id === filterWorkflow[0])?.name?.split(' ')[0] || '1')
                   : `${filterWorkflow.length}`}
@@ -3560,7 +3560,7 @@ const ActivitiesPage = () => {
           </PopoverTrigger>
           <PopoverContent className="w-[300px] p-0" align="start">
             <Command>
-              <CommandInput placeholder="Buscar fluxo de trabalho..." />
+              <CommandInput placeholder="Buscar POP..." />
               <CommandList>
                 <CommandEmpty>Nenhum encontrado</CommandEmpty>
                 <CommandGroup>
@@ -5234,7 +5234,7 @@ const ActivitiesPage = () => {
                   }
                   return (
                     <p className="text-[10px] text-muted-foreground mt-1.5 italic">
-                      Processo sem fluxo de trabalho vinculado — cadastre um fluxo no processo para ver o progresso.
+                      Processo sem POP vinculado — cadastre um POP no processo para ver o progresso.
                     </p>
                   );
                 }

@@ -834,7 +834,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               }
               return (
                 <p className="text-[10px] text-muted-foreground italic">
-                  Processo sem fluxo de trabalho vinculado — cadastre um fluxo no processo para ver o progresso.
+                  Processo sem POP vinculado — cadastre um POP no processo para ver o progresso.
                 </p>
               );
             }

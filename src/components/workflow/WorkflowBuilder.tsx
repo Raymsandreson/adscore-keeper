@@ -87,8 +87,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const { boards: allBoards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
   const boards = allBoards.filter(b => b.board_type === boardType);
   const isFunnel = boardType === 'funnel';
-  const typeLabel = isFunnel ? 'Funil de Vendas' : 'Fluxo de Trabalho';
-  const typeLabelLower = isFunnel ? 'funil' : 'fluxo de trabalho';
+  const typeLabel = isFunnel ? 'Funil de Vendas' : 'POP';
+  const typeLabelLower = isFunnel ? 'funil' : 'POP';
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const {
     templates,
@@ -702,7 +702,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             p_board_id: boardId,
             p_board_name: latestName.trim(),
             p_changed_by: user.id,
-            p_change_description: `O fluxo de trabalho "${latestName.trim()}" foi atualizado. Verifique as alterações nos passos e checklists.`,
+            p_change_description: `O POP "${latestName.trim()}" foi atualizado. Verifique as alterações nos passos e checklists.`,
           });
         }
       }
@@ -801,7 +801,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         <SheetHeader className="px-6 py-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <Workflow className="h-5 w-5" />
-            {viewMode === 'list' ? (isFunnel ? 'Funis de Vendas' : 'Fluxos de Trabalho') : (editingBoardId ? `Editar ${typeLabelLower}` : `Novo ${typeLabelLower}`)}
+            {viewMode === 'list' ? (isFunnel ? 'Funis de Vendas' : 'POPs') : (editingBoardId ? `Editar ${typeLabelLower}` : `Novo ${typeLabelLower}`)}
           </SheetTitle>
         </SheetHeader>
 

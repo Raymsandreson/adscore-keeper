@@ -319,7 +319,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                 .map(i => i.template_name)
                 .filter(Boolean) as string[];
               const prefix = boardName
-                ? `${boardType === 'workflow' ? 'Fluxo' : 'Funil'}: ${boardName}\n`
+                ? `${boardType === 'workflow' ? 'POP' : 'Funil'}: ${boardName}\n`
                 : '';
               const objLine = stageObjectives.length > 0
                 ? `\n• ${stageObjectives.join('\n• ')}`

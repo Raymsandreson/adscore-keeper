@@ -58,7 +58,7 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Telão (troféu)", description: "abre o ranking ao vivo do time (/tv/atividades)" },
       { label: "Play (Workflow)", description: "sessão sequencial: o sistema apresenta uma atividade por vez com cronômetro" },
       { label: "💬 Feedbacks", description: "feedbacks das atividades que você observa" },
-      { label: "Chips de filtro", anchor: "Assessor", description: "Assessor, Tipo, Fluxo, Lead, Contato, Caso, 'Cronômetro ativo' e busca; 'Limpar' zera tudo" },
+      { label: "Chips de filtro", anchor: "Assessor", description: "Assessor, Tipo, POP, Lead, Contato, Caso, 'Cronômetro ativo' e busca; 'Limpar' zera tudo" },
       { label: "Calendário lateral", description: "selecionar dias vira filtro; tem botão de compartilhar o resumo do dia" },
       { label: "Concluir / Concluir + próxima", anchor: ["Concluir", "Nova Atividade"], description: "encerra a atividade (e o cronômetro) e já abre a seguinte" },
       { label: "Enviar ao Grupo / Assessor", anchor: ["Enviar ao Grupo", "Nova Atividade"], description: "monta a mensagem da atividade e envia no WhatsApp, com preview editável" },
@@ -304,7 +304,7 @@ export const featureGuides: FeatureGuideDef[] = [
     items: [
       { label: "Nova campanha", description: "cadastra a campanha com investimento" },
       { label: "Card da campanha", description: "status, leads/casos/processos, investido, honorários e ROI; clique abre o detalhe" },
-      { label: "Detalhe", description: "métricas CAC/LTV/ROI + abas Leads, Atividades e Fluxo" },
+      { label: "Detalhe", description: "métricas CAC/LTV/ROI + abas Leads, Atividades e POP" },
     ],
     tip: "Acompanhe o ROI geral no topo e entre no detalhe só das campanhas fora da curva.",
   },

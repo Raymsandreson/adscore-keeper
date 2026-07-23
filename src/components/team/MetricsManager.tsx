@@ -37,7 +37,7 @@ const PERIODICITY_OPTIONS = [
 const SCOPE_OPTIONS = [
   { value: 'global', label: 'Global' },
   { value: 'funnel', label: 'Funil de Vendas' },
-  { value: 'workflow', label: 'Fluxo de Trabalho' },
+  { value: 'workflow', label: 'POP' },
 ];
 
 interface MetricFormState {
@@ -222,7 +222,7 @@ export function MetricsManager() {
                                 {metric.unit && <Badge variant="outline" className="text-[10px] shrink-0">{metric.unit}</Badge>}
                                 {metric.scope_type && metric.scope_type !== 'global' && (
                                   <Badge variant="secondary" className="text-[10px] shrink-0">
-                                    {metric.scope_type === 'funnel' ? 'Funil' : 'Fluxo'}
+                                    {metric.scope_type === 'funnel' ? 'Funil' : 'POP'}
                                   </Badge>
                                 )}
                                 <Badge variant="outline" className="text-[10px] shrink-0">
@@ -308,7 +308,7 @@ export function MetricsManager() {
             </div>
             {form.scope_type !== 'global' && (
               <div>
-                <Label>{form.scope_type === 'funnel' ? 'Funil de Vendas' : 'Fluxo de Trabalho'}</Label>
+                <Label>{form.scope_type === 'funnel' ? 'Funil de Vendas' : 'POP'}</Label>
                 <Select value={form.scope_id} onValueChange={v => setForm(f => ({ ...f, scope_id: v }))}>
                   <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>

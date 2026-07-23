@@ -638,7 +638,7 @@ export function TeamsManager() {
     if (!boardIdVal) return null;
     const b = boards.find(bb => bb.id === boardIdVal);
     if (!b) return null;
-    return { name: b.name, label: b.board_type === 'workflow' ? 'Fluxo' : 'Funil' };
+    return { name: b.name, label: b.board_type === 'workflow' ? 'POP' : 'Funil' };
   };
 
   if (loading) {
