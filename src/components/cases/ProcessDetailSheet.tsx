@@ -15,7 +15,7 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft
 } from 'lucide-react';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -27,6 +27,7 @@ import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFieldsForm';
 import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 
 interface ProcessDetailSheetProps {
@@ -192,6 +193,25 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const isJudicial = (form.process_type || 'judicial') === 'judicial';
   const systemOabs = useSystemOabs();
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
+  const isMobile = useIsMobile();
+  // No mobile, o conteúdo de cada aba abre num painel lateral deslizante
+  // (drawer), dando a tela inteira para as informações. No desktop, o
+  // conteúdo fica inline e ao trocar de aba rolamos para focá-lo.
+  const [mobileContentOpen, setMobileContentOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const handleTabClick = useCallback((id: TabId) => {
+    setActiveTab(id);
+    if (isMobile) {
+      setMobileContentOpen(true);
+      return;
+    }
+    requestAnimationFrame(() => {
+      const scroller = scrollRef.current;
+      const bar = tabBarRef.current;
+      if (scroller && bar) scroller.scrollTo({ top: bar.offsetTop, behavior: 'smooth' });
+    });
+  }, [isMobile]);
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -229,6 +249,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       // Salvar aparecer sem o usuário ter editado nada.
       setDirty(false);
       setActiveTab(defaultTab ?? 'partes');
+      setMobileContentOpen(false);
       setActivities([]);
       setDocuments([]);
     }
@@ -793,168 +814,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // Único early return do componente — depois de todos os hooks.
   if (!process) return null;
 
-  const innerContent = (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0 gap-2">
-        <div className="text-sm font-semibold flex items-center gap-2 min-w-0 flex-1">
-          <Pencil className="h-4 w-4 text-primary shrink-0" />
-          <span className="truncate">
-            {form.process_number ? (
-              <>
-                Nº {form.process_number}
-                {form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}
-              </>
-            ) : (
-              <>Detalhes do Processo{form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}</>
-            )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-1">
-              {form.escavador_raw && (
-                <Button size="sm" variant="ghost" onClick={() => handleReExtract()} disabled={saving} className="h-7 text-xs gap-1" title="Reprocessa o dado já salvo, sem consultar o Escavador (sem custo)">
-                  <RefreshCw className="h-3 w-3" />
-                  Re-extrair
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => handleFetchFromApi()} disabled={saving} className="h-7 text-xs gap-1" title="Consulta o Escavador agora (consome 1 crédito) e traz movimentações novas">
-                <RefreshCw className="h-3 w-3" />
-                {form.escavador_raw ? 'Atualizar (Escavador)' : 'Buscar no Escavador'}
-              </Button>
-            </div>
-            <span className="text-[9px] text-muted-foreground mt-0.5">
-              {form.data_ultima_verificacao
-                ? `Última busca: ${new Date(form.data_ultima_verificacao + (form.data_ultima_verificacao.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR')}`
-                : form.escavador_raw
-                  ? 'Buscado anteriormente'
-                  : 'Nunca buscado'}
-            </span>
-          </div>
-          {dirty && (
-            <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
-              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-              Salvar
-            </Button>
-          )}
-        </div>
-      </div>
-
-      {/* Process info */}
-      <div className="px-4 pb-2 space-y-2 border-b shrink-0">
-        <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
-        <EditableField label="Nº do Processo *" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge variant="secondary" className="text-[10px]">
-            {form.status === 'em_andamento' ? 'Em Andamento' : form.status === 'concluido' ? 'Concluído' : form.status === 'arquivado' ? 'Arquivado' : form.status}
-          </Badge>
-          {form.situacao && <Badge variant="outline" className="text-[10px]">{form.situacao}</Badge>}
-          {form.segredo_justica && <Badge variant="destructive" className="text-[10px]">Segredo de Justiça</Badge>}
-          <Button
-            variant="link"
-            size="sm"
-            className="h-5 text-[10px] gap-1 px-1 text-primary"
-            onClick={() => {
-              onOpenChange(false);
-              navFn(`/processes?openProcess=${process.id}`);
-            }}
-          >
-            <ExternalLink className="h-3 w-3" />
-            Ver na aba Processos
-          </Button>
-        </div>
-
-        {/* Workflow link — destaque */}
-        <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1">
-          <Label className="text-[10px] uppercase tracking-wider text-primary font-semibold flex items-center gap-1">
-            <ClipboardList className="h-3 w-3" />
-            Fluxo de Trabalho Vinculado *
-          </Label>
-          <Select
-            value={form.workflow_id || '__none__'}
-            onValueChange={(val) => {
-              if (val === '__none__') {
-                set('workflow_id', null);
-                set('workflow_name', null);
-                set('workflow_stage_id', null);
-              } else {
-                const wf = workflowBoards.find(w => w.id === val);
-                set('workflow_id', val);
-                set('workflow_name', wf?.name || null);
-                set('workflow_stage_id', null);
-              }
-            }}
-          >
-            <SelectTrigger className="h-8 text-xs bg-background">
-              <SelectValue placeholder="Nenhum fluxo vinculado — selecione" />
-            </SelectTrigger>
-            <SelectContent className="z-[9999]">
-              <SelectItem value="__none__">Nenhum</SelectItem>
-              {workflowBoards.map(wf => (
-                <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          {form.workflow_id && process?.lead_id && (
-            <div className="pt-1">
-              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} />
-            </div>
-          )}
-          {form.workflow_id && !process?.lead_id && (
-            <p className="text-[10px] text-muted-foreground pt-1">
-              A barra de progresso aparece quando o processo está vinculado a um lead.
-            </p>
-          )}
-
-          <div className="pt-2 space-y-1">
-            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Responsável pelo processo {isJudicial && '*'}
-            </Label>
-            <ResponsibleUserSelect
-              value={form.responsible_user_id || null}
-              onChange={(v) => set('responsible_user_id', v)}
-              className="h-8 text-xs bg-background"
-              placeholder="Selecione o responsável"
-            />
-            {isJudicial && !form.responsible_user_id && (
-              <p className="text-[10px] text-destructive">
-                Obrigatório: designe um responsável para salvar o processo.
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Tab navigation */}
-      <div className="shrink-0 border-b">
-        <div className="flex flex-wrap gap-0.5 px-2 py-1.5">
-            {TABS.map(tab => {
-              const Icon = tab.icon;
-              const isActive = activeTab === tab.id;
-              if (tab.id === 'envolvidos' && envolvidos.length === 0 && audiencias.length === 0 && processosRelacionados.length === 0) return null;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
-                    isActive
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                  }`}
-                >
-                  <Icon className="h-3 w-3" />
-                  {tab.label}
-                </button>
-              );
-            })}
-        </div>
-      </div>
-
-        {/* Tab content */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
-          <div className="space-y-3 pt-3">
+  // Painéis de conteúdo de cada aba. Extraído para variável para poder
+  // renderizar o MESMO conteúdo inline (desktop) ou dentro do painel
+  // lateral (mobile) sem duplicar JSX nem remontar os campos.
+  const tabPanels = (
+    <>
 
             {activeTab === 'partes' && (
               <>
@@ -1392,8 +1256,199 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 </Button>
               </div>
             )}
+    </>
+  );
+
+  const innerContent = (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0 gap-2">
+        <div className="text-sm font-semibold flex items-center gap-2 min-w-0 flex-1">
+          <Pencil className="h-4 w-4 text-primary shrink-0" />
+          <span className="truncate">
+            {form.process_number ? (
+              <>
+                Nº {form.process_number}
+                {form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}
+              </>
+            ) : (
+              <>Detalhes do Processo{form.title && <span className="text-muted-foreground font-normal"> ("{form.title}")</span>}</>
+            )}
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex flex-col items-end">
+            <div className="flex items-center gap-1">
+              {form.escavador_raw && (
+                <Button size="sm" variant="ghost" onClick={() => handleReExtract()} disabled={saving} className="h-7 text-xs gap-1" title="Reprocessa o dado já salvo, sem consultar o Escavador (sem custo)">
+                  <RefreshCw className="h-3 w-3" />
+                  Re-extrair
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => handleFetchFromApi()} disabled={saving} className="h-7 text-xs gap-1" title="Consulta o Escavador agora (consome 1 crédito) e traz movimentações novas">
+                <RefreshCw className="h-3 w-3" />
+                {form.escavador_raw ? 'Atualizar (Escavador)' : 'Buscar no Escavador'}
+              </Button>
+            </div>
+            <span className="text-[9px] text-muted-foreground mt-0.5">
+              {form.data_ultima_verificacao
+                ? `Última busca: ${new Date(form.data_ultima_verificacao + (form.data_ultima_verificacao.length === 10 ? 'T00:00:00' : '')).toLocaleDateString('pt-BR')}`
+                : form.escavador_raw
+                  ? 'Buscado anteriormente'
+                  : 'Nunca buscado'}
+            </span>
+          </div>
+          {dirty && (
+            <Button size="sm" onClick={handleSave} disabled={saving} className="h-7 text-xs gap-1">
+              {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+              Salvar
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Área rolável única: infos do processo + abas (sticky) + conteúdo.
+          No mobile, o cabeçalho do processo rola para fora e a barra de abas
+          gruda no topo, dando a tela inteira para o conteúdo de cada aba. */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto relative">
+      {/* Process info */}
+      <div className="px-4 pb-2 space-y-2 border-b">
+        <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
+        <EditableField label="Nº do Processo *" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="secondary" className="text-[10px]">
+            {form.status === 'em_andamento' ? 'Em Andamento' : form.status === 'concluido' ? 'Concluído' : form.status === 'arquivado' ? 'Arquivado' : form.status}
+          </Badge>
+          {form.situacao && <Badge variant="outline" className="text-[10px]">{form.situacao}</Badge>}
+          {form.segredo_justica && <Badge variant="destructive" className="text-[10px]">Segredo de Justiça</Badge>}
+          <Button
+            variant="link"
+            size="sm"
+            className="h-5 text-[10px] gap-1 px-1 text-primary"
+            onClick={() => {
+              onOpenChange(false);
+              navFn(`/processes?openProcess=${process.id}`);
+            }}
+          >
+            <ExternalLink className="h-3 w-3" />
+            Ver na aba Processos
+          </Button>
+        </div>
+
+        {/* Workflow link — destaque */}
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-2 space-y-1">
+          <Label className="text-[10px] uppercase tracking-wider text-primary font-semibold flex items-center gap-1">
+            <ClipboardList className="h-3 w-3" />
+            Fluxo de Trabalho Vinculado *
+          </Label>
+          <Select
+            value={form.workflow_id || '__none__'}
+            onValueChange={(val) => {
+              if (val === '__none__') {
+                set('workflow_id', null);
+                set('workflow_name', null);
+                set('workflow_stage_id', null);
+              } else {
+                const wf = workflowBoards.find(w => w.id === val);
+                set('workflow_id', val);
+                set('workflow_name', wf?.name || null);
+                set('workflow_stage_id', null);
+              }
+            }}
+          >
+            <SelectTrigger className="h-8 text-xs bg-background">
+              <SelectValue placeholder="Nenhum fluxo vinculado — selecione" />
+            </SelectTrigger>
+            <SelectContent className="z-[9999]">
+              <SelectItem value="__none__">Nenhum</SelectItem>
+              {workflowBoards.map(wf => (
+                <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          {form.workflow_id && process?.lead_id && (
+            <div className="pt-1">
+              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} />
+            </div>
+          )}
+          {form.workflow_id && !process?.lead_id && (
+            <p className="text-[10px] text-muted-foreground pt-1">
+              A barra de progresso aparece quando o processo está vinculado a um lead.
+            </p>
+          )}
+
+          <div className="pt-2 space-y-1">
+            <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
+              Responsável pelo processo {isJudicial && '*'}
+            </Label>
+            <ResponsibleUserSelect
+              value={form.responsible_user_id || null}
+              onChange={(v) => set('responsible_user_id', v)}
+              className="h-8 text-xs bg-background"
+              placeholder="Selecione o responsável"
+            />
+            {isJudicial && !form.responsible_user_id && (
+              <p className="text-[10px] text-destructive">
+                Obrigatório: designe um responsável para salvar o processo.
+              </p>
+            )}
           </div>
         </div>
+      </div>
+
+      {/* Tab navigation — gruda no topo da área rolável ao rolar o conteúdo */}
+      <div ref={tabBarRef} className="sticky top-0 z-20 bg-background border-b">
+        <div className="flex flex-nowrap overflow-x-auto scrollbar-hide snap-x md:flex-wrap md:overflow-x-visible gap-0.5 px-2 py-1.5">
+            {TABS.map(tab => {
+              const Icon = tab.icon;
+              const isActive = activeTab === tab.id;
+              if (tab.id === 'envolvidos' && envolvidos.length === 0 && audiencias.length === 0 && processosRelacionados.length === 0) return null;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => handleTabClick(tab.id)}
+                  className={`flex shrink-0 snap-start items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  }`}
+                >
+                  <Icon className="h-3 w-3" />
+                  {tab.label}
+                </button>
+              );
+            })}
+        </div>
+      </div>
+
+        {/* Conteúdo da aba — inline no desktop; painel lateral (drawer) no mobile */}
+        {isMobile ? (
+          <Sheet open={mobileContentOpen} onOpenChange={setMobileContentOpen}>
+            <SheetContent side="right" className="w-full max-w-none p-0 flex flex-col gap-0">
+              <div className="sr-only"><SheetHeader><SheetTitle>{TABS.find(t => t.id === activeTab)?.label ?? 'Detalhes'}</SheetTitle></SheetHeader></div>
+              <div className="shrink-0 flex items-center gap-2 border-b px-2 py-2">
+                <Button variant="ghost" size="sm" className="h-8 gap-1 px-2" onClick={() => setMobileContentOpen(false)}>
+                  <ChevronLeft className="h-4 w-4" />
+                  <span className="text-xs">Voltar</span>
+                </Button>
+                <span className="text-sm font-semibold truncate">{TABS.find(t => t.id === activeTab)?.label}</span>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
+                <div className="space-y-3 pt-3">
+                  {tabPanels}
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        ) : (
+          <div className="px-4 pb-6">
+            <div className="space-y-3 pt-3">
+              {tabPanels}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Formulário completo (único do sistema) — abre empilhado ao clicar numa atividade do Histórico */}
       <ActivityFullSheet
