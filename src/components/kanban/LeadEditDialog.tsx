@@ -285,6 +285,8 @@ export function LeadEditDialog({
   const [leadOutcome, setLeadOutcome] = useState<'' | 'no_response' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
+  // Valor do contrato no fechamento — grava em leads.conversion_value e vai no Purchase da CAPI.
+  const [leadConversionValue, setLeadConversionValue] = useState('');
   const [isGeneratingReason, setIsGeneratingReason] = useState(false);
   const [caseNumber, setCaseNumber] = useState('');
   const [caseSyncCheck, setCaseSyncCheck] = useState<{
@@ -451,6 +453,7 @@ export function LeadEditDialog({
     // Outcome
     setCaseNumber(leadAny.case_number || '');
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
+    setLeadConversionValue(leadAny.conversion_value != null ? String(leadAny.conversion_value) : '');
     // Use lead_status field as primary source of truth.
     // Exceção: se became_client_date está setado, o lead fechou de fato (tem caso/became client)
     // — não deixar um lead_status='no_response' dessincronizado mascarar o fechamento.
@@ -1544,6 +1547,15 @@ ${scrapeData.content || ''}
       const finalGroupLink = firstGroup?.group_link || null;
       const finalGroupId = firstGroup?.group_jid || null;
 
+      // Valor do contrato digitado no fechamento. Input é type="number" → valor sempre com
+      // ponto decimal e sem separador de milhar. null = não informado (não sobrescreve o existente).
+      const parsedConversionValue = (() => {
+        const raw = leadConversionValue.trim();
+        if (raw === '') return null;
+        const n = Number(raw);
+        return Number.isFinite(n) && n >= 0 ? n : null;
+      })();
+
       console.log('[handleSave] Calling onSave with updates...');
       await onSave(currentLead.id, {
         lead_name: leadName.trim(),
@@ -1608,6 +1620,10 @@ ${scrapeData.content || ''}
         inviavel_date: leadOutcome === 'inviavel' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         cancelled_date: leadOutcome === 'cancelled' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         lead_status_reason: leadOutcomeReason || null,
+        // Só grava conversion_value ao fechar e com valor válido; vazio não sobrescreve o existente.
+        ...(leadOutcome === 'closed' && parsedConversionValue != null
+          ? { conversion_value: parsedConversionValue }
+          : {}),
         case_number: caseNumber || null,
       } as any);
 
@@ -1654,7 +1670,8 @@ ${scrapeData.content || ''}
              email: (currentLead as any).lead_email || undefined,
              phone: (currentLead as any).lead_phone || undefined,
              name: currentLead.lead_name || undefined,
-             value: (currentLead as any).conversion_value || 0,
+             // Valor digitado agora; se vazio, cai no que já estava salvo no lead.
+             value: parsedConversionValue ?? ((currentLead as any).conversion_value || 0),
            }).then((result) => {
              if (result.success) {
                console.log('[Meta CAPI] Purchase (Pixel) enviado no fechamento do lead', currentLead.id);
@@ -2852,6 +2869,24 @@ ${scrapeData.content || ''}
                         </Label>
                         <Input type="date" value={leadOutcomeDate} onChange={(e) => setLeadOutcomeDate(e.target.value)} className="mt-1" />
                       </div>
+                      {leadOutcome === 'closed' && (
+                        <div>
+                          <Label className="text-xs">Valor do contrato (R$)</Label>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="Ex: 5000"
+                            value={leadConversionValue}
+                            onChange={(e) => setLeadConversionValue(e.target.value)}
+                            className="mt-1"
+                          />
+                          <p className="text-[10px] text-muted-foreground mt-1">
+                            Enviado ao Meta na conversão (Purchase). Deixe vazio para manter o valor já registrado.
+                          </p>
+                        </div>
+                      )}
                       <div>
                         <div className="flex items-center justify-between">
                           <Label className="text-xs">Motivo</Label>
