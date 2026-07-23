@@ -35,6 +35,23 @@ type Phase = 'idle' | 'uploading' | 'processing' | 'done';
 const ACCEPTED = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
 const MAX_MB = 15;
 
+// Campos de texto (detalhe) + metadados extraídos pela IA. Espelha o áudio
+// (ActivityCallRecorder): o documento agora também preenche título, prazo,
+// notificação, prioridade, situação, tipo e assessor(es) quando o documento os traz.
+const TEXT_KEYS = ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] as const;
+const META_KEYS = ['title', 'deadline', 'notification_date', 'priority', 'status', 'assessor_name', 'activity_type'] as const;
+
+function buildAppliedFields(raw: any): ActivityCallFields {
+  const applied: ActivityCallFields = {};
+  for (const k of TEXT_KEYS) { const v = raw?.[k]; if (v && String(v).trim()) (applied as any)[k] = String(v).trim(); }
+  for (const k of META_KEYS) { const v = raw?.[k]; if (v && String(v).trim()) (applied as any)[k] = String(v).trim(); }
+  const assessors = Array.isArray(raw?.assessor_names)
+    ? raw.assessor_names.map((n: unknown) => String(n || '').trim()).filter(Boolean)
+    : [];
+  if (assessors.length > 0) applied.assessor_names = assessors;
+  return applied;
+}
+
 export function ActivityDocumentUpload({ context, onFields, activityId, leadId, caseId, processId, open: openProp, onOpenChange, triggerClassName }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp !== undefined ? openProp : internalOpen;
@@ -134,10 +151,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
         if (!data?.success) throw new Error(data?.error || 'Falha ao processar o documento');
         setPreview(data.extracted_text || null);
         setQuestion(data.clarifying_question || null);
-        const raw = data.fields || {};
-        const applied: ActivityCallFields = {};
-        const keys = ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] as const;
-        for (const k of keys) { const v = raw[k]; if (v && String(v).trim()) applied[k] = String(v).trim(); }
+        const applied = buildAppliedFields(data.fields || {});
         onFields(applied);
         setPhase('done');
         if (data.clarifying_question) toast.info('A IA ainda tem uma dúvida — veja no painel.', { duration: 5000 });
@@ -216,13 +230,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
       setPreview(data.extracted_text || null);
       setQuestion(data.clarifying_question || null);
 
-      const raw = data.fields || {};
-      const applied: ActivityCallFields = {};
-      const keys = ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'] as const;
-      for (const k of keys) {
-        const v = raw[k];
-        if (v && String(v).trim()) applied[k] = String(v).trim();
-      }
+      const applied = buildAppliedFields(data.fields || {});
       onFields(applied);
 
       setPhase('done');

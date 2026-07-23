@@ -43,6 +43,15 @@ interface ActivityContext {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  // Metadados atuais — permitem que o documento os corrija/preencha (prazo, prioridade, responsável).
+  deadline?: string;
+  notification_date?: string;
+  priority?: string;
+  status?: string;
+  assessor_name?: string;
+  co_assessor_names?: string[];
+  team_members?: string[];
+  activity_types?: { key: string; label: string }[];
   workflow?: { step_label?: string; phase_label?: string; objective_label?: string; next_step?: string };
   previous_activities?: PreviousActivity[];
   chat_messages?: ChatMessage[];
@@ -153,12 +162,32 @@ export const handler: RequestHandler = async (req, res) => {
 
     // 2) Monta contexto da atividade (mesma estrutura da função de áudio).
     const ctx = activity_context || {};
-    const ctxText = `Contexto da atividade:
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+    const weekday = new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' });
+    const teamList = Array.isArray(ctx.team_members) && ctx.team_members.length > 0
+      ? ctx.team_members.slice(0, 50).join(', ')
+      : '—';
+    const coAssessorList = Array.isArray(ctx.co_assessor_names) && ctx.co_assessor_names.length > 0
+      ? ctx.co_assessor_names.join(', ')
+      : '—';
+    const typesList = Array.isArray(ctx.activity_types) && ctx.activity_types.length > 0
+      ? ctx.activity_types.slice(0, 40).map((t) => `${t.key} (${t.label})`).join(', ')
+      : '';
+    const ctxText = `Data de HOJE: ${today} (${weekday}) — use para resolver datas relativas ("amanhã", "sexta-feira", "dia 15").
+
+Contexto da atividade:
 - Título: ${ctx.title || '—'}
 - Tipo: ${ctx.type || '—'}
 - Cliente/Lead: ${ctx.lead_name || '—'}
 - Contato: ${ctx.contact_name || '—'}
 - Processo: ${ctx.process_title || '—'}
+- Prazo atual: ${ctx.deadline || '—'}
+- Notificação atual: ${ctx.notification_date || '—'}
+- Prioridade atual: ${ctx.priority || '—'}
+- Situação atual: ${ctx.status || '—'}
+- Assessor responsável atual (principal): ${ctx.assessor_name || '—'}
+- Co-assessores atuais: ${coAssessorList}
+- Assessores da equipe (nomes válidos para assessor_names): ${teamList}${typesList ? `\n- Tipos de atividade válidos (keys para activity_type): ${typesList}` : ''}
 
 Conteúdo ATUAL dos campos (preserve o que ainda for válido e complemente com o documento):
 - Como está: ${ctx.current_status || '(vazio)'}
@@ -178,6 +207,11 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
 - Seja fiel e objetivo. NÃO invente fatos, nomes, datas ou prazos que não estejam no documento ou no contexto fornecido. Se um campo não tiver informação, retorne string vazia.
 - NÃO SEJA REDUNDANTE: só preencha um campo se o documento realmente trouxer aquela informação. NÃO repita o mesmo conteúdo em campos diferentes só para não deixá-los vazios; cada campo deve ter uma função distinta (o que foi feito ≠ como está ≠ próximo passo). Deixar um campo vazio é PREFERÍVEL a enchê-lo com repetição ou texto genérico.
 - PERGUNTA quando faltar informação essencial: se o documento for ambíguo, ilegível ou insuficiente para preencher os campos com segurança, retorne uma pergunta objetiva em "clarifying_question" (uma frase, direta ao usuário) e preencha só o que der com segurança. Se estiver tudo claro, OMITA clarifying_question.
+- METADADOS (deadline, notification_date, priority, status, assessor_names, title): preencha SOMENTE quando o documento mencionar explicitamente prazo/data, prioridade, situação, responsável ou um título/assunto claro. Caso contrário, OMITA o campo (não o inclua na resposta) — o valor atual é mantido. Para priority e status use exatamente um dos valores permitidos; nunca retorne string vazia nesses dois.
+  - Datas SEMPRE no formato YYYY-MM-DD, resolvendo termos relativos ("em 15 dias", "até sexta") com a data de hoje.
+  - PRAZO: se o documento traz um prazo processual (ex.: "prazo de 15 dias", "manifeste-se em 5 dias", data de audiência), calcule/extraia a data e retorne em deadline. Só quando o documento realmente indicar um prazo.
+  - ASSESSORES: só preencha assessor_names se o documento indicar explicitamente quem é o responsável pela atividade. Cada nome deve ser EXATAMENTE um dos nomes da equipe listados no contexto; ignore nomes que não corresponderem a ninguém da equipe. Na dúvida, OMITA (documentos raramente designam responsável interno).
+- TIPO DA ATIVIDADE (activity_type): avalie qual dos tipos válidos listados no contexto é o MAIS ADEQUADO ao conteúdo do documento + contexto (ex.: intimação de audiência → audiencia; despacho com prazo → prazo; laudo pericial → diligencia). Se o tipo mais adequado for DIFERENTE do tipo atual da atividade, retorne a key dele em activity_type. Se o tipo atual já for o adequado (ou não houver como saber), OMITA o campo.
 - Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
 
     // 3) Monta a mensagem do usuário: contexto + documento (texto puro ou multimodal).
@@ -213,6 +247,24 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
                 solicitacao: { type: 'string', description: 'O que foi solicitado/pedido no documento, se houver.' },
                 resposta_juizo: { type: 'string', description: 'Resposta ou posição da vara/cartório/juízo/órgão (decisão, despacho, sentença), se houver.' },
                 notes: { type: 'string', description: 'Observações adicionais relevantes constantes no documento.' },
+                title: { type: 'string', description: 'Título/assunto curto da atividade (até 8 palavras) — apenas se o documento deixar claro o assunto. Senão, vazio.' },
+                deadline: { type: 'string', description: 'Prazo da atividade em YYYY-MM-DD — apenas se o documento mencionar prazo/data. Resolva datas relativas com a data de hoje. Senão, vazio.' },
+                notification_date: { type: 'string', description: 'Data de notificação/lembrete em YYYY-MM-DD — apenas se mencionada. Senão, vazio.' },
+                priority: { type: 'string', enum: ['baixa', 'normal', 'alta', 'urgente'], description: 'Prioridade — apenas se o documento indicar urgência. Senão, OMITA este campo (não retorne vazio).' },
+                status: { type: 'string', enum: ['pendente', 'em_andamento', 'concluida'], description: 'Situação da atividade — apenas se o documento indicar. Senão, OMITA este campo (não retorne vazio).' },
+                assessor_name: { type: 'string', description: 'LEGADO — prefira assessor_names. Assessor responsável único, EXATAMENTE um dos nomes da equipe do contexto. Senão, vazio.' },
+                assessor_names: {
+                  type: 'array',
+                  items: { type: 'string' },
+                  description: 'TODOS os assessores responsáveis indicados no documento (primeiro = principal). Cada um EXATAMENTE um dos nomes da equipe do contexto. Apenas se o documento designar responsável; senão, OMITA.',
+                },
+                ...(Array.isArray(ctx.activity_types) && ctx.activity_types.length > 0 ? {
+                  activity_type: {
+                    type: 'string',
+                    enum: ctx.activity_types.map((t) => t.key),
+                    description: 'Key do tipo de atividade MAIS ADEQUADO ao conteúdo do documento, apenas se for diferente do tipo atual. Senão, OMITA.',
+                  },
+                } : {}),
                 clarifying_question: { type: 'string', description: 'Pergunta objetiva ao usuário quando o documento for ambíguo/insuficiente para preencher com segurança. OMITA se estiver tudo claro.' },
               },
               required: ['what_was_done', 'current_status', 'next_steps', 'solicitacao', 'resposta_juizo', 'notes'],

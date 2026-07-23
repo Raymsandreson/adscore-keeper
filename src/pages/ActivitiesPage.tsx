@@ -5005,6 +5005,14 @@ const ActivitiesPage = () => {
                           solicitacao: stripHtmlToText(formSolicitacao),
                           resposta_juizo: stripHtmlToText(formRespostaJuizo),
                           notes: stripHtmlToText(formNotes),
+                          deadline: formDeadline || undefined,
+                          notification_date: formNotificationDate || undefined,
+                          priority: formPriority || undefined,
+                          status: formStatus || undefined,
+                          assessor_name: formAssignedToName || undefined,
+                          co_assessor_names: formCoAssignees.map((c) => c.full_name).filter(Boolean),
+                          team_members: teamMembers.map((m) => m.full_name).filter(Boolean) as string[],
+                          activity_types: routineActivityTypes.map((t) => ({ key: t.value, label: t.label })),
                           workflow: stepContext ? {
                             step_label: stepContext.stepLabel,
                             phase_label: stepContext.phaseLabel || undefined,
@@ -5018,12 +5026,56 @@ const ActivitiesPage = () => {
                           } : undefined,
                         }}
                         onFields={(f) => {
-                          if (f.what_was_done) setFormWhatWasDone(callFieldTextToHtml(f.what_was_done));
-                          if (f.current_status) setFormCurrentStatus(callFieldTextToHtml(f.current_status));
-                          if (f.next_steps) setFormNextSteps(callFieldTextToHtml(f.next_steps));
-                          if (f.solicitacao) setFormSolicitacao(callFieldTextToHtml(f.solicitacao));
-                          if (f.resposta_juizo) setFormRespostaJuizo(callFieldTextToHtml(f.resposta_juizo));
-                          if (f.notes) setFormNotes(callFieldTextToHtml(f.notes));
+                          // Campos de texto (documento nunca manda apagar, mas mantém o mesmo shape do áudio).
+                          if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+                          if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+                          if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+                          if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+                          if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+                          if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+                          // Metadados extraídos do documento (prazo, notificação, prioridade, situação, título).
+                          if (f.title) setFormTitle(f.title);
+                          if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
+                          if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
+                          if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
+                          if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
+                          if (f.activity_type) {
+                            const t = routineActivityTypes.find((x) => x.value === f.activity_type);
+                            if (t && t.value !== formType) {
+                              setFormType(t.value);
+                              setTypeMismatch(null);
+                              toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+                            }
+                          }
+                          // Assessores designados no documento: 1º vira o principal, os demais co-assessores.
+                          const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
+                            ? f.assessor_names
+                            : (f.assessor_name ? [f.assessor_name] : []);
+                          if (spokenNames.length > 0) {
+                            const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+                            const matched: { user_id: string; full_name: string }[] = [];
+                            const notFound: string[] = [];
+                            for (const name of spokenNames) {
+                              const spoken = norm(name);
+                              const member = teamMembers.find((m) => {
+                                const full = norm(m.full_name || '');
+                                return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+                              });
+                              if (member && !matched.some((x) => x.user_id === member.user_id)) {
+                                matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+                              } else if (!member) {
+                                notFound.push(name);
+                              }
+                            }
+                            if (matched.length > 0) {
+                              setFormAssignedTo(matched[0].user_id);
+                              setFormAssignedToName(matched[0].full_name);
+                              setFormCoAssignees(matched.slice(1));
+                            }
+                            if (notFound.length > 0) {
+                              toast.error(`Assessor(es) citado(s) no documento não encontrado(s) na equipe: ${notFound.join(', ')}.`);
+                            }
+                          }
                         }}
                       />
 
