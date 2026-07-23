@@ -291,7 +291,7 @@ export function ClosedCaseContactDialog({ open, leadId, groupJid, groupName, onC
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         const externalUserId = await remapToExternal(user?.id).catch(() => null);
-        const { data: newContact, error } = await externalSupabase
+        const { data: newContact, error } = await (externalSupabase as any)
           .from('contacts')
           .insert({ ...payload, created_by: externalUserId })
           .select('id')
