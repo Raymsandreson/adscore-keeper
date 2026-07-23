@@ -170,6 +170,24 @@ function decodeTemplateTextToken(field: string): string {
   try { return decodeURIComponent(field.slice(5)) } catch { return field.slice(5) }
 }
 
+// leads.acolhedor pode conter UUID de profile, e-mail (padrão observado em
+// leads reais, ex: board Auxílio Acidente) ou nome. Resolve para o full_name
+// do profile quando possível; senão devolve o valor cru.
+async function resolveAcolhedorFullName(supabase: any, raw: string): Promise<string> {
+  const value = String(raw || '').trim()
+  if (!value) return ''
+  try {
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)) {
+      const { data } = await supabase.from('profiles').select('full_name').eq('user_id', value).maybeSingle()
+      if (data?.full_name) return data.full_name
+    } else if (value.includes('@')) {
+      const { data } = await supabase.from('profiles').select('full_name').ilike('email', value).maybeSingle()
+      if (data?.full_name) return data.full_name
+    }
+  } catch (_) { /* mantém o valor cru */ }
+  return value
+}
+
 function getSequencePrefixFromSettings(settings: any, useClosed: boolean): string {
   const direct = cleanSequencePrefix(useClosed && settings?.closed_group_name_prefix ? settings.closed_group_name_prefix : settings?.group_name_prefix)
   if (direct) return direct
@@ -922,6 +940,13 @@ Deno.serve(async (req) => {
           if (city && state) parts.push(`${city}/${state}`)
           else if (city) parts.push(city)
           else if (state) parts.push(state)
+        } else if (field === 'acolhedor' && leadData?.acolhedor) {
+          // No nome do grupo entra só o PRIMEIRO nome do acolhedor resolvido
+          // ("/ Edilan", "/ Mateus") — convenção da equipe. E-mail/UUID viram
+          // nome via profiles; sem profile, cai no valor cru.
+          const resolved = await resolveAcolhedorFullName(supabase, leadData.acolhedor)
+          const firstName = (resolved.split(/\s+/)[0] || '')
+          parts.push(firstName && !firstName.includes('@') ? firstName : resolved)
         } else if (leadData && leadData[field]) {
           parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : formatLeadFieldValue(leadData[field]))
         } else if (field === 'lead_name') {
@@ -1010,34 +1035,30 @@ Deno.serve(async (req) => {
     // Tenta: (a) profiles.user_id -> full_name -> instância; (b) match direto por nome.
     const acolhedorRaw = (leadData?.acolhedor || '').toString().trim()
     if (acolhedorRaw) {
-      let acolhedorName: string | null = null
-      // Tenta resolver como UUID
-      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(acolhedorRaw)) {
-        const { data: prof } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('user_id', acolhedorRaw)
-          .maybeSingle()
-        acolhedorName = prof?.full_name || null
-      }
-      const searchName = acolhedorName || acolhedorRaw
-      if (searchName) {
-        const { data: acolInst } = await supabase
+      // Resolve UUID/e-mail para o full_name do profile; tenta casar instância
+      // pelo nome completo e, se não achar, pelo primeiro nome ("Prev. Edilan").
+      const searchName = await resolveAcolhedorFullName(supabase, acolhedorRaw)
+      const searchCandidates = [...new Set([searchName, searchName.split(/\s+/)[0]]
+        .filter((s) => s && !s.includes('@')))]
+      let acolInst: any = null
+      for (const candidate of searchCandidates) {
+        const { data } = await supabase
           .from('whatsapp_instances')
           .select('id, owner_phone, instance_name, owner_name')
-          .or(`instance_name.ilike.%${searchName}%,owner_name.ilike.%${searchName}%`)
+          .or(`instance_name.ilike.%${candidate}%,owner_name.ilike.%${candidate}%`)
           .eq('is_active', true)
           .limit(1)
           .maybeSingle()
-        if (acolInst?.owner_phone && acolInst.id !== creatorInstance.id) {
-          const p = normalizePhone(acolInst.owner_phone)
-          if (p && !participants.includes(p)) {
-            participants.push(p)
-            console.log(`[create-group] Added acolhedor instance: ${acolInst.instance_name} (${p})`)
-          }
-        } else {
-          console.log(`[create-group] No matching instance found for acolhedor="${searchName}"`)
+        if (data) { acolInst = data; break }
+      }
+      if (acolInst?.owner_phone && acolInst.id !== creatorInstance.id) {
+        const p = normalizePhone(acolInst.owner_phone)
+        if (p && !participants.includes(p)) {
+          participants.push(p)
+          console.log(`[create-group] Added acolhedor instance: ${acolInst.instance_name} (${p})`)
         }
+      } else {
+        console.log(`[create-group] No matching instance found for acolhedor="${searchName}"`)
       }
     }
 
@@ -1725,12 +1746,13 @@ Deno.serve(async (req) => {
     // STEP 11: Notify acolhedor privately
     diagnostics.push(await runStep('notify_acolhedor', async () => {
       if (!leadData?.acolhedor) return
-      
-      // Find acolhedor's phone from profiles
+
+      // Find acolhedor's phone from profiles (resolve UUID/e-mail -> nome antes)
+      const acolhedorSearchName = await resolveAcolhedorFullName(supabase, leadData.acolhedor)
       const { data: acolhedorProfile } = await supabase
         .from('profiles')
         .select('user_id, full_name, phone')
-        .ilike('full_name', leadData.acolhedor)
+        .ilike('full_name', acolhedorSearchName)
         .not('phone', 'is', null)
         .limit(1)
         .maybeSingle()
