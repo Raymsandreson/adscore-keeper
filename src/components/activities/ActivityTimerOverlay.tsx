@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeftRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 import { TeamTimersPanel } from '@/components/activities/TeamTimersPanel';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
@@ -899,6 +902,93 @@ function PickButton({ r, onPick }: { r: PickRow; onPick: (a: PickRow) => void })
   );
 }
 
+const WEEK_DAYS = ['seg', 'ter', 'qua', 'qui', 'sex', 'sáb', 'dom'];
+
+/**
+ * Mini calendário mensal das pendentes — mesmo visual da tela de Atividades
+ * (grid seg→dom, contagem por dia, hoje com anel, dia selecionado destacado).
+ * Reaproveita a data-chave (keyDate) de cada pendente já carregada; clicar num
+ * dia filtra a lista. Não faz query nova — só lê as `rows` que o diálogo já tem.
+ */
+function MiniMonthCalendar({
+  month, onMonthChange, rows, selectedDay, onSelectDay,
+}: {
+  month: Date;
+  onMonthChange: (d: Date) => void;
+  rows: PickRow[];
+  selectedDay: string | null;
+  onSelectDay: (dateKey: string | null) => void;
+}) {
+  const days = useMemo(
+    () => eachDayOfInterval({ start: startOfMonth(month), end: endOfMonth(month) }),
+    [month],
+  );
+  const countByDate = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const r of rows) {
+      const d = keyDate(r);
+      if (!d) continue;
+      const k = format(d, 'yyyy-MM-dd');
+      m[k] = (m[k] || 0) + 1;
+    }
+    return m;
+  }, [rows]);
+
+  return (
+    <div className="rounded-lg border bg-card/50 px-2 py-1.5">
+      <div className="flex items-center justify-between mb-1">
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onMonthChange(subMonths(month, 1))}>
+          <ChevronLeft className="h-3.5 w-3.5" />
+        </Button>
+        <span className="text-xs font-semibold capitalize">
+          {format(month, 'MMMM yyyy', { locale: ptBR })}
+        </span>
+        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onMonthChange(addMonths(month, 1))}>
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+      <div className="grid grid-cols-7 gap-0.5 text-center">
+        {WEEK_DAYS.map((d) => (
+          <div key={d} className="text-[10px] font-medium text-muted-foreground py-0.5">{d}</div>
+        ))}
+        {/* Preenche até a 1ª coluna cair na segunda-feira (getDay 1). */}
+        {Array.from({ length: (days[0]?.getDay() || 7) - 1 }).map((_, i) => (
+          <div key={`pad-${i}`} />
+        ))}
+        {days.map((day) => {
+          const dateKey = format(day, 'yyyy-MM-dd');
+          const count = countByDate[dateKey] || 0;
+          const isSelected = selectedDay === dateKey;
+          return (
+            <button
+              key={dateKey}
+              type="button"
+              onClick={() => onSelectDay(isSelected ? null : dateKey)}
+              className={cn(
+                'relative p-0.5 rounded-md text-xs transition-colors',
+                isToday(day) && 'ring-1 ring-primary font-bold',
+                isSelected && 'bg-primary text-primary-foreground',
+                !isSelected && count > 0 && 'bg-muted/60 hover:bg-muted',
+                !isSelected && count === 0 && 'hover:bg-muted/30',
+              )}
+              title={count > 0 ? `${count} pendente${count > 1 ? 's' : ''}` : undefined}
+            >
+              <div className="text-center leading-tight">{format(day, 'd')}</div>
+              {count > 0 && (
+                <div className="flex justify-center leading-none">
+                  <span className={cn('text-[8px] font-bold leading-none', isSelected ? 'text-primary-foreground/80' : 'text-destructive')}>
+                    {count}
+                  </span>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function SwitchActivityDialog({
   open, onPick, onClose,
 }: {
@@ -910,9 +1000,12 @@ function SwitchActivityDialog({
   const [term, setTerm] = useState('');
   const [rows, setRows] = useState<PickRow[]>([]);
   const [loading, setLoading] = useState(false);
+  // Estado do mini calendário: mês exibido + dia selecionado (filtra a lista).
+  const [calMonth, setCalMonth] = useState<Date>(() => new Date());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!open) { setTerm(''); setRows([]); return; }
+    if (!open) { setTerm(''); setRows([]); setSelectedDay(null); return; }
     setLoading(true);
     const t = setTimeout(async () => {
       // RLS de lead_activities exige auth.uid() IS NOT NULL. Sem a sessão anônima
@@ -946,6 +1039,14 @@ function SwitchActivityDialog({
   // Sem busca → agrupa por prazo (minicalendário). Com busca → lista plana de resultados.
   const buckets = useMemo(() => (term.trim() ? [] : bucketize(rows)), [rows, term]);
 
+  // Dia selecionado no calendário → só as pendentes daquele dia (ordenadas por hora).
+  const dayRows = useMemo(() => {
+    if (!selectedDay) return [];
+    return rows
+      .filter((r) => { const d = keyDate(r); return !!d && format(d, 'yyyy-MM-dd') === selectedDay; })
+      .sort((a, b) => (keyDate(a)?.getTime() ?? 0) - (keyDate(b)?.getTime() ?? 0));
+  }, [rows, selectedDay]);
+
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="sm:max-w-lg">
@@ -965,6 +1066,19 @@ function SwitchActivityDialog({
             className="pl-8"
           />
         </div>
+
+        {/* Mini calendário das pendentes (só sem busca — igual aos grupos por prazo).
+            Clicar num dia filtra a lista abaixo para aquele dia. */}
+        {!term.trim() && (
+          <MiniMonthCalendar
+            month={calMonth}
+            onMonthChange={setCalMonth}
+            rows={rows}
+            selectedDay={selectedDay}
+            onSelectDay={setSelectedDay}
+          />
+        )}
+
         <div className="max-h-80 overflow-y-auto -mx-2 px-2">
           {loading && <div className="py-6 text-center text-sm text-muted-foreground">Carregando…</div>}
           {!loading && rows.length === 0 && (
@@ -980,8 +1094,34 @@ function SwitchActivityDialog({
             </div>
           )}
 
-          {/* Sem busca: grupos por prazo */}
-          {!loading && !term.trim() && buckets.map((b) => (
+          {/* Sem busca + dia selecionado: só as pendentes daquele dia */}
+          {!loading && !term.trim() && selectedDay && (
+            <div>
+              <div className="sticky top-0 z-10 bg-background/95 backdrop-blur py-1 flex items-center justify-between">
+                <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  {format(new Date(`${selectedDay}T00:00:00`), "EEE, dd 'de' MMM", { locale: ptBR })}
+                  <span className="opacity-60"> · {dayRows.length}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedDay(null)}
+                  className="text-[11px] text-primary hover:underline"
+                >
+                  ver todas
+                </button>
+              </div>
+              {dayRows.length === 0 ? (
+                <div className="py-6 text-center text-sm text-muted-foreground">Nenhuma pendente nesse dia.</div>
+              ) : (
+                <div className="divide-y">
+                  {dayRows.map((r) => <PickButton key={r.id} r={r} onPick={onPick} />)}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sem busca e sem dia: grupos por prazo */}
+          {!loading && !term.trim() && !selectedDay && buckets.map((b) => (
             <div key={b.key} className="mb-1">
               <div className="sticky top-0 z-10 bg-background/95 backdrop-blur py-1 text-[11px] uppercase tracking-wide text-muted-foreground">
                 {b.label} <span className="opacity-60">· {b.rows.length}</span>
