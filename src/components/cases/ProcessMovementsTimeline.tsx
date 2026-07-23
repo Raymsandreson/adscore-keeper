@@ -1,7 +1,13 @@
 import { useState, useMemo, useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from 'lucide-react';
+import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge, FileText, Download } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
 import { estacoesDoProcesso } from '@/lib/processStations';
@@ -255,6 +261,8 @@ export function ProcessMovementsTimeline({
   const [escopo, setEscopo] = useState<'processo' | 'caso'>('processo');
   const { movements, loading, refetch } = useProcessMovements(processId, { escopo, caseId });
   const [onlyCurrent, setOnlyCurrent] = useState(true);
+  // Documento do marco aberto no visualizador maximizado (mesma tela, sem nova aba).
+  const [docViewer, setDocViewer] = useState<{ url: string; label: string; date: string } | null>(null);
 
   // Estações a exibir: ordem canônica com as intermediárias (conciliação/
   // perícia/instrução) entrando por evidência (marco existe) ou previsão (perfil).
@@ -359,18 +367,62 @@ export function ProcessMovementsTimeline({
               <p className="text-[10px] text-muted-foreground line-clamp-3">{m.descricao}</p>
             )}
             {m.link_decisao && (
-              <a
-                href={m.link_decisao}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() =>
+                  setDocViewer({
+                    url: m.link_decisao!,
+                    label: MARCO_LABEL[tipo] ?? tipo,
+                    date: formatDate(m.data_movimentacao),
+                  })
+                }
                 className="text-[10px] text-primary inline-flex items-center gap-1 hover:underline"
               >
-                <ExternalLink className="h-3 w-3" /> Ver decisão
-              </a>
+                <FileText className="h-3 w-3" /> Ver documento
+              </button>
             )}
           </div>
         );
       })}
+
+      {/* Visualizador do documento maximizado — abre na mesma tela, sem nova aba. */}
+      <Dialog open={!!docViewer} onOpenChange={(open) => !open && setDocViewer(null)}>
+        <DialogContent className="w-[95vw] max-w-5xl h-[90vh] p-0 gap-0 flex flex-col overflow-hidden">
+          <DialogHeader className="flex flex-row items-center justify-between gap-2 border-b p-3 pr-14 space-y-0 text-left">
+            <DialogTitle className="text-sm truncate">
+              {docViewer?.label}
+              {docViewer?.date && (
+                <span className="ml-2 text-[11px] font-normal text-muted-foreground">
+                  {docViewer.date}
+                </span>
+              )}
+            </DialogTitle>
+            {docViewer && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Button asChild size="sm" variant="default" className="h-7 text-[11px] gap-1">
+                  <a href={docViewer.url} download rel="noopener noreferrer">
+                    <Download className="h-3.5 w-3.5" /> Baixar
+                  </a>
+                </Button>
+                <Button asChild size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground">
+                  <a href={docViewer.url} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink className="h-3.5 w-3.5" /> Abrir original
+                  </a>
+                </Button>
+              </div>
+            )}
+          </DialogHeader>
+          {docViewer && (
+            <div className="flex-1 min-h-0 bg-muted/30">
+              <iframe
+                src={docViewer.url}
+                title={`Documento — ${docViewer.label}`}
+                className="w-full h-full border-0"
+              />
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
