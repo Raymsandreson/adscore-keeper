@@ -9,16 +9,29 @@ import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "feature_guides_dismissed_v1";
 
+// Cache em memória: garante que "Não exibir mais" valha na sessão atual mesmo
+// quando o localStorage falha (preview/iframe do Lovable com storage de terceiros
+// bloqueado, modo privado, cota cheia). O localStorage persiste entre sessões
+// quando disponível; sem ele, o cache ainda impede o tour de reabrir na sessão.
+let dismissedCache: Record<string, boolean> | null = null;
+
 function readDismissed(): Record<string, boolean> {
+  if (dismissedCache) return dismissedCache;
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    dismissedCache = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
   } catch {
-    return {};
+    dismissedCache = {};
   }
+  return dismissedCache;
 }
 
 function saveDismissed(map: Record<string, boolean>) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  dismissedCache = map; // sempre vale na sessão atual, independe do storage
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // storage indisponível (iframe/preview, modo privado): fica só em memória
+  }
 }
 
 interface TourStep {
