@@ -192,6 +192,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const isJudicial = (form.process_type || 'judicial') === 'judicial';
   const systemOabs = useSystemOabs();
   const [activeTab, setActiveTab] = useState<TabId>(defaultTab ?? 'partes');
+  // Refs para focar o conteúdo da aba no mobile: ao trocar de aba, rolamos a
+  // área única para que a barra de abas (sticky) suba ao topo, escondendo o
+  // cabeçalho do processo e liberando a tela inteira para o conteúdo.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const tabBarRef = useRef<HTMLDivElement>(null);
+  const handleTabClick = useCallback((id: TabId) => {
+    setActiveTab(id);
+    requestAnimationFrame(() => {
+      const scroller = scrollRef.current;
+      const bar = tabBarRef.current;
+      if (scroller && bar) scroller.scrollTo({ top: bar.offsetTop, behavior: 'smooth' });
+    });
+  }, []);
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
@@ -841,8 +854,12 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </div>
       </div>
 
+      {/* Área rolável única: infos do processo + abas (sticky) + conteúdo.
+          No mobile, o cabeçalho do processo rola para fora e a barra de abas
+          gruda no topo, dando a tela inteira para o conteúdo de cada aba. */}
+      <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto relative">
       {/* Process info */}
-      <div className="px-4 pb-2 space-y-2 border-b shrink-0">
+      <div className="px-4 pb-2 space-y-2 border-b">
         <EditableField label="Título" value={form.title || ''} onChange={v => set('title', v)} />
         <EditableField label="Nº do Processo *" value={form.process_number || ''} onChange={v => set('process_number', v)} icon={Hash} />
         <div className="flex items-center gap-2 flex-wrap">
@@ -927,8 +944,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         </div>
       </div>
 
-      {/* Tab navigation */}
-      <div className="shrink-0 border-b">
+      {/* Tab navigation — gruda no topo da área rolável ao rolar o conteúdo */}
+      <div ref={tabBarRef} className="sticky top-0 z-20 bg-background border-b">
         <div className="flex flex-nowrap overflow-x-auto scrollbar-hide snap-x md:flex-wrap md:overflow-x-visible gap-0.5 px-2 py-1.5">
             {TABS.map(tab => {
               const Icon = tab.icon;
@@ -937,7 +954,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               return (
                 <button
                   key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => handleTabClick(tab.id)}
                   className={`flex shrink-0 snap-start items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-colors ${
                     isActive
                       ? 'bg-primary text-primary-foreground'
@@ -953,7 +970,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       </div>
 
         {/* Tab content */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-6">
+        <div className="px-4 pb-6">
           <div className="space-y-3 pt-3">
 
             {activeTab === 'partes' && (
@@ -1394,6 +1411,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             )}
           </div>
         </div>
+      </div>
 
       {/* Formulário completo (único do sistema) — abre empilhado ao clicar numa atividade do Histórico */}
       <ActivityFullSheet
