@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToCloud, remapToExternal } from '@/integrations/supabase/uuid-remap';
@@ -16,12 +16,28 @@ import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/co
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
+import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
+import { useAuthContext } from '@/contexts/AuthContext';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
+
+/**
+ * Tipos-base jurídicos (mesma seed da ActivitiesPage). Usados como fallback do
+ * seletor de TIPO quando o assessor selecionado não tem rotina configurada —
+ * evita despejar todos os tipos custom (marketing/ABRACI/Prev) no formulário.
+ */
+const BASE_ACTIVITY_TYPES = [
+  { value: 'tarefa', label: 'Tarefa' },
+  { value: 'audiencia', label: 'Audiência' },
+  { value: 'prazo', label: 'Prazo' },
+  { value: 'acompanhamento', label: 'Acompanhamento' },
+  { value: 'reuniao', label: 'Reunião' },
+  { value: 'diligencia', label: 'Diligência' },
+];
 
 /**
  * Rascunho para abrir o formulário em modo CRIAR já pré-preenchido
@@ -142,6 +158,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [caseSearch, setCaseSearch] = useState('');
 
   const { types: activityTypes } = useActivityTypes();
+  const { user } = useAuthContext();
   const { boards: allBoards } = useKanbanBoards();
   const workflowOptions = allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
@@ -154,7 +171,26 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const stepBoardId = linkedProcess?.workflow_id || leadPreview?.board_id || null;
   const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
 
-  const routineActivityTypes = activityTypes.map(t => ({ value: t.key, label: t.label }));
+  // Rotina do assessor selecionado (ou do usuário logado, se nenhum) — usada pra
+  // filtrar o seletor de TIPO. `user_timeblock_settings` guarda user_id em UUID do
+  // Cloud, mesmo namespace de formAssignedTo (remapToCloud) e de user.id.
+  const { configs: assigneeRoutine } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
+
+  // Só mostra os tipos que estão na rotina do assessor (paridade com a
+  // ActivitiesPage). Sem rotina: cai nos tipos-base jurídicos, não em todos os
+  // tipos custom do sistema. "Reunião" fura o filtro apenas em atividade interna.
+  const routineActivityTypes = useMemo(() => {
+    const routineKeys = new Set(assigneeRoutine.map(c => c.activityType));
+    const list = assigneeRoutine.length === 0
+      ? BASE_ACTIVITY_TYPES.map(t => ({ value: t.value, label: t.label }))
+      : activityTypes.filter(t => routineKeys.has(t.key)).map(t => ({ value: t.key, label: t.label }));
+    if (formIsSystem && !list.some(t => isMeetingType(t.value, t.label))) {
+      const meetings = activityTypes.filter(t => isMeetingType(t.key, t.label));
+      const meeting = meetings.find(t => t.key !== 'reuniao') ?? meetings[0];
+      if (meeting) list.push({ value: meeting.key, label: meeting.label });
+    }
+    return list;
+  }, [assigneeRoutine, activityTypes, formIsSystem]);
   const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
 
   const loadContactsForLead = useCallback(async (lid: string) => {
@@ -919,7 +955,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 reorderFields={reorderFields}
                 selectedActivity={selectedActivity}
                 aiSuggestingType={false}
-                activeRoutine={[]}
+                activeRoutine={assigneeRoutine}
                 formAssignedToName={formAssignedToName}
                 formLeadIdForTTS={formLeadId || undefined}
                 formContactIdForTTS={formContactId || undefined}
