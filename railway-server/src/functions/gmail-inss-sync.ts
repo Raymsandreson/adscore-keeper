@@ -117,10 +117,11 @@ function parseBrDate(s: string): string | undefined {
  * Checa indeferido primeiro: "não foi reconhecido" contém "reconhecido" e
  * enganaria uma checagem de deferido feita antes.
  */
-function classifyResultado(despacho?: string): 'deferido' | 'indeferido' | undefined {
+function classifyResultado(despacho?: string): 'deferido' | 'indeferido' | 'arquivado_decurso' | undefined {
   if (!despacho) return undefined;
   const d = despacho.toLowerCase();
-  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b|n[ãa]o foi prorrogad|n[ãa]o cumprimento da exig|n[ãa]o (foi )?aprovad/.test(d)) return 'indeferido';
+  if (/n[ãa]o cumprimento da exig|n[ãa]o houve o seu cumprimento|arquivamento do pedido|art\.?\s*40 da lei|decurso de prazo|encerrad[ao].{0,40}exig/.test(d)) return 'arquivado_decurso';
+  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b|n[ãa]o foi prorrogad|n[ãa]o (foi )?aprovad/.test(d)) return 'indeferido';
   if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito|\bprorrogad[oa]\b|\baprovad[oa]\b/.test(d)) return 'deferido';
   return undefined;
 }
@@ -153,7 +154,7 @@ function parseInssSubject(subject: string, body: string): {
   protocol_date?: string;
   servico?: string;
   despacho?: string;
-  resultado?: 'deferido' | 'indeferido';
+  resultado?: 'deferido' | 'indeferido' | 'arquivado_decurso';
 } {
   const out: any = {};
 

@@ -43,6 +43,7 @@ interface InssProcess {
   created_at: string;
   resultado?: string | null;
   servico?: string | null;
+  exigencia_since?: string | null;
 }
 
 // Marcos previdenciários na ordem da jornada do requerimento. O INSS não emite
@@ -52,7 +53,7 @@ interface InssProcess {
 // passou por exigência (precisa do histórico, daí o Set passouExig).
 type StageKey =
   | "protocolado" | "analise" | "exig_aberta" | "exig_cumprida"
-  | "deferido" | "indeferido" | "cancelada" | "sem_veredito";
+  | "deferido" | "indeferido" | "decurso" | "cancelada" | "sem_veredito";
 
 const stageOf = (
   p: { id: string; current_status?: string | null; resultado?: string | null },
@@ -65,6 +66,7 @@ const stageOf = (
   if (s.includes("conclu")) {
     if (p.resultado === "deferido") return "deferido";
     if (p.resultado === "indeferido") return "indeferido";
+    if (p.resultado === "arquivado_decurso") return "decurso";
     return "sem_veredito";
   }
   // Em análise / pendente — separa quem já passou por exigência.
@@ -78,9 +80,20 @@ const STAGES: { key: StageKey; label: string; cls: string }[] = [
   { key: "exig_cumprida", label: "Exigência cumprida",   cls: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" },
   { key: "deferido",   label: "Deferido",    cls: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
   { key: "indeferido", label: "Indeferido",  cls: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
+  { key: "decurso",    label: "Exig. não cumprida (decurso)", cls: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300" },
   { key: "cancelada",  label: "Cancelada",   cls: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
   { key: "sem_veredito", label: "Concluída (sem veredito)", cls: "bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300" },
 ];
+
+// Prazo de cumprimento de exigência: 30 dias a partir de exigencia_since.
+const EXIG_PRAZO_DIAS = 30;
+const exigPrazoInfo = (exigencia_since?: string | null): { dias: number; vencido: boolean } | null => {
+  if (!exigencia_since) return null;
+  const ms = Date.now() - new Date(exigencia_since).getTime();
+  const decorridos = Math.floor(ms / 86400000);
+  const restantes = EXIG_PRAZO_DIAS - decorridos;
+  return { dias: Math.abs(restantes), vencido: restantes < 0 };
+};
 
 interface InssHistoryRow {
   id: string;
@@ -446,7 +459,7 @@ export default function InssAdminProcessesTab() {
   const stageCounts = useMemo(() => {
     const acc: Record<StageKey, number> = {
       protocolado: 0, analise: 0, exig_aberta: 0, exig_cumprida: 0,
-      deferido: 0, indeferido: 0, cancelada: 0, sem_veredito: 0,
+      deferido: 0, indeferido: 0, decurso: 0, cancelada: 0, sem_veredito: 0,
     };
     for (const p of processes) acc[stageOf(p, passouExig)]++;
     return acc;
@@ -1280,7 +1293,7 @@ export default function InssAdminProcessesTab() {
       </div>
 
       {/* Relatório por estágio — clique num cartão pra filtrar a lista. */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-9 gap-2">
         {STAGES.map((st) => {
           const active = stageFilter === st.key;
           return (
@@ -1360,6 +1373,17 @@ export default function InssAdminProcessesTab() {
                             Órfão
                           </Badge>
                         )}
+                        {/exig/i.test(p.current_status || "") && (() => {
+                          const info = exigPrazoInfo(p.exigencia_since);
+                          if (!info) return null;
+                          return (
+                            <Badge className={info.vencido
+                              ? "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300"
+                              : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"}>
+                              {info.vencido ? `⚠ prazo vencido há ${info.dias}d` : `prazo: ${info.dias}d restantes`}
+                            </Badge>
+                          );
+                        })()}
                       </div>
                       <div className="text-xs text-muted-foreground space-y-0.5">
                         {p.nome_segurado && <div>👤 {p.nome_segurado}</div>}

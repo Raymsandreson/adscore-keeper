@@ -17,7 +17,7 @@ const REPORT_TO_DEFAULT = 'adm@rprudencioadv.com';
 
 const STAGE_COLORS: Record<StageKey, string> = {
   protocolado: '#7c3aed', analise: '#1d4ed8', exig_aberta: '#c2410c', exig_cumprida: '#b45309',
-  deferido: '#15803d', indeferido: '#b91c1c', cancelada: '#4b5563', sem_veredito: '#0f766e',
+  deferido: '#15803d', indeferido: '#b91c1c', decurso: '#9f1239', cancelada: '#4b5563', sem_veredito: '#0f766e',
 };
 
 function esc(s: string): string {
@@ -33,12 +33,19 @@ export const handler: RequestHandler = async (req, res) => {
     // Todos os processos ativos — leve (centenas de linhas).
     const { data: procs, error } = await supabase
       .from('inss_admin_processes')
-      .select('id, current_status, resultado, case_id, last_email_at')
+      .select('id, current_status, resultado, case_id, last_email_at, exigencia_since')
       .is('deleted_at', null);
     if (error) return res.status(200).json({ success: false, error: error.message });
 
-    const rows = (procs || []) as Array<{ id: string; current_status: string | null; resultado: string | null; case_id: string | null; last_email_at: string | null }>;
+    const rows = (procs || []) as Array<{ id: string; current_status: string | null; resultado: string | null; case_id: string | null; last_email_at: string | null; exigencia_since: string | null }>;
     const total = rows.length;
+
+    // Exigências abertas com prazo de 30 dias vencido (risco de arquivamento).
+    const prazoMs = 30 * 24 * 60 * 60 * 1000;
+    const exigVencidas = rows.filter((p) =>
+      /exig/i.test(p.current_status || '') && p.exigencia_since &&
+      (Date.now() - new Date(p.exigencia_since).getTime()) > prazoMs,
+    ).length;
 
     // Quem já passou por exigência (para isolar "exigência cumprida").
     const { data: exigRows } = await supabase
@@ -82,6 +89,7 @@ export const handler: RequestHandler = async (req, res) => {
           </tfoot>
         </table>
         <p style="margin:16px 0 0;font-size:13px;color:#444;">
+          <b style="color:#9f1239;">${exigVencidas}</b> exigências com prazo de 30 dias vencido (risco de arquivamento) ·
           <b>${orfaos}</b> ainda sem caso vinculado (órfãos).
         </p>
         <p style="margin:12px 0 0;font-size:11px;color:#999;">
@@ -92,7 +100,7 @@ export const handler: RequestHandler = async (req, res) => {
         </p>
       </div>`;
 
-    const payload = { total, orfaos, por_marco: counts };
+    const payload = { total, orfaos, exig_vencidas: exigVencidas, por_marco: counts };
 
     if (!send) {
       return res.status(200).json({ success: true, sent: false, ...payload, html });

@@ -9,11 +9,11 @@
 // conflito de escrita concorrente naquele arquivo (Lovable edita em paralelo).
 // Unificar num commit isolado depois, fazendo o sync importar deste módulo.
 
-export type InssResultado = 'deferido' | 'indeferido';
+export type InssResultado = 'deferido' | 'indeferido' | 'arquivado_decurso';
 
 export type StageKey =
   | 'protocolado' | 'analise' | 'exig_aberta' | 'exig_cumprida'
-  | 'deferido' | 'indeferido' | 'cancelada' | 'sem_veredito';
+  | 'deferido' | 'indeferido' | 'decurso' | 'cancelada' | 'sem_veredito';
 
 /**
  * Marco previdenciário atual (espelha o front). "Protocolado" = e-mail inicial
@@ -31,6 +31,7 @@ export function stageOf(
   if (s.includes('conclu')) {
     if (p.resultado === 'deferido') return 'deferido';
     if (p.resultado === 'indeferido') return 'indeferido';
+    if (p.resultado === 'arquivado_decurso') return 'decurso';
     return 'sem_veredito';
   }
   return (p.id && passouExig?.has(p.id)) ? 'exig_cumprida' : 'analise';
@@ -43,6 +44,7 @@ export const STAGE_LABELS: Record<StageKey, string> = {
   exig_cumprida: 'Exigência cumprida',
   deferido: 'Deferido',
   indeferido: 'Indeferido',
+  decurso: 'Exigência não cumprida (decurso)',
   cancelada: 'Cancelada',
   sem_veredito: 'Concluída (sem veredito)',
 };
@@ -50,7 +52,7 @@ export const STAGE_LABELS: Record<StageKey, string> = {
 /** Ordem dos marcos na jornada do requerimento (para exibição). */
 export const STAGE_ORDER: StageKey[] = [
   'protocolado', 'analise', 'exig_aberta', 'exig_cumprida',
-  'deferido', 'indeferido', 'cancelada', 'sem_veredito',
+  'deferido', 'indeferido', 'decurso', 'cancelada', 'sem_veredito',
 ];
 
 /**
@@ -64,9 +66,11 @@ export const STAGE_ORDER: StageKey[] = [
 export function classifyResultado(despacho?: string | null): InssResultado | undefined {
   if (!despacho) return undefined;
   const d = despacho.toLowerCase();
-  // Desfavorável — checado primeiro: contém negações ("não foi prorrogado",
-  // "não foi aprovado") que enganariam a checagem de deferido feita antes.
-  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b|n[ãa]o foi prorrogad|n[ãa]o cumprimento da exig|n[ãa]o (foi )?aprovad/.test(d)) return 'indeferido';
+  // Arquivamento por decurso (exigência não cumprida no prazo) — checado 1º, pois
+  // é um desfecho processual distinto do indeferimento de mérito.
+  if (/n[ãa]o cumprimento da exig|n[ãa]o houve o seu cumprimento|arquivamento do pedido|art\.?\s*40 da lei|decurso de prazo|encerrad[ao].{0,40}exig/.test(d)) return 'arquivado_decurso';
+  // Desfavorável (mérito) — contém negações que enganariam a checagem de deferido.
+  if (/indefer|n[ãa]o foi reconhecid|foi negad|\bnegad[oa]\b|n[ãa]o foi prorrogad|n[ãa]o (foi )?aprovad/.test(d)) return 'indeferido';
   // Favorável — inclui prorrogação concedida e aprovação de benefício.
   if (/concedid|\bdeferid[oa]\b|foi reconhecid[oa] o direito|\bprorrogad[oa]\b|\baprovad[oa]\b/.test(d)) return 'deferido';
   return undefined;
