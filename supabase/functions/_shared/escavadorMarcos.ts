@@ -136,10 +136,23 @@ function matchMarco(s: string, head: string): { tipo: MarcoTipo; ordem: number }
   return null;
 }
 
+// Placeholder que o Escavador devolve quando NÃO tem acesso ao conteúdo da
+// movimentação (processo em segredo de justiça). Ex.:
+//   "MOVIMENTAÇÃO CONFIDENCIAL - PROCESSO EM SEGREDO DE JUSTIÇA, PRECATÓRIO OU RPV."
+// Esse texto casa as keywords 'precatorio'/'rpv' de KW.pagamento e gerava um marco
+// de "pagamento" FALSO (a movimentação real pode ser qualquer coisa — inclusive um
+// indeferimento). Não dá pra inferir marco de um placeholder: descartar antes de classificar.
+const SIGILO_PLACEHOLDER = /movimentacao confidencial|processo em segredo|conteudo (sigiloso|confidencial|restrito)/;
+function isSigiloPlaceholder(mov: EscavadorMovimentacao): boolean {
+  return SIGILO_PLACEHOLDER.test(normalize(movText(mov)));
+}
+
 // Classifica uma movimentação em marco (ou null).
+// 0) Guard: placeholder de sigilo do Escavador nunca vira marco.
 // 1) Sinal primário: a classe que o Escavador já prediz (classificacao_predita.nome).
 // 2) Fallback: keyword no cabeçalho (nunca no corpo inteiro).
 function classify(mov: EscavadorMovimentacao): { tipo: MarcoTipo; ordem: number } | null {
+  if (isSigiloPlaceholder(mov)) return null;
   const clsName = normalize(mov.classificacao_predita?.nome || '');
   const head = normalize(headText(mov));
   const byClass = matchMarco(clsName, head);
