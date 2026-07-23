@@ -29,6 +29,8 @@ import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
 import { OrgMetaSync } from "@/components/OrgMetaSync";
 import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
 import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
+import { CallProvider } from "@/contexts/CallContext";
+import { CallOverlay } from "@/components/chat/CallOverlay";
 import { FeatureGuidePopup } from "@/components/guide/FeatureGuidePopup";
 import TeamBroadcastReminder from "@/components/tv/TeamBroadcastReminder";
 import WhatsAppPage from "@/pages/WhatsAppPage";
@@ -300,6 +302,7 @@ function ConditionalProductivityBanner() {
 
 function SidebarLayout() {
   return (
+    <CallProvider>
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
         <AppSidebar />
@@ -314,6 +317,7 @@ function SidebarLayout() {
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
             <ActivityTimerOverlay />
+            <CallOverlay />
             <FeatureGuidePopup />
             <TeamBroadcastReminder />
             <Suspense fallback={<PageLoading />}>
@@ -379,6 +383,7 @@ function SidebarLayout() {
         </div>
       </div>
     </SidebarProvider>
+    </CallProvider>
   );
 }
 

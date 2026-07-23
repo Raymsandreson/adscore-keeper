@@ -18,8 +18,9 @@ import { Badge } from '@/components/ui/badge';
 import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
-  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer, Forward,
+  Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer, Forward, Phone,
 } from 'lucide-react';
+import { useCall } from '@/contexts/CallContext';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
@@ -48,6 +49,7 @@ interface TeamDirectChatPanelProps {
 export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatPanelProps) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  const { startCall } = useCall();
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
     loading, sendingMessage, sendMessage, sendMessageTo, alertMessageAgain, dismissPending, startDirectChat, ensureGeneralChat,
@@ -907,12 +909,25 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             </AvatarFallback>
           </Avatar>
           <span className="text-sm font-medium truncate">{convTitle}</span>
-          <span
-            className="ml-auto inline-flex items-center gap-1 text-[10px] text-muted-foreground shrink-0"
-            title="Sua média de tempo pra responder o chat interno (30 dias, respostas em até 8h). Conta como critério de desempate no ranking de atividades."
-          >
-            <Timer className="h-3 w-3" /> média {fmtAvg(myAvgResp)}
-          </span>
+          <div className="ml-auto flex items-center gap-2 shrink-0">
+            {activeConv?.type === 'direct' && activeConv.otherMemberId && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-green-600 hover:text-green-700"
+                title={`Ligar para ${convTitle} (voz pelo sistema)`}
+                onClick={() => startCall(activeConv.otherMemberId!, convTitle)}
+              >
+                <Phone className="h-4 w-4" />
+              </Button>
+            )}
+            <span
+              className="inline-flex items-center gap-1 text-[10px] text-muted-foreground"
+              title="Sua média de tempo pra responder o chat interno (30 dias, respostas em até 8h). Conta como critério de desempate no ranking de atividades."
+            >
+              <Timer className="h-3 w-3" /> média {fmtAvg(myAvgResp)}
+            </span>
+          </div>
         </div>
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
