@@ -5,6 +5,7 @@ import { HelpCircle, Lightbulb, X, ChevronLeft, ChevronRight } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { findGuideForPath } from "@/config/featureGuides";
 import { useAuthContext } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "feature_guides_dismissed_v1";
@@ -142,6 +143,37 @@ export function FeatureGuidePopup() {
     // Reabre só quando muda de seção (guide.id), não a cada re-render
   }, [guide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sincroniza as dispensas persistidas no Cloud com o cache local ao logar.
+  // Cobre troca de dispositivo / cache limpo: se o servidor já registrou a
+  // dispensa, o tour não reabre mesmo que o localStorage não soubesse. Degrada
+  // em silêncio se a tabela ainda não existir (segue no localStorage/cache).
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    let cancelled = false;
+    // Cast: a tabela é nova e ainda não está nos tipos gerados (types.ts).
+    (supabase as any)
+      .from("feature_guide_dismissals")
+      .select("guide_id")
+      .then(({ data, error }: { data: Array<{ guide_id: string }> | null; error: unknown }) => {
+        if (cancelled || error || !data) return;
+        const map = readDismissed();
+        let changed = false;
+        for (const row of data) {
+          if (row?.guide_id && !map[row.guide_id]) {
+            map[row.guide_id] = true;
+            changed = true;
+          }
+        }
+        if (changed) saveDismissed(map);
+        if (guide && map[guide.id]) setOpen(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+
   // Localiza e acompanha o elemento destacado do passo atual
   useEffect(() => {
     if (!open || !steps[stepIndex]) {
@@ -205,6 +237,18 @@ export function FeatureGuidePopup() {
     map[guide.id] = true;
     saveDismissed(map);
     setOpen(false);
+    // Persiste no Cloud pra sobreviver a cache limpo / outro dispositivo.
+    // Fire-and-forget: se falhar (offline, tabela ausente), o local já garante
+    // a dispensa nesta sessão. Cast porque a tabela ainda não está nos tipos.
+    const uid = user?.id;
+    if (uid) {
+      (supabase as any)
+        .from("feature_guide_dismissals")
+        .upsert({ user_id: uid, guide_id: guide.id }, { onConflict: "user_id,guide_id" })
+        .then(({ error }: { error: unknown }) => {
+          if (error) console.warn("[FeatureGuide] persistir dispensa falhou:", error);
+        });
+    }
   };
 
   const step = steps[stepIndex];
