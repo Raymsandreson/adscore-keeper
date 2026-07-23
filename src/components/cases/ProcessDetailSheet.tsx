@@ -10,12 +10,14 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { invalidateLeadLinkedContactsCache } from '@/components/leads/LeadLinkedContacts';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus
 } from 'lucide-react';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -50,6 +52,40 @@ function parseDateBR(val: string): string {
   const match = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (match) return `${match[3]}-${match[2]}-${match[1]}`;
   return val;
+}
+
+/** CPF (11) ou CNPJ (14) do envolvido, formatado; null se ausente/inválido. */
+function formatPartyDoc(env: any): string | null {
+  const cpf = String(env?.cpf ?? '').replace(/\D/g, '');
+  if (cpf.length === 11 && cpf !== '00000000000') return cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  const cnpj = String(env?.cnpj ?? '').replace(/\D/g, '');
+  if (cnpj.length === 14 && cnpj !== '00000000000000') return cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  return null;
+}
+
+export interface ParteProcesso { nome: string; polo: 'ATIVO' | 'PASSIVO'; tipo: string | null; doc: string | null; }
+
+/**
+ * Deriva as partes (autor/réu) dos `envolvidos` do Escavador: só polo ATIVO/PASSIVO,
+ * exclui advogados, dedup por nome. São essas as partes com nome completo — o campo
+ * titulo_polo_* traz só as iniciais abreviadas ("D. B. M. e outros").
+ */
+function derivePartes(envolvidos: any[]): ParteProcesso[] {
+  const seen = new Set<string>();
+  const out: ParteProcesso[] = [];
+  for (const env of Array.isArray(envolvidos) ? envolvidos : []) {
+    const polo = String(env?.polo || '').toUpperCase();
+    if (polo !== 'ATIVO' && polo !== 'PASSIVO') continue;
+    const tipoStr = String(env?.tipo || env?.tipo_normalizado || '').toLowerCase();
+    if (tipoStr.includes('advogad')) continue;
+    const nome = String(env?.nome_normalizado || env?.nome || '').trim();
+    if (!nome) continue;
+    const key = nome.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ nome, polo: polo as 'ATIVO' | 'PASSIVO', tipo: env?.tipo_normalizado || env?.tipo || null, doc: formatPartyDoc(env) });
+  }
+  return out;
 }
 
 function EditableField({ label, value, onChange, type = 'text', icon: Icon, isDate = false }: {
@@ -213,6 +249,57 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     });
   }, [isMobile]);
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
+  const [addingContacts, setAddingContacts] = useState(false);
+  const [addedContactNames, setAddedContactNames] = useState<Set<string>>(new Set());
+  // Cria/vincula as partes do processo como contatos do lead (contacts + contact_leads no Externo).
+  // Dedup por nome; ignora vínculo duplicado (23505). Não toca no campo Polo Ativo/Passivo.
+  const addPartesAsContacts = useCallback(async (partes: ParteProcesso[]) => {
+    if (!process?.lead_id) { toast.error('Vincule o processo a um lead antes de adicionar as partes como contatos'); return; }
+    if (!partes.length) return;
+    setAddingContacts(true);
+    try {
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      await ensureExternalSession().catch(() => {});
+      const externalUserId = await remapToExternal(currentUser?.id).catch(() => null);
+      let vinculados = 0;
+      for (const p of partes) {
+        // Dedup: reaproveita contato existente com o mesmo nome.
+        const { data: existing } = await externalSupabase
+          .from('contacts').select('id').ilike('full_name', p.nome).limit(1);
+        let contactId: string | undefined = existing?.[0]?.id;
+        if (!contactId) {
+          const notes = [
+            `Cadastrado via processo ${form.process_number || ''}`.trim(),
+            p.tipo ? `Participação: ${p.tipo}` : null,
+            `Polo: ${p.polo}`,
+            p.doc ? `Doc: ${p.doc}` : null,
+          ].filter(Boolean).join(' | ');
+          const { data: novo, error: cErr } = await externalSupabase
+            .from('contacts')
+            .insert({ full_name: p.nome, notes, created_by: externalUserId } as any)
+            .select('id').single();
+          if (cErr || !novo) { console.error('Erro ao criar contato de parte:', cErr); continue; }
+          contactId = novo.id;
+        }
+        const { error: linkErr } = await (externalSupabase as any)
+          .from('contact_leads').insert({ contact_id: contactId, lead_id: process.lead_id });
+        if (linkErr && linkErr.code !== '23505') { console.error('Erro ao vincular parte ao lead:', linkErr); continue; }
+        vinculados++;
+      }
+      setAddedContactNames(prev => {
+        const next = new Set(prev);
+        partes.forEach(p => next.add(p.nome.toLowerCase()));
+        return next;
+      });
+      invalidateLeadLinkedContactsCache(process.lead_id);
+      toast.success(vinculados === 1 ? '1 parte adicionada aos contatos do lead' : `${vinculados} partes adicionadas aos contatos do lead`);
+    } catch (e) {
+      console.error('Erro ao adicionar partes como contatos:', e);
+      toast.error('Erro ao adicionar contatos');
+    } finally {
+      setAddingContacts(false);
+    }
+  }, [process?.lead_id, form.process_number]);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
@@ -699,6 +786,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // Polo do cliente detectado automaticamente pela OAB do advogado (usuário do sistema).
   const detectedClientePolo = detectClientPolo(envolvidos, systemOabs);
   const effectiveClientePolo = form.cliente_polo || detectedClientePolo || '';
+  // Partes com nome completo (o campo titulo_polo_* traz só as iniciais abreviadas).
+  const partesProcesso = derivePartes(envolvidos);
   const audiencias = Array.isArray(form.audiencias) ? form.audiencias : [];
   const processosRelacionados = Array.isArray(form.processos_relacionados) ? form.processos_relacionados : [];
   // Movimentações: a coluna `movimentacoes` só é gravada no cadastro. Em processos
@@ -846,6 +935,59 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     </p>
                   )}
                 </div>
+
+                {partesProcesso.length > 0 && (
+                  <div className="space-y-2 pt-3 border-t">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <label className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5 text-primary" /> Partes do processo ({partesProcesso.length})
+                      </label>
+                      <Button
+                        type="button" variant="outline" size="sm" className="h-7 text-xs"
+                        disabled={!process?.lead_id || addingContacts}
+                        onClick={() => addPartesAsContacts(partesProcesso)}
+                      >
+                        {addingContacts ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <UserPlus className="h-3 w-3 mr-1" />}
+                        Adicionar todos como contatos
+                      </Button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground">
+                      Nomes completos das partes (o campo acima traz só as iniciais abreviadas da API).
+                    </p>
+                    {!process?.lead_id && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400">
+                        Processo sem lead vinculado — vincule a um lead para adicionar as partes como contatos.
+                      </p>
+                    )}
+                    <div className="space-y-1.5">
+                      {partesProcesso.map((p, i) => {
+                        const added = addedContactNames.has(p.nome.toLowerCase());
+                        return (
+                          <div key={i} className="flex items-center gap-2 border rounded p-2 bg-muted/30">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-medium truncate">{p.nome}</p>
+                              <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                <Badge variant={p.polo === 'ATIVO' ? 'default' : 'secondary'} className="text-[9px]">Polo {p.polo}</Badge>
+                                {p.tipo && <Badge variant="outline" className="text-[9px]">{p.tipo}</Badge>}
+                                {p.doc && <span className="text-[10px] text-muted-foreground">{p.doc}</span>}
+                              </div>
+                            </div>
+                            <Button
+                              type="button" variant={added ? 'ghost' : 'outline'} size="sm"
+                              className="h-7 text-xs flex-shrink-0"
+                              disabled={!process?.lead_id || addingContacts || added}
+                              onClick={() => addPartesAsContacts([p])}
+                            >
+                              {added
+                                ? <><CheckCircle2 className="h-3 w-3 mr-1 text-green-600" /> Contato</>
+                                : <><UserPlus className="h-3 w-3 mr-1" /> Contato</>}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </>
             )}
 
