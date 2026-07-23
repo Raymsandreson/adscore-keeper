@@ -70,7 +70,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         await ensureExternalSession();
         // Desativados (org_user_status) somem do chat: sem conversa nova,
         // sem @menção e a conversa direta antiga fica oculta.
-        const { data: statusRows } = await (externalSupabase.from('org_user_status') as any)
+        const { data: statusRows } = await ((externalSupabase as any).from('org_user_status') as any)
           .select('user_id').eq('active', false);
         setInactiveIds(new Set(((statusRows as any[]) || []).map(r => r.user_id)));
         const { data: groups } = await (externalSupabase.from('team_conversations') as any)
