@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
+import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -98,6 +99,8 @@ export default function TvAtividadesPage() {
   const [now, setNow] = useState(() => new Date());
   // Coach de desempenho: clicar num assessor abre o painel de análise + mensagem.
   const [coach, setCoach] = useState<{ row: RankRow; rank: number } | null>(null);
+  // "Mensagem pra todos": dispara a coach personalizada de cada um do ranking.
+  const [broadcast, setBroadcast] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Relógio do cabeçalho.
@@ -303,6 +306,15 @@ export default function TvAtividadesPage() {
           >
             {tv ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
+          <button
+            onClick={() => setBroadcast(true)}
+            disabled={ranking.length === 0}
+            className="flex items-center gap-1.5 rounded-full bg-amber-400 text-slate-900 text-xs font-black px-3.5 py-1.5 transition hover:bg-amber-300 disabled:opacity-40"
+            title="Enviar a mensagem coach de cada um pra todos de uma vez"
+          >
+            <Megaphone className="h-4 w-4" />
+            Mensagem pra todos
+          </button>
         </div>
 
         {ranking.length === 0 ? (
@@ -326,6 +338,16 @@ export default function TvAtividadesPage() {
           </>
         )}
       </div>
+
+      {broadcast && (
+        <TeamBroadcastDialog
+          teamId={teamId && teamId !== GRUPO_GERENCIAL ? teamId : null}
+          grupo={teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null}
+          teamName={selectedTeamName || titulo}
+          period={period}
+          onClose={() => setBroadcast(false)}
+        />
+      )}
 
       {coach && (
         <PerformanceCoachDialog

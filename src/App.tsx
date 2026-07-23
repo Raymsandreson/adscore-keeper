@@ -30,6 +30,7 @@ import { OrgMetaSync } from "@/components/OrgMetaSync";
 import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
 import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
 import { FeatureGuidePopup } from "@/components/guide/FeatureGuidePopup";
+import TeamBroadcastReminder from "@/components/tv/TeamBroadcastReminder";
 import WhatsAppPage from "@/pages/WhatsAppPage";
 
 // Helper: retry dynamic import once per module on failure (stale chunk after deploy)
@@ -314,6 +315,7 @@ function SidebarLayout() {
             <PWAInstallBanner />
             <ActivityTimerOverlay />
             <FeatureGuidePopup />
+            <TeamBroadcastReminder />
             <Suspense fallback={<PageLoading />}>
               <Routes>
                 <Route path="/" element={<ProtectedRoute><ActivitiesPage /></ProtectedRoute>} />
