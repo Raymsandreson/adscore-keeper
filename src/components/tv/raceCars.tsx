@@ -287,7 +287,10 @@ export function autoCarFor(name: string): { car_id: string; color: string } {
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
   return {
+    // `>>>` (shift sem sinal): `h` é unsigned até 2³²−1; com `>>` (com sinal)
+    // o resultado podia ficar negativo e `negativo % n` em JS dá resto negativo
+    // → índice fora do array → undefined.hex quebrava o telão inteiro.
     car_id: CAR_MODELS[h % CAR_MODELS.length].id,
-    color: CAR_COLORS[(h >> 3) % CAR_COLORS.length].hex,
+    color: CAR_COLORS[(h >>> 3) % CAR_COLORS.length].hex,
   };
 }
