@@ -274,6 +274,23 @@ async function getMaxSequenceFromLeads(supabase: any, prefix: string): Promise<n
 }
 
 /**
+ * Piso da sequência medido no mundo real, somando TODOS os prefixos informados
+ * (ex: ['Lead','PREV'] — numeração previdenciária única escrita de dois jeitos):
+ * maior número visto em snapshot uazapi + lead_whatsapp_groups + leads.
+ */
+async function computeMeasuredSequenceFloor(supabase: any, prefixes: string[]): Promise<number> {
+  let floor = 0
+  const uniquePrefixes = [...new Set(prefixes.map((p) => cleanSequencePrefix(p)).filter(Boolean))]
+  for (const prefix of uniquePrefixes) {
+    const snapNext = (await getNextGroupSequenceFromSnapshot(supabase, prefix)) || 0
+    const lwgMax = await getMaxSequenceFromLeadGroups(supabase, prefix)
+    const leadsMax = await getMaxSequenceFromLeads(supabase, prefix)
+    floor = Math.max(floor, snapNext > 0 ? snapNext - 1 : 0, lwgMax, leadsMax)
+  }
+  return floor
+}
+
+/**
  * Reserva atômica via RPC reserve_closed_sequence: faz UPDATE ... RETURNING
  * incrementando o contador acima de GREATEST(snapshot, lead_whatsapp_groups).
  * Garante que dois fechamentos simultâneos NUNCA colidam no mesmo número.
@@ -795,6 +812,14 @@ Deno.serve(async (req) => {
       const activeSeqStart = settings.sequence_start || 1
       const activeCurrentSeq = settings.current_sequence || 0
 
+      // Sequência compartilhada entre boards (ex: Auxílio Acidente "Lead N" + fluxo PREV):
+      // o contador atômico mora na linha do board sequence_source_board_id e a medição
+      // do piso considera também os prefixos extras de sequence_scan_prefixes.
+      // Colunas ausentes/null => comportamento legado intacto.
+      const sharedSequenceBoardId: string | null = settings.sequence_source_board_id || null
+      const scanPrefixes: string[] = [sequencePrefix, ...(settings.sequence_scan_prefixes || [])]
+      const useMeasuredSequence = useClosed || !!sharedSequenceBoardId
+
       const existingLeadSequence = extractExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
       const forcedSequence = Number(body?.forced_sequence)
       if (Number.isFinite(forcedSequence) && forcedSequence > 0) {
@@ -808,24 +833,36 @@ Deno.serve(async (req) => {
       } else if (existingLeadSequence !== null && !useClosed) {
         nextSeq = existingLeadSequence
         shouldPersistSequence = false
-      } else if (useClosed) {
+      } else if (useMeasuredSequence) {
         // PRIORIDADE 1: se este lead já tem grupo com nº atribuído, reusa esse nº
         // (não consome novo da sequência — é o caso de renomear/reprocessar).
-        const existingGroupSeq = await getExistingGroupSequence(supabase, leadData?.whatsapp_group_id || explicitExistingGroupJid, sequencePrefix)
+        let existingGroupSeq: number | null = null
+        for (const prefix of scanPrefixes) {
+          existingGroupSeq = await getExistingGroupSequence(supabase, leadData?.whatsapp_group_id || explicitExistingGroupJid, prefix)
+          if (existingGroupSeq) break
+        }
         if (existingGroupSeq) {
           nextSeq = existingGroupSeq
           shouldPersistClosedSequence = false
         } else {
           // PRIORIDADE 2: reserva atômica baseada no MAX REAL combinado de
-          // snapshot uazapi (1x/dia, defasado) + lead_whatsapp_groups (tempo real).
+          // snapshot uazapi (1x/dia, defasado) + lead_whatsapp_groups (tempo real)
+          // + leads, medido em TODOS os prefixos da sequência (scanPrefixes).
           // Sem isso, leads que fecham entre 2 syncs do snapshot colidem no mesmo nº.
-          const snapMax = (await getNextGroupSequenceFromSnapshot(supabase, sequencePrefix)) || 0
-          const lwgMax = await getMaxSequenceFromLeadGroups(supabase, sequencePrefix)
-          const leadsMax = await getMaxSequenceFromLeads(supabase, sequencePrefix)
-          const settingsMax = (settings.closed_current_sequence || 0)
-          const floor = Math.max(snapMax > 0 ? snapMax - 1 : 0, lwgMax, leadsMax, settingsMax)
-          const reserved = board_id
-            ? await reserveAtomicClosedSequence(supabase, board_id, floor)
+          const measuredFloor = await computeMeasuredSequenceFloor(supabase, scanPrefixes)
+          let counterMax = settings.closed_current_sequence || 0
+          if (sharedSequenceBoardId && sharedSequenceBoardId !== board_id) {
+            const { data: srcSettings } = await supabase
+              .from('board_group_settings')
+              .select('closed_current_sequence')
+              .eq('board_id', sharedSequenceBoardId)
+              .maybeSingle()
+            counterMax = Math.max(counterMax, srcSettings?.closed_current_sequence || 0)
+          }
+          const floor = Math.max(measuredFloor, counterMax)
+          const reserveBoardId = sharedSequenceBoardId || board_id
+          const reserved = reserveBoardId
+            ? await reserveAtomicClosedSequence(supabase, reserveBoardId, floor)
             : null
           nextSeq = reserved || Math.max(floor + 1, 1)
           shouldPersistClosedSequence = false // RPC já persistiu atomicamente
