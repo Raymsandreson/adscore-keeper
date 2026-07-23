@@ -1260,7 +1260,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   );
 
   const innerContent = (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col min-h-0 flex-1">
       {/* Header */}
       <div className="p-4 pb-2 flex flex-row items-center justify-between shrink-0 gap-2">
         <div className="text-sm font-semibold flex items-center gap-2 min-w-0 flex-1">
@@ -1482,7 +1482,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   if (mode === 'dialog') {
     return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl h-[85vh] max-h-[85vh] p-0 overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
           <div className="sr-only"><DialogHeader><DialogTitle>Detalhes do Processo</DialogTitle></DialogHeader></div>
           {innerContent}
         </DialogContent>
@@ -1492,7 +1492,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col">
+      <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col md:top-4 md:bottom-auto md:h-auto md:max-h-[92vh] md:overflow-hidden md:rounded-l-xl">
         <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
         {innerContent}
       </SheetContent>
