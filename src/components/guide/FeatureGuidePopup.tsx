@@ -249,13 +249,14 @@ export function FeatureGuidePopup() {
             {/* Balão do passo */}
             <div
               className="absolute bg-popover text-popover-foreground border rounded-xl shadow-2xl p-3.5"
-              style={balloonStyle}
+              style={{ ...balloonStyle, touchAction: "manipulation" }}
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                className="absolute top-2 right-2 p-1 rounded hover:bg-accent text-muted-foreground"
+                style={{ touchAction: "manipulation" }}
+                className="absolute top-1.5 right-1.5 p-2 rounded hover:bg-accent text-muted-foreground"
                 aria-label="Fechar tour"
               >
                 <X className="h-3.5 w-3.5" />
@@ -284,7 +285,8 @@ export function FeatureGuidePopup() {
                 <button
                   type="button"
                   onClick={dismissForever}
-                  className="text-[10px] text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0"
+                  style={{ touchAction: "manipulation" }}
+                  className="text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2 shrink-0 py-2 pr-1"
                 >
                   Não exibir mais
                 </button>
@@ -293,23 +295,27 @@ export function FeatureGuidePopup() {
                     {stepIndex + 1}/{steps.length}
                   </span>
                   <Button
+                    type="button"
                     variant="outline"
                     size="sm"
-                    className="h-7 px-2 text-xs"
+                    style={{ touchAction: "manipulation" }}
+                    className="h-9 min-w-9 px-2 text-xs"
                     disabled={stepIndex === 0}
                     onClick={() => setStepIndex((i) => Math.max(i - 1, 0))}
                   >
-                    <ChevronLeft className="h-3.5 w-3.5" />
+                    <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <Button
+                    type="button"
                     size="sm"
-                    className="h-7 px-3 text-xs gap-1"
+                    style={{ touchAction: "manipulation" }}
+                    className="h-9 px-4 text-xs gap-1"
                     onClick={() =>
                       isLast ? setOpen(false) : setStepIndex((i) => i + 1)
                     }
                   >
                     {isLast ? "Concluir" : "Próximo"}
-                    {!isLast && <ChevronRight className="h-3.5 w-3.5" />}
+                    {!isLast && <ChevronRight className="h-4 w-4" />}
                   </Button>
                 </div>
               </div>
