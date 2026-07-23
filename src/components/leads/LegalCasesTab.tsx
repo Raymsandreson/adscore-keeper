@@ -243,6 +243,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     if (editingCase) {
       await updateCase(editingCase.id, {
         title: caseTitle.trim(),
+        case_number: caseCaseNumber.trim() || null,
         description: caseDescription || null,
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
