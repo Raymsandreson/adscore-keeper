@@ -186,6 +186,7 @@ interface ActivityFormCompactProps {
   formStatus: string; setFormStatus: (v: string) => void;
   formPriority: string; setFormPriority: (v: string) => void;
   formDeadline: string; handleDeadlineChange: (v: string) => void;
+  formCallbackAt?: string; setFormCallbackAt?: (v: string) => void;
   formNotificationDate: string; setFormNotificationDate: (v: string) => void;
   formMeetingAt: string; setFormMeetingAt: (v: string) => void;
   formMatrixQuadrant: string; setFormMatrixQuadrant: (v: string) => void;
