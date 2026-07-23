@@ -81,6 +81,8 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   /** Classe CSS adicional para o botão trigger (ex: sr-only quando controlado por menu pai). */
   triggerClassName?: string;
+  /** Se true, inicia a gravação automaticamente ao abrir. */
+  autoStart?: boolean;
 }
 
 type Phase = 'idle' | 'recording' | 'processing' | 'done';
