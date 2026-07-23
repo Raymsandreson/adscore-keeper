@@ -262,7 +262,14 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   // tempo até eu responder. Em GRUPO só conta se a última mensagem me
   // @mencionou — mesma regra da média/ranking (RPC team_chat_my_response_avg).
   const lastMsg = messages.length > 0 ? messages[messages.length - 1] : null;
-  const activeConvType = conversations.find(c => c.id === activeConversationId)?.type ?? null;
+  const activeConvForStatus = conversations.find(c => c.id === activeConversationId) ?? null;
+  const activeConvType = activeConvForStatus?.type ?? null;
+  // "Conversa finalizada": se já dispensei a pendência DEPOIS da última mensagem,
+  // o banner de cobrança some (volta sozinho quando chegar mensagem nova).
+  const activeConvDismissed = !!(
+    activeConvForStatus?.pendingDismissedAt && lastMsg
+    && new Date(activeConvForStatus.pendingDismissedAt) >= new Date(lastMsg.created_at)
+  );
   const lastMsgFromOther = !!(activeConversationId && lastMsg && lastMsg.sender_id !== user?.id);
   const [lastMsgMentionsMe, setLastMsgMentionsMe] = useState(false);
   useEffect(() => {
@@ -285,7 +292,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastMsg?.id, lastMsgFromOther, activeConvType, user?.id]);
-  const awaitingReply = lastMsgFromOther && (activeConvType === 'direct' || lastMsgMentionsMe);
+  const awaitingReply = lastMsgFromOther && !activeConvDismissed && (activeConvType === 'direct' || lastMsgMentionsMe);
   const [awaitingElapsed, setAwaitingElapsed] = useState(0);
   useEffect(() => {
     if (!awaitingReply || !lastMsg) {
@@ -1129,11 +1136,19 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
           {awaitingReply && !isRecording && (
             <div className="px-3 py-1.5 border-b bg-amber-500/10 flex items-center gap-2">
               <Timer className="h-3.5 w-3.5 text-amber-500 animate-pulse shrink-0" />
-              <span className="text-[11px] text-amber-600 dark:text-amber-400">
+              <span className="text-[11px] text-amber-600 dark:text-amber-400 min-w-0 truncate">
                 Aguardando sua resposta há <b className="tabular-nums">{fmtElapsed(awaitingElapsed)}</b>
               </span>
+              <button
+                type="button"
+                onClick={() => activeConversationId && dismissPending(activeConversationId)}
+                title="Marcar como finalizada — some da cobrança até chegar mensagem nova"
+                className="ml-auto shrink-0 inline-flex items-center gap-1 px-2 h-6 rounded-full border border-emerald-500/50 text-emerald-600 dark:text-emerald-400 text-[10px] font-semibold hover:bg-emerald-500 hover:text-white transition-colors"
+              >
+                <Check className="h-3 w-3" /> Conversa finalizada
+              </button>
               <span
-                className="ml-auto text-[10px] text-muted-foreground shrink-0"
+                className="text-[10px] text-muted-foreground shrink-0"
                 title="Média dos últimos 30 dias (respostas em até 8h). Entra no ranking de atividades como critério de desempate."
               >
                 sua média: <b>{fmtAvg(myAvgResp)}</b>
