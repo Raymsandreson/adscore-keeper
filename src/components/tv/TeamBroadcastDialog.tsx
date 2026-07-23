@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { markSent } from '@/lib/teamBroadcastReminder';
 import { startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 
 // "Mensagem pra todos" — dispara, de uma vez, a mensagem coach personalizada
@@ -20,6 +21,8 @@ interface Props {
   grupo: string | null;    // 'gerencial' | null
   teamName: string;
   period: BroadcastPeriod;
+  /** Chamado quando o disparo conclui com ≥1 mensagem enviada (zera o lembrete). */
+  onSent?: (count: number) => void;
   onClose: () => void;
 }
 
@@ -83,7 +86,7 @@ async function mapLimit<T>(items: T[], limit: number, worker: (item: T, i: numbe
   await Promise.all(runners);
 }
 
-export default function TeamBroadcastDialog({ teamId, grupo, teamName, period, onClose }: Props) {
+export default function TeamBroadcastDialog({ teamId, grupo, teamName, period, onSent, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [rows, setRows] = useState<PersonRow[]>([]);
@@ -194,6 +197,7 @@ export default function TeamBroadcastDialog({ teamId, grupo, teamName, period, o
     const targets = rows.filter((r) => r.include && r.toUserId && r.mensagem.trim() && r.status !== 'sent');
     if (!targets.length) return;
     setSending(true);
+    let okCount = 0;
     try {
       await mapLimit(targets, 3, async (r) => {
         patch(r.nome, { status: 'sending', error: undefined });
@@ -217,12 +221,18 @@ export default function TeamBroadcastDialog({ teamId, grupo, teamName, period, o
           if (res.whatsapp && !res.whatsapp.ok) fails.push(`WhatsApp: ${res.whatsapp.error || 'falhou'}`);
           if (fails.length && !(res.chat?.ok || res.whatsapp?.ok)) throw new Error(fails.join(' · '));
           if (data.success === false && !fails.length) throw new Error(data.error || 'Falha ao enviar');
+          okCount++;
           patch(r.nome, { status: 'sent', error: fails.length ? `parcial — ${fails.join(' · ')}` : undefined });
         } catch (e) {
           patch(r.nome, { status: 'failed', error: e instanceof Error ? e.message : 'Falha ao enviar' });
         }
       });
       setDoneAt(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
+      // Envio real → zera o lembrete do horário (vale pelo telão ou pelo popup).
+      if (okCount > 0 && sender) {
+        markSent(sender.id);
+        onSent?.(okCount);
+      }
     } finally {
       setSending(false);
     }
