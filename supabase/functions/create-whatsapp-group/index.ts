@@ -941,18 +941,22 @@ Deno.serve(async (req) => {
           else if (city) parts.push(city)
           else if (state) parts.push(state)
         } else if (field === 'lead_first_name') {
-          // Só o primeiro nome do cliente (ex: "Francisco") — modelo do board
-          // Auxílio Acidente: "✅Lead 1839 - Francisco - Auxílio Acidente".
+          // Só o primeiro nome do cliente (ex: "Francisco").
           const fullLeadName = stripExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
           const firstName = (fullLeadName || '').trim().split(/\s+/)[0] || ''
           if (firstName) parts.push(firstName)
-        } else if (field === 'acolhedor' && leadData?.acolhedor) {
-          // No nome do grupo entra só o PRIMEIRO nome do acolhedor resolvido
-          // ("/ Edilan", "/ Mateus") — convenção da equipe. E-mail/UUID viram
-          // nome via profiles; sem profile, cai no valor cru.
+        } else if (field === 'lead_name_upper') {
+          // Nome completo do cliente em caixa alta — modelo Aux. Acidente:
+          // "✅LEAD 1839 - FRANCISCO AFONSO RUBIO - (AUX. ACIDENTE) - EDILAN".
+          const fullLeadName = stripExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
+          if (fullLeadName) parts.push(fullLeadName.toUpperCase())
+        } else if ((field === 'acolhedor' || field === 'acolhedor_upper') && leadData?.acolhedor) {
+          // Primeiro nome do acolhedor resolvido (e-mail/UUID viram nome via
+          // profiles; sem profile, cai no valor cru). Variante _upper em caixa alta.
           const resolved = await resolveAcolhedorFullName(supabase, leadData.acolhedor)
           const firstName = (resolved.split(/\s+/)[0] || '')
-          parts.push(firstName && !firstName.includes('@') ? firstName : resolved)
+          const display = firstName && !firstName.includes('@') ? firstName : resolved
+          parts.push(field === 'acolhedor_upper' ? display.toUpperCase() : display)
         } else if (leadData && leadData[field]) {
           parts.push(field === 'lead_name' ? stripExistingSequenceFromName(leadData[field], activePrefix) : formatLeadFieldValue(leadData[field]))
         } else if (field === 'lead_name') {
