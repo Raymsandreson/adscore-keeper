@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -17,7 +17,7 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare
 } from 'lucide-react';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -31,6 +31,8 @@ import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFie
 import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+
+const TeamChatPanel = lazy(() => import('@/components/chat/TeamChatPanel').then(m => ({ default: m.TeamChatPanel })));
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -150,6 +152,7 @@ const TABS = [
   { id: 'partes', label: 'Partes', icon: Users },
   { id: 'dados', label: 'Dados', icon: Scale },
   { id: 'atividades', label: 'Atividades', icon: ClipboardList },
+  { id: 'chat', label: 'Chat Interno', icon: MessageSquare },
   { id: 'documentos', label: 'Documentos', icon: FolderOpen },
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
@@ -1245,6 +1248,21 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     );
                   })
                 )}
+              </div>
+            )}
+
+            {activeTab === 'chat' && process?.id && (
+              <div
+                className="rounded-md border bg-background overflow-hidden"
+                style={{ height: 'min(60vh, 520px)', minHeight: '320px' }}
+              >
+                <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
+                  <TeamChatPanel
+                    entityType="process"
+                    entityId={process.id}
+                    entityName={form.process_number || form.title || 'Processo'}
+                  />
+                </Suspense>
               </div>
             )}
 
