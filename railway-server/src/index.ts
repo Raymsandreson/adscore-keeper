@@ -372,3 +372,33 @@ async function runDailyTeamReport() {
   }
 }
 setInterval(runDailyTeamReport, 10 * 60 * 1000);
+
+// ============================================================
+// CRON: relatório diário de benefícios INSS por marco — dia útil
+// às INSS_REPORT_HOUR_BRT (padrão 8h, Brasília). Envia por e-mail
+// pra caixa adm@. Idempotente por dia; checagem a cada 10 min.
+// ============================================================
+const INSS_REPORT_HOUR_BRT = Number(process.env.INSS_REPORT_HOUR_BRT || 8);
+let lastInssReportDate = '';
+async function runInssReport() {
+  try {
+    const now = new Date();
+    const spHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(now));
+    const spDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(now);
+    const spWeekday = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', weekday: 'short' }).format(now);
+    if (spWeekday === 'Sat' || spWeekday === 'Sun') return; // só dia útil
+    if (spHour !== INSS_REPORT_HOUR_BRT || lastInssReportDate === spDate) return;
+    lastInssReportDate = spDate;
+
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/inss-report`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({ send: true }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    console.log(`[cron:inss-report] status=${resp.status} sent=${json?.sent}`);
+  } catch (err) {
+    console.warn('[cron:inss-report] failed:', err instanceof Error ? err.message : err);
+  }
+}
+setInterval(runInssReport, 10 * 60 * 1000);
