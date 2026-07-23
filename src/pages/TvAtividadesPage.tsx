@@ -104,7 +104,8 @@ export default function TvAtividadesPage() {
   // "Mensagem pra todos": dispara a coach personalizada de cada um do ranking.
   const [broadcast, setBroadcast] = useState(false);
   // Modo Corrida: o ranking vira pista estilo cartoon. Escolha de carro por nome.
-  const [raceMode, setRaceMode] = useState(params.get('corrida') === '1');
+  // É a visualização PADRÃO; só `?corrida=0` cai no pódio clássico.
+  const [raceMode, setRaceMode] = useState(params.get('corrida') !== '0');
   const [cars, setCars] = useState<Record<string, CarChoice>>({});
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -220,7 +221,8 @@ export default function TvAtividadesPage() {
     setRaceMode(v => {
       const next = !v;
       const q = new URLSearchParams(params);
-      if (next) q.set('corrida', '1'); else q.delete('corrida');
+      // Corrida é o padrão: ligada → sem param; desligada → corrida=0 (pódio).
+      if (next) q.delete('corrida'); else q.set('corrida', '0');
       setSearchParams(q, { replace: true });
       return next;
     });
