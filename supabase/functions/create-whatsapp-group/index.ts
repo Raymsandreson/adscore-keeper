@@ -931,6 +931,10 @@ Deno.serve(async (req) => {
           try { parts.push(decodeURIComponent(field.slice(5))) } catch { parts.push(field.slice(5)) }
         } else if (field === 'board_name' && boardName) {
           parts.push(boardName)
+        } else if (field === 'board_name_upper' && boardName) {
+          // Nome do funil selecionado, em caixa alta e entre parênteses:
+          // "(AUXÍLIO ACIDENTE)", "(BPC - AUTISMO)" — dinâmico por board.
+          parts.push(`(${boardName.trim().toUpperCase()})`)
         } else if (typeof field === 'string' && field.startsWith('cf:')) {
           const v = cfValuesById[field.slice(3)]
           if (v) parts.push(v)
