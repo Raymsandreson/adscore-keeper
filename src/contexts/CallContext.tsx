@@ -7,11 +7,19 @@ import {
   createPeerConnection,
   getMicStream,
   Ringtone,
+  CallRecorder,
   type CallSignalEvent,
   type CallSignalPayload,
 } from '@/lib/webrtcCall';
 
 type CallStatus = 'idle' | 'calling' | 'incoming' | 'connected';
+
+/** Gravação de uma ligação já encerrada, aguardando transcrição/resumo. */
+export interface PendingCallRecording {
+  blob: Blob;
+  remoteName: string;
+  durationSec: number;
+}
 
 interface CallContextValue {
   status: CallStatus;
@@ -20,6 +28,9 @@ interface CallContextValue {
   muted: boolean;
   durationSec: number;
   remoteStream: MediaStream | null;
+  /** Gravação da última ligação encerrada (null enquanto não há nada a resumir). */
+  pendingRecording: PendingCallRecording | null;
+  clearPendingRecording: () => void;
   /** Inicia uma ligação de voz para outro membro da equipe. */
   startCall: (targetUserId: string, targetName: string) => void;
   acceptCall: () => void;
@@ -44,9 +55,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [muted, setMuted] = useState(false);
   const [durationSec, setDurationSec] = useState(0);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [pendingRecording, setPendingRecording] = useState<PendingCallRecording | null>(null);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const inboxRef = useRef<RealtimeChannel | null>(null);
   const outChannelRef = useRef<RealtimeChannel | null>(null);
   const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
@@ -55,11 +68,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ringtoneRef = useRef<Ringtone | null>(null);
+  // gravação da chamada (mistura os dois lados) p/ transcrição posterior
+  const recorderRef = useRef<CallRecorder | null>(null);
+  const recordingActiveRef = useRef(false);
+  const connectedAtRef = useRef<number | null>(null);
+  const remoteNameRef = useRef<string>('Colega');
   // status espelhado em ref p/ handlers assíncronos não pegarem valor velho
   const statusRef = useRef<CallStatus>('idle');
   statusRef.current = status;
   const myNameRef = useRef(myName);
   myNameRef.current = myName;
+
+  const clearPendingRecording = useCallback(() => setPendingRecording(null), []);
 
   // ---- helpers de sinalização ----
 
@@ -106,6 +126,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
       ringTimeoutRef.current = null;
     }
     try { ringtoneRef.current?.stop(); } catch { /* noop */ }
+    // Fecha a gravação ANTES de derrubar os streams e guarda o áudio p/ resumo.
+    if (recordingActiveRef.current && recorderRef.current) {
+      recordingActiveRef.current = false;
+      const capturedName = remoteNameRef.current || 'Colega';
+      const dur = connectedAtRef.current
+        ? Math.round((Date.now() - connectedAtRef.current) / 1000)
+        : 0;
+      recorderRef.current.stop().then((blob) => {
+        // só oferece resumo se a conversa teve alguns segundos de fato
+        if (blob && blob.size > 0 && dur >= 3) {
+          setPendingRecording({ blob, remoteName: capturedName, durationSec: dur });
+        }
+      }).catch(() => { /* noop */ });
+    }
+    connectedAtRef.current = null;
     if (pcRef.current) {
       try {
         pcRef.current.ontrack = null;
@@ -119,6 +154,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       try { localStreamRef.current.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
       localStreamRef.current = null;
     }
+    remoteStreamRef.current = null;
     if (outChannelRef.current) {
       // Nunca deixar a limpeza de canal impedir o reset de estado (senão o card
       // de chamada fica preso na tela e o usuário não consegue desligar).
@@ -142,7 +178,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (e.candidate) sendSignal('ice', { candidate: e.candidate.toJSON() });
     };
     pc.ontrack = (e) => {
-      setRemoteStream(e.streams[0] ?? null);
+      const stream = e.streams[0] ?? null;
+      remoteStreamRef.current = stream;
+      setRemoteStream(stream);
     };
     pc.onconnectionstatechange = () => {
       const st = pc.connectionState;
@@ -153,6 +191,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
         if (!durationTimerRef.current) {
           setDurationSec(0);
           durationTimerRef.current = setInterval(() => setDurationSec((d) => d + 1), 1000);
+        }
+        // inicia a gravação (mistura os dois lados) uma única vez ao conectar
+        if (!recordingActiveRef.current && localStreamRef.current && remoteStreamRef.current) {
+          if (!recorderRef.current) recorderRef.current = new CallRecorder();
+          const started = recorderRef.current.start(localStreamRef.current, remoteStreamRef.current);
+          recordingActiveRef.current = started;
+          if (started) connectedAtRef.current = Date.now();
         }
       } else if (st === 'failed' || st === 'disconnected' || st === 'closed') {
         // se cair depois de conectado, encerra
@@ -177,6 +222,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setRemoteId(targetUserId);
       setRemoteName(targetName);
       remoteIdRef.current = targetUserId;
+      remoteNameRef.current = targetName;
 
       // Canal de sinalização primeiro: garante que hangup/timeout consigam avisar
       // o outro lado mesmo se o microfone falhar depois.
@@ -302,6 +348,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
         incomingOfferRef.current = p.sdp ?? null;
         remoteIdRef.current = p.from;
+        remoteNameRef.current = p.fromName || 'Membro da equipe';
         setRemoteId(p.from);
         setRemoteName(p.fromName || 'Membro da equipe');
         setStatus('incoming');
@@ -371,6 +418,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     <CallContext.Provider
       value={{
         status, remoteName, remoteId, muted, durationSec, remoteStream,
+        pendingRecording, clearPendingRecording,
         startCall, acceptCall, rejectCall, hangup, toggleMute,
       }}
     >

@@ -31,6 +31,7 @@ import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
 import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
 import { CallProvider } from "@/contexts/CallContext";
 import { CallOverlay } from "@/components/chat/CallOverlay";
+import { CallSummaryDialog } from "@/components/chat/CallSummaryDialog";
 import { FeatureGuidePopup } from "@/components/guide/FeatureGuidePopup";
 import TeamBroadcastReminder from "@/components/tv/TeamBroadcastReminder";
 import WhatsAppPage from "@/pages/WhatsAppPage";
@@ -318,6 +319,7 @@ function SidebarLayout() {
             <PWAInstallBanner />
             <ActivityTimerOverlay />
             <CallOverlay />
+            <CallSummaryDialog />
             <FeatureGuidePopup />
             <TeamBroadcastReminder />
             <Suspense fallback={<PageLoading />}>

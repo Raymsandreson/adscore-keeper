@@ -64,6 +64,11 @@ export function CallOverlay() {
             <p className="text-sm font-mono text-muted-foreground mt-0.5">
               {isConnected ? fmt(durationSec) : isIncoming ? 'quer falar com você' : 'aguardando…'}
             </p>
+            {isConnected && (
+              <p className="mt-1 inline-flex items-center gap-1 text-[10px] font-medium text-red-600">
+                <span className="h-2 w-2 rounded-full bg-red-600 animate-pulse" /> gravando
+              </p>
+            )}
           </div>
 
           {isIncoming ? (

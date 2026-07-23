@@ -74,6 +74,74 @@ export class Ringtone {
   }
 }
 
+/**
+ * Grava a conversa inteira misturando os dois lados (meu microfone + a voz que
+ * chega do outro) num único áudio, via WebAudio. Usado para depois transcrever
+ * e resumir a ligação.
+ */
+export class CallRecorder {
+  private ctx: AudioContext | null = null;
+  private recorder: MediaRecorder | null = null;
+  private chunks: Blob[] = [];
+  private mime = 'audio/webm';
+
+  /** Começa a gravar a mistura de local + remoto. Silencioso em caso de erro. */
+  start(local: MediaStream, remote: MediaStream): boolean {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx || typeof MediaRecorder === 'undefined') return false;
+      this.ctx = new AudioCtx();
+      const dest = this.ctx.createMediaStreamDestination();
+      [local, remote].forEach((s) => {
+        if (s && s.getAudioTracks().length > 0) {
+          this.ctx!.createMediaStreamSource(s).connect(dest);
+        }
+      });
+      this.mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+      this.recorder = this.mime
+        ? new MediaRecorder(dest.stream, { mimeType: this.mime })
+        : new MediaRecorder(dest.stream);
+      this.chunks = [];
+      this.recorder.ondataavailable = (e) => { if (e.data.size > 0) this.chunks.push(e.data); };
+      this.recorder.start();
+      return true;
+    } catch {
+      this.dispose();
+      return false;
+    }
+  }
+
+  /** Para a gravação e devolve o áudio (ou null se nada foi capturado). */
+  stop(): Promise<Blob | null> {
+    return new Promise((resolve) => {
+      const rec = this.recorder;
+      const type = this.mime || 'audio/webm';
+      if (!rec || rec.state === 'inactive') {
+        const blob = this.chunks.length ? new Blob(this.chunks, { type }) : null;
+        this.dispose();
+        resolve(blob);
+        return;
+      }
+      rec.onstop = () => {
+        const blob = this.chunks.length ? new Blob(this.chunks, { type }) : null;
+        this.dispose();
+        resolve(blob);
+      };
+      try { rec.stop(); } catch { this.dispose(); resolve(null); }
+    });
+  }
+
+  private dispose() {
+    try { this.ctx?.close(); } catch { /* noop */ }
+    this.ctx = null;
+    this.recorder = null;
+  }
+}
+
 export type CallSignalEvent = 'offer' | 'answer' | 'ice' | 'hangup' | 'reject';
 
 export interface CallSignalPayload {

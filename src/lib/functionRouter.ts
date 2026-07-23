@@ -47,6 +47,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'extract-activity-from-document': 'railway',
   'dictate-activity': 'railway',
   'chat-to-activity': 'railway',
+  'call-to-activities': 'railway', // transcreve+resume ligação de voz do chat interno → atividades
   'activity-from-movement': 'railway',
   'suggest-step-actions': 'railway',
   'wipe-instance-agent-labels': 'railway',
