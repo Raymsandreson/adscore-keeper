@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
+import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -102,6 +103,9 @@ export default function TvAtividadesPage() {
   const [coach, setCoach] = useState<{ row: RankRow; rank: number } | null>(null);
   // "Mensagem pra todos": dispara a coach personalizada de cada um do ranking.
   const [broadcast, setBroadcast] = useState(false);
+  // Modo Corrida: o ranking vira pista estilo cartoon. Escolha de carro por nome.
+  const [raceMode, setRaceMode] = useState(params.get('corrida') === '1');
+  const [cars, setCars] = useState<Record<string, CarChoice>>({});
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Relógio do cabeçalho.
@@ -178,6 +182,49 @@ export default function TvAtividadesPage() {
     const id = setInterval(load, REFRESH_MS);
     return () => clearInterval(id);
   }, [load]);
+
+  // Carros escolhidos (Modo Corrida). SELECT direto — tabela isolada, não
+  // encosta na RPC de ranking. Só busca quando o modo está ligado.
+  const loadCars = useCallback(async () => {
+    try {
+      await ensureExternalSession();
+      const { data: rows, error } = await (externalSupabase as any)
+        .from('tv_race_cars')
+        .select('nome_key, car_id, color');
+      if (error) throw error;
+      const map: Record<string, CarChoice> = {};
+      for (const row of rows || []) map[row.nome_key] = { car_id: row.car_id, color: row.color };
+      setCars(map);
+    } catch (e) {
+      console.warn('[TvAtividades] loadCars:', e);
+    }
+  }, []);
+  useEffect(() => { if (raceMode) loadCars(); }, [raceMode, loadCars]);
+
+  // Salva a escolha (upsert por nome_key) + atualização otimista no telão.
+  const saveCar = useCallback(async (nome: string, car_id: string, color: string) => {
+    const key = nameKey(nome);
+    setCars(prev => ({ ...prev, [key]: { car_id, color } }));
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase as any)
+        .from('tv_race_cars')
+        .upsert({ nome_key: key, nome, car_id, color, updated_at: new Date().toISOString() });
+      if (error) throw error;
+    } catch (e) {
+      console.warn('[TvAtividades] saveCar:', e);
+    }
+  }, []);
+
+  const toggleRaceMode = useCallback(() => {
+    setRaceMode(v => {
+      const next = !v;
+      const q = new URLSearchParams(params);
+      if (next) q.set('corrida', '1'); else q.delete('corrida');
+      setSearchParams(q, { replace: true });
+      return next;
+    });
+  }, [params, setSearchParams]);
 
   const ranking = data?.ranking ?? [];
   const podium = useMemo(() => ranking.slice(0, 3), [ranking]);
@@ -310,6 +357,17 @@ export default function TvAtividadesPage() {
             {tv ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
           </button>
           <button
+            onClick={toggleRaceMode}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full text-xs font-black px-3.5 py-1.5 transition',
+              raceMode ? 'bg-emerald-400 text-slate-900 hover:bg-emerald-300' : 'bg-white/10 text-white/70 hover:text-white',
+            )}
+            title="Alternar entre pódio e pista de corrida"
+          >
+            <Flag className="h-4 w-4" />
+            {raceMode ? 'Ver pódio' : 'Modo Corrida'}
+          </button>
+          <button
             onClick={() => setBroadcast(true)}
             disabled={ranking.length === 0}
             className="flex items-center gap-1.5 rounded-full bg-amber-400 text-slate-900 text-xs font-black px-3.5 py-1.5 transition hover:bg-amber-300 disabled:opacity-40"
@@ -324,6 +382,19 @@ export default function TvAtividadesPage() {
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
           </div>
+        ) : raceMode ? (
+          <>
+            {/* ===== Pista de corrida (todos os pilotos) ===== */}
+            <WackyRaceTrack
+              ranking={ranking}
+              cars={cars}
+              onSaveCar={saveCar}
+              onAnalyze={(row, rank) => setCoach({ row, rank })}
+            />
+
+            {/* ===== Rodapé ===== */}
+            <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
+          </>
         ) : (
           <>
             {/* ===== Pódio ===== */}
