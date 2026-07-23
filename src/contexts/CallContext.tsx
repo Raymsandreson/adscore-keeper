@@ -105,7 +105,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       clearTimeout(ringTimeoutRef.current);
       ringTimeoutRef.current = null;
     }
-    ringtoneRef.current?.stop();
+    try { ringtoneRef.current?.stop(); } catch { /* noop */ }
     if (pcRef.current) {
       try {
         pcRef.current.ontrack = null;
@@ -116,11 +116,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       pcRef.current = null;
     }
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((t) => t.stop());
+      try { localStreamRef.current.getTracks().forEach((t) => t.stop()); } catch { /* noop */ }
       localStreamRef.current = null;
     }
     if (outChannelRef.current) {
-      externalSupabase.removeChannel(outChannelRef.current);
+      // Nunca deixar a limpeza de canal impedir o reset de estado (senão o card
+      // de chamada fica preso na tela e o usuário não consegue desligar).
+      try { externalSupabase.removeChannel(outChannelRef.current); } catch { /* noop */ }
       outChannelRef.current = null;
     }
     pendingCandidatesRef.current = [];
@@ -176,10 +178,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setRemoteName(targetName);
       remoteIdRef.current = targetUserId;
 
+      // Canal de sinalização primeiro: garante que hangup/timeout consigam avisar
+      // o outro lado mesmo se o microfone falhar depois.
+      await ensureOutChannel(targetUserId);
+
       const stream = await getMicStream();
       localStreamRef.current = stream;
-
-      await ensureOutChannel(targetUserId);
 
       const pc = createPeerConnection();
       pcRef.current = pc;
@@ -199,7 +203,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }, RING_TIMEOUT_MS);
     } catch (err: any) {
       console.error('[Call] startCall error:', err);
-      toast.error(err?.name === 'NotAllowedError' ? 'Permissão de microfone negada.' : 'Não foi possível iniciar a chamada.');
+      toast.error(
+        err?.name === 'NotAllowedError'
+          ? 'Permissão de microfone negada.'
+          : `Não foi possível iniciar a chamada (${err?.name || 'erro'}: ${err?.message || ''}).`,
+      );
       cleanup();
     }
   }, [myId, ensureOutChannel, attachPcHandlers, sendSignal, cleanup]);
@@ -211,10 +219,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
     try {
       ringtoneRef.current?.stop();
+      // Canal antes do microfone: se o mic falhar, ainda conseguimos mandar 'reject'.
+      await ensureOutChannel(targetId);
+
       const stream = await getMicStream();
       localStreamRef.current = stream;
-
-      await ensureOutChannel(targetId);
 
       const pc = createPeerConnection();
       pcRef.current = pc;
@@ -233,7 +242,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       sendSignal('answer', { sdp: answer });
     } catch (err: any) {
       console.error('[Call] acceptCall error:', err);
-      toast.error(err?.name === 'NotAllowedError' ? 'Permissão de microfone negada.' : 'Não foi possível atender.');
+      toast.error(
+        err?.name === 'NotAllowedError'
+          ? 'Permissão de microfone negada.'
+          : `Não foi possível atender (${err?.name || 'erro'}: ${err?.message || ''}).`,
+      );
       sendSignal('reject', {});
       cleanup();
     }
