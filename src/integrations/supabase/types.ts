@@ -1061,6 +1061,36 @@ export type Database = {
         }
         Relationships: []
       }
+      backup_templates_20260722: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string | null
+          is_mandatory: boolean | null
+          items: Json | null
+          name: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_mandatory?: boolean | null
+          items?: Json | null
+          name?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string | null
+          is_mandatory?: boolean | null
+          items?: Json | null
+          name?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       bank_transactions: {
         Row: {
           amount: number
