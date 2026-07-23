@@ -565,15 +565,64 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }),
   });
 
+  // Gera o assunto por IA a partir dos campos de detalhe (paridade com a
+  // ActivitiesPage). Usado na criação quando o usuário deixa o assunto em branco
+  // mas preencheu situação/o que foi feito/próximo passo etc.
+  const generateTitleWithAI = async (): Promise<string | null> => {
+    const stripHtml = (s: string) => s.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    const parts = [
+      formCurrentStatus && `COMO ESTÁ: ${stripHtml(formCurrentStatus)}`,
+      formWhatWasDone && `O QUE FOI FEITO: ${stripHtml(formWhatWasDone)}`,
+      formNextSteps && `PRÓXIMO PASSO: ${stripHtml(formNextSteps)}`,
+      formSolicitacao && `SOLICITAÇÃO: ${stripHtml(formSolicitacao)}`,
+      formRespostaJuizo && `RESPOSTA DO JUÍZO: ${stripHtml(formRespostaJuizo)}`,
+      formNotes && `OBSERVAÇÕES: ${stripHtml(formNotes)}`,
+    ].filter(Boolean).join('\n');
+    if (!parts) return null;
+    try {
+      const { data, error } = await authClient.functions.invoke('ai-text-editor', {
+        body: {
+          text: parts,
+          action: 'custom',
+          custom_prompt: 'Gere um título curto (no máximo 8 palavras, sem aspas, sem ponto final) que resuma o assunto desta atividade jurídica de forma clara para qualquer pessoa entender do que se trata. Retorne APENAS o título, sem prefixos como "Título:".',
+        },
+      });
+      if (error) throw error;
+      const opt = (data?.options?.[0] || '').trim().replace(/^["'`]+|["'`.]+$/g, '');
+      return opt || null;
+    } catch (e) {
+      console.error('Erro gerando título com IA:', e);
+      return null;
+    }
+  };
+
   const handleSave = async () => {
-    if (!formTitle.trim()) { toast.error('Informe o assunto'); return; }
+    let titleToUse = formTitle.trim();
+    // Na criação, o assunto pode vir vazio se houver detalhes para a IA resumir.
+    const hasContentForAI =
+      !!(formWhatWasDone || formCurrentStatus || formNextSteps || formSolicitacao || formRespostaJuizo || formNotes);
+
+    if (!titleToUse && !(isCreate && hasContentForAI)) { toast.error('Informe o assunto'); return; }
     if (!formAssignedTo) { toast.error('Selecione o assessor'); return; }
     if (!formDeadline) { toast.error('Informe o prazo'); return; }
     if (!formNotificationDate) { toast.error('Informe a data de notificação'); return; }
 
     if (isCreate) {
+      // Sem assunto mas com detalhes → gera o assunto por IA antes de criar.
+      if (!titleToUse && hasContentForAI) {
+        const aiLoadingId = toast.loading('Gerando assunto com IA...');
+        const aiTitle = await generateTitleWithAI();
+        toast.dismiss(aiLoadingId);
+        if (aiTitle) {
+          titleToUse = aiTitle;
+          setFormTitle(aiTitle);
+        } else {
+          toast.error('Não foi possível gerar o assunto automaticamente. Escreva manualmente.');
+          return;
+        }
+      }
       setSaving(true);
-      const payload = buildPayload() as Partial<LeadActivity> & { observer_ids?: string[]; observer_names?: string[] };
+      const payload = { ...buildPayload(), title: titleToUse } as Partial<LeadActivity> & { observer_ids?: string[]; observer_names?: string[] };
       // Quem cria a atividade entra como observador automaticamente (se não for responsável).
       const { data: { user } } = await authClient.auth.getUser();
       const uid = user?.id || '';
