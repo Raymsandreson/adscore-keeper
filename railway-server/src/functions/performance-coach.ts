@@ -280,14 +280,7 @@ async function analyze(req: Request, res: Response) {
     `PERGUNTA DO DIRETOR: ${question || 'Por que essa pessoa está com esse desempenho no ranking?'}`,
   ].join('\n');
 
-  const completion = await aiChat({
-    model: COACH_MODEL,
-    max_tokens: 1200,
-    temperature: 0.5,
-    messages: [
-      {
-        role: 'system',
-        content: `Você assessora o diretor de um escritório jurídico brasileiro analisando o ranking de produtividade do time (critérios em ordem: passos de checklist marcados, atividades concluídas, menos atrasadas, mais tempo ativo no cronômetro, menos ocioso, resposta mais rápida no chat interno).
+  const systemPrompt = `Você assessora o diretor de um escritório jurídico brasileiro analisando o ranking de produtividade do time (critérios em ordem: passos de checklist marcados, atividades concluídas, menos atrasadas, mais tempo ativo no cronômetro, menos ocioso, resposta mais rápida no chat interno).
 
 Responda SOMENTE um JSON válido com duas chaves:
 {"analise": "...", "mensagem": "..."}
@@ -302,16 +295,43 @@ FORMATO: a mensagem é lida de relance no celular. Seções curtas separadas por
 4. "🚨 PRIORIDADES DE HOJE" — lista numerada com as 2 ou 3 atividades atrasadas mais antigas, em ordem de urgência. Cada item traz: o nome da atividade, A QUEM ela está vinculada COPIADO dos dados (lead, caso, processo ou "interna" — nunca invente), os dias de atraso e, na linha logo abaixo do item, o link fornecido nos dados copiado LITERALMENTE (nunca crie, encurte ou altere um link). Isso é o coração da mensagem.
 5. "⚙️ HÁBITO" — o hábito operacional a corrigir (marcar os passos do checklist ao concluir cada etapa / usar o cronômetro), em 1-2 frases, com o porquê de contar no ranking.
 6. "🤝" + fechamento de 1 frase colocando-se à disposição pra destravar qualquer coisa.
-Máx ~180 palavras (links não contam no limite). Emojis só nos cabeçalhos das seções (no máximo 1 extra no corpo do texto).`,
-      },
-      { role: 'user', content: prompt },
-    ],
-  });
+Máx ~180 palavras (links não contam no limite). Emojis só nos cabeçalhos das seções (no máximo 1 extra no corpo do texto).`;
 
-  const text = completion?.choices?.[0]?.message?.content?.trim() || '';
-  const parsed = extractJson(text);
-  if (!parsed?.analise || !parsed?.mensagem) {
-    throw new Error('LLM não retornou JSON com analise/mensagem');
+  // Retry: uma resposta fora do formato (comum com dados degenerados — pessoa
+  // com tudo zerado) não pode derrubar tudo com 500. Tenta 2x; a 2ª é mais
+  // determinística (temperatura baixa) e reforça o formato JSON no fim.
+  let parsed: any = null;
+  let lastText = '';
+  let lastFinish: string | undefined;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const userContent = attempt === 1
+      ? prompt
+      : `${prompt}\n\nATENÇÃO: responda APENAS o objeto JSON {"analise": "...", "mensagem": "..."}, sem nenhum texto fora do JSON.`;
+    const completion = await aiChat({
+      model: COACH_MODEL,
+      max_tokens: 1200,
+      temperature: attempt === 1 ? 0.5 : 0.2,
+      response_json: true,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent },
+      ],
+    });
+    lastText = completion?.choices?.[0]?.message?.content?.trim() || '';
+    lastFinish = completion?.choices?.[0]?.finish_reason;
+    const p = extractJson(lastText);
+    if (p?.analise && p?.mensagem) { parsed = p; break; }
+  }
+
+  if (!parsed) {
+    // Sem isso, todo motivo (safety, resposta vazia, truncamento por MAX_TOKENS)
+    // some no mesmo erro genérico. Loga o cru pra diagnosticar na próxima.
+    console.error('[performance-coach] LLM sem JSON válido', {
+      nome,
+      finish_reason: lastFinish,
+      raw: lastText.slice(0, 200),
+    });
+    throw new Error(`LLM não retornou JSON com analise/mensagem (finish=${lastFinish || '?'})`);
   }
 
   return res.json({

@@ -93,6 +93,8 @@ export interface GeminiCallOptions {
   signal?: AbortSignal;
   /** Controla o "thinking" do Gemini 3.x: 0 (ou <=0) = nível mínimo, >0 = high. */
   thinking_budget?: number;
+  /** Força saída JSON (Google: responseMimeType application/json). Ignorado quando há tools. */
+  response_json?: boolean;
 }
 
 export async function callGemini(options: GeminiCallOptions): Promise<Response> {
@@ -143,6 +145,10 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
   } else if (!options.tools?.length) {
     genConfig.thinkingConfig = isGemini3 ? { thinkingLevel: minLevel } : { thinkingBudget: 0 };
   }
+  // Força JSON estruturado: o Google garante saída parseável e elimina o caso
+  // "modelo devolveu prosa sem JSON". Incompatível com function calling, então
+  // só aplica quando não há tools.
+  if (options.response_json && !options.tools?.length) genConfig.responseMimeType = "application/json";
   if (Object.keys(genConfig).length > 0) body.generationConfig = genConfig;
 
   if (options.tools?.length) {
@@ -176,10 +182,10 @@ export async function callGemini(options: GeminiCallOptions): Promise<Response> 
 
 export function parseGeminiResponse(data: any): any {
   const candidate = data.candidates?.[0];
+  const finish = candidate?.finishReason;
   if (!candidate?.content?.parts) {
-    const blockReason = candidate?.finishReason;
-    if (blockReason === "SAFETY") return { choices: [{ message: { content: "Conteúdo bloqueado por filtros de segurança." } }] };
-    return { choices: [{ message: { content: "" } }] };
+    if (finish === "SAFETY") return { choices: [{ message: { content: "Conteúdo bloqueado por filtros de segurança." }, finish_reason: finish }] };
+    return { choices: [{ message: { content: "" }, finish_reason: finish || "empty" }] };
   }
 
   const parts = candidate.content.parts;
@@ -190,12 +196,13 @@ export function parseGeminiResponse(data: any): any {
         message: {
           tool_calls: [{ function: { name: fnCall.functionCall.name, arguments: JSON.stringify(fnCall.functionCall.args || {}) } }],
         },
+        finish_reason: finish,
       }],
     };
   }
 
   const text = parts.map((p: any) => p.text || "").join("");
-  return { choices: [{ message: { content: text } }] };
+  return { choices: [{ message: { content: text }, finish_reason: finish }] };
 }
 
 export async function geminiChat(options: GeminiCallOptions): Promise<any> {
