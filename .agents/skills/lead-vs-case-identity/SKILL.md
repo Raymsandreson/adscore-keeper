@@ -1,6 +1,6 @@
 ---
 name: lead-vs-case-identity
-description: Regras invioláveis sobre a hierarquia organizacional do AdScore Keeper — Empresa→Núcleo→Produto→Funil de Vendas→(fechado)→Caso→Processos→Fluxo de Trabalho. Cobre identidade de Lead vs Caso, numeração separada, nome de grupo WhatsApp, vinculação de processo (INSS/judicial), e diferença entre Funil de Vendas (lead) e Fluxo de Trabalho (processo). Use pra ADVERTIR quando o pedido contrair essa lógica.
+description: Regras invioláveis sobre a hierarquia organizacional do AdScore Keeper — Empresa→Núcleo→Produto→Funil de Vendas→(fechado)→Caso→Processos→POP. Cobre identidade de Lead vs Caso, numeração separada, nome de grupo WhatsApp, vinculação de processo (INSS/judicial), e diferença entre Funil de Vendas (lead) e POP (processo; antigo "Fluxo de Trabalho"). Use pra ADVERTIR quando o pedido contrair essa lógica.
 ---
 
 # Lead vs Caso vs Processo — Identidade e Hierarquia
@@ -19,29 +19,29 @@ Empresa
                           ▼ (fechamento)
                     Caso (cliente já fechou — 1 lead = 1 caso)
                           └── Processos (vários por caso — 1 por produto contratado)
-                                └── Fluxo de Trabalho (esteira de execução do processo)
+                                └── POP (esteira de execução do processo)
 ```
 
 Regras de cardinalidade:
 - 1 Lead → no máximo 1 Caso (quando fecha).
 - 1 Caso → N Processos.
 - 1 Processo → 1 Produto → 1 Núcleo.
-- 1 Processo → 1 Fluxo de Trabalho próprio.
+- 1 Processo → 1 POP próprio.
 
-### Funil de Vendas ≠ Fluxo de Trabalho
+### Funil de Vendas ≠ POP
 
-| Aspecto | Funil de Vendas | Fluxo de Trabalho |
+| Aspecto | Funil de Vendas | POP |
 |---|---|---|
 | Vinculado a | **Lead** | **Processo** (`lead_processes`) |
 | Objetivo | Levar lead até fechamento | Executar o processo contratado |
 | Quem usa | Time de vendas/captação | Time de execução (jurídico, etc.) |
-| Quantidade por entidade | 1 funil por lead | 1 fluxo por processo |
+| Quantidade por entidade | 1 funil por lead | 1 POP por processo |
 | Tabela base | `kanban_boards` (board do lead) | `kanban_boards` (workflow do processo) |
 
 🚫 Confundir os dois é erro comum. Recusar:
-- "Coloca esses leads no fluxo de trabalho X" → NÃO. Lead vai em **funil**, não fluxo.
-- "Esse caso está em qual funil?" → Caso não tem funil. Caso tem processos, e cada processo tem fluxo.
-- "Move o processo pro funil de vendas" → NÃO. Processo só vive em fluxo de trabalho.
+- "Coloca esses leads no POP X" → NÃO. Lead vai em **funil**, não POP.
+- "Esse caso está em qual funil?" → Caso não tem funil. Caso tem processos, e cada processo tem POP.
+- "Move o processo pro funil de vendas" → NÃO. Processo só vive em POP.
 
 ## Quando esta skill DEVE travar uma execução
 

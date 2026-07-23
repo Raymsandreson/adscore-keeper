@@ -20,7 +20,7 @@ Investigar:
 - Leads sem instance_name ou phone normalizado
 - Casos sem grupo WA vinculado (após 24h do fechamento)
 - Grupos WA com nome divergente do nome do caso
-- Processos sem fluxo de trabalho atribuído
+- Processos sem POP atribuído
 - Soft-deletes recentes (últimos 7d) sem snapshot
 - Duplicatas de contato por phone+instance
 Retornar: lista de anomalias com count + 3 IDs de exemplo por categoria.
