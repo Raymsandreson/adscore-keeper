@@ -10,8 +10,8 @@ import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
-// aplica a regra de ordenação: 1º PASSOS → 2º CONCLUÍDAS → 3º menos ATRASADAS
-// → 4º mais TEMPO ATIVO → 5º menos OCIOSO → 6º RESPOSTA NO CHAT.
+// aplica a regra de ordenação: 1º PASSOS → 2º ITENS DO CHECKLIST → 3º CONCLUÍDAS
+// → 4º menos ATRASADAS → 5º mais TEMPO ATIVO → 6º menos OCIOSO → 7º RESPOSTA NO CHAT.
 // Feito para rodar num telão em fullscreen; auto-atualiza sozinho.
 
 type Period = 'hoje' | 'semana' | 'mes';
@@ -19,6 +19,7 @@ type Period = 'hoje' | 'semana' | 'mes';
 interface RankRow {
   nome: string;
   passos: number;
+  doc_itens: number;
   concluidas: number;
   atrasadas: number;
   aprov_pct: number | null;
@@ -242,15 +243,17 @@ export default function TvAtividadesPage() {
           <span className="text-white/30">·</span>
           <span>1º <span className="text-sky-400">Passos Dados</span></span>
           <span className="text-white/30">·</span>
-          <span>2º <span className="text-emerald-400">Concluídas</span></span>
+          <span>2º <span className="text-fuchsia-400">Itens do Checklist</span></span>
           <span className="text-white/30">·</span>
-          <span>3º <span className="text-rose-400">Menos Atrasadas</span></span>
+          <span>3º <span className="text-emerald-400">Concluídas</span></span>
           <span className="text-white/30">·</span>
-          <span>4º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>4º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>5º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>5º <span className="text-teal-400">Mais Tempo Ativo</span></span>
           <span className="text-white/30">·</span>
-          <span>6º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>6º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span className="text-white/30">·</span>
+          <span>7º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Controles (escondem no telão) ===== */}
@@ -392,13 +395,14 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
           {row.passos}
           <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
         </div>
-        <div className="mt-1 text-[10px] md:text-xs text-white/60">
-          <span className="text-emerald-400 font-bold">{row.concluidas}</span> concl. ·{' '}
-          <span className="text-rose-400 font-bold">{row.atrasadas}</span> atras. ·{' '}
-          <span className="text-emerald-400 font-bold">{aprovLabel(row.aprov_pct)}</span> aprov. ·{' '}
-          <span className="text-teal-400 font-bold">{tempoLabel(row.ativo_seg)}</span> ativo ·{' '}
-          <span className="text-orange-400 font-bold">{tempoLabel(row.ocioso_seg)}</span> ocioso ·{' '}
-          <span className="text-violet-400 font-bold">{chatRespLabel(row.chat_resp_seg)}</span> chat
+        <div className="mt-1.5 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
+          <PodiumStat text={row.doc_itens ?? 0} label="checklist" color="text-fuchsia-400" />
+          <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" />
+          <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" />
+          <PodiumStat text={aprovLabel(row.aprov_pct)} label="aprov" color="text-amber-400" />
+          <PodiumStat text={tempoLabel(row.ativo_seg)} label="ativo" color="text-teal-400" />
+          <PodiumStat text={tempoLabel(row.ocioso_seg)} label="ocioso" color="text-orange-400" />
+          <PodiumStat text={chatRespLabel(row.chat_resp_seg)} label="chat" color="text-violet-400" />
         </div>
         {/* Dica de clique — espaço reservado pra não deslocar o pódio no hover */}
         <div className="mt-1 h-4 text-[10px] font-black uppercase tracking-wider text-amber-300 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -434,6 +438,7 @@ function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect
         {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
       </div>
       <Stat value={row.passos} label="passos" color="text-sky-400" />
+      <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" />
       <div className="w-14 md:w-20 text-right">
@@ -461,6 +466,18 @@ function Stat({ value, label, color }: { value: number; label: string; color: st
       <span className={cn('text-base md:text-xl font-black tabular-nums', color)}>{value}</span>
       <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
     </div>
+  );
+}
+
+// Stat do pódio (top 3): mesmo tamanho de valor das linhas 4+ (text-base md:text-xl),
+// em vez do texto minúsculo anterior. Aceita número (concl/atras/checklist) ou
+// string já formatada (tempo/aprov/chat).
+function PodiumStat({ text, label, color }: { text: string | number; label: string; color: string }) {
+  return (
+    <span className="inline-flex items-baseline gap-1">
+      <span className={cn('text-base md:text-xl font-black tabular-nums', color)}>{text}</span>
+      <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
+    </span>
   );
 }
 
