@@ -937,7 +937,7 @@ function SwitchActivityDialog({
       if (term.trim()) q = q.ilike('title', `%${term.trim()}%`);
       q = q.order('updated_at', { ascending: false }).limit(50);
       const { data } = await q;
-      setRows((data as PickRow[]) || []);
+      setRows(((data as unknown) as PickRow[]) || []);
       setLoading(false);
     }, 300);
     return () => clearTimeout(t);
