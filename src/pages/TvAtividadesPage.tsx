@@ -89,7 +89,7 @@ export default function TvAtividadesPage() {
   const navigate = useNavigate();
   const titulo = params.get('titulo') || 'Time Processual';
 
-  const [period, setPeriod] = useState<Period>('semana');
+  const [period, setPeriod] = useState<Period>('hoje');
   const [teamId, setTeamId] = useState<string>(params.get('team') || ''); // '' = todos os times
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<Payload | null>(null);
