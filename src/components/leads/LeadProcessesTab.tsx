@@ -204,7 +204,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
 
             {p.workflow_name && (
               <p className="text-xs text-muted-foreground">
-                Fluxo: <span className="font-medium">{p.workflow_name}</span>
+                POP: <span className="font-medium">{p.workflow_name}</span>
               </p>
             )}
 
@@ -283,7 +283,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
             </div>
 
             <div>
-              <Label>Fluxo de Trabalho</Label>
+              <Label>POP</Label>
               <Select value={workflowId} onValueChange={setWorkflowId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione um fluxo..." />

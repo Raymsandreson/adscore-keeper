@@ -973,7 +973,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                         <CopyableText as="p" copyValue={`${p.fee_percentage}%`} label="Honorários" showIcon={false} className="text-[10px] text-muted-foreground">Honorários: {p.fee_percentage}%</CopyableText>
                       )}
                       {p.workflow_name && (
-                        <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">Fluxo de Trabalho: {p.workflow_name}</CopyableText>
+                        <CopyableText as="p" copyValue={p.workflow_name} label="Fluxo" showIcon={false} className="text-[10px] text-muted-foreground">POP: {p.workflow_name}</CopyableText>
                       )}
                       {p.orgao_julgador && (
                         <p className="text-[10px] text-muted-foreground">🏛️ {p.orgao_julgador}</p>

@@ -26,7 +26,7 @@ const entityLabels: Record<EntityType, string> = {
   contact: 'Contato',
   lead: 'Lead',
   activity: 'Atividade',
-  workflow: 'Fluxo',
+  workflow: 'POP',
   routine: 'Rotina',
   post: 'Postagem',
 };

@@ -141,10 +141,10 @@ export const changelog: ChangelogEntry[] = [
         howToUse: "Abra qualquer lead → clique na aba 'Chat Equipe' ao lado de 'Chat IA'. Converse com sua equipe diretamente no contexto do lead.",
       },
       {
-        title: "Funil de Vendas / Fluxo de Trabalho",
-        description: "Visualize todas as etapas do funil ou fluxo de trabalho diretamente dentro do lead, com indicadores de progresso para cada fase.",
+        title: "Funil de Vendas / POP",
+        description: "Visualize todas as etapas do funil ou POP diretamente dentro do lead, com indicadores de progresso para cada fase.",
         icon: "📊",
-        howToUse: "Abra qualquer lead → clique na aba 'Funil de Vendas' (ou 'Fluxo de Trabalho' para casos). Veja as etapas concluídas (✅), a atual (🔵) e as pendentes (⚪).",
+        howToUse: "Abra qualquer lead → clique na aba 'Funil de Vendas' (ou 'POP' para casos). Veja as etapas concluídas (✅), a atual (🔵) e as pendentes (⚪).",
       },
       {
         title: "Rascunhos do Chat preservados",

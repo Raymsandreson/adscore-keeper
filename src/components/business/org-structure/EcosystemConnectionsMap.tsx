@@ -374,7 +374,7 @@ export function EcosystemConnectionsMap({
           <ArrowRight className="h-3 w-3" />
           <span className="text-[10px] font-medium">Processos</span>
           <ArrowRight className="h-3 w-3" />
-          <span className="text-[10px] font-medium">Fluxo de Trabalho</span>
+          <span className="text-[10px] font-medium">POP</span>
         </div>
       </CardContent>
     </Card>

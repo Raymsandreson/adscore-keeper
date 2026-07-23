@@ -134,7 +134,7 @@ export function ProcessCustomFieldsManager({ adAccountId }: ProcessCustomFieldsM
           <div>
             <CardTitle className="text-lg">Campos do Processo</CardTitle>
             <CardDescription>
-              Campos adicionais por fluxo de trabalho (ex.: datas de perícia médica e social no fluxo BPC)
+              Campos adicionais por POP (ex.: datas de perícia médica e social no fluxo BPC)
             </CardDescription>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -150,7 +150,7 @@ export function ProcessCustomFieldsManager({ adAccountId }: ProcessCustomFieldsM
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label>Fluxo de trabalho</Label>
+                  <Label>POP</Label>
                   <Select value={fieldWorkflowId} onValueChange={setFieldWorkflowId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Todos os fluxos" />
@@ -258,7 +258,7 @@ export function ProcessCustomFieldsManager({ adAccountId }: ProcessCustomFieldsM
                       )}
                       {field.is_required && <Badge variant="outline" className="text-xs">Obrigatório</Badge>}
                       {field.workflow_id ? (
-                        <Badge variant="default" className="text-xs">{getWorkflowName(field.workflow_id) || 'Fluxo'}</Badge>
+                        <Badge variant="default" className="text-xs">{getWorkflowName(field.workflow_id) || 'POP'}</Badge>
                       ) : (
                         <Badge variant="outline" className="text-xs text-muted-foreground">Global</Badge>
                       )}

@@ -1,26 +1,26 @@
 ---
 name: Lead vs Case vs Process Identity
-description: Hierarquia Empresa→Núcleo→Produto→Funil de Vendas→Caso→Processos→Fluxo de Trabalho. Lead≠Caso≠Processo. Funil de Vendas (lead) ≠ Fluxo de Trabalho (processo). Numeração separada, grupo WA = nome do caso, processo INSS vincula no caso.
+description: Hierarquia Empresa→Núcleo→Produto→Funil de Vendas→Caso→Processos→POP. Lead≠Caso≠Processo. Funil de Vendas (lead) ≠ POP (processo; antigo "Fluxo de Trabalho"). Numeração separada, grupo WA = nome do caso, processo INSS vincula no caso.
 type: feature
 ---
 
 # Lead vs Caso vs Processo
 
-Metáfora: **Lead = namoro, Caso = casamento, Processos = filhos.** Cada filho (processo) corresponde a um produto contratado, vinculado a um núcleo, executado num fluxo de trabalho próprio.
+Metáfora: **Lead = namoro, Caso = casamento, Processos = filhos.** Cada filho (processo) corresponde a um produto contratado, vinculado a um núcleo, executado num POP próprio.
 
 ## Hierarquia (aba Ecossistema em Finanças)
 
-`Empresa → Núcleo → Produto → Funil de Vendas → Time → [fechado] → Caso → Processos → Fluxo de Trabalho`
+`Empresa → Núcleo → Produto → Funil de Vendas → Time → [fechado] → Caso → Processos → POP`
 
 - 1 Lead → no máximo 1 Caso.
 - 1 Caso → N Processos (1 por produto contratado).
-- 1 Processo → 1 Produto → 1 Núcleo → 1 Fluxo de Trabalho.
+- 1 Processo → 1 Produto → 1 Núcleo → 1 POP.
 
-## Funil de Vendas ≠ Fluxo de Trabalho
+## Funil de Vendas ≠ POP
 
 - **Funil de Vendas** = trilho do **lead** (vendas/captação).
-- **Fluxo de Trabalho** = trilho do **processo** (execução).
-- Caso não tem funil. Caso tem processos, cada um com seu fluxo.
+- **POP** = trilho do **processo** (execução).
+- Caso não tem funil. Caso tem processos, cada um com seu POP.
 
 ## As 3 regras invioláveis
 

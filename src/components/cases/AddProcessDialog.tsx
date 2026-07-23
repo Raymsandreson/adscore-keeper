@@ -129,7 +129,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
       setShowNewWorkflow(false);
       setNewWorkflowName('');
       setNewWorkflowDesc('');
-      toast.success('Fluxo de trabalho criado!');
+      toast.success('POP criado!');
     } catch (err: any) {
       console.error('Error creating workflow:', err);
       toast.error('Erro ao criar fluxo');
@@ -592,7 +592,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               </Select>
             </div>
             <div>
-              <Label className="text-xs font-semibold">Fluxo de Trabalho *</Label>
+              <Label className="text-xs font-semibold">POP *</Label>
               <div className="flex gap-1.5">
                 <Select value={workflowId} onValueChange={setWorkflowId}>
                   <SelectTrigger className="flex-1">
@@ -854,7 +854,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-primary" />
-              Novo Fluxo de Trabalho
+              Novo POP
             </SheetTitle>
           </SheetHeader>
           <div className="space-y-4 mt-6">
@@ -878,7 +878,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               />
             </div>
             <p className="text-xs text-muted-foreground">
-              As etapas do fluxo poderão ser configuradas depois em Configurações → Fluxos de Trabalho.
+              As etapas do POP poderão ser configuradas depois em Configurações → POPs.
             </p>
             <Button
               onClick={handleCreateWorkflow}
@@ -886,7 +886,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
               className="w-full"
             >
               {creatingWorkflow ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
-              Criar Fluxo
+              Criar POP
             </Button>
           </div>
         </SheetContent>

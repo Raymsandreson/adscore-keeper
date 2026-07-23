@@ -136,9 +136,9 @@ const WorkflowProgressPage = () => {
             <ArrowLeft className="h-5 w-5" />
           </Button>
 
-          <h1 className="font-semibold text-lg flex-1">Progresso do Fluxo de Trabalho</h1>
+          <h1 className="font-semibold text-lg flex-1">Progresso do POP</h1>
 
-          <Button variant="outline" size="sm" onClick={() => setShowConfig(true)} title="Configurar Fluxo">
+          <Button variant="outline" size="sm" onClick={() => setShowConfig(true)} title="Configurar POP">
             <Settings2 className="h-4 w-4 mr-1" />
             Configurar
           </Button>
@@ -179,14 +179,14 @@ const WorkflowProgressPage = () => {
               if (!confirm('Tem certeza que deseja excluir este fluxo?')) return;
               const { error } = await externalSupabase.from('kanban_boards').delete().eq('id', boardId);
               if (error) { toast.error('Erro ao excluir'); return; }
-              toast.success('Fluxo excluído');
+              toast.success('POP excluído');
               fetchData();
             };
 
             return (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">Fluxos de trabalho</h2>
+                  <h2 className="text-lg font-semibold">POPs</h2>
                   <Button size="icon" onClick={() => { setCreateNewMode(true); setEditingWorkflow(null); setShowConfig(true); }} title="Criar novo fluxo">
                     <Plus className="h-4 w-4" />
                   </Button>
@@ -195,7 +195,7 @@ const WorkflowProgressPage = () => {
                 <div className="relative max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar fluxos de trabalho..."
+                    placeholder="Buscar POPs..."
                     value={workflowSearch}
                     onChange={e => { setWorkflowSearch(e.target.value); setWorkflowPage(1); }}
                     className="pl-9"
@@ -302,8 +302,8 @@ const WorkflowProgressPage = () => {
         ) : !selectedBoard ? (
           <div className="space-y-4 py-10">
             <p className="text-center text-sm text-muted-foreground">
-              Nenhum fluxo de trabalho está associado automaticamente a este lead.
-              Selecione um fluxo para visualizar:
+              Nenhum POP está associado automaticamente a este lead.
+              Selecione um POP para visualizar:
             </p>
             <div className="flex justify-center">
               <Select
@@ -313,7 +313,7 @@ const WorkflowProgressPage = () => {
                 }}
               >
                 <SelectTrigger className="w-[280px]">
-                  <SelectValue placeholder="Escolher fluxo de trabalho" />
+                  <SelectValue placeholder="Escolher POP" />
                 </SelectTrigger>
                 <SelectContent>
                   {boards
@@ -329,7 +329,7 @@ const WorkflowProgressPage = () => {
           <div className="space-y-4">
             {/* Workflow + stage selectors */}
             <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border bg-card">
-              <span className="text-sm text-muted-foreground">Fluxo:</span>
+              <span className="text-sm text-muted-foreground">POP:</span>
               <Select
                 value={selectedBoard.id}
                 onValueChange={(id) => {

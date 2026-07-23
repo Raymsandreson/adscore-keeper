@@ -116,7 +116,7 @@ export default function CampaignDetailPage() {
         <TabsList>
           <TabsTrigger value="leads">Leads ({leads.length})</TabsTrigger>
           <TabsTrigger value="activities">Atividades ({activities.length})</TabsTrigger>
-          <TabsTrigger value="workflow">Fluxo</TabsTrigger>
+          <TabsTrigger value="workflow">POP</TabsTrigger>
         </TabsList>
 
         <TabsContent value="leads" className="space-y-2">
@@ -158,8 +158,8 @@ export default function CampaignDetailPage() {
         <TabsContent value="workflow">
           {campaign.board_id ? (
             <div className="p-4 border rounded-lg">
-              <p className="text-sm mb-3">Fluxo de trabalho vinculado: acompanhe pela página de progresso.</p>
-              <Button onClick={() => navigate(`/workflow-progress?board=${campaign.board_id}`)}>Abrir fluxo</Button>
+              <p className="text-sm mb-3">POP vinculado: acompanhe pela página de progresso.</p>
+              <Button onClick={() => navigate(`/workflow-progress?board=${campaign.board_id}`)}>Abrir POP</Button>
             </div>
           ) : (
             <div className="text-center py-8 text-muted-foreground border-2 border-dashed rounded-lg">

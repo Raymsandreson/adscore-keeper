@@ -920,7 +920,7 @@ function ProcessCard({ process, caseTitle, statusColors, statusLabels, onStatusC
       </div>
 
       {process.workflow_name && (
-        <p className="text-[10px] text-muted-foreground">Fluxo: {process.workflow_name}</p>
+        <p className="text-[10px] text-muted-foreground">POP: {process.workflow_name}</p>
       )}
 
       <div className="flex items-center gap-1 flex-wrap">

@@ -160,7 +160,7 @@ export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, proce
           variant="outline"
           size="sm"
           className="h-7 text-xs gap-1 text-violet-700 border-violet-200 hover:bg-violet-50 dark:text-violet-400 dark:border-violet-800 dark:hover:bg-violet-900/20"
-          title="Sugerir próximos passos com base no fluxo de trabalho"
+          title="Sugerir próximos passos com base no POP"
         >
           <Sparkles className="h-3 w-3" /> Próximos passos
         </Button>
@@ -178,7 +178,7 @@ export function ActivityNextStepsAgent({ context, onApply, leadId, caseId, proce
           </p>
         ) : (
           <p className="text-[11px] text-amber-600 dark:text-amber-400">
-            Esta atividade não está vinculada a um passo de fluxo de trabalho — as sugestões usarão só o conteúdo da atividade.
+            Esta atividade não está vinculada a um passo de POP — as sugestões usarão só o conteúdo da atividade.
           </p>
         )}
 
