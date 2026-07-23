@@ -57,7 +57,7 @@ export function useTeamDirectChat() {
     try {
       await ensureExternalSession();
 
-      const { data: memberships, error: membershipsError } = await externalSupabase
+      const { data: memberships, error: membershipsError } = await (externalSupabase as any)
         .from('team_conversation_members')
         .select('conversation_id, last_read_at, pending_dismissed_at')
         .eq('user_id', user.id);
