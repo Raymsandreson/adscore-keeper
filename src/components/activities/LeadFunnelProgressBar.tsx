@@ -220,6 +220,12 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const handleToggleDocItem = async (instance: ChecklistInstance, itemId: string, docId: string) => {
     if (instance.is_readonly) return;
 
+    // Estado anterior do sub-item, pra saber se é marcação ou desmarcação e
+    // logar por pessoa (entra no ranking do telão como 2º critério).
+    const targetDoc = instance.items.find(it => it.id === itemId)?.docChecklist?.find(d => d.id === docId);
+    const willBeChecked = !targetDoc?.checked;
+    const docLabel = targetDoc?.label || 'Item de checklist';
+
     const updatedItems = instance.items.map(item => {
       if (item.id !== itemId) return item;
       const docs = (item.docChecklist || []).map(d =>
@@ -236,6 +242,29 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     if (error) {
       toast.error('Erro ao atualizar checklist do passo');
       return;
+    }
+
+    // #telão: loga a marcação/desmarcação do sub-item por pessoa (RPC grava em
+    // user_activity_log no Externo). Fire-and-forget. Ao MARCAR, pergunta se é
+    // de agora ou retroativo (retroativo não conta no ranking). Ao DESMARCAR, é
+    // sempre "agora" — o ranking conta líquido (marcações - desmarcações).
+    if (user?.id) {
+      const userId = user.id;
+      const logDoc = (retroactive: boolean) =>
+        (externalSupabase as any).rpc('log_checklist_doc_item', {
+          p_user_id: userId,
+          p_instance_id: instance.id,
+          p_doc_label: docLabel,
+          p_checked: willBeChecked,
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
+        });
+      if (willBeChecked) {
+        askStepTiming().then(logDoc);
+      } else {
+        logDoc(false);
+      }
     }
 
     setInstances(prev => prev.map(i =>
