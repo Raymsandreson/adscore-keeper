@@ -940,6 +940,12 @@ Deno.serve(async (req) => {
           if (city && state) parts.push(`${city}/${state}`)
           else if (city) parts.push(city)
           else if (state) parts.push(state)
+        } else if (field === 'lead_first_name') {
+          // Só o primeiro nome do cliente (ex: "Francisco") — modelo do board
+          // Auxílio Acidente: "✅Lead 1839 - Francisco - Auxílio Acidente".
+          const fullLeadName = stripExistingSequenceFromName(leadData?.lead_name || lead_name, activePrefix)
+          const firstName = (fullLeadName || '').trim().split(/\s+/)[0] || ''
+          if (firstName) parts.push(firstName)
         } else if (field === 'acolhedor' && leadData?.acolhedor) {
           // No nome do grupo entra só o PRIMEIRO nome do acolhedor resolvido
           // ("/ Edilan", "/ Mateus") — convenção da equipe. E-mail/UUID viram
