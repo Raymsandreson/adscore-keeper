@@ -1023,13 +1023,20 @@ function SwitchActivityDialog({
 
       let q = db
         .from('lead_activities')
-        .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at, callback_at')
+        // NÃO pedir callback_at aqui: a coluna ainda não foi aplicada no Externo
+        // (migration 20260721120000 pendente) e o PostgREST erra a query inteira,
+        // zerando a lista ("Nenhuma atividade pendente"). keyDate já cai pra
+        // meeting_at/deadline/notification_date. Voltar a incluir após aplicar a migration.
+        .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at')
         .is('deleted_at', null)
         .neq('status', 'concluida');
       if (mine.length) q = q.or(`assigned_to.in.(${mine.join(',')}),assigned_to_ids.ov.{${mine.join(',')}}`);
       if (term.trim()) q = q.ilike('title', `%${term.trim()}%`);
       q = q.order('updated_at', { ascending: false }).limit(50);
-      const { data } = await q;
+      const { data, error } = await q;
+      // Não engolir o erro: uma coluna inexistente no select zera a lista em
+      // silêncio (foi assim que callback_at escondeu todas as pendentes).
+      if (error) console.warn('[SwitchActivityDialog] falha ao carregar pendentes:', error.message);
       setRows(((data as unknown) as PickRow[]) || []);
       setLoading(false);
     }, 300);
