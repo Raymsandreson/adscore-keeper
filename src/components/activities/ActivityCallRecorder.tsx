@@ -153,7 +153,7 @@ export function callFieldTextToHtml(text: string): string {
     .join('');
 }
 
-export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady, open: openProp, onOpenChange, triggerClassName }: Props) {
+export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady, open: openProp, onOpenChange, triggerClassName, autoStart }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);
   const open = openProp !== undefined ? openProp : internalOpen;
   const setOpen = (v: boolean) => {
@@ -217,16 +217,19 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
   const fmt = (s: number) =>
     `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const startRecording = useCallback(async () => {
+  const startRecording = useCallback(async (srcOverride?: AudioSource) => {
+    // Auto-start (narração ao abrir a atividade) força mic; clique manual usa a fonte selecionada.
+    // `onClick={startRecording}` passaria o MouseEvent como 1º arg — só aceita string.
+    const src: AudioSource = typeof srcOverride === 'string' ? srcOverride : source;
     setError(null);
     setTranscript('');
     let micStream: MediaStream | null = null;
     let displayStream: MediaStream | null = null;
     try {
-      if (source !== 'system') {
+      if (src !== 'system') {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
       }
-      if (source !== 'mic') {
+      if (src !== 'mic') {
         // Áudio interno: o navegador só entrega junto de uma captura de tela/aba.
         // O usuário PRECISA marcar "Compartilhar áudio" na janela de seleção.
         displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
@@ -244,7 +247,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
 
       // Stream que vai pro MediaRecorder: mic direto, ou mix via Web Audio API.
       let recordStream: MediaStream;
-      if (source === 'mic') {
+      if (src === 'mic') {
         recordStream = micStream!;
       } else {
         const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -296,7 +299,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
       console.error('Recording start error', e);
       if (e?.message === 'NO_SYSTEM_AUDIO') {
         toast.error('Nenhum áudio interno compartilhado. Na janela de seleção, escolha a aba/tela e marque "Compartilhar áudio".');
-      } else if (e?.name === 'NotAllowedError' && source !== 'mic') {
+      } else if (e?.name === 'NotAllowedError' && src !== 'mic') {
         toast.error('Compartilhamento de tela/áudio cancelado ou negado.');
       } else {
         toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
@@ -530,6 +533,17 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     stopRecordingRef.current = stopRecording;
   }, [stopRecording]);
 
+  // Auto-inicia a gravação de MICROFONE quando aberto com autoStart (narração ao abrir
+  // a atividade). Dispara uma única vez por abertura; o ref reseta quando o popover fecha.
+  // Sempre mic ('mic') — nunca aciona compartilhamento de tela sozinho.
+  const autoStartFiredRef = useRef(false);
+  useEffect(() => {
+    if (!open) { autoStartFiredRef.current = false; return; }
+    if (!autoStart || phase !== 'idle' || autoStartFiredRef.current) return;
+    autoStartFiredRef.current = true;
+    void startRecording('mic');
+  }, [open, autoStart, phase, startRecording]);
+
   // Carrega as gravações anteriores da atividade quando o popover abre.
   useEffect(() => {
     if (!open || !activityId) { setPastRecordings([]); return; }
@@ -714,7 +728,7 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
               </div>
             )}
 
-            <Button className="w-full gap-2" size="sm" onClick={startRecording}>
+            <Button className="w-full gap-2" size="sm" onClick={() => startRecording()}>
               <Mic className="h-4 w-4" /> Iniciar gravação ({SOURCE_LABELS[source]})
             </Button>
 

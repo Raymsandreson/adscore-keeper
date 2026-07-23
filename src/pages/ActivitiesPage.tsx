@@ -314,6 +314,16 @@ const ActivitiesPage = () => {
     setActionsPinned(p => { const n = !p; try { localStorage.setItem('activities_actionsPinned', n ? '1' : '0'); } catch {} return n; });
   }, []);
 
+  // Auto-mic ao abrir a atividade (per-user, localStorage). Ligado por padrão: ao abrir
+  // uma atividade SUA e não concluída, já começa a gravar a narração; ao parar, a IA
+  // preenche os campos. Só fica desligado se o usuário optar por sair (=== '0').
+  const [autoVoiceRecord, setAutoVoiceRecord] = useState<boolean>(() => {
+    try { return localStorage.getItem('activities_autoVoiceRecord') !== '0'; } catch { return true; }
+  });
+  const toggleAutoVoiceRecord = useCallback(() => {
+    setAutoVoiceRecord(p => { const n = !p; try { localStorage.setItem('activities_autoVoiceRecord', n ? '1' : '0'); } catch {} return n; });
+  }, []);
+
   // Form state
   const [formTitle, setFormTitle] = useState('');
   const [formWhatWasDone, setFormWhatWasDone] = useState('');
@@ -1162,7 +1172,10 @@ const ActivitiesPage = () => {
     }
   };
 
-  const handleOpenEdit = async (activity: LeadActivity) => {
+  const handleOpenEdit = async (activity: LeadActivity, opts?: { autoVoice?: boolean }) => {
+    // Auto-voz só quando o usuário abre de fato (clique/deep-link). A restauração
+    // silenciosa após refresh passa autoVoice:false pra não começar a gravar sozinha.
+    const allowAutoVoice = opts?.autoVoice !== false;
     // Cobrança pendente nesta atividade? Registra a abertura (não bloqueia a UI).
     void registerCobrancaOpened(activity);
     // Tempo total já registrado nesta atv (aparece no editor e na mensagem WA)
@@ -1174,14 +1187,23 @@ const ActivitiesPage = () => {
       .then(({ data }: { data: { active_seconds: number }[] | null }) => {
         setActivityTotalSecs((data || []).reduce((s, r) => s + (r.active_seconds || 0), 0));
       });
+    // Minha atividade e não concluída? Vale pro cronômetro E pro auto-mic (mesma regra).
+    const isMineAndOpen = activity.status !== 'concluida' && await isMyActivityForTimer(activity);
     // Cronômetro / banco de horas: auto-start ao abrir a atividade (se for sua)
-    if (activity.status !== 'concluida' && await isMyActivityForTimer(activity)) {
+    if (isMineAndOpen) {
       startActivityTimer({
         id: activity.id,
         activity_type: activity.activity_type,
         title: activity.title,
         lead_name: activity.lead_name,
       });
+    }
+    // Auto-mic: abre o "Preenchimento por Áudio" já gravando a narração. Ao parar, a IA
+    // transcreve e preenche os campos. Só nas minhas atividades pendentes e se o toggle
+    // estiver ligado. Assessor grava enquanto trabalha, sem precisar lembrar de clicar.
+    if (isMineAndOpen && allowAutoVoice && autoVoiceRecord) {
+      setCallRecorderAutoStart(true);
+      setCallRecorderOpen(true);
     }
     // Set all form state synchronously first (instant UI)
     setSelectedActivity(activity);
@@ -1272,7 +1294,8 @@ const ActivitiesPage = () => {
     if (selectedActivityId && activities.length > 0 && !selectedActivity) {
       const activity = activities.find(a => a.id === selectedActivityId);
       if (activity) {
-        handleOpenEdit(activity);
+        // Restauração automática (refresh/troca de aba): NÃO começa a gravar sozinha.
+        handleOpenEdit(activity, { autoVoice: false });
       } else {
         setSelectedActivityId(null);
         setSheetMode(null);
@@ -4836,6 +4859,28 @@ const ActivitiesPage = () => {
                       >
                         <FileText className="h-3.5 w-3.5" /> Preenchimento por Documento
                       </Button>
+
+                      {/* Auto-mic ao abrir a atividade (per-user). Ligado: ao abrir uma atividade
+                          sua e pendente, já começa a gravar a narração; ao parar, a IA preenche. */}
+                      <div className="mt-1 pt-1.5 border-t">
+                        <button
+                          type="button"
+                          onClick={toggleAutoVoiceRecord}
+                          className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-md hover:bg-muted/60 text-left"
+                          title="Ao abrir suas atividades pendentes, o microfone já começa a gravar sua narração. Quando você parar, a IA transcreve e preenche os campos."
+                        >
+                          <span className="flex items-center gap-2 text-xs">
+                            <Mic className="h-3.5 w-3.5 text-green-600" />
+                            Gravar voz ao abrir
+                          </span>
+                          <span className={cn(
+                            "text-[10px] font-semibold px-1.5 py-0.5 rounded-full",
+                            autoVoiceRecord ? "bg-green-500/15 text-green-700 dark:text-green-400" : "bg-muted text-muted-foreground"
+                          )}>
+                            {autoVoiceRecord ? 'LIGADO' : 'DESLIGADO'}
+                          </span>
+                        </button>
+                      </div>
                     </PopoverContent>
                   </Popover>
 
