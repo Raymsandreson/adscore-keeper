@@ -4,20 +4,34 @@
 
 let refreshing = false;
 let waitingWorker: ServiceWorker | null = null;
+let versionUpdatePending = false;
 let updateCallbacks: Array<() => void> = [];
 
 /** Register a callback when an update is available */
 export function onUpdateAvailable(cb: () => void) {
   updateCallbacks.push(cb);
-  if (waitingWorker) cb();
+  if (waitingWorker || versionUpdatePending) cb();
   return () => {
     updateCallbacks = updateCallbacks.filter(fn => fn !== cb);
   };
 }
 
+/**
+ * Sinaliza update detectado por versão (index.html/hash de assets), sem service
+ * worker. Usado pelo versionWatcher. Acende o mesmo badge "Atualizar" do SW.
+ */
+export function notifyUpdateAvailable() {
+  versionUpdatePending = true;
+  updateCallbacks.forEach(cb => cb());
+}
+
 /** Tell the waiting SW to activate AND reload the page once it takes control. */
 export function applyUpdate() {
-  if (!waitingWorker) return;
+  if (!waitingWorker) {
+    // Update por versão (sem SW): só recarrega a página.
+    if (versionUpdatePending) window.location.reload();
+    return;
+  }
   // Quando o novo SW assumir controle, recarregamos — mas só porque o usuário pediu.
   const onControllerChange = () => {
     if (refreshing) return;

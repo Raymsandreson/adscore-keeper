@@ -5,6 +5,7 @@ import { logAppInit } from "./utils/debugLogger";
 import { initSentry } from "./lib/sentry";
 import { installDbRoutingGuard } from "./integrations/supabase/install-db-routing-guard";
 import { installLeadDateGuard } from "./integrations/supabase/install-lead-date-guard";
+import { initVersionWatcher } from "./lib/versionWatcher";
 
 // Initialize Sentry before anything else
 initSentry();
@@ -135,6 +136,12 @@ if (isInIframe || isPreviewHostname) {
   navigator.serviceWorker?.getRegistrations().then((regs) => {
     regs.forEach((r) => r.unregister());
   }).catch(() => undefined);
+}
+
+// Vigia deploys novos (Lovable) em produção: recarrega sozinho quando é seguro
+// (aba oculta, sem digitação) e acende o badge "Atualizar" caso contrário.
+if (!import.meta.env.DEV && !isInIframe && !isPreviewHostname) {
+  initVersionWatcher();
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
