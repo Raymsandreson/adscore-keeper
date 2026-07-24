@@ -92,6 +92,33 @@ function tempoLabel(s: number | null | undefined) {
   return s ? chatRespLabel(s) : '—';
 }
 
+// ---- Recorde de passos do período ----
+interface RecordMark { value: number; holder: string; }
+// Chave por período + time + data-base: 'hoje' usa a data do dia, 'semana' a
+// segunda-feira, 'mes' o dia 1 — então o recorde reseta sozinho ao virar, e
+// cada filtro de time tem o seu (evita recorde falso ao trocar de time).
+function recordBucketKey(period: Period, teamId: string, since: Date): string {
+  return `${period}:${teamId}:${since.toISOString().slice(0, 10)}`;
+}
+function loadRecord(bucket: string): RecordMark | null {
+  try {
+    const raw = window.localStorage.getItem(`telao_record:${bucket}`);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (typeof p?.value === 'number' && typeof p?.holder === 'string') return p as RecordMark;
+  } catch {
+    /* ignora */
+  }
+  return null;
+}
+function saveRecord(bucket: string, mark: RecordMark) {
+  try {
+    window.localStorage.setItem(`telao_record:${bucket}`, JSON.stringify(mark));
+  } catch {
+    /* ignora */
+  }
+}
+
 export default function TvAtividadesPage() {
   const [params, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -124,6 +151,14 @@ export default function TvAtividadesPage() {
   const lastSfxRef = useRef(0);
   const overtakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [overtakes, setOvertakes] = useState<Ultrapassagem[]>([]);
+  // Recorde de passos do período: bate o topo → som especial (arquivo do Airton).
+  // Guardado por período no localStorage (reseta sozinho ao virar dia/semana/mês).
+  const recordRef = useRef<RecordMark | null>(null);
+  const recordBucketRef = useRef<string>('');
+  const lastRecordRef = useRef(0);
+  const recordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [record, setRecord] = useState<RecordMark | null>(null);
+  const [recordHit, setRecordHit] = useState<RecordMark | null>(null);
 
   // Relógio do cabeçalho.
   useEffect(() => {
@@ -252,8 +287,63 @@ export default function TvAtividadesPage() {
   // Trocar de time/período reinicia a comparação (senão dispara ultrapassagem falsa).
   useEffect(() => { prevOrderRef.current = null; }, [teamId, period]);
 
-  // Detecta ultrapassagens a cada atualização do ranking → zoada + narração + banner.
-  const { vroom, say } = sfx;
+  const { vroom, recordSound, say } = sfx;
+  // Balde do recorde: por período + time + data-base (reseta ao virar).
+  const recordBucket = useMemo(
+    () => recordBucketKey(period, teamId || 'all', periodSince(period)),
+    [period, teamId],
+  );
+
+  // RECORDE de passos do período: bate o topo → som especial (arquivo do Airton)
+  // + narração + banner. Roda antes do efeito de ultrapassagem pra suprimir a
+  // zoada comum quando o evento é recorde.
+  useEffect(() => {
+    if (!ranking.length) return;
+    // Topo por passos (ranking já vem ordenado; reduce garante).
+    const top = ranking.reduce((a, b) => (b.passos > a.passos ? b : a), ranking[0]);
+    const mark: RecordMark = { value: top.passos, holder: top.nome };
+
+    // Novo período/time/dia (ou 1ª carga): (re)inicializa do salvo, sem som.
+    if (recordBucketRef.current !== recordBucket) {
+      recordBucketRef.current = recordBucket;
+      const stored = loadRecord(recordBucket);
+      const seed = stored && stored.value >= mark.value ? stored : mark;
+      recordRef.current = seed;
+      setRecord(seed);
+      saveRecord(recordBucket, seed);
+      return;
+    }
+
+    const cur = recordRef.current;
+    if (!cur) {
+      recordRef.current = mark;
+      setRecord(mark);
+      saveRecord(recordBucket, mark);
+      return;
+    }
+    if (mark.value > cur.value) {
+      // RECORDE BATIDO
+      recordRef.current = mark;
+      setRecord(mark);
+      saveRecord(recordBucket, mark);
+      const now = Date.now();
+      if (now - lastRecordRef.current >= 2000) {
+        lastRecordRef.current = now;
+        lastSfxRef.current = now; // suprime a zoada normal desta rodada
+        recordSound();
+        say(`Novo recorde! ${shortName(mark.holder)}, ${mark.value} passos!`);
+        setRecordHit(mark);
+        if (recordTimer.current) clearTimeout(recordTimer.current);
+        recordTimer.current = setTimeout(() => setRecordHit(null), 8000);
+      }
+    } else if (mark.value === cur.value && mark.holder !== cur.holder) {
+      // Empate no topo por desempate: atualiza quem exibe, sem tocar som.
+      recordRef.current = mark;
+      setRecord(mark);
+    }
+  }, [ranking, recordBucket, recordSound, say]);
+
+  // Detecta ultrapassagens comuns → zoada + narração + banner (some sozinho).
   useEffect(() => {
     if (!ranking.length) return;
     const order = ranking.map(r => r.nome);
@@ -265,7 +355,7 @@ export default function TvAtividadesPage() {
 
     const evs = detectarUltrapassagens(prev, order, 2);
     if (!evs.length) return;
-    // Cooldown: atualização manual em rajada não dispara som repetido.
+    // Cooldown compartilhado: se um recorde acabou de tocar, não repete a zoada.
     const now = Date.now();
     if (now - lastSfxRef.current < 3000) return;
     lastSfxRef.current = now;
@@ -277,7 +367,10 @@ export default function TvAtividadesPage() {
     overtakeTimer.current = setTimeout(() => setOvertakes([]), 6000);
   }, [ranking, vroom, say]);
 
-  useEffect(() => () => { if (overtakeTimer.current) clearTimeout(overtakeTimer.current); }, []);
+  useEffect(() => () => {
+    if (overtakeTimer.current) clearTimeout(overtakeTimer.current);
+    if (recordTimer.current) clearTimeout(recordTimer.current);
+  }, []);
 
   const toggleFullscreen = () => {
     const el = containerRef.current;
@@ -302,6 +395,19 @@ export default function TvAtividadesPage() {
       ref={containerRef}
       className="min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-white overflow-x-hidden"
     >
+      {/* ===== Comemoração de RECORDE (some sozinho) ===== */}
+      {recordHit && (
+        <div className="pointer-events-none fixed inset-0 z-[60] flex items-start justify-center pt-[12vh] px-4">
+          <div className="flex flex-col items-center gap-2 rounded-3xl border-2 border-amber-300 bg-gradient-to-br from-amber-400 via-yellow-400 to-orange-500 px-8 py-6 text-slate-900 shadow-[0_0_80px_-10px] shadow-amber-400/70 animate-in fade-in zoom-in-95 duration-300">
+            <span className="text-3xl md:text-5xl">🏁🏆🏁</span>
+            <span className="text-xl md:text-4xl font-black uppercase tracking-tight">Novo Recorde!</span>
+            <span className="text-base md:text-2xl font-black">
+              {recordHit.holder} · <span className="tabular-nums">{recordHit.value}</span> passos
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* ===== Alerta de ultrapassagem (some sozinho) ===== */}
       {overtakes.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex flex-col items-center gap-2 px-4">
@@ -372,6 +478,20 @@ export default function TvAtividadesPage() {
           <span className="text-white/30">·</span>
           <span>7º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
+
+        {/* ===== Selo do recorde do período (sempre visível) ===== */}
+        {record && record.value > 0 && (
+          <div className="mt-3 flex justify-center">
+            <div className="flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-4 py-1.5 text-xs md:text-sm">
+              <span className="text-base md:text-lg">🏆</span>
+              <span className="font-black uppercase tracking-wider text-amber-300">Recorde {periodLabel[period]}</span>
+              <span className="text-white/40">·</span>
+              <span className="font-bold text-white/90">{record.holder}</span>
+              <span className="font-black tabular-nums text-amber-400">{record.value}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">passos</span>
+            </div>
+          </div>
+        )}
 
         {/* ===== Controles (escondem no telão) ===== */}
         <div className="mt-3 flex flex-wrap items-center justify-center gap-2">

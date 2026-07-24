@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 // useRaceSfx — efeitos sonoros do telão da Corrida Maluca.
-//   • vroom(): zoada de aceleração (motor cantando pneu) quando alguém ultrapassa
-//   • say(texto): narra em voz alta quem ultrapassou quem (pt-BR, SpeechSynthesis)
+//   • vroom(): zoada de aceleração (motor cantando pneu) numa ultrapassagem comum
+//   • recordSound(): som de RECORDE — toca um arquivo configurável (ex.: o clipe
+//     que vocês escolherem); se não houver/falhar, cai numa fanfarra sintetizada.
+//   • say(texto): narra em voz alta (pt-BR, SpeechSynthesis)
 //
 // Áudio no navegador só desbloqueia após um gesto do usuário. Como o telão
 // atualiza sozinho, deixamos um "destravador" no primeiro clique/tecla: a
@@ -12,29 +14,30 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const LS_KEY = 'telao_sfx_on';
 
-// Som de ultrapassagem: um ARQUIVO configurável (ex.: um clipe que vocês
-// fornecem) toca no lugar da zoada sintetizada. Ordem de prioridade:
-//   1. ?zoada=<url> na URL do telão
-//   2. localStorage['telao_zoada_url']
-//   3. /telao-ultrapassagem.mp3 (é só soltar o arquivo em public/)
-// Se o arquivo não existir/carregar, cai na zoada sintetizada (Web Audio).
-const LS_ZOADA_URL = 'telao_zoada_url';
-const DEFAULT_ZOADA_FILE = '/telao-ultrapassagem.mp3';
+// Som de RECORDE: um ARQUIVO configurável toca quando alguém bate o recorde de
+// passos do período. Ordem de prioridade:
+//   1. ?record=<url> na URL do telão
+//   2. localStorage['telao_record_url']
+//   3. /telao-record.mp3 (é só soltar o arquivo em public/)
+// Se o arquivo não existir/carregar, cai numa fanfarra sintetizada (Web Audio).
+const LS_RECORD_URL = 'telao_record_url';
+const DEFAULT_RECORD_FILE = '/telao-record.mp3';
 
-function resolveZoadaUrl(): string {
+function resolveRecordUrl(): string {
   try {
-    const q = new URLSearchParams(window.location.search).get('zoada');
+    const q = new URLSearchParams(window.location.search).get('record');
     if (q) return q;
-    const ls = window.localStorage.getItem(LS_ZOADA_URL);
+    const ls = window.localStorage.getItem(LS_RECORD_URL);
     if (ls) return ls;
   } catch {
     /* indisponível — usa o padrão */
   }
-  return DEFAULT_ZOADA_FILE;
+  return DEFAULT_RECORD_FILE;
 }
 
 export interface RaceSfx {
   vroom: () => void;
+  recordSound: () => void;
   say: (texto: string) => void;
   enabled: boolean;
   setEnabled: (b: boolean) => void;
@@ -52,9 +55,9 @@ export function useRaceSfx(): RaceSfx {
   enabledRef.current = enabled;
 
   const ctxRef = useRef<AudioContext | null>(null);
-  // Arquivo de ultrapassagem (opcional). fileOk vira true só quando carrega.
-  const zoadaRef = useRef<HTMLAudioElement | null>(null);
-  const zoadaOkRef = useRef(false);
+  // Arquivo de recorde (opcional). fileOk vira true só quando carrega.
+  const recordAudioRef = useRef<HTMLAudioElement | null>(null);
+  const recordOkRef = useRef(false);
 
   const getCtx = useCallback((): AudioContext | null => {
     try {
@@ -82,6 +85,27 @@ export function useRaceSfx(): RaceSfx {
     };
   }, [getCtx]);
 
+  // Probe do arquivo de recorde: só marca ok quando dá pra tocar.
+  useEffect(() => {
+    let a: HTMLAudioElement | null = null;
+    try {
+      a = new Audio(resolveRecordUrl());
+      a.preload = 'auto';
+      const ok = () => { recordOkRef.current = true; };
+      const bad = () => { recordOkRef.current = false; };
+      a.addEventListener('canplaythrough', ok);
+      a.addEventListener('error', bad);
+      recordAudioRef.current = a;
+      a.load();
+    } catch {
+      recordOkRef.current = false;
+    }
+    return () => {
+      a?.pause();
+      recordAudioRef.current = null;
+    };
+  }, []);
+
   const setEnabled = useCallback((b: boolean) => {
     setEnabledState(b);
     try {
@@ -91,28 +115,15 @@ export function useRaceSfx(): RaceSfx {
     }
   }, []);
 
-  // Probe do arquivo de ultrapassagem: só marca ok quando dá pra tocar.
-  useEffect(() => {
-    let a: HTMLAudioElement | null = null;
-    try {
-      a = new Audio(resolveZoadaUrl());
-      a.preload = 'auto';
-      const ok = () => { zoadaOkRef.current = true; };
-      const bad = () => { zoadaOkRef.current = false; };
-      a.addEventListener('canplaythrough', ok);
-      a.addEventListener('error', bad);
-      zoadaRef.current = a;
-      a.load();
-    } catch {
-      zoadaOkRef.current = false;
-    }
-    return () => {
-      a?.pause();
-      zoadaRef.current = null;
-    };
-  }, []);
+  const env = (g: GainNode, t: number, a: number, d: number, pico: number) => {
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(pico, t + a);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + a + d);
+  };
 
-  const synthVroom = useCallback(() => {
+  // Zoada de aceleração — ultrapassagem comum entre membros.
+  const vroom = useCallback(() => {
+    if (!enabledRef.current) return;
     const ctx = getCtx();
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime;
@@ -124,7 +135,6 @@ export function useRaceSfx(): RaceSfx {
     out.gain.exponentialRampToValueAtTime(0.0008, t + 0.85);
     out.connect(ctx.destination);
 
-    // Motor: duas serras batendo (uma leve desafinação) subindo e caindo de rotação.
     const filt = ctx.createBiquadFilter();
     filt.type = 'lowpass';
     filt.frequency.setValueAtTime(500, t);
@@ -138,14 +148,13 @@ export function useRaceSfx(): RaceSfx {
       o.type = 'sawtooth';
       o.detune.value = det;
       o.frequency.setValueAtTime(85, t);
-      o.frequency.exponentialRampToValueAtTime(430, t + 0.4); // acelera
-      o.frequency.exponentialRampToValueAtTime(180, t + 0.82); // alivia
+      o.frequency.exponentialRampToValueAtTime(430, t + 0.4);
+      o.frequency.exponentialRampToValueAtTime(180, t + 0.82);
       o.connect(filt);
       o.start(t);
       o.stop(t + 0.9);
     }
 
-    // Cantada de pneu: ruído passando por bandpass que varre agudo.
     const len = Math.floor(ctx.sampleRate * 0.5);
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -165,22 +174,88 @@ export function useRaceSfx(): RaceSfx {
     noise.stop(t + 0.5);
   }, [getCtx]);
 
-  // Zoada de ultrapassagem: toca o arquivo configurado; se não houver/falhar,
-  // cai na zoada sintetizada.
-  const vroom = useCallback(() => {
-    if (!enabledRef.current) return;
-    const a = zoadaRef.current;
-    if (a && zoadaOkRef.current) {
-      try {
-        a.currentTime = 0;
-        void a.play().catch(() => synthVroom());
-        return;
-      } catch {
-        /* falhou o replay do arquivo → síntese */
+  // Fanfarra sintetizada — reserva do som de recorde quando não há arquivo.
+  const synthFanfarra = useCallback(() => {
+    const ctx = getCtx();
+    if (!ctx || ctx.state !== 'running') return;
+    const t0 = ctx.currentTime;
+
+    const master = ctx.createGain();
+    master.gain.value = 0.5;
+    master.connect(ctx.destination);
+
+    // Arpejo triunfal C–E–G–C subindo + acorde sustentado (metais).
+    const notas = [523.25, 659.25, 783.99, 1046.5];
+    notas.forEach((f, i) => {
+      const t = t0 + i * 0.1;
+      const g = ctx.createGain();
+      env(g, t, 0.02, 0.28, 0.35);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.value = 3000;
+      g.connect(lp).connect(master);
+      for (const det of [-6, 6]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = det;
+        o.connect(g);
+        o.start(t);
+        o.stop(t + 0.34);
+      }
+    });
+    // Acorde final sustentado.
+    const tc = t0 + 0.42;
+    const gc = ctx.createGain();
+    env(gc, tc, 0.03, 0.9, 0.4);
+    const lpc = ctx.createBiquadFilter();
+    lpc.type = 'lowpass';
+    lpc.frequency.value = 3200;
+    gc.connect(lpc).connect(master);
+    for (const f of [523.25, 659.25, 783.99]) {
+      for (const det of [-7, 7]) {
+        const o = ctx.createOscillator();
+        o.type = 'sawtooth';
+        o.frequency.value = f;
+        o.detune.value = det;
+        o.connect(gc);
+        o.start(tc);
+        o.stop(tc + 1.0);
       }
     }
-    synthVroom();
-  }, [synthVroom]);
+    // Prato (crash) — ruído com decaimento longo.
+    const len = Math.floor(ctx.sampleRate * 1.1);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 1.5);
+    const crash = ctx.createBufferSource();
+    crash.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 6000;
+    const cg = ctx.createGain();
+    cg.gain.setValueAtTime(0.3, t0);
+    cg.gain.exponentialRampToValueAtTime(0.0008, t0 + 1.1);
+    crash.connect(hp).connect(cg).connect(master);
+    crash.start(t0);
+    crash.stop(t0 + 1.1);
+  }, [getCtx]);
+
+  // Som de RECORDE: arquivo configurável; se não houver/falhar, fanfarra.
+  const recordSound = useCallback(() => {
+    if (!enabledRef.current) return;
+    const a = recordAudioRef.current;
+    if (a && recordOkRef.current) {
+      try {
+        a.currentTime = 0;
+        void a.play().catch(() => synthFanfarra());
+        return;
+      } catch {
+        /* falhou o replay do arquivo → fanfarra */
+      }
+    }
+    synthFanfarra();
+  }, [synthFanfarra]);
 
   const say = useCallback((texto: string) => {
     if (!enabledRef.current) return;
@@ -192,12 +267,14 @@ export function useRaceSfx(): RaceSfx {
       u.rate = 1.08;
       u.pitch = 1.05;
       u.volume = 1;
-      const ptVoice = synth.getVoices().find((v) => /pt[-_]?BR/i.test(v.lang)) || synth.getVoices().find((v) => /^pt/i.test(v.lang));
+      const ptVoice =
+        synth.getVoices().find((v) => /pt[-_]?BR/i.test(v.lang)) ||
+        synth.getVoices().find((v) => /^pt/i.test(v.lang));
       if (ptVoice) u.voice = ptVoice;
-      synth.cancel(); // evita fila acumulando em várias ultrapassagens seguidas
+      synth.cancel(); // evita fila acumulando em vários eventos seguidos
       synth.speak(u);
     } catch {
-      /* voz indisponível — segue só com a zoada + banner */
+      /* voz indisponível — segue só com o som + banner */
     }
   }, []);
 
@@ -212,7 +289,7 @@ export function useRaceSfx(): RaceSfx {
     };
   }, []);
 
-  return { vroom, say, enabled, setEnabled };
+  return { vroom, recordSound, say, enabled, setEnabled };
 }
 
 // Detecta ultrapassagens comparando a ordem anterior com a nova.
