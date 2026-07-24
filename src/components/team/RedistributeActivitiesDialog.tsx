@@ -72,6 +72,11 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set());
   const [targetSearch, setTargetSearch] = useState('');
   const [maxPerDay, setMaxPerDay] = useState('');
+  // Passar também a responsabilidade processual (leads.processual_responsible_id)
+  // dos leads onde a pessoa inativa é responsável. Só faz sentido com 1 destino.
+  const [moveResponsibility, setMoveResponsibility] = useState(true);
+  // cloudId do inativo -> nº de leads onde ele é responsável processual
+  const [respBySource, setRespBySource] = useState<Map<string, number>>(new Map());
 
   const inactivePeople = useMemo(
     () => people.filter(p => inactiveIds.has(p.user_id)),
@@ -150,6 +155,32 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
     if (open) fetchPending();
   }, [open, fetchPending]);
 
+  // Conta, por fonte selecionada, quantos leads têm a pessoa como responsável
+  // processual — para mostrar no checkbox e evitar surpresa no apply.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      if (selectedSources.size === 0) { setRespBySource(new Map()); return; }
+      await ensureExternalSession();
+      await ensureRemapCache();
+      const entries = await Promise.all(
+        [...selectedSources].map(async (cloudId) => {
+          const ext = remapToExternalSync(cloudId);
+          if (!ext) return [cloudId, 0] as const;
+          const { count } = await (externalSupabase as any)
+            .from('leads')
+            .select('id', { count: 'exact', head: true })
+            .is('deleted_at', null)
+            .eq('processual_responsible_id', ext);
+          return [cloudId, count ?? 0] as const;
+        })
+      );
+      if (!cancelled) setRespBySource(new Map(entries));
+    })();
+    return () => { cancelled = true; };
+  }, [open, selectedSources]);
+
   // Tipos presentes nas pendências dos membros selecionados, com contagem
   const typeCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -177,6 +208,11 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
     [selectedSources, countForSource]
   );
 
+  const respTotalSelected = useMemo(
+    () => [...selectedSources].reduce((sum, id) => sum + (respBySource.get(id) || 0), 0),
+    [selectedSources, respBySource]
+  );
+
   const filteredTargets = activePeople.filter(p => {
     const q = targetSearch.trim().toLowerCase();
     if (!q) return true;
@@ -185,7 +221,10 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
 
   const handleApply = async () => {
     const targets = activePeople.filter(p => selectedTargets.has(p.user_id));
-    if (targets.length === 0 || totalSelected === 0) return;
+    // Transferir responsabilidade processual só com destino único (dono único do processo)
+    const wantResp = moveResponsibility && selectedTargets.size === 1 && respTotalSelected > 0;
+    if (targets.length === 0) return;
+    if (totalSelected === 0 && !wantResp) return;
     const cap = parseInt(maxPerDay, 10) || 0;
     setApplying(true);
     try {
@@ -346,6 +385,27 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
         if (error) throw error;
       }
 
+      // Responsabilidade processual: move TODOS os leads onde a fonte é
+      // responsável para o destino único (leads.processual_responsible_id vive
+      // no mesmo espaço de id que assigned_to — o ext user_id). Processos/casos
+      // herdam via lead_id, então não precisa tocá-los.
+      let respMoved = 0;
+      if (wantResp) {
+        const targetExt = targetInfo[0].extId;
+        for (const sourceId of selectedSources) {
+          const srcExt = remapToExternalSync(sourceId);
+          if (!srcExt || srcExt === targetExt) continue;
+          const { data, error } = await (externalSupabase as any)
+            .from('leads')
+            .update({ processual_responsible_id: targetExt, updated_at: now })
+            .eq('processual_responsible_id', srcExt)
+            .is('deleted_at', null)
+            .select('id');
+          if (error) throw error;
+          respMoved += (data?.length || 0);
+        }
+      }
+
       const sourceNames = [...selectedSources]
         .map(id => { const p = inactivePeople.find(pp => pp.user_id === id); return p ? personName(p) : id; });
       logAudit({
@@ -357,11 +417,20 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
           tipos: [...selectedTypes],
           max_por_dia: cap > 0 ? cap : null,
           total: totalSelected,
+          responsabilidade_movida: respMoved,
+          responsabilidade_destino: wantResp ? targetInfo[0]?.name : null,
         },
       });
 
-      const dist = [...perTargetCount.entries()].map(([n, c]) => `${n}: ${c}`).join(', ');
-      toast.success(`${totalSelected} atividade${totalSelected !== 1 ? 's' : ''} redistribuída${totalSelected !== 1 ? 's' : ''} (${dist})${cap > 0 ? ` — prazos reagendados com máx. ${cap}/dia` : ''}`);
+      const msgParts: string[] = [];
+      if (totalSelected > 0) {
+        const dist = [...perTargetCount.entries()].map(([n, c]) => `${n}: ${c}`).join(', ');
+        msgParts.push(`${totalSelected} atividade${totalSelected !== 1 ? 's' : ''} redistribuída${totalSelected !== 1 ? 's' : ''} (${dist})${cap > 0 ? ` — prazos reagendados com máx. ${cap}/dia` : ''}`);
+      }
+      if (respMoved > 0) {
+        msgParts.push(`${respMoved} lead${respMoved !== 1 ? 's' : ''} com responsável alterado para ${targetInfo[0]?.name || 'destino'}`);
+      }
+      toast.success(msgParts.join(' · ') || 'Nada a alterar');
       setSelectedTargets(new Set());
       fetchPending();
     } catch (e: any) {
@@ -489,15 +558,36 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
               pessoa já tem agendado e reagenda os prazos em dias úteis a partir de hoje.
             </p>
 
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <Checkbox
+                checked={moveResponsibility}
+                onCheckedChange={v => setMoveResponsibility(!!v)}
+                disabled={selectedTargets.size !== 1}
+                className="mt-0.5"
+              />
+              <span className={selectedTargets.size !== 1 ? 'text-muted-foreground' : ''}>
+                Passar também a responsabilidade dos processos/casos ao destino
+                {selectedTargets.size === 1
+                  ? (respTotalSelected > 0 ? ` — ${respTotalSelected} lead${respTotalSelected !== 1 ? 's' : ''}` : ' — nenhum lead sob responsabilidade')
+                  : ' — selecione exatamente 1 destino'}
+              </span>
+            </label>
+
             <Button
               className="w-full"
-              disabled={applying || totalSelected === 0 || selectedTargets.size === 0}
+              disabled={
+                applying ||
+                selectedTargets.size === 0 ||
+                (totalSelected === 0 && !(moveResponsibility && selectedTargets.size === 1 && respTotalSelected > 0))
+              }
               onClick={handleApply}
             >
               {applying && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
               {totalSelected > 0 && selectedTargets.size > 0
                 ? `Redistribuir ${totalSelected} atividade${totalSelected !== 1 ? 's' : ''} para ${selectedTargets.size} pessoa${selectedTargets.size !== 1 ? 's' : ''}`
-                : 'Redistribuir'}
+                : (moveResponsibility && selectedTargets.size === 1 && respTotalSelected > 0
+                    ? `Transferir ${respTotalSelected} lead${respTotalSelected !== 1 ? 's' : ''} de responsabilidade`
+                    : 'Redistribuir')}
             </Button>
           </div>
         )}
