@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
+import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
 import { useRaceSfx, detectarUltrapassagens, type Ultrapassagem } from '@/hooks/useRaceSfx';
 
@@ -122,6 +123,9 @@ export default function TvAtividadesPage() {
   // É a visualização PADRÃO; só `?corrida=0` cai no pódio clássico.
   const [raceMode, setRaceMode] = useState(params.get('corrida') !== '0');
   const [cars, setCars] = useState<Record<string, CarChoice>>({});
+  // Ausências que cobrem HOJE (member_time_off): quem está de folga/férias sai
+  // da corrida e vai pro "pit stop". Casamento com o ranking é por nome.
+  const [timeOffToday, setTimeOffToday] = useState<TimeOffEntry[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Trilha do telão: play/pausa manual pra dar energia ao ambiente.
   // Toca o arquivo configurado (public/telao-musica.mp3 ou ?musica=URL);
@@ -238,6 +242,20 @@ export default function TvAtividadesPage() {
   }, []);
   useEffect(() => { if (raceMode) loadCars(); }, [raceMode, loadCars]);
 
+  // Ausências de hoje pro pit stop. Só faz sentido no período "Hoje" (folga/
+  // férias é do dia); em Semana/Mês a pessoa trabalhou os outros dias. Segue o
+  // mesmo intervalo de refresh do telão.
+  const loadTimeOff = useCallback(async () => {
+    if (period !== 'hoje') { setTimeOffToday([]); return; }
+    const rows = await getTimeOffForDate(format(new Date(), 'yyyy-MM-dd'));
+    setTimeOffToday(rows);
+  }, [period]);
+  useEffect(() => { loadTimeOff(); }, [loadTimeOff]);
+  useEffect(() => {
+    const id = setInterval(loadTimeOff, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [loadTimeOff]);
+
   // Salva a escolha (upsert por nome_key) + atualização otimista no telão.
   const saveCar = useCallback(async (nome: string, car_id: string, color: string) => {
     const key = nameKey(nome);
@@ -264,7 +282,28 @@ export default function TvAtividadesPage() {
     });
   }, [params, setSearchParams]);
 
-  const ranking = data?.ranking ?? [];
+  const rawRanking = data?.ranking ?? [];
+  // Quem está de folga/férias hoje → mapa por nome (fonte member_time_off).
+  const offByKey = useMemo(() => {
+    const m = new Map<string, TimeOffEntry>();
+    for (const e of timeOffToday) {
+      if (e.user_name) m.set(nameKey(e.user_name), e);
+    }
+    return m;
+  }, [timeOffToday]);
+  // Ranking exibível: tira os ausentes (só no período "Hoje"). Todos os efeitos
+  // (pódio, corrida, recorde, ultrapassagem) já leem `ranking`, então some de tudo.
+  const ranking = useMemo(
+    () => offByKey.size ? rawRanking.filter(r => !offByKey.has(nameKey(r.nome))) : rawRanking,
+    [rawRanking, offByKey],
+  );
+  // Pit stop: os que saíram do ranking + o motivo da ausência.
+  const pit = useMemo(
+    () => rawRanking
+      .filter(r => offByKey.has(nameKey(r.nome)))
+      .map(r => ({ nome: r.nome, entry: offByKey.get(nameKey(r.nome))! })),
+    [rawRanking, offByKey],
+  );
   const podium = useMemo(() => ranking.slice(0, 3), [ranking]);
   const list = useMemo(() => ranking.slice(3, 3 + LIST_MAX), [ranking]);
   const resumo = data?.resumo ?? null;
@@ -574,7 +613,7 @@ export default function TvAtividadesPage() {
           </button>
         </div>
 
-        {ranking.length === 0 ? (
+        {ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
           </div>
@@ -590,6 +629,9 @@ export default function TvAtividadesPage() {
               periodo={period}
             />
 
+            {/* ===== Pit stop (de folga hoje) ===== */}
+            <PitStop pit={pit} />
+
             {/* ===== Rodapé ===== */}
             <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
           </>
@@ -604,6 +646,9 @@ export default function TvAtividadesPage() {
                 <ListRow key={r.nome} rank={i + 4} row={r} onSelect={() => setCoach({ row: r, rank: i + 4 })} />
               ))}
             </div>
+
+            {/* ===== Pit stop (de folga hoje) ===== */}
+            <PitStop pit={pit} />
 
             {/* ===== Rodapé ===== */}
             <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
@@ -769,6 +814,46 @@ function PodiumStat({ text, label, color }: { text: string | number; label: stri
       <span className={cn('text-base md:text-xl font-black tabular-nums', color)}>{text}</span>
       <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
     </span>
+  );
+}
+
+/* ---------- Pit stop (de folga hoje) ---------- */
+// Quem está de folga/férias/compensação hoje sai da corrida e descansa no box.
+// Emoji por tipo de ausência (mesma leitura da aba Férias).
+const TIME_OFF_EMOJI: Record<string, string> = {
+  ferias: '🌴',
+  compensacao: '⏱️',
+  folga: '☕',
+};
+function PitStop({ pit }: { pit: { nome: string; entry: TimeOffEntry }[] }) {
+  if (pit.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:p-4">
+      <div className="mb-2 flex items-center gap-2 px-1 text-[10px] md:text-xs font-black uppercase tracking-widest text-white/50">
+        <span>🅿️ Pit stop</span>
+        <span className="text-white/30">·</span>
+        <span className="text-amber-300">de folga hoje ({pit.length})</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {pit.map(({ nome, entry }) => (
+          <div
+            key={nome}
+            className="flex items-center gap-2 rounded-full bg-slate-950/50 border border-white/5 pl-1 pr-3 py-1"
+            title={entry.note || undefined}
+          >
+            <span className={cn('h-7 w-7 md:h-8 md:w-8 shrink-0 rounded-full flex items-center justify-center text-[10px] md:text-xs font-black opacity-80', colorFor(nome))}>
+              {initials(nome)}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-xs md:text-sm font-bold text-white/80">{nome}</span>
+              <span className="block text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/45">
+                {TIME_OFF_EMOJI[entry.type] ?? '💤'} {TIME_OFF_TYPE_LABELS[entry.type] ?? entry.type}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
