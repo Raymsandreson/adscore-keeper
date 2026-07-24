@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { LEAD_FIELD_REGISTRY, TAB_DEFS, type LeadFieldRenderCtx, type LeadFieldTab } from './leadFormFields';
 import { useLeadFieldLayout, type ResolvedField } from '@/hooks/useLeadFieldLayout';
 import { FieldCustomizeOverlay } from './FieldCustomizeOverlay';
+import { CityContactsSuggestionDialog, type CitySuggestTrigger } from './CityContactsSuggestionDialog';
 import { cn } from '@/lib/utils';
 import type { AccidentLeadFormData } from './leadFormTypes';
 
@@ -48,13 +49,27 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
   const [activeTab, setActiveTab] = useState<LeadFieldTab>('basic');
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const [citySuggest, setCitySuggest] = useState<CitySuggestTrigger | null>(null);
   const tabSwitchTimer = useRef<number | null>(null);
+
+  // Wraps parent onChange: quando a cidade da visita muda para um valor novo,
+  // dispara a sugestão de contatos nossos naquela cidade.
+  const handleChange = (data: Partial<AccidentLeadFormData>) => {
+    if ('visit_city' in data) {
+      const newCity = data.visit_city;
+      const newState = data.visit_state ?? formData.visit_state;
+      if (newCity && newState && newCity !== formData.visit_city) {
+        setCitySuggest({ city: newCity, state: newState });
+      }
+    }
+    onChange(data);
+  };
 
   const handleAutoLocation = async () => {
     const loc = await fetchLocation();
     if (loc) {
       const region = stateToRegion[loc.state] || '';
-      onChange({ visit_state: loc.state, visit_city: loc.city, visit_region: region });
+      handleChange({ visit_state: loc.state, visit_city: loc.city, visit_region: region });
       fetchCities(loc.state);
       toast.success(`Localização detectada: ${loc.city}/${loc.state}`);
     } else {
@@ -98,7 +113,7 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
   };
 
   const ctx: LeadFieldRenderCtx = {
-    formData, onChange, teamMembers, classifications, leadSources,
+    formData, onChange: handleChange, teamMembers, classifications, leadSources,
     states, cities, loadingCities, geoLoading,
     onAutoLocation: handleAutoLocation, onStateChange: handleStateChange,
     formatDateBR, parseDateBR,
@@ -326,6 +341,8 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CityContactsSuggestionDialog trigger={citySuggest} onClose={() => setCitySuggest(null)} />
     </div>
   );
 }

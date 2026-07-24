@@ -63,6 +63,7 @@ const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHi
 const LeadFunnelOverview = lazy(() => import('@/components/kanban/LeadFunnelOverview').then(m => ({ default: m.LeadFunnelOverview })));
 import { CloseLeadGroupDialog, CloseLeadContactPayload } from '@/components/leads/CloseLeadGroupDialog';
 import { ClosedCaseContactDialog } from '@/components/leads/ClosedCaseContactDialog';
+import { CityContactsSuggestionDialog, type CitySuggestTrigger } from '@/components/leads/CityContactsSuggestionDialog';
 const LeadActivitiesTab = lazy(() => import('@/components/leads/LeadActivitiesTab').then(m => ({ default: m.LeadActivitiesTab })));
 import { LinkOrphanWhatsAppButton } from '@/components/leads/LinkOrphanWhatsAppButton';
 const AccidentDataExtractor = lazy(() => import('@/components/leads/AccidentDataExtractor').then(m => ({ default: m.AccidentDataExtractor })));
@@ -312,6 +313,7 @@ export function LeadEditDialog({
   const [visitState, setVisitState] = useState('');
   const [visitRegion, setVisitRegion] = useState('');
   const [visitAddress, setVisitAddress] = useState('');
+  const [citySuggest, setCitySuggest] = useState<CitySuggestTrigger | null>(null);
   
   // Companies fields
   const [contractorCompany, setContractorCompany] = useState('');
@@ -3239,9 +3241,12 @@ ${scrapeData.content || ''}
 
                 {isFieldVisible('visit_city') && (<div>
                   <Label>Cidade da Visita</Label>
-                  <Select 
-                    value={safeSelectValue(visitCity)} 
-                    onValueChange={setVisitCity}
+                  <Select
+                    value={safeSelectValue(visitCity)}
+                    onValueChange={(value) => {
+                      setVisitCity(value);
+                      if (value && visitState) setCitySuggest({ city: value, state: visitState });
+                    }}
                     disabled={!visitState || loadingCities}
                   >
                     <SelectTrigger>
@@ -3626,6 +3631,8 @@ ${scrapeData.content || ''}
             </Button>
           </div>
         </Footer>
+
+        <CityContactsSuggestionDialog trigger={citySuggest} onClose={() => setCitySuggest(null)} />
 
         <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
           <AlertDialogContent>
