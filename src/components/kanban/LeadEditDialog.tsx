@@ -503,6 +503,12 @@ export function LeadEditDialog({
       fetchCities(state);
     }
 
+    // Ao abrir o lead para editar, sugere contatos nossos na mesma cidade (se houver cidade+estado)
+    const openCity = leadAny.visit_city || '';
+    if (openCity && state) {
+      setCitySuggest({ city: openCity, state });
+    }
+
     // Companies fields
     setContractorCompany(leadAny.contractor_company || '');
     setMainCompany(leadAny.main_company || '');

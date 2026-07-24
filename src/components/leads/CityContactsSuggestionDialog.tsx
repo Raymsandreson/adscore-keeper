@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -57,13 +57,9 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
   const [pending, setPending] = useState<{ city: string; state: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>(ALL_TAB);
   const [activitySheetOpen, setActivitySheetOpen] = useState(false);
-  const lastKeyRef = useRef<string>('');
 
   useEffect(() => {
     if (!trigger?.city || !trigger?.state) return;
-    const key = `${trigger.city.trim().toLowerCase()}|${trigger.state.trim().toLowerCase()}`;
-    if (key === lastKeyRef.current) return; // evita rebuscar a mesma cidade seguidamente
-    lastKeyRef.current = key;
 
     let cancelled = false;
     (async () => {
