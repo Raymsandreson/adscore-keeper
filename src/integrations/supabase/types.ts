@@ -10126,6 +10126,7 @@ export type Database = {
         Args: { _pluggy_account_id: string; _user_id: string }
         Returns: boolean
       }
+      check_pending_invitation: { Args: { p_email: string }; Returns: boolean }
       cleanup_old_command_history: { Args: never; Returns: undefined }
       cleanup_old_webhook_logs: { Args: never; Returns: undefined }
       cleanup_old_whatsapp_messages: { Args: never; Returns: undefined }
