@@ -12,7 +12,7 @@ import {
   type CallSignalPayload,
 } from '@/lib/webrtcCall';
 
-type CallStatus = 'idle' | 'calling' | 'incoming' | 'connected';
+type CallStatus = 'idle' | 'calling' | 'incoming' | 'connecting' | 'connected';
 
 /** Gravação de uma ligação já encerrada, aguardando transcrição/resumo. */
 export interface PendingCallRecording {
@@ -67,6 +67,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const remoteIdRef = useRef<string | null>(null);
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // timeout de estabelecimento da conexão do lado de quem atende (callee)
+  const connectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ringtoneRef = useRef<Ringtone | null>(null);
   // gravação da chamada (mistura os dois lados) p/ transcrição posterior
   const recorderRef = useRef<CallRecorder | null>(null);
@@ -124,6 +126,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (ringTimeoutRef.current) {
       clearTimeout(ringTimeoutRef.current);
       ringTimeoutRef.current = null;
+    }
+    if (connectTimeoutRef.current) {
+      clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = null;
     }
     try { ringtoneRef.current?.stop(); } catch { /* noop */ }
     // Fecha a gravação ANTES de derrubar os streams e guarda o áudio p/ resumo.
@@ -187,6 +193,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (st === 'connected') {
         ringtoneRef.current?.stop();
         if (ringTimeoutRef.current) { clearTimeout(ringTimeoutRef.current); ringTimeoutRef.current = null; }
+        if (connectTimeoutRef.current) { clearTimeout(connectTimeoutRef.current); connectTimeoutRef.current = null; }
         setStatus('connected');
         if (!durationTimerRef.current) {
           setDurationSec(0);
@@ -261,10 +268,30 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const acceptCall = useCallback(async () => {
     const offer = incomingOfferRef.current;
     const targetId = remoteIdRef.current;
-    if (!offer || !targetId || !myId) return;
+    if (!offer || !targetId || !myId) {
+      // Antes isso saía calado -> "cliquei em atender e nada". Agora diz o motivo.
+      console.warn('[Call] acceptCall abortado (dados incompletos):', {
+        hasOffer: !!offer, hasTarget: !!targetId, hasMyId: !!myId,
+      });
+      toast.error('Não foi possível atender: a chamada chegou incompleta. Peça para ligarem de novo.');
+      cleanup();
+      return;
+    }
 
     try {
       ringtoneRef.current?.stop();
+      // Feedback imediato: o card sai de "Atender/Recusar" e mostra "Conectando…".
+      setStatus('connecting');
+      // Se o P2P não fechar (ex.: NAT simétrico sem TURN), não trava pra sempre.
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+      connectTimeoutRef.current = setTimeout(() => {
+        if (statusRef.current === 'connecting') {
+          console.warn('[Call] conexão de voz não estabeleceu em 20s (possível bloqueio de rede / falta de TURN).');
+          toast.error('Não consegui completar a conexão de voz — a rede pode estar bloqueando a chamada direta.');
+          sendSignal('hangup', {});
+          cleanup();
+        }
+      }, 20_000);
       // Canal antes do microfone: se o mic falhar, ainda conseguimos mandar 'reject'.
       await ensureOutChannel(targetId);
 

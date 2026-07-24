@@ -42,6 +42,7 @@ export function CallOverlay() {
   const name = remoteName || 'Membro da equipe';
   const isIncoming = status === 'incoming';
   const isCalling = status === 'calling';
+  const isConnecting = status === 'connecting';
   const isConnected = status === 'connected';
 
   return (
@@ -52,10 +53,11 @@ export function CallOverlay() {
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             {isIncoming && <><PhoneIncoming className="h-3.5 w-3.5 text-primary" /> Ligação recebida</>}
             {isCalling && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Chamando…</>}
+            {isConnecting && <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Conectando…</>}
             {isConnected && <><Phone className="h-3.5 w-3.5 text-green-600" /> Em chamada</>}
           </div>
 
-          <Avatar className={cn('h-16 w-16', (isIncoming || isCalling) && 'animate-pulse')}>
+          <Avatar className={cn('h-16 w-16', (isIncoming || isCalling || isConnecting) && 'animate-pulse')}>
             <AvatarFallback className="text-lg bg-primary/20 text-primary">{getInitials(name)}</AvatarFallback>
           </Avatar>
 
