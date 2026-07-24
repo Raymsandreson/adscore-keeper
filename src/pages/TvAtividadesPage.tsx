@@ -37,11 +37,13 @@ interface Resumo {
   ocioso_h: number;
   aproveitamento_pct: number | null;
 }
+// Recorde individual de passos do período/time — vem do servidor (RPC), já
+// filtrado pelo time selecionado. { passos, nome } = valor + quem detém.
+interface MetaRecorde { passos: number; nome: string | null; }
 interface Payload {
   ranking: RankRow[];
   resumo: Resumo | null;
-  // Linha de chegada da corrida = recorde individual de passos do período/time.
-  meta?: number;
+  meta?: MetaRecorde | null;
   gerado_em: string;
 }
 
@@ -94,32 +96,10 @@ function tempoLabel(s: number | null | undefined) {
   return s ? chatRespLabel(s) : '—';
 }
 
-// ---- Recorde de passos do período ----
+// ---- Recorde de passos do período (selo + comemoração) ----
+// value = passos, holder = quem detém. Fonte = servidor (data.meta), filtrado
+// por time — sem localStorage, então não vaza recorde de um time pro outro.
 interface RecordMark { value: number; holder: string; }
-// Chave por período + time + data-base: 'hoje' usa a data do dia, 'semana' a
-// segunda-feira, 'mes' o dia 1 — então o recorde reseta sozinho ao virar, e
-// cada filtro de time tem o seu (evita recorde falso ao trocar de time).
-function recordBucketKey(period: Period, teamId: string, since: Date): string {
-  return `${period}:${teamId}:${since.toISOString().slice(0, 10)}`;
-}
-function loadRecord(bucket: string): RecordMark | null {
-  try {
-    const raw = window.localStorage.getItem(`telao_record:${bucket}`);
-    if (!raw) return null;
-    const p = JSON.parse(raw);
-    if (typeof p?.value === 'number' && typeof p?.holder === 'string') return p as RecordMark;
-  } catch {
-    /* ignora */
-  }
-  return null;
-}
-function saveRecord(bucket: string, mark: RecordMark) {
-  try {
-    window.localStorage.setItem(`telao_record:${bucket}`, JSON.stringify(mark));
-  } catch {
-    /* ignora */
-  }
-}
 
 export default function TvAtividadesPage() {
   const [params, setSearchParams] = useSearchParams();
@@ -153,8 +133,9 @@ export default function TvAtividadesPage() {
   const lastSfxRef = useRef(0);
   const overtakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [overtakes, setOvertakes] = useState<Ultrapassagem[]>([]);
-  // Recorde de passos do período: bate o topo → som especial (arquivo do Airton).
-  // Guardado por período no localStorage (reseta sozinho ao virar dia/semana/mês).
+  // Recorde do período (vem do servidor): topo ao vivo o supera → som especial
+  // (arquivo do Airton). recordBucketRef guarda o último recorde já comemorado
+  // (chave time+período+valor) pra não repetir o som a cada refresh.
   const recordRef = useRef<RecordMark | null>(null);
   const recordBucketRef = useRef<string>('');
   const lastRecordRef = useRef(0);
@@ -292,60 +273,43 @@ export default function TvAtividadesPage() {
   useEffect(() => { prevOrderRef.current = null; }, [teamId, period]);
 
   const { vroom, recordSound, say } = sfx;
-  // Balde do recorde: por período + time + data-base (reseta ao virar).
-  const recordBucket = useMemo(
-    () => recordBucketKey(period, teamId || 'all', periodSince(period)),
-    [period, teamId],
-  );
 
-  // RECORDE de passos do período: bate o topo → som especial (arquivo do Airton)
-  // + narração + banner. Roda antes do efeito de ultrapassagem pra suprimir a
-  // zoada comum quando o evento é recorde.
+  // Recorde do período/time = SERVIDOR (data.meta), sempre filtrado pelo time
+  // selecionado — nada de localStorage, então não vaza entre times. O selo mostra
+  // o recorde histórico a bater; ao vivo, se o topo do ranking o superar, comemora
+  // (som do Airton) UMA vez por (time+período+valor) e o selo passa a exibir o novo.
   useEffect(() => {
-    if (!ranking.length) return;
-    // Topo por passos (ranking já vem ordenado; reduce garante).
-    const top = ranking.reduce((a, b) => (b.passos > a.passos ? b : a), ranking[0]);
-    const mark: RecordMark = { value: top.passos, holder: top.nome };
+    const recValue = data?.meta?.passos ?? 0;
+    const recHolder = data?.meta?.nome ?? '';
 
-    // Novo período/time/dia (ou 1ª carga): (re)inicializa do salvo, sem som.
-    if (recordBucketRef.current !== recordBucket) {
-      recordBucketRef.current = recordBucket;
-      const stored = loadRecord(recordBucket);
-      const seed = stored && stored.value >= mark.value ? stored : mark;
-      recordRef.current = seed;
-      setRecord(seed);
-      saveRecord(recordBucket, seed);
-      return;
-    }
+    const top = ranking.length
+      ? ranking.reduce((a, b) => (b.passos > a.passos ? b : a), ranking[0])
+      : null;
+    const beat = !!top && top.passos > recValue && top.passos > 0;
 
-    const cur = recordRef.current;
-    if (!cur) {
-      recordRef.current = mark;
-      setRecord(mark);
-      saveRecord(recordBucket, mark);
-      return;
+    // Selo: recorde ao vivo (se superado) ou o histórico do servidor.
+    const shown: RecordMark | null = beat
+      ? { value: top!.passos, holder: top!.nome }
+      : (recValue > 0 ? { value: recValue, holder: recHolder } : null);
+    setRecord(shown);
+    recordRef.current = shown;
+    if (!beat) return;
+
+    // Comemora uma vez por recorde novo (evita repetir a cada refresh de 45s).
+    const key = `${period}:${teamId || 'all'}:${periodSince(period).toISOString().slice(0, 10)}:${top!.passos}`;
+    if (recordBucketRef.current === key) return;
+    recordBucketRef.current = key;
+    const now = Date.now();
+    if (now - lastRecordRef.current >= 2000) {
+      lastRecordRef.current = now;
+      lastSfxRef.current = now; // suprime a zoada normal desta rodada
+      recordSound();
+      say(`Novo recorde! ${shortName(top!.nome)}, ${top!.passos} passos!`);
+      setRecordHit({ value: top!.passos, holder: top!.nome });
+      if (recordTimer.current) clearTimeout(recordTimer.current);
+      recordTimer.current = setTimeout(() => setRecordHit(null), 8000);
     }
-    if (mark.value > cur.value) {
-      // RECORDE BATIDO
-      recordRef.current = mark;
-      setRecord(mark);
-      saveRecord(recordBucket, mark);
-      const now = Date.now();
-      if (now - lastRecordRef.current >= 2000) {
-        lastRecordRef.current = now;
-        lastSfxRef.current = now; // suprime a zoada normal desta rodada
-        recordSound();
-        say(`Novo recorde! ${shortName(mark.holder)}, ${mark.value} passos!`);
-        setRecordHit(mark);
-        if (recordTimer.current) clearTimeout(recordTimer.current);
-        recordTimer.current = setTimeout(() => setRecordHit(null), 8000);
-      }
-    } else if (mark.value === cur.value && mark.holder !== cur.holder) {
-      // Empate no topo por desempate: atualiza quem exibe, sem tocar som.
-      recordRef.current = mark;
-      setRecord(mark);
-    }
-  }, [ranking, recordBucket, recordSound, say]);
+  }, [data?.meta, ranking, period, teamId, recordSound, say]);
 
   // Detecta ultrapassagens comuns → zoada + narração + banner (some sozinho).
   useEffect(() => {
@@ -622,7 +586,7 @@ export default function TvAtividadesPage() {
               cars={cars}
               onSaveCar={saveCar}
               onAnalyze={(row, rank) => setCoach({ row, rank })}
-              meta={data?.meta}
+              meta={data?.meta?.passos}
               periodo={period}
             />
 
