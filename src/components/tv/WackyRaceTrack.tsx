@@ -14,6 +14,8 @@ import {
 
 export interface RaceRow {
   nome: string;
+  fases: number;
+  objetivos: number;
   passos: number;
   concluidas: number;
   atrasadas: number;
@@ -137,6 +139,8 @@ export default function WackyRaceTrack({
                     )}
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-sm md:text-xl lg:text-2xl font-black tabular-nums text-white/80">
+                    <span><b className="text-amber-300">{r.fases ?? 0}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">fases</span></span>
+                    <span><b className="text-lime-400">{r.objetivos ?? 0}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">obj</span></span>
                     <span><b className="text-sky-400">{r.passos}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">passos</span></span>
                     <span><b className="text-emerald-400">{r.concluidas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">concl</span></span>
                     <span><b className="text-rose-400">{r.atrasadas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">atr</span></span>

@@ -23,6 +23,8 @@ type Period = 'hoje' | 'semana' | 'mes';
 
 interface RankRow {
   nome: string;
+  fases: number;
+  objetivos: number;
   passos: number;
   doc_itens: number;
   concluidas: number;
@@ -552,19 +554,23 @@ export default function TvAtividadesPage() {
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-[11px] md:text-sm font-bold uppercase tracking-wider text-white/70">
           <span className="text-amber-400">🏆 Ranking {periodLabel[period]}</span>
           <span className="text-white/30">·</span>
-          <span>1º <span className="text-sky-400">Passos Dados</span></span>
+          <span>1º <span className="text-amber-300">Fases</span></span>
           <span className="text-white/30">·</span>
-          <span>2º <span className="text-fuchsia-400">Itens do Checklist</span></span>
+          <span>2º <span className="text-lime-400">Objetivos</span></span>
           <span className="text-white/30">·</span>
-          <span>3º <span className="text-emerald-400">Concluídas</span></span>
+          <span>3º <span className="text-sky-400">Passos Dados</span></span>
           <span className="text-white/30">·</span>
-          <span>4º <span className="text-rose-400">Menos Atrasadas</span></span>
+          <span>4º <span className="text-fuchsia-400">Itens do Checklist</span></span>
           <span className="text-white/30">·</span>
-          <span>5º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>5º <span className="text-emerald-400">Concluídas</span></span>
           <span className="text-white/30">·</span>
-          <span>6º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>6º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>7º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>7º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span className="text-white/30">·</span>
+          <span>8º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span className="text-white/30">·</span>
+          <span>9º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
@@ -821,6 +827,8 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
           <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
+          <PodiumStat text={row.fases ?? 0} label="fases" color="text-amber-300" />
+          <PodiumStat text={row.objetivos ?? 0} label="objetivos" color="text-lime-400" />
           <PodiumStat text={row.doc_itens ?? 0} label="checklist" color="text-fuchsia-400" />
           <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" />
           <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" />
@@ -862,6 +870,8 @@ function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect
         {row.nome}
         {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
       </div>
+      <Stat value={row.fases ?? 0} label="fases" color="text-amber-300" />
+      <Stat value={row.objetivos ?? 0} label="obj" color="text-lime-400" />
       <Stat value={row.passos} label="passos" color="text-sky-400" />
       <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" />
@@ -992,7 +1002,7 @@ function Footer({ resumo, participantes, ranking }: { resumo: Resumo | null; par
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Passos</b>: contagem dos checklists marcados no período — com empate, a ordem cai pras concluídas, depois menos atrasadas, mais tempo ativo no cronômetro, menos tempo ocioso e, por fim, quem responde o chat interno mais rápido (média do período; respostas em até 8h). {participantes} no ranking.</span>
+          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. {participantes} no ranking.</span>
         </p>
       </div>
       </div>
