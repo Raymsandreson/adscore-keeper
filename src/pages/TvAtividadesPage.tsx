@@ -40,6 +40,8 @@ interface Resumo {
 interface Payload {
   ranking: RankRow[];
   resumo: Resumo | null;
+  // Linha de chegada da corrida = recorde individual de passos do período/time.
+  meta?: number;
   gerado_em: string;
 }
 
@@ -216,6 +218,8 @@ export default function TvAtividadesPage() {
         p_since: periodSince(period).toISOString(),
         p_team_id: teamId && teamId !== GRUPO_GERENCIAL ? teamId : null,
         p_grupo: teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null,
+        // Granularidade do recorde (linha de chegada): dia/semana/mês.
+        p_granularidade: period === 'hoje' ? 'dia' : period,
       });
       if (error) throw error;
       setData((res || { ranking: [], resumo: null, gerado_em: '' }) as Payload);
@@ -618,6 +622,8 @@ export default function TvAtividadesPage() {
               cars={cars}
               onSaveCar={saveCar}
               onAnalyze={(row, rank) => setCoach({ row, rank })}
+              meta={data?.meta}
+              periodo={period}
             />
 
             {/* ===== Rodapé ===== */}

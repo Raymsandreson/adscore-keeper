@@ -31,26 +31,44 @@ export function nameKey(nome: string) {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+// Rótulo do escopo do recorde, por período aberto no telão.
+const SCOPE_LABEL: Record<string, string> = {
+  hoje: 'do dia',
+  semana: 'da semana',
+  mes: 'do mês',
+};
+
 export default function WackyRaceTrack({
   ranking,
   cars,
   onSaveCar,
   onAnalyze,
+  meta,
+  periodo = 'hoje',
 }: {
   ranking: RaceRow[];
   cars: Record<string, CarChoice>;
   onSaveCar: (nome: string, car_id: string, color: string) => void;
   onAnalyze: (row: RaceRow, rank: number) => void;
+  // Meta = RECORDE individual de passos do período/time (linha de chegada).
+  meta?: number;
+  periodo?: 'hoje' | 'semana' | 'mes';
 }) {
   // Piloto sendo editado (nome) → abre o seletor de carro.
   const [picking, setPicking] = useState<RaceRow | null>(null);
 
-  // Progresso na pista ∝ passos, relativo ao líder. Sem passos: todos largam
-  // juntinhos na linha de largada. Faixa útil 2%..82% (deixa espaço p/ a 🏁).
+  // Líder do momento — fallback quando ainda não há recorde (meta 0), pra pista
+  // não ficar com todos empilhados na bandeira.
   const maxP = useMemo(
     () => Math.max(1, ...ranking.map(r => r.passos)),
     [ranking],
   );
+  // Linha de chegada = a META (recorde do período a bater). Sem recorde ainda
+  // (ex.: 1ª semana/mês) cai no líder atual. Progresso ∝ passos/chegada, travado
+  // na bandeira; quem iguala/supera o recorde ganha o troféu 🏆.
+  const hasMeta = typeof meta === 'number' && meta > 0;
+  const finish = hasMeta ? (meta as number) : maxP;
+  const scopeLabel = SCOPE_LABEL[periodo] ?? 'do dia';
 
   const carOf = (nome: string): CarChoice => {
     const chosen = cars[nameKey(nome)];
@@ -65,14 +83,23 @@ export default function WackyRaceTrack({
       {/* Faixa "largada → chegada" */}
       <div className="mb-2 flex items-center justify-between px-1 text-[10px] md:text-xs font-black uppercase tracking-widest text-white/40">
         <span>🚦 Largada</span>
-        <span className="text-amber-300">🏁 Chegada = mais passos</span>
+        {hasMeta ? (
+          <span className="text-amber-300">
+            🏁 Meta: recorde {scopeLabel} — <b className="tabular-nums">{finish}</b> passos
+          </span>
+        ) : (
+          <span className="text-amber-300">🏁 Chegada = líder (sem recorde ainda)</span>
+        )}
       </div>
 
       <div className="space-y-1.5 md:space-y-2">
         {ranking.map((r, i) => {
           const car = carOf(r.nome);
           const model = CAR_BY_ID[car.car_id] ?? CAR_MODELS[0];
-          const prog = 2 + (r.passos / maxP) * 78;
+          // Progresso ∝ passos/chegada, travado na bandeira (não passa dela).
+          const prog = 2 + Math.min(r.passos / finish, 1) * 78;
+          // Igualou/superou o recorde do período → bateu a meta.
+          const bateu = hasMeta && r.passos >= finish;
           const CarSvg = model.Car;
           return (
             <div
@@ -95,6 +122,9 @@ export default function WackyRaceTrack({
                   <span className="flex items-center gap-1 font-bold text-xs md:text-base truncate group-hover:text-amber-300 transition">
                     <span className="truncate">{r.nome}</span>
                     {r.home_office && <span title="Home office">🏠</span>}
+                    {bateu && (
+                      <span className="shrink-0 animate-pulse" title={`Bateu o recorde ${scopeLabel} (${finish} passos)!`}>🏆</span>
+                    )}
                   </span>
                   <span className="text-[10px] md:text-xs text-white/50">
                     <b className="text-sky-400">{r.passos}</b> passos ·{' '}
