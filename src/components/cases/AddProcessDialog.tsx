@@ -263,6 +263,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           .select('id, case_id')
           .eq('process_number', result.numero_cnj)
           .not('case_id', 'is', null)
+          .is('deleted_at', null)
           .maybeSingle();
 
         if (existing) {
@@ -476,6 +477,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           .select('id, case_id')
           .eq('process_number', manualForm.process_number)
           .not('case_id', 'is', null)
+          .is('deleted_at', null)
           .maybeSingle();
 
         if (existing) {
