@@ -83,8 +83,8 @@ function Sortable({
   children: (args: {
     setNodeRef: (el: HTMLElement | null) => void;
     style: CSSProperties;
-    attributes: Record<string, unknown>;
-    listeners: Record<string, unknown> | undefined;
+    attributes: any;
+    listeners: any;
     isDragging: boolean;
   }) => ReactNode;
 }) {
