@@ -121,57 +121,49 @@ export function useRaceSfx(): RaceSfx {
     g.gain.exponentialRampToValueAtTime(0.0008, t + a + d);
   };
 
-  // Zoada de aceleração — ultrapassagem comum entre membros.
+  // Ultrapassagem comum — chime ascendente suave (sensação de "subiu/venceu").
+  // Sem ruído áspero: não assusta nem incomoda no ambiente.
   const vroom = useCallback(() => {
     if (!enabledRef.current) return;
     const ctx = getCtx();
     if (!ctx || ctx.state !== 'running') return;
-    const t = ctx.currentTime;
+    const t0 = ctx.currentTime;
 
-    const out = ctx.createGain();
-    out.gain.setValueAtTime(0.0001, t);
-    out.gain.exponentialRampToValueAtTime(0.6, t + 0.06);
-    out.gain.exponentialRampToValueAtTime(0.28, t + 0.42);
-    out.gain.exponentialRampToValueAtTime(0.0008, t + 0.85);
-    out.connect(ctx.destination);
+    const master = ctx.createGain();
+    master.gain.value = 0.32; // volume ameno
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 4500; // tira o agudo áspero, som "quentinho"
+    master.connect(lp).connect(ctx.destination);
 
-    const filt = ctx.createBiquadFilter();
-    filt.type = 'lowpass';
-    filt.frequency.setValueAtTime(500, t);
-    filt.frequency.exponentialRampToValueAtTime(3200, t + 0.4);
-    filt.frequency.exponentialRampToValueAtTime(900, t + 0.82);
-    filt.Q.value = 7;
-    filt.connect(out);
-
-    for (const det of [-8, 8]) {
+    // Notinha tipo sininho: triângulo + um harmônico sine baixinho.
+    const nota = (freq: number, t: number, dur: number, pico: number) => {
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(pico, t + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+      g.connect(master);
       const o = ctx.createOscillator();
-      o.type = 'sawtooth';
-      o.detune.value = det;
-      o.frequency.setValueAtTime(85, t);
-      o.frequency.exponentialRampToValueAtTime(430, t + 0.4);
-      o.frequency.exponentialRampToValueAtTime(180, t + 0.82);
-      o.connect(filt);
+      o.type = 'triangle';
+      o.frequency.value = freq;
+      o.connect(g);
       o.start(t);
-      o.stop(t + 0.9);
-    }
+      o.stop(t + dur + 0.05);
+      const h = ctx.createOscillator();
+      h.type = 'sine';
+      h.frequency.value = freq * 2;
+      const hg = ctx.createGain();
+      hg.gain.value = 0.16;
+      h.connect(hg).connect(g);
+      h.start(t);
+      h.stop(t + dur + 0.05);
+    };
 
-    const len = Math.floor(ctx.sampleRate * 0.5);
-    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
-    const noise = ctx.createBufferSource();
-    noise.buffer = buf;
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.value = 0.9;
-    bp.frequency.setValueAtTime(1200, t);
-    bp.frequency.exponentialRampToValueAtTime(4200, t + 0.45);
-    const ng = ctx.createGain();
-    ng.gain.setValueAtTime(0.25, t);
-    ng.gain.exponentialRampToValueAtTime(0.0008, t + 0.5);
-    noise.connect(bp).connect(ng).connect(out);
-    noise.start(t);
-    noise.stop(t + 0.5);
+    // Arpejo maior ascendente E–G#–B e remate uma oitava acima (E6) = "vitória".
+    nota(659.25, t0 + 0.0, 0.26, 0.5); // E5
+    nota(830.61, t0 + 0.075, 0.26, 0.5); // G#5
+    nota(987.77, t0 + 0.15, 0.3, 0.5); // B5
+    nota(1318.51, t0 + 0.235, 0.5, 0.42); // E6 (remate sustentado)
   }, [getCtx]);
 
   // Fanfarra sintetizada — reserva do som de recorde quando não há arquivo.
