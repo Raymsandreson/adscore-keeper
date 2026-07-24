@@ -55,6 +55,7 @@ import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useContactRelationships } from '@/hooks/useContactRelationships';
 import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { detectStateFromName, detectCityFromBase } from '@/lib/parseLocationFromName';
 import { useCboProfessions } from '@/hooks/useCboProfessions';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -152,6 +153,11 @@ export function ContactDetailSheet({
   const [professionSearch, setProfessionSearch] = useState('');
   const [filteredProfessions, setFilteredProfessions] = useState<any[]>([]);
   const [whatsappGroupId, setWhatsappGroupId] = useState('');
+  // Sugestão de localização extraída do nome (ex: "Solange - Campos De Júlio/MT")
+  const [nameLocationSuggestion, setNameLocationSuggestion] = useState<
+    { sigla: string; nome: string; city: string | null } | null
+  >(null);
+  const [nameLocationDismissed, setNameLocationDismissed] = useState(false);
 
   // Hooks
   const { classifications: availableClassifications } = useContactClassifications();
@@ -206,6 +212,7 @@ export function ContactDetailSheet({
       setProfessionCboCode((contact as any).profession_cbo_code || '');
       setProfessionSearch((contact as any).profession || '');
       setWhatsappGroupId((contact as any).whatsapp_group_id || '');
+      setNameLocationDismissed(false);
       setIsEditing(true);
       
       // Fetch profile name for created_by
@@ -254,6 +261,53 @@ export function ContactDetailSheet({
       fetchCities(state);
     }
   }, [state, fetchCities]);
+
+  // Detecta cidade/estado escondidos no nome do contato (ex: "Solange - Campos De Júlio/MT").
+  // Só sugere quando a cidade está vazia; nunca sobrescreve em silêncio.
+  useEffect(() => {
+    if (!open || !isEditing || !fullName || city || nameLocationDismissed) {
+      setNameLocationSuggestion(null);
+      return;
+    }
+    const detected = detectStateFromName(fullName, states);
+    if (!detected) {
+      setNameLocationSuggestion(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const stateId = states.find((s) => s.sigla === detected.sigla)?.id;
+      let cityMatch: string | null = null;
+      if (stateId) {
+        try {
+          const resp = await fetch(
+            `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${stateId}/municipios?orderBy=nome`,
+          );
+          const municipios = await resp.json();
+          cityMatch = detectCityFromBase(detected.base, municipios);
+        } catch (e) {
+          console.error('Erro ao casar município do nome:', e);
+        }
+      }
+      if (cancelled) return;
+      // Só vale a pena sugerir se achamos a cidade, ou se o estado ainda está vazio.
+      if (cityMatch || !state) {
+        setNameLocationSuggestion({ sigla: detected.sigla, nome: detected.nome, city: cityMatch });
+      } else {
+        setNameLocationSuggestion(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isEditing, fullName, city, state, states, nameLocationDismissed]);
+
+  const applyNameLocationSuggestion = () => {
+    if (!nameLocationSuggestion) return;
+    if (nameLocationSuggestion.sigla) setState(nameLocationSuggestion.sigla);
+    if (nameLocationSuggestion.city) setCity(nameLocationSuggestion.city);
+    setNameLocationSuggestion(null);
+  };
 
   const handleCepChange = async (newCep: string) => {
     setCep(newCep);
@@ -1008,6 +1062,36 @@ export function ContactDetailSheet({
             <TabsContent value="location" className="space-y-4 mt-0">
               {isEditing ? (
                 <div className="space-y-4">
+                  {nameLocationSuggestion && (
+                    <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
+                      <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium">
+                          Localização detectada no nome
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {nameLocationSuggestion.city
+                            ? `${nameLocationSuggestion.city} / ${nameLocationSuggestion.sigla}`
+                            : nameLocationSuggestion.nome}
+                        </p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <Button size="sm" onClick={applyNameLocationSuggestion}>
+                            Preencher
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              setNameLocationSuggestion(null);
+                              setNameLocationDismissed(true);
+                            }}
+                          >
+                            Dispensar
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {!isFieldHidden('cep') && (
                   <div>
                     <Label className="flex items-center gap-1">
