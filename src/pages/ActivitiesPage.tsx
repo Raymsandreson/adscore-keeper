@@ -2181,25 +2181,30 @@ const ActivitiesPage = () => {
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
-    if (selectedCalDays.length > 0) {
-      list = list.filter(a => {
-        const raw = a.deadline || a.notification_date;
-        const dateKey = raw ? raw.slice(0, 10) : null;
-        return dateKey ? selectedCalDays.includes(dateKey) : false;
-      });
-    } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution) {
-      // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
-      // Exceção: com o filtro 'Atrasada' ativo, mostramos vencidas de qualquer mês.
-      // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
-      const monthPrefix = format(calendarMonth, 'yyyy-MM');
-      list = list.filter(a => {
-        const raw = a.deadline || a.notification_date;
-        const dateKey = raw ? raw.slice(0, 10) : null;
-        return !dateKey || dateKey.startsWith(monthPrefix);
-      });
+    const term = searchText.trim().toLowerCase();
+    // Recorte por dia/mês do calendário só se aplica SEM busca ativa. Com termo digitado,
+    // a busca pesquisa em todas as atividades carregadas (independente do dia selecionado
+    // ou do mês exibido) — senão "claude" no dia 24 só acha dentro do dia 24.
+    if (!term) {
+      if (selectedCalDays.length > 0) {
+        list = list.filter(a => {
+          const raw = a.deadline || a.notification_date;
+          const dateKey = raw ? raw.slice(0, 10) : null;
+          return dateKey ? selectedCalDays.includes(dateKey) : false;
+        });
+      } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution) {
+        // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
+        // Exceção: com o filtro 'Atrasada' ativo, mostramos vencidas de qualquer mês.
+        // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
+        const monthPrefix = format(calendarMonth, 'yyyy-MM');
+        list = list.filter(a => {
+          const raw = a.deadline || a.notification_date;
+          const dateKey = raw ? raw.slice(0, 10) : null;
+          return !dateKey || dateKey.startsWith(monthPrefix);
+        });
+      }
     }
     // Busca por texto: aplicada por último, sobre as atividades já filtradas.
-    const term = searchText.trim().toLowerCase();
     if (term) {
       // Match por número do caso: se o termo bater com algum case_number
       // (ex.: "342"), inclui as atividades vinculadas àqueles casos.
