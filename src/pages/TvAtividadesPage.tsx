@@ -2,13 +2,14 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2 } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
+import { useRaceMusic } from '@/hooks/useRaceMusic';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -108,6 +109,10 @@ export default function TvAtividadesPage() {
   const [raceMode, setRaceMode] = useState(params.get('corrida') !== '0');
   const [cars, setCars] = useState<Record<string, CarChoice>>({});
   const containerRef = useRef<HTMLDivElement | null>(null);
+  // Trilha do telão: play/pausa manual pra dar energia ao ambiente.
+  // Toca o arquivo configurado (public/telao-musica.mp3 ou ?musica=URL);
+  // se não houver, cai numa trilha sintetizada. Ver useRaceMusic.
+  const music = useRaceMusic();
 
   // Relógio do cabeçalho.
   useEffect(() => {
@@ -369,6 +374,35 @@ export default function TvAtividadesPage() {
             <Flag className="h-4 w-4" />
             {raceMode ? 'Ver pódio' : 'Modo Corrida'}
           </button>
+          {/* Música do telão: play/pausa + volume (aparece só tocando). */}
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={music.toggle}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full text-xs font-black px-3.5 py-1.5 transition',
+                music.playing ? 'bg-sky-400 text-slate-900 hover:bg-sky-300' : 'bg-white/10 text-white/70 hover:text-white',
+              )}
+              title={music.playing ? 'Pausar a trilha' : 'Tocar a trilha pra dar energia'}
+            >
+              {music.playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+              {music.playing ? 'Pausar' : 'Música'}
+            </button>
+            {music.playing && (
+              <div className="flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1.5">
+                <Volume2 className="h-4 w-4 text-white/60 shrink-0" />
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round(music.volume * 100)}
+                  onChange={e => music.setVolume(Number(e.target.value) / 100)}
+                  className="h-1 w-16 md:w-20 cursor-pointer accent-sky-400"
+                  title="Volume da trilha"
+                  aria-label="Volume da música"
+                />
+              </div>
+            )}
+          </div>
           <button
             onClick={() => setBroadcast(true)}
             disabled={ranking.length === 0}
