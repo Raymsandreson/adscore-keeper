@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -11,7 +11,7 @@ import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
-import { useRaceSfx, detectarUltrapassagens, type Ultrapassagem } from '@/hooks/useRaceSfx';
+import { useRaceSfx, detectarUltrapassagens, OVERTAKE_PRESETS, type Ultrapassagem } from '@/hooks/useRaceSfx';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -146,6 +146,8 @@ export default function TvAtividadesPage() {
   const recordTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [record, setRecord] = useState<RecordMark | null>(null);
   const [recordHit, setRecordHit] = useState<RecordMark | null>(null);
+  // Painel pra escolher e testar o som da ultrapassagem.
+  const [soundPanel, setSoundPanel] = useState(false);
 
   // Relógio do cabeçalho.
   useEffect(() => {
@@ -311,7 +313,7 @@ export default function TvAtividadesPage() {
   // Trocar de time/período reinicia a comparação (senão dispara ultrapassagem falsa).
   useEffect(() => { prevOrderRef.current = null; }, [teamId, period]);
 
-  const { vroom, recordSound, say } = sfx;
+  const { vroom, recordSound, say, preset, setPreset, preview } = sfx;
 
   // Recorde do período/time = SERVIDOR (data.meta), sempre filtrado pelo time
   // selecionado — nada de localStorage, então não vaza entre times. O selo mostra
@@ -430,6 +432,66 @@ export default function TvAtividadesPage() {
             <span className="text-base md:text-2xl font-black">
               {recordHit.holder} · <span className="tabular-nums">{recordHit.value}</span> passos
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* ===== Painel: escolher e testar o som da ultrapassagem ===== */}
+      {soundPanel && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setSoundPanel(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-lg font-black">Som da ultrapassagem</h3>
+              <button
+                onClick={() => setSoundPanel(false)}
+                className="rounded-full bg-white/10 px-2.5 py-1 text-sm font-black text-white/70 hover:text-white"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mb-4 text-xs text-white/50">
+              Toca quando alguém ultrapassa sem bater o recorde. Clique em <b className="text-white/70">Testar</b> pra ouvir e escolha o seu.
+            </p>
+            <div className="space-y-2">
+              {OVERTAKE_PRESETS.map(p => (
+                <div
+                  key={p.id}
+                  className={cn(
+                    'flex items-center gap-3 rounded-xl border p-3 transition',
+                    preset === p.id ? 'border-sky-400 bg-sky-400/10' : 'border-white/10 bg-white/[0.03]',
+                  )}
+                >
+                  <button onClick={() => setPreset(p.id)} className="min-w-0 flex-1 text-left">
+                    <div className="flex items-center gap-2 text-sm font-black">
+                      {preset === p.id ? (
+                        <Check className="h-4 w-4 shrink-0 text-sky-400" />
+                      ) : (
+                        <span className="h-4 w-4 shrink-0 rounded-full border border-white/25" />
+                      )}
+                      {p.nome}
+                    </div>
+                    <div className="ml-6 text-xs text-white/50">{p.desc}</div>
+                  </button>
+                  <button
+                    onClick={() => preview(p.id)}
+                    className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white/80 transition hover:bg-white/20"
+                  >
+                    <Play className="h-3.5 w-3.5" />
+                    Testar
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="mt-4 text-[11px] text-white/40">
+              O som do recorde (bater o topo de passos) é separado e usa o arquivo do Airton — este painel é só da ultrapassagem comum.
+            </p>
           </div>
         </div>
       )}
@@ -620,6 +682,14 @@ export default function TvAtividadesPage() {
           >
             {sfx.enabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
             Ultrapassagem
+          </button>
+          <button
+            onClick={() => setSoundPanel(true)}
+            className="flex items-center gap-1.5 rounded-full bg-white/10 text-white/70 hover:text-white text-xs font-black px-3.5 py-1.5 transition"
+            title="Escolher e testar o som da ultrapassagem"
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Sons
           </button>
           <button
             onClick={() => setBroadcast(true)}
