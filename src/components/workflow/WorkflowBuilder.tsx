@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type KeyboardEvent } from 'react';
+import { useState, useEffect, useRef, type KeyboardEvent, type CSSProperties, type ReactNode } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,50 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import {
+  DndContext,
+  closestCenter,
+  MouseSensor,
+  TouchSensor,
+  KeyboardSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+// Wrapper de drag-and-drop sortable com suporte a mouse E toque (celular).
+// Usa render-prop para não reestruturar o JSX aninhado existente: injeta
+// `setNodeRef`/`style` na raiz do item e `attributes`/`listeners` na alça (GripVertical).
+function Sortable({
+  id,
+  children,
+}: {
+  id: string;
+  children: (args: {
+    setNodeRef: (el: HTMLElement | null) => void;
+    style: CSSProperties;
+    attributes: Record<string, unknown>;
+    listeners: Record<string, unknown> | undefined;
+    isDragging: boolean;
+  }) => ReactNode;
+}) {
+  const { setNodeRef, transform, transition, attributes, listeners, isDragging } = useSortable({ id });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+    position: isDragging ? 'relative' : undefined,
+  };
+  return <>{children({ setNodeRef, style, attributes, listeners, isDragging })}</>;
+}
 
 interface WorkflowBuilderProps {
   open: boolean;
@@ -116,8 +160,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [answersDialog, setAnswersDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; answers: StepAnswerOption[] } | null>(null);
   const [newAnswerLabel, setNewAnswerLabel] = useState('');
   const [newDocItem, setNewDocItem] = useState('');
-  const [dragItem, setDragItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
-  const [dragOverItem, setDragOverItem] = useState<{ type: 'phase' | 'objective' | 'step'; phaseIdx: number; objIdx?: number; stepIdx?: number } | null>(null);
+  // Sensores de drag-and-drop: MouseSensor p/ desktop (só arrasta após mover 6px,
+  // pra não conflitar com clique nos botões da alça) e TouchSensor p/ celular
+  // (segurar ~200ms na alça inicia o arraste; toque curto continua rolando a lista).
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
   const [aiPrompt, setAiPrompt] = useState('');
   const [generating, setGenerating] = useState(false);
   const [showAiDialog, setShowAiDialog] = useState(false);
@@ -527,51 +577,49 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       ),
     });
   };
-  const handleDragStart = (type: 'phase' | 'objective' | 'step', phaseIdx: number, objIdx?: number, stepIdx?: number) => {
-    setDragItem({ type, phaseIdx, objIdx, stepIdx });
+  // Reordenar fases (nível 1) — id sortable = stageId.
+  const handlePhaseDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setPhases(prev => {
+      const oldIndex = prev.findIndex(p => p.stageId === active.id);
+      const newIndex = prev.findIndex(p => p.stageId === over.id);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
   };
 
-  const handleDragOver = (e: React.DragEvent, type: 'phase' | 'objective' | 'step', phaseIdx: number, objIdx?: number, stepIdx?: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragOverItem({ type, phaseIdx, objIdx, stepIdx });
+  // Reordenar objetivos dentro de uma fase (nível 2) — id sortable = índice do objetivo.
+  const handleObjectiveDragEnd = (phaseIdx: number, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = Number(active.id);
+    const newIndex = Number(over.id);
+    if (Number.isNaN(oldIndex) || Number.isNaN(newIndex)) return;
+    setPhases(prev => prev.map((p, pi) =>
+      pi === phaseIdx
+        ? { ...p, objectives: arrayMove(p.objectives, oldIndex, newIndex) }
+        : p
+    ));
   };
 
-  const handleDragEnd = () => {
-    if (!dragItem || !dragOverItem) {
-      setDragItem(null);
-      setDragOverItem(null);
-      return;
-    }
-
-    if (dragItem.type === 'phase' && dragOverItem.type === 'phase' && dragItem.phaseIdx !== dragOverItem.phaseIdx) {
-      setPhases(prev => {
-        const next = [...prev];
-        const [moved] = next.splice(dragItem.phaseIdx, 1);
-        next.splice(dragOverItem.phaseIdx, 0, moved);
-        return next;
-      });
-    } else if (dragItem.type === 'objective' && dragOverItem.type === 'objective' && dragItem.objIdx !== undefined && dragOverItem.objIdx !== undefined) {
-      setPhases(prev => {
-        const next = prev.map(p => ({ ...p, objectives: [...p.objectives] }));
-        const [moved] = next[dragItem.phaseIdx].objectives.splice(dragItem.objIdx!, 1);
-        next[dragOverItem.phaseIdx].objectives.splice(dragOverItem.objIdx!, 0, moved);
-        return next;
-      });
-    } else if (dragItem.type === 'step' && dragOverItem.type === 'step' && dragItem.stepIdx !== undefined && dragOverItem.stepIdx !== undefined && dragItem.objIdx !== undefined && dragOverItem.objIdx !== undefined) {
-      setPhases(prev => {
-        const next = prev.map(p => ({
-          ...p,
-          objectives: p.objectives.map(o => ({ ...o, items: [...o.items] })),
-        }));
-        const [moved] = next[dragItem.phaseIdx].objectives[dragItem.objIdx!].items.splice(dragItem.stepIdx!, 1);
-        next[dragOverItem.phaseIdx].objectives[dragOverItem.objIdx!].items.splice(dragOverItem.stepIdx!, 0, moved);
-        return next;
-      });
-    }
-
-    setDragItem(null);
-    setDragOverItem(null);
+  // Reordenar passos dentro de um objetivo (nível 3) — id sortable = step.id.
+  const handleStepDragEnd = (phaseIdx: number, objIdx: number, event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setPhases(prev => prev.map((p, pi) => {
+      if (pi !== phaseIdx) return p;
+      return {
+        ...p,
+        objectives: p.objectives.map((o, oi) => {
+          if (oi !== objIdx) return o;
+          const oldIndex = o.items.findIndex(s => s.id === active.id);
+          const newIndex = o.items.findIndex(s => s.id === over.id);
+          if (oldIndex < 0 || newIndex < 0) return o;
+          return { ...o, items: arrayMove(o.items, oldIndex, newIndex) };
+        }),
+      };
+    }));
   };
 
   // ─────────── Autosave (debounce) ───────────
@@ -912,22 +960,22 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
+                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
+                <SortableContext items={phases.map(p => p.stageId)} strategy={verticalListSortingStrategy}>
                 {phases.map((phase, phaseIdx) => (
+                   <Sortable key={phase.stageId} id={phase.stageId}>
+                   {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                    <div
-                     key={phase.stageId}
+                     ref={setNodeRef}
+                     style={style}
                      className={cn(
                        "border rounded-lg overflow-hidden transition-all",
-                       dragOverItem?.type === 'phase' && dragOverItem.phaseIdx === phaseIdx && "border-t-2 border-t-blue-400",
-                       dragItem?.type === 'phase' && dragItem.phaseIdx === phaseIdx && "opacity-50",
+                       isDragging && "opacity-50 shadow-lg",
                      )}
-                     draggable
-                     onDragStart={(e) => { e.stopPropagation(); handleDragStart('phase', phaseIdx); }}
-                     onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'phase', phaseIdx); }}
-                     onDragEnd={handleDragEnd}
                    >
                      {/* Phase header */}
                      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30 border-l-4 border-muted-foreground/30">
-                       <GripVertical className="h-4 w-4 text-muted-foreground/50 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+                       <GripVertical {...attributes} {...listeners} className="h-4 w-4 text-muted-foreground/50 flex-shrink-0 cursor-grab active:cursor-grabbing touch-none" />
                         <Collapsible open={phase.isExpanded} onOpenChange={() => togglePhase(phaseIdx)} className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 w-full min-w-0">
                             <CollapsibleTrigger asChild>
@@ -972,21 +1020,22 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                           <p className="text-xs text-muted-foreground italic px-4 py-3">Nenhum objetivo adicionado</p>
                         )}
 
+                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleObjectiveDragEnd(phaseIdx, e)}>
+                        <SortableContext items={phase.objectives.map((_, i) => String(i))} strategy={verticalListSortingStrategy}>
                         {phase.objectives.map((obj, objIdx) => (
+                           <Sortable key={objIdx} id={String(objIdx)}>
+                           {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                            <div
-                             key={objIdx}
+                             ref={setNodeRef}
+                             style={style}
                              className={cn(
                                "border-t first:border-t-0 transition-all",
-                               dragOverItem?.type === 'objective' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && "border-t-2 border-t-blue-400"
+                               isDragging && "opacity-50 shadow-lg",
                              )}
-                             draggable
-                             onDragStart={(e) => { e.stopPropagation(); handleDragStart('objective', phaseIdx, objIdx); }}
-                             onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'objective', phaseIdx, objIdx); }}
-                             onDragEnd={(e) => { e.stopPropagation(); handleDragEnd(); }}
                            >
                              {/* Objective header */}
                              <div className="flex items-center gap-2 px-4 py-2 ml-4 border-l-2 border-blue-400/40">
-                                <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
+                                <GripVertical {...attributes} {...listeners} className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0 touch-none" />
                                  <Collapsible open={obj.isExpanded} onOpenChange={() => toggleObjective(phaseIdx, objIdx)} className="flex-1 min-w-0">
                                    <div className="flex items-center gap-2 w-full min-w-0">
                                      <CollapsibleTrigger asChild>
@@ -1050,21 +1099,22 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                     {obj.items.length === 0 ? (
                                       <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
                                     ) : (
-                                      obj.items.map((step, stepIdx) => (
+                                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleStepDragEnd(phaseIdx, objIdx, e)}>
+                                      <SortableContext items={obj.items.map(s => s.id)} strategy={verticalListSortingStrategy}>
+                                      {obj.items.map((step, stepIdx) => (
+                                        <Sortable key={step.id} id={step.id}>
+                                        {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                                         <div
-                                          key={step.id}
+                                          ref={setNodeRef}
+                                          style={style}
                                           className={cn(
                                             "border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2 transition-all",
-                                            dragOverItem?.type === 'step' && dragOverItem.phaseIdx === phaseIdx && dragOverItem.objIdx === objIdx && dragOverItem.stepIdx === stepIdx && "ring-2 ring-green-400"
+                                            isDragging && "opacity-50 shadow-lg",
                                           )}
-                                          draggable
-                                          onDragStart={(e) => { e.stopPropagation(); handleDragStart('step', phaseIdx, objIdx, stepIdx); }}
-                                          onDragOver={(e) => { e.stopPropagation(); handleDragOver(e, 'step', phaseIdx, objIdx, stepIdx); }}
-                                          onDragEnd={handleDragEnd}
                                         >
                                           {/* Step header: number + delete */}
                                           <div className="flex items-center gap-2">
-                                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0" />
+                                            <GripVertical {...attributes} {...listeners} className="h-3.5 w-3.5 text-muted-foreground/40 cursor-grab flex-shrink-0 touch-none" />
                                             <span className="flex-shrink-0 h-5 w-5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-[10px] font-bold flex items-center justify-center">
                                               {stepIdx + 1}
                                             </span>
@@ -1225,7 +1275,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             )}
                                           </div>
                                         </div>
-                                      ))
+                                        )}
+                                        </Sortable>
+                                      ))}
+                                      </SortableContext>
+                                      </DndContext>
                                     )}
                                   </div>
                                 </div>
@@ -1235,11 +1289,19 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                               </div>
                             )}
                           </div>
+                             )}
+                           </Sortable>
                         ))}
+                        </SortableContext>
+                        </DndContext>
                       </div>
                     )}
                   </div>
+                   )}
+                   </Sortable>
                 ))}
+                </SortableContext>
+                </DndContext>
 
                 {/* Add phase */}
                 <div className="flex gap-2">
