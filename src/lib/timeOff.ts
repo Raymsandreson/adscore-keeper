@@ -65,3 +65,30 @@ export async function getTimeOffConflicts(
     return [];
   }
 }
+
+/**
+ * Todas as ausências que cobrem a data informada, de QUALQUER pessoa (sem
+ * filtro de user_id) — usado pelo telão pra tirar da corrida quem está de
+ * folga/férias no dia e jogar pro "pit stop". Casamento posterior é por nome
+ * (user_name), já que o ranking do telão não carrega Cloud UUID.
+ * Em erro de rede, retorna [] pra não travar o telão.
+ */
+export async function getTimeOffForDate(
+  date: string | null | undefined,
+): Promise<TimeOffEntry[]> {
+  const day = (date || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return [];
+  try {
+    await ensureExternalSession();
+    const { data, error } = await (externalSupabase as any)
+      .from('member_time_off')
+      .select('*')
+      .lte('start_date', day)
+      .gte('end_date', day);
+    if (error) throw error;
+    return (data || []) as TimeOffEntry[];
+  } catch (e) {
+    console.warn('[timeOff] Falha ao carregar ausências do dia (seguindo sem pit stop):', e);
+    return [];
+  }
+}

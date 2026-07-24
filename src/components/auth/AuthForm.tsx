@@ -59,6 +59,10 @@ export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotLoading, setForgotLoading] = useState(false);
+  // Cadastro por convite (gated): só libera criar senha se houver convite pendente.
+  const [showInviteSignup, setShowInviteSignup] = useState(false);
+  const [inviteStep, setInviteStep] = useState<'email' | 'password'>('email');
+  const [inviteChecking, setInviteChecking] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   const [showSignupConfirm, setShowSignupConfirm] = useState(false);
@@ -115,6 +119,56 @@ export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
     } catch (error: any) {
       toast.error('Erro ao enviar email', { description: error.message });
     } finally { setForgotLoading(false); }
+  };
+
+  const closeInviteSignup = () => {
+    setShowInviteSignup(false);
+    setInviteStep('email');
+    setSignupName(''); setSignupPassword(''); setSignupConfirmPassword('');
+  };
+
+  const handleCheckInvite = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = signupEmail.trim().toLowerCase();
+    if (!email) { toast.error('Informe seu email'); return; }
+    setInviteChecking(true);
+    try {
+      const { data, error } = await supabase.rpc(
+        'check_pending_invitation' as any,
+        { p_email: email } as any,
+      );
+      if (error) throw error;
+      if (data === true) {
+        setInviteStep('password');
+      } else {
+        toast.error('Nenhum convite pendente', {
+          description: 'Não encontramos um convite ativo para este email. Fale com o administrador da equipe.',
+        });
+      }
+    } catch (error: any) {
+      toast.error('Erro ao verificar convite', { description: error.message });
+    } finally { setInviteChecking(false); }
+  };
+
+  const handleInviteSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signupName.trim()) { toast.error('Informe seu nome'); return; }
+    if (signupPassword !== signupConfirmPassword) { toast.error('As senhas não coincidem'); return; }
+    if (signupPassword.length < 6) { toast.error('A senha deve ter pelo menos 6 caracteres'); return; }
+    setIsLoading(true);
+    const { error } = await supabase.auth.signUp({
+      email: signupEmail.trim().toLowerCase(),
+      password: signupPassword,
+      options: { emailRedirectTo: window.location.origin, data: { full_name: signupName.trim() } },
+    });
+    if (error) {
+      toast.error('Erro ao criar conta', { description: error.message });
+    } else {
+      toast.success('Conta criada com sucesso!', { description: 'Você já pode fazer login.' });
+      setLoginEmail(signupEmail.trim().toLowerCase());
+      closeInviteSignup();
+    }
+    setIsLoading(false);
   };
 
   return (
@@ -181,6 +235,65 @@ export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
                   Voltar ao login
                 </Button>
               </form>
+            </div>
+          ) : showInviteSignup ? (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-2xl font-bold text-foreground">Criar sua conta</h2>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {inviteStep === 'email'
+                    ? 'Informe o email que recebeu o convite da equipe.'
+                    : 'Convite confirmado. Defina seu nome e senha para acessar.'}
+                </p>
+              </div>
+              {inviteStep === 'email' ? (
+                <form onSubmit={handleCheckInvite} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-email">Email do convite</Label>
+                    <Input id="invite-email" type="email" placeholder="seu@email.com" value={signupEmail}
+                      onChange={(e) => setSignupEmail(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <Button type="submit" className="w-full h-12 rounded-xl text-base font-semibold" disabled={inviteChecking}>
+                    {inviteChecking && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+                    Continuar
+                  </Button>
+                  <Button type="button" variant="ghost" className="w-full" onClick={closeInviteSignup}>
+                    Voltar ao login
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleInviteSignup} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-name">Nome Completo</Label>
+                    <Input id="invite-name" type="text" placeholder="Seu nome" value={signupName}
+                      onChange={(e) => setSignupName(e.target.value)} required className="h-12 rounded-xl" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-email-ro">Email</Label>
+                    <Input id="invite-email-ro" type="email" value={signupEmail} disabled readOnly
+                      className="h-12 rounded-xl bg-muted/50 text-muted-foreground" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-password">Senha</Label>
+                    <PasswordInput id="invite-password" value={signupPassword}
+                      onChange={(e) => setSignupPassword(e.target.value)} show={showSignupPassword}
+                      onToggle={() => setShowSignupPassword(!showSignupPassword)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="invite-confirm">Confirmar Senha</Label>
+                    <PasswordInput id="invite-confirm" value={signupConfirmPassword}
+                      onChange={(e) => setSignupConfirmPassword(e.target.value)} show={showSignupConfirm}
+                      onToggle={() => setShowSignupConfirm(!showSignupConfirm)} />
+                  </div>
+                  <Button type="submit" className="w-full h-12 rounded-xl text-base font-semibold" disabled={isLoading}>
+                    {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
+                    Criar Conta
+                  </Button>
+                  <Button type="button" variant="ghost" className="w-full" onClick={closeInviteSignup}>
+                    Voltar ao login
+                  </Button>
+                </form>
+              )}
             </div>
           ) : (
             <div className="space-y-6">
@@ -255,6 +368,15 @@ export const AuthForm = ({ loginOnly = false }: { loginOnly?: boolean }) => {
                     {isLoading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <LogIn className="h-4 w-4 mr-2" />}
                     Entrar
                   </Button>
+                  {!loginOnly && (
+                    <p className="text-center text-sm text-muted-foreground">
+                      Recebeu um convite da equipe?{' '}
+                      <button type="button" onClick={() => setShowInviteSignup(true)}
+                        className="text-primary hover:underline font-medium">
+                        Criar minha conta
+                      </button>
+                    </p>
+                  )}
                 </form>
               ) : (
                 <form onSubmit={handleSignup} className="space-y-4">

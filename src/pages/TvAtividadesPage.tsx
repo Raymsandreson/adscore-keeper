@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
+import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
 import { useRaceSfx, detectarUltrapassagens, type Ultrapassagem } from '@/hooks/useRaceSfx';
 
@@ -37,9 +38,13 @@ interface Resumo {
   ocioso_h: number;
   aproveitamento_pct: number | null;
 }
+// Recorde individual de passos do período/time — vem do servidor (RPC), já
+// filtrado pelo time selecionado. { passos, nome } = valor + quem detém.
+interface MetaRecorde { passos: number; nome: string | null; }
 interface Payload {
   ranking: RankRow[];
   resumo: Resumo | null;
+  meta?: MetaRecorde | null;
   gerado_em: string;
 }
 
@@ -92,32 +97,10 @@ function tempoLabel(s: number | null | undefined) {
   return s ? chatRespLabel(s) : '—';
 }
 
-// ---- Recorde de passos do período ----
+// ---- Recorde de passos do período (selo + comemoração) ----
+// value = passos, holder = quem detém. Fonte = servidor (data.meta), filtrado
+// por time — sem localStorage, então não vaza recorde de um time pro outro.
 interface RecordMark { value: number; holder: string; }
-// Chave por período + time + data-base: 'hoje' usa a data do dia, 'semana' a
-// segunda-feira, 'mes' o dia 1 — então o recorde reseta sozinho ao virar, e
-// cada filtro de time tem o seu (evita recorde falso ao trocar de time).
-function recordBucketKey(period: Period, teamId: string, since: Date): string {
-  return `${period}:${teamId}:${since.toISOString().slice(0, 10)}`;
-}
-function loadRecord(bucket: string): RecordMark | null {
-  try {
-    const raw = window.localStorage.getItem(`telao_record:${bucket}`);
-    if (!raw) return null;
-    const p = JSON.parse(raw);
-    if (typeof p?.value === 'number' && typeof p?.holder === 'string') return p as RecordMark;
-  } catch {
-    /* ignora */
-  }
-  return null;
-}
-function saveRecord(bucket: string, mark: RecordMark) {
-  try {
-    window.localStorage.setItem(`telao_record:${bucket}`, JSON.stringify(mark));
-  } catch {
-    /* ignora */
-  }
-}
 
 export default function TvAtividadesPage() {
   const [params, setSearchParams] = useSearchParams();
@@ -140,6 +123,9 @@ export default function TvAtividadesPage() {
   // É a visualização PADRÃO; só `?corrida=0` cai no pódio clássico.
   const [raceMode, setRaceMode] = useState(params.get('corrida') !== '0');
   const [cars, setCars] = useState<Record<string, CarChoice>>({});
+  // Ausências que cobrem HOJE (member_time_off): quem está de folga/férias sai
+  // da corrida e vai pro "pit stop". Casamento com o ranking é por nome.
+  const [timeOffToday, setTimeOffToday] = useState<TimeOffEntry[]>([]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Trilha do telão: play/pausa manual pra dar energia ao ambiente.
   // Toca o arquivo configurado (public/telao-musica.mp3 ou ?musica=URL);
@@ -151,8 +137,9 @@ export default function TvAtividadesPage() {
   const lastSfxRef = useRef(0);
   const overtakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [overtakes, setOvertakes] = useState<Ultrapassagem[]>([]);
-  // Recorde de passos do período: bate o topo → som especial (arquivo do Airton).
-  // Guardado por período no localStorage (reseta sozinho ao virar dia/semana/mês).
+  // Recorde do período (vem do servidor): topo ao vivo o supera → som especial
+  // (arquivo do Airton). recordBucketRef guarda o último recorde já comemorado
+  // (chave time+período+valor) pra não repetir o som a cada refresh.
   const recordRef = useRef<RecordMark | null>(null);
   const recordBucketRef = useRef<string>('');
   const lastRecordRef = useRef(0);
@@ -216,6 +203,8 @@ export default function TvAtividadesPage() {
         p_since: periodSince(period).toISOString(),
         p_team_id: teamId && teamId !== GRUPO_GERENCIAL ? teamId : null,
         p_grupo: teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null,
+        // Granularidade do recorde (linha de chegada): dia/semana/mês.
+        p_granularidade: period === 'hoje' ? 'dia' : period,
       });
       if (error) throw error;
       setData((res || { ranking: [], resumo: null, gerado_em: '' }) as Payload);
@@ -253,6 +242,20 @@ export default function TvAtividadesPage() {
   }, []);
   useEffect(() => { if (raceMode) loadCars(); }, [raceMode, loadCars]);
 
+  // Ausências de hoje pro pit stop. Só faz sentido no período "Hoje" (folga/
+  // férias é do dia); em Semana/Mês a pessoa trabalhou os outros dias. Segue o
+  // mesmo intervalo de refresh do telão.
+  const loadTimeOff = useCallback(async () => {
+    if (period !== 'hoje') { setTimeOffToday([]); return; }
+    const rows = await getTimeOffForDate(format(new Date(), 'yyyy-MM-dd'));
+    setTimeOffToday(rows);
+  }, [period]);
+  useEffect(() => { loadTimeOff(); }, [loadTimeOff]);
+  useEffect(() => {
+    const id = setInterval(loadTimeOff, REFRESH_MS);
+    return () => clearInterval(id);
+  }, [loadTimeOff]);
+
   // Salva a escolha (upsert por nome_key) + atualização otimista no telão.
   const saveCar = useCallback(async (nome: string, car_id: string, color: string) => {
     const key = nameKey(nome);
@@ -279,7 +282,28 @@ export default function TvAtividadesPage() {
     });
   }, [params, setSearchParams]);
 
-  const ranking = data?.ranking ?? [];
+  const rawRanking = data?.ranking ?? [];
+  // Quem está de folga/férias hoje → mapa por nome (fonte member_time_off).
+  const offByKey = useMemo(() => {
+    const m = new Map<string, TimeOffEntry>();
+    for (const e of timeOffToday) {
+      if (e.user_name) m.set(nameKey(e.user_name), e);
+    }
+    return m;
+  }, [timeOffToday]);
+  // Ranking exibível: tira os ausentes (só no período "Hoje"). Todos os efeitos
+  // (pódio, corrida, recorde, ultrapassagem) já leem `ranking`, então some de tudo.
+  const ranking = useMemo(
+    () => offByKey.size ? rawRanking.filter(r => !offByKey.has(nameKey(r.nome))) : rawRanking,
+    [rawRanking, offByKey],
+  );
+  // Pit stop: os que saíram do ranking + o motivo da ausência.
+  const pit = useMemo(
+    () => rawRanking
+      .filter(r => offByKey.has(nameKey(r.nome)))
+      .map(r => ({ nome: r.nome, entry: offByKey.get(nameKey(r.nome))! })),
+    [rawRanking, offByKey],
+  );
   const podium = useMemo(() => ranking.slice(0, 3), [ranking]);
   const list = useMemo(() => ranking.slice(3, 3 + LIST_MAX), [ranking]);
   const resumo = data?.resumo ?? null;
@@ -288,60 +312,43 @@ export default function TvAtividadesPage() {
   useEffect(() => { prevOrderRef.current = null; }, [teamId, period]);
 
   const { vroom, recordSound, say } = sfx;
-  // Balde do recorde: por período + time + data-base (reseta ao virar).
-  const recordBucket = useMemo(
-    () => recordBucketKey(period, teamId || 'all', periodSince(period)),
-    [period, teamId],
-  );
 
-  // RECORDE de passos do período: bate o topo → som especial (arquivo do Airton)
-  // + narração + banner. Roda antes do efeito de ultrapassagem pra suprimir a
-  // zoada comum quando o evento é recorde.
+  // Recorde do período/time = SERVIDOR (data.meta), sempre filtrado pelo time
+  // selecionado — nada de localStorage, então não vaza entre times. O selo mostra
+  // o recorde histórico a bater; ao vivo, se o topo do ranking o superar, comemora
+  // (som do Airton) UMA vez por (time+período+valor) e o selo passa a exibir o novo.
   useEffect(() => {
-    if (!ranking.length) return;
-    // Topo por passos (ranking já vem ordenado; reduce garante).
-    const top = ranking.reduce((a, b) => (b.passos > a.passos ? b : a), ranking[0]);
-    const mark: RecordMark = { value: top.passos, holder: top.nome };
+    const recValue = data?.meta?.passos ?? 0;
+    const recHolder = data?.meta?.nome ?? '';
 
-    // Novo período/time/dia (ou 1ª carga): (re)inicializa do salvo, sem som.
-    if (recordBucketRef.current !== recordBucket) {
-      recordBucketRef.current = recordBucket;
-      const stored = loadRecord(recordBucket);
-      const seed = stored && stored.value >= mark.value ? stored : mark;
-      recordRef.current = seed;
-      setRecord(seed);
-      saveRecord(recordBucket, seed);
-      return;
-    }
+    const top = ranking.length
+      ? ranking.reduce((a, b) => (b.passos > a.passos ? b : a), ranking[0])
+      : null;
+    const beat = !!top && top.passos > recValue && top.passos > 0;
 
-    const cur = recordRef.current;
-    if (!cur) {
-      recordRef.current = mark;
-      setRecord(mark);
-      saveRecord(recordBucket, mark);
-      return;
+    // Selo: recorde ao vivo (se superado) ou o histórico do servidor.
+    const shown: RecordMark | null = beat
+      ? { value: top!.passos, holder: top!.nome }
+      : (recValue > 0 ? { value: recValue, holder: recHolder } : null);
+    setRecord(shown);
+    recordRef.current = shown;
+    if (!beat) return;
+
+    // Comemora uma vez por recorde novo (evita repetir a cada refresh de 45s).
+    const key = `${period}:${teamId || 'all'}:${periodSince(period).toISOString().slice(0, 10)}:${top!.passos}`;
+    if (recordBucketRef.current === key) return;
+    recordBucketRef.current = key;
+    const now = Date.now();
+    if (now - lastRecordRef.current >= 2000) {
+      lastRecordRef.current = now;
+      lastSfxRef.current = now; // suprime a zoada normal desta rodada
+      recordSound();
+      say(`Novo recorde! ${shortName(top!.nome)}, ${top!.passos} passos!`);
+      setRecordHit({ value: top!.passos, holder: top!.nome });
+      if (recordTimer.current) clearTimeout(recordTimer.current);
+      recordTimer.current = setTimeout(() => setRecordHit(null), 8000);
     }
-    if (mark.value > cur.value) {
-      // RECORDE BATIDO
-      recordRef.current = mark;
-      setRecord(mark);
-      saveRecord(recordBucket, mark);
-      const now = Date.now();
-      if (now - lastRecordRef.current >= 2000) {
-        lastRecordRef.current = now;
-        lastSfxRef.current = now; // suprime a zoada normal desta rodada
-        recordSound();
-        say(`Novo recorde! ${shortName(mark.holder)}, ${mark.value} passos!`);
-        setRecordHit(mark);
-        if (recordTimer.current) clearTimeout(recordTimer.current);
-        recordTimer.current = setTimeout(() => setRecordHit(null), 8000);
-      }
-    } else if (mark.value === cur.value && mark.holder !== cur.holder) {
-      // Empate no topo por desempate: atualiza quem exibe, sem tocar som.
-      recordRef.current = mark;
-      setRecord(mark);
-    }
-  }, [ranking, recordBucket, recordSound, say]);
+  }, [data?.meta, ranking, period, teamId, recordSound, say]);
 
   // Detecta ultrapassagens comuns → zoada + narração + banner (some sozinho).
   useEffect(() => {
@@ -606,7 +613,7 @@ export default function TvAtividadesPage() {
           </button>
         </div>
 
-        {ranking.length === 0 ? (
+        {ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
           </div>
@@ -618,7 +625,12 @@ export default function TvAtividadesPage() {
               cars={cars}
               onSaveCar={saveCar}
               onAnalyze={(row, rank) => setCoach({ row, rank })}
+              meta={data?.meta?.passos}
+              periodo={period}
             />
+
+            {/* ===== Pit stop (de folga hoje) ===== */}
+            <PitStop pit={pit} />
 
             {/* ===== Rodapé ===== */}
             <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
@@ -634,6 +646,9 @@ export default function TvAtividadesPage() {
                 <ListRow key={r.nome} rank={i + 4} row={r} onSelect={() => setCoach({ row: r, rank: i + 4 })} />
               ))}
             </div>
+
+            {/* ===== Pit stop (de folga hoje) ===== */}
+            <PitStop pit={pit} />
 
             {/* ===== Rodapé ===== */}
             <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
@@ -799,6 +814,46 @@ function PodiumStat({ text, label, color }: { text: string | number; label: stri
       <span className={cn('text-base md:text-xl font-black tabular-nums', color)}>{text}</span>
       <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
     </span>
+  );
+}
+
+/* ---------- Pit stop (de folga hoje) ---------- */
+// Quem está de folga/férias/compensação hoje sai da corrida e descansa no box.
+// Emoji por tipo de ausência (mesma leitura da aba Férias).
+const TIME_OFF_EMOJI: Record<string, string> = {
+  ferias: '🌴',
+  compensacao: '⏱️',
+  folga: '☕',
+};
+function PitStop({ pit }: { pit: { nome: string; entry: TimeOffEntry }[] }) {
+  if (pit.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.04] p-3 md:p-4">
+      <div className="mb-2 flex items-center gap-2 px-1 text-[10px] md:text-xs font-black uppercase tracking-widest text-white/50">
+        <span>🅿️ Pit stop</span>
+        <span className="text-white/30">·</span>
+        <span className="text-amber-300">de folga hoje ({pit.length})</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {pit.map(({ nome, entry }) => (
+          <div
+            key={nome}
+            className="flex items-center gap-2 rounded-full bg-slate-950/50 border border-white/5 pl-1 pr-3 py-1"
+            title={entry.note || undefined}
+          >
+            <span className={cn('h-7 w-7 md:h-8 md:w-8 shrink-0 rounded-full flex items-center justify-center text-[10px] md:text-xs font-black opacity-80', colorFor(nome))}>
+              {initials(nome)}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-xs md:text-sm font-bold text-white/80">{nome}</span>
+              <span className="block text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/45">
+                {TIME_OFF_EMOJI[entry.type] ?? '💤'} {TIME_OFF_TYPE_LABELS[entry.type] ?? entry.type}
+              </span>
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

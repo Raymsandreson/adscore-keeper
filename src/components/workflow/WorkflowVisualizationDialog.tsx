@@ -15,6 +15,7 @@ import {
   ZoomIn,
   ZoomOut,
   Maximize,
+  Minimize,
   Loader2,
   Pencil,
   MousePointerClick,
@@ -55,6 +56,10 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
   const [expandedChecklists, setExpandedChecklists] = useState<Set<string>>(new Set());
   const [editMode, setEditMode] = useState(false);
   const [selected, setSelected] = useState<WorkflowNodeRef | null>(null);
+
+  // Tela cheia real (Fullscreen API) sobre o próprio conteúdo do dialog.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // "Mãozinha": arrastar o canvas para movê-lo (fluxograma e mapa mental).
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -106,6 +111,7 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
       setExpandedChecklists(new Set());
       setZoom(1);
       setView('flowchart');
+      if (document.fullscreenElement) document.exitFullscreen?.();
     }
   }, [open, board?.id]);
 
@@ -117,6 +123,24 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
   const zoomIn = useCallback(() => setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(2))), []);
   const zoomOut = useCallback(() => setZoom(z => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(2))), []);
   const zoomReset = useCallback(() => setZoom(1), []);
+
+  // Entra/sai de tela cheia usando o elemento do dialog (mesmo padrão do telão).
+  const toggleFullscreen = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    if (!document.fullscreenElement) {
+      el.requestFullscreen?.()?.catch(() => {});
+    } else {
+      document.exitFullscreen?.();
+    }
+  }, []);
+
+  // Sincroniza o estado com o browser (cobre saída via tecla Esc).
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(document.fullscreenElement === contentRef.current);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
 
   const toggleChecklist = useCallback((stepId: string) => {
     setExpandedChecklists(prev => {
@@ -138,7 +162,14 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent
+        ref={contentRef}
+        className={cn(
+          'max-w-[95vw] w-[95vw] h-[90vh] flex flex-col p-0 gap-0',
+          isFullscreen &&
+            '!max-w-none !w-screen !h-screen !left-0 !top-0 !translate-x-0 !translate-y-0 !rounded-none',
+        )}
+      >
         <DialogHeader className="px-5 py-3 border-b">
           <DialogTitle className="flex items-center gap-2 text-base">
             <GitBranch className="h-4 w-4 text-primary" />
@@ -184,14 +215,25 @@ export function WorkflowVisualizationDialog({ board, open, onOpenChange, onEdit 
                   <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomOut} title="Diminuir zoom">
                     <ZoomOut className="h-3.5 w-3.5" />
                   </Button>
-                  <span className="text-[11px] text-muted-foreground w-10 text-center tabular-nums">
+                  <button
+                    type="button"
+                    onClick={zoomReset}
+                    title="Voltar o zoom para 100%"
+                    className="text-[11px] text-muted-foreground w-10 text-center tabular-nums hover:text-foreground transition-colors"
+                  >
                     {Math.round(zoom * 100)}%
-                  </span>
+                  </button>
                   <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomIn} title="Aumentar zoom">
                     <ZoomIn className="h-3.5 w-3.5" />
                   </Button>
-                  <Button variant="outline" size="icon" className="h-7 w-7" onClick={zoomReset} title="Zoom 100%">
-                    <Maximize className="h-3.5 w-3.5" />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={toggleFullscreen}
+                    title={isFullscreen ? 'Sair da tela cheia' : 'Tela cheia'}
+                  >
+                    {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
                   </Button>
                 </div>
               )}

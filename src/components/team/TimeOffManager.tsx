@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,7 +24,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { CalendarOff, Loader2, Plus, Trash2, Palmtree, Clock3, Coffee } from 'lucide-react';
+import { CalendarOff, Loader2, Plus, Trash2, Palmtree, Clock3, Coffee, Check, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -59,9 +61,13 @@ export function TimeOffManager() {
   const [entries, setEntries] = useState<TimeOffEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Desativados (org_user_status.active = false no Externo) somem do seletor.
+  const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
 
   // Form
   const [formUserId, setFormUserId] = useState('');
+  const [personOpen, setPersonOpen] = useState(false);
+  const [personQuery, setPersonQuery] = useState('');
   const [formType, setFormType] = useState<TimeOffType>('ferias');
   const [formStart, setFormStart] = useState('');
   const [formEnd, setFormEnd] = useState('');
@@ -69,18 +75,35 @@ export function TimeOffManager() {
 
   const people = useMemo(
     () => filterAssignableMembers(profilesList.map(p => ({ user_id: p.user_id, full_name: p.full_name, email: p.email })))
+      .filter(p => !inactiveIds.has(p.user_id))
       .sort((a, b) => (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '', 'pt-BR', { sensitivity: 'base' })),
-    [profilesList],
+    [profilesList, inactiveIds],
   );
+
+  const selectedPerson = useMemo(() => people.find(p => p.user_id === formUserId) || null, [people, formUserId]);
+
+  const filteredPeople = useMemo(() => {
+    const term = personQuery.trim().toLowerCase();
+    if (!term) return people;
+    return people.filter(p =>
+      (p.full_name || '').toLowerCase().includes(term) ||
+      (p.email || '').toLowerCase().includes(term),
+    );
+  }, [people, personQuery]);
 
   const fetchEntries = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const { data, error } = await (externalSupabase as any)
-        .from('member_time_off')
-        .select('*')
-        .order('start_date', { ascending: true });
+      const [{ data, error }, { data: statusRows }] = await Promise.all([
+        (externalSupabase as any)
+          .from('member_time_off')
+          .select('*')
+          .order('start_date', { ascending: true }),
+        ((externalSupabase as any).from('org_user_status') as any)
+          .select('user_id').eq('active', false),
+      ]);
       if (error) throw error;
+      setInactiveIds(new Set(((statusRows as any[]) || []).map(r => r.user_id)));
       setEntries((data || []) as TimeOffEntry[]);
     } catch (e) {
       console.error('[TimeOffManager] Falha ao carregar ausências:', e);
@@ -217,18 +240,36 @@ export function TimeOffManager() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div className="lg:col-span-2">
               <Label className="text-xs">Pessoa</Label>
-              <Select value={formUserId} onValueChange={setFormUserId}>
-                <SelectTrigger className="h-9 mt-1">
-                  <SelectValue placeholder="Selecionar pessoa" />
-                </SelectTrigger>
-                <SelectContent>
-                  {people.map(p => (
-                    <SelectItem key={p.user_id} value={p.user_id}>
-                      {p.full_name || p.email || 'Sem nome'}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Popover open={personOpen} onOpenChange={(o) => { setPersonOpen(o); if (!o) setPersonQuery(''); }}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" role="combobox" className="h-9 mt-1 w-full justify-between font-normal">
+                    <span className="truncate">
+                      {selectedPerson ? (selectedPerson.full_name || selectedPerson.email || 'Sem nome') : 'Selecionar pessoa'}
+                    </span>
+                    <ChevronsUpDown className="h-4 w-4 opacity-50 shrink-0" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="p-0 w-[--radix-popover-trigger-width]" align="start">
+                  <Command shouldFilter={false}>
+                    <CommandInput placeholder="Buscar pessoa..." value={personQuery} onValueChange={setPersonQuery} />
+                    <CommandList>
+                      <CommandEmpty>Nenhuma pessoa encontrada.</CommandEmpty>
+                      <CommandGroup>
+                        {filteredPeople.map(p => (
+                          <CommandItem
+                            key={p.user_id}
+                            value={p.user_id}
+                            onSelect={() => { setFormUserId(p.user_id); setPersonOpen(false); setPersonQuery(''); }}
+                          >
+                            <Check className={cn('mr-2 h-4 w-4', formUserId === p.user_id ? 'opacity-100' : 'opacity-0')} />
+                            <span className="truncate">{p.full_name || p.email || 'Sem nome'}</span>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
             <div>
               <Label className="text-xs">Tipo</Label>

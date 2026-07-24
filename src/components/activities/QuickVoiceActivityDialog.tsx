@@ -4,8 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Mic, Square, Loader2, Sparkles, RotateCcw, Save } from 'lucide-react';
+import { Mic, Square, Loader2, Sparkles, RotateCcw, Save, Info } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -59,9 +60,11 @@ interface Props {
 
 /**
  * Registro rápido por voz: o assessor dita "o que está fazendo agora", a IA
- * transcreve e estrutura em campos (escolhendo o TIPO mais adequado), mostra um
- * mini-preview editável e cria uma atividade de documentação (interna, atribuída
- * a si mesmo). Serve para documentar o dia — inclusive a partir do prompt de ociosidade.
+ * transcreve (fielmente) e estrutura em campos (escolhendo o TIPO mais adequado),
+ * mostra a transcrição literal + um mini-preview editável e cria uma atividade de
+ * documentação (interna, atribuída a si mesmo). Espelha o "Preenchimento por Áudio"
+ * da ficha (ActivityCallRecorder): mesma fidelidade, transcrição visível, aviso de
+ * silêncio, pergunta de esclarecimento e "tentar preencher novamente".
  */
 export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Props) {
   const { user, profile } = useAuthContext();
@@ -73,24 +76,49 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
   const [transcript, setTranscript] = useState('');
   const [fields, setFields] = useState<DictatedFields>(EMPTY);
   const [error, setError] = useState<string | null>(null);
+  // Falha só na etapa de estruturação (a transcrição em si deu certo).
+  const [fillError, setFillError] = useState<string | null>(null);
+  // Pergunta de esclarecimento da IA + resposta do usuário (quando o ditado não basta).
+  const [question, setQuestion] = useState<string | null>(null);
+  const [answerText, setAnswerText] = useState('');
+  const [refilling, setRefilling] = useState(false);
+  // Detecção de silêncio durante a gravação (confirma que o mic está captando).
+  const [silent, setSilent] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Visualizador de áudio (Web Audio API) — mostra a "frequência da voz" ao gravar.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const lastSoundRef = useRef(0);
+  const silentRef = useRef(false);
+
+  const teardownAudio = useCallback(() => {
+    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    analyserRef.current = null;
+    try { audioCtxRef.current?.close(); } catch { /* noop */ }
+    audioCtxRef.current = null;
+  }, []);
 
   const cleanupStream = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-  }, []);
+    teardownAudio();
+  }, [teardownAudio]);
 
   // Reset ao fechar; para gravação em andamento.
   useEffect(() => {
     if (!open) {
       cleanupStream();
       try { mediaRecorderRef.current?.stop(); } catch { /* noop */ }
-      setPhase('idle'); setSeconds(0); setTranscript(''); setFields(EMPTY); setError(null);
+      setPhase('idle'); setSeconds(0); setTranscript(''); setFields(EMPTY);
+      setError(null); setFillError(null); setQuestion(null); setAnswerText(''); setSilent(false);
+      silentRef.current = false;
     }
   }, [open, cleanupStream]);
 
@@ -102,6 +130,20 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
     .filter((t) => t.is_active)
     .map((t) => ({ key: t.key, label: t.label }));
 
+  const applyFields = useCallback((f: any) => {
+    setFields({
+      title: f.title || '',
+      activity_type: f.activity_type || (typeOptions[0]?.key ?? ''),
+      priority: f.priority || 'normal',
+      deadline: f.deadline || '',
+      lead_name: f.lead_name || '',
+      what_was_done: f.what_was_done || '',
+      current_status: f.current_status || '',
+      next_steps: f.next_steps || '',
+      notes: f.notes || '',
+    });
+  }, [typeOptions]);
+
   const runDictation = useCallback(async (audio_url: string) => {
     setPhase('processing');
     setError(null);
@@ -112,26 +154,46 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
       if (fnErr) throw fnErr;
       if (!data?.success) throw new Error(data?.error || 'Falha ao processar o ditado');
       setTranscript(data.transcript || '');
-      const f = data.fields || {};
-      setFields({
-        title: f.title || '',
-        activity_type: f.activity_type || (typeOptions[0]?.key ?? ''),
-        priority: f.priority || 'normal',
-        deadline: f.deadline || '',
-        lead_name: f.lead_name || '',
-        what_was_done: f.what_was_done || '',
-        current_status: f.current_status || '',
-        next_steps: f.next_steps || '',
-        notes: f.notes || '',
-      });
+      applyFields(data.fields || {});
+      setFillError(data.fill_error || null);
+      setQuestion(data.clarifying_question || null);
       setPhase('preview');
-      if (data.fill_error) toast.warning('Transcrição pronta, mas a estruturação falhou parcialmente — revise os campos.');
+      if (data.fill_error) toast.warning('Transcrição pronta, mas a estruturação falhou — use "Tentar preencher novamente".');
+      else if (data.clarifying_question) toast.info('A IA tem uma dúvida antes de concluir — veja no painel.', { duration: 5000 });
     } catch (e: any) {
       console.error('[QuickVoiceActivity] runDictation error', e);
       setError(e?.message || 'Erro ao processar o ditado');
       setPhase('preview');
     }
-  }, [typeOptions]);
+  }, [typeOptions, applyFields]);
+
+  // Refaz só a estruturação reaproveitando a transcrição já pronta (e a resposta à dúvida da IA).
+  const retryFill = useCallback(async () => {
+    if (!transcript) return;
+    setRefilling(true);
+    const answer = answerText.trim();
+    try {
+      const { data, error: fnErr } = await cloudFunctions.invoke('dictate-activity', {
+        body: {
+          transcript: answer ? `${transcript}\n\n[Resposta do assessor à dúvida: ${answer}]` : transcript,
+          activity_types: typeOptions,
+        },
+      });
+      if (fnErr) throw fnErr;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao preencher os campos');
+      applyFields(data.fields || {});
+      setFillError(data.fill_error || null);
+      setQuestion(data.clarifying_question || null);
+      if (data.fill_error) toast.error(`Preenchimento falhou de novo: ${data.fill_error}`);
+      else if (data.clarifying_question) toast.info('A IA ainda tem uma dúvida — veja no painel.', { duration: 5000 });
+      else { if (answer) setAnswerText(''); toast.success('Campos atualizados — revise antes de salvar.'); }
+    } catch (e: any) {
+      console.error('[QuickVoiceActivity] retryFill error', e);
+      toast.error(e?.message || 'Erro ao preencher os campos');
+    } finally {
+      setRefilling(false);
+    }
+  }, [transcript, answerText, typeOptions, applyFields]);
 
   const processAudio = useCallback(async (blob: Blob, mime: string) => {
     setPhase('processing');
@@ -153,9 +215,25 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
 
   const startRecording = useCallback(async () => {
     setError(null);
+    setTranscript('');
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: VOICE_AUDIO_CONSTRAINTS });
       streamRef.current = stream;
+
+      // Medidor de nível de áudio (feedback visual + detecção de silêncio).
+      try {
+        const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+        const audioCtx = new AudioCtx();
+        audioCtxRef.current = audioCtx;
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 256;
+        audioCtx.createMediaStreamSource(stream).connect(analyser);
+        analyserRef.current = analyser;
+        setSilent(false);
+        silentRef.current = false;
+        lastSoundRef.current = performance.now();
+      } catch { /* visualizador é opcional */ }
+
       const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
         ? 'audio/webm;codecs=opus'
         : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
@@ -169,9 +247,58 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
       setPhase('recording');
     } catch (e: any) {
       console.error('[QuickVoiceActivity] mic error', e);
+      teardownAudio();
       toast.error('Não foi possível acessar o microfone. Verifique a permissão do navegador.');
     }
-  }, []);
+  }, [teardownAudio]);
+
+  // Desenha as barras de frequência enquanto grava e detecta ausência de som.
+  useEffect(() => {
+    if (phase !== 'recording') return;
+    const analyser = analyserRef.current;
+    const canvas = canvasRef.current;
+    if (!analyser || !canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const bufferLength = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufferLength);
+    const bars = 32;
+    const step = Math.max(1, Math.floor(bufferLength / bars));
+
+    const draw = () => {
+      rafRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx.clearRect(0, 0, w, h);
+      const barWidth = w / bars;
+      let sum = 0;
+      for (let i = 0; i < bars; i++) {
+        const value = data[i * step] / 255;
+        sum += data[i * step];
+        const barHeight = Math.max(2, value * h);
+        ctx.fillStyle = `rgb(${Math.round(34 + value * 200)}, ${Math.round(197 - value * 70)}, 94)`;
+        ctx.fillRect(i * barWidth, h - barHeight, barWidth - 1, barHeight);
+      }
+
+      // Detecta silêncio: se a média ficar baixa por >4s, avisa que não há captação.
+      const avg = sum / bars;
+      const now = performance.now();
+      if (avg > 6) lastSoundRef.current = now;
+      const isSilent = now - lastSoundRef.current > 4000;
+      if (isSilent !== silentRef.current) {
+        silentRef.current = isSilent;
+        setSilent(isSilent);
+      }
+    };
+    draw();
+
+    return () => {
+      if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    };
+  }, [phase]);
 
   const stopRecording = useCallback(() => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -238,7 +365,11 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
     }
   }, [fields, user, profile, createActivity, onCreated, onOpenChange]);
 
-  const restart = () => { setPhase('idle'); setSeconds(0); setTranscript(''); setFields(EMPTY); setError(null); };
+  const restart = () => {
+    setPhase('idle'); setSeconds(0); setTranscript(''); setFields(EMPTY);
+    setError(null); setFillError(null); setQuestion(null); setAnswerText(''); setSilent(false);
+    silentRef.current = false;
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -248,7 +379,7 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
             <Mic className="h-5 w-5 text-primary" /> O que você está fazendo?
           </DialogTitle>
           <DialogDescription>
-            Fale o que está fazendo agora. A IA transcreve, escolhe o tipo mais adequado e registra como atividade — para documentar seu dia.
+            Fale o que está fazendo agora. A IA transcreve fielmente, escolhe o tipo mais adequado e registra como atividade — para documentar seu dia.
           </DialogDescription>
         </DialogHeader>
 
@@ -269,7 +400,23 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
               <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
               <span className="font-mono text-lg">{fmt(seconds)}</span>
             </div>
-            <p className="text-xs text-muted-foreground">🎤 Gravando… fale normalmente</p>
+            {/* Visualizador da frequência da voz — confirma que o microfone está captando. */}
+            <canvas
+              ref={canvasRef}
+              width={320}
+              height={44}
+              className="w-full h-11 rounded bg-muted/40 border"
+            />
+            {silent ? (
+              <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2 w-full">
+                <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-red-700 dark:text-red-300">
+                  Nenhum som detectado. Aproxime o microfone ou fale mais alto.
+                </span>
+              </div>
+            ) : (
+              <p className="text-[11px] text-center text-muted-foreground">🎤 Captando áudio… fale normalmente</p>
+            )}
             <Button variant="destructive" className="gap-2" onClick={stopRecording}>
               <Square className="h-4 w-4" /> Parar e processar
             </Button>
@@ -286,9 +433,57 @@ export function QuickVoiceActivityDialog({ open, onOpenChange, onCreated }: Prop
         {(phase === 'preview' || phase === 'saving') && (
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             {error && <p className="text-xs text-destructive">{error}</p>}
+            {fillError && !error && (
+              <div className="flex items-start gap-1.5 rounded-md bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/50 p-2">
+                <Info className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+                <span className="text-[11px] text-red-700 dark:text-red-300">
+                  Transcrição pronta, mas a estruturação falhou: {fillError}
+                </span>
+              </div>
+            )}
             <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
               <Sparkles className="h-3.5 w-3.5" /> Revise e ajuste antes de salvar.
             </div>
+
+            {/* Transcrição literal do que foi falado — mesma transparência da ficha. */}
+            {transcript && (
+              <div>
+                <Label className="text-xs text-muted-foreground">O que você disse (transcrição)</Label>
+                <ScrollArea className="max-h-28 rounded border p-2 mt-0.5">
+                  <p className="text-xs whitespace-pre-wrap">{transcript}</p>
+                </ScrollArea>
+              </div>
+            )}
+
+            {/* Pergunta de esclarecimento da IA — responda e reenvie. */}
+            {question && (
+              <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/30 p-2.5 space-y-1.5">
+                <div className="flex items-start gap-1.5">
+                  <Info className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-[11px] text-amber-800 dark:text-amber-200">
+                    <strong>A IA precisa de um esclarecimento:</strong>
+                    <p className="mt-0.5">{question}</p>
+                  </div>
+                </div>
+                <Textarea
+                  value={answerText}
+                  onChange={(e) => setAnswerText(e.target.value)}
+                  placeholder="Responda aqui e clique em Reenviar…"
+                  rows={2}
+                  className="text-xs"
+                />
+                <Button size="sm" className="w-full gap-2" onClick={retryFill} disabled={refilling || !answerText.trim()}>
+                  {refilling ? <><Loader2 className="h-4 w-4 animate-spin" /> Reenviando…</> : <><Sparkles className="h-4 w-4" /> Reenviar com a resposta</>}
+                </Button>
+              </div>
+            )}
+
+            {/* Retry mesmo sem pergunta — quando a estruturação falhou ou ficou ruim. */}
+            {transcript && !question && (fillError || phase === 'preview') && (
+              <Button variant="outline" size="sm" className="w-full gap-2" onClick={retryFill} disabled={refilling || phase === 'saving'}>
+                {refilling ? <><Loader2 className="h-4 w-4 animate-spin" /> Preenchendo…</> : <><Sparkles className="h-4 w-4" /> Tentar preencher novamente</>}
+              </Button>
+            )}
 
             <div>
               <Label className="text-xs">Título</Label>
