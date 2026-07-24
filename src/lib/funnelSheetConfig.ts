@@ -13,7 +13,9 @@ export interface FunnelSheetConfig {
 }
 
 const BPC_SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
-const AUX_ACIDENTE_SPREADSHEET_ID = "1R4NGEmQSXYMjdsQI6cIw5aRQhppQ9O6CIf-u-pOyjKM";
+// Planilha operacional atual (abas ISRAEL/KAROLYNE/EDILAN/MATEUS; abas "BPC - ISRAEL"
+// são excluídas na edge). Anterior: 1R4NGEmQSXYMjdsQI6cIw5aRQhppQ9O6CIf-u-pOyjKM
+const AUX_ACIDENTE_SPREADSHEET_ID = "1C8zhfLEYzBN9JTDKN2HHs2m5UJGMSqSAGAGpWtAEBAQ";
 
 export function getFunnelSheetConfig(boardName: string | undefined | null): FunnelSheetConfig | null {
   if (!boardName) return null;

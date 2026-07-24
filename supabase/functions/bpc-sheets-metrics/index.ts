@@ -25,6 +25,11 @@ const OPERATOR_KEYWORDS: { keyword: string; operator: string }[] = [
 ];
 // Abas ignoradas na descoberta (já tratadas em separado ou irrelevantes).
 const SKIP_TABS = new Set(["BASE_UNIFICADA"]);
+// Exclusão por planilha: a do Auxílio Acidente tem abas "BPC - ISRAEL" com leads
+// de BPC-LOAS que não pertencem àquele funil — não ler essas abas lá.
+const TAB_EXCLUDE_BY_SPREADSHEET: Record<string, RegExp> = {
+  "1C8zhfLEYzBN9JTDKN2HHs2m5UJGMSqSAGAGpWtAEBAQ": /bpc/i,
+};
 let SHEET_TABS: { tab: string; operator: string }[] = [];
 const UNIFIED_TAB = "BASE_UNIFICADA";
 const GATEWAY = "https://connector-gateway.lovable.dev/google_sheets/v4";
@@ -44,8 +49,10 @@ async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; 
   const json = await resp.json();
   const titles: string[] = (json.sheets || []).map((s: any) => s.properties?.title).filter(Boolean);
   const found: { tab: string; operator: string }[] = [];
+  const exclude = TAB_EXCLUDE_BY_SPREADSHEET[spreadsheetId];
   for (const title of titles) {
     if (SKIP_TABS.has(title)) continue;
+    if (exclude && exclude.test(title)) continue;
     const lower = title.toLowerCase();
     const match = OPERATOR_KEYWORDS.find((k) => lower.includes(k.keyword));
     if (match) found.push({ tab: title, operator: match.operator });
@@ -118,7 +125,12 @@ async function fetchTab(
 
   return values.slice(1).filter((r) => r.length > 0).map((r) => {
     const o = rowToObject(headers, r);
-    const phoneRaw = o["telefone"] || o["phone_number"] || o["número_do_whatsapp"] || o["qual_o_seu_número_de_contato_?"] || "";
+    const phoneRaw = o["telefone"] || o["phone_number"] || o["número_do_whatsapp"] ||
+      o["qual_o_seu_número_de_contato_?"] ||
+      // Planilha Auxílio Acidente: o formulário grava o telefone nestas colunas.
+      // phone_number vem antes de propósito — quando preenchido (p:+55...), é
+      // mais confiável que a resposta digitada do formulário.
+      o["qual_o_seu_número_para_contato_?"] || o["qual_seu_número_para_contato_?"] || "";
     const name = o["nome_completo"] || o["full_name"] || "";
     return {
       form_lead_id: o["id"] || "",
