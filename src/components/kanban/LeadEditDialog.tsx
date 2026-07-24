@@ -3632,7 +3632,12 @@ ${scrapeData.content || ''}
           </div>
         </Footer>
 
-        <CityContactsSuggestionDialog trigger={citySuggest} onClose={() => setCitySuggest(null)} />
+        <CityContactsSuggestionDialog
+          trigger={citySuggest}
+          onClose={() => setCitySuggest(null)}
+          leadId={lead?.id}
+          leadName={lead?.lead_name}
+        />
 
         <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
           <AlertDialogContent>

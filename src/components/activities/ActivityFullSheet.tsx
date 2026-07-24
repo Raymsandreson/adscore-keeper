@@ -64,6 +64,8 @@ export interface ActivityDraft {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  /** Marca como atividade de gestão — dispensa vínculo com lead/caso/processo. */
+  is_management?: boolean;
 }
 
 interface ActivityFullSheetProps {
@@ -358,7 +360,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormProcessTitle(d.process_title || '');
     setFormWorkflowId(d.workflow_id || '');
     setFormIsSystem(false);
-    setFormIsManagement(false);
+    setFormIsManagement(!!d.is_management);
     setFormWhatWasDone(d.what_was_done || '');
     setFormCurrentStatus(d.current_status_notes || '');
     setFormNextSteps(d.next_steps || '');
