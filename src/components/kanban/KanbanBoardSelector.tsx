@@ -255,6 +255,9 @@ export function KanbanBoardSelector({
   const [newStageColor, setNewStageColor] = useState('#3b82f6');
   const [formBoardType, setFormBoardType] = useState<'funnel' | 'workflow'>('funnel');
   const [formProductServiceId, setFormProductServiceId] = useState<string | null>(null);
+  // KPI "resultado esperado" do POP: etapa-alvo que conta como sucesso no ranking.
+  const [formKpiStage, setFormKpiStage] = useState<string>('');
+  const [formKpiLabel, setFormKpiLabel] = useState<string>('');
 
   const resetForm = () => {
     setFormName('');
@@ -266,6 +269,8 @@ export function KanbanBoardSelector({
     setNewStageColor('#3b82f6');
     setFormBoardType('funnel');
     setFormProductServiceId(null);
+    setFormKpiStage('');
+    setFormKpiLabel('');
   };
 
   const handleOpenCreate = () => {
@@ -288,6 +293,9 @@ export function KanbanBoardSelector({
     setFormStages([...board.stages]);
     setFormBoardType(board.board_type || 'funnel');
     setFormProductServiceId(board.product_service_id || null);
+    const kpi = (board as { settings?: { kpi?: { stage_id?: string; rotulo?: string } } }).settings?.kpi;
+    setFormKpiStage(kpi?.stage_id || '');
+    setFormKpiLabel(kpi?.rotulo || '');
     setShowEditDialog(true);
   };
 
@@ -311,6 +319,13 @@ export function KanbanBoardSelector({
   const handleUpdate = async () => {
     if (!editingBoard || !formName.trim()) return;
     
+    const kpi = formKpiStage
+      ? {
+          tipo: 'etapa',
+          stage_id: formKpiStage,
+          rotulo: formKpiLabel.trim() || formStages.find(s => s.id === formKpiStage)?.name || 'Resultado',
+        }
+      : null;
     await onUpdateBoard(editingBoard.id, {
       name: formName,
       description: formDescription || null,
@@ -318,7 +333,8 @@ export function KanbanBoardSelector({
       icon: formIcon,
       stages: formStages,
       product_service_id: formProductServiceId,
-    });
+      settings: { ...((editingBoard as { settings?: Record<string, unknown> }).settings || {}), kpi },
+    } as Partial<KanbanBoard>);
     
     setShowEditDialog(false);
     setEditingBoard(null);
@@ -746,6 +762,34 @@ export function KanbanBoardSelector({
                 <BoardCustomFieldsSection boardId={editingBoard.id} stages={editingBoard.stages} />
                 <StageAgentSelector boardId={editingBoard.id} stages={formStages} />
                 <BoardSheetIngestSection board={editingBoard} stages={formStages} onSave={onUpdateBoard} />
+
+                {/* Resultado esperado do POP — vira o 1º critério do ranking do time. */}
+                <div className="rounded-lg border p-3 space-y-2">
+                  <div className="text-sm font-semibold">🎯 Resultado esperado (KPI do ranking)</div>
+                  <p className="text-xs text-muted-foreground">
+                    A etapa que representa o "sucesso" deste funil/POP (ex.: vendas → <em>Fechado</em>;
+                    marketing → <em>Lead Qualificado</em>). O ranking conta quantos leads chegam nela no
+                    mês, por pessoa — é o 1º critério de quem atua neste quadro.
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <select
+                      value={formKpiStage}
+                      onChange={e => setFormKpiStage(e.target.value)}
+                      className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">— Sem KPI definido —</option>
+                      {formStages.map(s => (
+                        <option key={s.id} value={s.id}>{s.name}</option>
+                      ))}
+                    </select>
+                    <input
+                      value={formKpiLabel}
+                      onChange={e => setFormKpiLabel(e.target.value)}
+                      placeholder="Rótulo curto (ex.: Fechamentos)"
+                      className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
               </>
             )}
           </div>
