@@ -113,7 +113,7 @@ export default function WackyRaceTrack({
               <button
                 onClick={() => onAnalyze(r, i + 1)}
                 title={`Analisar desempenho de ${r.nome}`}
-                className="group flex w-[42%] md:w-[30%] shrink-0 items-center gap-2 text-left"
+                className="group flex w-[46%] md:w-[36%] shrink-0 items-center gap-2 text-left"
               >
                 <span className="w-7 shrink-0 text-center text-lg md:text-2xl font-black tabular-nums">
                   {MEDALS[i] ?? <span className="text-white/40 text-sm md:text-lg">{i + 1}º</span>}
@@ -126,10 +126,10 @@ export default function WackyRaceTrack({
                       <span className="shrink-0 animate-pulse" title={`Bateu o recorde ${scopeLabel} (${finish} passos)!`}>🏆</span>
                     )}
                   </span>
-                  <span className="text-[10px] md:text-xs text-white/50">
-                    <b className="text-sky-400">{r.passos}</b> passos ·{' '}
-                    <b className="text-emerald-400">{r.concluidas}</b> concl ·{' '}
-                    <b className="text-rose-400">{r.atrasadas}</b> atr
+                  <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-sm md:text-xl lg:text-2xl font-black tabular-nums text-white/80">
+                    <span><b className="text-sky-400">{r.passos}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">passos</span></span>
+                    <span><b className="text-emerald-400">{r.concluidas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">concl</span></span>
+                    <span><b className="text-rose-400">{r.atrasadas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">atr</span></span>
                   </span>
                 </span>
               </button>
