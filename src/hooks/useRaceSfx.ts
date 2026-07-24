@@ -35,12 +35,190 @@ function resolveRecordUrl(): string {
   return DEFAULT_RECORD_FILE;
 }
 
+// ===================== Presets do som de ultrapassagem =====================
+// 5 opções suaves, com clima de "subiu/venceu", sem ruído áspero. A escolha
+// fica salva no localStorage. Cada função toca no ctx.currentTime.
+export type OvertakePresetId = 'chime' | 'arcade' | 'whoosh' | 'fanfarrinha' | 'sino';
+export interface OvertakePreset { id: OvertakePresetId; nome: string; desc: string; }
+export const OVERTAKE_PRESETS: OvertakePreset[] = [
+  { id: 'chime', nome: 'Chime', desc: 'Sininho subindo — leve e alegre' },
+  { id: 'arcade', nome: 'Arcade', desc: 'Bliches de fase concluída, retrô' },
+  { id: 'whoosh', nome: 'Whoosh', desc: 'Swoosh suave, bem discreto' },
+  { id: 'fanfarrinha', nome: 'Fanfarrinha', desc: 'Ta-dá curtinho de metais' },
+  { id: 'sino', nome: 'Sino', desc: 'Um toque de sino, limpo' },
+];
+
+function playChime(ctx: AudioContext) {
+  const t0 = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0.32;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 4500;
+  master.connect(lp).connect(ctx.destination);
+  const nota = (freq: number, t: number, dur: number, pico: number) => {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(pico, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.connect(master);
+    const o = ctx.createOscillator();
+    o.type = 'triangle';
+    o.frequency.value = freq;
+    o.connect(g);
+    o.start(t);
+    o.stop(t + dur + 0.05);
+    const h = ctx.createOscillator();
+    h.type = 'sine';
+    h.frequency.value = freq * 2;
+    const hg = ctx.createGain();
+    hg.gain.value = 0.16;
+    h.connect(hg).connect(g);
+    h.start(t);
+    h.stop(t + dur + 0.05);
+  };
+  nota(659.25, t0 + 0.0, 0.26, 0.5); // E5
+  nota(830.61, t0 + 0.075, 0.26, 0.5); // G#5
+  nota(987.77, t0 + 0.15, 0.3, 0.5); // B5
+  nota(1318.51, t0 + 0.235, 0.5, 0.42); // E6
+}
+
+function playArcade(ctx: AudioContext) {
+  const t0 = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0.22;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 5200;
+  master.connect(lp).connect(ctx.destination);
+  [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => {
+    const t = t0 + i * 0.06;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + 0.09);
+    g.connect(master);
+    const o = ctx.createOscillator();
+    o.type = 'square';
+    o.frequency.value = f;
+    o.connect(g);
+    o.start(t);
+    o.stop(t + 0.1);
+  });
+}
+
+function playWhoosh(ctx: AudioContext) {
+  const t0 = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0.5;
+  master.connect(ctx.destination);
+  const len = Math.floor(ctx.sampleRate * 0.5);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const noise = ctx.createBufferSource();
+  noise.buffer = buf;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.Q.value = 1.2;
+  bp.frequency.setValueAtTime(500, t0);
+  bp.frequency.exponentialRampToValueAtTime(4000, t0 + 0.35);
+  const ng = ctx.createGain();
+  ng.gain.setValueAtTime(0.0001, t0);
+  ng.gain.exponentialRampToValueAtTime(0.32, t0 + 0.12);
+  ng.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.5);
+  noise.connect(bp).connect(ng).connect(master);
+  noise.start(t0);
+  noise.stop(t0 + 0.5);
+  const o = ctx.createOscillator();
+  o.type = 'sine';
+  o.frequency.setValueAtTime(300, t0);
+  o.frequency.exponentialRampToValueAtTime(900, t0 + 0.35);
+  const og = ctx.createGain();
+  og.gain.setValueAtTime(0.0001, t0);
+  og.gain.exponentialRampToValueAtTime(0.18, t0 + 0.1);
+  og.gain.exponentialRampToValueAtTime(0.0008, t0 + 0.45);
+  o.connect(og).connect(master);
+  o.start(t0);
+  o.stop(t0 + 0.5);
+}
+
+function playFanfarrinha(ctx: AudioContext) {
+  const t0 = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0.28;
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 2600;
+  master.connect(lp).connect(ctx.destination);
+  const brass = (f: number, t: number, dur: number) => {
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.5, t + 0.03);
+    g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+    g.connect(master);
+    for (const det of [-7, 7]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.detune.value = det;
+      o.connect(g);
+      o.start(t);
+      o.stop(t + dur + 0.05);
+    }
+  };
+  brass(392.0, t0, 0.16); // G4 (curto "ta")
+  brass(523.25, t0 + 0.12, 0.42); // C5 (sustentado "dá")
+}
+
+function playSino(ctx: AudioContext) {
+  const t0 = ctx.currentTime;
+  const master = ctx.createGain();
+  master.gain.value = 0.4;
+  master.connect(ctx.destination);
+  const base = 987.77; // B5
+  ([[1, 0.5], [2.01, 0.3], [2.99, 0.16], [4.2, 0.09]] as [number, number][]).forEach(([ratio, gain]) => {
+    const o = ctx.createOscillator();
+    o.type = 'sine';
+    o.frequency.value = base * ratio;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(gain, t0 + 0.006);
+    g.gain.exponentialRampToValueAtTime(0.0008, t0 + 1.0);
+    o.connect(g).connect(master);
+    o.start(t0);
+    o.stop(t0 + 1.05);
+  });
+}
+
+const PRESET_PLAY: Record<OvertakePresetId, (ctx: AudioContext) => void> = {
+  chime: playChime,
+  arcade: playArcade,
+  whoosh: playWhoosh,
+  fanfarrinha: playFanfarrinha,
+  sino: playSino,
+};
+
+const LS_PRESET = 'telao_overtake_preset';
+function loadPreset(): OvertakePresetId {
+  try {
+    const v = window.localStorage.getItem(LS_PRESET) as OvertakePresetId | null;
+    if (v && v in PRESET_PLAY) return v;
+  } catch {
+    /* ignora */
+  }
+  return 'chime';
+}
+
 export interface RaceSfx {
   vroom: () => void;
   recordSound: () => void;
   say: (texto: string) => void;
   enabled: boolean;
   setEnabled: (b: boolean) => void;
+  preset: OvertakePresetId;
+  setPreset: (id: OvertakePresetId) => void;
+  preview: (id: OvertakePresetId) => void;
 }
 
 export function useRaceSfx(): RaceSfx {
@@ -53,6 +231,10 @@ export function useRaceSfx(): RaceSfx {
   });
   const enabledRef = useRef(enabled);
   enabledRef.current = enabled;
+
+  const [preset, setPresetState] = useState<OvertakePresetId>(loadPreset);
+  const presetRef = useRef(preset);
+  presetRef.current = preset;
 
   const ctxRef = useRef<AudioContext | null>(null);
   // Arquivo de recorde (opcional). fileOk vira true só quando carrega.
@@ -121,49 +303,29 @@ export function useRaceSfx(): RaceSfx {
     g.gain.exponentialRampToValueAtTime(0.0008, t + a + d);
   };
 
-  // Ultrapassagem comum — chime ascendente suave (sensação de "subiu/venceu").
-  // Sem ruído áspero: não assusta nem incomoda no ambiente.
+  // Ultrapassagem comum — toca o preset escolhido (todos suaves, "de vitória").
   const vroom = useCallback(() => {
     if (!enabledRef.current) return;
     const ctx = getCtx();
     if (!ctx || ctx.state !== 'running') return;
-    const t0 = ctx.currentTime;
+    PRESET_PLAY[presetRef.current]?.(ctx);
+  }, [getCtx]);
 
-    const master = ctx.createGain();
-    master.gain.value = 0.32; // volume ameno
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 4500; // tira o agudo áspero, som "quentinho"
-    master.connect(lp).connect(ctx.destination);
+  // Escolhe o preset (salva) e toca uma amostra pra ouvir na hora.
+  const setPreset = useCallback((id: OvertakePresetId) => {
+    setPresetState(id);
+    try {
+      window.localStorage.setItem(LS_PRESET, id);
+    } catch {
+      /* ignora */
+    }
+  }, []);
 
-    // Notinha tipo sininho: triângulo + um harmônico sine baixinho.
-    const nota = (freq: number, t: number, dur: number, pico: number) => {
-      const g = ctx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      g.gain.exponentialRampToValueAtTime(pico, t + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
-      g.connect(master);
-      const o = ctx.createOscillator();
-      o.type = 'triangle';
-      o.frequency.value = freq;
-      o.connect(g);
-      o.start(t);
-      o.stop(t + dur + 0.05);
-      const h = ctx.createOscillator();
-      h.type = 'sine';
-      h.frequency.value = freq * 2;
-      const hg = ctx.createGain();
-      hg.gain.value = 0.16;
-      h.connect(hg).connect(g);
-      h.start(t);
-      h.stop(t + dur + 0.05);
-    };
-
-    // Arpejo maior ascendente E–G#–B e remate uma oitava acima (E6) = "vitória".
-    nota(659.25, t0 + 0.0, 0.26, 0.5); // E5
-    nota(830.61, t0 + 0.075, 0.26, 0.5); // G#5
-    nota(987.77, t0 + 0.15, 0.3, 0.5); // B5
-    nota(1318.51, t0 + 0.235, 0.5, 0.42); // E6 (remate sustentado)
+  // Testa qualquer preset, mesmo com os efeitos desligados (é um teste explícito).
+  const preview = useCallback((id: OvertakePresetId) => {
+    const ctx = getCtx();
+    if (!ctx || ctx.state !== 'running') return;
+    PRESET_PLAY[id]?.(ctx);
   }, [getCtx]);
 
   // Fanfarra sintetizada — reserva do som de recorde quando não há arquivo.
@@ -281,7 +443,7 @@ export function useRaceSfx(): RaceSfx {
     };
   }, []);
 
-  return { vroom, recordSound, say, enabled, setEnabled };
+  return { vroom, recordSound, say, enabled, setEnabled, preset, setPreset, preview };
 }
 
 // Detecta ultrapassagens comparando a ordem anterior com a nova.
