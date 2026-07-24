@@ -3548,10 +3548,19 @@ const ActivitiesPage = () => {
             <Command>
               <CommandList>
                 <CommandGroup>
-                  <CommandItem value="__clear_all_status" onSelect={() => setFilterStatus([])}>
-                    <Check className={cn("mr-2 h-3.5 w-3.5", filterStatus.length === 0 ? "opacity-100" : "opacity-0")} />
-                    Todos
-                  </CommandItem>
+                  {(() => {
+                    const allStatusValues = STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => s.value);
+                    const allSelected = filterStatus.length === allStatusValues.length;
+                    return (
+                      <CommandItem
+                        value="__toggle_all_status"
+                        onSelect={() => setFilterStatus(allSelected ? [] : allStatusValues)}
+                      >
+                        <Check className={cn("mr-2 h-3.5 w-3.5", allSelected ? "opacity-100" : "opacity-0")} />
+                        {allSelected ? 'Limpar seleção' : 'Selecionar todas'}
+                      </CommandItem>
+                    );
+                  })()}
                   {STATUS_OPTIONS.filter(s => s.value !== 'all').map(s => {
                     const isSelected = filterStatus.includes(s.value);
                     const c = countByField('status', s.value);
