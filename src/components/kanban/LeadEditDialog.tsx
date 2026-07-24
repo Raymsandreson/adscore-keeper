@@ -287,6 +287,8 @@ export function LeadEditDialog({
   const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
+  // Resultado do POP (por-POP, separado do "Resultado do Lead"/lead_status global).
+  const [popResult, setPopResult] = useState<string>('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'no_response' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
@@ -475,6 +477,7 @@ export function LeadEditDialog({
     setExpectedBirthDate(leadAny.expected_birth_date || '');
     setSelectedBoardId(leadAny.board_id || '');
     setSelectedCampaignId(leadAny.crm_campaign_id || '');
+    setPopResult(leadAny.pop_result_id || '');
     // Outcome
     setCaseNumber(leadAny.case_number || '');
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
@@ -1647,6 +1650,8 @@ ${scrapeData.content || ''}
         })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
         lead_status: leadOutcome || 'no_response',
+        // Resultado do POP (por-POP, separado do lead_status global).
+        pop_result_id: popResult || null,
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
@@ -1687,6 +1692,24 @@ ${scrapeData.content || ''}
            to_board_id: (currentLead as any).board_id || null,
            from_board_id: (currentLead as any).board_id || null,
          });
+       }
+
+      // Log da mudança de "Resultado do POP" (quem/quando) — alimenta o KPI de
+      // resultado esperado por POP no ranking. Separado do lead_status.
+       {
+         const prevPop = (currentLead as { pop_result_id?: string | null }).pop_result_id ?? null;
+         if (popResult && popResult !== prevPop) {
+           const { data: { user: popUser } } = await supabase.auth.getUser();
+           void (externalSupabase as any).rpc('log_pop_result_change', {
+             p_user_id: popUser?.id ?? null,
+             p_lead_id: currentLead.id,
+             p_board_id: selectedBoardId || (currentLead as any).board_id || null,
+             p_from: prevPop,
+             p_to: popResult,
+           }).then(({ error }: { error: { message: string } | null }) => {
+             if (error) console.warn('[log_pop_result_change]', error.message);
+           });
+         }
        }
 
       // Auto-create legal case when lead is marked as closed (or was already closed but has no case yet)
@@ -2818,6 +2841,32 @@ ${scrapeData.content || ''}
                     />
                   </div>
                 )}
+
+                {/* Resultado do POP — específico do funil/POP, separado do Resultado do Lead. */}
+                {(() => {
+                  const tb = boards.find(b => b.id === (selectedBoardId || (currentLead as any)?.board_id));
+                  const opts = ((tb as { settings?: { resultados?: { id: string; label: string }[] } })?.settings?.resultados) || [];
+                  if (opts.length === 0) return null;
+                  const espId = (tb as { settings?: { resultado_esperado_id?: string } })?.settings?.resultado_esperado_id;
+                  return (
+                    <div className="col-span-2 space-y-2 p-3 border rounded-lg bg-muted/20">
+                      <Label className="text-sm font-medium">🎯 Resultado do POP</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Resultado específico deste funil/POP. O <b>esperado</b> (✅) conta pro ranking do time no mês.
+                      </p>
+                      <select
+                        value={popResult}
+                        onChange={e => setPopResult(e.target.value)}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">— Sem resultado —</option>
+                        {opts.map(o => (
+                          <option key={o.id} value={o.id}>{o.label}{o.id === espId ? ' ✅ (esperado)' : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })()}
 
                 {/* Lead Outcome - Fechado/Recusado/Inviável */}
                 <div className="col-span-2 space-y-3 p-3 border rounded-lg bg-muted/20">
