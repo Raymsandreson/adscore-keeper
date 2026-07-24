@@ -31,11 +31,13 @@ export function nameKey(nome: string) {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
-// Rótulo do escopo do recorde, por período aberto no telão.
+// Rótulo do escopo do recorde, por período aberto no telão. "por dia/semana/mês"
+// (não "do dia") pra deixar claro que é a melhor marca de UM dia/semana/mês já
+// registrado — e não o recorde de hoje.
 const SCOPE_LABEL: Record<string, string> = {
-  hoje: 'do dia',
-  semana: 'da semana',
-  mes: 'do mês',
+  hoje: 'por dia',
+  semana: 'por semana',
+  mes: 'por mês',
 };
 
 export default function WackyRaceTrack({
@@ -68,7 +70,7 @@ export default function WackyRaceTrack({
   // na bandeira; quem iguala/supera o recorde ganha o troféu 🏆.
   const hasMeta = typeof meta === 'number' && meta > 0;
   const finish = hasMeta ? (meta as number) : maxP;
-  const scopeLabel = SCOPE_LABEL[periodo] ?? 'do dia';
+  const scopeLabel = SCOPE_LABEL[periodo] ?? 'por dia';
 
   const carOf = (nome: string): CarChoice => {
     const chosen = cars[nameKey(nome)];
