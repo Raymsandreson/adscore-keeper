@@ -36,7 +36,7 @@ function minutesNow(now: Date): number {
 export function slotForSend(now: Date = new Date()): number {
   const mins = minutesNow(now);
   if (mins < SLOTS[0] * 60) return SLOTS[0];
-  let slot = SLOTS[0];
+  let slot: number = SLOTS[0];
   for (const h of SLOTS) if (mins >= h * 60) slot = h;
   return slot;
 }
