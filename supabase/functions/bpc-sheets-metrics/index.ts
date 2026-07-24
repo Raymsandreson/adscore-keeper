@@ -76,6 +76,8 @@ type SheetRow = {
   renda: string;
   possui_advogado: string;
   lead_status: string;
+  /** Coluna "status" da planilha — preenchida pelos operadores (Primeiro Contato, Follow Up...). */
+  sheet_status: string;
   operator: string;
   tab: string;
 };
@@ -148,6 +150,7 @@ async function fetchTab(
       renda: o["qual_a_sua_renda_familiar_?"] || "",
       possui_advogado: o["possui_advogado_?"] || "",
       lead_status: o["lead_status"] || "",
+      sheet_status: o["status"] || "",
       operator: operatorFromColumn
         ? (o["origem_vendedor"] || o["operador"] || o["operator"] || "—")
         : (meta?.operator ?? ""),

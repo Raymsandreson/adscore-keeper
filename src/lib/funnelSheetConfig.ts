@@ -10,6 +10,11 @@ export interface FunnelSheetConfig {
   label: string;
   /** Rótulo curto para a UI (ex: "Painel detalhado BPC"). */
   panelTitle: string;
+  /**
+   * Quando true, a Visão Geral monta as etapas do funil a partir da coluna
+   * "status" da planilha (campo sheet_status da edge), não das etapas do kanban.
+   */
+  stagesFromSheetStatus?: boolean;
 }
 
 const BPC_SPREADSHEET_ID = "1EXB6oFovhX2LOHsC2X20LFk-JVIkjk-NR5Er4cUn6Qw";
@@ -26,6 +31,7 @@ export function getFunnelSheetConfig(boardName: string | undefined | null): Funn
       kind: "aux-acidente",
       label: "Auxílio Acidente",
       panelTitle: "Painel detalhado Auxílio Acidente",
+      stagesFromSheetStatus: true,
     };
   }
   if (/bpc|autis/.test(name)) {

@@ -22,6 +22,7 @@ import { db } from "@/integrations/supabase";
 import type { KanbanBoard } from "@/hooks/useKanbanBoards";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
+import { sheetStatusKey } from "@/lib/sheetStatusStages";
 
 type DateKey = "hoje" | "ontem" | "semana" | "mes" | "tudo";
 
@@ -222,7 +223,11 @@ export function FunnelLeadsSidePanel({
           phone: l.phone_normalized || l.phone_raw || null,
           acolhedor: matched?.acolhedor || l.operator || null,
           created_at: l.created_at,
-          status: matched?.status || firstStageId || null,
+          // Modo status: a "etapa" do lead é o status da planilha (chave
+          // canônica), casando com o id das barras do GenericFunnelDashboard.
+          status: sheetCfg.stagesFromSheetStatus
+            ? sheetStatusKey(l.sheet_status)
+            : matched?.status || firstStageId || null,
         };
       });
     }

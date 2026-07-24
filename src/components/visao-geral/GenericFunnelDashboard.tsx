@@ -9,6 +9,7 @@ import { useKanbanBoards, type KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Link } from "react-router-dom";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
+import { buildSheetStatusStages, SHEET_STATUS_CLOSED_KEY } from "@/lib/sheetStatusStages";
 import { FunnelLeadsSidePanel, type FunnelStageFilter } from "./FunnelLeadsSidePanel";
 import {
   Tooltip,
@@ -94,6 +95,19 @@ export default function GenericFunnelDashboard({ boardMatcher, title }: Props) {
       setError(null);
       try {
         const stagesArr = board.stages || [];
+
+        // Etapas = coluna "status" da planilha (ex.: Auxílio Acidente). Não usa
+        // as etapas do kanban nem consulta o banco: cada lead conta na etapa do
+        // seu status; "Fechado" vira o KPI de fechados/conversão.
+        if (boardSheetCfg?.stagesFromSheetStatus) {
+          const perStage = buildSheetStatusStages(sheetLeads);
+          if (cancelled) return;
+          setTotal(sheetLeads.length);
+          setClosedCount(perStage.find((s) => s.id === SHEET_STATUS_CLOSED_KEY)?.count || 0);
+          setStages(perStage);
+          timeoutId = setTimeout(() => setBarsReady(true), 60);
+          return;
+        }
 
         if (boardSheetCfg) {
           const firstStageId = stagesArr[0]?.id;

@@ -26,6 +26,8 @@ export interface BpcFormLead {
   renda: string;
   possui_advogado: string;
   lead_status: string;
+  /** Coluna "status" da planilha (preenchida pelos operadores). Ausente em snapshots antigos. */
+  sheet_status?: string;
   operator: string;
   tab: string;
   has_whatsapp: boolean;
