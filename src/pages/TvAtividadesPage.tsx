@@ -400,8 +400,24 @@ export default function TvAtividadesPage() {
   return (
     <div
       ref={containerRef}
-      className="min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-white overflow-x-hidden"
+      className="relative min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-white overflow-x-hidden"
     >
+      {/* ===== Selo do recorde (destaque no canto superior direito, telas largas) ===== */}
+      {record && record.value > 0 && (
+        <div className="pointer-events-none hidden 2xl:flex absolute top-6 right-6 z-20 w-[176px] flex-col items-center gap-0.5 rounded-3xl border-2 border-amber-300/60 bg-gradient-to-br from-amber-400/25 via-amber-500/10 to-orange-500/10 px-4 pt-6 pb-4 text-center shadow-[0_0_55px_-10px] shadow-amber-400/50 backdrop-blur-sm">
+          <span className="absolute -top-5 text-4xl drop-shadow-lg">🏆</span>
+          <span className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
+            Recorde {periodLabel[period]}
+          </span>
+          <span className="text-5xl font-black leading-none tabular-nums text-amber-400 drop-shadow">
+            {record.value}
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-white/50">passos</span>
+          <span className="mt-1 line-clamp-2 text-sm font-bold leading-tight text-white/90">
+            {record.holder}
+          </span>
+        </div>
+      )}
       {/* ===== Comemoração de RECORDE (some sozinho) ===== */}
       {recordHit && (
         <div className="pointer-events-none fixed inset-0 z-[60] flex items-start justify-center pt-[12vh] px-4">
@@ -486,9 +502,9 @@ export default function TvAtividadesPage() {
           <span>7º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
-        {/* ===== Selo do recorde do período (sempre visível) ===== */}
+        {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
         {record && record.value > 0 && (
-          <div className="mt-3 flex justify-center">
+          <div className="mt-3 flex justify-center 2xl:hidden">
             <div className="flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-4 py-1.5 text-xs md:text-sm">
               <span className="text-base md:text-lg">🏆</span>
               <span className="font-black uppercase tracking-wider text-amber-300">Recorde {periodLabel[period]}</span>
