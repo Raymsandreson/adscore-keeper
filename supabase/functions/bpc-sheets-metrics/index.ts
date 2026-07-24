@@ -121,11 +121,39 @@ async function fetchTab(
   const values: any[][] = json.values || [];
   console.log(`[bpc-sheets-metrics] fetchTab ${tab}: ${values.length} raw rows`);
   if (values.length < 2) return [];
-  const headers = values[0].map((h: string) => String(h).toLowerCase().trim());
+  // O cabeçalho nem sempre é a linha 1: em abas bagunçadas (ex.: KAROLYNE jul/2026,
+  // um lead foi parar na linha 1 e o cabeçalho real ficou na linha 2). O cabeçalho
+  // verdadeiro tem "created_time" nas 3 primeiras colunas (layout do Meta); linhas
+  // de lead têm timestamp ali — e fragmentos de cabeçalho colados em colunas altas
+  // não enganam o teste. Sem match nas 5 primeiras linhas, assume linha 1.
+  let headerIdx = values.slice(0, 5).findIndex((row) =>
+    (row || []).slice(0, 3).some((c) => String(c).toLowerCase().trim() === "created_time"),
+  );
+  if (headerIdx < 0) headerIdx = 0;
+  const headers = values[headerIdx].map((h: string) => String(h).toLowerCase().trim());
   if (onHeaders) onHeaders(headers);
   const meta = SHEET_TABS.find((s) => s.tab === tab);
+  // Tokens que denunciam fragmento de cabeçalho: os do cabeçalho detectado +
+  // os campos padrão do Meta (cobre tokens cujo título real ficou fora do
+  // range A:Z, como o "id" da KAROLYNE que foi parar na coluna AA).
+  const headerSet = new Set([
+    ...headers.filter(Boolean),
+    "id", "created_time", "ad_id", "ad_name", "adset_id", "adset_name",
+    "campaign_id", "campaign_name", "form_id", "form_name", "is_organic", "platform",
+  ]);
 
-  return values.slice(1).filter((r) => r.length > 0).map((r) => {
+  // Linhas acima do cabeçalho são leads reais (mesmo layout), mas podem ter
+  // fragmentos do cabeçalho colados em células soltas — limpamos esses tokens.
+  const dataRows = values
+    .map((row, i) => ({ row, i }))
+    .filter(({ row, i }) => i !== headerIdx && (row || []).length > 0)
+    .map(({ row, i }) =>
+      i < headerIdx
+        ? row.map((c) => (headerSet.has(String(c).toLowerCase().trim()) ? "" : c))
+        : row,
+    );
+
+  return dataRows.map((r) => {
     const o = rowToObject(headers, r);
     const phoneRaw = o["telefone"] || o["phone_number"] || o["número_do_whatsapp"] ||
       o["qual_o_seu_número_de_contato_?"] ||
