@@ -151,6 +151,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
+  // Resultado esperado (KPI do ranking): a FASE-alvo que representa "sucesso"
+  // deste funil/POP. Guardado em kanban_boards.settings.kpi.
+  const [kpiStageId, setKpiStageId] = useState<string>('');
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
@@ -384,6 +387,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setEditingBoardId(board.id);
     setFormName(board.name);
     setFormDescription(board.description || '');
+    setKpiStageId((board as { settings?: { kpi?: { stage_id?: string } } }).settings?.kpi?.stage_id || '');
 
     // Sempre busca templates frescos junto com os links pra evitar race
     // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
@@ -683,12 +687,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
       let boardId: string;
       if (editingBoardId) {
+        const existingSettings = (boards.find(b => b.id === editingBoardId) as { settings?: Record<string, unknown> } | undefined)?.settings || {};
+        const kpi = kpiStageId
+          ? { tipo: 'etapa', stage_id: kpiStageId, rotulo: latestPhases.find(p => p.stageId === kpiStageId)?.stageName || 'Resultado' }
+          : null;
         await updateBoard(editingBoardId, {
           name: latestName.trim(),
           description: latestDesc.trim() || null,
           color: '#3b82f6',
           stages,
-        });
+          settings: { ...existingSettings, kpi },
+        } as Partial<KanbanBoard>);
         boardId = editingBoardId;
       } else {
         const created = await createBoard({
@@ -1316,6 +1325,28 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
+
+                {/* Resultado esperado do funil/POP = 1º critério do ranking do telão. */}
+                {phases.length > 0 && (
+                  <div className="mt-4 rounded-lg border p-3 space-y-2">
+                    <div className="text-sm font-semibold">🎯 Resultado esperado (KPI do ranking)</div>
+                    <p className="text-xs text-muted-foreground">
+                      A fase que representa o "sucesso" deste funil/POP (ex.: vendas → <em>Fechado</em>;
+                      marketing → <em>Lead Qualificado</em>). O ranking do telão conta quantos leads
+                      chegam nela no mês, por pessoa — é o 1º critério de quem atua aqui.
+                    </p>
+                    <select
+                      value={kpiStageId}
+                      onChange={e => setKpiStageId(e.target.value)}
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="">— Sem resultado esperado definido —</option>
+                      {phases.map(p => (
+                        <option key={p.stageId} value={p.stageId}>{p.stageName}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
