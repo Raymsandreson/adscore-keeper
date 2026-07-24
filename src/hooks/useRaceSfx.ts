@@ -12,6 +12,27 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 const LS_KEY = 'telao_sfx_on';
 
+// Som de ultrapassagem: um ARQUIVO configurável (ex.: um clipe que vocês
+// fornecem) toca no lugar da zoada sintetizada. Ordem de prioridade:
+//   1. ?zoada=<url> na URL do telão
+//   2. localStorage['telao_zoada_url']
+//   3. /telao-ultrapassagem.mp3 (é só soltar o arquivo em public/)
+// Se o arquivo não existir/carregar, cai na zoada sintetizada (Web Audio).
+const LS_ZOADA_URL = 'telao_zoada_url';
+const DEFAULT_ZOADA_FILE = '/telao-ultrapassagem.mp3';
+
+function resolveZoadaUrl(): string {
+  try {
+    const q = new URLSearchParams(window.location.search).get('zoada');
+    if (q) return q;
+    const ls = window.localStorage.getItem(LS_ZOADA_URL);
+    if (ls) return ls;
+  } catch {
+    /* indisponível — usa o padrão */
+  }
+  return DEFAULT_ZOADA_FILE;
+}
+
 export interface RaceSfx {
   vroom: () => void;
   say: (texto: string) => void;
@@ -31,6 +52,9 @@ export function useRaceSfx(): RaceSfx {
   enabledRef.current = enabled;
 
   const ctxRef = useRef<AudioContext | null>(null);
+  // Arquivo de ultrapassagem (opcional). fileOk vira true só quando carrega.
+  const zoadaRef = useRef<HTMLAudioElement | null>(null);
+  const zoadaOkRef = useRef(false);
 
   const getCtx = useCallback((): AudioContext | null => {
     try {
@@ -67,8 +91,28 @@ export function useRaceSfx(): RaceSfx {
     }
   }, []);
 
-  const vroom = useCallback(() => {
-    if (!enabledRef.current) return;
+  // Probe do arquivo de ultrapassagem: só marca ok quando dá pra tocar.
+  useEffect(() => {
+    let a: HTMLAudioElement | null = null;
+    try {
+      a = new Audio(resolveZoadaUrl());
+      a.preload = 'auto';
+      const ok = () => { zoadaOkRef.current = true; };
+      const bad = () => { zoadaOkRef.current = false; };
+      a.addEventListener('canplaythrough', ok);
+      a.addEventListener('error', bad);
+      zoadaRef.current = a;
+      a.load();
+    } catch {
+      zoadaOkRef.current = false;
+    }
+    return () => {
+      a?.pause();
+      zoadaRef.current = null;
+    };
+  }, []);
+
+  const synthVroom = useCallback(() => {
     const ctx = getCtx();
     if (!ctx || ctx.state !== 'running') return;
     const t = ctx.currentTime;
@@ -120,6 +164,23 @@ export function useRaceSfx(): RaceSfx {
     noise.start(t);
     noise.stop(t + 0.5);
   }, [getCtx]);
+
+  // Zoada de ultrapassagem: toca o arquivo configurado; se não houver/falhar,
+  // cai na zoada sintetizada.
+  const vroom = useCallback(() => {
+    if (!enabledRef.current) return;
+    const a = zoadaRef.current;
+    if (a && zoadaOkRef.current) {
+      try {
+        a.currentTime = 0;
+        void a.play().catch(() => synthVroom());
+        return;
+      } catch {
+        /* falhou o replay do arquivo → síntese */
+      }
+    }
+    synthVroom();
+  }, [synthVroom]);
 
   const say = useCallback((texto: string) => {
     if (!enabledRef.current) return;
