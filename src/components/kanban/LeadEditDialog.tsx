@@ -155,6 +155,8 @@ interface LeadEditDialogProps {
   adAccountId?: string;
   boards?: KanbanBoard[];
   mode?: 'dialog' | 'sheet';
+  /** Lado do sheet quando mode='sheet'. 'right' (padrão) ou 'bottom' (sobe de baixo pra cima). */
+  sheetSide?: 'right' | 'bottom';
   initialTab?: string;
   /** Caso fechado já confirmado fora do dialog (ex.: pergunta na atividade) — pula a pergunta e marca direto. */
   autoConfirmClosedCase?: boolean;
@@ -227,6 +229,7 @@ export function LeadEditDialog({
   adAccountId,
   boards = [],
   mode = 'dialog',
+  sheetSide = 'right',
   initialTab,
   autoConfirmClosedCase = false,
 }: LeadEditDialogProps) {
@@ -1913,19 +1916,25 @@ ${scrapeData.content || ''}
   const Title = mode === 'sheet' ? SheetTitle : DialogTitle;
   const Footer = mode === 'sheet' ? SheetFooter : DialogFooter;
 
+  const isBottomSheet = mode === 'sheet' && sheetSide === 'bottom';
+
   const contentClassName = mode === 'sheet'
-    ? 'flex flex-col h-full overflow-y-auto !max-w-none'
+    ? (isBottomSheet
+        ? 'flex flex-col overflow-y-auto !max-w-none w-full rounded-t-xl'
+        : 'flex flex-col h-full overflow-y-auto !max-w-none')
     : 'max-w-2xl max-h-[90vh] flex flex-col';
 
   const sheetContentStyle = mode === 'sheet'
-    ? { width: `${sheetWidth}px`, maxWidth: '95vw' }
+    ? (isBottomSheet
+        ? { height: '92vh', maxHeight: '92vh' }
+        : { width: `${sheetWidth}px`, maxWidth: '95vw' })
     : undefined;
 
   return (
     <>
     <Wrapper open={open} onOpenChange={guardedOpenChange}>
-      <Content className={contentClassName} style={sheetContentStyle} {...(mode === 'sheet' ? { side: 'right' as const } : {})}>
-        {mode === 'sheet' && (
+      <Content className={contentClassName} style={sheetContentStyle} {...(mode === 'sheet' ? { side: sheetSide } : {})}>
+        {mode === 'sheet' && sheetSide === 'right' && (
           <div
             role="separator"
             aria-orientation="vertical"
@@ -1934,6 +1943,9 @@ ${scrapeData.content || ''}
             onDoubleClick={() => { setSheetWidth(512); localStorage.setItem('leadEditDialog.sheetWidth', '512'); }}
             className="absolute left-0 top-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-primary/40 active:bg-primary/60 transition-colors z-30"
           />
+        )}
+        {isBottomSheet && (
+          <div className="mx-auto mb-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" aria-hidden />
         )}
         <Header>
           <div className="flex items-center justify-between">

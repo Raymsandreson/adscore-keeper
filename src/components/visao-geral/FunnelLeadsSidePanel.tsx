@@ -23,6 +23,9 @@ import type { KanbanBoard } from "@/hooks/useKanbanBoards";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
 import { sheetStatusKey } from "@/lib/sheetStatusStages";
+import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
+import { useLeads, type Lead } from "@/hooks/useLeads";
+import { toast } from "sonner";
 
 type DateKey = "hoje" | "ontem" | "semana" | "mes" | "tudo";
 
@@ -133,6 +136,37 @@ export function FunnelLeadsSidePanel({
   const [dateKey, setDateKey] = useState<DateKey>("tudo");
   const [acolhedor, setAcolhedor] = useState<string>("todos");
   const [search, setSearch] = useState("");
+
+  // Detalhe do lead (formulário completo) — abre de baixo pra cima ao clicar num lead.
+  const { updateLead } = useLeads();
+  const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [loadingLeadId, setLoadingLeadId] = useState<string | null>(null);
+
+  const openLeadDetail = async (leadId: string) => {
+    if (loadingLeadId) return;
+    setLoadingLeadId(leadId);
+    try {
+      const { data, error } = await db
+        .from("leads")
+        .select("*")
+        .eq("id", leadId)
+        .is("deleted_at", null)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        toast.info("Detalhes completos indisponíveis para este lead.");
+        return;
+      }
+      setSelectedLead(data as Lead);
+      setDetailOpen(true);
+    } catch (e) {
+      console.error("[FunnelLeadsSidePanel] openLeadDetail", e);
+      toast.error("Não foi possível abrir o lead.");
+    } finally {
+      setLoadingLeadId(null);
+    }
+  };
 
   const sheetCfg = useMemo(() => getFunnelSheetConfig(board?.name), [board?.name]);
 
@@ -275,6 +309,7 @@ export function FunnelLeadsSidePanel({
   const loading = sheetCfg ? sheetLoading || dbLoading : dbLoading;
 
   return (
+    <>
     <Sheet open={open} onOpenChange={setOpen}>
       {!hideTrigger && (
         <SheetTrigger asChild>
@@ -393,7 +428,13 @@ export function FunnelLeadsSidePanel({
                     key={l.id}
                     className="px-4 py-2.5 flex items-start gap-3 hover:bg-muted/40 transition-colors"
                   >
-                    <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => openLeadDetail(l.id)}
+                      disabled={loadingLeadId === l.id}
+                      className="min-w-0 flex-1 text-left disabled:opacity-60"
+                      title="Ver formulário completo do lead"
+                    >
                       <div className="text-sm font-medium truncate">
                         {l.name || "Sem nome"}
                       </div>
@@ -404,15 +445,16 @@ export function FunnelLeadsSidePanel({
                         {l.acolhedor && <span>👤 {l.acolhedor}</span>}
                         <span>🕒 {fmtDateTime(l.created_at)}</span>
                       </div>
-                    </div>
+                    </button>
                     {digits && (
                       <Button
                         variant="ghost"
                         size="icon"
                         className="h-7 w-7 shrink-0"
-                        onClick={() =>
-                          window.open(`https://wa.me/${digits}`, "_blank")
-                        }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(`https://wa.me/${digits}`, "_blank");
+                        }}
                         title="Abrir no WhatsApp"
                       >
                         <MessageCircle className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" />
@@ -426,5 +468,23 @@ export function FunnelLeadsSidePanel({
         </div>
       </SheetContent>
     </Sheet>
+
+    {selectedLead && (
+      <LeadEditDialog
+        open={detailOpen}
+        onOpenChange={(v) => {
+          setDetailOpen(v);
+          if (!v) setSelectedLead(null);
+        }}
+        lead={selectedLead}
+        onSave={async (id, updates) => {
+          await updateLead(id, updates);
+        }}
+        boards={board ? [board] : []}
+        mode="sheet"
+        sheetSide="bottom"
+      />
+    )}
+    </>
   );
 }
