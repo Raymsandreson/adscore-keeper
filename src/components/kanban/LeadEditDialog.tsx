@@ -56,6 +56,7 @@ import { useLeadCustomFields, FieldType, CustomFieldValue } from '@/hooks/useLea
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfileNames } from '@/hooks/useProfileNames';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
+import { useViaCep } from '@/hooks/useViaCep';
 const CustomFieldsConfigPanel = lazy(() => import('@/components/leads/CustomFieldsConfigPanel').then(m => ({ default: m.CustomFieldsConfigPanel })));
 const LeadFieldsUnifiedEditor = lazy(() => import('@/components/leads/LeadFieldsUnifiedEditor').then(m => ({ default: m.LeadFieldsUnifiedEditor })));
 const LeadStageHistoryPanel = lazy(() => import('@/components/kanban/LeadStageHistoryPanel').then(m => ({ default: m.LeadStageHistoryPanel })));
@@ -313,6 +314,7 @@ export function LeadEditDialog({
   const [visitState, setVisitState] = useState('');
   const [visitRegion, setVisitRegion] = useState('');
   const [visitAddress, setVisitAddress] = useState('');
+  const [visitCep, setVisitCep] = useState('');
   const [citySuggest, setCitySuggest] = useState<CitySuggestTrigger | null>(null);
   
   // Companies fields
@@ -332,6 +334,24 @@ export function LeadEditDialog({
   const { classifications, classificationConfig, addClassification } = useContactClassifications();
   const { fetchProfileNames, getDisplayName, loading: profilesLoading } = useProfileNames();
   const { states, cities, loadingCities, fetchCities } = useBrazilianLocations();
+  const { fetchAddress: fetchAddressByCep, loading: loadingCep } = useViaCep();
+
+  // Auto-preenche estado/região/cidade/endereço a partir do CEP da visita
+  const handleVisitCepLookup = async (rawCep: string) => {
+    const clean = rawCep.replace(/\D/g, '');
+    if (clean.length !== 8) return;
+    const addr = await fetchAddressByCep(clean);
+    if (!addr) return;
+    if (addr.state) {
+      setVisitState(addr.state);
+      setVisitRegion(stateToRegion[addr.state] || '');
+      fetchCities(addr.state);
+    }
+    if (addr.city) setVisitCity(addr.city);
+    if (addr.street) {
+      setVisitAddress((prev) => prev?.trim() ? prev : [addr.street, addr.neighborhood].filter(Boolean).join(', '));
+    }
+  };
   const { fetchLeadInstances, createLeadInstances } = useChecklists();
   const [localFieldValues, setLocalFieldValues] = useState<Record<string, { type: FieldType; value: string | number | boolean | null }>>({});
   const [saving, setSaving] = useState(false);
@@ -497,6 +517,7 @@ export function LeadEditDialog({
     setVisitCity(leadAny.visit_city || '');
     setVisitRegion(leadAny.visit_region || stateToRegion[state] || '');
     setVisitAddress(leadAny.visit_address || '');
+    setVisitCep(leadAny.visit_cep || '');
 
     // Fetch cities for the state
     if (state) {
@@ -1587,6 +1608,7 @@ ${scrapeData.content || ''}
         visit_state: visitState || null,
         visit_region: visitRegion || null,
         visit_address: visitAddress || null,
+        visit_cep: visitCep || null,
         // Companies fields
         contractor_company: contractorCompany || null,
         main_company: mainCompany || null,
@@ -3221,6 +3243,21 @@ ${scrapeData.content || ''}
             <TabsContent value="location" className="space-y-4 mt-0">
               {activeTab === 'location' && (<>
               <div className="grid grid-cols-2 gap-4">
+                {isFieldVisible('visit_cep') && (<div>
+                  <Label className="flex items-center gap-2">
+                    CEP da Visita
+                    {loadingCep && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
+                  </Label>
+                  <Input
+                    value={visitCep}
+                    onChange={(e) => setVisitCep(e.target.value)}
+                    onBlur={(e) => handleVisitCepLookup(e.target.value)}
+                    placeholder="00000-000"
+                    inputMode="numeric"
+                    maxLength={9}
+                  />
+                </div>)}
+
                 {isFieldVisible('visit_state') && (<div>
                   <Label>Estado da Visita</Label>
                   <Select 

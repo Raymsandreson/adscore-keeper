@@ -16,6 +16,7 @@ export interface AccidentLeadFormData {
   expected_birth_date: string;
 
   // Visit location
+  visit_cep?: string;
   visit_city: string;
   visit_state: string;
   visit_region: string;
