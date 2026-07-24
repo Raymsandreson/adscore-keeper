@@ -73,9 +73,13 @@ export const handler: RequestHandler = async (req, res) => {
 Data de HOJE: ${today} (${weekday}) — use para resolver datas relativas ("amanhã", "sexta", "dia 15").
 
 Regras:
-- Seja fiel: NÃO invente fatos, nomes, datas ou prazos que não estejam no ditado.
-- O título (title) deve ser curto e objetivo, em MAIÚSCULAS, resumindo a tarefa (ex.: "PROTOCOLAR PETIÇÃO INICIAL", "LIGAR PARA A VARA").
-- Organize o conteúdo: what_was_done (o que já foi/está sendo feito), current_status (como está), next_steps (próximo passo, com prazo se dito). NÃO seja redundante — cada campo tem função distinta; deixar vazio é melhor que repetir.
+- FIDELIDADE ACIMA DE TUDO: preserve as palavras e o sentido do assessor. Faça apenas limpeza leve (remover repetições, "é...", "tipo", falsos começos) e ajuste de pontuação. NÃO reescreva no seu próprio estilo, NÃO resuma, NÃO troque os termos usados por sinônimos. Se o assessor disse "tô verificando a tela e o menu", o campo deve refletir isso — não vire "Verificação de layout".
+- NÃO invente fatos, nomes, datas ou prazos que não estejam no ditado.
+- O título (title) deve ser curto e objetivo, em MAIÚSCULAS, resumindo a tarefa (ex.: "PROTOCOLAR PETIÇÃO INICIAL", "LIGAR PARA A VARA"). Este é o ÚNICO campo em que resumir é esperado.
+- Organize o conteúdo nos campos, mantendo as palavras do assessor: what_was_done (o que já foi/está sendo feito), current_status (como está), next_steps (próximo passo, com prazo se dito).
+- NÃO SEJA REDUNDANTE: só preencha um campo se o ditado realmente trouxer aquela informação. NÃO repita o mesmo conteúdo em campos diferentes; cada campo tem função distinta (o que foi feito ≠ como está ≠ próximo passo). Deixar vazio é PREFERÍVEL a repetir ou usar texto genérico.
+- Se o ditado tiver pouca informação, coloque o essencial em what_was_done (fiel ao que foi dito) e deixe os demais vazios — não force conteúdo pra preencher.
+- PERGUNTA quando faltar informação essencial: se o ditado for confuso, inaudível em trechos importantes ou insuficiente para preencher com segurança, retorne uma pergunta objetiva em "clarifying_question" (uma frase, direta ao usuário) e preencha só o que der com segurança. Se estiver tudo claro, OMITA clarifying_question.
 - Se mencionar um cliente/lead pelo nome, coloque em lead_name.
 - deadline só se o ditado mencionar prazo/data (formato YYYY-MM-DD). Senão, vazio.
 - priority: use "urgente"/"alta" só se o ditado indicar urgência; senão "normal".
@@ -86,6 +90,7 @@ ${typesList
 
     let fields = { ...EMPTY_FIELDS };
     let fillError: string | null = null;
+    let clarifyingQuestion: string | undefined;
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         const result = await geminiChat({
@@ -113,10 +118,11 @@ ${typesList
                   priority: { type: 'string', enum: ['baixa', 'normal', 'alta', 'urgente'], description: 'Prioridade.' },
                   deadline: { type: 'string', description: 'Prazo em YYYY-MM-DD, apenas se mencionado. Senão vazio.' },
                   lead_name: { type: 'string', description: 'Nome do cliente/lead citado, se houver. Senão vazio.' },
-                  what_was_done: { type: 'string', description: 'O que já foi/está sendo feito.' },
-                  current_status: { type: 'string', description: 'Como está a situação agora.' },
-                  next_steps: { type: 'string', description: 'Próximo passo, com prazo se dito.' },
-                  notes: { type: 'string', description: 'Observações adicionais relevantes.' },
+                  what_was_done: { type: 'string', description: 'O que já foi/está sendo feito, FIEL às palavras do assessor (só limpeza leve).' },
+                  current_status: { type: 'string', description: 'Como está a situação agora. Vazio se o ditado não disser.' },
+                  next_steps: { type: 'string', description: 'Próximo passo, com prazo se dito. Vazio se não houver.' },
+                  notes: { type: 'string', description: 'Observações adicionais relevantes. Vazio se não houver.' },
+                  clarifying_question: { type: 'string', description: 'Pergunta objetiva ao usuário quando o ditado for confuso/insuficiente para preencher com segurança. OMITA se estiver tudo claro.' },
                 },
                 required: ['title', 'priority'],
                 additionalProperties: false,
@@ -129,6 +135,10 @@ ${typesList
         const toolCall = result?.choices?.[0]?.message?.tool_calls?.[0];
         if (toolCall?.function?.arguments) {
           const parsed = JSON.parse(toolCall.function.arguments);
+          if (parsed.clarifying_question && String(parsed.clarifying_question).trim()) {
+            clarifyingQuestion = String(parsed.clarifying_question).trim();
+          }
+          delete parsed.clarifying_question;
           fields = { ...fields, ...parsed };
           fillError = null;
           break;
@@ -146,6 +156,7 @@ ${typesList
       success: true,
       transcript,
       fields,
+      ...(clarifyingQuestion ? { clarifying_question: clarifyingQuestion } : {}),
       ...(fillError ? { fill_error: fillError } : {}),
     });
   } catch (e: any) {
