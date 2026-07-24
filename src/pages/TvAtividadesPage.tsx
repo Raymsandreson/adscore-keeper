@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2 } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
+import { useRaceSfx, detectarUltrapassagens, type Ultrapassagem } from '@/hooks/useRaceSfx';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -63,6 +64,10 @@ function initials(name: string) {
   const parts = name.trim().split(/\s+/);
   return ((parts[0]?.[0] || '') + (parts[1]?.[0] || '')).toUpperCase() || '—';
 }
+// Nome curto pra narração/banner de ultrapassagem (primeiros 2 nomes).
+function shortName(name: string) {
+  return name.trim().split(/\s+/).slice(0, 2).join(' ') || name;
+}
 function periodSince(p: Period): Date {
   const now = new Date();
   if (p === 'hoje') return startOfDay(now);
@@ -113,6 +118,12 @@ export default function TvAtividadesPage() {
   // Toca o arquivo configurado (public/telao-musica.mp3 ou ?musica=URL);
   // se não houver, cai numa trilha sintetizada. Ver useRaceMusic.
   const music = useRaceMusic();
+  // Efeitos de corrida: zoada de aceleração + narração quando alguém ultrapassa.
+  const sfx = useRaceSfx();
+  const prevOrderRef = useRef<Map<string, number> | null>(null);
+  const lastSfxRef = useRef(0);
+  const overtakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [overtakes, setOvertakes] = useState<Ultrapassagem[]>([]);
 
   // Relógio do cabeçalho.
   useEffect(() => {
@@ -238,6 +249,36 @@ export default function TvAtividadesPage() {
   const list = useMemo(() => ranking.slice(3, 3 + LIST_MAX), [ranking]);
   const resumo = data?.resumo ?? null;
 
+  // Trocar de time/período reinicia a comparação (senão dispara ultrapassagem falsa).
+  useEffect(() => { prevOrderRef.current = null; }, [teamId, period]);
+
+  // Detecta ultrapassagens a cada atualização do ranking → zoada + narração + banner.
+  const { vroom, say } = sfx;
+  useEffect(() => {
+    if (!ranking.length) return;
+    const order = ranking.map(r => r.nome);
+    const nextMap = new Map<string, number>();
+    order.forEach((n, i) => nextMap.set(n, i));
+    const prev = prevOrderRef.current;
+    prevOrderRef.current = nextMap;
+    if (!prev) return; // primeira carga: só registra a ordem, sem alarme
+
+    const evs = detectarUltrapassagens(prev, order, 2);
+    if (!evs.length) return;
+    // Cooldown: atualização manual em rajada não dispara som repetido.
+    const now = Date.now();
+    if (now - lastSfxRef.current < 3000) return;
+    lastSfxRef.current = now;
+
+    vroom();
+    say(`${shortName(evs[0].a)} ultrapassou ${shortName(evs[0].b)}`);
+    setOvertakes(evs);
+    if (overtakeTimer.current) clearTimeout(overtakeTimer.current);
+    overtakeTimer.current = setTimeout(() => setOvertakes([]), 6000);
+  }, [ranking, vroom, say]);
+
+  useEffect(() => () => { if (overtakeTimer.current) clearTimeout(overtakeTimer.current); }, []);
+
   const toggleFullscreen = () => {
     const el = containerRef.current;
     if (!el) return;
@@ -261,6 +302,25 @@ export default function TvAtividadesPage() {
       ref={containerRef}
       className="min-h-screen w-full bg-gradient-to-b from-slate-950 via-slate-900 to-indigo-950 text-white overflow-x-hidden"
     >
+      {/* ===== Alerta de ultrapassagem (some sozinho) ===== */}
+      {overtakes.length > 0 && (
+        <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex flex-col items-center gap-2 px-4">
+          {overtakes.map((o, i) => (
+            <div
+              key={`${o.a}-${o.b}-${i}`}
+              className="flex items-center gap-3 rounded-2xl border border-amber-200/50 bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-slate-900 shadow-2xl shadow-amber-500/40 animate-in fade-in slide-in-from-top-4 duration-300"
+            >
+              <span className="text-2xl md:text-3xl">🏁</span>
+              <span className="text-base md:text-2xl font-black tracking-tight">
+                <span className="uppercase">{shortName(o.a)}</span> ultrapassou{' '}
+                <span className="uppercase">{shortName(o.b)}</span>!
+              </span>
+              <span className="text-2xl md:text-3xl">💨</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="mx-auto max-w-6xl px-5 py-5 md:px-8 md:py-7">
         {/* ===== Cabeçalho ===== */}
         <div className="flex items-start justify-between gap-4">
@@ -403,6 +463,18 @@ export default function TvAtividadesPage() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => sfx.setEnabled(!sfx.enabled)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full text-xs font-black px-3.5 py-1.5 transition',
+              sfx.enabled ? 'bg-orange-400 text-slate-900 hover:bg-orange-300' : 'bg-white/10 text-white/60 hover:text-white',
+            )}
+            title="Zoada de aceleração + narração quando alguém ultrapassa"
+            aria-pressed={sfx.enabled}
+          >
+            {sfx.enabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+            Ultrapassagem
+          </button>
           <button
             onClick={() => setBroadcast(true)}
             disabled={ranking.length === 0}
