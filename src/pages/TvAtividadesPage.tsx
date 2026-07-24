@@ -719,7 +719,7 @@ export default function TvAtividadesPage() {
               ranking={ranking}
               cars={cars}
               onSaveCar={saveCar}
-              onAnalyze={(row, rank) => setCoach({ row, rank })}
+              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, ...(row as RaceRow) } as RankRow, rank })}
               meta={data?.meta?.passos}
               periodo={period}
             />
