@@ -59,6 +59,8 @@ export function TimeOffManager() {
   const [entries, setEntries] = useState<TimeOffEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Desativados (org_user_status.active = false no Externo) somem do seletor.
+  const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
 
   // Form
   const [formUserId, setFormUserId] = useState('');
@@ -69,18 +71,24 @@ export function TimeOffManager() {
 
   const people = useMemo(
     () => filterAssignableMembers(profilesList.map(p => ({ user_id: p.user_id, full_name: p.full_name, email: p.email })))
+      .filter(p => !inactiveIds.has(p.user_id))
       .sort((a, b) => (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '', 'pt-BR', { sensitivity: 'base' })),
-    [profilesList],
+    [profilesList, inactiveIds],
   );
 
   const fetchEntries = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const { data, error } = await (externalSupabase as any)
-        .from('member_time_off')
-        .select('*')
-        .order('start_date', { ascending: true });
+      const [{ data, error }, { data: statusRows }] = await Promise.all([
+        (externalSupabase as any)
+          .from('member_time_off')
+          .select('*')
+          .order('start_date', { ascending: true }),
+        ((externalSupabase as any).from('org_user_status') as any)
+          .select('user_id').eq('active', false),
+      ]);
       if (error) throw error;
+      setInactiveIds(new Set(((statusRows as any[]) || []).map(r => r.user_id)));
       setEntries((data || []) as TimeOffEntry[]);
     } catch (e) {
       console.error('[TimeOffManager] Falha ao carregar ausências:', e);
