@@ -57,10 +57,14 @@ export function extractDDD(phone: string): string | null {
   return null;
 }
 
-export function getLocationFromDDD(phone: string): { state: string; city: string } | null {
+// Preenche APENAS o estado a partir do DDD. A cidade NÃO é derivada do DDD:
+// o DDD cobre várias cidades e defaultar pra capital gerava cidade errada em
+// massa (ex: telefone /MT virava "Cuiabá"). A cidade real vem do nome do
+// contato (ver src/lib/parseLocationFromName.ts) ou de preenchimento manual.
+export function getLocationFromDDD(phone: string): { state: string; city: string | null } | null {
   const ddd = extractDDD(phone);
   if (!ddd) return null;
   const info = DDD_MAP[ddd];
   if (!info) return null;
-  return { state: info.uf, city: info.capital };
+  return { state: info.uf, city: null };
 }

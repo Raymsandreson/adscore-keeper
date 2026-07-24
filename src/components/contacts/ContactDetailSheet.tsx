@@ -153,11 +153,12 @@ export function ContactDetailSheet({
   const [professionSearch, setProfessionSearch] = useState('');
   const [filteredProfessions, setFilteredProfessions] = useState<any[]>([]);
   const [whatsappGroupId, setWhatsappGroupId] = useState('');
-  // Sugestão de localização extraída do nome (ex: "Solange - Campos De Júlio/MT")
-  const [nameLocationSuggestion, setNameLocationSuggestion] = useState<
-    { sigla: string; nome: string; city: string | null } | null
+  // Localização extraída automaticamente do nome (ex: "Solange - Campos De Júlio/MT").
+  // nameLocationApplied guarda o que foi preenchido, só pra mostrar uma nota passiva.
+  const [nameLocationApplied, setNameLocationApplied] = useState<
+    { sigla: string; city: string } | null
   >(null);
-  const [nameLocationDismissed, setNameLocationDismissed] = useState(false);
+  const nameLocationAutoAppliedRef = useRef<string | null>(null);
 
   // Hooks
   const { classifications: availableClassifications } = useContactClassifications();
@@ -212,7 +213,7 @@ export function ContactDetailSheet({
       setProfessionCboCode((contact as any).profession_cbo_code || '');
       setProfessionSearch((contact as any).profession || '');
       setWhatsappGroupId((contact as any).whatsapp_group_id || '');
-      setNameLocationDismissed(false);
+      setNameLocationApplied(null);
       setIsEditing(true);
       
       // Fetch profile name for created_by
@@ -262,52 +263,38 @@ export function ContactDetailSheet({
     }
   }, [state, fetchCities]);
 
-  // Detecta cidade/estado escondidos no nome do contato (ex: "Solange - Campos De Júlio/MT").
-  // Só sugere quando a cidade está vazia; nunca sobrescreve em silêncio.
+  // Detecta cidade/estado escondidos no nome do contato (ex: "Solange - Campos De Júlio/MT")
+  // e preenche automaticamente — sem pedir confirmação. Só age quando a cidade está
+  // vazia e só uma vez por contato (não briga com edição manual do usuário).
   useEffect(() => {
-    if (!open || !isEditing || !fullName || city || nameLocationDismissed) {
-      setNameLocationSuggestion(null);
-      return;
-    }
+    if (!open || !isEditing || !fullName || city || !contact?.id) return;
+    if (nameLocationAutoAppliedRef.current === contact.id) return;
     const detected = detectStateFromName(fullName, states);
-    if (!detected) {
-      setNameLocationSuggestion(null);
-      return;
-    }
+    if (!detected) return;
     let cancelled = false;
     (async () => {
       const stateId = states.find((s) => s.sigla === detected.sigla)?.id;
+      if (!stateId) return;
       let cityMatch: string | null = null;
-      if (stateId) {
-        try {
-          const resp = await fetch(
-            `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${stateId}/municipios?orderBy=nome`,
-          );
-          const municipios = await resp.json();
-          cityMatch = detectCityFromBase(detected.base, municipios);
-        } catch (e) {
-          console.error('Erro ao casar município do nome:', e);
-        }
+      try {
+        const resp = await fetch(
+          `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${stateId}/municipios?orderBy=nome`,
+        );
+        const municipios = await resp.json();
+        cityMatch = detectCityFromBase(detected.base, municipios);
+      } catch (e) {
+        console.error('Erro ao casar município do nome:', e);
       }
-      if (cancelled) return;
-      // Só vale a pena sugerir se achamos a cidade, ou se o estado ainda está vazio.
-      if (cityMatch || !state) {
-        setNameLocationSuggestion({ sigla: detected.sigla, nome: detected.nome, city: cityMatch });
-      } else {
-        setNameLocationSuggestion(null);
-      }
+      if (cancelled || !cityMatch) return;
+      nameLocationAutoAppliedRef.current = contact.id;
+      setState(detected.sigla);
+      setCity(cityMatch);
+      setNameLocationApplied({ sigla: detected.sigla, city: cityMatch });
     })();
     return () => {
       cancelled = true;
     };
-  }, [open, isEditing, fullName, city, state, states, nameLocationDismissed]);
-
-  const applyNameLocationSuggestion = () => {
-    if (!nameLocationSuggestion) return;
-    if (nameLocationSuggestion.sigla) setState(nameLocationSuggestion.sigla);
-    if (nameLocationSuggestion.city) setCity(nameLocationSuggestion.city);
-    setNameLocationSuggestion(null);
-  };
+  }, [open, isEditing, fullName, city, contact?.id, states]);
 
   const handleCepChange = async (newCep: string) => {
     setCep(newCep);
@@ -1062,34 +1049,16 @@ export function ContactDetailSheet({
             <TabsContent value="location" className="space-y-4 mt-0">
               {isEditing ? (
                 <div className="space-y-4">
-                  {nameLocationSuggestion && (
-                    <div className="flex items-start gap-2 rounded-md border border-primary/30 bg-primary/5 p-3">
-                      <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium">
-                          Localização detectada no nome
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          {nameLocationSuggestion.city
-                            ? `${nameLocationSuggestion.city} / ${nameLocationSuggestion.sigla}`
-                            : nameLocationSuggestion.nome}
-                        </p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <Button size="sm" onClick={applyNameLocationSuggestion}>
-                            Preencher
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => {
-                              setNameLocationSuggestion(null);
-                              setNameLocationDismissed(true);
-                            }}
-                          >
-                            Dispensar
-                          </Button>
-                        </div>
-                      </div>
+                  {nameLocationApplied && (
+                    <div className="flex items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+                      <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
+                      <p className="text-xs text-muted-foreground">
+                        Cidade preenchida a partir do nome:{' '}
+                        <span className="font-medium text-foreground">
+                          {nameLocationApplied.city} / {nameLocationApplied.sigla}
+                        </span>
+                        . Confira e salve.
+                      </p>
                     </div>
                   )}
                   {!isFieldHidden('cep') && (
