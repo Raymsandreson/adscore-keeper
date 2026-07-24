@@ -31,6 +31,14 @@ export function nameKey(nome: string) {
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
+// Tempo do cronômetro (segundos) → rótulo curto; 0/sem uso = traço.
+function fmtTempo(s: number | null | undefined) {
+  if (!s) return '—';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`;
+}
+
 // Rótulo do escopo do recorde, por período aberto no telão. "por dia/semana/mês"
 // (não "do dia") pra deixar claro que é a melhor marca de UM dia/semana/mês já
 // registrado — e não o recorde de hoje.
@@ -132,6 +140,11 @@ export default function WackyRaceTrack({
                     <span><b className="text-sky-400">{r.passos}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">passos</span></span>
                     <span><b className="text-emerald-400">{r.concluidas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">concl</span></span>
                     <span><b className="text-rose-400">{r.atrasadas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">atr</span></span>
+                  </span>
+                  {/* Horas do cronômetro — linha discreta, não compete com os números principais. */}
+                  <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-[10px] md:text-xs font-bold tabular-nums text-white/40">
+                    <span>⏱️ <b className="text-teal-400">{fmtTempo(r.ativo_seg)}</b> <span className="uppercase tracking-wider text-white/35">ativo</span></span>
+                    <span>💤 <b className="text-orange-400">{fmtTempo(r.ocioso_seg)}</b> <span className="uppercase tracking-wider text-white/35">ocioso</span></span>
                   </span>
                 </span>
               </button>
