@@ -685,6 +685,9 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
   const updateLead = async (id: string, updates: Partial<Lead>, editSummary?: string) => {
     try {
+      // Resultado ANTES da edição — pra registrar a mudança no histórico (KPI
+      // "resultado esperado" por pessoa/mês). Capturado antes do update otimista.
+      const prevLeadStatus = leads.find(l => l.id === id)?.lead_status ?? null;
       // Auto-set timestamps based on status
       const timestampUpdates: Record<string, any> = sanitizeLeadDateFields(updates);
       if (updates.status === 'qualified' && !updates.qualified_at) {
@@ -712,6 +715,23 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       if (error) throw error;
 
       const updatedLead = data as Lead;
+
+      // Instrumentação do RESULTADO do lead: quando o "Resultado do Lead" muda,
+      // registra quem (user do Cloud) + quando + de/para no histórico, via RPC
+      // security definer (o Externo é anônimo, então o autor vem do frontend —
+      // mesmo padrão do log_checklist_step). É o que alimenta o KPI "resultado
+      // esperado" por pessoa/mês no ranking. Não bloqueia o fluxo se falhar.
+      if (user?.id && updates.lead_status !== undefined && updates.lead_status !== prevLeadStatus) {
+        void (externalSupabase as any).rpc('log_lead_result_change', {
+          p_user_id: user.id,
+          p_lead_id: id,
+          p_from: prevLeadStatus,
+          p_to: updates.lead_status,
+          p_reason: (updates as any).lead_status_reason ?? null,
+        }).then(({ error }: { error: { message: string } | null }) => {
+          if (error) console.warn('[log_lead_result_change]', error.message);
+        });
+      }
 
       // Optimistic local update - avoids full reload lag
       setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updatedLead } : l));
