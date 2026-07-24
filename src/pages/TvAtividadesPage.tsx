@@ -396,6 +396,9 @@ export default function TvAtividadesPage() {
   }, []);
 
   const periodLabel: Record<Period, string> = { hoje: 'HOJE', semana: 'DA SEMANA', mes: 'DO MÊS' };
+  // Rótulo do RECORDE: "por dia/semana/mês" (não "hoje") — é a melhor marca de um
+  // único dia/semana/mês já registrado, não o recorde de hoje.
+  const recordeLabel: Record<Period, string> = { hoje: 'POR DIA', semana: 'POR SEMANA', mes: 'POR MÊS' };
 
   return (
     <div
@@ -407,7 +410,7 @@ export default function TvAtividadesPage() {
         <div className="pointer-events-none hidden 2xl:flex absolute top-6 right-6 z-20 w-[176px] flex-col items-center gap-0.5 rounded-3xl border-2 border-amber-300/60 bg-gradient-to-br from-amber-400/25 via-amber-500/10 to-orange-500/10 px-4 pt-6 pb-4 text-center shadow-[0_0_55px_-10px] shadow-amber-400/50 backdrop-blur-sm">
           <span className="absolute -top-5 text-4xl drop-shadow-lg">🏆</span>
           <span className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
-            Recorde {periodLabel[period]}
+            Recorde {recordeLabel[period]}
           </span>
           <span className="text-5xl font-black leading-none tabular-nums text-amber-400 drop-shadow">
             {record.value}
@@ -507,7 +510,7 @@ export default function TvAtividadesPage() {
           <div className="mt-3 flex justify-center 2xl:hidden">
             <div className="flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-4 py-1.5 text-xs md:text-sm">
               <span className="text-base md:text-lg">🏆</span>
-              <span className="font-black uppercase tracking-wider text-amber-300">Recorde {periodLabel[period]}</span>
+              <span className="font-black uppercase tracking-wider text-amber-300">Recorde {recordeLabel[period]}</span>
               <span className="text-white/40">·</span>
               <span className="font-bold text-white/90">{record.holder}</span>
               <span className="font-black tabular-nums text-amber-400">{record.value}</span>
