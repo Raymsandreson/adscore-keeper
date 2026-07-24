@@ -151,9 +151,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
-  // Resultado esperado (KPI do ranking): a FASE-alvo que representa "sucesso"
-  // deste funil/POP. Guardado em kanban_boards.settings.kpi.
-  const [kpiStageId, setKpiStageId] = useState<string>('');
+  // Resultados possíveis do POP (cadastráveis, tipo status — NÃO são as fases) +
+  // qual é o ESPERADO (= sucesso / objetivo final). Guardado em
+  // kanban_boards.settings.{resultados, resultado_esperado_id}.
+  const [formResultados, setFormResultados] = useState<{ id: string; label: string }[]>([]);
+  const [formResultadoEsperadoId, setFormResultadoEsperadoId] = useState<string>('');
+  const [newResultadoLabel, setNewResultadoLabel] = useState<string>('');
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
@@ -387,7 +390,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setEditingBoardId(board.id);
     setFormName(board.name);
     setFormDescription(board.description || '');
-    setKpiStageId((board as { settings?: { kpi?: { stage_id?: string } } }).settings?.kpi?.stage_id || '');
+    {
+      const cfg = (board as { settings?: { resultados?: { id: string; label: string }[]; resultado_esperado_id?: string } }).settings;
+      setFormResultados(cfg?.resultados || []);
+      setFormResultadoEsperadoId(cfg?.resultado_esperado_id || '');
+    }
 
     // Sempre busca templates frescos junto com os links pra evitar race
     // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
@@ -688,15 +695,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       let boardId: string;
       if (editingBoardId) {
         const existingSettings = (boards.find(b => b.id === editingBoardId) as { settings?: Record<string, unknown> } | undefined)?.settings || {};
-        const kpi = kpiStageId
-          ? { tipo: 'etapa', stage_id: kpiStageId, rotulo: latestPhases.find(p => p.stageId === kpiStageId)?.stageName || 'Resultado' }
-          : null;
+        const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim() })).filter(r => r.label);
+        const espId = cleanResultados.some(r => r.id === formResultadoEsperadoId) ? formResultadoEsperadoId : null;
         await updateBoard(editingBoardId, {
           name: latestName.trim(),
           description: latestDesc.trim() || null,
           color: '#3b82f6',
           stages,
-          settings: { ...existingSettings, kpi },
+          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_id: espId },
         } as Partial<KanbanBoard>);
         boardId = editingBoardId;
       } else {
@@ -1326,27 +1332,75 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   </Button>
                 </div>
 
-                {/* Resultado esperado do funil/POP = 1º critério do ranking do telão. */}
-                {phases.length > 0 && (
-                  <div className="mt-4 rounded-lg border p-3 space-y-2">
-                    <div className="text-sm font-semibold">🎯 Resultado esperado (KPI do ranking)</div>
-                    <p className="text-xs text-muted-foreground">
-                      A fase que representa o "sucesso" deste funil/POP (ex.: vendas → <em>Fechado</em>;
-                      marketing → <em>Lead Qualificado</em>). O ranking do telão conta quantos leads
-                      chegam nela no mês, por pessoa — é o 1º critério de quem atua aqui.
-                    </p>
-                    <select
-                      value={kpiStageId}
-                      onChange={e => setKpiStageId(e.target.value)}
-                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">— Sem resultado esperado definido —</option>
-                      {phases.map(p => (
-                        <option key={p.stageId} value={p.stageId}>{p.stageName}</option>
-                      ))}
-                    </select>
+                {/* Resultados possíveis do POP (tipo status) + qual é o ESPERADO (sucesso). */}
+                <div className="mt-4 rounded-lg border p-3 space-y-3">
+                  <div className="text-sm font-semibold">🎯 Resultados possíveis do POP</div>
+                  <p className="text-xs text-muted-foreground">
+                    Cadastre os resultados que um lead deste funil/POP pode ter (ex.: <em>Fechado</em>,
+                    <em> Recusado</em>, <em>Sem interesse</em>). Marque o <b>esperado</b> (radio) — é o
+                    "sucesso"/objetivo final e vira o 1º critério do ranking do telão.
+                  </p>
+
+                  <div className="space-y-2">
+                    {formResultados.map((r, i) => (
+                      <div key={r.id} className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="resultado-esperado"
+                          className="shrink-0"
+                          checked={formResultadoEsperadoId === r.id}
+                          onChange={() => setFormResultadoEsperadoId(r.id)}
+                          title="Marcar como resultado esperado (sucesso)"
+                        />
+                        <Input
+                          value={r.label}
+                          onChange={e => setFormResultados(prev => prev.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                          placeholder="Nome do resultado"
+                          className="flex-1"
+                        />
+                        {formResultadoEsperadoId === r.id && (
+                          <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-emerald-500">esperado</span>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0"
+                          onClick={() => {
+                            setFormResultados(prev => prev.filter((_, j) => j !== i));
+                            if (formResultadoEsperadoId === r.id) setFormResultadoEsperadoId('');
+                          }}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
                   </div>
-                )}
+
+                  <div className="flex gap-2">
+                    <Input
+                      value={newResultadoLabel}
+                      onChange={e => setNewResultadoLabel(e.target.value)}
+                      placeholder="Novo resultado (ex.: Fechado)"
+                      className="flex-1"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && newResultadoLabel.trim()) {
+                          setFormResultados(prev => [...prev, { id: crypto.randomUUID(), label: newResultadoLabel.trim() }]);
+                          setNewResultadoLabel('');
+                        }
+                      }}
+                    />
+                    <Button
+                      variant="outline"
+                      disabled={!newResultadoLabel.trim()}
+                      onClick={() => {
+                        setFormResultados(prev => [...prev, { id: crypto.randomUUID(), label: newResultadoLabel.trim() }]);
+                        setNewResultadoLabel('');
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
 
