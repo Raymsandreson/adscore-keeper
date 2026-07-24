@@ -862,6 +862,18 @@ export function ContactDetailSheet({
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder="Notas sobre o contato..."
                       rows={3}
+                      className="min-h-[80px] max-h-[400px] resize-y"
+                      ref={(el) => {
+                        if (el) {
+                          el.style.height = "auto";
+                          el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
+                        }
+                      }}
+                      onInput={(e) => {
+                        const el = e.currentTarget;
+                        el.style.height = "auto";
+                        el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
+                      }}
                     />
                   </div>
                   )}
