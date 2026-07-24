@@ -23,6 +23,7 @@ type Period = 'hoje' | 'semana' | 'mes';
 
 interface RankRow {
   nome: string;
+  resultado: number;
   fases: number;
   objetivos: number;
   passos: number;
@@ -554,23 +555,25 @@ export default function TvAtividadesPage() {
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-[11px] md:text-sm font-bold uppercase tracking-wider text-white/70">
           <span className="text-amber-400">🏆 Ranking {periodLabel[period]}</span>
           <span className="text-white/30">·</span>
-          <span>1º <span className="text-amber-300">Fases</span></span>
+          <span>1º <span className="text-yellow-300">Resultado Esperado</span></span>
           <span className="text-white/30">·</span>
-          <span>2º <span className="text-lime-400">Objetivos</span></span>
+          <span>2º <span className="text-amber-300">Fases</span></span>
           <span className="text-white/30">·</span>
-          <span>3º <span className="text-sky-400">Passos Dados</span></span>
+          <span>3º <span className="text-lime-400">Objetivos</span></span>
           <span className="text-white/30">·</span>
-          <span>4º <span className="text-fuchsia-400">Itens do Checklist</span></span>
+          <span>4º <span className="text-sky-400">Passos</span></span>
           <span className="text-white/30">·</span>
-          <span>5º <span className="text-emerald-400">Concluídas</span></span>
+          <span>5º <span className="text-fuchsia-400">Itens do Checklist</span></span>
           <span className="text-white/30">·</span>
-          <span>6º <span className="text-rose-400">Menos Atrasadas</span></span>
+          <span>6º <span className="text-emerald-400">Concluídas</span></span>
           <span className="text-white/30">·</span>
-          <span>7º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>7º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>8º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>8º <span className="text-teal-400">Mais Tempo Ativo</span></span>
           <span className="text-white/30">·</span>
-          <span>9º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>9º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span className="text-white/30">·</span>
+          <span>10º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
@@ -827,6 +830,7 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
           <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
+          <PodiumStat text={row.resultado ?? 0} label="resultado" color="text-yellow-300" />
           <PodiumStat text={row.fases ?? 0} label="fases" color="text-amber-300" />
           <PodiumStat text={row.objetivos ?? 0} label="objetivos" color="text-lime-400" />
           <PodiumStat text={row.doc_itens ?? 0} label="checklist" color="text-fuchsia-400" />
@@ -870,6 +874,7 @@ function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect
         {row.nome}
         {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
       </div>
+      <Stat value={row.resultado ?? 0} label="result" color="text-yellow-300" />
       <Stat value={row.fases ?? 0} label="fases" color="text-amber-300" />
       <Stat value={row.objetivos ?? 0} label="obj" color="text-lime-400" />
       <Stat value={row.passos} label="passos" color="text-sky-400" />

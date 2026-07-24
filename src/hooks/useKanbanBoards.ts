@@ -133,6 +133,10 @@ export const useKanbanBoards = (adAccountId?: string) => {
       if (updates.sheet_initial_stage_id !== undefined) updatePayload.sheet_initial_stage_id = updates.sheet_initial_stage_id;
       if (updates.sheet_source_url !== undefined) updatePayload.sheet_source_url = updates.sheet_source_url;
       if (updates.sheet_enabled !== undefined) updatePayload.sheet_enabled = updates.sheet_enabled;
+      // KPI "resultado esperado" do POP e outras configs vivem em settings (jsonb).
+      if ((updates as { settings?: unknown }).settings !== undefined) {
+        updatePayload.settings = (updates as { settings?: unknown }).settings;
+      }
 
       const { data, error } = await supabase
         .from('kanban_boards')
