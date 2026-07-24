@@ -8,7 +8,7 @@ import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
-import WackyRaceTrack, { nameKey, type CarChoice } from '@/components/tv/WackyRaceTrack';
+import WackyRaceTrack, { nameKey, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
 import { useRaceSfx, detectarUltrapassagens, OVERTAKE_PRESETS, type Ultrapassagem } from '@/hooks/useRaceSfx';
