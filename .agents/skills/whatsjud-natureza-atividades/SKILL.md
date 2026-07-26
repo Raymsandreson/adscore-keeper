@@ -49,9 +49,27 @@ qual(is) natureza(s) a mudança toca e por quê.
   **custo/repasse**, **comprovante**; ciclo aberta→atribuída→campo→concluída c/ comprovante.
   Ex.: INSS, cartório, delegacia, hospital, visita a cliente/prospecto.
 
+## Rotina (blocos recorrentes) vs Eventos exógenos
+
+A tela "Configurar Minha Rotina" reserva **blocos recorrentes** de horário. É um **molde**,
+não a agenda. Nem toda natureza cabe nele.
+
+- **Cabe na rotina** (equipe define a hora): **Tarefa**, **Diligência**, blocos de
+  gestão/suporte, reunião interna recorrente.
+- **NÃO cabe — é evento que cai sobre a rotina** (terceiro define a hora): **Compromisso
+  externo** (audiência, perícia, avaliação social) e **Prazo**.
+- **Regra de ouro:** quem define a hora? Equipe → rotina. Terceiro → evento exógeno.
+
+**Na prática (camadas):** molde recorrente = fundo (capacidade) → projeta no dia → eventos
+fixos pousam por cima e cortam o bloco → tarefas do bloco furado **escorrem** pra outro
+bloco (reagendáveis); prazo não escorre, dispara alerta. "Iniciar expediente" materializa
+o dia; "Organizar rotina com IA" monta o molde e replaneja.
+
 ## Armadilhas
 
 - Perícia médica e avaliação social são **compromisso** (têm hora), não tarefa.
 - Prazo **não** tem "Repetir" nem reagendamento livre. Perder prazo = preclusão (grave).
 - Diligência **não** é tipo dentro de tarefa — é natureza própria (campo + custo + terceiro).
 - "Reunião" só é compromisso **se tiver hora**; sem hora é tarefa.
+- **Rotina não é agenda:** bloco recorrente reserva capacidade; audiência/prazo caem por
+  cima e têm prioridade.

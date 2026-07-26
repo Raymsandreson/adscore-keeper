@@ -142,3 +142,52 @@ comprovante) mudam conforme a **natureza**, não conforme o tipo.
 - **Diligência com hora marcada** (ex.: perícia que o correspondente acompanha) → continua
   diligência pela execução; a hora vira atributo, não muda a natureza.
 - **Acompanhamento processual** → tarefa (monitorar andamento, trabalho de mesa).
+
+---
+
+## Rotina (blocos recorrentes) vs Eventos exógenos
+
+A tela **"Configurar Minha Rotina"** deixa reservar **blocos recorrentes** de horário na
+semana (ex.: Suporte 08:30–09:15, Gerenciamento 09:15–12:30, Atividades 14:30…). Isso NÃO
+é a agenda — é um **molde** que se repete toda semana. E **nem toda natureza cabe nesse
+molde**.
+
+Existem **dois modos de tempo**:
+
+1. **Programável na ROTINA** (bloco recorrente — reserva de *capacidade*):
+   **Tarefa** e **Diligência**, mais os blocos genéricos de gestão/suporte. Trabalho que a
+   equipe controla e distribui. "Repetir", arrastar e esticar fazem sentido.
+2. **Evento FIXO que cai sobre a rotina** (exógeno — a equipe *não escolhe quando*):
+   **Compromisso externo** (audiência, perícia, avaliação social) e **Prazo**. Vêm de fora
+   (juízo, perito, INSS), pousam num dia/hora específico e **furam** o bloco da rotina.
+
+**Regra de ouro — quem define a hora?** É a equipe → cabe na rotina. É terceiro → é evento
+que cai sobre ela. (Por isso **reunião interna recorrente** cabe na rotina, mas audiência não.)
+
+| Natureza | Entra na rotina? | Motivo |
+|---|---|---|
+| Tarefa | ✅ | Flexível, distribuída nos blocos |
+| Diligência | ✅ | Equipe programa quando despachar |
+| Compromisso | ❌ (exógeno)* | Hora vem de terceiro |
+| Prazo | ❌ | É marco/data-limite, não faixa de horário |
+
+*Exceção: compromisso com hora **própria** e recorrente (reunião de equipe) é programável.
+
+### Na prática — modelo em camadas
+
+A rotina e os eventos fixos convivem por **sobreposição**, não competindo na mesma lista:
+
+1. **Molde (template):** os blocos recorrentes ficam guardados uma vez e se repetem. Não
+   geram atividades reais — geram **capacidade reservada**.
+2. **Projeção do dia:** ao abrir "Hoje/Semana", o molde é projetado nas datas reais
+   (a segunda-feira recebe os blocos de SEG). Isso é o **fundo** do dia.
+3. **Eventos fixos por cima:** compromissos e prazos (do detector Escavador, cadastro
+   manual, etc.) pousam sobre o fundo. **Sempre têm prioridade** e **cortam/comprimem** o
+   bloco de rotina que ocupavam.
+4. **Realocação das tarefas:** as tarefas que morariam no bloco furado **escorrem** para
+   outro bloco livre (tarefa é reagendável — a natureza permite). Prazo **não escorre**:
+   se o dia ficou sem espaço para cumpri-lo, dispara alerta em vez de sumir.
+
+Materialização: **"Iniciar expediente"** projeta o molde, encaixa os eventos fixos do dia
+e lista as tarefas na ordem dos blocos. **"Organizar rotina com IA"** ajuda a montar o
+molde e a **replanejar** quando um evento fixo desarruma a rotina.
