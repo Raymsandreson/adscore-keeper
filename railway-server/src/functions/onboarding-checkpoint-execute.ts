@@ -3,9 +3,10 @@
 // - Usa Externo via lib/supabase (EXTERNAL_*).
 // - Bloqueia avanço: passo anterior precisa estar 'done'.
 // - Retorna SEMPRE 200 com { success, error? } (convenção do projeto).
-// - Chama handlers ainda residentes no Cloud (create-whatsapp-group, send-whatsapp-message,
+// - Chama handlers ainda residentes no Cloud (send-whatsapp-message,
 //   import-group-docs-to-lead) via CLOUD_FUNCTIONS_URL+CLOUD_ANON_KEY (mesma convenção do
-//   webhook ZapSign). Quando esses handlers migrarem, basta trocar a URL.
+//   webhook ZapSign). create-whatsapp-group é chamada no Supabase EXTERNO
+//   (callExternalFn) — a cópia do Cloud está desatualizada.
 import type { RequestHandler } from 'express';
 import { randomUUID } from 'node:crypto';
 import { supabase as ext } from '../lib/supabase';
@@ -191,6 +192,26 @@ async function callCloudFn(name: string, body: unknown): Promise<{ ok: boolean; 
     headers: {
       Authorization: `Bearer ${CLOUD_ANON_KEY}`,
       apikey: CLOUD_ANON_KEY,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+  const data: any = await r.json().catch(() => ({}));
+  return { ok: r.ok && (data?.success !== false), data };
+}
+
+// create-whatsapp-group roda no Supabase EXTERNO (deploy manual via CLI; a cópia
+// do Cloud está desatualizada e o Lovable não a redeploya — grupos saíam sem
+// nome/acolhedor). As demais funções chamadas aqui seguem residentes no Cloud.
+const EXTERNAL_FUNCTIONS_URL = process.env.EXTERNAL_SUPABASE_URL || '';
+const EXTERNAL_FUNCTIONS_KEY = process.env.EXTERNAL_SUPABASE_SERVICE_ROLE_KEY || '';
+
+async function callExternalFn(name: string, body: unknown): Promise<{ ok: boolean; data: any }> {
+  const r = await fetch(`${EXTERNAL_FUNCTIONS_URL}/functions/v1/${name}`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${EXTERNAL_FUNCTIONS_KEY}`,
+      apikey: EXTERNAL_FUNCTIONS_KEY,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),
@@ -572,7 +593,7 @@ export const handler: RequestHandler = async (req, res) => {
                   .maybeSingle();
                 creator_instance_id = inst?.id || null;
               }
-              const r = await callCloudFn('create-whatsapp-group', {
+              const r = await callExternalFn('create-whatsapp-group', {
                 lead_id: ckpt.lead_id,
                 lead_name: p.lead_name,
                 phone: p.lead_phone,
