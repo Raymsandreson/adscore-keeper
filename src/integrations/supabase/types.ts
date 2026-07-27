@@ -5657,7 +5657,6 @@ export type Database = {
           victim_age: number | null
           victim_name: string | null
           visit_address: string | null
-          visit_cep: string | null
           visit_city: string | null
           visit_region: string | null
           visit_state: string | null
@@ -5744,7 +5743,6 @@ export type Database = {
           victim_age?: number | null
           victim_name?: string | null
           visit_address?: string | null
-          visit_cep?: string | null
           visit_city?: string | null
           visit_region?: string | null
           visit_state?: string | null
@@ -5831,7 +5829,6 @@ export type Database = {
           victim_age?: number | null
           victim_name?: string | null
           visit_address?: string | null
-          visit_cep?: string | null
           visit_city?: string | null
           visit_region?: string | null
           visit_state?: string | null
