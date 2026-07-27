@@ -43,9 +43,11 @@ export interface TeamMention {
   id: string;
   message_id: string;
   mentioned_user_id: string;
-  entity_type: string;
-  entity_id: string;
+  entity_type: string | null;
+  entity_id: string | null;
   entity_name: string | null;
+  // Menções feitas no chat direto/grupo não têm entity_*; apontam pra conversa
+  conversation_id: string | null;
   is_read: boolean;
   read_at: string | null;
   created_at: string;
@@ -333,6 +335,31 @@ export function useMyMentions() {
       .in('id', msgIds);
 
     const msgMap = new Map((msgData || []).map(m => [m.id, m as TeamMessage]));
+
+    // Menções feitas no chat direto/grupo apontam pra team_messages, não pra
+    // team_chat_messages — sem resolver aqui elas somem do painel mas seguem
+    // contando no badge, sem como marcar lidas.
+    const missingIds = msgIds.filter(id => !msgMap.has(id));
+    if (missingIds.length > 0) {
+      const { data: directData } = await externalSupabase
+        .from('team_messages')
+        .select('id, sender_id, sender_name, content, created_at')
+        .in('id', missingIds);
+      (directData || []).forEach(m => {
+        msgMap.set(m.id, {
+          id: m.id,
+          entity_type: 'team_chat',
+          entity_id: '',
+          entity_name: null,
+          content: m.content || '',
+          sender_id: m.sender_id,
+          sender_name: m.sender_name,
+          reply_to_id: null,
+          created_at: m.created_at,
+          deleted_at: null,
+        } as TeamMessage);
+      });
+    }
 
     const result = mentionData
       .map(m => ({

@@ -201,6 +201,14 @@ export function useTeamDirectChat() {
         .eq('conversation_id', conversationId)
         .eq('user_id', user.id);
 
+      // Abrir a conversa também dá ciência nas menções dela — sem isso o
+      // badge global continua vermelho mesmo com a conversa já vista.
+      await (externalSupabase.from('team_chat_mentions') as any)
+        .update({ is_read: true, read_at: new Date().toISOString() })
+        .eq('conversation_id', conversationId)
+        .eq('mentioned_user_id', user.id)
+        .eq('is_read', false);
+
       // Fetch other members' last_read_at
       const { data: members } = await externalSupabase
         .from('team_conversation_members')
@@ -244,6 +252,19 @@ export function useTeamDirectChat() {
               .eq('conversation_id', activeConversationId)
               .eq('user_id', user.id)
               .then(() => {});
+
+            // As menções são inseridas logo DEPOIS da mensagem — espera um
+            // pouco antes de dar ciência, senão o update chega antes da menção.
+            const convId = activeConversationId;
+            const uid = user.id;
+            setTimeout(() => {
+              (externalSupabase.from('team_chat_mentions') as any)
+                .update({ is_read: true, read_at: new Date().toISOString() })
+                .eq('conversation_id', convId)
+                .eq('mentioned_user_id', uid)
+                .eq('is_read', false)
+                .then(() => {});
+            }, 1500);
           }
         }
       )

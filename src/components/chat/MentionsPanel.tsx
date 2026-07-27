@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
-import { subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
+import { openTeamChatConversation, subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
 interface MentionsPanelProps {
   open: boolean;
@@ -26,6 +26,7 @@ const entityIcons: Record<string, React.ReactNode> = {
   contact: <Users className="h-3.5 w-3.5" />,
   workflow: <Workflow className="h-3.5 w-3.5" />,
   whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
+  team_chat: <MessageCircle className="h-3.5 w-3.5" />,
 };
 
 const entityLabels: Record<string, string> = {
@@ -34,6 +35,7 @@ const entityLabels: Record<string, string> = {
   contact: 'Contato',
   workflow: 'POP',
   whatsapp: 'WhatsApp',
+  team_chat: 'Chat da Equipe',
 };
 
 const entityColors: Record<string, string> = {
@@ -42,6 +44,7 @@ const entityColors: Record<string, string> = {
   contact: 'bg-purple-500/10 text-purple-600',
   workflow: 'bg-orange-500/10 text-orange-600',
   whatsapp: 'bg-green-500/10 text-green-600',
+  team_chat: 'bg-sky-500/10 text-sky-600',
 };
 
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
@@ -62,6 +65,12 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     // Abrir já dá ciência automaticamente — sem passo extra
     if (!mention.is_read) {
       void markAsRead(mention.id);
+    }
+
+    // Menção feita no chat direto/grupo: abre a própria conversa na aba Chat
+    if (!mention.entity_type && mention.conversation_id) {
+      openTeamChatConversation({ conversationId: mention.conversation_id });
+      return;
     }
 
     try {
@@ -221,8 +230,8 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                     )}
                   >
                     <div className="flex items-start gap-3">
-                      <div className={cn("shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5", entityColors[mention.entity_type] || 'bg-muted')}>
-                        {entityIcons[mention.entity_type] || <AtSign className="h-3.5 w-3.5" />}
+                      <div className={cn("shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5", entityColors[mention.entity_type || 'team_chat'] || 'bg-muted')}>
+                        {entityIcons[mention.entity_type || 'team_chat'] || <AtSign className="h-3.5 w-3.5" />}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
@@ -238,9 +247,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                           {mention.message?.content}
                         </p>
                         <div className="flex items-center gap-2">
-                          <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5", entityColors[mention.entity_type])}>
-                            {entityIcons[mention.entity_type]}
-                            <span className="ml-1">{entityLabels[mention.entity_type] || mention.entity_type}</span>
+                          <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5", entityColors[mention.entity_type || 'team_chat'])}>
+                            {entityIcons[mention.entity_type || 'team_chat']}
+                            <span className="ml-1">{entityLabels[mention.entity_type || 'team_chat'] || mention.entity_type}</span>
                           </Badge>
                           {mention.entity_name && (
                             <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{mention.entity_name}</span>
