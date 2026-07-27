@@ -4826,24 +4826,40 @@ const ActivitiesPage = () => {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent align="end" className="w-56 p-1.5 space-y-1">
-                      {!formLeadId && (
-                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-lead')); setVincularOpen(false); }}>
-                          <Plus className="h-3.5 w-3.5" /> Vincular Lead
+                      {/* Vínculo já preenchido permite Trocar/Remover: atividades auto-criadas
+                          chegam com lead/caso/processo errados e antes não havia como corrigir. */}
+                      <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-lead')); setVincularOpen(false); }}>
+                        <Plus className="h-3.5 w-3.5" /> {formLeadId ? 'Trocar Lead' : 'Vincular Lead'}
+                      </Button>
+                      {formLeadId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2 text-destructive" onClick={() => { setFormLeadId(''); setFormLeadName(''); setVincularOpen(false); }}>
+                          <X className="h-3.5 w-3.5" /> Remover Lead
                         </Button>
                       )}
-                      {!formCaseId && (
-                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-case')); setVincularOpen(false); }}>
-                          <Briefcase className="h-3.5 w-3.5" /> Vincular Caso
+                      <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-case')); setVincularOpen(false); }}>
+                        <Briefcase className="h-3.5 w-3.5" /> {formCaseId ? 'Trocar Caso' : 'Vincular Caso'}
+                      </Button>
+                      {formCaseId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2 text-destructive" onClick={() => { setFormCaseId(''); setFormCaseTitle(''); setFormProcessId(''); setFormProcessTitle(''); setCaseProcesses([]); setVincularOpen(false); }}>
+                          <X className="h-3.5 w-3.5" /> Remover Caso
                         </Button>
                       )}
-                      {formCaseId && !formProcessId && (
+                      {formCaseId && (
                         <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-process')); setVincularOpen(false); }}>
-                          <FileText className="h-3.5 w-3.5" /> Vincular Processo
+                          <FileText className="h-3.5 w-3.5" /> {formProcessId ? 'Trocar Processo' : 'Vincular Processo'}
                         </Button>
                       )}
-                      {!formContactId && (
-                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-contact')); setVincularOpen(false); }}>
-                          <UserPlus className="h-3.5 w-3.5" /> Vincular Contato
+                      {formProcessId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2 text-destructive" onClick={() => { setFormProcessId(''); setFormProcessTitle(''); setVincularOpen(false); }}>
+                          <X className="h-3.5 w-3.5" /> Remover Processo
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2" onClick={() => { window.dispatchEvent(new CustomEvent('activity-form:open-link-contact')); setVincularOpen(false); }}>
+                        <UserPlus className="h-3.5 w-3.5" /> {formContactId ? 'Trocar Contato' : 'Vincular Contato'}
+                      </Button>
+                      {formContactId && (
+                        <Button variant="ghost" size="sm" className="w-full justify-start h-8 text-xs gap-2 text-destructive" onClick={() => { setFormContactId(''); setFormContactName(''); setVincularOpen(false); }}>
+                          <X className="h-3.5 w-3.5" /> Remover Contato
                         </Button>
                       )}
                       {formProcessId && (

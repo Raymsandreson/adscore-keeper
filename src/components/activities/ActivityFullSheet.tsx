@@ -10,7 +10,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
@@ -925,9 +925,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           {/* Vínculos: badges do que está vinculado + botões para vincular
               (os eventos são ouvidos pelo ActivityFormCompact, que abre os sheets) */}
           <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {/* Vínculo já preenchido permite Trocar (lápis) e Remover (X): atividades
+                auto-criadas chegam com lead/caso/processo errados e antes não havia
+                como corrigir — o badge era estático. A remoção só persiste no Salvar. */}
             {formLeadName ? (
-              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[260px]">
                 <Building2 className="h-3 w-3 shrink-0" /><span className="truncate">{formLeadName}</span>
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar lead"
+                  onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-lead'))}>
+                  <Pencil className="h-2.5 w-2.5" />
+                </button>
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-destructive" title="Remover vínculo de lead"
+                  onClick={() => { setFormLeadId(''); setFormLeadName(''); }}>
+                  <X className="h-2.5 w-2.5" />
+                </button>
               </Badge>
             ) : (
               <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1 border-primary/30 text-primary hover:bg-primary/10"
@@ -936,8 +947,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               </Button>
             )}
             {formCaseTitle ? (
-              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[260px]">
                 <Briefcase className="h-3 w-3 shrink-0" /><span className="truncate">{formCaseTitle}</span>
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar caso"
+                  onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}>
+                  <Pencil className="h-2.5 w-2.5" />
+                </button>
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-destructive" title="Remover vínculo de caso (remove também o processo)"
+                  onClick={() => { setFormCaseId(''); setFormCaseTitle(''); setFormProcessId(''); setFormProcessTitle(''); setCaseProcesses([]); }}>
+                  <X className="h-2.5 w-2.5" />
+                </button>
               </Badge>
             ) : (
               <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
@@ -946,8 +965,18 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               </Button>
             )}
             {formProcessTitle ? (
-              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[260px]">
                 <FileText className="h-3 w-3 shrink-0" /><span className="truncate">{formProcessTitle}</span>
+                {formCaseId && (
+                  <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar processo"
+                    onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}>
+                    <Pencil className="h-2.5 w-2.5" />
+                  </button>
+                )}
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-destructive" title="Remover vínculo de processo"
+                  onClick={() => { setFormProcessId(''); setFormProcessTitle(''); }}>
+                  <X className="h-2.5 w-2.5" />
+                </button>
               </Badge>
             ) : formCaseId ? (
               <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
@@ -956,8 +985,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               </Button>
             ) : null}
             {formContactName ? (
-              <Badge variant="outline" className="text-[10px] gap-1 max-w-[180px]">
+              <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
                 <UserPlus className="h-3 w-3 shrink-0" /><span className="truncate">{formContactName}</span>
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar contato"
+                  onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}>
+                  <Pencil className="h-2.5 w-2.5" />
+                </button>
+                <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-destructive" title="Remover vínculo de contato"
+                  onClick={() => { setFormContactId(''); setFormContactName(''); }}>
+                  <X className="h-2.5 w-2.5" />
+                </button>
               </Badge>
             ) : (
               <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
