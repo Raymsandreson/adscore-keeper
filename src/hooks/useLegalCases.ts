@@ -206,6 +206,11 @@ export function useLegalCases(leadId?: string) {
             assigned_to_name: WANESSA_NAME,
             created_by: extCreatedBy,
             deadline: new Date().toISOString().split('T')[0],
+            // Sem case_id a atividade nasce órfã do caso que a gerou; sem
+            // notification_date, o Salvar do editor reprova qualquer edição.
+            case_id: enriched.id,
+            case_title: `${caseNumber} - ${caseData.title}`,
+            notification_date: new Date().toISOString().split('T')[0],
           } as never);
         } catch (onboardingError) {
           console.warn('Could not auto-create onboarding activity:', onboardingError);

@@ -911,6 +911,11 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
                         assigned_to_name: WANESSA_NAME,
                         created_by: extCreatedBy,
                         deadline: new Date().toISOString().split('T')[0],
+                        // Sem case_id a atividade nasce órfã do caso que a gerou; sem
+                        // notification_date, o Salvar do editor reprova qualquer edição.
+                        case_id: createdCase?.id || null,
+                        case_title: `${caseNumber} - Caso - ${currentLead?.lead_name || 'Novo'}`,
+                        notification_date: new Date().toISOString().split('T')[0],
                       } as any);
                     } catch (onbErr) {
                       console.warn('Could not auto-create onboarding activity:', onbErr);

@@ -1224,7 +1224,10 @@ const ActivitiesPage = () => {
     setFormAssignedToName(activity.assigned_to_name || '');
     await hydrateCoAssignees(activity);
     setFormDeadline(activity.deadline || '');
-    setFormNotificationDate(activity.notification_date || '');
+    // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
+    // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
+    // edição (inclusive vincular lead/caso) persistia nelas.
+    setFormNotificationDate(activity.notification_date || activity.deadline || '');
     setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
     setFormMeetingAt((((activity as any).meeting_at as string | null) || '').slice(0, 16));
     setFormNotes(activity.notes || '');
@@ -1759,7 +1762,10 @@ const ActivitiesPage = () => {
     setFormAssignedToName(activity.assigned_to_name || '');
     await hydrateCoAssignees(activity);
     setFormDeadline(activity.deadline || '');
-    setFormNotificationDate(activity.notification_date || '');
+    // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
+    // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
+    // edição (inclusive vincular lead/caso) persistia nelas.
+    setFormNotificationDate(activity.notification_date || activity.deadline || '');
     setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
     setFormMeetingAt((((activity as any).meeting_at as string | null) || '').slice(0, 16));
     setFormNotes(activity.notes || '');

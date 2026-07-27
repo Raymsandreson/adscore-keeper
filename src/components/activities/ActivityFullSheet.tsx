@@ -260,7 +260,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormStatus(act.status || 'pendente');
     setFormPriority(act.priority || 'normal');
     setFormDeadline(act.deadline || '');
-    setFormNotificationDate(act.notification_date || '');
+    // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
+    // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
+    // edição (inclusive vincular lead/caso) persistia nelas.
+    setFormNotificationDate(act.notification_date || act.deadline || '');
     // meeting_at é timestamptz; datetime-local espera YYYY-MM-DDTHH:mm
     setFormMeetingAt((((act as any).meeting_at as string | null) || '').slice(0, 16));
     setFormCallbackAt((act as any).callback_at ? format(parseISO((act as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');

@@ -229,6 +229,8 @@ export async function createOrAttachAndamentoActivity(
     assigned_to_name: input.assignedName,
     created_by: input.extCreatedBy,
     deadline: today,
+    // Sem notification_date o Salvar do editor reprova qualquer edição posterior.
+    notification_date: today,
     process_id: input.processId,
     process_title: input.processTitle,
   };

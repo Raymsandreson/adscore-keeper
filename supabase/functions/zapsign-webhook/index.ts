@@ -1344,6 +1344,11 @@ Deno.serve(async (req) => {
                       assigned_to: assigneeExtUuid,
                       assigned_to_name: assigneeName,
                       deadline: new Date().toISOString().split('T')[0],
+                      // Sem case_id a atividade nasce órfã do caso que a gerou; sem
+                      // notification_date, o Salvar do editor reprova qualquer edição.
+                      case_id: createdCase?.id || null,
+                      case_title: `${caseNumber} - Caso - ${leadForBoard.lead_name || 'Novo'}`,
+                      notification_date: new Date().toISOString().split('T')[0],
                     })
                     console.log(`[zapsign-webhook] Onboarding activity created for ${caseNumber} assigned to ${assigneeName || assigneeCloudUuid}`)
                   } catch (onbErr) {
