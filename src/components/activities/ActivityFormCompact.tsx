@@ -210,7 +210,7 @@ interface ActivityFormCompactProps {
   formNotes: string; setFormNotes: (v: string) => void;
   // Data
   teamMembers: TeamMember[];
-  routineActivityTypes: { value: string; label: string }[];
+  routineActivityTypes: { value: string; label: string; natureza?: 'compromisso' | 'prazo' | 'tarefa' | 'diligencia' | null }[];
   filteredLeads: LeadOption[];
   availableContacts: { id: string; full_name: string }[];
   availableCases: { id: string; case_number: string; title: string; lead_id: string | null }[];
@@ -834,6 +834,15 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     }
   };
 
+  // Comportamento do form por NATUREZA da atividade (docs/juridico/naturezas-atividade.md).
+  // Fallback: tipos não classificados (natureza null) mantêm o comportamento legado.
+  const selectedType = props.routineActivityTypes.find(t => t.value === props.formType);
+  const selNatureza = selectedType?.natureza ?? null;
+  // Compromisso (audiência, perícia, avaliação social, reunião) tem hora marcada.
+  const showHora = selNatureza === 'compromisso' || (selNatureza == null && isMeetingType(props.formType, selectedType?.label));
+  // Prazo não se repete (é data-limite única, não recorrência).
+  const hideRepeat = selNatureza === 'prazo';
+
   return (
     <div className="space-y-3">
       {/* Título foi movido para o cabeçalho fixo (editável inline com ícone de lápis). */}
@@ -1008,10 +1017,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             </div>
           )}
         </div>
-        {isMeetingType(props.formType, props.routineActivityTypes.find(t => t.value === props.formType)?.label) && (
+        {showHora && (
           <div className="col-span-full">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              📆 Data e hora da reunião
+              📆 Data e hora do compromisso
             </span>
             <Input
               type="datetime-local"
@@ -1294,8 +1303,8 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         </div>
       </div>
 
-      {/* === ROW 5: Repeat weekdays (only on create) === */}
-      {!props.selectedActivity && (
+      {/* === ROW 5: Repeat weekdays (only on create; prazo não repete) === */}
+      {!props.selectedActivity && !hideRepeat && (
         <div className="flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider shrink-0">Repetir</span>
           {['S', 'T', 'Q', 'Q', 'S', 'S', 'D'].map((day, idx) => {

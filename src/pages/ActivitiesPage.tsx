@@ -63,7 +63,7 @@ import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activitie
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
-import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
+import { useActivityTypes, isMeetingType, naturezaOf, isCompromissoType } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
@@ -1033,7 +1033,7 @@ const ActivitiesPage = () => {
       } : {}),
       ...(groupId ? { assignment_group_id: groupId } : {}),
       ...(formCallbackAt ? { callback_at: new Date(formCallbackAt).toISOString() } : {}),
-      ...(isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) && formMeetingAt ? { meeting_at: formMeetingAt } : {}),
+      ...(isCompromissoType(formType, dbActivityTypes.find(t => t.key === formType)?.label, dbActivityTypes) && formMeetingAt ? { meeting_at: formMeetingAt } : {}),
     };
 
     // Variações de data: dias da semana repetidos ou o prazo único do form.
@@ -1412,7 +1412,7 @@ const ActivitiesPage = () => {
         return prevMs !== nextMs ? { callback_at: nextIso } : {};
       })(),
       // Reunião: grava/limpa o horário conforme o tipo (detecção por rótulo, key custom_ no Externo).
-      meeting_at: isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
+      meeting_at: isCompromissoType(formType, dbActivityTypes.find(t => t.key === formType)?.label, dbActivityTypes) ? (formMeetingAt || null) : null,
       ...buildAssigneesPayload(),
       ...buildObserversPayload(),
     } as any);
@@ -2431,8 +2431,9 @@ const ActivitiesPage = () => {
       const meeting = meetings.find(t => t.value !== 'reuniao') ?? meetings[0];
       if (meeting) list.push({ value: meeting.value, label: meeting.label });
     }
-    return list;
-  }, [activeRoutine, allKnownActivityTypes, formIsSystem]);
+    // Anexa a natureza (banco → fallback seed) pra o form se comportar por natureza.
+    return list.map(x => ({ ...x, natureza: naturezaOf(x.value, dbActivityTypes) }));
+  }, [activeRoutine, allKnownActivityTypes, formIsSystem, dbActivityTypes]);
 
   const suggestActivityType = useCallback(async (title: string) => {
     if (!title || title.trim().length < 5) return;

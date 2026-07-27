@@ -15,7 +15,7 @@ import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
-import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
+import { useActivityTypes, isMeetingType, naturezaOf, isCompromissoType } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
@@ -191,7 +191,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       const meeting = meetings.find(t => t.key !== 'reuniao') ?? meetings[0];
       if (meeting) list.push({ value: meeting.key, label: meeting.label });
     }
-    return list;
+    // Anexa a natureza (banco → fallback seed) pra o form se comportar por natureza.
+    return list.map(x => ({ ...x, natureza: naturezaOf(x.value, activityTypes) }));
   }, [assigneeRoutine, activityTypes, formIsSystem]);
   const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
 
@@ -529,7 +530,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     deadline: formDeadline || null,
     notification_date: formNotificationDate || null,
     // Só persiste horário quando o tipo é Reunião (detecção por rótulo — no Externo a key é custom_...).
-    meeting_at: isMeetingType(formType, activityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
+    meeting_at: isCompromissoType(formType, activityTypes.find(t => t.key === formType)?.label, activityTypes) ? (formMeetingAt || null) : null,
     notes: formNotes || null,
     status: formStatus,
     contact_id: formContactId || null,

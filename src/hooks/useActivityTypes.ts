@@ -14,6 +14,43 @@ export interface ActivityType {
   created_at: string;
   /** Cloud team IDs that this type is restricted to. Empty = global (all teams). */
   team_ids: string[];
+  /** Natureza da atividade — governa comportamento do form. Null = não classificado
+   *  (mantém o comportamento genérico legado). Ver docs/juridico/naturezas-atividade.md. */
+  natureza: NaturezaAtividade | null;
+}
+
+export type NaturezaAtividade = 'compromisso' | 'prazo' | 'tarefa' | 'diligencia';
+
+/** Fallback para os valores seed hardcoded (BASE_ACTIVITY_TYPES / ACTIVITY_TYPES),
+ *  que não vêm do banco e portanto não têm coluna natureza. O banco sempre vence. */
+const BASE_NATUREZA: Record<string, NaturezaAtividade> = {
+  tarefa: 'tarefa',
+  audiencia: 'compromisso',
+  prazo: 'prazo',
+  acompanhamento: 'tarefa',
+  reuniao: 'compromisso',
+  diligencia: 'diligencia',
+};
+
+/** Descobre a natureza de um tipo: 1º pela coluna natureza do banco, 2º pelo mapa seed. */
+export function naturezaOf(
+  value: string | null | undefined,
+  types: { key: string; natureza?: NaturezaAtividade | null }[] = [],
+): NaturezaAtividade | null {
+  if (!value) return null;
+  const t = types.find(x => x.key === value);
+  if (t?.natureza) return t.natureza;
+  return BASE_NATUREZA[value] ?? null;
+}
+
+/** Compromisso = tem hora marcada (audiência, perícia, avaliação social, reunião…).
+ *  Mantém isMeetingType como rede de segurança pra "Reunião" não classificada. */
+export function isCompromissoType(
+  value: string | null | undefined,
+  label: string | null | undefined,
+  types: { key: string; natureza?: NaturezaAtividade | null }[] = [],
+): boolean {
+  return naturezaOf(value, types) === 'compromisso' || isMeetingType(value, label);
 }
 
 const CACHE_KEY = 'activity_types';
@@ -40,7 +77,7 @@ export function useActivityTypes() {
         .select('*')
         .order('display_order', { ascending: true });
       if (error) throw error;
-      return (data || []).map((t: any) => ({ ...t, team_ids: t.team_ids ?? [] })) as ActivityType[];
+      return (data || []).map((t: any) => ({ ...t, team_ids: t.team_ids ?? [], natureza: t.natureza ?? null })) as ActivityType[];
     },
     EMPTY,
   );
