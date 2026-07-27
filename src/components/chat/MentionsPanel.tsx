@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -26,6 +26,7 @@ const entityIcons: Record<string, React.ReactNode> = {
   contact: <Users className="h-3.5 w-3.5" />,
   workflow: <Workflow className="h-3.5 w-3.5" />,
   whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
+  process: <Scale className="h-3.5 w-3.5" />,
 };
 
 const entityLabels: Record<string, string> = {
@@ -34,6 +35,7 @@ const entityLabels: Record<string, string> = {
   contact: 'Contato',
   workflow: 'POP',
   whatsapp: 'WhatsApp',
+  process: 'Processo',
 };
 
 const entityColors: Record<string, string> = {
@@ -42,6 +44,7 @@ const entityColors: Record<string, string> = {
   contact: 'bg-purple-500/10 text-purple-600',
   workflow: 'bg-orange-500/10 text-orange-600',
   whatsapp: 'bg-green-500/10 text-green-600',
+  process: 'bg-indigo-500/10 text-indigo-600',
 };
 
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
@@ -75,9 +78,12 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
       } else if (mention.entity_type === 'contact') {
         const { data } = await externalSupabase.from('contacts').select('id').eq('id', mention.entity_id).maybeSingle();
         entityExists = !!data;
+      } else if (mention.entity_type === 'process') {
+        const { data } = await (externalSupabase as any).from('lead_processes').select('id').eq('id', mention.entity_id).is('deleted_at', null).maybeSingle();
+        entityExists = !!data;
       }
       if (!entityExists) {
-        const label = mention.entity_type === 'activity' ? 'Atividade' : mention.entity_type === 'lead' ? 'Lead' : 'Contato';
+        const label = mention.entity_type === 'activity' ? 'Atividade' : mention.entity_type === 'lead' ? 'Lead' : mention.entity_type === 'process' ? 'Processo' : 'Contato';
         toast.error(`${label} foi excluído(a) e não existe mais.`);
         return;
       }
@@ -117,6 +123,14 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         break;
       case 'whatsapp':
         navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
+        break;
+      case 'process':
+        navigate(`/cases?openProcess=${mention.entity_id}${msgParam}`);
+        break;
+      default:
+        // Tipo de entidade sem destino mapeado: não some em silêncio (era o
+        // bug do "clico mas não abre"). Avisa em vez de fechar sem ação.
+        toast.error('Não foi possível abrir esta menção (tipo de origem não suportado).');
         break;
     }
   };

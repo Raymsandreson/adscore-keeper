@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
@@ -76,8 +76,12 @@ const statusLabels: Record<string, string> = {
 export default function CasesPage() {
   const [cases, setCases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
+  // Deep-link vindo de uma menção do Chat Interno de um processo
+  // (MentionsPanel → /cases?openProcess=<id>). Abre o ProcessDetailSheet
+  // direto na aba de chat, sem depender de expandir o card do caso.
+  const [deepLinkProcess, setDeepLinkProcess] = useState<any>(null);
   // Só o valor debounced dispara fetch: sem isso, digitar "silva" rodava a
   // busca inteira 5 vezes (2 páginas de legal_cases + 2 queries auxiliares
   // cada uma).
@@ -131,6 +135,39 @@ export default function CasesPage() {
       setExporting(false);
     }
   };
+
+  // Deep-link ?openProcess=<id>: carrega o processo por id e abre o detalhe na
+  // aba de chat. Usado pelas menções do Chat Interno de processos.
+  useEffect(() => {
+    const openProcessId = searchParams.get('openProcess');
+    if (!openProcessId) return;
+
+    let cancelled = false;
+    (async () => {
+      await ensureExternalSession();
+      const { data, error } = await (externalSupabase as any)
+        .from('lead_processes')
+        .select('*')
+        .eq('id', openProcessId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (cancelled) return;
+
+      if (error || !data) {
+        toast.error('Este processo não existe mais ou foi excluído.');
+      } else {
+        setDeepLinkProcess(data);
+      }
+
+      const next = new URLSearchParams(searchParams);
+      next.delete('openProcess');
+      next.delete('highlightMsg');
+      setSearchParams(next, { replace: true });
+    })();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const fetchCases = useCallback(async () => {
     // Guarda de corrida: a busca dispara vários fetches sobrepostos e o último
@@ -427,11 +464,23 @@ export default function CasesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Detalhe de processo aberto por deep-link (?openProcess=<id>), ex.: vindo
+          de uma menção do Chat Interno. Abre direto na aba de chat. */}
+      {deepLinkProcess && (
+        <ProcessDetailSheet
+          open
+          onOpenChange={(open) => { if (!open) setDeepLinkProcess(null); }}
+          process={deepLinkProcess}
+          mode="dialog"
+          defaultTab="chat"
+        />
+      )}
     </div>
   );
 }
 
-function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: { 
+function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: {
   legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
 }) {
   const [processes, setProcesses] = useState<any[]>([]);
