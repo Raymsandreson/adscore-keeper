@@ -18,6 +18,37 @@ export interface ChangelogEntry {
  */
 export const changelog: ChangelogEntry[] = [
   {
+    version: "3.4.0",
+    date: "2026-07-24",
+    title: "Novo Ranking do Telão: o que faz o processo AVANÇAR conta mais",
+    features: [
+      {
+        title: "Nova ordem do ranking (Corrida Maluca)",
+        description:
+          "O telão passa a priorizar o que realmente faz o processo avançar. Nova ordem: 1º Resultado esperado do POP · 2º Fases fechadas · 3º Objetivos concluídos · 4º Passos · depois itens do checklist, concluídas, menos atrasadas, mais tempo ativo, menos ocioso e resposta no chat. Marcar muitos passos soltos não sobe mais no ranking — fechar objetivos, fases e o resultado esperado, sim.",
+        icon: "🏁",
+        howToUse:
+          "Nada a fazer: o ranking já ordena assim. Fase = todos os checklists de uma etapa do lead fechados; objetivo = um checklist concluído; ambos creditados a quem marcou o último passo. Passos viram o 4º critério.",
+      },
+      {
+        title: "Resultado esperado por POP (1º critério)",
+        description:
+          "Cada funil/POP define seus próprios resultados possíveis e marca qual é o ESPERADO (= sucesso / objetivo final). O ranking conta, no mês, quantos leads cada pessoa levou ao resultado esperado do seu funil — é o critério nº 1, e cada time é medido pelo resultado do seu POP.",
+        icon: "🎯",
+        howToUse:
+          "1) Funis de Vendas → Editar funil → role até '🎯 Resultados possíveis do POP': cadastre os resultados (ex.: Fechado, Recusado) e marque o esperado. 2) Na tela do lead, use o campo '🎯 Resultado do POP' pra registrar o resultado de cada lead. Vale deste mês em diante.",
+      },
+      {
+        title: "Recorde por time + selo no canto",
+        description:
+          "O recorde do telão agora respeita o time selecionado (acabou o recorde de um time aparecendo em outro) e virou um selo em destaque no canto superior direito. O rótulo é 'Recorde por dia/semana/mês' — a melhor marca de um único período, não o de hoje.",
+        icon: "🏆",
+        howToUse:
+          "Abra o telão e filtre por time: o recorde mostrado é sempre daquele time. Quem supera o recorde ao vivo ganha o som e o troféu.",
+      },
+    ],
+  },
+  {
     version: "3.3.0",
     date: "2026-03-28",
     title: "Criação automática de Lead ao assinar documento",

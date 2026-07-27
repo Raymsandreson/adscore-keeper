@@ -141,6 +141,24 @@ export function FloatingNav() {
   const [updateNotesOpen, setUpdateNotesOpen] = useState(false);
   const { position, onPointerDown, onPointerMove, onPointerUp, resetPosition, isDragging, setPositionAndPersist } = useDraggable();
 
+  // Novidades importantes: abre o popup automaticamente UMA vez por versão quando
+  // há itens não vistos (o badge sozinho não garante que todos leiam). Depois disso
+  // fica só o badge — reabre pela navegação. Guardado por versão no localStorage.
+  useEffect(() => {
+    if (unseenCount <= 0) return;
+    const ver = changelog[0]?.version;
+    if (!ver) return;
+    const key = `changelog_autoshown_${ver}`;
+    try {
+      if (!localStorage.getItem(key)) {
+        setUpdateNotesOpen(true);
+        localStorage.setItem(key, '1');
+      }
+    } catch {
+      /* ignora storage indisponível */
+    }
+  }, [unseenCount]);
+
   const noop = useCallback(() => {}, []);
 
   const handleSignOut = async () => {
