@@ -66,6 +66,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'enrich-news-leads': 'external', // enriquecimento de manchetes (vítima/cidade/estrangeira) — só existe no externo
   'sync-process-compromissos': 'external', // detector de compromissos + feed do sino (dados 100% no Externo)
   'facebook-capi': 'external', // CAPI Purchase/Lead — migrada do Cloud (Lovable) p/ controle total de deploy+secrets; fallback → Cloud
+  'create-whatsapp-group': 'external', // v12 com tokens de nome (lead_name_upper etc.); cópia do Cloud está desatualizada e criava grupo sem template
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };
