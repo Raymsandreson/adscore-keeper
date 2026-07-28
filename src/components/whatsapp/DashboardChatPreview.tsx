@@ -532,17 +532,50 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     return `*${senderName}:*\n${message}`;
   };
 
+  // Grupos: cada mensagem é espelhada por TODAS as instâncias-membro, então o histórico
+  // não diz quem "dono" da conversa — pegar o espelho mais antigo fazia o envio sair por
+  // Raym/Luiz Abraci. Envio em grupo prioriza Atendimento Previdenciário 1/2 quando forem
+  // membros (aparecem no histórico); senão, a instância do espelho mais recente.
+  const isGroupTarget = isWhatsAppGroupId(phone);
+  const normalizeInstance = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  const PREFERRED_GROUP_SENDERS = ['atendimento previdenciario', 'atendimento previdenciario 2'];
+
+  const resolveSendInstanceName = (): string | undefined => {
+    if (preferredInstanceName) return preferredInstanceName;
+    if (isGroupTarget) {
+      const recentFirst = [...messages].reverse();
+      const newest = recentFirst.find(m => m.instance_name);
+      const preferred = recentFirst.find(
+        m => m.instance_name && PREFERRED_GROUP_SENDERS.includes(normalizeInstance(m.instance_name)),
+      );
+      // Instância que parou de espelhar o grupo há mais de 7 dias (enquanto o grupo
+      // seguiu ativo) provavelmente saiu dele — escolhê-la daria NOT_IN_GROUP.
+      const SAIU_DO_GRUPO_MS = 7 * 24 * 60 * 60 * 1000;
+      const aindaNoGrupo =
+        preferred && newest &&
+        new Date(newest.created_at).getTime() - new Date(preferred.created_at).getTime() <= SAIU_DO_GRUPO_MS;
+      if (aindaNoGrupo && preferred?.instance_name) return preferred.instance_name;
+      return newest?.instance_name;
+    }
+    return messages.find(m => m.instance_name)?.instance_name;
+  };
+
   const resolveInstanceId = async (): Promise<string | undefined> => {
-    const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
+    const msgInstanceName = resolveSendInstanceName();
     if (msgInstanceName) {
       const { data: inst } = await supabase
         .from('whatsapp_instances')
         .select('id')
-        .eq('instance_name', msgInstanceName)
+        .ilike('instance_name', msgInstanceName)
         .eq('is_active', true)
+        .limit(1)
         .maybeSingle();
       if (inst) return inst.id;
     }
+    // Grupo sem instância resolvida no Cloud: omite instance_id — a edge send-whatsapp
+    // escolhe a instância-membro com mensagem mais recente no grupo (getInstance etapa 2),
+    // em vez de receber uma instância arbitrária daqui.
+    if (isGroupTarget) return undefined;
     const { data: firstInst } = await supabase
       .from('whatsapp_instances')
       .select('id')
@@ -558,7 +591,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     try {
       const instanceId = await resolveInstanceId();
       const finalMessage = await buildFinalMessage(newMessage.trim());
-      const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
+      const msgInstanceName = resolveSendInstanceName();
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
@@ -654,7 +687,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       const mediaUrl = urlData.publicUrl;
 
       const instanceId = await resolveInstanceId();
-      const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
+      const msgInstanceName = resolveSendInstanceName();
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
@@ -722,7 +755,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           const { data: urlData } = supabase.storage.from('whatsapp-media').getPublicUrl(path);
           const mediaUrl = urlData.publicUrl;
           const instanceId = await resolveInstanceId();
-          const msgInstanceName = preferredInstanceName || messages.find(m => m.instance_name)?.instance_name;
+          const msgInstanceName = resolveSendInstanceName();
           const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
             body: {
               action: 'send_media',
