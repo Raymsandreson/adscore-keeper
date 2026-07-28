@@ -305,6 +305,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               script: step.script || undefined,
               activityType: step.activityType || undefined,
               nextStageId: step.nextStageId || undefined,
+              setStatusId: step.setStatusId ?? prevStepsById.get(step.id)?.setStatusId,
               answers: step.answers?.length
                 ? step.answers.map((a: Partial<StepAnswerOption>) => ({ id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId || undefined }))
                 : prevStepsById.get(step.id)?.answers,
@@ -559,6 +560,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const updateStepNextStage = (phaseIdx: number, objIdx: number, stepId: string, nextStageId: string) => {
     updateObjective(phaseIdx, objIdx, {
       items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, nextStageId: nextStageId || undefined } : s),
+    });
+  };
+
+  // Ao concluir o passo, define o STATUS do POP do lead (id em settings.resultados).
+  const updateStepSetStatus = (phaseIdx: number, objIdx: number, stepId: string, setStatusId: string) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, setStatusId: setStatusId || undefined } : s),
     });
   };
 
@@ -1271,12 +1279,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                                 <SelectItem value="__none__">
                                                   <span className="text-muted-foreground">Não mover</span>
                                                 </SelectItem>
-                                                <SelectItem value="__finalize__">
-                                                  <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
-                                                    <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-green-500" />
-                                                    ✅ Finalizar
-                                                  </div>
-                                                </SelectItem>
                                                 {phases.filter((_, pi) => pi !== phaseIdx).map(p => (
                                                   <SelectItem key={p.stageId} value={p.stageId}>
                                                     <div className="flex items-center gap-1.5">
@@ -1289,6 +1291,34 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             </Select>
                                             )}
                                           </div>
+
+                                          {/* Definir status do POP ao concluir o passo (separado da fase). */}
+                                          {formResultados.length > 0 && (
+                                            <div className="flex items-center gap-2">
+                                              <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Definir status:</Label>
+                                              <Select
+                                                value={step.setStatusId || '__none__'}
+                                                onValueChange={v => updateStepSetStatus(phaseIdx, objIdx, step.id, v === '__none__' ? '' : v)}
+                                              >
+                                                <SelectTrigger className="h-7 text-xs flex-1">
+                                                  <SelectValue placeholder="Não alterar" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                  <SelectItem value="__none__">
+                                                    <span className="text-muted-foreground">Não alterar</span>
+                                                  </SelectItem>
+                                                  {formResultados.map(r => (
+                                                    <SelectItem key={r.id} value={r.id}>
+                                                      <div className="flex items-center gap-1.5">
+                                                        <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-yellow-400" />
+                                                        {r.label}{r.id === formResultadoEsperadoId ? ' ✅' : ''}
+                                                      </div>
+                                                    </SelectItem>
+                                                  ))}
+                                                </SelectContent>
+                                              </Select>
+                                            </div>
+                                          )}
                                         </div>
                                         )}
                                         </Sortable>
@@ -1594,12 +1624,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                       <SelectItem value="__none__">
                         <span className="text-muted-foreground">Não mover</span>
                       </SelectItem>
-                      <SelectItem value="__finalize__">
-                        <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
-                          <span className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500" />
-                          ✅ Finalizar
-                        </div>
-                      </SelectItem>
                       {phases.map(p => (
                         <SelectItem key={p.stageId} value={p.stageId}>
                           <div className="flex items-center gap-1.5">
@@ -1644,12 +1668,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                         <SelectContent>
                           <SelectItem value="__none__">
                             <span className="text-muted-foreground">Não mover</span>
-                          </SelectItem>
-                          <SelectItem value="__finalize__">
-                            <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
-                              <span className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500" />
-                              ✅ Finalizar
-                            </div>
                           </SelectItem>
                           {phases.map(p => (
                             <SelectItem key={p.stageId} value={p.stageId}>
@@ -1819,12 +1837,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     <SelectContent>
                       <SelectItem value="__none__">
                         <span className="text-muted-foreground">Não mover</span>
-                      </SelectItem>
-                      <SelectItem value="__finalize__">
-                        <div className="flex items-center gap-1.5 text-green-600 dark:text-green-400 font-medium">
-                          <span className="h-2 w-2 rounded-full flex-shrink-0 bg-green-500" />
-                          ✅ Finalizar
-                        </div>
                       </SelectItem>
                       {phases.map(p => (
                         <SelectItem key={p.stageId} value={p.stageId}>

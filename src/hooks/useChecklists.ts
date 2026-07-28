@@ -50,6 +50,7 @@ export interface ChecklistItem {
   activityType?: string; // tipo de atividade associado a este passo
   script?: string; // script de contato para este passo
   nextStageId?: string; // ao concluir, mover lead para esta fase
+  setStatusId?: string; // ao concluir, define o STATUS do POP do lead (id em settings.resultados)
   answers?: StepAnswerOption[]; // se presente, o passo é uma pergunta: concluir = escolher resposta, e o destino vem da resposta (ignora nextStageId)
   selectedAnswerId?: string; // resposta escolhida na instância do lead
   docChecklist?: DocChecklistItem[]; // checklist de documentação
@@ -413,6 +414,47 @@ export const useChecklists = () => {
       const newlyChecked = items.filter(it => it.checked && !prevById.get(it.id));
       if (newlyChecked.length > 0) {
         const userId = user.id;
+
+        // Status do POP por passo: se algum passo recém-marcado tiver "Definir
+        // status", aplica no lead (pop_result_id + data de hoje) e loga (alimenta o
+        // ranking). Vale o último passo marcado que define status.
+        const statusStep = [...newlyChecked].reverse().find(it => it.setStatusId);
+        if (statusStep?.setStatusId) {
+          const setStatusId = statusStep.setStatusId;
+          (async () => {
+            try {
+              const { data: inst } = await supabase
+                .from('lead_checklist_instances')
+                .select('lead_id, board_id')
+                .eq('id', instanceId)
+                .maybeSingle();
+              const leadId = (inst as { lead_id?: string; board_id?: string } | null)?.lead_id;
+              if (!leadId) return;
+              const { data: lead } = await supabase
+                .from('leads')
+                .select('pop_result_id')
+                .eq('id', leadId)
+                .maybeSingle();
+              const from = (lead as { pop_result_id?: string | null } | null)?.pop_result_id ?? null;
+              if (from === setStatusId) return;
+              const today = new Date().toISOString().slice(0, 10);
+              await supabase.from('leads').update({ pop_result_id: setStatusId, pop_result_date: today } as never).eq('id', leadId);
+              (supabase as any).rpc('log_pop_result_change', {
+                p_user_id: userId,
+                p_lead_id: leadId,
+                p_board_id: (inst as { board_id?: string } | null)?.board_id ?? null,
+                p_from: from,
+                p_to: setStatusId,
+                p_date: today,
+              }).then((res: { error?: { message?: string } | null }) => {
+                if (res?.error) console.warn('[useChecklists] log status POP falhou:', res.error.message);
+              });
+            } catch (e) {
+              console.warn('[useChecklists] aplicar status POP falhou:', e);
+            }
+          })();
+        }
+
         // Pergunta se o passo é de agora ou registro antigo (retroativo não
         // conta no ranking). O save acima já aconteceu; só o log espera.
         askStepTiming(newlyChecked.length).then(retroactive => {
