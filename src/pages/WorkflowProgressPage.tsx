@@ -7,14 +7,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, X, RefreshCw, Settings2, Plus, Pencil, Trash2, GitBranch } from 'lucide-react';
+import { ArrowLeft, Search, X, RefreshCw, Settings2, Plus, Pencil, Trash2, GitBranch, Scale } from 'lucide-react';
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
 import { WorkflowVisualizationDialog } from '@/components/workflow/WorkflowVisualizationDialog';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Badge } from '@/components/ui/badge';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
+import { LeadProcess } from '@/hooks/useLeadProcesses';
 import { toast } from 'sonner';
 
 interface LeadBasic {
@@ -42,19 +45,37 @@ const WorkflowProgressPage = () => {
   const [editingWorkflow, setEditingWorkflow] = useState<KanbanBoard | null>(null);
   const [createNewMode, setCreateNewMode] = useState(false);
   const [vizBoard, setVizBoard] = useState<KanbanBoard | null>(null);
+  // Aba lateral com a relação de processos vinculados a um POP
+  const [processesBoard, setProcessesBoard] = useState<KanbanBoard | null>(null);
+  const [boardProcesses, setBoardProcesses] = useState<LeadProcess[]>([]);
+  const [loadingProcesses, setLoadingProcesses] = useState(false);
+  const [processCounts, setProcessCounts] = useState<Record<string, number>>({});
   const WORKFLOWS_PER_PAGE = 6;
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [leadsRes, boardsRes] = await Promise.all([
+      const [leadsRes, boardsRes, processCountRes] = await Promise.all([
         externalSupabase.from('leads').select('id, lead_name, status, board_id').order('lead_name'),
         externalSupabase.from('kanban_boards').select('*').order('display_order'),
+        // Query única para contar processos por POP (evita N+1)
+        externalSupabase.from('lead_processes').select('workflow_id').is('deleted_at', null),
       ]);
 
       if (leadsRes.error) throw leadsRes.error;
       if (boardsRes.error) throw boardsRes.error;
 
       setLeads(leadsRes.data || []);
+
+      if (processCountRes.error) {
+        console.error('Erro ao contar processos por POP:', processCountRes.error);
+      } else {
+        const counts: Record<string, number> = {};
+        for (const row of processCountRes.data || []) {
+          const wid = (row as { workflow_id: string | null }).workflow_id;
+          if (wid) counts[wid] = (counts[wid] || 0) + 1;
+        }
+        setProcessCounts(counts);
+      }
 
       const parsedBoards = (boardsRes.data || []).map(b => ({
         ...b,
@@ -114,6 +135,32 @@ const WorkflowProgressPage = () => {
     setSelectedLead(prev => prev ? { ...prev, status: newStageId } : null);
     toast.success('Lead movido de fase');
   };
+
+  const openProcessesSheet = useCallback(async (board: KanbanBoard) => {
+    setProcessesBoard(board);
+    setLoadingProcesses(true);
+    setBoardProcesses([]);
+    try {
+      const { data, error } = await externalSupabase
+        .from('lead_processes')
+        .select('*')
+        .eq('workflow_id', board.id)
+        .is('deleted_at', null)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setBoardProcesses((data || []) as unknown as LeadProcess[]);
+    } catch (error) {
+      console.error('Erro ao carregar processos do POP:', error);
+      toast.error('Erro ao carregar processos');
+    } finally {
+      setLoadingProcesses(false);
+    }
+  }, []);
+
+  const leadNameById = useCallback(
+    (leadId: string | null) => (leadId ? leads.find(l => l.id === leadId)?.lead_name || null : null),
+    [leads],
+  );
 
   const filteredLeads = searchQuery
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -209,7 +256,24 @@ const WorkflowProgressPage = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       {paged.map(board => (
                         <div key={board.id} className="border rounded-lg p-4 bg-card hover:shadow-sm transition-shadow">
-                          <h3 className="font-semibold text-sm truncate">{board.name}</h3>
+                          <div className="flex items-start gap-2">
+                            <h3 className="font-semibold text-sm truncate flex-1">{board.name}</h3>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-xs shrink-0"
+                              onClick={() => openProcessesSheet(board)}
+                              title="Ver processos vinculados a este POP"
+                            >
+                              <Scale className="h-3 w-3 mr-1" />
+                              Processos
+                              {processCounts[board.id] ? (
+                                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] leading-4">
+                                  {processCounts[board.id]}
+                                </Badge>
+                              ) : null}
+                            </Button>
+                          </div>
                           {board.description && (
                             <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{board.description}</p>
                           )}
@@ -469,6 +533,65 @@ const WorkflowProgressPage = () => {
         onOpenChange={(open) => { if (!open) setVizBoard(null); }}
         onEdit={() => { if (vizBoard) { setEditingWorkflow(vizBoard); setShowConfig(true); } }}
       />
+
+      {/* Aba lateral: relação de processos vinculados ao POP */}
+      <Sheet open={!!processesBoard} onOpenChange={(open) => { if (!open) { setProcessesBoard(null); setBoardProcesses([]); } }}>
+        <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2">
+              <Scale className="h-4 w-4" />
+              Processos do POP
+            </SheetTitle>
+            <SheetDescription className="truncate">{processesBoard?.name}</SheetDescription>
+          </SheetHeader>
+
+          <div className="flex-1 overflow-y-auto mt-4">
+            {loadingProcesses ? (
+              <div className="flex items-center justify-center py-16">
+                <RefreshCw className="h-5 w-5 animate-spin text-primary" />
+              </div>
+            ) : boardProcesses.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-16">
+                Nenhum processo vinculado a este POP.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {boardProcesses.map(p => {
+                  const clientName = leadNameById(p.lead_id);
+                  const statusLabel =
+                    p.status === 'concluido' ? 'Concluído' :
+                    p.status === 'arquivado' ? 'Arquivado' : 'Em andamento';
+                  const statusVariant =
+                    p.status === 'concluido' ? 'default' :
+                    p.status === 'arquivado' ? 'secondary' : 'outline';
+                  return (
+                    <div key={p.id} className="border rounded-lg p-3 bg-card">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-medium leading-snug">{p.title || 'Processo sem título'}</p>
+                        <Badge variant={statusVariant as any} className="shrink-0 text-[10px]">{statusLabel}</Badge>
+                      </div>
+                      {p.process_number && (
+                        <p className="text-xs text-muted-foreground mt-1 font-mono">{p.process_number}</p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        <Badge variant="secondary" className="text-[10px] capitalize">{p.process_type}</Badge>
+                        {clientName && (
+                          <span className="text-[11px] text-muted-foreground">Cliente: {clientName}</span>
+                        )}
+                      </div>
+                      {p.started_at && (
+                        <p className="text-[11px] text-muted-foreground mt-1">
+                          Início: {new Date(p.started_at).toLocaleDateString('pt-BR')}
+                        </p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
