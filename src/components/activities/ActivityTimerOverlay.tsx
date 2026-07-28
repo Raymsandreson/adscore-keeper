@@ -422,12 +422,17 @@ export function ActivityTimerOverlay() {
   // pinta por cima, mesmo com z menor. Fora, no body, o z-[9990] vence o z-50 do
   // Dialog e o cronômetro fica SEMPRE por cima. (skill: ui-sem-sobreposicao)
   const dock = (el: ReactNode) => (typeof document !== 'undefined' ? createPortal(el, document.body) : el);
-  const floatWrap = 'fixed z-[9990] shadow-lg backdrop-blur touch-none ';
+  // pointer-events-auto: Dialog/Sheet modal do Radix seta pointer-events:none no
+  // body inteiro; sem religar aqui, os badges portalados ficam inclicáveis com um
+  // modal aberto. stopPropagation no pointerdown: senão o toque no badge chega ao
+  // document e o Radix fecha o dialog em uso como "clique fora" (o drag não
+  // depende do bubbling — usa pointer capture no próprio elemento).
+  const floatWrap = 'pointer-events-auto fixed z-[9990] shadow-lg backdrop-blur touch-none ';
   const grab = 'cursor-grab active:cursor-grabbing';
   const dragAttrs = {
     ref: drag.setElRef,
     style: drag.style,
-    onPointerDown: drag.onPointerDown,
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => { e.stopPropagation(); drag.onPointerDown(e); },
     onPointerMove: drag.onPointerMove,
     onPointerUp: drag.onPointerUp,
   };
