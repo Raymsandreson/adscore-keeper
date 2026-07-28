@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -19,6 +19,9 @@ import { Badge } from '@/components/ui/badge';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { LeadProcess } from '@/hooks/useLeadProcesses';
 import { toast } from 'sonner';
+
+// Ficha completa do processo (abas Partes/Dados/Atividades/etc.) — lazy para não pesar o bundle da página
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface LeadBasic {
   id: string;
@@ -50,6 +53,7 @@ const WorkflowProgressPage = () => {
   const [boardProcesses, setBoardProcesses] = useState<LeadProcess[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState(false);
   const [processCounts, setProcessCounts] = useState<Record<string, number>>({});
+  const [selectedProcess, setSelectedProcess] = useState<LeadProcess | null>(null);
   const WORKFLOWS_PER_PAGE = 6;
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -565,7 +569,13 @@ const WorkflowProgressPage = () => {
                     p.status === 'concluido' ? 'default' :
                     p.status === 'arquivado' ? 'secondary' : 'outline';
                   return (
-                    <div key={p.id} className="border rounded-lg p-3 bg-card">
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedProcess(p)}
+                      className="w-full text-left border rounded-lg p-3 bg-card hover:bg-accent hover:shadow-sm transition-colors"
+                      title="Abrir ficha completa do processo"
+                    >
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-medium leading-snug">{p.title || 'Processo sem título'}</p>
                         <Badge variant={statusVariant as any} className="shrink-0 text-[10px]">{statusLabel}</Badge>
@@ -584,7 +594,7 @@ const WorkflowProgressPage = () => {
                           Início: {new Date(p.started_at).toLocaleDateString('pt-BR')}
                         </p>
                       )}
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -592,6 +602,24 @@ const WorkflowProgressPage = () => {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Ficha completa do processo (aberta ao clicar num processo da aba lateral) */}
+      <Suspense fallback={null}>
+        {selectedProcess && (
+          <ProcessDetailSheet
+            open={!!selectedProcess}
+            onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
+            process={selectedProcess}
+            onUpdated={(updated) => {
+              if (updated) {
+                setBoardProcesses(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } as LeadProcess : p));
+                setSelectedProcess(prev => prev && prev.id === updated.id ? { ...prev, ...updated } as LeadProcess : prev);
+              }
+            }}
+            mode="sheet"
+          />
+        )}
+      </Suspense>
     </div>
   );
 };
