@@ -287,8 +287,10 @@ export function LeadEditDialog({
   const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
-  // Resultado do POP (por-POP, separado do "Resultado do Lead"/lead_status global).
+  // Status do POP (por-POP, separado do "Resultado do Lead"/lead_status global) +
+  // a DATA do status (importante pro ranking contar no mês certo).
   const [popResult, setPopResult] = useState<string>('');
+  const [popResultDate, setPopResultDate] = useState<string>('');
   const [leadOutcome, setLeadOutcome] = useState<'' | 'no_response' | 'closed' | 'refused' | 'in_progress' | 'inviavel' | 'cancelled'>('');
   const [leadOutcomeDate, setLeadOutcomeDate] = useState('');
   const [leadOutcomeReason, setLeadOutcomeReason] = useState('');
@@ -478,6 +480,7 @@ export function LeadEditDialog({
     setSelectedBoardId(leadAny.board_id || '');
     setSelectedCampaignId(leadAny.crm_campaign_id || '');
     setPopResult(leadAny.pop_result_id || '');
+    setPopResultDate(leadAny.pop_result_date || '');
     // Outcome
     setCaseNumber(leadAny.case_number || '');
     setLeadOutcomeReason(leadAny.lead_status_reason || '');
@@ -1650,8 +1653,9 @@ ${scrapeData.content || ''}
         })(),
         expected_birth_date: normalizeDateInput(expectedBirthDate),
         lead_status: leadOutcome || 'no_response',
-        // Resultado do POP (por-POP, separado do lead_status global).
+        // Status do POP (por-POP, separado do lead_status global) + data.
         pop_result_id: popResult || null,
+        pop_result_date: popResult ? (normalizeDateInput(popResultDate) || null) : null,
         became_client_date: leadOutcome === 'closed' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         classification_date: leadOutcome === 'refused' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
         in_progress_date: leadOutcome === 'in_progress' ? (normalizeDateInput(leadOutcomeDate) || new Date().toISOString().slice(0, 10)) : null,
@@ -1706,6 +1710,7 @@ ${scrapeData.content || ''}
              p_board_id: selectedBoardId || (currentLead as any).board_id || null,
              p_from: prevPop,
              p_to: popResult,
+             p_date: normalizeDateInput(popResultDate) || null,
            }).then(({ error }: { error: { message: string } | null }) => {
              if (error) console.warn('[log_pop_result_change]', error.message);
            });
@@ -2850,20 +2855,35 @@ ${scrapeData.content || ''}
                   const espId = (tb as { settings?: { resultado_esperado_id?: string } })?.settings?.resultado_esperado_id;
                   return (
                     <div className="col-span-2 space-y-2 p-3 border rounded-lg bg-muted/20">
-                      <Label className="text-sm font-medium">🎯 Resultado do POP</Label>
+                      <Label className="text-sm font-medium">🎯 Status do POP</Label>
                       <p className="text-xs text-muted-foreground">
-                        Resultado específico deste funil/POP. O <b>esperado</b> (✅) conta pro ranking do time no mês.
+                        Status específico deste funil/POP (ex.: <em>Em andamento</em>, <em>Fechado</em>).
+                        O status <b>esperado</b> (✅) conta pro ranking do time — pela <b>data</b> ao lado.
                       </p>
-                      <select
-                        value={popResult}
-                        onChange={e => setPopResult(e.target.value)}
-                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                      >
-                        <option value="">— Sem resultado —</option>
-                        {opts.map(o => (
-                          <option key={o.id} value={o.id}>{o.label}{o.id === espId ? ' ✅ (esperado)' : ''}</option>
-                        ))}
-                      </select>
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <select
+                          value={popResult}
+                          onChange={e => {
+                            setPopResult(e.target.value);
+                            if (e.target.value && !popResultDate) setPopResultDate(new Date().toISOString().slice(0, 10));
+                          }}
+                          className="flex-1 rounded-md border bg-background px-3 py-2 text-sm"
+                        >
+                          <option value="">— Sem status —</option>
+                          {opts.map(o => (
+                            <option key={o.id} value={o.id}>{o.label}{o.id === espId ? ' ✅ (esperado)' : ''}</option>
+                          ))}
+                        </select>
+                        {popResult && (
+                          <Input
+                            type="date"
+                            value={popResultDate}
+                            onChange={e => setPopResultDate(e.target.value)}
+                            className="sm:w-44"
+                            title="Data do status"
+                          />
+                        )}
+                      </div>
                     </div>
                   );
                 })()}
