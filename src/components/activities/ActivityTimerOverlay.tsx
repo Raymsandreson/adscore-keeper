@@ -434,13 +434,16 @@ export function ActivityTimerOverlay() {
 
   return (
     <>
-      {/* Fora do expediente: só o botão de bater o ponto (nada conta, nada bipa) */}
-      {onShift === false && !current && (
+      {/* Fora do expediente: só o botão de bater o ponto (nada conta, nada bipa).
+          Arrastável como os badges do cronômetro — fixo no canto ele cobria o menu
+          lateral (Configurações/Arquivados). Clique só dispara se não houve drag. */}
+      {onShift === false && !current && dock(
         <button
           type="button"
-          onClick={startShift}
-          className="fixed bottom-4 left-4 z-[9990] flex items-center gap-1.5 rounded-full border border-emerald-300/60 bg-emerald-50/95 dark:bg-emerald-950/60 px-3 py-2 shadow-lg backdrop-blur text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60"
-          title="Registrar entrada — o cronômetro e o ocioso só contam com o expediente aberto"
+          {...dragAttrs}
+          onClick={() => { if (!drag.wasDragged()) startShift(); }}
+          className={`${floatWrap}flex items-center gap-1.5 rounded-full border border-emerald-300/60 bg-emerald-50/95 dark:bg-emerald-950/60 px-3 py-2 text-sm font-semibold text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 select-none ${grab}`}
+          title="Registrar entrada — arraste para mover · o cronômetro e o ocioso só contam com o expediente aberto"
         >
           <Play className="h-4 w-4" />
           Iniciar expediente
