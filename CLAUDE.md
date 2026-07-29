@@ -159,6 +159,8 @@ Regras de conduta obrigatórias durante qualquer execução:
 
 6. **Alterar o mínimo necessário**: sem "melhorias" colaterais de código alheio à tarefa. Formatação, refactor, cleanup de `any` pré-existente — tudo isso vira commit separado, nunca piggyback numa mudança funcional.
 
+7. **Registrar o que foi entregue quando "deu certo"**: ao confirmar que uma feature/mudança funciona (verificada com evidência), gravar o que passou a existir nos arquivos-fonte de verdade — a skill relevante em `.agents/skills/`, a doc em `docs/sistema/*.md`, e (se for regra permanente) aqui no CLAUDE.md. Objetivo: a próxima sessão saber o que já temos sem depender da memória do usuário. Documentar faz parte do "deu certo" — não é opcional nem posterior.
+
 ---
 
 ## Contexto do projeto
