@@ -1172,7 +1172,7 @@ const ActivitiesPage = () => {
     }
   };
 
-  const handleOpenEdit = async (activity: LeadActivity, opts?: { autoVoice?: boolean }) => {
+  const handleOpenEdit = async (activity: LeadActivity, opts?: { autoVoice?: boolean; restorePendingAudio?: boolean }) => {
     // Auto-voz só quando o usuário abre de fato (clique/deep-link). A restauração
     // silenciosa após refresh passa autoVoice:false pra não começar a gravar sozinha.
     const allowAutoVoice = opts?.autoVoice !== false;
@@ -1206,6 +1206,9 @@ const ActivitiesPage = () => {
       setCallRecorderOpen(true);
     }
     // Set all form state synchronously first (instant UI)
+    // Áudio pendente é por atividade: limpa o da anterior pra não oferecer
+    // "Enviar áudio" com a gravação de outra ficha.
+    setPendingAudio(null);
     setSelectedActivity(activity);
     setSelectedActivityId(activity.id);
     setFormTitle(activity.title);
@@ -1245,6 +1248,29 @@ const ActivitiesPage = () => {
 
     // Fire all DB queries in parallel (non-blocking)
     const promises: Promise<any>[] = [];
+
+    // Restauração pós-refresh: a gravação sobrevive em activity_attachments, mas o
+    // pendingAudio (que habilita "Enviar áudio") morre com o reload. Recupera a
+    // gravação mais recente da atividade — janela de 6h pra não ressuscitar áudios
+    // antigos que provavelmente já foram enviados.
+    if (opts?.restorePendingAudio) {
+      const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      promises.push(
+        Promise.resolve(
+          externalSupabase
+            .from('activity_attachments')
+            .select('file_url, created_at')
+            .eq('activity_id', activity.id)
+            .eq('attachment_type', 'audio')
+            .gte('created_at', cutoff)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        ).then(({ data }) => {
+          if (data?.file_url) setPendingAudio({ url: data.file_url, seconds: 0 });
+        }).catch(() => {})
+      );
+    }
 
     if (activity.lead_id) {
       promises.push(
@@ -1297,8 +1323,9 @@ const ActivitiesPage = () => {
     if (selectedActivityId && activities.length > 0 && !selectedActivity) {
       const activity = activities.find(a => a.id === selectedActivityId);
       if (activity) {
-        // Restauração automática (refresh/troca de aba): NÃO começa a gravar sozinha.
-        handleOpenEdit(activity, { autoVoice: false });
+        // Restauração automática (refresh/troca de aba): NÃO começa a gravar sozinha,
+        // mas recupera a gravação recente pra reexibir o botão "Enviar áudio".
+        handleOpenEdit(activity, { autoVoice: false, restorePendingAudio: true });
       } else {
         setSelectedActivityId(null);
         setSheetMode(null);
@@ -5453,6 +5480,8 @@ const ActivitiesPage = () => {
                     const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
                     const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
                     const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
+                    // Gravações restauradas após refresh não têm duração conhecida (seconds = 0).
+                    const dur = pendingAudio.seconds > 0 ? ` (${mm}:${ss})` : '';
                     return (
                       <Button
                         variant="outline"
@@ -5472,12 +5501,12 @@ const ActivitiesPage = () => {
                             setSendingPendingAudio(false);
                           }
                         }}
-                        title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
+                        title={`Enviar a gravação${dur} como áudio no WhatsApp do ${label}`}
                       >
                         {sendingPendingAudio ? (
                           <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
                         ) : (
-                          <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
+                          <><Mic className="h-3 w-3" /> Enviar áudio{dur}</>
                         )}
                       </Button>
                     );
