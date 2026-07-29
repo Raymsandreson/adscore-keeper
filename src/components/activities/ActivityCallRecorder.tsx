@@ -134,24 +134,9 @@ async function downloadRecording(url: string, filename = 'gravacao-ligacao.webm'
   }
 }
 
-/** Remove tags HTML para enviar texto limpo como contexto para a IA. */
-export function stripHtmlToText(html: string): string {
-  return (html || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-}
-
-/** Converte o texto puro retornado pela IA em HTML válido para o RichTextEditor. */
-export function callFieldTextToHtml(text: string): string {
-  const clean = (text || '').trim();
-  if (!clean) return '';
-  return clean
-    .split(/\n+/)
-    .map((line) => {
-      const esc = line.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      return esc ? `<p>${esc}</p>` : '';
-    })
-    .filter(Boolean)
-    .join('');
-}
+// Helpers de texto ↔ HTML moram em ./richTextFields (módulo testável, sem
+// dependência de componente). Reexportados aqui pra não mexer nos imports antigos.
+export { stripHtmlToText, callFieldTextToHtml } from './richTextFields';
 
 export function ActivityCallRecorder({ context, onFields, activityId, leadId, caseId, processId, groupJid, leadPhone, onRecordingReady, open: openProp, onOpenChange, triggerClassName, autoStart }: Props) {
   const [internalOpen, setInternalOpen] = useState(false);

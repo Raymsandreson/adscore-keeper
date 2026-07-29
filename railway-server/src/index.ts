@@ -61,7 +61,6 @@ import { handler as transcribeActivityCall } from './functions/transcribe-activi
 import { handler as transcribeTeamAudio } from './functions/transcribe-team-audio';
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as editWorkflow } from './functions/edit-workflow';
-import { handler as suggestRevisionReason } from './functions/suggest-revision-reason';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
@@ -126,7 +125,6 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcribe-team-audio': transcribeTeamAudio,
   'suggest-step-actions': suggestStepActions,
   'edit-workflow': editWorkflow,
-  'suggest-revision-reason': suggestRevisionReason,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
   'sync-hearings-from-sheet': syncHearingsFromSheet,
