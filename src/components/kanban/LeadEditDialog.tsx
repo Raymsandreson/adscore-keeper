@@ -49,6 +49,8 @@ import {
 } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getAcolhedorPhoto } from '@/lib/acolhedorPhotos';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
@@ -1978,7 +1980,14 @@ ${scrapeData.content || ''}
         <Header>
           <div className="flex items-center justify-between">
             <Title className="flex items-center gap-2">
-              <User className="h-5 w-5" />
+              {getAcolhedorPhoto(acolhedor) ? (
+                <Avatar className="h-7 w-7" title={`Acolhedor: ${acolhedor}`}>
+                  <AvatarImage src={getAcolhedorPhoto(acolhedor)!} alt={acolhedor} className="object-cover" />
+                  <AvatarFallback><User className="h-4 w-4" /></AvatarFallback>
+                </Avatar>
+              ) : (
+                <User className="h-5 w-5" />
+              )}
               Editar Lead
             </Title>
             {currentLead && (
