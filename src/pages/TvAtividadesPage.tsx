@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer, ListChecks } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -56,6 +56,9 @@ const LIST_MAX = 7; // linhas abaixo do pódio (posições 4..10)
 // Valor sentinela no seletor de time: só gestores de time + diretoria
 // (team_managers + org_directors no Externo; a RPC resolve via p_grupo).
 const GRUPO_GERENCIAL = 'gerencial';
+// Token na URL pro "Ranking Geral" (teamId '') na lista de itens fora do rodízio.
+function rotEnc(v: string) { return v === '' ? 'geral' : v; }
+function rotDec(t: string) { return t === 'geral' ? '' : t; }
 
 // Paleta estável por nome (cada assessor sempre com a mesma cor de avatar).
 const AVATAR_COLORS = [
@@ -169,6 +172,13 @@ export default function TvAtividadesPage() {
   });
   const [rotateLeft, setRotateLeft] = useState(0);
   const rotateDeadlineRef = useRef(0);
+  // Itens DESLIGADOS do rodízio (guardar os off faz time novo entrar ligado por
+  // padrão). Persiste em ?rotoff=geral,<uuid>,gerencial.
+  const [rotateOff, setRotateOff] = useState<Set<string>>(() => {
+    const raw = params.get('rotoff');
+    return raw ? new Set(raw.split(',').filter(Boolean).map(rotDec)) : new Set<string>();
+  });
+  const [rotatePanel, setRotatePanel] = useState(false);
 
   // Relógio do cabeçalho.
   useEffect(() => {
@@ -220,13 +230,44 @@ export default function TvAtividadesPage() {
   // Nome do que está na tela agora (todos = "Ranking Geral").
   const currentViewName = teamId === '' ? 'Ranking Geral' : (selectedTeamName || titulo);
 
-  // Sequência do rodízio: Ranking Geral ('') → cada time → Gerencial e Diretoria.
-  const rotateCycle = useMemo(
+  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial.
+  const rotatable = useMemo(
     () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL],
     [teams],
   );
+  // Nome legível de um item do rodízio.
+  const rotItemName = useCallback(
+    (v: string) => v === '' ? 'Ranking Geral'
+      : v === GRUPO_GERENCIAL ? 'Gerencial e Diretoria'
+      : (teams.find(t => t.id === v)?.name || v),
+    [teams],
+  );
+  // Ciclo efetivo: só os itens ligados (não estão em rotateOff).
+  const rotateCycle = useMemo(
+    () => rotatable.filter(v => !rotateOff.has(v)),
+    [rotatable, rotateOff],
+  );
   const rotateIdx = rotateCycle.indexOf(teamId);
   const rotatePos = rotateIdx >= 0 ? rotateIdx + 1 : 1;
+
+  const toggleRotateItem = useCallback((v: string) => {
+    setRotateOff(prev => {
+      const next = new Set(prev);
+      if (next.has(v)) next.delete(v); else next.add(v);
+      return next;
+    });
+  }, []);
+
+  // Persiste os itens desligados na URL.
+  useEffect(() => {
+    setSearchParams(prev => {
+      const q = new URLSearchParams(prev);
+      if (rotateOff.size) q.set('rotoff', [...rotateOff].map(rotEnc).join(','));
+      else q.delete('rotoff');
+      return q;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rotateOff]);
 
   // Persiste rotate/rotmin na URL (updater funcional pra não brigar com a troca
   // de ?team=).
@@ -560,6 +601,77 @@ export default function TvAtividadesPage() {
         </div>
       )}
 
+      {/* ===== Painel: escolher quais times entram no rodízio ===== */}
+      {rotatePanel && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => setRotatePanel(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-slate-900 p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-lg font-black">Times no rodízio</h3>
+              <button
+                onClick={() => setRotatePanel(false)}
+                className="rounded-full bg-white/10 px-2.5 py-1 text-sm font-black text-white/70 hover:text-white"
+                aria-label="Fechar"
+              >
+                ✕
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-white/50">
+              Marque quem o telão deve mostrar no rodízio automático. {rotateCycle.length} de {rotatable.length} selecionados.
+            </p>
+            <div className="mb-3 flex gap-2">
+              <button
+                onClick={() => setRotateOff(new Set())}
+                className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/70 hover:text-white"
+              >
+                Marcar todos
+              </button>
+              <button
+                onClick={() => setRotateOff(new Set(rotatable))}
+                className="rounded-full bg-white/10 px-3 py-1 text-xs font-bold text-white/70 hover:text-white"
+              >
+                Desmarcar todos
+              </button>
+            </div>
+            <div className="max-h-[50vh] space-y-1.5 overflow-y-auto pr-1">
+              {rotatable.map(v => {
+                const on = !rotateOff.has(v);
+                return (
+                  <button
+                    key={v || 'geral'}
+                    onClick={() => toggleRotateItem(v)}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-xl border p-3 text-left transition',
+                      on ? 'border-emerald-400/50 bg-emerald-400/10' : 'border-white/10 bg-white/[0.03]',
+                    )}
+                  >
+                    {on ? (
+                      <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                    ) : (
+                      <span className="h-4 w-4 shrink-0 rounded-full border border-white/25" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm font-bold">
+                      {rotItemName(v)}
+                    </span>
+                    {v === '' && <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-white/40">Geral</span>}
+                  </button>
+                );
+              })}
+            </div>
+            {rotateCycle.length < 2 && (
+              <p className="mt-3 text-[11px] font-bold text-amber-300">
+                Com menos de 2 selecionados o rodízio não alterna.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ===== Alerta de ultrapassagem (some sozinho) ===== */}
       {overtakes.length > 0 && (
         <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex flex-col items-center gap-2 px-4">
@@ -720,7 +832,18 @@ export default function TvAtividadesPage() {
               title="Minutos em cada time"
               aria-label="Minutos por time"
             />
-            <span className="pr-2 text-[10px] font-bold uppercase tracking-wider text-white/50">min</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">min</span>
+            <button
+              onClick={() => setRotatePanel(true)}
+              className={cn(
+                'flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wider transition',
+                rotateOff.size ? 'bg-emerald-400/20 text-emerald-300' : 'text-white/60 hover:text-white',
+              )}
+              title="Escolher quais times entram no rodízio"
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              {rotateCycle.length}/{rotatable.length}
+            </button>
           </div>
           <button
             onClick={load}
