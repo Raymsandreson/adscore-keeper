@@ -223,7 +223,7 @@ export function ProcessResultadoTab({
       <div className="rounded-md border border-primary/30 bg-primary/5 p-3 space-y-2">
         <div className="flex items-center gap-1.5">
           <Target className="h-3.5 w-3.5 text-primary" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Resultado esperado</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Status esperado</span>
           {isHerdado && esperadoLabel && (
             <Badge variant="outline" className="text-[9px] ml-auto">herdado do POP</Badge>
           )}
@@ -231,7 +231,7 @@ export function ProcessResultadoTab({
 
         {!pop || (pop.resultados?.length ?? 0) === 0 ? (
           <p className="text-[11px] text-muted-foreground">
-            Nenhum resultado cadastrado no POP vinculado. Configure os resultados possíveis e o esperado no POP (WorkflowBuilder).
+            Nenhum status cadastrado no POP vinculado. Configure os status possíveis e o esperado no POP (WorkflowBuilder).
           </p>
         ) : (
           <>
@@ -255,7 +255,7 @@ export function ProcessResultadoTab({
               </Select>
               {!esperadoLabel && (
                 <p className="text-[10px] text-muted-foreground">
-                  O POP ainda não define um resultado esperado. Marque-o no WorkflowBuilder ou escolha um override acima.
+                  O POP ainda não define um status esperado. Marque-o no WorkflowBuilder ou escolha um override acima.
                 </p>
               )}
             </div>
@@ -277,7 +277,7 @@ export function ProcessResultadoTab({
       <div className="rounded-md border p-3 space-y-2">
         <div className="flex items-center gap-1.5">
           <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Resultado atingido</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Status atingido</span>
           {saving && <Loader2 className="h-3 w-3 animate-spin ml-auto text-muted-foreground" />}
         </div>
 
@@ -349,13 +349,13 @@ export function ProcessResultadoTab({
             <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Ajustar manualmente</Label>
             <Select value="" onValueChange={setManual}>
               <SelectTrigger className="h-8 text-xs bg-background">
-                <SelectValue placeholder="Definir resultado à mão…" />
+                <SelectValue placeholder="Definir status à mão…" />
               </SelectTrigger>
               <SelectContent className="z-[9999]">
                 {pop.resultados.map((r) => (
                   <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
                 ))}
-                {temAtingido && <SelectItem value="__limpar__">Limpar resultado</SelectItem>}
+                {temAtingido && <SelectItem value="__limpar__">Limpar status</SelectItem>}
               </SelectContent>
             </Select>
           </div>

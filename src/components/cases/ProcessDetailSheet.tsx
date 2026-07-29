@@ -159,7 +159,7 @@ const TABS = [
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
   { id: 'marcos', label: 'Marcos', icon: Milestone },
-  { id: 'resultado', label: 'Resultado', icon: Target },
+  { id: 'resultado', label: 'Status', icon: Target },
   { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
   { id: 'campos', label: 'Campos', icon: Hash },
   { id: 'config', label: 'Config', icon: Info },
