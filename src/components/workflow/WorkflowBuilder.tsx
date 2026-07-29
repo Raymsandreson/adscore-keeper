@@ -55,6 +55,8 @@ import {
   fetchLatestWorkflowRevision,
   createWorkflowRevision,
   notifyWorkflowRevision,
+  REVISION_CATEGORY_LABEL,
+  type RevisionCategory,
   type WorkflowSnapshot,
   type DiffEntry,
   type WorkflowRevisionRow,
@@ -257,7 +259,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const pendingOriginRef = useRef<'ia' | 'restore' | null>(null);
   // Snapshot rico do último persist (com os templateIds já atribuídos no save).
   const lastRichSnapshotRef = useRef<WorkflowSnapshot | null>(null);
-  const [motivoDialog, setMotivoDialog] = useState<{ entries: DiffEntry[]; motivo: string } | null>(null);
+  const [motivoDialog, setMotivoDialog] = useState<{ entries: DiffEntry[]; motivo: string; categoria: RevisionCategory | null } | null>(null);
+  const [suggestingMotivo, setSuggestingMotivo] = useState(false);
   const [savingRevision, setSavingRevision] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   // Busca por texto dentro do POP em edição (fases, objetivos, passos, scripts, checklists).
@@ -1151,7 +1154,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       const snap = buildWorkflowSnapshot(latestName, latestDesc, formResultados, formResultadoEsperadoIds, latestPhases);
       const entries = diffSnapshots(baselineRevisionRef.current.snapshot, snap);
       if (entries.length > 0) {
-        setMotivoDialog({ entries, motivo: pendingAiReasonRef.current || '' });
+        setMotivoDialog({ entries, motivo: pendingAiReasonRef.current || '', categoria: null });
+        // IA sugere motivo+categoria em background enquanto o dialog abre;
+        // só preenche o que o gerente ainda não digitou/escolheu.
+        void suggestRevisionMotivo(entries, pendingAiReasonRef.current || '');
         return;
       }
     }
@@ -1159,10 +1165,41 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     await persistWorkflow({ silent: false });
   };
 
+  /** IA lê o diff e sugere motivo + categoria (automação/eliminação/otimização). */
+  const suggestRevisionMotivo = async (entries: DiffEntry[], draft: string, force = false) => {
+    setSuggestingMotivo(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('suggest-revision-reason', {
+        body: {
+          typeLabel,
+          boardName: formName.trim(),
+          diffLines: formatDiffLines(entries),
+          draft: draft.trim() || undefined,
+        },
+      });
+      if (error || !data || (data as any).error || !(data as any).reason) return;
+      const suggested = data as { category: RevisionCategory; reason: string };
+      setMotivoDialog(prev => {
+        if (!prev) return prev;
+        const keepTyped = !force && prev.motivo.trim() && prev.motivo.trim() !== draft.trim();
+        return {
+          ...prev,
+          motivo: keepTyped ? prev.motivo : suggested.reason,
+          categoria: !force && prev.categoria ? prev.categoria : suggested.category,
+        };
+      });
+    } catch (e) {
+      console.error('Sugestão de motivo por IA falhou:', e);
+    } finally {
+      setSuggestingMotivo(false);
+    }
+  };
+
   /** Confirma o save com registro de revisão + notificação do time. */
   const confirmRevisionSave = async () => {
     if (!motivoDialog) return;
     const motivo = motivoDialog.motivo.trim();
+    const categoria = motivoDialog.categoria;
     const origin = pendingOriginRef.current || 'manual';
     const boardNameNow = formName.trim();
     setMotivoDialog(null);
@@ -1179,6 +1216,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         boardId: savedBoardId,
         snapshot: snap,
         reason: motivo || null,
+        category: categoria,
         summary: entries,
         origin,
         changedBy: author.id,
@@ -1193,7 +1231,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           boardId: savedBoardId,
           title: `Atualização no ${typeLabel}: ${boardNameNow}`,
           summary: formatNotificationSummary(entries),
-          reason: motivo || null,
+          reason: motivo
+            ? (categoria ? `[${REVISION_CATEGORY_LABEL[categoria]}] ${motivo}` : motivo)
+            : null,
           changedBy: author.id,
           changedByName: author.name,
         });
@@ -2828,13 +2868,47 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             ))}
           </div>
           <div>
-            <Label className="text-xs font-medium text-muted-foreground">
-              Motivo da alteração (fica no histórico e vai na notificação do time):
-            </Label>
+            <Label className="text-xs font-medium text-muted-foreground">Categoria da alteração:</Label>
+            <div className="flex flex-wrap gap-2 mt-1">
+              {(Object.keys(REVISION_CATEGORY_LABEL) as RevisionCategory[]).map(cat => (
+                <Button
+                  key={cat}
+                  type="button"
+                  size="sm"
+                  variant={motivoDialog?.categoria === cat ? 'default' : 'outline'}
+                  onClick={() => setMotivoDialog(prev => prev ? { ...prev, categoria: prev.categoria === cat ? null : cat } : prev)}
+                >
+                  {REVISION_CATEGORY_LABEL[cat]}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs font-medium text-muted-foreground">
+                Motivo da alteração (fica no histórico e vai na notificação do time):
+              </Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs shrink-0"
+                disabled={suggestingMotivo || !motivoDialog?.entries.length}
+                onClick={() => motivoDialog && suggestRevisionMotivo(motivoDialog.entries, motivoDialog.motivo, true)}
+              >
+                {suggestingMotivo ? (
+                  <><Loader2 className="h-3 w-3 mr-1 animate-spin" />Analisando...</>
+                ) : (
+                  <><Sparkles className="h-3 w-3 mr-1" />Sugerir com IA</>
+                )}
+              </Button>
+            </div>
             <Textarea
               value={motivoDialog?.motivo || ''}
               onChange={e => setMotivoDialog(prev => prev ? { ...prev, motivo: e.target.value } : prev)}
-              placeholder="Ex: A agência de Teresina passou a exigir presença com OAB às 7h para senhas ilimitadas..."
+              placeholder={suggestingMotivo
+                ? 'IA analisando as alterações para sugerir o motivo...'
+                : 'Ex: A agência de Teresina passou a exigir presença com OAB às 7h para senhas ilimitadas...'}
               className="mt-1 min-h-[80px]"
               autoFocus
             />

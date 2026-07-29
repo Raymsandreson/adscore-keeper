@@ -16,12 +16,16 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { History, Sparkles, RotateCcw, ChevronDown, Loader2, User, ScrollText } from 'lucide-react';
+import { History, Sparkles, RotateCcw, ChevronDown, Loader2, User, ScrollText, Target, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   fetchWorkflowRevisions,
+  fetchWorkflowRevisionOutcomes,
   formatDiffLines,
+  REVISION_CATEGORY_LABEL,
+  OUTCOME_MIN_SAMPLE,
   type DiffEntry,
+  type RevisionOutcomeRow,
   type WorkflowRevisionRow,
   type WorkflowSnapshot,
 } from '@/lib/workflowRevisions';
@@ -92,10 +96,74 @@ function AnnotationTag({ ann }: { ann: Annotation }) {
   );
 }
 
+/** Uma revisão na aba Impacto: taxa de resultado esperado na vigência dela. */
+function OutcomeRow({ row }: { row: RevisionOutcomeRow }) {
+  const hasSample = row.total_results >= OUTCOME_MIN_SAMPLE;
+  const delta = row.delta;
+  const verdict = !hasSample || delta === null ? null : delta > 0 ? 'positiva' : delta < 0 ? 'negativa' : 'neutra';
+
+  return (
+    <div className="border rounded-lg p-3 space-y-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant="outline" className="font-mono">#{row.revision_number}</Badge>
+        {row.change_category && REVISION_CATEGORY_LABEL[row.change_category] && (
+          <Badge variant="outline">{REVISION_CATEGORY_LABEL[row.change_category]}</Badge>
+        )}
+        <span className="text-xs text-muted-foreground">{fmtDate(row.created_at)}</span>
+        <span className="text-xs text-muted-foreground flex items-center gap-1">
+          <User className="h-3 w-3" />{row.changed_by_name || 'não identificado'}
+        </span>
+        {verdict && (
+          <Badge
+            className={cn(
+              'ml-auto gap-1',
+              verdict === 'positiva' && 'bg-emerald-600 hover:bg-emerald-600',
+              verdict === 'negativa' && 'bg-red-600 hover:bg-red-600',
+              verdict === 'neutra' && 'bg-muted text-muted-foreground hover:bg-muted',
+            )}
+          >
+            {verdict === 'positiva' ? <TrendingUp className="h-3 w-3" />
+              : verdict === 'negativa' ? <TrendingDown className="h-3 w-3" />
+              : <Minus className="h-3 w-3" />}
+            {delta! > 0 ? '+' : ''}{delta} p.p.
+          </Badge>
+        )}
+      </div>
+
+      {row.change_reason && (
+        <p className="text-xs italic text-muted-foreground">"{row.change_reason}"</p>
+      )}
+
+      <div className="text-xs">
+        {row.expected_rate === null ? (
+          <span className="text-muted-foreground">
+            Nenhum resultado registrado na vigência desta revisão.
+          </span>
+        ) : (
+          <>
+            <span className="font-medium">{row.expected_rate}%</span>
+            <span className="text-muted-foreground">
+              {' '}no resultado esperado ({row.expected_results} de {row.total_results})
+              {row.prev_expected_rate !== null && ` · antes: ${row.prev_expected_rate}%`}
+            </span>
+            {!hasSample && (
+              <span className="text-amber-600 dark:text-amber-400">
+                {' '}· amostra pequena, sem veredito
+              </span>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function WorkflowHistorySheet({ open, onOpenChange, boardId, boardName, typeLabel, onRestore }: WorkflowHistorySheetProps) {
   const [revisions, setRevisions] = useState<WorkflowRevisionRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [windowDays, setWindowDays] = useState<string>('30');
+  const [outcomes, setOutcomes] = useState<RevisionOutcomeRow[]>([]);
+  const [loadingOutcomes, setLoadingOutcomes] = useState(false);
 
   useEffect(() => {
     if (!open || !boardId) return;
@@ -104,6 +172,12 @@ export function WorkflowHistorySheet({ open, onOpenChange, boardId, boardName, t
       .then(setRevisions)
       .catch(err => console.error('Erro ao carregar revisões:', err))
       .finally(() => setLoading(false));
+
+    setLoadingOutcomes(true);
+    fetchWorkflowRevisionOutcomes(boardId)
+      .then(setOutcomes)
+      .catch(err => console.error('Erro ao carregar impacto das revisões:', err))
+      .finally(() => setLoadingOutcomes(false));
   }, [open, boardId]);
 
   // Anotações do período escolhido, ancoradas por stepId / label+path
@@ -158,6 +232,9 @@ export function WorkflowHistorySheet({ open, onOpenChange, boardId, boardName, t
           <TabsList className="mx-6 mt-3 w-fit">
             <TabsTrigger value="timeline">Linha do tempo</TabsTrigger>
             <TabsTrigger value="anotada">Versão anotada</TabsTrigger>
+            <TabsTrigger value="impacto" className="gap-1">
+              <Target className="h-3.5 w-3.5" />Impacto
+            </TabsTrigger>
           </TabsList>
 
           {loading ? (
@@ -179,6 +256,15 @@ export function WorkflowHistorySheet({ open, onOpenChange, boardId, boardName, t
                         {rev.origin === 'ia' && <Sparkles className="h-3 w-3" />}
                         {ORIGIN_LABEL[rev.origin] || rev.origin}
                       </Badge>
+                      {rev.change_category && REVISION_CATEGORY_LABEL[rev.change_category] && (
+                        <Badge variant="outline" className={cn(
+                          rev.change_category === 'automacao' && 'border-blue-500/50 text-blue-600 dark:text-blue-400',
+                          rev.change_category === 'eliminacao' && 'border-red-500/50 text-red-600 dark:text-red-400',
+                          rev.change_category === 'otimizacao' && 'border-emerald-500/50 text-emerald-600 dark:text-emerald-400',
+                        )}>
+                          {REVISION_CATEGORY_LABEL[rev.change_category]}
+                        </Badge>
+                      )}
                       <span className="text-xs text-muted-foreground">{fmtDate(rev.created_at)}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <User className="h-3 w-3" />{rev.changed_by_name || 'não identificado'}
@@ -213,6 +299,31 @@ export function WorkflowHistorySheet({ open, onOpenChange, boardId, boardName, t
                     )}
                   </div>
                 ))}
+              </TabsContent>
+
+              <TabsContent value="impacto" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-3 data-[state=inactive]:hidden">
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Cada revisão vigora até a seguinte. Aqui está a taxa de leads que chegaram ao
+                  <strong> resultado esperado</strong> em vigor naquela época — e a variação em pontos
+                  percentuais contra a revisão anterior. É correlação, não prova: com pouca amostra ou
+                  mudança de time/época o número engana.
+                </p>
+
+                {loadingOutcomes ? (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" /> Calculando impacto...
+                  </div>
+                ) : outcomes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhuma revisão para medir ainda.</p>
+                ) : outcomes.every(o => o.total_results === 0) ? (
+                  <div className="rounded border border-dashed p-3 text-xs text-muted-foreground leading-relaxed">
+                    Ainda não há nenhum resultado de POP registrado neste board, então não existe base
+                    para comparar. A medição começa a se preencher assim que os leads passarem a receber
+                    status pelos passos ("Definir status") — a partir daí cada revisão ganha sua taxa.
+                  </div>
+                ) : (
+                  outcomes.map(row => <OutcomeRow key={row.revision_number} row={row} />)
+                )}
               </TabsContent>
 
               <TabsContent value="anotada" className="flex-1 overflow-y-auto px-6 py-4 mt-0 space-y-3 data-[state=inactive]:hidden">

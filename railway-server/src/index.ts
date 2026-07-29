@@ -61,6 +61,7 @@ import { handler as transcribeActivityCall } from './functions/transcribe-activi
 import { handler as transcribeTeamAudio } from './functions/transcribe-team-audio';
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as editWorkflow } from './functions/edit-workflow';
+import { handler as suggestRevisionReason } from './functions/suggest-revision-reason';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
@@ -68,6 +69,7 @@ import { handler as dictateActivity } from './functions/dictate-activity';
 import { handler as chatToActivity } from './functions/chat-to-activity';
 import { handler as callToActivities } from './functions/call-to-activities';
 import { handler as activityFromMovement } from './functions/activity-from-movement';
+import { handler as generateActivityTitle } from './functions/generate-activity-title';
 import { handler as nearbyEstablishments } from './functions/nearby-establishments';
 import { handler as dailyTeamReport } from './functions/daily-team-report';
 import { handler as reportQuery } from './functions/report-query';
@@ -125,6 +127,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcribe-team-audio': transcribeTeamAudio,
   'suggest-step-actions': suggestStepActions,
   'edit-workflow': editWorkflow,
+  'suggest-revision-reason': suggestRevisionReason,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
   'sync-hearings-from-sheet': syncHearingsFromSheet,
@@ -134,6 +137,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'chat-to-activity': chatToActivity,
   'call-to-activities': callToActivities,
   'activity-from-movement': activityFromMovement,
+  'generate-activity-title': generateActivityTitle,
   'nearby-establishments': nearbyEstablishments,
   'daily-team-report': dailyTeamReport,
   'report-query': reportQuery,

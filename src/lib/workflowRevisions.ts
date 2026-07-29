@@ -124,6 +124,21 @@ export function diffSnapshots(prev: WorkflowSnapshot, next: WorkflowSnapshot): D
       after: (next.resultados || []).map(r => r.label).join(', ') || '(nenhum)',
     });
   }
+  // Resultado ESPERADO (quais status contam como sucesso) — rastreado à parte
+  // dos status possíveis: é a mudança de meta do POP, importa saber quem fez e quando.
+  const esperadoLabels = (snap: WorkflowSnapshot): string => {
+    const byId = new Map((snap.resultados || []).map(r => [r.id, r.label]));
+    return (snap.resultadoEsperadoIds || []).map(id => byId.get(id) || id).sort().join(', ');
+  };
+  const prevEsp = esperadoLabels(prev);
+  const nextEsp = esperadoLabels(next);
+  if (prevEsp !== nextEsp) {
+    out.push({
+      kind: 'pop', action: 'alterado', label: next.name, path: '', field: 'resultado esperado',
+      before: prevEsp || '(nenhum)',
+      after: nextEsp || '(nenhum)',
+    });
+  }
 
   // Fases por stageId
   const prevPhases = new Map(prev.phases.map(p => [p.stageId, p]));
@@ -269,12 +284,22 @@ export function formatNotificationSummary(entries: DiffEntry[], maxLines = 8): s
 
 // ─────────── API (Externo) ───────────
 
+/** Categorias de gestão do POP — por que a alteração foi feita. */
+export type RevisionCategory = 'automacao' | 'eliminacao' | 'otimizacao';
+
+export const REVISION_CATEGORY_LABEL: Record<RevisionCategory, string> = {
+  automacao: 'Automação',
+  eliminacao: 'Eliminação',
+  otimizacao: 'Otimização',
+};
+
 export interface WorkflowRevisionRow {
   id: string;
   board_id: string;
   revision_number: number;
   snapshot: WorkflowSnapshot;
   change_reason: string | null;
+  change_category: RevisionCategory | null;
   change_summary: DiffEntry[] | null;
   origin: 'manual' | 'ia' | 'baseline' | 'restore';
   changed_by: string | null;
@@ -314,13 +339,14 @@ export async function createWorkflowRevision(params: {
   boardId: string;
   snapshot: WorkflowSnapshot;
   reason?: string | null;
+  category?: RevisionCategory | null;
   summary?: DiffEntry[] | null;
   origin?: WorkflowRevisionRow['origin'];
   changedBy?: string | null;
   changedByName?: string | null;
 }): Promise<WorkflowRevisionRow> {
   await ensureExternalSession();
-  const { data, error } = await ext().rpc('create_workflow_revision', {
+  const baseArgs = {
     p_board_id: params.boardId,
     p_snapshot: params.snapshot,
     p_change_reason: params.reason ?? null,
@@ -328,9 +354,52 @@ export async function createWorkflowRevision(params: {
     p_origin: params.origin ?? 'manual',
     p_changed_by: params.changedBy ?? null,
     p_changed_by_name: params.changedByName ?? null,
+  };
+  let { data, error } = await ext().rpc('create_workflow_revision', {
+    ...baseArgs,
+    p_change_category: params.category ?? null,
   });
+  // Compat: se a migration com p_change_category ainda não foi aplicada no
+  // Externo, o PostgREST não acha a assinatura (PGRST202) — grava sem categoria.
+  if (error && String((error as any).code) === 'PGRST202') {
+    ({ data, error } = await ext().rpc('create_workflow_revision', baseArgs));
+  }
   if (error) throw error;
   return data as WorkflowRevisionRow;
+}
+
+/**
+ * Impacto de cada revisão no resultado esperado do POP.
+ *
+ * Cada revisão vigora até a seguinte; dentro dessa janela a RPC conta os leads
+ * que chegaram a um resultado e quantos caíram no resultado esperado DAQUELA
+ * revisão. `delta` é a variação em pontos percentuais contra a janela anterior.
+ *
+ * É correlação, não prova de causa: amostra pequena e fatores externos pesam.
+ * Use `total_results` como amostra antes de tratar o delta como veredito.
+ */
+export interface RevisionOutcomeRow {
+  revision_number: number;
+  created_at: string;
+  window_end: string | null;
+  changed_by_name: string | null;
+  change_category: RevisionCategory | null;
+  change_reason: string | null;
+  total_results: number;
+  expected_results: number;
+  expected_rate: number | null;
+  prev_expected_rate: number | null;
+  delta: number | null;
+}
+
+/** Amostra mínima na janela para arriscar um veredito de "positiva/negativa". */
+export const OUTCOME_MIN_SAMPLE = 5;
+
+export async function fetchWorkflowRevisionOutcomes(boardId: string): Promise<RevisionOutcomeRow[]> {
+  await ensureExternalSession();
+  const { data, error } = await ext().rpc('workflow_revision_outcomes', { p_board_id: boardId });
+  if (error) throw error;
+  return (data || []) as RevisionOutcomeRow[];
 }
 
 export async function notifyWorkflowRevision(params: {
