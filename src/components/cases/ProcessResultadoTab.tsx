@@ -61,7 +61,29 @@ export interface PopResultado {
 
 export interface PopResultConfig {
   resultados: PopResultado[];
+  /** Status esperado(s) do POP — pode ser mais de um. */
+  resultado_esperado_ids?: string[] | null;
+  /** Legado (single) — usado como fallback quando não há resultado_esperado_ids. */
   resultado_esperado_id?: string | null;
+}
+
+/** O override por-processo é guardado como JSON array de ids (texto). Aceita
+ *  também o formato legado (id único em texto puro) ou vazio. */
+function parseOverrideIds(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const v = JSON.parse(raw);
+    if (Array.isArray(v)) return v.filter((x): x is string => typeof x === 'string');
+  } catch { /* não é JSON — trata como id único legado */ }
+  return [raw];
+}
+function serializeOverrideIds(ids: string[]): string | null {
+  return ids.length ? JSON.stringify(ids) : null;
+}
+function popExpectedIds(pop: PopResultConfig | null): string[] {
+  if (!pop) return [];
+  if (Array.isArray(pop.resultado_esperado_ids) && pop.resultado_esperado_ids.length) return pop.resultado_esperado_ids;
+  return pop.resultado_esperado_id ? [pop.resultado_esperado_id] : [];
 }
 
 interface AtingidoState {
@@ -78,8 +100,9 @@ interface Props {
   processType: string | null;
   /** settings do POP vinculado (resultados + resultado esperado). */
   pop: PopResultConfig | null;
-  /** override por-processo do resultado esperado (null = herda do POP). */
-  esperadoOverrideId: string | null;
+  /** override por-processo do status esperado, cru do banco (JSON array de ids,
+   *  id único legado, ou null = herda do POP). */
+  esperadoOverrideRaw: string | null;
   /** data-alvo (prognóstico) por-processo. */
   dataAlvo: string | null;
   /** valores atuais do resultado atingido gravado na ficha. */
@@ -117,7 +140,7 @@ function pickDesfecho(movements: ProcessMovement[]): ProcessMovement | null {
 }
 
 export function ProcessResultadoTab({
-  processId, processType, pop, esperadoOverrideId, dataAlvo, atingido,
+  processId, processType, pop, esperadoOverrideRaw, dataAlvo, atingido,
   onSetEsperado, onAtingidoWritten,
 }: Props) {
   const isAdministrativo = (processType || 'judicial') === 'administrativo';
@@ -127,10 +150,24 @@ export function ProcessResultadoTab({
 
   const desfecho = useMemo(() => pickDesfecho(movements), [movements]);
 
-  // Resultado esperado efetivo: override do processo ou herança do POP.
-  const effectiveEsperadoId = esperadoOverrideId || pop?.resultado_esperado_id || null;
-  const esperadoLabel = pop?.resultados?.find((r) => r.id === effectiveEsperadoId)?.label || null;
-  const isHerdado = !esperadoOverrideId;
+  // Status esperado(s) efetivos: override do processo (se houver) ou herança do POP.
+  const overrideIds = useMemo(() => parseOverrideIds(esperadoOverrideRaw), [esperadoOverrideRaw]);
+  const isHerdado = overrideIds.length === 0;
+  const effectiveEsperadoIds = isHerdado ? popExpectedIds(pop) : overrideIds;
+  const esperadoLabels = effectiveEsperadoIds
+    .map((id) => pop?.resultados?.find((r) => r.id === id)?.label)
+    .filter((l): l is string => !!l);
+
+  const toggleOverride = (id: string) => {
+    // base = o que está efetivo hoje (herdado ou já override) — o 1º toggle a partir
+    // de "herdado" materializa o conjunto atual e então aplica a mudança.
+    const base = isHerdado ? popExpectedIds(pop) : overrideIds;
+    const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id];
+    // se voltou a ser exatamente o conjunto do POP, limpa o override (volta a herdar)
+    const popIds = popExpectedIds(pop);
+    const sameAsPop = next.length === popIds.length && next.every((x) => popIds.includes(x));
+    onSetEsperado('resultado_esperado_id_override', sameAsPop ? null : serializeOverrideIds(next));
+  };
 
   const persistAtingido = useCallback(async (payload: Partial<Record<string, unknown>>) => {
     setSaving(true);
@@ -224,9 +261,9 @@ export function ProcessResultadoTab({
         <div className="flex items-center gap-1.5">
           <Target className="h-3.5 w-3.5 text-primary" />
           <span className="text-[11px] font-semibold uppercase tracking-wider text-primary">Status esperado</span>
-          {isHerdado && esperadoLabel && (
-            <Badge variant="outline" className="text-[9px] ml-auto">herdado do POP</Badge>
-          )}
+          <Badge variant="outline" className="text-[9px] ml-auto">
+            {isHerdado ? 'herdado do POP' : 'override do processo'}
+          </Badge>
         </div>
 
         {!pop || (pop.resultados?.length ?? 0) === 0 ? (
@@ -235,29 +272,43 @@ export function ProcessResultadoTab({
           </p>
         ) : (
           <>
-            <div className="space-y-1">
-              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Alvo</Label>
-              <Select
-                value={esperadoOverrideId || '__herdar__'}
-                onValueChange={(v) => onSetEsperado('resultado_esperado_id_override', v === '__herdar__' ? null : v)}
-              >
-                <SelectTrigger className="h-8 text-xs bg-background">
-                  <SelectValue placeholder="Selecione" />
-                </SelectTrigger>
-                <SelectContent className="z-[9999]">
-                  <SelectItem value="__herdar__">
-                    Herdar do POP{esperadoLabel && isHerdado ? ` — ${esperadoLabel}` : pop.resultado_esperado_id ? ` — ${pop.resultados.find(r => r.id === pop.resultado_esperado_id)?.label || ''}` : ''}
-                  </SelectItem>
-                  {pop.resultados.map((r) => (
-                    <SelectItem key={r.id} value={r.id}>{r.label}</SelectItem>
+            <div className="space-y-1.5">
+              <Label className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">Alvo(s)</Label>
+              {esperadoLabels.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {esperadoLabels.map((l) => (
+                    <Badge key={l} className="text-[10px] bg-primary/10 text-primary hover:bg-primary/10">{l}</Badge>
                   ))}
-                </SelectContent>
-              </Select>
-              {!esperadoLabel && (
+                </div>
+              ) : (
                 <p className="text-[10px] text-muted-foreground">
-                  O POP ainda não define um status esperado. Marque-o no WorkflowBuilder ou escolha um override acima.
+                  Nenhum status esperado definido. Marque um ou mais no POP (WorkflowBuilder) ou sobrescreva abaixo.
                 </p>
               )}
+              {/* Override por-processo: marque um ou mais; deixe igual ao POP pra herdar. */}
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {pop.resultados.map((r) => {
+                  const on = effectiveEsperadoIds.includes(r.id);
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => toggleOverride(r.id)}
+                      className={cn(
+                        'text-[10px] rounded-full border px-2 py-0.5 transition-colors',
+                        on
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-input bg-background text-muted-foreground hover:bg-accent',
+                      )}
+                    >
+                      {on ? '✓ ' : ''}{r.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[9px] text-muted-foreground">
+                Clique pra marcar/desmarcar. Igual ao POP = herda; diferente = override deste processo.
+              </p>
             </div>
 
             <div className="space-y-1">

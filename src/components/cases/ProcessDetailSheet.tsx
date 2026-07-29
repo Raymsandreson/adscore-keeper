@@ -331,7 +331,11 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           id: b.id,
           name: b.name,
           settings: b.settings
-            ? { resultados: b.settings.resultados || [], resultado_esperado_id: b.settings.resultado_esperado_id || null }
+            ? {
+                resultados: b.settings.resultados || [],
+                resultado_esperado_ids: Array.isArray(b.settings.resultado_esperado_ids) ? b.settings.resultado_esperado_ids : null,
+                resultado_esperado_id: b.settings.resultado_esperado_id || null,
+              }
             : null,
         })));
       });
@@ -1190,7 +1194,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 processId={process.id}
                 processType={form.process_type || 'judicial'}
                 pop={workflowBoards.find(b => b.id === form.workflow_id)?.settings || null}
-                esperadoOverrideId={form.resultado_esperado_id_override || null}
+                esperadoOverrideRaw={form.resultado_esperado_id_override || null}
                 dataAlvo={form.resultado_esperado_data_alvo || null}
                 atingido={{
                   resultado: form.resultado_atingido || null,

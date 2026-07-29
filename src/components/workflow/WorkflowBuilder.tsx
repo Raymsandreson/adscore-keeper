@@ -155,7 +155,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // qual é o ESPERADO (= sucesso / objetivo final). Guardado em
   // kanban_boards.settings.{resultados, resultado_esperado_id}.
   const [formResultados, setFormResultados] = useState<{ id: string; label: string; marco?: string | null }[]>([]);
-  const [formResultadoEsperadoId, setFormResultadoEsperadoId] = useState<string>('');
+  // Status esperado(s) do POP — podem ser MAIS DE UM (ex.: "Acordo" ou "Procedência"
+  // ambos contam como sucesso). Guardado em settings.resultado_esperado_ids (array);
+  // settings.resultado_esperado_id segue gravado (= primeiro) por compat do ranking.
+  const [formResultadoEsperadoIds, setFormResultadoEsperadoIds] = useState<string[]>([]);
   const [newResultadoLabel, setNewResultadoLabel] = useState<string>('');
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -392,9 +395,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setFormName(board.name);
     setFormDescription(board.description || '');
     {
-      const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string } }).settings;
+      const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[] } }).settings;
       setFormResultados(cfg?.resultados || []);
-      setFormResultadoEsperadoId(cfg?.resultado_esperado_id || '');
+      setFormResultadoEsperadoIds(
+        Array.isArray(cfg?.resultado_esperado_ids)
+          ? cfg!.resultado_esperado_ids!
+          : (cfg?.resultado_esperado_id ? [cfg.resultado_esperado_id] : []),
+      );
     }
 
     // Sempre busca templates frescos junto com os links pra evitar race
@@ -704,13 +711,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       if (editingBoardId) {
         const existingSettings = (boards.find(b => b.id === editingBoardId) as { settings?: Record<string, unknown> } | undefined)?.settings || {};
         const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim(), marco: r.marco || null })).filter(r => r.label);
-        const espId = cleanResultados.some(r => r.id === formResultadoEsperadoId) ? formResultadoEsperadoId : null;
+        const espIds = formResultadoEsperadoIds.filter(id => cleanResultados.some(r => r.id === id));
         await updateBoard(editingBoardId, {
           name: latestName.trim(),
           description: latestDesc.trim() || null,
           color: '#3b82f6',
           stages,
-          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_id: espId },
+          // resultado_esperado_ids = fonte da verdade (múltiplos); resultado_esperado_id
+          // = primeiro, mantido por compat com o ranking atual e o LeadEditDialog.
+          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null },
         } as Partial<KanbanBoard>);
         boardId = editingBoardId;
       } else {
@@ -1311,7 +1320,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                                     <SelectItem key={r.id} value={r.id}>
                                                       <div className="flex items-center gap-1.5">
                                                         <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 bg-yellow-400" />
-                                                        {r.label}{r.id === formResultadoEsperadoId ? ' ✅' : ''}
+                                                        {r.label}{formResultadoEsperadoIds.includes(r.id) ? ' ✅' : ''}
                                                       </div>
                                                     </SelectItem>
                                                   ))}
@@ -1367,20 +1376,22 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   <div className="text-sm font-semibold">🎯 Status possíveis do POP</div>
                   <p className="text-xs text-muted-foreground">
                     Cadastre os status que um lead deste funil/POP pode ter (ex.: <em>Em andamento</em>,
-                    <em> Fechado</em>, <em>Recusado</em>). Marque o <b>esperado</b> (radio) — é o
-                    "sucesso"/objetivo final e vira o 1º critério do ranking do telão.
+                    <em> Fechado</em>, <em>Recusado</em>). Marque o(s) <b>esperado(s)</b> — pode ser
+                    <b> mais de um</b> (ex.: <em>Acordo</em> ou <em>Procedência</em> ambos contam como
+                    sucesso). É o "sucesso"/objetivo final e vira o 1º critério do ranking do telão.
                   </p>
 
                   <div className="space-y-2">
                     {formResultados.map((r, i) => (
                       <div key={r.id} className="flex items-center gap-2">
                         <input
-                          type="radio"
-                          name="resultado-esperado"
+                          type="checkbox"
                           className="shrink-0"
-                          checked={formResultadoEsperadoId === r.id}
-                          onChange={() => setFormResultadoEsperadoId(r.id)}
-                          title="Marcar como resultado esperado (sucesso)"
+                          checked={formResultadoEsperadoIds.includes(r.id)}
+                          onChange={() => setFormResultadoEsperadoIds(prev =>
+                            prev.includes(r.id) ? prev.filter(id => id !== r.id) : [...prev, r.id],
+                          )}
+                          title="Marcar como status esperado (sucesso) — pode marcar vários"
                         />
                         <Input
                           value={r.label}
@@ -1405,7 +1416,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                             <SelectItem value="pagamento">Pagamento</SelectItem>
                           </SelectContent>
                         </Select>
-                        {formResultadoEsperadoId === r.id && (
+                        {formResultadoEsperadoIds.includes(r.id) && (
                           <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-emerald-500">esperado</span>
                         )}
                         <Button
@@ -1414,7 +1425,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                           className="shrink-0"
                           onClick={() => {
                             setFormResultados(prev => prev.filter((_, j) => j !== i));
-                            if (formResultadoEsperadoId === r.id) setFormResultadoEsperadoId('');
+                            setFormResultadoEsperadoIds(prev => prev.filter(id => id !== r.id));
                           }}
                         >
                           <X className="h-4 w-4" />
