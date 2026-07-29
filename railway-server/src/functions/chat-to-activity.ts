@@ -154,6 +154,9 @@ ${typesList
     }
 
     if (fillError) return ok({ success: false, error: fillError, fields });
+    // Auditoria de preenchimento: só NOMES dos campos vazios (nunca conteúdo — chat interno é sensível).
+    const emptyKeys = Object.entries(fields).filter(([, v]) => !String(v || '').trim()).map(([k]) => k);
+    console.log(`[chat-to-activity] ok — vazios: [${emptyKeys.join(', ') || 'nenhum'}], tipos=${types.length}, membros=${members.length}`);
     return ok({ success: true, fields });
   } catch (e: any) {
     console.error('[chat-to-activity] error:', e);
