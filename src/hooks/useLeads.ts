@@ -733,7 +733,16 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
         });
       }
 
-      // Optimistic local update - avoids full reload lag
+      // Optimistic local update - avoids full reload lag.
+      // Escreve também no cache compartilhado, de forma síncrona: um fetchLeads()
+      // logo após o save (ex: onSave do kanban) serve o cache "fresh", e sem isso
+      // ele devolvia o snapshot pré-save e desfazia o update otimista até o refresh
+      // (o write-through via useEffect só roda depois do render).
+      leadsCache.update(
+        cacheScope,
+        (prev) => prev.map(l => l.id === id ? { ...l, ...updatedLead } : l),
+        computeLeadStats,
+      );
       setLeads(prev => prev.map(l => l.id === id ? { ...l, ...updatedLead } : l));
 
       // Send CAPI events based on status change
@@ -822,7 +831,14 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
         console.warn('[deleteLead] audit failed (non-blocking):', auditErr);
       }
 
-      // Atualiza estado local imediatamente para feedback instantâneo
+      // Atualiza estado local imediatamente para feedback instantâneo.
+      // Cache síncrono pelo mesmo motivo do updateLead: o fetchLeads() do
+      // onDeleted serviria o cache pré-delete e o lead "voltava" até o refresh.
+      leadsCache.update(
+        cacheScope,
+        (prev) => prev.filter((l) => l.id !== id),
+        computeLeadStats,
+      );
       setLeads((prev) => prev.filter((l) => l.id !== id));
       window.dispatchEvent(new CustomEvent(LEAD_DELETED_EVENT, { detail: { leadId: id } }));
       toast.success(data.hard_delete ? 'Lead excluído permanentemente' : 'Lead removido — recuperável em Arquivados');
