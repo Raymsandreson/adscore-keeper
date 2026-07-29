@@ -19,6 +19,10 @@ const dbAny = db as unknown as SupabaseClient;
  *   "Ainda está fazendo X?": Sim volta a contar; Não fecha/salva e abre o
  *   seletor "qual atividade agora?".
  * - Ao SAIR da atv (fechar) → dialog "Continuar contando ou pausar?".
+ * - PREVISÃO em andamento: aba congelada pelo navegador (trabalho fora da aba,
+ *   ex.: peticionando no PJe) conta como ATIVO até o teto da previsão. Após o
+ *   estouro, o ocioso acumulado fica REATRIBUÍVEL: confirmar "sim, continuei"
+ *   no prompt devolve esse período pro tempo ativo.
  * - CONCLUIR encerra o cronômetro da atv (igual pausar).
  * - O tempo ENTRE atividades (nenhuma aberta) cai na linha de gap
  *   (activity_id null) e conta SEMPRE como OCIOSO: sem atividade vinculada não
@@ -78,6 +82,9 @@ interface TimerEntry {
   breakNote?: string | null;
   /** kind === 'gap': interagindo sem atividade vinculada (só mensagem/prompt — o tempo conta como ocioso do mesmo jeito). */
   gapWorking?: boolean;
+  /** Segundos contados como ocioso DESDE o estouro da previsão — reatribuíveis
+   *  pro ativo se a pessoa confirmar que continuou na atividade. */
+  overdueIdle?: number;
 }
 
 interface ActivityTimerCtx {
@@ -236,6 +243,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const userRef = useRef<{ userId: string; userName: string } | null>(null);
   const lockedRef = useRef<boolean>(false); // tela bloqueada (IdleDetector)
   const lockDetectorRef = useRef<boolean>(false);
+  // Momento em que o NAVEGADOR congelou esta aba (evento 'freeze' da Page
+  // Lifecycle API). Distingue "aba congelada em segundo plano" (pessoa
+  // trabalhando em outra aba, ex.: PJe) de "máquina suspensa" (PC dormiu) —
+  // suspensão real não dispara 'freeze'.
+  const frozeAtRef = useRef<number | null>(null);
   const [onShift, setOnShift] = useState<boolean | null>(null);
   const [awayPrompt, setAwayPrompt] = useState(false);
   const [breakOverdue, setBreakOverdue] = useState(false);
@@ -461,7 +473,8 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     const id = setInterval(() => {
       const e = entryRef.current;
       const now = Date.now();
-      const deltaSec = Math.max(0, Math.round((now - lastTick) / 1000));
+      const prevTick = lastTick;
+      const deltaSec = Math.max(0, Math.round((now - prevTick) / 1000));
       lastTick = now;
       if (!e || e.status === 'paused' || deltaSec === 0) return;
 
@@ -515,20 +528,79 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       // Exceções que viram OCIOSO: aguardando confirmação, tela BLOQUEADA,
       // ou máquina SUSPENSA (gap grande entre ticks = PC dormiu/hibernou).
       const suspended = deltaSec >= 120;
-      const isActive = !awaitingConfirmRef.current && !lockedRef.current && !suspended;
-      if (isActive) next.activeSeconds += deltaSec;
-      else next.idleSeconds += deltaSec;
+      // Delta grande com 'freeze' registrado no meio = a ABA foi congelada pelo
+      // navegador (pessoa em outra aba), não a máquina suspensa.
+      const tabFroze = suspended && frozeAtRef.current !== null && frozeAtRef.current >= prevTick - 5000;
+      // Consome o registro: no delta grande ele foi usado acima; fora disso, um
+      // 'freeze' antigo (descongelou rápido) não pode contaminar uma suspensão
+      // real futura.
+      if (frozeAtRef.current !== null && (suspended || frozeAtRef.current < prevTick - 5000)) {
+        frozeAtRef.current = null;
+      }
+      const estSec = next.estimateMinutes && next.estimateMinutes > 0 ? next.estimateMinutes * 60 : 0;
 
-      // Voltou da suspensão → o tempo parado foi pro ocioso; confirma se continua.
-      if (suspended && !awaitingConfirmRef.current) {
+      // Aba congelada DENTRO da previsão = trabalho declarado fora da aba
+      // (ex.: PJe): conta ATIVO até o teto da previsão; o que passar do teto
+      // vai pro ocioso reatribuível (o estouro abaixo arma o prompt).
+      let carryOverdue = 0;
+      const freezeAsActive = tabFroze && !awaitingConfirmRef.current && !lockedRef.current
+        && estSec > 0 && next.activeSeconds < estSec;
+      if (freezeAsActive) {
+        const activePart = Math.min(deltaSec, estSec - next.activeSeconds);
+        next.activeSeconds += activePart;
+        carryOverdue = deltaSec - activePart;
+        next.idleSeconds += carryOverdue;
+      } else {
+        const isActive = !awaitingConfirmRef.current && !lockedRef.current && !suspended;
+        if (isActive) next.activeSeconds += deltaSec;
+        else {
+          next.idleSeconds += deltaSec;
+          // Após o estouro da previsão, o ocioso segue reatribuível — menos em
+          // suspensão real (PC dormindo não é trabalho em outra aba).
+          if (awaitingConfirmRef.current && next.overdueIdle != null && (!suspended || tabFroze)) {
+            next.overdueIdle += deltaSec;
+          }
+        }
+      }
+
+      // Voltou da suspensão/congela (sem previsão cobrindo) → o tempo parado
+      // foi pro ocioso; confirma se continua.
+      if (suspended && !freezeAsActive && !awaitingConfirmRef.current) {
         awaitingConfirmRef.current = true;
         setIdlePrompt(true);
-        notifyDesktop('Cronômetro de atividade', `O computador ficou suspenso ${Math.round(deltaSec / 60)} min (contado como ocioso). Ainda está fazendo "${e.activityTitle}"?`);
+        notifyDesktop('Cronômetro de atividade', tabFroze
+          ? `A aba ficou ${Math.round(deltaSec / 60)} min congelada em segundo plano (contado como ocioso — defina uma previsão para trabalhar fora da aba contando como ativo). Ainda está fazendo "${e.activityTitle}"?`
+          : `O computador ficou suspenso ${Math.round(deltaSec / 60)} min (contado como ocioso). Ainda está fazendo "${e.activityTitle}"?`);
+      }
+
+      // Gatilho de urgência da previsão (compara com o tempo ATIVO). Vem ANTES
+      // do check de 5 min: no tick do estouro ele arma a confirmação e evita
+      // alarme/notificação em dobro no mesmo segundo.
+      if (estSec > 0) {
+        if (next.activeSeconds >= estSec) {
+          if (!overNotifiedRef.current) {
+            overNotifiedRef.current = true;
+            nearNotifiedRef.current = true;
+            // Alarme aqui também: quem está em outra aba (PJe) não vê toast nem
+            // dialog — sem o som, o estouro virava ocioso em silêncio.
+            playAlarmSound();
+            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min. Ainda está nessa atividade?`);
+            // Fim do tempo previsto → pergunta se continua ou se já era.
+            // Daqui em diante o ocioso é reatribuível: "sim, continuei" no
+            // prompt devolve o período pro ativo.
+            awaitingConfirmRef.current = true;
+            setIdlePrompt(true);
+            next.overdueIdle = (next.overdueIdle ?? 0) + carryOverdue;
+          }
+        } else if (next.activeSeconds >= estSec * 0.8 && !nearNotifiedRef.current) {
+          nearNotifiedRef.current = true;
+          const faltam = Math.max(1, Math.round((estSec - next.activeSeconds) / 60));
+          notifyDesktop('⚠️ Previsão se aproximando', `Faltam ~${faltam} min para a previsão de "${e.activityTitle}".`);
+        }
       }
 
       // Com PREVISÃO definida e ainda dentro dela, não perturba com o check
       // de 5 min — a pergunta "ainda está fazendo?" só vem quando a previsão acaba.
-      const estSec = next.estimateMinutes && next.estimateMinutes > 0 ? next.estimateMinutes * 60 : 0;
       const withinEstimate = estSec > 0 && next.activeSeconds < estSec;
 
       if (!awaitingConfirmRef.current && idleFor >= IDLE_THRESHOLD_MS && !withinEstimate) {
@@ -536,24 +608,6 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         setIdlePrompt(true);
         playAlarmSound();
         notifyDesktop('Cronômetro de atividade', `Ainda está fazendo "${e.activityTitle}"? Confirme para continuar contando.`);
-      }
-
-      // Gatilho de urgência da previsão (compara com o tempo ATIVO).
-      if (estSec > 0) {
-        if (next.activeSeconds >= estSec) {
-          if (!overNotifiedRef.current) {
-            overNotifiedRef.current = true;
-            nearNotifiedRef.current = true;
-            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min. Ainda está nessa atividade?`);
-            // Fim do tempo previsto → pergunta se continua ou se já era.
-            awaitingConfirmRef.current = true;
-            setIdlePrompt(true);
-          }
-        } else if (next.activeSeconds >= estSec * 0.8 && !nearNotifiedRef.current) {
-          nearNotifiedRef.current = true;
-          const faltam = Math.max(1, Math.round((estSec - next.activeSeconds) / 60));
-          notifyDesktop('⚠️ Previsão se aproximando', `Faltam ~${faltam} min para a previsão de "${e.activityTitle}".`);
-        }
       }
 
       sync(next);
@@ -598,14 +652,20 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     return () => clearInterval(id);
   }, [assertOwnership]);
 
-  // ---- Flush ao esconder a aba ----
+  // ---- Flush ao esconder a aba + registro de congela do navegador ----
   useEffect(() => {
     const onHide = () => { if (document.visibilityState === 'hidden' && entryRef.current) flush(); };
+    // 'freeze' (Page Lifecycle, Chrome/Edge): o navegador vai congelar a aba em
+    // segundo plano. Registra o momento (o loop usa pra diferenciar de PC
+    // suspenso) e persiste o estado antes de os timers pararem.
+    const onFreeze = () => { frozeAtRef.current = Date.now(); if (entryRef.current) flush(); };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onHide);
+    document.addEventListener('freeze', onFreeze);
     return () => {
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onHide);
+      document.removeEventListener('freeze', onFreeze);
     };
   }, [flush]);
 
@@ -804,10 +864,23 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   }, [finalizeToGap]);
 
   const confirmStillWorking = useCallback(() => {
+    // Reatribuição: o ocioso acumulado desde o estouro da previsão volta a ser
+    // ATIVO quando a pessoa confirma que seguiu na atividade (ex.: no PJe).
+    const e = entryRef.current;
+    if (e?.kind === 'activity' && e.overdueIdle != null) {
+      const reclaimed = Math.min(e.overdueIdle, e.idleSeconds);
+      sync({
+        ...e,
+        activeSeconds: e.activeSeconds + reclaimed,
+        idleSeconds: e.idleSeconds - reclaimed,
+        overdueIdle: undefined,
+      });
+      if (reclaimed > 0) flush();
+    }
     awaitingConfirmRef.current = false;
     lastInteractionRef.current = Date.now();
     setIdlePrompt(false);
-  }, []);
+  }, [sync, flush]);
 
   const rejectStillWorking = useCallback(async () => {
     await finalizeToGap();

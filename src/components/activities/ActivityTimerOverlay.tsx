@@ -695,7 +695,15 @@ export function ActivityTimerOverlay() {
               <TimerIcon className="h-5 w-5 text-amber-500" /> Ainda está nessa atividade?
             </DialogTitle>
             <DialogDescription>
-              Sem interação há alguns minutos. A atividade <b>{current?.activityTitle}</b> ainda é a que você está fazendo agora?
+              {current?.kind === 'activity' && current.overdueIdle != null ? (
+                <>
+                  A previsão de <b>{current.activityTitle}</b> estourou
+                  {current.overdueIdle > 0 ? <> há <b>{Math.max(1, Math.round(current.overdueIdle / 60))} min</b></> : null}.
+                  Se você continuou nela (no PJe, por exemplo), confirme — esse período volta a contar como tempo ativo.
+                </>
+              ) : (
+                <>Sem interação há alguns minutos. A atividade <b>{current?.activityTitle}</b> ainda é a que você está fazendo agora?</>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
