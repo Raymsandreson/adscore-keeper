@@ -2583,7 +2583,7 @@ const ActivitiesPage = () => {
 
   // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
   // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
-  const buildMsg = (audience: 'client' | 'assessor' = 'client', opts?: { includeTimeSpent?: boolean }) => {
+  const buildMsg = (audience: 'client' | 'assessor' = 'client') => {
     const joinNames = (names: string[]) =>
       names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
     const notifDate = formNotificationDate ? (() => {
@@ -2605,15 +2605,8 @@ const ActivitiesPage = () => {
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-    // Tempo dedicado: usa o cronômetro ao vivo se esta atv está rodando; senão o total salvo no banco.
-    const liveSecs = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
-      ? runningTimer.activeSeconds : 0;
-    const timeSpent = Math.max(liveSecs, activityTotalSecs, workflowMode ? getActivityTimeSpent() : 0);
-    // includeTimeSpent: false (botão Copiar) omite a linha de tempo em todos os
-    // formatos — assessor, template ({{tempo_dedicado}}) e fallback do cliente.
-    const tempoStr = opts?.includeTimeSpent === false
-      ? ''
-      : timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
+    // Tempo dedicado NÃO vai mais em nenhuma mensagem (copiada ou enviada) —
+    // decisão jul/2026. O tempo continua visível no editor (badge da ficha).
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
     const buildReturnDateLine = (responsavelDr: string) => {
@@ -2742,7 +2735,6 @@ const ActivitiesPage = () => {
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
         progressDetail,
-        tempoStr,
         authoriaLine,
         activityLink,
         signature,
@@ -2775,7 +2767,9 @@ const ActivitiesPage = () => {
         criado_por: createdByName || '—',
         criado_em: createdAtFmt,
         atualizado_info: updatedInfo,
-        tempo_dedicado: tempoStr,
+        // Mantido vazio (não removido) pra templates salvos com {{tempo_dedicado}}
+        // renderizarem sem a linha em vez de cair no avaliador de expressão.
+        tempo_dedicado: '',
         link_atividade: activityLink,
         what_was_done: valueMap.what_was_done || '—',
         current_status: valueMap.current_status || '—',
@@ -2898,7 +2892,7 @@ const ActivitiesPage = () => {
     const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
     const progressLineFb = progressInfo ? `\n\n${progressInfo}` : '';
     const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
