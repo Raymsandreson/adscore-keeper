@@ -154,7 +154,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Resultados possíveis do POP (cadastráveis, tipo status — NÃO são as fases) +
   // qual é o ESPERADO (= sucesso / objetivo final). Guardado em
   // kanban_boards.settings.{resultados, resultado_esperado_id}.
-  const [formResultados, setFormResultados] = useState<{ id: string; label: string }[]>([]);
+  const [formResultados, setFormResultados] = useState<{ id: string; label: string; marco?: string | null }[]>([]);
   const [formResultadoEsperadoId, setFormResultadoEsperadoId] = useState<string>('');
   const [newResultadoLabel, setNewResultadoLabel] = useState<string>('');
   const [newPhaseName, setNewPhaseName] = useState('');
@@ -391,7 +391,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setFormName(board.name);
     setFormDescription(board.description || '');
     {
-      const cfg = (board as { settings?: { resultados?: { id: string; label: string }[]; resultado_esperado_id?: string } }).settings;
+      const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string } }).settings;
       setFormResultados(cfg?.resultados || []);
       setFormResultadoEsperadoId(cfg?.resultado_esperado_id || '');
     }
@@ -695,7 +695,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       let boardId: string;
       if (editingBoardId) {
         const existingSettings = (boards.find(b => b.id === editingBoardId) as { settings?: Record<string, unknown> } | undefined)?.settings || {};
-        const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim() })).filter(r => r.label);
+        const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim(), marco: r.marco || null })).filter(r => r.label);
         const espId = cleanResultados.some(r => r.id === formResultadoEsperadoId) ? formResultadoEsperadoId : null;
         await updateBoard(editingBoardId, {
           name: latestName.trim(),
@@ -1358,6 +1358,23 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                           placeholder="Nome do resultado"
                           className="flex-1"
                         />
+                        <Select
+                          value={r.marco || '__none__'}
+                          onValueChange={(val) => setFormResultados(prev => prev.map((x, j) => j === i ? { ...x, marco: val === '__none__' ? null : val } : x))}
+                        >
+                          <SelectTrigger className="w-[190px] shrink-0 h-9 text-xs" title="Marco do Escavador que dispara este resultado automaticamente">
+                            <SelectValue placeholder="Marco gatilho (opcional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Sem marco gatilho</SelectItem>
+                            <SelectItem value="sentenca_1grau">Sentença (1º grau)</SelectItem>
+                            <SelectItem value="acordo">Acordo homologado</SelectItem>
+                            <SelectItem value="acordao_2grau">Acórdão (2º grau)</SelectItem>
+                            <SelectItem value="acordao_superior">Acórdão (Superior)</SelectItem>
+                            <SelectItem value="transito_julgado">Trânsito em julgado</SelectItem>
+                            <SelectItem value="pagamento">Pagamento</SelectItem>
+                          </SelectContent>
+                        </Select>
                         {formResultadoEsperadoId === r.id && (
                           <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-emerald-500">esperado</span>
                         )}

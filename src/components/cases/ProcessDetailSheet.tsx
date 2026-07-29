@@ -17,9 +17,10 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target
 } from 'lucide-react';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
+import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
@@ -158,6 +159,7 @@ const TABS = [
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
   { id: 'marcos', label: 'Marcos', icon: Milestone },
+  { id: 'resultado', label: 'Resultado', icon: Target },
   { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
   { id: 'campos', label: 'Campos', icon: Hash },
   { id: 'config', label: 'Config', icon: Info },
@@ -309,7 +311,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
-  const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string }[]>([]);
+  const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string; settings?: PopResultConfig | null }[]>([]);
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   // "Criar atividade a partir da movimentação": key da mov em processamento + rascunho (IA).
   const [creatingMovKey, setCreatingMovKey] = useState<string | null>(null);
@@ -321,11 +323,17 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     if (!open) return;
     (externalSupabase
       .from('kanban_boards' as any)
-      .select('id, name, board_type')
+      .select('id, name, board_type, settings')
       .eq('board_type', 'workflow')
       .order('display_order', { ascending: true }) as any)
       .then(({ data }: { data: any[] | null }) => {
-        setWorkflowBoards((data || []).map((b: any) => ({ id: b.id, name: b.name })));
+        setWorkflowBoards((data || []).map((b: any) => ({
+          id: b.id,
+          name: b.name,
+          settings: b.settings
+            ? { resultados: b.settings.resultados || [], resultado_esperado_id: b.settings.resultado_esperado_id || null }
+            : null,
+        })));
       });
   }, [open]);
 
@@ -741,6 +749,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         'status_predito', 'situacao', 'moeda', 'description', 'notes',
         'workflow_id', 'workflow_name', 'workflow_stage_id', 'responsible_user_id',
         'cliente_polo', 'pericia_prevista',
+        'resultado_esperado_id_override', 'resultado_esperado_data_alvo',
       ];
 
       for (const key of editableKeys) {
@@ -1173,6 +1182,35 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 processNumber={form.process_number || process.process_number || null}
                 caseType={leadCaseType}
                 periciaPrevista={form.pericia_prevista ?? null}
+              />
+            )}
+
+            {activeTab === 'resultado' && process?.id && (
+              <ProcessResultadoTab
+                processId={process.id}
+                processType={form.process_type || 'judicial'}
+                pop={workflowBoards.find(b => b.id === form.workflow_id)?.settings || null}
+                esperadoOverrideId={form.resultado_esperado_id_override || null}
+                dataAlvo={form.resultado_esperado_data_alvo || null}
+                atingido={{
+                  resultado: form.resultado_atingido || null,
+                  tipo: form.resultado_atingido_tipo || null,
+                  data: form.resultado_atingido_data || null,
+                  fonte: form.resultado_atingido_fonte || null,
+                  ref: form.resultado_atingido_ref || null,
+                  status: form.resultado_atingido_status || null,
+                }}
+                onSetEsperado={set}
+                onAtingidoWritten={(row) => setForm(prev => ({
+                  ...prev,
+                  // só os campos do atingido — não clobbar edições não-salvas de outros campos
+                  resultado_atingido: (row as any).resultado_atingido,
+                  resultado_atingido_tipo: (row as any).resultado_atingido_tipo,
+                  resultado_atingido_data: (row as any).resultado_atingido_data,
+                  resultado_atingido_fonte: (row as any).resultado_atingido_fonte,
+                  resultado_atingido_ref: (row as any).resultado_atingido_ref,
+                  resultado_atingido_status: (row as any).resultado_atingido_status,
+                }))}
               />
             )}
 
