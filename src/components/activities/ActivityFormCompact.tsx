@@ -278,7 +278,7 @@ const MATRIX_OPTIONS = [
 ];
 
 export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFieldSetting, reorderFields, formLeadIdForTTS, formContactIdForTTS, formAssignedTo, formCoAssignees, activityId, compactLabel }: {
-  buildMsg: (audience?: 'client' | 'assessor') => string;
+  buildMsg: (audience?: 'client' | 'assessor', opts?: { includeTimeSpent?: boolean }) => string;
   leadId: string;
   fieldSettings: any[];
   updateFieldSetting: any;
@@ -555,7 +555,8 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         onClick={async () => {
           let msg = '';
           try {
-            msg = buildMsg(hasLead ? 'client' : 'assessor');
+            // Mensagem copiada não leva o tempo dedicado — só o envio direto mostra.
+            msg = buildMsg(hasLead ? 'client' : 'assessor', { includeTimeSpent: false });
           } catch (e) {
             console.error('[Copiar] buildMsg falhou:', e);
             toast.error('Erro ao montar a mensagem.');

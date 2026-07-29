@@ -2583,7 +2583,7 @@ const ActivitiesPage = () => {
 
   // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
   // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
-  const buildMsg = (audience: 'client' | 'assessor' = 'client') => {
+  const buildMsg = (audience: 'client' | 'assessor' = 'client', opts?: { includeTimeSpent?: boolean }) => {
     const joinNames = (names: string[]) =>
       names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
     const notifDate = formNotificationDate ? (() => {
@@ -2609,7 +2609,11 @@ const ActivitiesPage = () => {
     const liveSecs = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
       ? runningTimer.activeSeconds : 0;
     const timeSpent = Math.max(liveSecs, activityTotalSecs, workflowMode ? getActivityTimeSpent() : 0);
-    const tempoStr = timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
+    // includeTimeSpent: false (botão Copiar) omite a linha de tempo em todos os
+    // formatos — assessor, template ({{tempo_dedicado}}) e fallback do cliente.
+    const tempoStr = opts?.includeTimeSpent === false
+      ? ''
+      : timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
     const buildReturnDateLine = (responsavelDr: string) => {
