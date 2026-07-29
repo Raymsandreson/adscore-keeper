@@ -161,7 +161,8 @@ export default function TvAtividadesPage() {
   // Percorre em ciclo: Ranking Geral (todos) → cada time → volta. Fica
   // `rotateMin` minutos em cada um. Estado na URL (?rotate=1&rotmin=3) pra
   // sobreviver a refresh/boot do telão. rotateLeft = segundos até a próxima troca.
-  const [autoRotate, setAutoRotate] = useState(params.get('rotate') === '1');
+  // Ligado por padrão (telão sem operador roda sozinho); ?rotate=0 desliga.
+  const [autoRotate, setAutoRotate] = useState(params.get('rotate') !== '0');
   const [rotateMin, setRotateMin] = useState(() => {
     const m = Number(params.get('rotmin'));
     return Number.isFinite(m) && m >= 1 && m <= 60 ? m : 2;
@@ -230,7 +231,7 @@ export default function TvAtividadesPage() {
   useEffect(() => {
     setSearchParams(prev => {
       const q = new URLSearchParams(prev);
-      if (autoRotate) q.set('rotate', '1'); else q.delete('rotate');
+      if (autoRotate) q.delete('rotate'); else q.set('rotate', '0');
       if (autoRotate && rotateMin !== 2) q.set('rotmin', String(rotateMin)); else q.delete('rotmin');
       return q;
     }, { replace: true });
