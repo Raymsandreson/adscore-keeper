@@ -1172,7 +1172,7 @@ const ActivitiesPage = () => {
     }
   };
 
-  const handleOpenEdit = async (activity: LeadActivity, opts?: { autoVoice?: boolean }) => {
+  const handleOpenEdit = async (activity: LeadActivity, opts?: { autoVoice?: boolean; restorePendingAudio?: boolean }) => {
     // Auto-voz só quando o usuário abre de fato (clique/deep-link). A restauração
     // silenciosa após refresh passa autoVoice:false pra não começar a gravar sozinha.
     const allowAutoVoice = opts?.autoVoice !== false;
@@ -1206,6 +1206,9 @@ const ActivitiesPage = () => {
       setCallRecorderOpen(true);
     }
     // Set all form state synchronously first (instant UI)
+    // Áudio pendente é por atividade: limpa o da anterior pra não oferecer
+    // "Enviar áudio" com a gravação de outra ficha.
+    setPendingAudio(null);
     setSelectedActivity(activity);
     setSelectedActivityId(activity.id);
     setFormTitle(activity.title);
@@ -1245,6 +1248,29 @@ const ActivitiesPage = () => {
 
     // Fire all DB queries in parallel (non-blocking)
     const promises: Promise<any>[] = [];
+
+    // Restauração pós-refresh: a gravação sobrevive em activity_attachments, mas o
+    // pendingAudio (que habilita "Enviar áudio") morre com o reload. Recupera a
+    // gravação mais recente da atividade — janela de 6h pra não ressuscitar áudios
+    // antigos que provavelmente já foram enviados.
+    if (opts?.restorePendingAudio) {
+      const cutoff = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+      promises.push(
+        Promise.resolve(
+          externalSupabase
+            .from('activity_attachments')
+            .select('file_url, created_at')
+            .eq('activity_id', activity.id)
+            .eq('attachment_type', 'audio')
+            .gte('created_at', cutoff)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        ).then(({ data }) => {
+          if (data?.file_url) setPendingAudio({ url: data.file_url, seconds: 0 });
+        }).catch(() => {})
+      );
+    }
 
     if (activity.lead_id) {
       promises.push(
@@ -1297,8 +1323,9 @@ const ActivitiesPage = () => {
     if (selectedActivityId && activities.length > 0 && !selectedActivity) {
       const activity = activities.find(a => a.id === selectedActivityId);
       if (activity) {
-        // Restauração automática (refresh/troca de aba): NÃO começa a gravar sozinha.
-        handleOpenEdit(activity, { autoVoice: false });
+        // Restauração automática (refresh/troca de aba): NÃO começa a gravar sozinha,
+        // mas recupera a gravação recente pra reexibir o botão "Enviar áudio".
+        handleOpenEdit(activity, { autoVoice: false, restorePendingAudio: true });
       } else {
         setSelectedActivityId(null);
         setSheetMode(null);
@@ -2578,11 +2605,8 @@ const ActivitiesPage = () => {
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-    // Tempo dedicado: usa o cronômetro ao vivo se esta atv está rodando; senão o total salvo no banco.
-    const liveSecs = runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
-      ? runningTimer.activeSeconds : 0;
-    const timeSpent = Math.max(liveSecs, activityTotalSecs, workflowMode ? getActivityTimeSpent() : 0);
-    const tempoStr = timeSpent > 0 ? `⏱️ Tempo dedicado à atividade: ${formatDuration(timeSpent)}` : '';
+    // Tempo dedicado NÃO vai mais em nenhuma mensagem (copiada ou enviada) —
+    // decisão jul/2026. O tempo continua visível no editor (badge da ficha).
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
     const buildReturnDateLine = (responsavelDr: string) => {
@@ -2711,7 +2735,6 @@ const ActivitiesPage = () => {
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
         progressDetail,
-        tempoStr,
         authoriaLine,
         activityLink,
         signature,
@@ -2744,7 +2767,9 @@ const ActivitiesPage = () => {
         criado_por: createdByName || '—',
         criado_em: createdAtFmt,
         atualizado_info: updatedInfo,
-        tempo_dedicado: tempoStr,
+        // Mantido vazio (não removido) pra templates salvos com {{tempo_dedicado}}
+        // renderizarem sem a linha em vez de cair no avaliador de expressão.
+        tempo_dedicado: '',
         link_atividade: activityLink,
         what_was_done: valueMap.what_was_done || '—',
         current_status: valueMap.current_status || '—',
@@ -2867,7 +2892,7 @@ const ActivitiesPage = () => {
     const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
     const progressLineFb = progressInfo ? `\n\n${progressInfo}` : '';
     const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${tempoStr}${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
   };
 
   // Active step context — process workflow > lead's funnel board.
@@ -5453,6 +5478,8 @@ const ActivitiesPage = () => {
                     const label = leadPreview?.whatsapp_group_id ? 'grupo' : 'contato';
                     const mm = Math.floor(pendingAudio.seconds / 60).toString().padStart(2, '0');
                     const ss = (pendingAudio.seconds % 60).toString().padStart(2, '0');
+                    // Gravações restauradas após refresh não têm duração conhecida (seconds = 0).
+                    const dur = pendingAudio.seconds > 0 ? ` (${mm}:${ss})` : '';
                     return (
                       <Button
                         variant="outline"
@@ -5472,12 +5499,12 @@ const ActivitiesPage = () => {
                             setSendingPendingAudio(false);
                           }
                         }}
-                        title={`Enviar a gravação (${mm}:${ss}) como áudio no WhatsApp do ${label}`}
+                        title={`Enviar a gravação${dur} como áudio no WhatsApp do ${label}`}
                       >
                         {sendingPendingAudio ? (
                           <><Loader2 className="h-3 w-3 animate-spin" /> Enviando…</>
                         ) : (
-                          <><Mic className="h-3 w-3" /> Enviar áudio ({mm}:{ss})</>
+                          <><Mic className="h-3 w-3" /> Enviar áudio{dur}</>
                         )}
                       </Button>
                     );

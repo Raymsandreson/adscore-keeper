@@ -422,12 +422,17 @@ export function ActivityTimerOverlay() {
   // pinta por cima, mesmo com z menor. Fora, no body, o z-[9990] vence o z-50 do
   // Dialog e o cronômetro fica SEMPRE por cima. (skill: ui-sem-sobreposicao)
   const dock = (el: ReactNode) => (typeof document !== 'undefined' ? createPortal(el, document.body) : el);
-  const floatWrap = 'fixed z-[9990] shadow-lg backdrop-blur touch-none ';
+  // pointer-events-auto: Dialog/Sheet modal do Radix seta pointer-events:none no
+  // body inteiro; sem religar aqui, os badges portalados ficam inclicáveis com um
+  // modal aberto. stopPropagation no pointerdown: senão o toque no badge chega ao
+  // document e o Radix fecha o dialog em uso como "clique fora" (o drag não
+  // depende do bubbling — usa pointer capture no próprio elemento).
+  const floatWrap = 'pointer-events-auto fixed z-[9990] shadow-lg backdrop-blur touch-none ';
   const grab = 'cursor-grab active:cursor-grabbing';
   const dragAttrs = {
     ref: drag.setElRef,
     style: drag.style,
-    onPointerDown: drag.onPointerDown,
+    onPointerDown: (e: React.PointerEvent<HTMLElement>) => { e.stopPropagation(); drag.onPointerDown(e); },
     onPointerMove: drag.onPointerMove,
     onPointerUp: drag.onPointerUp,
   };
@@ -504,6 +509,11 @@ export function ActivityTimerOverlay() {
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           <button
             type="button"
+            // stopPropagation no pointerdown: sem isso o pointerdown sobe pro
+            // contêiner arrastável, que faz setPointerCapture e reentrega o click
+            // ao próprio contêiner — o botão nunca receberia o clique e a aba
+            // lateral não abria. Mesmo padrão dos outros botões do badge.
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } setSheetOpen(true); }}
             className="flex items-center gap-1.5 hover:opacity-80"
             title="Abrir a atividade que está sendo cronometrada"
@@ -690,7 +700,15 @@ export function ActivityTimerOverlay() {
               <TimerIcon className="h-5 w-5 text-amber-500" /> Ainda está nessa atividade?
             </DialogTitle>
             <DialogDescription>
-              Sem interação há alguns minutos. A atividade <b>{current?.activityTitle}</b> ainda é a que você está fazendo agora?
+              {current?.kind === 'activity' && current.overdueIdle != null ? (
+                <>
+                  A previsão de <b>{current.activityTitle}</b> estourou
+                  {current.overdueIdle > 0 ? <> há <b>{Math.max(1, Math.round(current.overdueIdle / 60))} min</b></> : null}.
+                  Se você continuou nela (no PJe, por exemplo), confirme — esse período volta a contar como tempo ativo.
+                </>
+              ) : (
+                <>Sem interação há alguns minutos. A atividade <b>{current?.activityTitle}</b> ainda é a que você está fazendo agora?</>
+              )}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">

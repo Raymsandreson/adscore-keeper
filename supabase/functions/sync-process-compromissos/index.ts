@@ -2,10 +2,18 @@
 // Cria atividades (lead_activities) a partir dos COMPROMISSOS detectados nas
 // movimentações do Escavador (audiência / perícia / prazo).
 //
-// Roteamento do responsável — regra definida pelo usuário (10/07/2026):
-//   - Justiça do Trabalho (dígito J=5 do CNJ) → Felipe
-//   - Justiça Federal    (dígito J=4 do CNJ) → Gisele
-//   - Demais ramos → responsible_user_id do processo; sem ele, NÃO cria.
+// Roteamento do responsável — regra definida pelo usuário (10/07/2026,
+// atualizada em 29/07/2026):
+//   - AUDIÊNCIA (qualquer ramo da Justiça) → Luana
+//   - Perícia e prazo/intimação:
+//       Justiça do Trabalho (dígito J=5 do CNJ) → Felipe
+//       Justiça Federal    (dígito J=4 do CNJ) → Gisele
+//       Demais ramos → responsible_user_id do processo; sem ele, NÃO cria.
+//
+// Datas (29/07/2026): a atividade é criada PARA O DIA EM QUE A ATUALIZAÇÃO
+// CHEGA (deadline/notification_date = hoje), não mais para a data do
+// compromisso. A data real (audiência/fim do prazo) vai na descrição e segue
+// valendo pro descarte de vencidos e pra prioridade urgente.
 //
 // Idempotente: dedupe por action_source='escavador_compromissos' +
 // action_source_detail=<hash do compromisso> — sem migration nova.
@@ -52,6 +60,10 @@ const ASSIGNEE_BY_RAMO: Record<string, { id: string; name: string }> = {
   // J=4 — Justiça Federal
   '4': { id: '81fc8558-7b52-4a24-9871-73958472fb9f', name: 'Gisele Borges dos Santos' },
 };
+
+// Audiências têm responsável fixo, independente do ramo — regra do usuário
+// (29/07/2026). UUID conferido em profiles do Externo na mesma data.
+const ASSIGNEE_AUDIENCIA = { id: 'c5284e57-b0f4-4075-b61c-a46f6fa87b16', name: 'Luana Barros' };
 
 // Só considera movimentações recentes ao ligar num processo com histórico longo
 // (evita criar tarefa de intimação de meses atrás no primeiro sync).
@@ -136,6 +148,17 @@ async function resolveAssignee(
   return null;
 }
 
+/** Data do compromisso em si: evento (audiência/perícia) ou fim do prazo. */
+function dataDoCompromisso(c: CompromissoExtraido): string | null {
+  if (c.tipo !== 'prazo') return c.data_evento ? c.data_evento.slice(0, 10) : null;
+  return c.prazo_dias && c.data_movimentacao ? addDays(c.data_movimentacao, c.prazo_dias) : null;
+}
+
+function fmtBr(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 function buildActivityRow(
   c: CompromissoExtraido,
   process: ProcessRow,
@@ -143,9 +166,7 @@ function buildActivityRow(
   hoje: string,
 ) {
   const isEvento = c.tipo !== 'prazo';
-  const deadline = isEvento
-    ? (c.data_evento ? c.data_evento.slice(0, 10) : null)
-    : (c.prazo_dias && c.data_movimentacao ? addDays(c.data_movimentacao, c.prazo_dias) : null);
+  const dataCompromisso = dataDoCompromisso(c);
 
   const activityType = c.tipo === 'prazo' ? 'prazo' : 'audiencia';
   const leadName = process.leads?.lead_name || null;
@@ -153,6 +174,10 @@ function buildActivityRow(
   const partes: string[] = [];
   if (c.descricao) partes.push(c.descricao);
   if (c.data_movimentacao) partes.push(`📌 Movimentação de ${c.data_movimentacao.slice(0, 10)}.`);
+  if (dataCompromisso) {
+    const rotulo = c.tipo === 'pericia' ? 'Perícia' : c.tipo === 'audiencia' ? 'Audiência' : 'Fim do prazo';
+    partes.push(`📅 ${rotulo} em ${fmtBr(dataCompromisso)}.`);
+  }
   if (isEvento && c.hora_evento) partes.push(`🕐 Horário: ${c.hora_evento}.`);
   if (c.tipo === 'prazo' && c.prazo_dias) {
     partes.push(`⚠️ Prazo de ${c.prazo_dias} dias contado em dias CORRIDOS a partir da movimentação — conferir dias úteis e data de publicação antes de confiar na data.`);
@@ -161,8 +186,9 @@ function buildActivityRow(
     partes.push('⚠️ Intimação sem prazo em dias explícito — conferir o prazo aplicável.');
   }
 
-  // urgente quando falta <= 3 dias; alta no resto (compromisso processual nunca é baixa)
-  const priority = deadline && addDays(hoje, 3) >= deadline ? 'urgente' : 'alta';
+  // urgente quando o compromisso real está a <= 3 dias; alta no resto
+  // (compromisso processual nunca é baixa)
+  const priority = dataCompromisso && addDays(hoje, 3) >= dataCompromisso ? 'urgente' : 'alta';
 
   return {
     lead_id: process.lead_id,
@@ -178,8 +204,10 @@ function buildActivityRow(
     priority,
     assigned_to: assignee.id,
     assigned_to_name: assignee.name,
-    deadline,
-    notification_date: deadline ? (addDays(deadline, -2) > hoje ? addDays(deadline, -2) : hoje) : null,
+    // A tarefa nasce datada pro dia da chegada da atualização — a data real do
+    // compromisso fica na descrição e no ai_generation_context.
+    deadline: hoje,
+    notification_date: hoje,
     created_by: assignee.id,
     is_system: true,
     created_by_ai: false,
@@ -350,11 +378,9 @@ async function syncProcess(
   counts.extraidos = compromissos.length;
   if (!compromissos.length) return counts;
 
-  const assignee = await resolveAssignee(ext, process);
-  if (!assignee) {
-    counts.sem_responsavel = compromissos.length;
-    return counts;
-  }
+  // Audiência tem responsável fixo (Luana); os demais tipos dependem do
+  // roteamento por ramo — que pode não resolver (aí só a audiência cria).
+  const ramoAssignee = await resolveAssignee(ext, process);
 
   const { data: existing } = await ext
     .from('lead_activities')
@@ -369,13 +395,18 @@ async function syncProcess(
       counts.duplicados++;
       continue;
     }
-    const row = buildActivityRow(c, process, assignee, hoje);
+    const assignee = c.tipo === 'audiencia' ? ASSIGNEE_AUDIENCIA : ramoAssignee;
+    if (!assignee) {
+      counts.sem_responsavel++;
+      continue;
+    }
     // Compromisso já vencido não vira tarefa (audiência passada, prazo estourado).
-    if (row.deadline && row.deadline < hoje) {
+    const dataCompromisso = dataDoCompromisso(c);
+    if (dataCompromisso && dataCompromisso < hoje) {
       counts.vencidos++;
       continue;
     }
-    rows.push(row);
+    rows.push(buildActivityRow(c, process, assignee, hoje));
   }
 
   // Insert linha a linha: o índice único do sistema (lead_activities_dedup_pending_idx,

@@ -18,6 +18,21 @@ export interface ChangelogEntry {
  */
 export const changelog: ChangelogEntry[] = [
   {
+    version: "3.4.1",
+    date: "2026-07-24",
+    title: "Status do POP: definido pelo passo concluído",
+    features: [
+      {
+        title: "Cada passo pode definir o status do lead",
+        description:
+          "No Editar POP, cada passo ganhou a opção 'Definir status': ao concluir o passo, o lead recebe esse status automaticamente (com a data de hoje) e conta no ranking. O 'Mover para' ficou só com as FASES — o '✅ Finalizar' saiu de lá (finalizar virou status). E o campo agora se chama STATUS (antes 'Resultado'), porque há estados intermediários tipo 'Em andamento'.",
+        icon: "🎯",
+        howToUse:
+          "1) Editar POP → em cada passo, escolha 'Definir status' (ex.: passo 'Perícia deferida' → status 'No Deferimento'). Quem marcar esse passo no lead já move o status sozinho. 2) Também dá pra setar à mão na tela do lead em '🎯 Status do POP', com a data. Os status possíveis e o esperado (✅) você cadastra no próprio POP.",
+      },
+    ],
+  },
+  {
     version: "3.4.0",
     date: "2026-07-24",
     title: "Novo Ranking do Telão: o que faz o processo AVANÇAR conta mais",

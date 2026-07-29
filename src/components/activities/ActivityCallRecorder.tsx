@@ -743,7 +743,16 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
                     variant="outline"
                     size="sm"
                     className="w-full justify-start gap-2 h-8 text-xs"
-                    onClick={() => { setRecordingUrl(r.file_url); runFill(r.file_url); }}
+                    onClick={() => {
+                      // Reaproveitar uma gravação recuperada precisa destravar o envio igual
+                      // à gravação ao vivo: limpa estado de envio anterior e avisa o pai
+                      // (pendingAudio) pra mostrar o botão "Enviar áudio". Duração desconhecida → 0.
+                      setError(null);
+                      setSentToWa(false);
+                      setRecordingUrl(r.file_url);
+                      onRecordingReady?.({ url: r.file_url, seconds: 0 });
+                      runFill(r.file_url);
+                    }}
                   >
                     <Phone className="h-3.5 w-3.5 shrink-0 text-green-600" />
                     <span className="truncate">

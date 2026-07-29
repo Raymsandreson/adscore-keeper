@@ -70,7 +70,12 @@ export default function TeamBroadcastReminder() {
   return (
     <>
       {slot != null && !open && createPortal(
-        <div className="fixed bottom-4 right-4 z-[55] w-[min(92vw,22rem)] animate-in slide-in-from-bottom-4 fade-in">
+        // pointer-events-auto: Dialog/Sheet modal do Radix seta pointer-events:none
+        // no body inteiro; sem religar aqui, os botões do popup morrem quando ele
+        // dispara com um modal aberto. stopPropagation no pointerdown: senão o
+        // clique no popup conta como "clique fora" e fecha o dialog em uso.
+        <div className="pointer-events-auto fixed bottom-4 right-4 z-[55] w-[min(92vw,22rem)] animate-in slide-in-from-bottom-4 fade-in"
+          onPointerDown={(e) => e.stopPropagation()}>
           <div className="overflow-hidden rounded-2xl border border-amber-400/40 bg-slate-900 text-white shadow-2xl">
             <div className="flex items-start gap-3 p-4">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-400/20">
