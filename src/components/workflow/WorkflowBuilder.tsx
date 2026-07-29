@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type KeyboardEvent, type CSSProperties, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, type KeyboardEvent, type CSSProperties, type ReactNode } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,6 +42,7 @@ import {
   PenLine,
   ChevronUp,
   HelpCircle,
+  Search,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
@@ -182,6 +183,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
+  // Busca por texto dentro do POP em edição (fases, objetivos, passos, scripts, checklists).
+  const [searchQuery, setSearchQuery] = useState('');
 
   const stopSpacePropagation = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
@@ -874,6 +877,69 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
 
 
+  // ─────────── Busca por texto ───────────
+  // Varre toda a árvore do POP (fase → objetivo → passo → script/resposta/checklist)
+  // e devolve os resultados com o caminho e o campo onde a palavra apareceu.
+  // objIdx = -1 marca resultado no nível da própria fase.
+  type SearchHit = { phaseIdx: number; objIdx: number; stepId?: string; path: string; field: string; snippet: string };
+  const searchResults = useMemo<SearchHit[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const hit = (text?: string | null) => !!text && text.toLowerCase().includes(q);
+    const out: SearchHit[] = [];
+    phases.forEach((phase, phaseIdx) => {
+      const fasePath = `Fase ${phaseIdx + 1}`;
+      if (hit(phase.stageName)) out.push({ phaseIdx, objIdx: -1, path: fasePath, field: 'Fase', snippet: phase.stageName });
+      phase.objectives.forEach((obj, objIdx) => {
+        const objPath = `${fasePath} › Obj ${objIdx + 1}`;
+        if (hit(obj.name)) out.push({ phaseIdx, objIdx, path: objPath, field: 'Objetivo', snippet: obj.name });
+        if (hit(obj.description)) out.push({ phaseIdx, objIdx, path: objPath, field: 'Descrição do objetivo', snippet: obj.description });
+        obj.items.forEach((step, stepIdx) => {
+          const stepPath = `${objPath} › Passo ${stepIdx + 1}`;
+          if (hit(step.label)) out.push({ phaseIdx, objIdx, stepId: step.id, path: stepPath, field: 'Passo', snippet: step.label });
+          if (hit(step.description)) out.push({ phaseIdx, objIdx, stepId: step.id, path: stepPath, field: 'Descrição do passo', snippet: step.description! });
+          if (hit(step.script)) out.push({ phaseIdx, objIdx, stepId: step.id, path: stepPath, field: 'Script', snippet: step.script! });
+          step.answers?.forEach(a => { if (hit(a.label)) out.push({ phaseIdx, objIdx, stepId: step.id, path: stepPath, field: 'Resposta', snippet: a.label }); });
+          step.docChecklist?.forEach(d => { if (hit(d.label)) out.push({ phaseIdx, objIdx, stepId: step.id, path: stepPath, field: 'Checklist', snippet: d.label }); });
+        });
+      });
+    });
+    return out;
+  }, [searchQuery, phases]);
+
+  // Expande o caminho do resultado (fase + objetivo) e rola até o passo com destaque.
+  // isExpanded não entra no snapshot do autosave, então isto não dispara save.
+  const goToSearchHit = (r: SearchHit) => {
+    setPhases(prev => prev.map((p, pi) =>
+      pi === r.phaseIdx
+        ? { ...p, isExpanded: true, objectives: p.objectives.map((o, oi) => oi === r.objIdx ? { ...o, isExpanded: true } : o) }
+        : p
+    ));
+    const anchorId = r.stepId ? `wf-step-${r.stepId}` : `wf-phase-${r.phaseIdx}`;
+    window.setTimeout(() => {
+      const el = document.getElementById(anchorId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+      window.setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 2000);
+    }, 160);
+  };
+
+  // Destaca a ocorrência da busca dentro de um trecho de texto.
+  const highlightMatch = (text: string): ReactNode => {
+    const q = searchQuery.trim();
+    if (!q) return text;
+    const idx = text.toLowerCase().indexOf(q.toLowerCase());
+    if (idx < 0) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <mark className="bg-yellow-200 dark:bg-yellow-500/40 text-foreground rounded px-0.5">{text.slice(idx, idx + q.length)}</mark>
+        {text.slice(idx + q.length)}
+      </>
+    );
+  };
+
   return (
     <>
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -990,6 +1056,57 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </Card>
               )}
 
+              {/* Busca por texto em todo o POP */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    placeholder="Buscar palavra em fases, objetivos, passos, scripts e checklists..."
+                    className="pl-8 pr-8"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      title="Limpar busca"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                {searchQuery.trim() && (
+                  <div className="rounded-md border bg-muted/20 max-h-72 overflow-y-auto divide-y">
+                    {searchResults.length === 0 ? (
+                      <p className="text-xs text-muted-foreground px-3 py-2.5">Nenhuma ocorrência de "{searchQuery.trim()}"</p>
+                    ) : (
+                      <>
+                        <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wide px-3 py-1.5 bg-muted/40 sticky top-0">
+                          {searchResults.length} ocorrência(s)
+                        </p>
+                        {searchResults.map((r, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => goToSearchHit(r)}
+                            className="w-full text-left px-3 py-2 hover:bg-muted/60 transition-colors block"
+                          >
+                            <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                              <span className="font-semibold text-foreground whitespace-nowrap">{r.field}</span>
+                              <span>·</span>
+                              <span className="truncate">{r.path}</span>
+                            </div>
+                            <p className="text-xs text-foreground line-clamp-1 mt-0.5">{highlightMatch(r.snippet)}</p>
+                          </button>
+                        ))}
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
@@ -1000,8 +1117,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                    <div
                      ref={setNodeRef}
                      style={style}
+                     id={`wf-phase-${phaseIdx}`}
                      className={cn(
-                       "border rounded-lg overflow-hidden transition-all",
+                       "border rounded-lg overflow-hidden transition-all scroll-mt-4",
                        isDragging && "opacity-50 shadow-lg",
                      )}
                    >
@@ -1139,8 +1257,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                         <div
                                           ref={setNodeRef}
                                           style={style}
+                                          id={`wf-step-${step.id}`}
                                           className={cn(
-                                            "border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2 transition-all",
+                                            "border border-green-200 dark:border-green-900/40 rounded-md bg-green-50/30 dark:bg-green-950/10 p-2.5 space-y-2 transition-all scroll-mt-4",
                                             isDragging && "opacity-50 shadow-lg",
                                           )}
                                         >
