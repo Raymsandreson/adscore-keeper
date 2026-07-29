@@ -20,6 +20,7 @@ export interface DocChecklistItem {
   checked?: boolean;
   type?: ChecklistType;
   nextStageId?: string;
+  setStatusId?: string; // ao marcar, define o STATUS do POP do lead (id em settings.resultados)
   answers?: StepAnswerOption[]; // pergunta com respostas: o destino vem da resposta escolhida (ignora nextStageId)
 }
 
@@ -40,6 +41,7 @@ export interface StepAnswerOption {
   id: string;
   label: string;
   nextStageId?: string;
+  setStatusId?: string; // se escolhida, define o STATUS do POP do lead (id em settings.resultados)
 }
 
 export interface ChecklistItem {
@@ -417,10 +419,15 @@ export const useChecklists = () => {
 
         // Status do POP por passo: se algum passo recém-marcado tiver "Definir
         // status", aplica no lead (pop_result_id + data de hoje) e loga (alimenta o
-        // ranking). Vale o último passo marcado que define status.
-        const statusStep = [...newlyChecked].reverse().find(it => it.setStatusId);
-        if (statusStep?.setStatusId) {
-          const setStatusId = statusStep.setStatusId;
+        // ranking). A resposta escolhida (setStatusId dela) vence o status do passo.
+        // Vale o último passo marcado que define status.
+        const effectiveStatusId = (it: ChecklistItem): string | undefined => {
+          const ans = it.answers?.find(a => a.id === it.selectedAnswerId);
+          return ans?.setStatusId || it.setStatusId;
+        };
+        const statusId = [...newlyChecked].reverse().map(effectiveStatusId).find(Boolean);
+        if (statusId) {
+          const setStatusId = statusId;
           (async () => {
             try {
               const { data: inst } = await supabase

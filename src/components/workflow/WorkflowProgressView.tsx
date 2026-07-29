@@ -245,6 +245,65 @@ export function WorkflowProgressView({
     });
   };
 
+  // Status possíveis do POP (moram em board.settings.resultados) — usados para
+  // mostrar a badge de status e aplicar o setStatusId de passo/resposta/checklist.
+  const popResultados = useMemo(() => {
+    const cfg = (board as { settings?: { resultados?: { id: string; label: string }[] } }).settings;
+    return cfg?.resultados || [];
+  }, [board]);
+
+  const statusLabel = (id?: string) => popResultados.find(r => r.id === id)?.label;
+
+  // Aplica o STATUS do POP no lead (pop_result_id + data) e loga a mudança via
+  // RPC (alimenta o ranking). Mesmo padrão do useChecklists.updateInstanceItem.
+  // Fire-and-forget: não bloqueia a UI nem quebra o fluxo se falhar.
+  const applyStatusChange = (setStatusId: string) => {
+    (async () => {
+      try {
+        const { data: lead } = await supabase
+          .from('leads')
+          .select('pop_result_id')
+          .eq('id', leadId)
+          .maybeSingle();
+        const from = (lead as { pop_result_id?: string | null } | null)?.pop_result_id ?? null;
+        if (from === setStatusId) return;
+        const today = new Date().toISOString().slice(0, 10);
+        await supabase.from('leads').update({ pop_result_id: setStatusId, pop_result_date: today } as never).eq('id', leadId);
+        const label = statusLabel(setStatusId);
+        if (label) toast.success(`Status do POP: ${label}`);
+        if (authUser?.id) {
+          (supabase as any).rpc('log_pop_result_change', {
+            p_user_id: authUser.id,
+            p_lead_id: leadId,
+            p_board_id: boardId,
+            p_from: from,
+            p_to: setStatusId,
+            p_date: today,
+          }).then((res: { error?: { message?: string } | null }) => {
+            if (res?.error) console.warn('[WorkflowProgressView] log status POP falhou:', res.error.message);
+          });
+        }
+      } catch (e) {
+        console.warn('[WorkflowProgressView] aplicar status POP falhou:', e);
+      }
+    })();
+  };
+
+  // Badge amarela com o status que será aplicado (setStatusId de passo/resposta/item).
+  const renderStatusBadge = (setStatusId?: string, small = false) => {
+    const label = statusLabel(setStatusId);
+    if (!label) return null;
+    return (
+      <Badge variant="secondary" className={cn(
+        "gap-1 flex-shrink-0 bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
+        small ? "text-[8px] h-3.5 gap-0.5" : "text-[9px] h-4"
+      )}>
+        <span className={cn("rounded-full bg-yellow-500 flex-shrink-0", small ? "h-1.5 w-1.5" : "h-2 w-2")} />
+        {label}
+      </Badge>
+    );
+  };
+
   // Roteamento condicional compartilhado entre passo comum (nextStageId),
   // sub-item de checklist e passo-pergunta (destino da resposta escolhida).
   const applyStageRouting = (destStageId: string) => {
@@ -339,6 +398,10 @@ export function WorkflowProgressView({
     if (willBeChecked && targetItem?.nextStageId && !targetItem?.answers?.length) {
       applyStageRouting(targetItem.nextStageId);
     }
+    // "Definir status" do passo (setStatusId) — aplica ao marcar.
+    if (willBeChecked && targetItem?.setStatusId && !targetItem?.answers?.length) {
+      applyStatusChange(targetItem.setStatusId);
+    }
   };
 
   // Passo-pergunta: escolher a resposta conclui o passo, grava a resposta
@@ -401,6 +464,11 @@ export function WorkflowProgressView({
 
     if (answer.nextStageId) {
       applyStageRouting(answer.nextStageId);
+    }
+    // Status do POP: o da resposta vence; o do passo é fallback.
+    const statusToApply = answer.setStatusId || targetItem.setStatusId;
+    if (statusToApply) {
+      applyStatusChange(statusToApply);
     }
   };
 
@@ -671,6 +739,7 @@ export function WorkflowProgressView({
                                                     </Badge>
                                                   ) : null;
                                                 })()}
+                                                {!item.answers?.length && renderStatusBadge(item.setStatusId)}
                                               </div>
 
                                               {item.description && (
@@ -699,19 +768,22 @@ export function WorkflowProgressView({
                                                         }}
                                                       >
                                                         <span className="text-left whitespace-normal">{ans.label}</span>
+                                                        <span className="flex items-center gap-1 flex-shrink-0 ml-2">
                                                         {ans.nextStageId === '__finalize__' ? (
-                                                          <Badge variant="secondary" className="text-[9px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0 ml-2">
+                                                          <Badge variant="secondary" className="text-[9px] h-4 gap-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">
                                                             ✅ Finalizar
                                                           </Badge>
                                                         ) : ans.nextStageId ? (() => {
                                                           const targetStage = board.stages.find(s => s.id === ans.nextStageId);
                                                           return targetStage ? (
-                                                            <Badge variant="secondary" className="text-[9px] h-4 gap-1 flex-shrink-0 ml-2">
+                                                            <Badge variant="secondary" className="text-[9px] h-4 gap-1 flex-shrink-0">
                                                               <ArrowRight className="h-2.5 w-2.5" />
                                                               {targetStage.name}
                                                             </Badge>
                                                           ) : null;
                                                         })() : null}
+                                                        {renderStatusBadge(ans.setStatusId)}
+                                                        </span>
                                                       </Button>
                                                     ))}
                                                   </div>
@@ -805,6 +877,10 @@ export function WorkflowProgressView({
                                                               if (checked && doc.nextStageId && !docHasAnswers) {
                                                                 applyStageRouting(doc.nextStageId);
                                                               }
+                                                              // Alterar status do POP ao marcar o item
+                                                              if (checked && doc.setStatusId && !docHasAnswers) {
+                                                                applyStatusChange(doc.setStatusId);
+                                                              }
                                                             }}
                                                             className="flex-shrink-0"
                                                           />
@@ -836,6 +912,7 @@ export function WorkflowProgressView({
                                                               </Badge>
                                                             ) : null;
                                                           })()}
+                                                          {!docHasAnswers && renderStatusBadge(doc.setStatusId, true)}
                                                         </label>
 
                                                         {/* Respostas da pergunta: escolher marca o item e roteia pelo destino da resposta */}
@@ -860,22 +937,29 @@ export function WorkflowProgressView({
                                                                   if (ans.nextStageId) {
                                                                     applyStageRouting(ans.nextStageId);
                                                                   }
+                                                                  const statusToApply = ans.setStatusId || doc.setStatusId;
+                                                                  if (statusToApply) {
+                                                                    applyStatusChange(statusToApply);
+                                                                  }
                                                                 }}
                                                               >
                                                                 <span className="text-left whitespace-normal">{ans.label}</span>
+                                                                <span className="flex items-center gap-1 flex-shrink-0 ml-2">
                                                                 {ans.nextStageId === '__finalize__' ? (
-                                                                  <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0 ml-2">
+                                                                  <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 flex-shrink-0">
                                                                     ✅ Finalizar
                                                                   </Badge>
                                                                 ) : ans.nextStageId ? (() => {
                                                                   const targetStage = board.stages.find(s => s.id === ans.nextStageId);
                                                                   return targetStage ? (
-                                                                    <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 flex-shrink-0 ml-2">
+                                                                    <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 flex-shrink-0">
                                                                       <ArrowRight className="h-2 w-2" />
                                                                       {targetStage.name}
                                                                     </Badge>
                                                                   ) : null;
                                                                 })() : null}
+                                                                {renderStatusBadge(ans.setStatusId, true)}
+                                                                </span>
                                                               </Button>
                                                             ))}
                                                           </div>

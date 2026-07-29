@@ -35,6 +35,7 @@ IMPORTANTE:
 - Gere checklists (docChecklist) com 2-5 itens para novos passos
 - Tipos de checklist: "documentos", "requisitos", "perguntas", "verificacao", "outro"
 - Passos e itens de docChecklist podem ter "answers" (pergunta com respostas): concluir exige escolher uma resposta, e cada resposta pode ter nextStageId ("__finalize__" para finalizar, ou id de fase para mover). Preserve as answers existentes; se o usuário pedir uma pergunta com desdobramento, use answers em vez de nextStageId.
+- Além de mover (nextStageId), passos, itens de docChecklist e respostas (answers) podem ter "setStatusId": ao concluir/escolher, ALTERA o STATUS do POP do lead. O valor DEVE ser o id de um item de "resultados" (nunca invente um id que não esteja lá; se o status pedido não existir, crie-o em "resultados" primeiro e use o novo id). nextStageId e setStatusId são independentes — uma resposta pode mover, alterar status, ambos ou nenhum. Quando o item/passo tem answers, o setStatusId vai nas respostas (não no item/passo). Preserve os setStatusId existentes.
 
 STATUS DO POP (NÃO confundir com passos nem com checklist):
 - "resultados" são os STATUS possíveis que um lead deste POP pode ter (ex.: "Em andamento", "Deferido", "Indeferido", "Acordo", "Recusado"). Cada um tem { id, label, marco? }.
@@ -121,6 +122,7 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                                   script: { type: 'string' },
                                   activityType: { type: 'string' },
                                   nextStageId: { type: 'string' },
+                                  setStatusId: { type: 'string', description: 'Ao concluir o passo, altera o status do POP. Id de um item de "resultados".' },
                                   answers: {
                                     type: 'array',
                                     items: {
@@ -129,6 +131,7 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                                         id: { type: 'string' },
                                         label: { type: 'string' },
                                         nextStageId: { type: 'string' },
+                                        setStatusId: { type: 'string', description: 'Se esta resposta for escolhida, altera o status do POP. Id de um item de "resultados".' },
                                       },
                                       required: ['id', 'label'],
                                     },
@@ -142,6 +145,7 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                                         label: { type: 'string' },
                                         type: { type: 'string', enum: ['documentos', 'requisitos', 'perguntas', 'verificacao', 'outro'] },
                                         nextStageId: { type: 'string' },
+                                        setStatusId: { type: 'string', description: 'Ao marcar o item, altera o status do POP. Id de um item de "resultados".' },
                                         answers: {
                                           type: 'array',
                                           items: {
@@ -150,6 +154,7 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                                               id: { type: 'string' },
                                               label: { type: 'string' },
                                               nextStageId: { type: 'string' },
+                                              setStatusId: { type: 'string', description: 'Se esta resposta for escolhida, altera o status do POP. Id de um item de "resultados".' },
                                             },
                                             required: ['id', 'label'],
                                           },

@@ -358,6 +358,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 script: s.script,
                 activityType: s.activityType,
                 nextStageId: s.nextStageId,
+                setStatusId: s.setStatusId,
                 answers: s.answers,
                 docChecklist: s.docChecklist,
               })),
@@ -408,7 +409,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               nextStageId: step.nextStageId || undefined,
               setStatusId: step.setStatusId ?? prevStepsById.get(step.id)?.setStatusId,
               answers: step.answers?.length
-                ? step.answers.map((a: Partial<StepAnswerOption>) => ({ id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId || undefined }))
+                ? step.answers.map((a: Partial<StepAnswerOption>) => {
+                    const prevAns = prevStepsById.get(step.id)?.answers?.find(pa => pa.id === a.id);
+                    return { id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId ?? prevAns?.nextStageId, setStatusId: a.setStatusId ?? prevAns?.setStatusId };
+                  })
                 : prevStepsById.get(step.id)?.answers,
               docChecklist: step.docChecklist?.length
                 ? step.docChecklist.map((d: any) => {
@@ -420,8 +424,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                       label: d.label,
                       type: d.type || 'documentos',
                       nextStageId: d.nextStageId ?? prevDoc?.nextStageId,
+                      setStatusId: d.setStatusId ?? prevDoc?.setStatusId,
                       answers: d.answers?.length
-                        ? d.answers.map((a: Partial<StepAnswerOption>) => ({ id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId || undefined }))
+                        ? d.answers.map((a: Partial<StepAnswerOption>) => {
+                            const prevAns = prevDoc?.answers?.find(pa => pa.id === a.id);
+                            return { id: a.id || crypto.randomUUID(), label: a.label || '', nextStageId: a.nextStageId ?? prevAns?.nextStageId, setStatusId: a.setStatusId ?? prevAns?.setStatusId };
+                          })
                         : prevDoc?.answers,
                     };
                   })
@@ -2244,61 +2252,124 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 </div>
                 )}
 
+                {/* Alterar status do POP — só quando o item não tem respostas configuradas */}
+                {!item.answers?.length && formResultados.length > 0 && (
+                <div className="flex items-center gap-2 ml-7">
+                  <Label className="text-[10px] text-muted-foreground whitespace-nowrap flex-shrink-0">Status para:</Label>
+                  <Select
+                    value={item.setStatusId || '__none__'}
+                    onValueChange={v => setDocChecklistDialog(prev => prev ? {
+                      ...prev,
+                      items: prev.items.map(i => i.id === item.id ? { ...i, setStatusId: v === '__none__' ? undefined : v } : i),
+                    } : null)}
+                  >
+                    <SelectTrigger className="h-6 text-[10px] flex-1">
+                      <SelectValue placeholder="Não alterar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">
+                        <span className="text-muted-foreground">Não alterar</span>
+                      </SelectItem>
+                      {formResultados.map(r => (
+                        <SelectItem key={r.id} value={r.id}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full flex-shrink-0 bg-yellow-400" />
+                            {r.label}{formResultadoEsperadoIds.includes(r.id) ? ' ✅' : ''}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                )}
+
                 {/* Respostas da pergunta — cada resposta com seu destino */}
                 <div className="ml-7 space-y-1">
                   {(item.answers || []).map(answer => (
-                    <div key={answer.id} className="flex items-center gap-1.5">
-                      <span className="text-[10px] text-purple-500 flex-shrink-0" title="Resposta">↳</span>
-                      <Input
-                        value={answer.label}
-                        onChange={e => setDocChecklistDialog(prev => prev ? {
-                          ...prev,
-                          items: prev.items.map(i => i.id === item.id
-                            ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, label: e.target.value } : a) }
-                            : i),
-                        } : null)}
-                        placeholder="Texto da resposta..."
-                        className="h-6 text-xs flex-1"
-                      />
-                      <Select
-                        value={answer.nextStageId || '__none__'}
-                        onValueChange={v => setDocChecklistDialog(prev => prev ? {
-                          ...prev,
-                          items: prev.items.map(i => i.id === item.id
-                            ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, nextStageId: v === '__none__' ? undefined : v } : a) }
-                            : i),
-                        } : null)}
-                      >
-                        <SelectTrigger className="h-6 text-[10px] w-32 flex-shrink-0">
-                          <SelectValue placeholder="Não mover" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">
-                            <span className="text-muted-foreground">Não mover</span>
-                          </SelectItem>
-                          {phases.map(p => (
-                            <SelectItem key={p.stageId} value={p.stageId}>
-                              <div className="flex items-center gap-1.5">
-                                <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
-                                {p.stageName}
-                              </div>
+                    <div key={answer.id} className="space-y-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-purple-500 flex-shrink-0" title="Resposta">↳</span>
+                        <Input
+                          value={answer.label}
+                          onChange={e => setDocChecklistDialog(prev => prev ? {
+                            ...prev,
+                            items: prev.items.map(i => i.id === item.id
+                              ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, label: e.target.value } : a) }
+                              : i),
+                          } : null)}
+                          placeholder="Texto da resposta..."
+                          className="h-6 text-xs flex-1"
+                        />
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-5 w-5 text-destructive/70 hover:text-destructive flex-shrink-0"
+                          onClick={() => setDocChecklistDialog(prev => prev ? {
+                            ...prev,
+                            items: prev.items.map(i => i.id === item.id
+                              ? { ...i, answers: (i.answers || []).filter(a => a.id !== answer.id) }
+                              : i),
+                          } : null)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1.5 pl-4">
+                        <Select
+                          value={answer.nextStageId || '__none__'}
+                          onValueChange={v => setDocChecklistDialog(prev => prev ? {
+                            ...prev,
+                            items: prev.items.map(i => i.id === item.id
+                              ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, nextStageId: v === '__none__' ? undefined : v } : a) }
+                              : i),
+                          } : null)}
+                        >
+                          <SelectTrigger className="h-6 text-[10px] flex-1" title="Mover o lead para outra fase quando esta resposta for escolhida">
+                            <SelectValue placeholder="Não mover" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">
+                              <span className="text-muted-foreground">Não mover</span>
                             </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-5 w-5 text-destructive/70 hover:text-destructive flex-shrink-0"
-                        onClick={() => setDocChecklistDialog(prev => prev ? {
-                          ...prev,
-                          items: prev.items.map(i => i.id === item.id
-                            ? { ...i, answers: (i.answers || []).filter(a => a.id !== answer.id) }
-                            : i),
-                        } : null)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
+                            {phases.map(p => (
+                              <SelectItem key={p.stageId} value={p.stageId}>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                                  {p.stageName}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {formResultados.length > 0 && (
+                          <Select
+                            value={answer.setStatusId || '__none__'}
+                            onValueChange={v => setDocChecklistDialog(prev => prev ? {
+                              ...prev,
+                              items: prev.items.map(i => i.id === item.id
+                                ? { ...i, answers: (i.answers || []).map(a => a.id === answer.id ? { ...a, setStatusId: v === '__none__' ? undefined : v } : a) }
+                                : i),
+                            } : null)}
+                          >
+                            <SelectTrigger className="h-6 text-[10px] flex-1" title="Alterar o status do POP quando esta resposta for escolhida">
+                              <SelectValue placeholder="Não alterar status" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="__none__">
+                                <span className="text-muted-foreground">Não alterar status</span>
+                              </SelectItem>
+                              {formResultados.map(r => (
+                                <SelectItem key={r.id} value={r.id}>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="h-2 w-2 rounded-full flex-shrink-0 bg-yellow-400" />
+                                    {r.label}{formResultadoEsperadoIds.includes(r.id) ? ' ✅' : ''}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        )}
+                      </div>
                     </div>
                   ))}
                   <button
@@ -2374,6 +2445,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     type: item.type || docChecklistDialog.checklistType,
                     answers: answers.length > 0 ? answers : undefined,
                     nextStageId: answers.length > 0 ? undefined : item.nextStageId,
+                    setStatusId: answers.length > 0 ? undefined : item.setStatusId,
                   };
                 });
                 updateStepDocChecklist(docChecklistDialog.phaseIdx, docChecklistDialog.objIdx, docChecklistDialog.stepId, typedItems);
@@ -2400,7 +2472,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         </DialogHeader>
         <div className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            O passo vira uma pergunta: para concluí-lo, o usuário escolhe uma das respostas abaixo. Cada resposta pode finalizar o lead ou movê-lo para outra fase — igual ao "Mover para" de hoje, mas decidido pela resposta.
+            O passo vira uma pergunta: para concluí-lo, o usuário escolhe uma das respostas abaixo. Cada resposta pode finalizar o lead, movê-lo para outra fase e/ou alterar o status do POP — decidido pela resposta.
           </p>
 
           {/* Respostas existentes */}
@@ -2438,7 +2510,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                       answers: prev.answers.map(a => a.id === answer.id ? { ...a, nextStageId: v === '__none__' ? undefined : v } : a),
                     } : null)}
                   >
-                    <SelectTrigger className="h-6 text-[10px] flex-1">
+                    <SelectTrigger className="h-6 text-[10px] flex-1" title="Mover o lead para outra fase quando esta resposta for escolhida">
                       <SelectValue placeholder="Não mover" />
                     </SelectTrigger>
                     <SelectContent>
@@ -2455,6 +2527,32 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                       ))}
                     </SelectContent>
                   </Select>
+                  {formResultados.length > 0 && (
+                    <Select
+                      value={answer.setStatusId || '__none__'}
+                      onValueChange={v => setAnswersDialog(prev => prev ? {
+                        ...prev,
+                        answers: prev.answers.map(a => a.id === answer.id ? { ...a, setStatusId: v === '__none__' ? undefined : v } : a),
+                      } : null)}
+                    >
+                      <SelectTrigger className="h-6 text-[10px] flex-1" title="Alterar o status do POP quando esta resposta for escolhida">
+                        <SelectValue placeholder="Não alterar status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__none__">
+                          <span className="text-muted-foreground">Não alterar status</span>
+                        </SelectItem>
+                        {formResultados.map(r => (
+                          <SelectItem key={r.id} value={r.id}>
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full flex-shrink-0 bg-yellow-400" />
+                              {r.label}{formResultadoEsperadoIds.includes(r.id) ? ' ✅' : ''}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
               </div>
             ))}

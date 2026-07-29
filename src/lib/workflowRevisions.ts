@@ -226,6 +226,19 @@ export function diffSnapshots(prev: WorkflowSnapshot, next: WorkflowSnapshot): D
     if ((old.step.nextStageId || '') !== (loc.step.nextStageId || '') || (old.step.setStatusId || '') !== (loc.step.setStatusId || '')) {
       out.push({ kind: 'passo', action: 'alterado', label: loc.step.label, path, stepId: id, field: 'automação (mover para / status)' });
     }
+    // Automação das respostas e do checklist (mover/status por resposta ou item):
+    // rótulos iguais mas destino/status diferente também é mudança relevante.
+    const routingSig = (s: typeof loc.step) => JSON.stringify([
+      (s.answers || []).map(a => [a.nextStageId || '', a.setStatusId || '']),
+      (s.docChecklist || []).map(d => [
+        d.nextStageId || '',
+        d.setStatusId || '',
+        (d.answers || []).map(a => [a.nextStageId || '', a.setStatusId || '']),
+      ]),
+    ]);
+    if (routingSig(old.step) !== routingSig(loc.step)) {
+      out.push({ kind: 'passo', action: 'alterado', label: loc.step.label, path, stepId: id, field: 'automação das respostas/checklist (mover para / status)' });
+    }
   }
 
   return out;
