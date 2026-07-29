@@ -371,9 +371,10 @@ export async function createWorkflowRevision(params: {
 /**
  * Impacto de cada revisão no resultado esperado do POP.
  *
- * Cada revisão vigora até a seguinte; dentro dessa janela a RPC conta os leads
- * que chegaram a um resultado e quantos caíram no resultado esperado DAQUELA
- * revisão. `delta` é a variação em pontos percentuais contra a janela anterior.
+ * Cada revisão vigora até a seguinte; dentro dessa janela a RPC conta os
+ * resultados que aconteceram (status do POP no lead + resultado atingido dos
+ * processos) e quantos caíram no resultado esperado DAQUELA revisão. `delta` é a
+ * variação em pontos percentuais contra a janela anterior.
  *
  * É correlação, não prova de causa: amostra pequena e fatores externos pesam.
  * Use `total_results` como amostra antes de tratar o delta como veredito.

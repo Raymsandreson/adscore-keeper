@@ -10,8 +10,13 @@
 -- time, mix de leads) afetam o número. Por isso a RPC devolve total_results —
 -- o front deve exigir amostra mínima antes de dar veredito.
 --
--- Fonte dos resultados: lead_pop_result_history (board_id, changed_at, to_result),
--- já indexada em (board_id, changed_at).
+-- Duas fontes de resultado, unidas:
+--   1. lead_pop_result_history — status do POP no LEAD (passo com "Definir status");
+--      já indexada em (board_id, changed_at).
+--   2. lead_processes.resultado_atingido_id (status='confirmado') — resultado do
+--      PROCESSO detectado do Escavador/intimação; o board vem via leads.board_id.
+-- Sem as duas, POP processual nunca mediria nada (o resultado dele não passa pelo
+-- histórico do lead). Ver docs/sistema/processual.md → "Status do Processo".
 -- Aplicado no Externo (kmedldlepwiityjsdahz) via MCP em 2026-07-29.
 
 CREATE OR REPLACE FUNCTION public.workflow_revision_outcomes(p_board_id uuid)
@@ -33,7 +38,23 @@ STABLE
 SECURITY DEFINER
 SET search_path TO 'public'
 AS $$
-  WITH revs AS (
+  WITH eventos AS (
+    -- Resultado do POP no LEAD (passo com "Definir status")
+    SELECT h.board_id, h.changed_at AS at, h.to_result AS result_id
+    FROM lead_pop_result_history h
+    WHERE h.board_id = p_board_id AND h.to_result IS NOT NULL
+    UNION ALL
+    -- Resultado atingido no PROCESSO (Escavador / intimação), já confirmado
+    SELECT l.board_id,
+           COALESCE(pr.resultado_atingido_data::timestamptz, pr.updated_at) AS at,
+           pr.resultado_atingido_id AS result_id
+    FROM lead_processes pr
+    JOIN leads l ON l.id = pr.lead_id
+    WHERE l.board_id = p_board_id
+      AND pr.resultado_atingido_id IS NOT NULL
+      AND pr.resultado_atingido_status = 'confirmado'
+  ),
+  revs AS (
     SELECT
       r.revision_number,
       r.created_at,
@@ -50,19 +71,16 @@ AS $$
       v.*,
       (
         SELECT count(*)
-        FROM lead_pop_result_history h
-        WHERE h.board_id = p_board_id
-          AND h.changed_at >= v.created_at
-          AND (v.next_at IS NULL OR h.changed_at < v.next_at)
-          AND h.to_result IS NOT NULL
+        FROM eventos e
+        WHERE e.at >= v.created_at
+          AND (v.next_at IS NULL OR e.at < v.next_at)
       ) AS total_results,
       (
         SELECT count(*)
-        FROM lead_pop_result_history h
-        WHERE h.board_id = p_board_id
-          AND h.changed_at >= v.created_at
-          AND (v.next_at IS NULL OR h.changed_at < v.next_at)
-          AND h.to_result IN (SELECT jsonb_array_elements_text(v.esperados))
+        FROM eventos e
+        WHERE e.at >= v.created_at
+          AND (v.next_at IS NULL OR e.at < v.next_at)
+          AND e.result_id IN (SELECT jsonb_array_elements_text(v.esperados))
       ) AS expected_results
     FROM revs v
   ),

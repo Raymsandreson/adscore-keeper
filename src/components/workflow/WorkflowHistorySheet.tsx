@@ -317,9 +317,11 @@ export function WorkflowHistorySheet({ open, onOpenChange, boardId, boardName, t
                   <p className="text-sm text-muted-foreground">Nenhuma revisão para medir ainda.</p>
                 ) : outcomes.every(o => o.total_results === 0) ? (
                   <div className="rounded border border-dashed p-3 text-xs text-muted-foreground leading-relaxed">
-                    Ainda não há nenhum resultado de POP registrado neste board, então não existe base
-                    para comparar. A medição começa a se preencher assim que os leads passarem a receber
-                    status pelos passos ("Definir status") — a partir daí cada revisão ganha sua taxa.
+                    Ainda não há nenhum resultado registrado neste board, então não existe base para
+                    comparar. A medição se preenche sozinha a partir de duas fontes: o status definido
+                    pelos passos do POP ("Definir status") e o resultado atingido dos processos
+                    (detectado do Escavador ou das intimações). A partir do primeiro resultado, cada
+                    revisão passa a ter sua taxa.
                   </div>
                 ) : (
                   outcomes.map(row => <OutcomeRow key={row.revision_number} row={row} />)

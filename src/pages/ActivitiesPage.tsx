@@ -72,6 +72,7 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameM
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
@@ -1603,6 +1604,48 @@ const ActivitiesPage = () => {
         description: randomChurchillQuote(),
         duration: 6000,
       });
+
+      // Título da próxima atividade gerado por IA. Sem isso, `title: formTitle`
+      // acima copia o título da atividade concluída — é o que propaga "Dar
+      // andamento" indefinidamente a cada conclusão. A IA nomeia a próxima com
+      // "o que precisa ser feito", olhando o Próximo passo preenchido + o passo
+      // atual do fluxo. Best-effort e síncrono aqui (fluxo client-side): se
+      // falhar, mantém o título copiado — NUNCA trava a conclusão.
+      try {
+        const nextFlowStep = stepContext ? (() => {
+          const steps = stepContext.allSteps || [];
+          const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+          const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+          return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+        })() : undefined;
+        const { data: titleData } = await routedFunctions.invoke('generate-activity-title', {
+          body: {
+            fields: {
+              what_was_done: nextData.what_was_done || undefined,
+              current_status: nextData.current_status_notes || undefined,
+              next_steps: nextData.next_steps || undefined,
+              notes: nextData.notes || undefined,
+            },
+            context: {
+              process_title: nextData.process_title || undefined,
+              case_title: nextData.case_title || undefined,
+              lead_name: nextData.lead_name || undefined,
+              current_title: nextData.title || undefined,
+              activity_type: nextData.activity_type || undefined,
+            },
+            step: stepContext ? {
+              step_label: stepContext.stepLabel,
+              phase_label: stepContext.phaseLabel || undefined,
+              next_step: nextFlowStep,
+            } : undefined,
+          },
+        });
+        if (titleData?.success && titleData.title) {
+          nextData.title = titleData.title;
+        }
+      } catch (e) {
+        console.warn('[completeAndNext] geração de título por IA falhou; mantém título copiado', e);
+      }
 
       // Create the next activity with the captured form data
       const nextCreated = await createActivity(nextData);

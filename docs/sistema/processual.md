@@ -81,6 +81,26 @@ Aba dentro do painel de detalhes do processo (entre "Marcos" e "Movimentações"
 
 ---
 
+## Revisões do POP — histórico, categoria e impacto
+
+O POP é vivo: o gerente ajusta conforme a prática e os testes do dia a dia. Cada `Salvar` no editor (WorkflowBuilder) que altere algo abre **"Registrar alteração no POP"** e grava uma revisão em `workflow_revisions` (Externo) — snapshot completo + diff + quem/quando.
+
+**Categoria da alteração** (`change_category`) — toda revisão é classificada em uma das três:
+
+| Categoria | Quando |
+|---|---|
+| **Automação** | passou a ser automático o que era manual (mover fase, definir status, gatilho) |
+| **Eliminação** | removeu passo/objetivo/fase/status que não agrega mais |
+| **Otimização** | refinou o que já existia (script, ordem, status possíveis ou esperado) |
+
+A IA (Railway `suggest-revision-reason`, Gemini flash) lê o diff e **sugere motivo + categoria** ao abrir o dialog; o gerente edita se quiser ("Sugerir com IA" refaz). O que ele já digitou nunca é sobrescrito. A categoria vai no histórico e no começo da notificação do time.
+
+**Diff cobre também a meta**: mudança de **status possíveis** e de **resultado esperado** entram no diff como alteração do POP — antes mexer no esperado passava invisível.
+
+**Aba "Impacto"** (sheet de histórico) — mede o resultado por vigência: cada revisão vale de `created_at` até a seguinte; dentro dessa janela conta os resultados que aconteceram e quantos caíram no **resultado esperado em vigor naquela época** (o do snapshot, não o de hoje). Mostra a taxa, o delta em pontos percentuais contra a revisão anterior e **quem fez**. Fontes unidas pela RPC `workflow_revision_outcomes`: `lead_pop_result_history` (status do POP no lead) + `lead_processes.resultado_atingido_id` com `status='confirmado'` (resultado do processo).
+
+> ⚠️ É **correlação, não causalidade**: época, time e mix de leads pesam. Abaixo de 5 resultados na janela a aba não dá veredito, só mostra a amostra.
+
 ## Audiências — `/hearings`
 
 **Propósito**: agenda de audiências com visualizações Semana/Mês/Dia/Lista e sincronização com planilha externa. Cada audiência tem tipo, categoria, data/hora, fuso, status, local, responsável e observações.
