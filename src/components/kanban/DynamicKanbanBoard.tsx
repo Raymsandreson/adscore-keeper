@@ -4,7 +4,8 @@ import { AnimatedNumber } from '@/components/ui/animated-number';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { getAcolhedorPhoto } from '@/lib/acolhedorPhotos';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -1058,7 +1059,10 @@ export function DynamicKanbanBoard({
 
                               {/* Lead name + avatar */}
                               <div className="flex items-start gap-2 pr-20 mb-1">
-                                <Avatar className="h-7 w-7 flex-shrink-0">
+                                <Avatar className="h-7 w-7 flex-shrink-0" title={(lead as any).acolhedor || undefined}>
+                                  {getAcolhedorPhoto((lead as any).acolhedor) && (
+                                    <AvatarImage src={getAcolhedorPhoto((lead as any).acolhedor)!} alt={(lead as any).acolhedor} className="object-cover" />
+                                  )}
                                   <AvatarFallback className={`text-[10px] ${isStagnant ? 'bg-red-100 text-red-600' : 'bg-primary/10 text-primary'}`}>
                                     {getInitials(lead.lead_name)}
                                   </AvatarFallback>
@@ -1303,7 +1307,10 @@ export function DynamicKanbanBoard({
                           <CardContent className="p-3 space-y-1.5">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 min-w-0">
-                                <Avatar className="h-7 w-7 flex-shrink-0">
+                                <Avatar className="h-7 w-7 flex-shrink-0" title={(lead as any).acolhedor || undefined}>
+                                  {getAcolhedorPhoto((lead as any).acolhedor) && (
+                                    <AvatarImage src={getAcolhedorPhoto((lead as any).acolhedor)!} alt={(lead as any).acolhedor} className="object-cover" />
+                                  )}
                                   <AvatarFallback className="text-xs" style={{ backgroundColor: `${statusCol.color}20`, color: statusCol.color }}>
                                     {getInitials(lead.lead_name)}
                                   </AvatarFallback>
