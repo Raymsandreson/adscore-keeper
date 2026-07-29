@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,6 +25,7 @@ import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { ResponsibleUserSelect } from './ResponsibleUserSelect';
+import { renderProcessTitle, processTypeLabel, cityStateToken, type ProcessNameContext } from '@/lib/processNameTemplate';
 
 // Resolver de atribuição centralizado em src/lib/processAssignment.ts
 import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
@@ -159,6 +160,74 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
   const [loadedBoards, setLoadedBoards] = useState<KanbanBoard[]>([]);
   const activeBoards = (boards.length > 0 ? boards : loadedBoards).filter(b => b.board_type === 'workflow');
 
+  // Dados do cliente/caso pra alimentar tokens do template de nome do processo
+  // ({client_name}, {victim_name}, {city_state}). Carregados 1x ao abrir.
+  const [leadCtx, setLeadCtx] = useState<{ client_name: string; victim_name: string; city_state: string }>({
+    client_name: '', victim_name: '', city_state: '',
+  });
+  // Guarda o último título auto-preenchido pelo template, pra não sobrescrever
+  // o que o usuário editou à mão ("preenche, mas deixa editar").
+  const autoFilledTitleRef = useRef<string>('');
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [leadRes, caseRes] = await Promise.all([
+          externalSupabase.from('leads').select('lead_name, victim_name, city, state').eq('id', leadId).maybeSingle(),
+          externalSupabase.from('legal_cases').select('client_name').eq('id', caseId).maybeSingle(),
+        ]);
+        if (cancelled) return;
+        const lead = (leadRes.data as any) || {};
+        const legalCase = (caseRes.data as any) || {};
+        setLeadCtx({
+          client_name: (legalCase.client_name || lead.lead_name || '').trim(),
+          victim_name: (lead.victim_name || '').trim(),
+          city_state: cityStateToken(lead.city, lead.state),
+        });
+      } catch (e) {
+        console.warn('[AddProcessDialog] falha ao carregar contexto do lead/caso:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [open, leadId, caseId]);
+
+  const processTemplateFor = (boardId: string): string =>
+    String(((activeBoards.find(b => b.id === boardId) as any)?.settings?.process_name_template) || '').trim();
+
+  // Monta o título via template do POP, combinando dados do processo (extra) com o
+  // contexto do cliente/caso. Retorna '' quando o POP não tem template.
+  const buildTemplatedTitle = (boardId: string, extra: ProcessNameContext = {}): string => {
+    const tpl = processTemplateFor(boardId);
+    if (!tpl) return '';
+    const board = activeBoards.find(b => b.id === boardId);
+    const ctx: ProcessNameContext = {
+      client_name: leadCtx.client_name,
+      victim_name: leadCtx.victim_name,
+      city_state: leadCtx.city_state,
+      workflow_name: board?.name || '',
+      ...extra,
+    };
+    return renderProcessTitle(tpl, ctx);
+  };
+
+  // Ao escolher o POP no cadastro manual, preenche o título sugerido (editável).
+  const handleWorkflowChange = (boardId: string) => {
+    setWorkflowId(boardId);
+    if (tab !== 'manual') return;
+    const suggested = buildTemplatedTitle(boardId, {
+      process_number: manualForm.process_number,
+      process_type: processTypeLabel(processType),
+    });
+    if (!suggested) return;
+    // Só preenche se o campo está vazio ou ainda contém a sugestão anterior.
+    if (!manualForm.title.trim() || manualForm.title === autoFilledTitleRef.current) {
+      autoFilledTitleRef.current = suggested;
+      setManualForm(p => ({ ...p, title: suggested }));
+    }
+  };
+
   useEffect(() => {
     if (open && boards.length === 0) {
       externalSupabase.from('kanban_boards').select('*').order('display_order').then(({ data }) => {
@@ -290,8 +359,22 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
         const fonte: any = fullResult.fontes?.[0] || result.fontes?.[0] || {};
         const capa: any = fonte?.capa || {};
-        const title = capa?.classe || fonte?.classe?.nome || 
+        const defaultTitle = capa?.classe || fonte?.classe?.nome ||
           `${fullResult.titulo_polo_ativo || result.titulo_polo_ativo || 'Autor'} vs ${fullResult.titulo_polo_passivo || result.titulo_polo_passivo || 'Réu'}`;
+        // Se o POP tem padrão de nome, monta o título por ele (dados do tribunal +
+        // cliente/caso); senão mantém o título derivado da classe/polos.
+        const poloAtivo = fullResult.titulo_polo_ativo || result.titulo_polo_ativo || '';
+        const poloPassivo = fullResult.titulo_polo_passivo || result.titulo_polo_passivo || '';
+        const templatedTitle = buildTemplatedTitle(workflowId, {
+          process_number: result.numero_cnj,
+          process_type: processTypeLabel(processType),
+          polo_ativo: poloAtivo,
+          polo_passivo: poloPassivo,
+          classe: capa?.classe || fonte?.classe?.nome || '',
+          assunto: capa?.assunto_principal_normalizado?.nome || (capa?.assuntos_normalizados?.[0]?.nome) || '',
+          tribunal: fonte?.tribunal?.nome || fonte?.tribunal?.sigla || fonte?.nome || '',
+        });
+        const title = templatedTitle || defaultTitle;
         const description = [
           capa?.area && `Área: ${capa.area}`,
           fonte?.nome && `Fonte: ${fonte.nome}`,
@@ -561,6 +644,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     setProcessType('judicial');
     setWorkflowId('');
     setResponsibleExtId(null);
+    autoFilledTitleRef.current = '';
     setManualForm({ title: '', process_number: '', description: '', fee_percentage: '', valor_causa: '', estimated_fee_value: '', started_at: new Date().toISOString().slice(0, 10), notes: '' });
   };
 
@@ -596,7 +680,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
             <div>
               <Label className="text-xs font-semibold">POP *</Label>
               <div className="flex gap-1.5">
-                <Select value={workflowId} onValueChange={setWorkflowId}>
+                <Select value={workflowId} onValueChange={handleWorkflowChange}>
                   <SelectTrigger className="flex-1">
                     <SelectValue placeholder="Selecione um fluxo..." />
                   </SelectTrigger>

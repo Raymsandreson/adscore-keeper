@@ -1265,21 +1265,48 @@ Deno.serve(async (req) => {
                           ? [{ workflow_board_id: (boardSettings as any).process_workflow_board_id }]
                           : [{ workflow_board_id: null }])
 
+                    // Render inline do template de nome do processo (espelha
+                    // src/lib/processNameTemplate.ts — edge não importa de src/).
+                    const renderProcessTitle = (tpl: string, ctx: Record<string, string>): string => {
+                      if (!tpl || !tpl.trim()) return ''
+                      let out = tpl.replace(/\{(\w+)\}/g, (_m: string, k: string) => (ctx[k] ?? '').trim())
+                      out = out.replace(/\(\s*\)/g, '').replace(/\[\s*\]/g, '')
+                      out = out.replace(/\s*([-–—·/|])\s*(?=[-–—·/|])/g, ' ')
+                      out = out.replace(/^[\s\-–—·/|]+/, '').replace(/[\s\-–—·/|]+$/, '')
+                      return out.replace(/\s{2,}/g, ' ').trim()
+                    }
+                    const leadCity = (leadForBoard as any).city ? String((leadForBoard as any).city).trim() : ''
+                    const leadState = (leadForBoard as any).state ? String((leadForBoard as any).state).trim() : ''
+                    const cityState = leadCity && leadState ? `${leadCity}/${leadState}` : (leadCity || leadState || '')
+
                     for (const wf of cfgWorkflows) {
                       const wfBoardId = wf?.workflow_board_id || null
                       let wfName: string | null = null
+                      let wfTemplate = ''
                       if (wfBoardId) {
                         const { data: wfBoard } = await supabase
                           .from('kanban_boards')
-                          .select('name')
+                          .select('name, settings')
                           .eq('id', wfBoardId)
                           .maybeSingle()
                         wfName = wfBoard?.name || null
+                        wfTemplate = String((wfBoard as any)?.settings?.process_name_template || '').trim()
                       }
+                      const fallbackTitle = wfName
+                        ? `Processo - ${leadForBoard.lead_name || 'Novo'} (${wfName})`
+                        : `Processo - ${leadForBoard.lead_name || 'Novo'}`
+                      const templatedTitle = renderProcessTitle(wfTemplate, {
+                        client_name: leadForBoard.lead_name || '',
+                        victim_name: (leadForBoard as any).victim_name || '',
+                        city_state: cityState,
+                        process_type: 'Administrativo',
+                        polo_ativo: leadForBoard.lead_name || '',
+                        workflow_name: wfName || '',
+                      })
                       await extClient.from('lead_processes').insert({
                         case_id: createdCase.id,
                         lead_id: localDoc.lead_id,
-                        title: wfName ? `Processo - ${leadForBoard.lead_name || 'Novo'} (${wfName})` : `Processo - ${leadForBoard.lead_name || 'Novo'}`,
+                        title: templatedTitle || fallbackTitle,
                         process_type: 'administrativo',
                         status: 'em_andamento',
                         polo_ativo: leadForBoard.lead_name || null,

@@ -62,6 +62,7 @@ import {
   type WorkflowRevisionRow,
 } from '@/lib/workflowRevisions';
 import { WorkflowHistorySheet } from '@/components/workflow/WorkflowHistorySheet';
+import { PROCESS_NAME_TOKENS, renderProcessTitle, PROCESS_NAME_PREVIEW_CONTEXT } from '@/lib/processNameTemplate';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
@@ -222,6 +223,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // settings.resultado_esperado_id segue gravado (= primeiro) por compat do ranking.
   const [formResultadoEsperadoIds, setFormResultadoEsperadoIds] = useState<string[]>([]);
   const [newResultadoLabel, setNewResultadoLabel] = useState<string>('');
+  // Template do nome do PROCESSO — só POP (não funil). Guardado em
+  // kanban_boards.settings.process_name_template. Ver src/lib/processNameTemplate.ts.
+  const [formProcessNameTemplate, setFormProcessNameTemplate] = useState<string>('');
+  const processTemplateRef = useRef<HTMLTextAreaElement>(null);
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
@@ -315,6 +320,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setFormDescription('');
     setPhases([]);
     setNewPhaseName('');
+    setFormProcessNameTemplate('');
     setEditingBoardId(null);
     setViewMode('list');
   };
@@ -525,13 +531,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setEditingBoardId(board.id);
     setFormName(board.name);
     setFormDescription(board.description || '');
-    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[] } }).settings;
+    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[]; process_name_template?: string } }).settings;
     const cfgResultados = cfg?.resultados || [];
     const cfgEspIds = Array.isArray(cfg?.resultado_esperado_ids)
       ? cfg!.resultado_esperado_ids!
       : (cfg?.resultado_esperado_id ? [cfg.resultado_esperado_id] : []);
     setFormResultados(cfgResultados);
     setFormResultadoEsperadoIds(cfgEspIds);
+    setFormProcessNameTemplate(cfg?.process_name_template || '');
 
     // Sempre busca templates frescos junto com os links pra evitar race
     // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
@@ -973,6 +980,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     JSON.stringify({
       n: name.trim(),
       d: desc.trim(),
+      // Template do nome do processo entra no snapshot pra que editá-lo dispare o
+      // autosave (o snapshot é a chave de comparação do effect de autosave).
+      pnt: formProcessNameTemplate.trim(),
       p: ph.map(x => ({
         id: x.stageId, n: x.stageName, c: x.stageColor, sd: x.stagnationDays,
         o: x.objectives.map(o => ({
@@ -1029,7 +1039,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           stages,
           // resultado_esperado_ids = fonte da verdade (múltiplos); resultado_esperado_id
           // = primeiro, mantido por compat com o ranking atual e o LeadEditDialog.
-          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null },
+          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null, process_name_template: formProcessNameTemplate.trim() || null },
         } as Partial<KanbanBoard>);
         boardId = editingBoardId;
       } else {
@@ -1276,7 +1286,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         autosaveTimerRef.current = null;
       }
     };
-  }, [phases, formName, formDescription, viewMode, editingBoardId, saving]);
+  }, [phases, formName, formDescription, formProcessNameTemplate, viewMode, editingBoardId, saving]);
 
   // Reset baseline ao trocar de board / sair de edit
   useEffect(() => {
@@ -1391,6 +1401,26 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         {text.slice(idx + q.length)}
       </>
     );
+  };
+
+  // Insere `{token}` na posição do cursor do editor de template do nome do processo.
+  const insertProcessToken = (key: string) => {
+    const token = `{${key}}`;
+    const ta = processTemplateRef.current;
+    const cur = formProcessNameTemplate;
+    if (!ta) {
+      setFormProcessNameTemplate(cur + token);
+      return;
+    }
+    const start = ta.selectionStart ?? cur.length;
+    const end = ta.selectionEnd ?? cur.length;
+    const next = cur.slice(0, start) + token + cur.slice(end);
+    setFormProcessNameTemplate(next);
+    setTimeout(() => {
+      ta.focus();
+      const pos = start + token.length;
+      ta.selectionStart = ta.selectionEnd = pos;
+    }, 0);
   };
 
   return (
@@ -2084,6 +2114,50 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     </Button>
                   </div>
                 </div>
+
+                {/* Padrão de Nome do Processo — só POP (o nome do lead/caso/grupo mora no funil). */}
+                {!isFunnel && (
+                  <div className="mt-4 rounded-lg border p-3 space-y-3">
+                    <div className="text-sm font-semibold">🏷️ Padrão de Nome do Processo</div>
+                    <p className="text-xs text-muted-foreground">
+                      Define como o título dos processos criados sob este POP é montado. Escreva o
+                      texto e clique nos campos para inserir variáveis. Campo vazio é omitido
+                      automaticamente. Ao cadastrar o processo, o título já vem preenchido — e pode
+                      ser editado. Deixe em branco para não aplicar padrão.
+                    </p>
+
+                    <div className="flex flex-wrap gap-1.5">
+                      {PROCESS_NAME_TOKENS.map(tok => (
+                        <button
+                          key={tok.key}
+                          type="button"
+                          onClick={() => insertProcessToken(tok.key)}
+                          title={tok.hint || tok.label}
+                          className="text-[10px] px-2 py-1 rounded-full border bg-background text-muted-foreground border-border hover:border-primary/50 transition-colors"
+                        >
+                          + {tok.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <Textarea
+                      ref={processTemplateRef}
+                      value={formProcessNameTemplate}
+                      onChange={e => setFormProcessNameTemplate(e.target.value)}
+                      placeholder="Ex: {client_name} — {classe} ({tribunal})"
+                      className="min-h-[60px] text-xs font-mono"
+                    />
+
+                    <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border">
+                      <span className="text-[10px] text-muted-foreground shrink-0">Prévia:</span>
+                      <span className="text-[11px] font-medium truncate">
+                        {formProcessNameTemplate.trim()
+                          ? (renderProcessTitle(formProcessNameTemplate, PROCESS_NAME_PREVIEW_CONTEXT) || <em className="text-muted-foreground">(vazio)</em>)
+                          : <em className="text-muted-foreground">(sem padrão — título digitado manualmente)</em>}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
