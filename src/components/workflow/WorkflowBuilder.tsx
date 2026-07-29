@@ -45,7 +45,21 @@ import {
   Search,
   FolderInput,
   MessagesSquare,
+  History,
 } from 'lucide-react';
+import {
+  buildWorkflowSnapshot,
+  diffSnapshots,
+  formatDiffLines,
+  formatNotificationSummary,
+  fetchLatestWorkflowRevision,
+  createWorkflowRevision,
+  notifyWorkflowRevision,
+  type WorkflowSnapshot,
+  type DiffEntry,
+  type WorkflowRevisionRow,
+} from '@/lib/workflowRevisions';
+import { WorkflowHistorySheet } from '@/components/workflow/WorkflowHistorySheet';
 import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
@@ -235,6 +249,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
+  // ─── Revisões (histórico estilo "lei consolidada") ───
+  // baseline = última revisão registrada; o diff do save é sempre contra ela.
+  const baselineRevisionRef = useRef<{ number: number; snapshot: WorkflowSnapshot } | null>(null);
+  // Motivo pendente vindo da edição por IA (o prompt digitado) ou de restauração.
+  const pendingAiReasonRef = useRef<string | null>(null);
+  const pendingOriginRef = useRef<'ia' | 'restore' | null>(null);
+  // Snapshot rico do último persist (com os templateIds já atribuídos no save).
+  const lastRichSnapshotRef = useRef<WorkflowSnapshot | null>(null);
+  const [motivoDialog, setMotivoDialog] = useState<{ entries: DiffEntry[]; motivo: string } | null>(null);
+  const [savingRevision, setSavingRevision] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   // Busca por texto dentro do POP em edição (fases, objetivos, passos, scripts, checklists).
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -245,6 +270,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Reset viewMode when sheet opens based on props
   useEffect(() => {
     if (!open) {
+      // Registra revisão pendente antes de descartar o estado (o autosave já
+      // persistiu as mudanças no banco; aqui garantimos o rastro no histórico).
+      captureRevisionOnClose();
       // Reset on close
       resetForm();
       pendingDeepLinkRef.current = null;
@@ -424,6 +452,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }
 
         setAiChangelog(data.changelog || []);
+        // O prompt da IA vira o motivo pré-preenchido da próxima revisão —
+        // é exatamente o contexto que explicaria a alteração no histórico.
+        pendingAiReasonRef.current = aiPrompt.trim();
+        pendingOriginRef.current = 'ia';
         setShowAiDialog(false);
         setAiPrompt('');
         toast.success(`Fluxo editado! ${(data.changelog || []).length} alteração(ões) aplicada(s)`);
@@ -482,15 +514,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setEditingBoardId(board.id);
     setFormName(board.name);
     setFormDescription(board.description || '');
-    {
-      const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[] } }).settings;
-      setFormResultados(cfg?.resultados || []);
-      setFormResultadoEsperadoIds(
-        Array.isArray(cfg?.resultado_esperado_ids)
-          ? cfg!.resultado_esperado_ids!
-          : (cfg?.resultado_esperado_id ? [cfg.resultado_esperado_id] : []),
-      );
-    }
+    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[] } }).settings;
+    const cfgResultados = cfg?.resultados || [];
+    const cfgEspIds = Array.isArray(cfg?.resultado_esperado_ids)
+      ? cfg!.resultado_esperado_ids!
+      : (cfg?.resultado_esperado_id ? [cfg.resultado_esperado_id] : []);
+    setFormResultados(cfgResultados);
+    setFormResultadoEsperadoIds(cfgEspIds);
 
     // Sempre busca templates frescos junto com os links pra evitar race
     // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
@@ -525,6 +555,114 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
     setPhases(phaseConfigs);
     setViewMode('edit');
+
+    // Prepara o histórico: carrega a última revisão como baseline do diff.
+    // Se o board nunca teve revisão, registra a foto atual como "versão inicial"
+    // (sem isso não haveria base de comparação para a primeira alteração).
+    baselineRevisionRef.current = null;
+    pendingAiReasonRef.current = null;
+    pendingOriginRef.current = null;
+    void (async () => {
+      try {
+        const latest = await fetchLatestWorkflowRevision(board.id);
+        if (latest) {
+          baselineRevisionRef.current = { number: latest.revision_number, snapshot: latest.snapshot };
+        } else {
+          const author = await getRevisionAuthor();
+          const snap = buildWorkflowSnapshot(board.name, board.description || '', cfgResultados, cfgEspIds, phaseConfigs);
+          const rev = await createWorkflowRevision({
+            boardId: board.id,
+            snapshot: snap,
+            origin: 'baseline',
+            reason: 'Versão inicial registrada automaticamente',
+            changedBy: author.id,
+            changedByName: author.name,
+          });
+          baselineRevisionRef.current = { number: rev.revision_number, snapshot: rev.snapshot };
+        }
+      } catch (e) {
+        console.error('Erro ao preparar histórico de revisões:', e);
+      }
+    })();
+  };
+
+  /** Autor da revisão: usuário logado no Cloud (auth) + nome do perfil. */
+  const getRevisionAuthor = async (): Promise<{ id: string | null; name: string | null }> => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { id: null, name: null };
+      const meta = (user.user_metadata || {}) as { full_name?: string; name?: string };
+      return { id: user.id, name: meta.full_name || meta.name || user.email || null };
+    } catch {
+      return { id: null, name: null };
+    }
+  };
+
+  /**
+   * Registra revisão silenciosa ao fechar/cancelar com mudanças não registradas.
+   * O autosave já gravou essas mudanças no banco — sem esta captura, elas
+   * escapariam do histórico e da notificação do time.
+   */
+  const captureRevisionOnClose = () => {
+    if (!editingBoardId || !baselineRevisionRef.current) return;
+    const snap = buildWorkflowSnapshot(formName, formDescription, formResultados, formResultadoEsperadoIds, phases);
+    const entries = diffSnapshots(baselineRevisionRef.current.snapshot, snap);
+    if (entries.length === 0) return;
+
+    const boardId = editingBoardId;
+    const title = `Atualização no ${typeLabel}: ${snap.name}`;
+    const reason = pendingAiReasonRef.current;
+    const origin = pendingOriginRef.current || 'manual';
+    // Atualização otimista do baseline evita captura dupla (Cancelar + close do sheet)
+    baselineRevisionRef.current = { number: baselineRevisionRef.current.number + 1, snapshot: snap };
+    pendingAiReasonRef.current = null;
+    pendingOriginRef.current = null;
+
+    void (async () => {
+      try {
+        const author = await getRevisionAuthor();
+        await createWorkflowRevision({
+          boardId, snapshot: snap, reason: reason || '(fechado sem motivo informado)',
+          summary: entries, origin, changedBy: author.id, changedByName: author.name,
+        });
+        await notifyWorkflowRevision({
+          boardId, title, summary: formatNotificationSummary(entries),
+          reason, changedBy: author.id, changedByName: author.name,
+        });
+      } catch (e) {
+        console.error('Erro ao registrar revisão no fechamento:', e);
+      }
+    })();
+  };
+
+  /** Carrega uma revisão antiga no editor (o save seguinte registra a restauração). */
+  const handleRestoreRevision = (rev: WorkflowRevisionRow) => {
+    const snap = rev.snapshot;
+    // templateId só sobrevive se o template ainda existir — id órfão quebraria o save
+    const validIds = new Set(templates.map(t => t.id));
+    setFormName(snap.name);
+    setFormDescription(snap.description);
+    setFormResultados(snap.resultados || []);
+    setFormResultadoEsperadoIds(snap.resultadoEsperadoIds || []);
+    setPhases(snap.phases.map(p => ({
+      stageId: p.stageId,
+      stageName: p.stageName,
+      stageColor: p.stageColor,
+      stagnationDays: p.stagnationDays,
+      isExpanded: true,
+      objectives: p.objectives.map(o => ({
+        templateId: o.templateId && validIds.has(o.templateId) ? o.templateId : undefined,
+        name: o.name,
+        description: o.description,
+        is_mandatory: o.is_mandatory,
+        items: o.items,
+        isExpanded: false,
+      })),
+    })));
+    pendingAiReasonRef.current = `Restaurada a partir da revisão #${rev.revision_number}`;
+    pendingOriginRef.current = 'restore';
+    setShowHistory(false);
+    toast.success(`Revisão #${rev.revision_number} carregada no editor — salve para registrar a restauração`);
   };
 
   const handleDeleteWorkflow = (board: KanbanBoard) => {
@@ -896,7 +1034,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
       const existingLinks = await fetchStageLinks(boardId);
 
-      for (const phase of latestPhases) {
+      // Cópia rasa: os templateIds criados durante o save são atribuídos aqui
+      // (sem mutar o estado), pro snapshot da revisão sair com os ids finais.
+      const phasesForPersist = latestPhases.map(p => ({ ...p, objectives: p.objectives.map(o => ({ ...o })) }));
+
+      for (const phase of phasesForPersist) {
         const phaseLinks = existingLinks.filter(l => l.stage_id === phase.stageId);
         const wantedTemplateIds = new Set<string>();
 
@@ -918,6 +1060,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           }
 
           if (templateId) {
+            obj.templateId = templateId;
             wantedTemplateIds.add(templateId);
             const existingLink = phaseLinks.find(l => l.checklist_template_id === templateId);
             if (!existingLink) {
@@ -935,18 +1078,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }
       }
 
-      // Notifica equipe apenas em saves manuais — autosave seria spam
-      if (!silent && editingBoardId) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.rpc('notify_workflow_change', {
-            p_board_id: boardId,
-            p_board_name: latestName.trim(),
-            p_changed_by: user.id,
-            p_change_description: `O POP "${latestName.trim()}" foi atualizado. Verifique as alterações nos passos e checklists.`,
-          });
-        }
-      }
+      // Snapshot rico pro histórico de revisões (a notificação do time agora
+      // sai junto com a revisão — confirmRevisionSave/captureRevisionOnClose.
+      // A antiga notify_workflow_change era chamada no client Cloud e gravava
+      // no banco errado; substituída por notify_workflow_revision no Externo).
+      lastRichSnapshotRef.current = buildWorkflowSnapshot(
+        latestName, latestDesc, formResultados, formResultadoEsperadoIds, phasesForPersist,
+      );
 
       lastSyncedSnapshotRef.current = buildSnapshot(latestName, latestDesc, latestPhases);
 
@@ -980,13 +1118,85 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     }
   };
 
-  // Save manual: cancela qualquer debounce pendente para evitar corrida
+  // Save manual: cancela qualquer debounce pendente para evitar corrida.
+  // Se houver mudanças desde a última revisão, abre o dialog de motivo antes
+  // de persistir (o save real acontece em confirmRevisionSave).
   const handleSave = async () => {
     if (autosaveTimerRef.current) {
       window.clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
+
+    if (editingBoardId && baselineRevisionRef.current) {
+      // Mesmo flush do persistWorkflow: lê o estado MAIS RECENTE (cobre o
+      // onBlur do StepAdder no mesmo ciclo do clique em Salvar).
+      await new Promise(r => setTimeout(r, 0));
+      const latestPhases: PhaseConfig[] = await new Promise(resolve => {
+        setPhases(p => { resolve(p); return p; });
+      });
+      const latestName: string = await new Promise(resolve => {
+        setFormName(n => { resolve(n); return n; });
+      });
+      const latestDesc: string = await new Promise(resolve => {
+        setFormDescription(d => { resolve(d); return d; });
+      });
+      const snap = buildWorkflowSnapshot(latestName, latestDesc, formResultados, formResultadoEsperadoIds, latestPhases);
+      const entries = diffSnapshots(baselineRevisionRef.current.snapshot, snap);
+      if (entries.length > 0) {
+        setMotivoDialog({ entries, motivo: pendingAiReasonRef.current || '' });
+        return;
+      }
+    }
+
     await persistWorkflow({ silent: false });
+  };
+
+  /** Confirma o save com registro de revisão + notificação do time. */
+  const confirmRevisionSave = async () => {
+    if (!motivoDialog) return;
+    const motivo = motivoDialog.motivo.trim();
+    const origin = pendingOriginRef.current || 'manual';
+    const boardNameNow = formName.trim();
+    setMotivoDialog(null);
+    setSavingRevision(true);
+    try {
+      const savedBoardId = await persistWorkflow({ silent: false });
+      if (!savedBoardId || !lastRichSnapshotRef.current || !baselineRevisionRef.current) return;
+
+      // Diff final contra o baseline usando o snapshot pós-save (templateIds definitivos)
+      const snap = lastRichSnapshotRef.current;
+      const entries = diffSnapshots(baselineRevisionRef.current.snapshot, snap);
+      const author = await getRevisionAuthor();
+      const rev = await createWorkflowRevision({
+        boardId: savedBoardId,
+        snapshot: snap,
+        reason: motivo || null,
+        summary: entries,
+        origin,
+        changedBy: author.id,
+        changedByName: author.name,
+      });
+      baselineRevisionRef.current = { number: rev.revision_number, snapshot: rev.snapshot };
+      pendingAiReasonRef.current = null;
+      pendingOriginRef.current = null;
+
+      if (entries.length > 0) {
+        const count = await notifyWorkflowRevision({
+          boardId: savedBoardId,
+          title: `Atualização no ${typeLabel}: ${boardNameNow}`,
+          summary: formatNotificationSummary(entries),
+          reason: motivo || null,
+          changedBy: author.id,
+          changedByName: author.name,
+        });
+        toast.success(`Revisão #${rev.revision_number} registrada — ${count} pessoa(s) notificada(s)`);
+      }
+    } catch (e) {
+      console.error('Erro ao registrar revisão:', e);
+      toast.error('Fluxo salvo, mas falhou ao registrar a revisão no histórico');
+    } finally {
+      setSavingRevision(false);
+    }
   };
 
   // Effect de autosave: dispara 1.5s após a última mudança
@@ -1211,15 +1421,23 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Descreva o propósito..." className="mt-1 min-h-[60px]" />
               </div>
 
-              {/* AI Generate/Edit Button */}
-              <Button variant="outline" className="w-full border-dashed" onClick={() => {
-                setAiMode(editingBoardId ? 'edit' : 'create');
-                setAiChangelog(null);
-                setShowAiDialog(true);
-              }}>
-                <Sparkles className="h-4 w-4 mr-2" />
-                {editingBoardId ? 'Editar com IA' : 'Preencher com IA a partir de uma descrição'}
-              </Button>
+              {/* AI Generate/Edit + Histórico */}
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1 border-dashed" onClick={() => {
+                  setAiMode(editingBoardId ? 'edit' : 'create');
+                  setAiChangelog(null);
+                  setShowAiDialog(true);
+                }}>
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  {editingBoardId ? 'Editar com IA' : 'Preencher com IA a partir de uma descrição'}
+                </Button>
+                {editingBoardId && (
+                  <Button variant="outline" onClick={() => setShowHistory(true)}>
+                    <History className="h-4 w-4 mr-2" />
+                    Histórico
+                  </Button>
+                )}
+              </div>
 
               {/* AI Changelog */}
               {aiChangelog && aiChangelog.length > 0 && (
@@ -1848,14 +2066,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   </span>
                 )}
                 <Button variant="outline" onClick={() => {
+                  // Mudanças autosalvas que escapariam do histórico são registradas aqui
+                  captureRevisionOnClose();
                   if (initialEditBoardId || initialCreateNew) {
                     onOpenChange(false);
                   } else {
                     resetForm();
                   }
                 }}>Cancelar</Button>
-                <Button onClick={handleSave} disabled={!formName.trim() || phases.length === 0 || saving}>
-                  {saving ? 'Salvando...' : 'Salvar'}
+                <Button onClick={handleSave} disabled={!formName.trim() || phases.length === 0 || saving || savingRevision}>
+                  {saving || savingRevision ? 'Salvando...' : 'Salvar'}
                 </Button>
               </div>
             </SheetFooter>
@@ -2494,6 +2714,59 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         </div>
       </DialogContent>
     </Dialog>
+    {/* Motivo da alteração — abre no Salvar quando há diff desde a última revisão */}
+    <Dialog open={!!motivoDialog} onOpenChange={o => { if (!o) setMotivoDialog(null); }}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-5 w-5 text-primary" />
+            Registrar alteração no {typeLabel}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="rounded border bg-muted/30 p-2 max-h-48 overflow-y-auto space-y-1">
+            {(motivoDialog?.entries || []).length > 0 && formatDiffLines(motivoDialog!.entries).map((line, i) => (
+              <p key={i} className="text-xs leading-relaxed">• {line}</p>
+            ))}
+          </div>
+          <div>
+            <Label className="text-xs font-medium text-muted-foreground">
+              Motivo da alteração (fica no histórico e vai na notificação do time):
+            </Label>
+            <Textarea
+              value={motivoDialog?.motivo || ''}
+              onChange={e => setMotivoDialog(prev => prev ? { ...prev, motivo: e.target.value } : prev)}
+              placeholder="Ex: A agência de Teresina passou a exigir presença com OAB às 7h para senhas ilimitadas..."
+              className="mt-1 min-h-[80px]"
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" onClick={() => setMotivoDialog(null)} disabled={savingRevision}>
+              Voltar
+            </Button>
+            <Button onClick={confirmRevisionSave} disabled={savingRevision}>
+              {savingRevision ? (
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Salvando...</>
+              ) : (
+                'Salvar e notificar o time'
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    {/* Histórico de revisões (linha do tempo + versão anotada estilo lei) */}
+    <WorkflowHistorySheet
+      open={showHistory}
+      onOpenChange={setShowHistory}
+      boardId={editingBoardId}
+      boardName={formName}
+      typeLabel={typeLabel}
+      onRestore={handleRestoreRevision}
+    />
+
     <ConfirmDeleteDialog />
 
     {/* Chat interno da equipe sobre um passo específico do POP */}
