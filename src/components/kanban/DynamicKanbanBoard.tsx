@@ -1059,7 +1059,7 @@ export function DynamicKanbanBoard({
 
                               {/* Lead name + avatar */}
                               <div className="flex items-start gap-2 pr-20 mb-1">
-                                <Avatar className="h-7 w-7 flex-shrink-0" title={(lead as any).acolhedor || undefined}>
+                                <Avatar className="h-9 w-9 flex-shrink-0" title={(lead as any).acolhedor || undefined}>
                                   {getAcolhedorPhoto((lead as any).acolhedor) && (
                                     <AvatarImage src={getAcolhedorPhoto((lead as any).acolhedor)!} alt={(lead as any).acolhedor} className="object-cover" />
                                   )}
@@ -1307,7 +1307,7 @@ export function DynamicKanbanBoard({
                           <CardContent className="p-3 space-y-1.5">
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2 min-w-0">
-                                <Avatar className="h-7 w-7 flex-shrink-0" title={(lead as any).acolhedor || undefined}>
+                                <Avatar className="h-9 w-9 flex-shrink-0" title={(lead as any).acolhedor || undefined}>
                                   {getAcolhedorPhoto((lead as any).acolhedor) && (
                                     <AvatarImage src={getAcolhedorPhoto((lead as any).acolhedor)!} alt={(lead as any).acolhedor} className="object-cover" />
                                   )}
