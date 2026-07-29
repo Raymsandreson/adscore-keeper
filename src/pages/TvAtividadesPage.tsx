@@ -7,6 +7,7 @@ import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
+import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetailSheet';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
@@ -128,6 +129,8 @@ export default function TvAtividadesPage() {
   const [now, setNow] = useState(() => new Date());
   // Coach de desempenho: clicar num assessor abre o painel de análise + mensagem.
   const [coach, setCoach] = useState<{ row: RankRow; rank: number } | null>(null);
+  // Detalhe de um critério (clique no chip passos/concl/atr de uma pessoa).
+  const [detail, setDetail] = useState<{ nome: string; criterio: DetailCriterio; count: number } | null>(null);
   // "Mensagem pra todos": dispara a coach personalizada de cada um do ranking.
   const [broadcast, setBroadcast] = useState(false);
   // Modo Corrida: o ranking vira pista estilo cartoon. Escolha de carro por nome.
@@ -979,12 +982,22 @@ export default function TvAtividadesPage() {
         ) : (
           <>
             {/* ===== Pódio ===== */}
-            <Podium podium={podium} onSelect={(row, rank) => setCoach({ row, rank })} />
+            <Podium
+              podium={podium}
+              onSelect={(row, rank) => setCoach({ row, rank })}
+              onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
+            />
 
             {/* ===== Lista 4..10 ===== */}
             <div className="mt-5 space-y-2">
               {list.map((r, i) => (
-                <ListRow key={r.nome} rank={i + 4} row={r} onSelect={() => setCoach({ row: r, rank: i + 4 })} />
+                <ListRow
+                  key={r.nome}
+                  rank={i + 4}
+                  row={r}
+                  onSelect={() => setCoach({ row: r, rank: i + 4 })}
+                  onDetail={(criterio, count) => setDetail({ nome: r.nome, criterio, count })}
+                />
               ))}
             </div>
 
@@ -1007,6 +1020,17 @@ export default function TvAtividadesPage() {
         />
       )}
 
+      {detail && (
+        <RankDetailSheet
+          nome={detail.nome}
+          criterio={detail.criterio}
+          count={detail.count}
+          since={periodSince(period).toISOString()}
+          periodLabel={period === 'hoje' ? 'hoje' : period === 'mes' ? 'mês' : 'semana'}
+          onClose={() => setDetail(null)}
+        />
+      )}
+
       {coach && (
         <PerformanceCoachDialog
           row={coach.row}
@@ -1023,21 +1047,23 @@ export default function TvAtividadesPage() {
 }
 
 /* ---------- Pódio ---------- */
-function Podium({ podium, onSelect }: { podium: RankRow[]; onSelect: (row: RankRow, rank: number) => void }) {
+type OnDetail = (row: RankRow, criterio: DetailCriterio, count: number) => void;
+
+function Podium({ podium, onSelect, onDetail }: { podium: RankRow[]; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail }) {
   // Ordem visual: 2º (esq) · 1º (centro) · 3º (dir).
   const first = podium[0];
   const second = podium[1];
   const third = podium[2];
   return (
     <div className="mt-6 grid grid-cols-3 items-end gap-2 md:gap-4">
-      <PodiumSpot row={second} place={2} onSelect={onSelect} />
-      <PodiumSpot row={first} place={1} onSelect={onSelect} />
-      <PodiumSpot row={third} place={3} onSelect={onSelect} />
+      <PodiumSpot row={second} place={2} onSelect={onSelect} onDetail={onDetail} />
+      <PodiumSpot row={first} place={1} onSelect={onSelect} onDetail={onDetail} />
+      <PodiumSpot row={third} place={3} onSelect={onSelect} onDetail={onDetail} />
     </div>
   );
 }
 
-function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place: 1 | 2 | 3; onSelect: (row: RankRow, rank: number) => void }) {
+function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefined; place: 1 | 2 | 3; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail }) {
   if (!row) return <div />;
   const cfg = {
     1: { ring: 'ring-amber-400', glow: 'shadow-[0_0_45px_-5px] shadow-amber-400/60', bar: 'from-amber-400 to-amber-600', size: 'h-24 w-24 md:h-32 md:w-32 text-3xl md:text-4xl', barH: 'h-24 md:h-32', badge: 'bg-amber-400 text-slate-900', num: 'text-amber-300' },
@@ -1069,7 +1095,13 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
           {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
         </div>
         <div className={cn('mt-1 font-black leading-none', place === 1 ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl', cfg.num)}>
-          {row.passos}
+          <span
+            className="cursor-pointer rounded px-0.5 transition hover:bg-white/10 hover:ring-1 hover:ring-white/25"
+            title={`Ver os ${row.passos} passos de ${row.nome}`}
+            onClick={e => { e.stopPropagation(); onDetail(row, 'passos', row.passos); }}
+          >
+            {row.passos}
+          </span>
           <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
@@ -1077,8 +1109,8 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
           <PodiumStat text={row.fases ?? 0} label="fases" color="text-amber-300" />
           <PodiumStat text={row.objetivos ?? 0} label="objetivos" color="text-lime-400" />
           <PodiumStat text={row.doc_itens ?? 0} label="checklist" color="text-fuchsia-400" />
-          <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" />
-          <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" />
+          <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail(row, 'concluidas', row.concluidas)} />
+          <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" onClick={() => onDetail(row, 'atrasadas', row.atrasadas)} />
           <PodiumStat text={aprovLabel(row.aprov_pct)} label="aprov" color="text-amber-400" />
           <PodiumStat text={tempoLabel(row.ativo_seg)} label="ativo" color="text-teal-400" />
           <PodiumStat text={tempoLabel(row.ocioso_seg)} label="ocioso" color="text-orange-400" />
@@ -1098,7 +1130,7 @@ function PodiumSpot({ row, place, onSelect }: { row: RankRow | undefined; place:
 }
 
 /* ---------- Linha da lista ---------- */
-function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect: () => void }) {
+function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow; onSelect: () => void; onDetail: (criterio: DetailCriterio, count: number) => void }) {
   return (
     <div
       className="relative group flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3 cursor-pointer transition hover:bg-white/[0.08]"
@@ -1120,10 +1152,10 @@ function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect
       <Stat value={row.resultado ?? 0} label="status" color="text-yellow-300" />
       <Stat value={row.fases ?? 0} label="fases" color="text-amber-300" />
       <Stat value={row.objetivos ?? 0} label="obj" color="text-lime-400" />
-      <Stat value={row.passos} label="passos" color="text-sky-400" />
+      <Stat value={row.passos} label="passos" color="text-sky-400" onClick={() => onDetail('passos', row.passos)} />
       <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
-      <Stat value={row.concluidas} label="concl" color="text-emerald-400" />
-      <Stat value={row.atrasadas} label="atr" color="text-rose-400" />
+      <Stat value={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail('concluidas', row.concluidas)} />
+      <Stat value={row.atrasadas} label="atr" color="text-rose-400" onClick={() => onDetail('atrasadas', row.atrasadas)} />
       <div className="w-14 md:w-20 text-right">
         <span className="text-base md:text-xl font-black tabular-nums text-teal-400">{tempoLabel(row.ativo_seg)}</span>
         <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">ativo</span>
@@ -1143,10 +1175,20 @@ function ListRow({ rank, row, onSelect }: { rank: number; row: RankRow; onSelect
   );
 }
 
-function Stat({ value, label, color }: { value: number; label: string; color: string }) {
+function Stat({ value, label, color, onClick }: { value: number; label: string; color: string; onClick?: () => void }) {
   return (
     <div className="w-12 md:w-20 text-right">
-      <span className={cn('text-base md:text-xl font-black tabular-nums', color)}>{value}</span>
+      <span
+        className={cn(
+          'text-base md:text-xl font-black tabular-nums',
+          color,
+          onClick && 'cursor-pointer rounded px-0.5 transition hover:bg-white/10 hover:ring-1 hover:ring-white/25'
+        )}
+        title={onClick ? `Ver detalhe de ${label}` : undefined}
+        onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
+      >
+        {value}
+      </span>
       <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
     </div>
   );
@@ -1155,10 +1197,20 @@ function Stat({ value, label, color }: { value: number; label: string; color: st
 // Stat do pódio (top 3): mesmo tamanho de valor das linhas 4+ (text-base md:text-xl),
 // em vez do texto minúsculo anterior. Aceita número (concl/atras/checklist) ou
 // string já formatada (tempo/aprov/chat).
-function PodiumStat({ text, label, color }: { text: string | number; label: string; color: string }) {
+function PodiumStat({ text, label, color, onClick }: { text: string | number; label: string; color: string; onClick?: () => void }) {
   return (
     <span className="inline-flex items-baseline gap-1">
-      <span className={cn('text-base md:text-xl font-black tabular-nums', color)}>{text}</span>
+      <span
+        className={cn(
+          'text-base md:text-xl font-black tabular-nums',
+          color,
+          onClick && 'cursor-pointer rounded px-0.5 transition hover:bg-white/10 hover:ring-1 hover:ring-white/25'
+        )}
+        title={onClick ? `Ver detalhe de ${label}` : undefined}
+        onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
+      >
+        {text}
+      </span>
       <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
     </span>
   );
