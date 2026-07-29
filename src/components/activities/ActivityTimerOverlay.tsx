@@ -509,6 +509,11 @@ export function ActivityTimerOverlay() {
           <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           <button
             type="button"
+            // stopPropagation no pointerdown: sem isso o pointerdown sobe pro
+            // contêiner arrastável, que faz setPointerCapture e reentrega o click
+            // ao próprio contêiner — o botão nunca receberia o clique e a aba
+            // lateral não abria. Mesmo padrão dos outros botões do badge.
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { if (drag.wasDragged()) { e.preventDefault(); e.stopPropagation(); return; } setSheetOpen(true); }}
             className="flex items-center gap-1.5 hover:opacity-80"
             title="Abrir a atividade que está sendo cronometrada"
