@@ -65,6 +65,7 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -81,9 +82,11 @@ import { CSS } from '@dnd-kit/utilities';
 // `setNodeRef`/`style` na raiz do item e `attributes`/`listeners` na alça (GripVertical).
 function Sortable({
   id,
+  data,
   children,
 }: {
   id: string;
+  data?: Record<string, unknown>;
   children: (args: {
     setNodeRef: (el: HTMLElement | null) => void;
     style: CSSProperties;
@@ -92,7 +95,7 @@ function Sortable({
     isDragging: boolean;
   }) => ReactNode;
 }) {
-  const { setNodeRef, transform, transition, attributes, listeners, isDragging } = useSortable({ id });
+  const { setNodeRef, transform, transition, attributes, listeners, isDragging } = useSortable({ id, data });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -100,6 +103,40 @@ function Sortable({
     position: isDragging ? 'relative' : undefined,
   };
   return <>{children({ setNodeRef, style, attributes, listeners, isDragging })}</>;
+}
+
+// Área "solta" de um objetivo: torna o objetivo inteiro um alvo de drop de
+// passos, inclusive quando está vazio ou ao soltar no espaço em branco da lista.
+function StepZone({ phaseIdx, objIdx, className, children }: {
+  phaseIdx: number;
+  objIdx: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `stepzone-${phaseIdx}-${objIdx}`,
+    data: { type: 'step', phaseIdx, objIdx, container: true },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(className, isOver && 'rounded-md ring-1 ring-green-400/70 bg-green-50/40 dark:bg-green-950/20')}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Detecção de colisão que só considera alvos do MESMO tipo do item arrastado
+// (fase↔fase, objetivo↔objetivo, passo↔passo/zona-de-passo). Permite que os
+// três níveis convivam num único DndContext sem um interferir no outro.
+function typeAwareCollision(args: Parameters<typeof closestCenter>[0]) {
+  const activeType = (args.active?.data?.current as { type?: string } | undefined)?.type;
+  if (!activeType) return closestCenter(args);
+  const containers = args.droppableContainers.filter(
+    c => (c.data?.current as { type?: string } | undefined)?.type === activeType
+  );
+  return closestCenter({ ...args, droppableContainers: containers });
 }
 
 interface WorkflowBuilderProps {
@@ -613,49 +650,91 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       ),
     });
   };
-  // Reordenar fases (nível 1) — id sortable = stageId.
-  const handlePhaseDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  // ─────────── Drag-and-drop unificado (um único DndContext p/ os 3 níveis) ───────────
+  // O tipo do item arrastado vem de active.data.current.type; a colisão é
+  // filtrada por tipo (typeAwareCollision), então passo só cai em passo/zona,
+  // objetivo só em objetivo, fase só em fase.
+
+  // Move/reordena um passo — mesmo objetivo (reordena) ou objetivo/fase
+  // diferente (remove da origem e insere na posição do alvo).
+  const handleStepDrag = (active: DragEndEvent['active'], over: NonNullable<DragEndEvent['over']>) => {
+    const a = active.data.current as { phaseIdx?: number; objIdx?: number } | undefined;
+    const o = over.data.current as { type?: string; phaseIdx?: number; objIdx?: number; container?: boolean } | undefined;
+    if (!a || a.phaseIdx == null || a.objIdx == null) return;
+    if (!o || o.type !== 'step' || o.phaseIdx == null || o.objIdx == null) return;
+    const stepId = String(active.id);
+    const fromP = a.phaseIdx, fromO = a.objIdx;
+    const toP = o.phaseIdx, toO = o.objIdx;
+    const overStepId = o.container ? null : String(over.id);
+
     setPhases(prev => {
-      const oldIndex = prev.findIndex(p => p.stageId === active.id);
-      const newIndex = prev.findIndex(p => p.stageId === over.id);
-      if (oldIndex < 0 || newIndex < 0) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
+      const step = prev[fromP]?.objectives[fromO]?.items.find(s => s.id === stepId);
+      if (!step) return prev;
+
+      // Mesmo objetivo → reordena
+      if (fromP === toP && fromO === toO) {
+        if (!overStepId || overStepId === stepId) return prev;
+        return prev.map((p, pi) => pi !== toP ? p : {
+          ...p,
+          objectives: p.objectives.map((ob, oi) => {
+            if (oi !== toO) return ob;
+            const oldIdx = ob.items.findIndex(s => s.id === stepId);
+            const newIdx = ob.items.findIndex(s => s.id === overStepId);
+            if (oldIdx < 0 || newIdx < 0) return ob;
+            return { ...ob, items: arrayMove(ob.items, oldIdx, newIdx) };
+          }),
+        });
+      }
+
+      // Objetivo/fase diferente → remove da origem, insere no destino
+      return prev.map((p, pi) => {
+        let objectives = p.objectives;
+        if (pi === fromP) {
+          objectives = objectives.map((ob, oi) => oi === fromO ? { ...ob, items: ob.items.filter(s => s.id !== stepId) } : ob);
+        }
+        if (pi === toP) {
+          objectives = objectives.map((ob, oi) => {
+            if (oi !== toO) return ob;
+            const items = [...ob.items];
+            const at = overStepId ? items.findIndex(s => s.id === overStepId) : -1;
+            items.splice(at < 0 ? items.length : at, 0, step);
+            return { ...ob, items };
+          });
+        }
+        return objectives === p.objectives ? p : { ...p, objectives };
+      });
     });
   };
 
-  // Reordenar objetivos dentro de uma fase (nível 2) — id sortable = índice do objetivo.
-  const handleObjectiveDragEnd = (phaseIdx: number, event: DragEndEvent) => {
+  const handleWorkflowDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = Number(active.id);
-    const newIndex = Number(over.id);
-    if (Number.isNaN(oldIndex) || Number.isNaN(newIndex)) return;
-    setPhases(prev => prev.map((p, pi) =>
-      pi === phaseIdx
-        ? { ...p, objectives: arrayMove(p.objectives, oldIndex, newIndex) }
-        : p
-    ));
-  };
+    if (!over) return;
+    const aType = (active.data.current as { type?: string } | undefined)?.type;
 
-  // Reordenar passos dentro de um objetivo (nível 3) — id sortable = step.id.
-  const handleStepDragEnd = (phaseIdx: number, objIdx: number, event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setPhases(prev => prev.map((p, pi) => {
-      if (pi !== phaseIdx) return p;
-      return {
-        ...p,
-        objectives: p.objectives.map((o, oi) => {
-          if (oi !== objIdx) return o;
-          const oldIndex = o.items.findIndex(s => s.id === active.id);
-          const newIndex = o.items.findIndex(s => s.id === over.id);
-          if (oldIndex < 0 || newIndex < 0) return o;
-          return { ...o, items: arrayMove(o.items, oldIndex, newIndex) };
-        }),
-      };
-    }));
+    if (aType === 'phase') {
+      if (active.id === over.id) return;
+      setPhases(prev => {
+        const oldIndex = prev.findIndex(p => p.stageId === active.id);
+        const newIndex = prev.findIndex(p => p.stageId === over.id);
+        if (oldIndex < 0 || newIndex < 0) return prev;
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+      return;
+    }
+
+    if (aType === 'objective') {
+      const a = active.data.current as { phaseIdx?: number; objIdx?: number } | undefined;
+      const o = over.data.current as { type?: string; phaseIdx?: number; objIdx?: number } | undefined;
+      if (!a || a.phaseIdx == null || a.objIdx == null) return;
+      if (!o || o.type !== 'objective' || o.phaseIdx !== a.phaseIdx || o.objIdx == null) return; // só reordena na mesma fase
+      if (a.objIdx === o.objIdx) return;
+      setPhases(prev => prev.map((p, pi) => pi === a.phaseIdx ? { ...p, objectives: arrayMove(p.objectives, a.objIdx!, o.objIdx!) } : p));
+      return;
+    }
+
+    if (aType === 'step') {
+      handleStepDrag(active, over);
+    }
   };
 
   // Mover um passo para OUTRO objetivo (mesma fase ou fase diferente).
@@ -1147,10 +1226,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
+                <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={handleWorkflowDragEnd}>
                 <SortableContext items={phases.map(p => p.stageId)} strategy={verticalListSortingStrategy}>
                 {phases.map((phase, phaseIdx) => (
-                   <Sortable key={phase.stageId} id={phase.stageId}>
+                   <Sortable key={phase.stageId} id={phase.stageId} data={{ type: 'phase' }}>
                    {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                    <div
                      ref={setNodeRef}
@@ -1208,10 +1287,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                           <p className="text-xs text-muted-foreground italic px-4 py-3">Nenhum objetivo adicionado</p>
                         )}
 
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleObjectiveDragEnd(phaseIdx, e)}>
-                        <SortableContext items={phase.objectives.map((_, i) => String(i))} strategy={verticalListSortingStrategy}>
+                        <SortableContext items={phase.objectives.map((_, i) => `obj-${phaseIdx}-${i}`)} strategy={verticalListSortingStrategy}>
                         {phase.objectives.map((obj, objIdx) => (
-                           <Sortable key={objIdx} id={String(objIdx)}>
+                           <Sortable key={objIdx} id={`obj-${phaseIdx}-${objIdx}`} data={{ type: 'objective', phaseIdx, objIdx }}>
                            {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                            <div
                              ref={setNodeRef}
@@ -1283,14 +1361,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                      <ClipboardList className="h-3 w-3" />
                                      Passos
                                    </Label>
-                                   <div className="mt-1.5 space-y-2">
+                                   <StepZone phaseIdx={phaseIdx} objIdx={objIdx} className="mt-1.5 space-y-2">
                                     {obj.items.length === 0 ? (
-                                      <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
+                                      <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado (arraste um passo pra cá)</p>
                                     ) : (
-                                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleStepDragEnd(phaseIdx, objIdx, e)}>
                                       <SortableContext items={obj.items.map(s => s.id)} strategy={verticalListSortingStrategy}>
                                       {obj.items.map((step, stepIdx) => (
-                                        <Sortable key={step.id} id={step.id}>
+                                        <Sortable key={step.id} id={step.id} data={{ type: 'step', phaseIdx, objIdx }}>
                                         {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                                         <div
                                           ref={setNodeRef}
@@ -1539,9 +1616,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                         </Sortable>
                                       ))}
                                       </SortableContext>
-                                      </DndContext>
                                     )}
-                                  </div>
+                                  </StepZone>
                                 </div>
 
                                 {/* Add step */}
@@ -1553,7 +1629,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                            </Sortable>
                         ))}
                         </SortableContext>
-                        </DndContext>
                       </div>
                     )}
                   </div>
