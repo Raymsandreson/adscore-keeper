@@ -2,10 +2,13 @@
 // Cria atividades (lead_activities) a partir dos COMPROMISSOS detectados nas
 // movimentações do Escavador (audiência / perícia / prazo).
 //
-// Roteamento do responsável — regra definida pelo usuário (10/07/2026):
-//   - Justiça do Trabalho (dígito J=5 do CNJ) → Felipe
-//   - Justiça Federal    (dígito J=4 do CNJ) → Gisele
-//   - Demais ramos → responsible_user_id do processo; sem ele, NÃO cria.
+// Roteamento do responsável — regra definida pelo usuário (10/07/2026,
+// atualizada em 29/07/2026):
+//   - AUDIÊNCIA (qualquer ramo da Justiça) → Luana
+//   - Perícia e prazo/intimação:
+//       Justiça do Trabalho (dígito J=5 do CNJ) → Felipe
+//       Justiça Federal    (dígito J=4 do CNJ) → Gisele
+//       Demais ramos → responsible_user_id do processo; sem ele, NÃO cria.
 //
 // Idempotente: dedupe por action_source='escavador_compromissos' +
 // action_source_detail=<hash do compromisso> — sem migration nova.
@@ -52,6 +55,10 @@ const ASSIGNEE_BY_RAMO: Record<string, { id: string; name: string }> = {
   // J=4 — Justiça Federal
   '4': { id: '81fc8558-7b52-4a24-9871-73958472fb9f', name: 'Gisele Borges dos Santos' },
 };
+
+// Audiências têm responsável fixo, independente do ramo — regra do usuário
+// (29/07/2026). UUID conferido em profiles do Externo na mesma data.
+const ASSIGNEE_AUDIENCIA = { id: 'c5284e57-b0f4-4075-b61c-a46f6fa87b16', name: 'Luana Barros' };
 
 // Só considera movimentações recentes ao ligar num processo com histórico longo
 // (evita criar tarefa de intimação de meses atrás no primeiro sync).
@@ -350,11 +357,9 @@ async function syncProcess(
   counts.extraidos = compromissos.length;
   if (!compromissos.length) return counts;
 
-  const assignee = await resolveAssignee(ext, process);
-  if (!assignee) {
-    counts.sem_responsavel = compromissos.length;
-    return counts;
-  }
+  // Audiência tem responsável fixo (Luana); os demais tipos dependem do
+  // roteamento por ramo — que pode não resolver (aí só a audiência cria).
+  const ramoAssignee = await resolveAssignee(ext, process);
 
   const { data: existing } = await ext
     .from('lead_activities')
@@ -367,6 +372,11 @@ async function syncProcess(
   for (const c of compromissos) {
     if (existingHashes.has(c.conteudo_hash)) {
       counts.duplicados++;
+      continue;
+    }
+    const assignee = c.tipo === 'audiencia' ? ASSIGNEE_AUDIENCIA : ramoAssignee;
+    if (!assignee) {
+      counts.sem_responsavel++;
       continue;
     }
     const row = buildActivityRow(c, process, assignee, hoje);
