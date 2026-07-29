@@ -43,12 +43,13 @@ import {
   ChevronUp,
   HelpCircle,
   Search,
+  FolderInput,
 } from 'lucide-react';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
 import { TEMPLATE_VARIABLES } from '@/hooks/useActivityMessageTemplates';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -649,6 +650,37 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }),
       };
     }));
+  };
+
+  // Mover um passo para OUTRO objetivo (mesma fase ou fase diferente).
+  // Remove da origem e adiciona ao fim do objetivo de destino, preservando
+  // todas as configs do passo (respostas, checklist, templates etc.).
+  const moveStepToObjective = (
+    fromPhaseIdx: number, fromObjIdx: number, stepId: string,
+    toPhaseIdx: number, toObjIdx: number,
+  ) => {
+    if (fromPhaseIdx === toPhaseIdx && fromObjIdx === toObjIdx) return;
+    setPhases(prev => {
+      const step = prev[fromPhaseIdx]?.objectives[fromObjIdx]?.items.find(s => s.id === stepId);
+      if (!step) return prev;
+      return prev.map((p, pi) => {
+        let objectives = p.objectives;
+        // Remove da origem
+        if (pi === fromPhaseIdx) {
+          objectives = objectives.map((o, oi) =>
+            oi === fromObjIdx ? { ...o, items: o.items.filter(s => s.id !== stepId) } : o
+          );
+        }
+        // Adiciona ao destino (roda depois do filtro quando é a mesma fase)
+        if (pi === toPhaseIdx) {
+          objectives = objectives.map((o, oi) =>
+            oi === toObjIdx ? { ...o, items: [...o.items, step] } : o
+          );
+        }
+        return objectives === p.objectives ? p : { ...p, objectives };
+      });
+    });
+    toast.success('Passo movido');
   };
 
   // ─────────── Autosave (debounce) ───────────
@@ -1324,6 +1356,46 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             >
                                               <PenLine className="h-3.5 w-3.5" />
                                             </Button>
+                                            {phases.reduce((n, p) => n + p.objectives.length, 0) > 1 && (
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-foreground flex-shrink-0"
+                                                    title="Mover passo para outro objetivo / fase"
+                                                  >
+                                                    <FolderInput className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                                                  {phases.map((p, pi) => (
+                                                    <div key={p.stageId}>
+                                                      <DropdownMenuLabel className="flex items-center gap-1.5 text-[11px]">
+                                                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                                                        {p.stageName || `Fase ${pi + 1}`}
+                                                      </DropdownMenuLabel>
+                                                      {p.objectives.length === 0 ? (
+                                                        <DropdownMenuItem disabled className="text-[11px] italic opacity-60 pl-5">Sem objetivos</DropdownMenuItem>
+                                                      ) : p.objectives.map((o, oi) => {
+                                                        const isCurrent = pi === phaseIdx && oi === objIdx;
+                                                        return (
+                                                          <DropdownMenuItem
+                                                            key={`${p.stageId}-${oi}`}
+                                                            disabled={isCurrent}
+                                                            onSelect={() => moveStepToObjective(phaseIdx, objIdx, step.id, pi, oi)}
+                                                            className="text-xs pl-5"
+                                                          >
+                                                            {o.name || `Objetivo ${oi + 1}`}{isCurrent ? ' (atual)' : ''}
+                                                          </DropdownMenuItem>
+                                                        );
+                                                      })}
+                                                      {pi < phases.length - 1 && <DropdownMenuSeparator />}
+                                                    </div>
+                                                  ))}
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
+                                            )}
                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
                                               <X className="h-3.5 w-3.5" />
                                             </Button>
