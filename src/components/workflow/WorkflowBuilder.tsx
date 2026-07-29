@@ -44,7 +44,9 @@ import {
   HelpCircle,
   Search,
   FolderInput,
+  MessagesSquare,
 } from 'lucide-react';
+import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
 import { TEMPLATE_VARIABLES } from '@/hooks/useActivityMessageTemplates';
@@ -169,6 +171,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
   const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, TemplateVariation[]>; activeTab: string } | null>(null);
   const [answersDialog, setAnswersDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; answers: StepAnswerOption[] } | null>(null);
+  // Chat interno da equipe sobre um passo específico do POP. Reusa o mesmo
+  // motor de chat das entidades (team_chat_messages no Externo), escopado por
+  // entity_type='pop_step' + entity_id=step.id (id estável entre saves).
+  const [stepChat, setStepChat] = useState<{ stepId: string; label: string } | null>(null);
   const [newAnswerLabel, setNewAnswerLabel] = useState('');
   const [newDocItem, setNewDocItem] = useState('');
   // Sensores de drag-and-drop: MouseSensor p/ desktop (só arrasta após mover 6px,
@@ -1356,6 +1362,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             >
                                               <PenLine className="h-3.5 w-3.5" />
                                             </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-primary"
+                                              title="Chat da equipe sobre este passo"
+                                              onClick={() => setStepChat({ stepId: step.id, label: step.label || `Passo ${stepIdx + 1}` })}
+                                            >
+                                              <MessagesSquare className="h-3.5 w-3.5" />
+                                            </Button>
                                             {phases.reduce((n, p) => n + p.objectives.length, 0) > 1 && (
                                               <DropdownMenu>
                                                 <DropdownMenuTrigger asChild>
@@ -2327,6 +2342,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       </DialogContent>
     </Dialog>
     <ConfirmDeleteDialog />
+
+    {/* Chat interno da equipe sobre um passo específico do POP */}
+    <TeamChatSheet
+      open={!!stepChat}
+      onOpenChange={(o) => !o && setStepChat(null)}
+      entityType="pop_step"
+      entityId={stepChat?.stepId || ''}
+      entityName={stepChat?.label}
+    />
     </>
   );
 }

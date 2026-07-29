@@ -17,6 +17,7 @@ export function TeamChatSheet({ open, onOpenChange, entityType, entityId, entity
     activity: 'Atividade',
     contact: 'Contato',
     workflow: 'POP',
+    pop_step: 'Passo do POP',
   };
 
   return (
