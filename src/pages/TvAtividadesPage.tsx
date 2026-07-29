@@ -220,9 +220,11 @@ export default function TvAtividadesPage() {
   // Nome do que está na tela agora (todos = "Ranking Geral").
   const currentViewName = teamId === '' ? 'Ranking Geral' : (selectedTeamName || titulo);
 
-  // Sequência do rodízio: Ranking Geral ('') + cada time. O grupo Gerencial não
-  // entra no ciclo automático (é uma visão sob demanda).
-  const rotateCycle = useMemo(() => ['', ...teams.map(t => t.id)], [teams]);
+  // Sequência do rodízio: Ranking Geral ('') → cada time → Gerencial e Diretoria.
+  const rotateCycle = useMemo(
+    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL],
+    [teams],
+  );
   const rotateIdx = rotateCycle.indexOf(teamId);
   const rotatePos = rotateIdx >= 0 ? rotateIdx + 1 : 1;
 
