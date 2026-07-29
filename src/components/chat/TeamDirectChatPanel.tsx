@@ -19,6 +19,7 @@ import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
   Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer, Forward, Phone,
+  MessageCircleReply,
 } from 'lucide-react';
 import { useCall } from '@/contexts/CallContext';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
@@ -97,6 +98,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
+  // "Responder no privado": mensagem de grupo respondida na conversa direta com o autor
+  const [privateReply, setPrivateReply] = useState<{ msg: TeamMessage; groupName: string; targetConvId: string } | null>(null);
   const [forwardingMsg, setForwardingMsg] = useState<TeamMessage | null>(null);
   const [forwardSearch, setForwardSearch] = useState('');
   const [forwardSending, setForwardSending] = useState(false);
@@ -316,10 +319,51 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
 
+  // ===== Responder no privado (mensagem de grupo → conversa direta) =====
+  // Como no "Encaminhar", o contexto vai no próprio content (cabeçalho + trecho
+  // citado): fica legível no preview, no push e pra IA, sem mudança de schema.
+  const PVT_PREFIX = '↩️ Em resposta no grupo';
+  const parsePrivateReply = (content: string | null): { header: string | null; body: string } => {
+    const m = (content || '').match(/^(↩️ Em resposta no grupo[^\n]*)\n?([\s\S]*)$/);
+    if (!m) return { header: null, body: content || '' };
+    return { header: m[1], body: m[2] || '' };
+  };
+
+  const msgPreviewText = (msg: TeamMessage): string =>
+    msg.content
+    || (msg.message_type === 'image' ? '📷 Imagem'
+      : msg.message_type === 'audio' ? '🎤 Áudio'
+      : msg.message_type === 'file' ? `📎 ${msg.file_name || 'Arquivo'}` : '...');
+
+  const buildPrivateReplyHeader = (pr: { msg: TeamMessage; groupName: string }): string => {
+    const excerpt = msgPreviewText(pr.msg).replace(/\s+/g, ' ').trim().slice(0, 120);
+    return `${PVT_PREFIX} ${pr.groupName}: “${excerpt}”`;
+  };
+
+  const startPrivateReply = async (msg: TeamMessage, groupName: string) => {
+    if (!msg.sender_id || msg.sender_id === user?.id) return;
+    const convId = await startDirectChat(msg.sender_id);
+    if (!convId) return;
+    setReplyingTo(null);
+    setPrivateReply({ msg, groupName, targetConvId: convId });
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+  };
+
+  // Trocou de conversa sem enviar → descarta o contexto do "responder no privado"
+  useEffect(() => {
+    if (privateReply && activeConversationId !== privateReply.targetConvId) {
+      setPrivateReply(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversationId]);
+
   const handleSend = async () => {
     if (!messageText.trim()) return;
     const mentionedIds = resolveMentionedUserIds(messageText);
-    await sendMessage(messageText, {
+    const content = privateReply
+      ? `${buildPrivateReplyHeader(privateReply)}\n${messageText}`
+      : messageText;
+    await sendMessage(content, {
       mentionedUserIds: mentionedIds,
       reply_to_id: replyingTo?.id || null,
       is_urgent: urgent,
@@ -327,6 +371,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     setMessageText('');
     mentionedUsersRef.current.clear();
     setReplyingTo(null);
+    setPrivateReply(null);
     setUrgent(false);
   };
 
@@ -800,6 +845,25 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       );
     }
 
+    // Resposta no privado: cabeçalho citando a mensagem do grupo
+    const pvt = parsePrivateReply(msg.content);
+    if (pvt.header) {
+      return (
+        <div>
+          <div className={cn(
+            'flex items-start gap-1 mb-1 pl-2 pr-2 py-1 border-l-2 rounded text-[11px] italic opacity-80',
+            isMe ? 'border-primary-foreground/60 bg-primary-foreground/10' : 'border-primary bg-background/60'
+          )}>
+            <MessageCircleReply className="h-3 w-3 shrink-0 mt-0.5" />
+            <span className="break-words">{pvt.header.replace('↩️ ', '')}</span>
+          </div>
+          <p className="text-sm whitespace-pre-wrap break-words">
+            {renderMessageWithMentions(pvt.body, handleMentionNavigate)}
+          </p>
+        </div>
+      );
+    }
+
     // Text with entity mentions
     return (
       <div>
@@ -1073,6 +1137,16 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       >
                         <Reply className="h-3.5 w-3.5" />
                       </button>
+                      {activeConv?.type === 'group' && !isGoneUser(msg.sender_id) && (
+                        <button
+                          type="button"
+                          onClick={() => startPrivateReply(msg, activeConv?.name || 'grupo')}
+                          className="p-1 rounded hover:bg-accent text-muted-foreground"
+                          title={`Responder no privado (abre a conversa direta com ${msg.sender_name || 'o autor'})`}
+                        >
+                          <MessageCircleReply className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
@@ -1182,6 +1256,28 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               >
                 sua média: <b>{fmtAvg(myAvgResp)}</b>
               </span>
+            </div>
+          )}
+
+          {privateReply && (
+            <div className="px-3 py-1.5 border-b bg-primary/5 flex items-start gap-2">
+              <MessageCircleReply className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[10px] font-semibold text-primary">
+                  Respondendo no privado — {privateReply.msg.sender_name || 'mensagem'} no grupo {privateReply.groupName}
+                </div>
+                <div className="text-[11px] text-muted-foreground truncate">
+                  {msgPreviewText(privateReply.msg)}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPrivateReply(null)}
+                className="p-1 rounded hover:bg-accent text-muted-foreground shrink-0"
+                title="Cancelar resposta no privado"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </div>
           )}
 
