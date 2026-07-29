@@ -10,6 +10,11 @@
 //       Justiça Federal    (dígito J=4 do CNJ) → Gisele
 //       Demais ramos → responsible_user_id do processo; sem ele, NÃO cria.
 //
+// Datas (29/07/2026): a atividade é criada PARA O DIA EM QUE A ATUALIZAÇÃO
+// CHEGA (deadline/notification_date = hoje), não mais para a data do
+// compromisso. A data real (audiência/fim do prazo) vai na descrição e segue
+// valendo pro descarte de vencidos e pra prioridade urgente.
+//
 // Idempotente: dedupe por action_source='escavador_compromissos' +
 // action_source_detail=<hash do compromisso> — sem migration nova.
 //
@@ -143,6 +148,17 @@ async function resolveAssignee(
   return null;
 }
 
+/** Data do compromisso em si: evento (audiência/perícia) ou fim do prazo. */
+function dataDoCompromisso(c: CompromissoExtraido): string | null {
+  if (c.tipo !== 'prazo') return c.data_evento ? c.data_evento.slice(0, 10) : null;
+  return c.prazo_dias && c.data_movimentacao ? addDays(c.data_movimentacao, c.prazo_dias) : null;
+}
+
+function fmtBr(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 function buildActivityRow(
   c: CompromissoExtraido,
   process: ProcessRow,
@@ -150,9 +166,7 @@ function buildActivityRow(
   hoje: string,
 ) {
   const isEvento = c.tipo !== 'prazo';
-  const deadline = isEvento
-    ? (c.data_evento ? c.data_evento.slice(0, 10) : null)
-    : (c.prazo_dias && c.data_movimentacao ? addDays(c.data_movimentacao, c.prazo_dias) : null);
+  const dataCompromisso = dataDoCompromisso(c);
 
   const activityType = c.tipo === 'prazo' ? 'prazo' : 'audiencia';
   const leadName = process.leads?.lead_name || null;
@@ -160,6 +174,10 @@ function buildActivityRow(
   const partes: string[] = [];
   if (c.descricao) partes.push(c.descricao);
   if (c.data_movimentacao) partes.push(`📌 Movimentação de ${c.data_movimentacao.slice(0, 10)}.`);
+  if (dataCompromisso) {
+    const rotulo = c.tipo === 'pericia' ? 'Perícia' : c.tipo === 'audiencia' ? 'Audiência' : 'Fim do prazo';
+    partes.push(`📅 ${rotulo} em ${fmtBr(dataCompromisso)}.`);
+  }
   if (isEvento && c.hora_evento) partes.push(`🕐 Horário: ${c.hora_evento}.`);
   if (c.tipo === 'prazo' && c.prazo_dias) {
     partes.push(`⚠️ Prazo de ${c.prazo_dias} dias contado em dias CORRIDOS a partir da movimentação — conferir dias úteis e data de publicação antes de confiar na data.`);
@@ -168,8 +186,9 @@ function buildActivityRow(
     partes.push('⚠️ Intimação sem prazo em dias explícito — conferir o prazo aplicável.');
   }
 
-  // urgente quando falta <= 3 dias; alta no resto (compromisso processual nunca é baixa)
-  const priority = deadline && addDays(hoje, 3) >= deadline ? 'urgente' : 'alta';
+  // urgente quando o compromisso real está a <= 3 dias; alta no resto
+  // (compromisso processual nunca é baixa)
+  const priority = dataCompromisso && addDays(hoje, 3) >= dataCompromisso ? 'urgente' : 'alta';
 
   return {
     lead_id: process.lead_id,
@@ -185,8 +204,10 @@ function buildActivityRow(
     priority,
     assigned_to: assignee.id,
     assigned_to_name: assignee.name,
-    deadline,
-    notification_date: deadline ? (addDays(deadline, -2) > hoje ? addDays(deadline, -2) : hoje) : null,
+    // A tarefa nasce datada pro dia da chegada da atualização — a data real do
+    // compromisso fica na descrição e no ai_generation_context.
+    deadline: hoje,
+    notification_date: hoje,
     created_by: assignee.id,
     is_system: true,
     created_by_ai: false,
@@ -379,13 +400,13 @@ async function syncProcess(
       counts.sem_responsavel++;
       continue;
     }
-    const row = buildActivityRow(c, process, assignee, hoje);
     // Compromisso já vencido não vira tarefa (audiência passada, prazo estourado).
-    if (row.deadline && row.deadline < hoje) {
+    const dataCompromisso = dataDoCompromisso(c);
+    if (dataCompromisso && dataCompromisso < hoje) {
       counts.vencidos++;
       continue;
     }
-    rows.push(row);
+    rows.push(buildActivityRow(c, process, assignee, hoje));
   }
 
   // Insert linha a linha: o índice único do sistema (lead_activities_dedup_pending_idx,
