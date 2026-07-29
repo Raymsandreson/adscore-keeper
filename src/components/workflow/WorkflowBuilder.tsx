@@ -43,12 +43,15 @@ import {
   ChevronUp,
   HelpCircle,
   Search,
+  FolderInput,
+  MessagesSquare,
 } from 'lucide-react';
+import { TeamChatSheet } from '@/components/chat/TeamChatSheet';
 import { useKanbanBoards, KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
 import { useChecklists, ChecklistItem, DocChecklistItem, CHECKLIST_TYPES, ChecklistType, ACTIVITY_MESSAGE_FIELDS, TemplateVariation, StepAnswerOption, normalizeMessageTemplates, serializeMessageTemplates } from '@/hooks/useChecklists';
 import { TEMPLATE_VARIABLES } from '@/hooks/useActivityMessageTemplates';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -62,6 +65,7 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
+  useDroppable,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -78,9 +82,11 @@ import { CSS } from '@dnd-kit/utilities';
 // `setNodeRef`/`style` na raiz do item e `attributes`/`listeners` na alça (GripVertical).
 function Sortable({
   id,
+  data,
   children,
 }: {
   id: string;
+  data?: Record<string, unknown>;
   children: (args: {
     setNodeRef: (el: HTMLElement | null) => void;
     style: CSSProperties;
@@ -89,7 +95,7 @@ function Sortable({
     isDragging: boolean;
   }) => ReactNode;
 }) {
-  const { setNodeRef, transform, transition, attributes, listeners, isDragging } = useSortable({ id });
+  const { setNodeRef, transform, transition, attributes, listeners, isDragging } = useSortable({ id, data });
   const style: CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -99,6 +105,40 @@ function Sortable({
   return <>{children({ setNodeRef, style, attributes, listeners, isDragging })}</>;
 }
 
+// Área "solta" de um objetivo: torna o objetivo inteiro um alvo de drop de
+// passos, inclusive quando está vazio ou ao soltar no espaço em branco da lista.
+function StepZone({ phaseIdx, objIdx, className, children }: {
+  phaseIdx: number;
+  objIdx: number;
+  className?: string;
+  children: ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `stepzone-${phaseIdx}-${objIdx}`,
+    data: { type: 'step', phaseIdx, objIdx, container: true },
+  });
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(className, isOver && 'rounded-md ring-1 ring-green-400/70 bg-green-50/40 dark:bg-green-950/20')}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Detecção de colisão que só considera alvos do MESMO tipo do item arrastado
+// (fase↔fase, objetivo↔objetivo, passo↔passo/zona-de-passo). Permite que os
+// três níveis convivam num único DndContext sem um interferir no outro.
+function typeAwareCollision(args: Parameters<typeof closestCenter>[0]) {
+  const activeType = (args.active?.data?.current as { type?: string } | undefined)?.type;
+  if (!activeType) return closestCenter(args);
+  const containers = args.droppableContainers.filter(
+    c => (c.data?.current as { type?: string } | undefined)?.type === activeType
+  );
+  return closestCenter({ ...args, droppableContainers: containers });
+}
+
 interface WorkflowBuilderProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -106,6 +146,11 @@ interface WorkflowBuilderProps {
   initialEditBoardId?: string | null;
   initialCreateNew?: boolean;
   boardType?: 'workflow' | 'funnel';
+  // Deep-link de menção do chat de passo: ao abrir editando um board, rola até
+  // este passo, destaca-o e (se pedido) abre o chat da equipe já no passo.
+  initialOpenStepId?: string | null;
+  initialOpenStepChat?: boolean;
+  initialHighlightMsgId?: string | null;
 }
 
 interface PhaseObjective {
@@ -128,7 +173,7 @@ interface PhaseConfig {
 
 type ViewMode = 'list' | 'edit';
 
-export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew, boardType = 'workflow' }: WorkflowBuilderProps) {
+export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew, boardType = 'workflow', initialOpenStepId, initialOpenStepChat, initialHighlightMsgId }: WorkflowBuilderProps) {
   const { boards: allBoards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
   const boards = allBoards.filter(b => b.board_type === boardType);
   const isFunnel = boardType === 'funnel';
@@ -168,6 +213,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
   const [msgTemplatesDialog, setMsgTemplatesDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; templates: Record<string, TemplateVariation[]>; activeTab: string } | null>(null);
   const [answersDialog, setAnswersDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; answers: StepAnswerOption[] } | null>(null);
+  // Chat interno da equipe sobre um passo específico do POP. Reusa o mesmo
+  // motor de chat das entidades (team_chat_messages no Externo), escopado por
+  // entity_type='pop_step' + entity_id=step.id (id estável entre saves).
+  const [stepChat, setStepChat] = useState<{ stepId: string; label: string; highlightMsgId?: string | null } | null>(null);
+  // Guarda o passo-alvo do deep-link até as fases carregarem (evita rolar
+  // antes do board estar montado). Consumido uma única vez.
+  const pendingDeepLinkRef = useRef<{ stepId: string; openChat: boolean; msgId?: string | null } | null>(null);
   const [newAnswerLabel, setNewAnswerLabel] = useState('');
   const [newDocItem, setNewDocItem] = useState('');
   // Sensores de drag-and-drop: MouseSensor p/ desktop (só arrasta após mover 6px,
@@ -195,12 +247,23 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     if (!open) {
       // Reset on close
       resetForm();
+      pendingDeepLinkRef.current = null;
       return;
+    }
+
+    // Deep-link de menção: arma o alvo pra ser consumido quando as fases
+    // do board carregarem (ver effect abaixo).
+    if (initialOpenStepId) {
+      pendingDeepLinkRef.current = {
+        stepId: initialOpenStepId,
+        openChat: !!initialOpenStepChat,
+        msgId: initialHighlightMsgId,
+      };
     }
 
     fetchBoards();
     fetchTemplates();
-  }, [open]);
+  }, [open, initialOpenStepId, initialOpenStepChat, initialHighlightMsgId]);
 
   // Handle initialEditBoardId or initialCreateNew after boards load
   useEffect(() => {
@@ -606,49 +669,122 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       ),
     });
   };
-  // Reordenar fases (nível 1) — id sortable = stageId.
-  const handlePhaseDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
+  // ─────────── Drag-and-drop unificado (um único DndContext p/ os 3 níveis) ───────────
+  // O tipo do item arrastado vem de active.data.current.type; a colisão é
+  // filtrada por tipo (typeAwareCollision), então passo só cai em passo/zona,
+  // objetivo só em objetivo, fase só em fase.
+
+  // Move/reordena um passo — mesmo objetivo (reordena) ou objetivo/fase
+  // diferente (remove da origem e insere na posição do alvo).
+  const handleStepDrag = (active: DragEndEvent['active'], over: NonNullable<DragEndEvent['over']>) => {
+    const a = active.data.current as { phaseIdx?: number; objIdx?: number } | undefined;
+    const o = over.data.current as { type?: string; phaseIdx?: number; objIdx?: number; container?: boolean } | undefined;
+    if (!a || a.phaseIdx == null || a.objIdx == null) return;
+    if (!o || o.type !== 'step' || o.phaseIdx == null || o.objIdx == null) return;
+    const stepId = String(active.id);
+    const fromP = a.phaseIdx, fromO = a.objIdx;
+    const toP = o.phaseIdx, toO = o.objIdx;
+    const overStepId = o.container ? null : String(over.id);
+
     setPhases(prev => {
-      const oldIndex = prev.findIndex(p => p.stageId === active.id);
-      const newIndex = prev.findIndex(p => p.stageId === over.id);
-      if (oldIndex < 0 || newIndex < 0) return prev;
-      return arrayMove(prev, oldIndex, newIndex);
+      const step = prev[fromP]?.objectives[fromO]?.items.find(s => s.id === stepId);
+      if (!step) return prev;
+
+      // Mesmo objetivo → reordena
+      if (fromP === toP && fromO === toO) {
+        if (!overStepId || overStepId === stepId) return prev;
+        return prev.map((p, pi) => pi !== toP ? p : {
+          ...p,
+          objectives: p.objectives.map((ob, oi) => {
+            if (oi !== toO) return ob;
+            const oldIdx = ob.items.findIndex(s => s.id === stepId);
+            const newIdx = ob.items.findIndex(s => s.id === overStepId);
+            if (oldIdx < 0 || newIdx < 0) return ob;
+            return { ...ob, items: arrayMove(ob.items, oldIdx, newIdx) };
+          }),
+        });
+      }
+
+      // Objetivo/fase diferente → remove da origem, insere no destino
+      return prev.map((p, pi) => {
+        let objectives = p.objectives;
+        if (pi === fromP) {
+          objectives = objectives.map((ob, oi) => oi === fromO ? { ...ob, items: ob.items.filter(s => s.id !== stepId) } : ob);
+        }
+        if (pi === toP) {
+          objectives = objectives.map((ob, oi) => {
+            if (oi !== toO) return ob;
+            const items = [...ob.items];
+            const at = overStepId ? items.findIndex(s => s.id === overStepId) : -1;
+            items.splice(at < 0 ? items.length : at, 0, step);
+            return { ...ob, items };
+          });
+        }
+        return objectives === p.objectives ? p : { ...p, objectives };
+      });
     });
   };
 
-  // Reordenar objetivos dentro de uma fase (nível 2) — id sortable = índice do objetivo.
-  const handleObjectiveDragEnd = (phaseIdx: number, event: DragEndEvent) => {
+  const handleWorkflowDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = Number(active.id);
-    const newIndex = Number(over.id);
-    if (Number.isNaN(oldIndex) || Number.isNaN(newIndex)) return;
-    setPhases(prev => prev.map((p, pi) =>
-      pi === phaseIdx
-        ? { ...p, objectives: arrayMove(p.objectives, oldIndex, newIndex) }
-        : p
-    ));
+    if (!over) return;
+    const aType = (active.data.current as { type?: string } | undefined)?.type;
+
+    if (aType === 'phase') {
+      if (active.id === over.id) return;
+      setPhases(prev => {
+        const oldIndex = prev.findIndex(p => p.stageId === active.id);
+        const newIndex = prev.findIndex(p => p.stageId === over.id);
+        if (oldIndex < 0 || newIndex < 0) return prev;
+        return arrayMove(prev, oldIndex, newIndex);
+      });
+      return;
+    }
+
+    if (aType === 'objective') {
+      const a = active.data.current as { phaseIdx?: number; objIdx?: number } | undefined;
+      const o = over.data.current as { type?: string; phaseIdx?: number; objIdx?: number } | undefined;
+      if (!a || a.phaseIdx == null || a.objIdx == null) return;
+      if (!o || o.type !== 'objective' || o.phaseIdx !== a.phaseIdx || o.objIdx == null) return; // só reordena na mesma fase
+      if (a.objIdx === o.objIdx) return;
+      setPhases(prev => prev.map((p, pi) => pi === a.phaseIdx ? { ...p, objectives: arrayMove(p.objectives, a.objIdx!, o.objIdx!) } : p));
+      return;
+    }
+
+    if (aType === 'step') {
+      handleStepDrag(active, over);
+    }
   };
 
-  // Reordenar passos dentro de um objetivo (nível 3) — id sortable = step.id.
-  const handleStepDragEnd = (phaseIdx: number, objIdx: number, event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    setPhases(prev => prev.map((p, pi) => {
-      if (pi !== phaseIdx) return p;
-      return {
-        ...p,
-        objectives: p.objectives.map((o, oi) => {
-          if (oi !== objIdx) return o;
-          const oldIndex = o.items.findIndex(s => s.id === active.id);
-          const newIndex = o.items.findIndex(s => s.id === over.id);
-          if (oldIndex < 0 || newIndex < 0) return o;
-          return { ...o, items: arrayMove(o.items, oldIndex, newIndex) };
-        }),
-      };
-    }));
+  // Mover um passo para OUTRO objetivo (mesma fase ou fase diferente).
+  // Remove da origem e adiciona ao fim do objetivo de destino, preservando
+  // todas as configs do passo (respostas, checklist, templates etc.).
+  const moveStepToObjective = (
+    fromPhaseIdx: number, fromObjIdx: number, stepId: string,
+    toPhaseIdx: number, toObjIdx: number,
+  ) => {
+    if (fromPhaseIdx === toPhaseIdx && fromObjIdx === toObjIdx) return;
+    setPhases(prev => {
+      const step = prev[fromPhaseIdx]?.objectives[fromObjIdx]?.items.find(s => s.id === stepId);
+      if (!step) return prev;
+      return prev.map((p, pi) => {
+        let objectives = p.objectives;
+        // Remove da origem
+        if (pi === fromPhaseIdx) {
+          objectives = objectives.map((o, oi) =>
+            oi === fromObjIdx ? { ...o, items: o.items.filter(s => s.id !== stepId) } : o
+          );
+        }
+        // Adiciona ao destino (roda depois do filtro quando é a mesma fase)
+        if (pi === toPhaseIdx) {
+          objectives = objectives.map((o, oi) =>
+            oi === toObjIdx ? { ...o, items: [...o.items, step] } : o
+          );
+        }
+        return objectives === p.objectives ? p : { ...p, objectives };
+      });
+    });
+    toast.success('Passo movido');
   };
 
   // ─────────── Autosave (debounce) ───────────
@@ -925,6 +1061,43 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     }, 160);
   };
 
+  // Consome o deep-link de menção assim que as fases do board carregam:
+  // localiza o passo, expande fase+objetivo, rola/destaca e (se pedido) abre
+  // o chat da equipe já posicionado no passo com a mensagem destacada.
+  useEffect(() => {
+    const target = pendingDeepLinkRef.current;
+    if (!target || viewMode !== 'edit' || phases.length === 0) return;
+
+    let found: { phaseIdx: number; objIdx: number; label: string } | null = null;
+    phases.forEach((p, pi) => p.objectives.forEach((o, oi) => {
+      const step = o.items.find(s => s.id === target.stepId);
+      if (step) found = { phaseIdx: pi, objIdx: oi, label: step.label || 'Passo' };
+    }));
+    if (!found) return;
+
+    // Alvo encontrado — consome (não repetir em re-renders).
+    pendingDeepLinkRef.current = null;
+    const { phaseIdx, objIdx, label } = found;
+
+    setPhases(prev => prev.map((p, pi) =>
+      pi === phaseIdx
+        ? { ...p, isExpanded: true, objectives: p.objectives.map((o, oi) => oi === objIdx ? { ...o, isExpanded: true } : o) }
+        : p
+    ));
+
+    window.setTimeout(() => {
+      const el = document.getElementById(`wf-step-${target.stepId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+        window.setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 2000);
+      }
+      if (target.openChat) {
+        setStepChat({ stepId: target.stepId, label, highlightMsgId: target.msgId });
+      }
+    }, 250);
+  }, [phases, viewMode]);
+
   // Destaca a ocorrência da busca dentro de um trecho de texto.
   const highlightMatch = (text: string): ReactNode => {
     const q = searchQuery.trim();
@@ -1109,10 +1282,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
               {/* Phases → Objectives → Steps */}
               <div className="space-y-3">
-                <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handlePhaseDragEnd}>
+                <DndContext sensors={sensors} collisionDetection={typeAwareCollision} onDragEnd={handleWorkflowDragEnd}>
                 <SortableContext items={phases.map(p => p.stageId)} strategy={verticalListSortingStrategy}>
                 {phases.map((phase, phaseIdx) => (
-                   <Sortable key={phase.stageId} id={phase.stageId}>
+                   <Sortable key={phase.stageId} id={phase.stageId} data={{ type: 'phase' }}>
                    {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                    <div
                      ref={setNodeRef}
@@ -1170,10 +1343,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                           <p className="text-xs text-muted-foreground italic px-4 py-3">Nenhum objetivo adicionado</p>
                         )}
 
-                        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleObjectiveDragEnd(phaseIdx, e)}>
-                        <SortableContext items={phase.objectives.map((_, i) => String(i))} strategy={verticalListSortingStrategy}>
+                        <SortableContext items={phase.objectives.map((_, i) => `obj-${phaseIdx}-${i}`)} strategy={verticalListSortingStrategy}>
                         {phase.objectives.map((obj, objIdx) => (
-                           <Sortable key={objIdx} id={String(objIdx)}>
+                           <Sortable key={objIdx} id={`obj-${phaseIdx}-${objIdx}`} data={{ type: 'objective', phaseIdx, objIdx }}>
                            {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                            <div
                              ref={setNodeRef}
@@ -1245,14 +1417,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                      <ClipboardList className="h-3 w-3" />
                                      Passos
                                    </Label>
-                                   <div className="mt-1.5 space-y-2">
+                                   <StepZone phaseIdx={phaseIdx} objIdx={objIdx} className="mt-1.5 space-y-2">
                                     {obj.items.length === 0 ? (
-                                      <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado</p>
+                                      <p className="text-[11px] text-muted-foreground italic py-1">Nenhum passo adicionado (arraste um passo pra cá)</p>
                                     ) : (
-                                      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e) => handleStepDragEnd(phaseIdx, objIdx, e)}>
                                       <SortableContext items={obj.items.map(s => s.id)} strategy={verticalListSortingStrategy}>
                                       {obj.items.map((step, stepIdx) => (
-                                        <Sortable key={step.id} id={step.id}>
+                                        <Sortable key={step.id} id={step.id} data={{ type: 'step', phaseIdx, objIdx }}>
                                         {({ setNodeRef, style, attributes, listeners, isDragging }) => (
                                         <div
                                           ref={setNodeRef}
@@ -1324,6 +1495,55 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                             >
                                               <PenLine className="h-3.5 w-3.5" />
                                             </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="icon"
+                                              className="h-6 w-6 flex-shrink-0 text-muted-foreground hover:text-primary"
+                                              title="Chat da equipe sobre este passo"
+                                              onClick={() => setStepChat({ stepId: step.id, label: step.label || `Passo ${stepIdx + 1}` })}
+                                            >
+                                              <MessagesSquare className="h-3.5 w-3.5" />
+                                            </Button>
+                                            {phases.reduce((n, p) => n + p.objectives.length, 0) > 1 && (
+                                              <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="icon"
+                                                    className="h-6 w-6 text-muted-foreground hover:text-foreground flex-shrink-0"
+                                                    title="Mover passo para outro objetivo / fase"
+                                                  >
+                                                    <FolderInput className="h-3.5 w-3.5" />
+                                                  </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="max-h-72 overflow-y-auto">
+                                                  {phases.map((p, pi) => (
+                                                    <div key={p.stageId}>
+                                                      <DropdownMenuLabel className="flex items-center gap-1.5 text-[11px]">
+                                                        <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ backgroundColor: p.stageColor }} />
+                                                        {p.stageName || `Fase ${pi + 1}`}
+                                                      </DropdownMenuLabel>
+                                                      {p.objectives.length === 0 ? (
+                                                        <DropdownMenuItem disabled className="text-[11px] italic opacity-60 pl-5">Sem objetivos</DropdownMenuItem>
+                                                      ) : p.objectives.map((o, oi) => {
+                                                        const isCurrent = pi === phaseIdx && oi === objIdx;
+                                                        return (
+                                                          <DropdownMenuItem
+                                                            key={`${p.stageId}-${oi}`}
+                                                            disabled={isCurrent}
+                                                            onSelect={() => moveStepToObjective(phaseIdx, objIdx, step.id, pi, oi)}
+                                                            className="text-xs pl-5"
+                                                          >
+                                                            {o.name || `Objetivo ${oi + 1}`}{isCurrent ? ' (atual)' : ''}
+                                                          </DropdownMenuItem>
+                                                        );
+                                                      })}
+                                                      {pi < phases.length - 1 && <DropdownMenuSeparator />}
+                                                    </div>
+                                                  ))}
+                                                </DropdownMenuContent>
+                                              </DropdownMenu>
+                                            )}
                                             <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive/80 hover:text-destructive flex-shrink-0" onClick={() => removeStep(phaseIdx, objIdx, step.id)}>
                                               <X className="h-3.5 w-3.5" />
                                             </Button>
@@ -1452,9 +1672,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                         </Sortable>
                                       ))}
                                       </SortableContext>
-                                      </DndContext>
                                     )}
-                                  </div>
+                                  </StepZone>
                                 </div>
 
                                 {/* Add step */}
@@ -1466,7 +1685,6 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                            </Sortable>
                         ))}
                         </SortableContext>
-                        </DndContext>
                       </div>
                     )}
                   </div>
@@ -2255,6 +2473,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       </DialogContent>
     </Dialog>
     <ConfirmDeleteDialog />
+
+    {/* Chat interno da equipe sobre um passo específico do POP */}
+    <TeamChatSheet
+      open={!!stepChat}
+      onOpenChange={(o) => !o && setStepChat(null)}
+      entityType="pop_step"
+      entityId={stepChat?.stepId || ''}
+      entityName={stepChat?.label}
+      highlightMessageId={stepChat?.highlightMsgId}
+    />
     </>
   );
 }
