@@ -146,6 +146,11 @@ interface WorkflowBuilderProps {
   initialEditBoardId?: string | null;
   initialCreateNew?: boolean;
   boardType?: 'workflow' | 'funnel';
+  // Deep-link de menção do chat de passo: ao abrir editando um board, rola até
+  // este passo, destaca-o e (se pedido) abre o chat da equipe já no passo.
+  initialOpenStepId?: string | null;
+  initialOpenStepChat?: boolean;
+  initialHighlightMsgId?: string | null;
 }
 
 interface PhaseObjective {
@@ -168,7 +173,7 @@ interface PhaseConfig {
 
 type ViewMode = 'list' | 'edit';
 
-export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew, boardType = 'workflow' }: WorkflowBuilderProps) {
+export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEditBoardId, initialCreateNew, boardType = 'workflow', initialOpenStepId, initialOpenStepChat, initialHighlightMsgId }: WorkflowBuilderProps) {
   const { boards: allBoards, fetchBoards, createBoard, updateBoard, deleteBoard } = useKanbanBoards();
   const boards = allBoards.filter(b => b.board_type === boardType);
   const isFunnel = boardType === 'funnel';
@@ -211,7 +216,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Chat interno da equipe sobre um passo específico do POP. Reusa o mesmo
   // motor de chat das entidades (team_chat_messages no Externo), escopado por
   // entity_type='pop_step' + entity_id=step.id (id estável entre saves).
-  const [stepChat, setStepChat] = useState<{ stepId: string; label: string } | null>(null);
+  const [stepChat, setStepChat] = useState<{ stepId: string; label: string; highlightMsgId?: string | null } | null>(null);
+  // Guarda o passo-alvo do deep-link até as fases carregarem (evita rolar
+  // antes do board estar montado). Consumido uma única vez.
+  const pendingDeepLinkRef = useRef<{ stepId: string; openChat: boolean; msgId?: string | null } | null>(null);
   const [newAnswerLabel, setNewAnswerLabel] = useState('');
   const [newDocItem, setNewDocItem] = useState('');
   // Sensores de drag-and-drop: MouseSensor p/ desktop (só arrasta após mover 6px,
@@ -239,12 +247,23 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     if (!open) {
       // Reset on close
       resetForm();
+      pendingDeepLinkRef.current = null;
       return;
+    }
+
+    // Deep-link de menção: arma o alvo pra ser consumido quando as fases
+    // do board carregarem (ver effect abaixo).
+    if (initialOpenStepId) {
+      pendingDeepLinkRef.current = {
+        stepId: initialOpenStepId,
+        openChat: !!initialOpenStepChat,
+        msgId: initialHighlightMsgId,
+      };
     }
 
     fetchBoards();
     fetchTemplates();
-  }, [open]);
+  }, [open, initialOpenStepId, initialOpenStepChat, initialHighlightMsgId]);
 
   // Handle initialEditBoardId or initialCreateNew after boards load
   useEffect(() => {
@@ -1041,6 +1060,43 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       window.setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 2000);
     }, 160);
   };
+
+  // Consome o deep-link de menção assim que as fases do board carregam:
+  // localiza o passo, expande fase+objetivo, rola/destaca e (se pedido) abre
+  // o chat da equipe já posicionado no passo com a mensagem destacada.
+  useEffect(() => {
+    const target = pendingDeepLinkRef.current;
+    if (!target || viewMode !== 'edit' || phases.length === 0) return;
+
+    let found: { phaseIdx: number; objIdx: number; label: string } | null = null;
+    phases.forEach((p, pi) => p.objectives.forEach((o, oi) => {
+      const step = o.items.find(s => s.id === target.stepId);
+      if (step) found = { phaseIdx: pi, objIdx: oi, label: step.label || 'Passo' };
+    }));
+    if (!found) return;
+
+    // Alvo encontrado — consome (não repetir em re-renders).
+    pendingDeepLinkRef.current = null;
+    const { phaseIdx, objIdx, label } = found;
+
+    setPhases(prev => prev.map((p, pi) =>
+      pi === phaseIdx
+        ? { ...p, isExpanded: true, objectives: p.objectives.map((o, oi) => oi === objIdx ? { ...o, isExpanded: true } : o) }
+        : p
+    ));
+
+    window.setTimeout(() => {
+      const el = document.getElementById(`wf-step-${target.stepId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        el.classList.add('ring-2', 'ring-primary', 'ring-offset-2');
+        window.setTimeout(() => el.classList.remove('ring-2', 'ring-primary', 'ring-offset-2'), 2000);
+      }
+      if (target.openChat) {
+        setStepChat({ stepId: target.stepId, label, highlightMsgId: target.msgId });
+      }
+    }, 250);
+  }, [phases, viewMode]);
 
   // Destaca a ocorrência da busca dentro de um trecho de texto.
   const highlightMatch = (text: string): ReactNode => {
@@ -2425,6 +2481,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       entityType="pop_step"
       entityId={stepChat?.stepId || ''}
       entityName={stepChat?.label}
+      highlightMessageId={stepChat?.highlightMsgId}
     />
     </>
   );

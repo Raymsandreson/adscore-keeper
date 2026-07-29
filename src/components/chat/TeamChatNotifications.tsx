@@ -420,6 +420,33 @@ export function TeamChatNotifications() {
           return `/leads?openContact=${entityId}${messageParam}`;
         case 'workflow':
           return `/workflow?openBoard=${entityId}${messageParam}`;
+        case 'pop_step': {
+          // entityId = id do passo. Resolve o board (POP) que o contém via
+          // template → stage link (tudo no Externo).
+          let boardId: string | null = null;
+          try {
+            await ensureExternalSession();
+            const { data: tmpl } = await (externalSupabase as any)
+              .from('checklist_templates')
+              .select('id')
+              .contains('items', [{ id: entityId }])
+              .limit(1)
+              .maybeSingle();
+            if (tmpl?.id) {
+              const { data: link } = await externalSupabase
+                .from('checklist_stage_links')
+                .select('board_id')
+                .eq('checklist_template_id', tmpl.id)
+                .limit(1)
+                .maybeSingle();
+              boardId = (link as { board_id?: string } | null)?.board_id ?? null;
+            }
+          } catch (e) {
+            console.error('Erro ao resolver o POP do passo:', e);
+          }
+          if (!boardId) return null;
+          return `/workflow-progress?editBoard=${boardId}&openStep=${entityId}&openStepChat=1${messageParam}`;
+        }
         case 'whatsapp':
           return `/whatsapp?openChat=${encodeURIComponent(entityId)}`;
         default:

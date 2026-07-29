@@ -11,7 +11,7 @@ import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
 import { openTeamChatConversation, subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
@@ -124,6 +124,37 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
       case 'workflow':
         navigate(`/workflow?openBoard=${mention.entity_id}${msgParam}`);
         break;
+      case 'pop_step': {
+        // entity_id = id do passo. Resolve o board (POP) que contém o passo
+        // via template → stage link, tudo no Externo.
+        let boardId: string | null = null;
+        try {
+          await ensureExternalSession();
+          const { data: tmpl } = await (externalSupabase as any)
+            .from('checklist_templates')
+            .select('id')
+            .contains('items', [{ id: mention.entity_id }])
+            .limit(1)
+            .maybeSingle();
+          if (tmpl?.id) {
+            const { data: link } = await externalSupabase
+              .from('checklist_stage_links')
+              .select('board_id')
+              .eq('checklist_template_id', tmpl.id)
+              .limit(1)
+              .maybeSingle();
+            boardId = (link as { board_id?: string } | null)?.board_id ?? null;
+          }
+        } catch (e) {
+          console.error('Erro ao resolver o POP do passo:', e);
+        }
+        if (!boardId) {
+          toast.error('O passo do POP não foi encontrado (pode ter sido removido).');
+          break;
+        }
+        navigate(`/workflow-progress?editBoard=${boardId}&openStep=${mention.entity_id}&openStepChat=1${msgParam}`);
+        break;
+      }
       case 'whatsapp':
         navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
         break;

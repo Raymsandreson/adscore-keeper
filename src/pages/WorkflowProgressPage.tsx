@@ -34,6 +34,12 @@ const WorkflowProgressPage = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const leadIdParam = searchParams.get('leadId');
+  // Deep-link de menção do chat de passo do POP.
+  const editBoardParam = searchParams.get('editBoard');
+  const openStepParam = searchParams.get('openStep');
+  const openStepChatParam = searchParams.get('openStepChat');
+  const highlightMsgParam = searchParams.get('highlightMsg');
+  const [deepLinkStep, setDeepLinkStep] = useState<{ stepId: string; openChat: boolean; msgId: string | null } | null>(null);
 
   const [leads, setLeads] = useState<LeadBasic[]>([]);
   const [boards, setBoards] = useState<KanbanBoard[]>([]);
@@ -112,6 +118,33 @@ const WorkflowProgressPage = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Deep-link de menção do chat de passo: quando a URL traz editBoard,
+  // abre o editor de POP naquele board e repassa o passo-alvo pro builder,
+  // que rola/destaca e abre o chat. Consome os params uma única vez.
+  useEffect(() => {
+    if (!editBoardParam || boards.length === 0) return;
+    const board = boards.find(b => b.id === editBoardParam);
+    if (board) {
+      setEditingWorkflow(board);
+      setShowConfig(true);
+      if (openStepParam) {
+        setDeepLinkStep({
+          stepId: openStepParam,
+          openChat: openStepChatParam === '1',
+          msgId: highlightMsgParam,
+        });
+      }
+    } else {
+      toast.error('POP da menção não foi encontrado.');
+    }
+    // Limpa só os params do deep-link, preservando o resto (ex.: leadId).
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      ['editBoard', 'openStep', 'openStepChat', 'highlightMsg'].forEach(k => next.delete(k));
+      return next;
+    }, { replace: true });
+  }, [editBoardParam, openStepParam, openStepChatParam, highlightMsgParam, boards, setSearchParams]);
 
   const handleSelectLead = (lead: LeadBasic) => {
     setSelectedLead(lead);
@@ -523,11 +556,14 @@ const WorkflowProgressPage = () => {
         open={showConfig}
         onOpenChange={(open) => {
           setShowConfig(open);
-          if (!open) { setEditingWorkflow(null); setCreateNewMode(false); }
+          if (!open) { setEditingWorkflow(null); setCreateNewMode(false); setDeepLinkStep(null); }
         }}
         onWorkflowSaved={fetchData}
         initialEditBoardId={editingWorkflow?.id || null}
         initialCreateNew={createNewMode}
+        initialOpenStepId={deepLinkStep?.stepId || null}
+        initialOpenStepChat={deepLinkStep?.openChat}
+        initialHighlightMsgId={deepLinkStep?.msgId || null}
       />
 
       {/* Visualização (fluxograma / mapa mental / detalhes) */}
