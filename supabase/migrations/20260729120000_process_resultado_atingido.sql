@@ -21,6 +21,7 @@
 -- Rollback:
 --   alter table public.lead_processes
 --     drop column if exists resultado_atingido,
+--     drop column if exists resultado_atingido_id,
 --     drop column if exists resultado_atingido_tipo,
 --     drop column if exists resultado_atingido_data,
 --     drop column if exists resultado_atingido_fonte,
@@ -34,6 +35,10 @@
 alter table public.lead_processes
   -- Resultado detectado (rótulo legível — ex: "Trânsito em julgado", "Acordo homologado").
   add column if not exists resultado_atingido text,
+  -- ID do resultado do POP (settings.resultados[].id) que o processo atingiu —
+  -- chave limpa pro ranking casar com resultado_esperado_ids. NULL quando o marco
+  -- detectado não tem resultado correspondente no POP.
+  add column if not exists resultado_atingido_id text,
   -- Marco tipado que originou o resultado (espelha process_movements.tipo_movimentacao).
   add column if not exists resultado_atingido_tipo text,
   -- Data do marco/intimação que caracterizou o resultado.

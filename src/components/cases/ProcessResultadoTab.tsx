@@ -98,6 +98,8 @@ interface AtingidoState {
 interface Props {
   processId: string;
   processType: string | null;
+  /** nº CNJ do processo — usado pra casar as intimações por e-mail (POP administrativo). */
+  processNumber: string | null;
   /** settings do POP vinculado (resultados + resultado esperado). */
   pop: PopResultConfig | null;
   /** override por-processo do status esperado, cru do banco (JSON array de ids,
@@ -119,9 +121,35 @@ function fmtDate(v: string | null): string {
   return isNaN(d.getTime()) ? v : d.toLocaleDateString('pt-BR');
 }
 
+function resultadoForMarco(tipo: MarcoTipo, pop: PopResultConfig | null): PopResultado | null {
+  return pop?.resultados?.find((r) => r.marco === tipo) || null;
+}
 function labelForMarco(tipo: MarcoTipo, pop: PopResultConfig | null): string {
-  const mapped = pop?.resultados?.find((r) => r.marco === tipo);
-  return mapped?.label || MARCO_LABEL[tipo] || tipo;
+  return resultadoForMarco(tipo, pop)?.label || MARCO_LABEL[tipo] || tipo;
+}
+
+function normalize(s: string): string {
+  return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+// Palavras que sugerem que a intimação carrega um desfecho (não é mero expediente).
+const ADMIN_DESFECHO_KW = [
+  'deferi', 'indeferi', 'concedi', 'homologa', 'sentenc', 'improcedent', 'procedent',
+  'exigencia', 'arquiva', 'cessa', 'concessao', 'negativa', 'decisao',
+];
+
+interface IntimacaoEmail {
+  id: string;
+  subject: string | null;
+  snippet: string | null;
+  body_text: string | null;
+  received_at: string | null;
+  has_movimentacao: boolean | null;
+}
+
+function looksLikeDesfecho(e: IntimacaoEmail): boolean {
+  const t = normalize(`${e.subject || ''} ${e.snippet || ''} ${e.body_text || ''}`);
+  return ADMIN_DESFECHO_KW.some((k) => t.includes(k));
 }
 
 /** Escolhe o desfecho mais conclusivo entre os marcos do processo (maior ordem). */
@@ -140,13 +168,37 @@ function pickDesfecho(movements: ProcessMovement[]): ProcessMovement | null {
 }
 
 export function ProcessResultadoTab({
-  processId, processType, pop, esperadoOverrideRaw, dataAlvo, atingido,
+  processId, processType, processNumber, pop, esperadoOverrideRaw, dataAlvo, atingido,
   onSetEsperado, onAtingidoWritten,
 }: Props) {
   const isAdministrativo = (processType || 'judicial') === 'administrativo';
   const { movements, loading } = useProcessMovements(processId);
   const [saving, setSaving] = useState(false);
   const autoWrittenRef = useRef<string | null>(null);
+
+  // Intimações por e-mail (POP administrativo): fonte do desfecho quando não há
+  // movimentação do Escavador. Só busca quando é administrativo e tem nº.
+  const [emails, setEmails] = useState<IntimacaoEmail[]>([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
+  useEffect(() => {
+    if (!isAdministrativo || !processNumber) { setEmails([]); return; }
+    let cancel = false;
+    setLoadingEmails(true);
+    (externalSupabase as unknown as { from: (t: string) => any })
+      .from('processual_emails')
+      .select('id, subject, snippet, body_text, received_at, has_movimentacao')
+      .eq('process_number', processNumber)
+      .is('deleted_at', null)
+      .order('received_at', { ascending: false })
+      .limit(8)
+      .then(({ data }: { data: IntimacaoEmail[] | null }) => {
+        if (!cancel) { setEmails(data || []); setLoadingEmails(false); }
+      });
+    return () => { cancel = true; };
+  }, [isAdministrativo, processNumber]);
+
+  // Intimação mais recente que parece carregar um desfecho — vira a evidência de origem.
+  const desfechoEmail = useMemo(() => emails.find(looksLikeDesfecho) || emails[0] || null, [emails]);
 
   const desfecho = useMemo(() => pickDesfecho(movements), [movements]);
 
@@ -199,6 +251,7 @@ export function ProcessResultadoTab({
     autoWrittenRef.current = desfecho.id;
     persistAtingido({
       resultado_atingido: labelForMarco(tipo, pop),
+      resultado_atingido_id: resultadoForMarco(tipo, pop)?.id || null,
       resultado_atingido_tipo: tipo,
       resultado_atingido_data: desfecho.data_movimentacao?.slice(0, 10) || null,
       resultado_atingido_fonte: 'escavador',
@@ -222,6 +275,7 @@ export function ProcessResultadoTab({
     const tipo = sugestaoPendente.tipo_movimentacao;
     persistAtingido({
       resultado_atingido: labelForMarco(tipo, pop),
+      resultado_atingido_id: resultadoForMarco(tipo, pop)?.id || null,
       resultado_atingido_tipo: tipo,
       resultado_atingido_data: sugestaoPendente.data_movimentacao?.slice(0, 10) || null,
       resultado_atingido_fonte: 'escavador',
@@ -234,7 +288,7 @@ export function ProcessResultadoTab({
   const setManual = (resultadoId: string) => {
     if (resultadoId === '__limpar__') {
       persistAtingido({
-        resultado_atingido: null, resultado_atingido_tipo: null, resultado_atingido_data: null,
+        resultado_atingido: null, resultado_atingido_id: null, resultado_atingido_tipo: null, resultado_atingido_data: null,
         resultado_atingido_fonte: null, resultado_atingido_ref: null, resultado_atingido_status: null,
       });
       autoWrittenRef.current = null;
@@ -242,12 +296,18 @@ export function ProcessResultadoTab({
     }
     const r = pop?.resultados?.find((x) => x.id === resultadoId);
     if (!r) return;
+    // POP administrativo: o status é definido a partir da intimação por e-mail —
+    // registra a origem (email_intimacao) e a intimação de referência.
+    const viaEmail = isAdministrativo && !!desfechoEmail;
     persistAtingido({
       resultado_atingido: r.label,
+      resultado_atingido_id: r.id,
       resultado_atingido_tipo: r.marco || null,
-      resultado_atingido_data: (new Date().toISOString().slice(0, 10)),
-      resultado_atingido_fonte: 'manual',
-      resultado_atingido_ref: null,
+      resultado_atingido_data: viaEmail && desfechoEmail?.received_at
+        ? desfechoEmail.received_at.slice(0, 10)
+        : new Date().toISOString().slice(0, 10),
+      resultado_atingido_fonte: viaEmail ? 'email_intimacao' : 'manual',
+      resultado_atingido_ref: viaEmail ? desfechoEmail!.id : null,
       resultado_atingido_status: 'confirmado',
     });
   };
@@ -360,12 +420,56 @@ export function ProcessResultadoTab({
                   : <><Sparkles className="h-2.5 w-2.5" /> detectado automaticamente das movimentações</>}
             </p>
           </div>
+        ) : isAdministrativo ? (
+          <p className="text-[11px] text-muted-foreground">
+            POP administrativo: o status vem da intimação por e-mail (abaixo). Escolha o status com base nela.
+          </p>
         ) : (
           <p className="text-[11px] text-muted-foreground">
-            {isAdministrativo
-              ? 'POP administrativo: o resultado virá da intimação por e-mail (detecção automática na Fase 2).'
-              : 'Nenhum desfecho detectado ainda nas movimentações. Assim que sair sentença, acordo, trânsito ou pagamento, aparece aqui automaticamente.'}
+            Nenhum desfecho detectado ainda nas movimentações. Assim que sair sentença, acordo, trânsito ou pagamento, aparece aqui automaticamente.
           </p>
+        )}
+
+        {/* Intimações por e-mail — evidência de origem para POP administrativo */}
+        {isAdministrativo && (
+          <div className="rounded-md border border-blue-300/40 bg-blue-50 dark:bg-blue-900/10 p-2 space-y-1.5">
+            <p className="text-[11px] font-medium flex items-center gap-1 text-blue-800 dark:text-blue-300">
+              <Mail className="h-3 w-3" /> Intimações por e-mail
+            </p>
+            {loadingEmails ? (
+              <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Buscando intimações…
+              </div>
+            ) : emails.length === 0 ? (
+              <p className="text-[10px] text-muted-foreground">
+                Nenhuma intimação por e-mail encontrada para este número. Chegando uma, aparece aqui.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                {emails.slice(0, 4).map((e) => (
+                  <div
+                    key={e.id}
+                    className={cn(
+                      'rounded border p-1.5 text-[10px]',
+                      looksLikeDesfecho(e) ? 'border-blue-300 bg-background' : 'border-transparent bg-background/50',
+                    )}
+                  >
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-muted-foreground">{fmtDate(e.received_at)}</span>
+                      {looksLikeDesfecho(e) && (
+                        <Badge variant="outline" className="text-[8px] py-0 border-blue-400 text-blue-700 dark:text-blue-300">possível desfecho</Badge>
+                      )}
+                      <span className="font-medium truncate">{e.subject || '(sem assunto)'}</span>
+                    </div>
+                    {e.snippet && <p className="text-muted-foreground line-clamp-2 mt-0.5">{e.snippet}</p>}
+                  </div>
+                ))}
+                <p className="text-[9px] text-muted-foreground pt-0.5">
+                  Defina o status abaixo — ele fica gravado como vindo da intimação (fonte auditável).
+                </p>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Sugestão ambígua pendente de confirmação */}

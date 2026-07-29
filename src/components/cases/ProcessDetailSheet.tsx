@@ -1193,6 +1193,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               <ProcessResultadoTab
                 processId={process.id}
                 processType={form.process_type || 'judicial'}
+                processNumber={form.process_number || process.process_number || null}
                 pop={workflowBoards.find(b => b.id === form.workflow_id)?.settings || null}
                 esperadoOverrideRaw={form.resultado_esperado_id_override || null}
                 dataAlvo={form.resultado_esperado_data_alvo || null}
@@ -1209,6 +1210,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                   ...prev,
                   // só os campos do atingido — não clobbar edições não-salvas de outros campos
                   resultado_atingido: (row as any).resultado_atingido,
+                  resultado_atingido_id: (row as any).resultado_atingido_id,
                   resultado_atingido_tipo: (row as any).resultado_atingido_tipo,
                   resultado_atingido_data: (row as any).resultado_atingido_data,
                   resultado_atingido_fonte: (row as any).resultado_atingido_fonte,
