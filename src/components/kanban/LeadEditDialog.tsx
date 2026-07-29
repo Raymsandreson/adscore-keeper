@@ -51,6 +51,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { getAcolhedorPhoto } from '@/lib/acolhedorPhotos';
+import { AcolhedorCombobox } from '@/components/leads/AcolhedorCombobox';
+import { TRABALHISTA_ACOLHEDORES, isTrabalhistaBoard } from '@/lib/trabalhistaAcolhedores';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { toast } from 'sonner';
 import { Lead } from '@/hooks/useLeads';
@@ -389,6 +391,12 @@ export function LeadEditDialog({
   const { data: campaignsList = [] } = useCampaigns();
 
   const currentLead = lead;
+  // Board Trabalhista: só os 6 acolhedores oficiais; demais boards, lista completa de perfis.
+  const acolhedorOptions = useMemo(() => (
+    isTrabalhistaBoard((currentLead as any)?.board_id)
+      ? TRABALHISTA_ACOLHEDORES
+      : profiles.map((p) => p.full_name || p.email || p.id)
+  ), [currentLead, profiles]);
   const autoDrive = useAutoImportGroupDocs(
     currentLead?.id || null,
     currentLead?.lead_name || null,
@@ -2455,19 +2463,12 @@ ${scrapeData.content || ''}
 
                 {isFieldVisible('acolhedor') && (<div>
                   <Label>Acolhedor</Label>
-                  <Select value={acolhedor || '__none__'} onValueChange={(v) => setAcolhedor(v === '__none__' ? '' : v)}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecione o acolhedor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">Nenhum</SelectItem>
-                      {profiles.map((p) => (
-                        <SelectItem key={p.id} value={p.full_name || p.email || p.id}>
-                          {p.full_name || p.email}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <AcolhedorCombobox
+                    value={acolhedor}
+                    onChange={setAcolhedor}
+                    options={acolhedorOptions}
+                    placeholder="Selecione o acolhedor"
+                  />
                 </div>)}
 
                 {isFieldVisible('group_link') && (<div className="col-span-2">

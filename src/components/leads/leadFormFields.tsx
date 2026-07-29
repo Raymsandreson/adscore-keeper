@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { LocateFixed, Loader2 } from 'lucide-react';
 import type { AccidentLeadFormData } from './leadFormTypes';
+import { AcolhedorCombobox } from './AcolhedorCombobox';
 
 export type LeadFieldTab = 'basic' | 'accident' | 'location' | 'companies' | 'legal';
 
@@ -13,6 +14,8 @@ export interface LeadFieldRenderCtx {
   formData: AccidentLeadFormData;
   onChange: (data: Partial<AccidentLeadFormData>) => void;
   teamMembers: { id: string; full_name: string | null; email: string | null }[];
+  /** Opções do campo Acolhedor já resolvidas pelo board (ex: lista restrita do Trabalhista). */
+  acolhedorOptions?: string[];
   classifications: { id: string; name: string; color: string }[];
   leadSources: { value: string; label: string }[];
   states: { sigla: string; nome: string }[];
@@ -48,9 +51,9 @@ export const LEAD_FIELD_REGISTRY: LeadFieldDef[] = [
   { key: 'source', label: 'Origem', defaultTab: 'basic', defaultOrder: 2,
     render: (c) => (<div><Label>Origem</Label><Select value={c.formData.source} onValueChange={u('source', c)}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent>{c.leadSources.map(s=>(<SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>))}</SelectContent></Select></div>) },
   { key: 'acolhedor', label: 'Acolhedor', defaultTab: 'basic', defaultOrder: 3,
-    render: (c) => (<div><Label>Acolhedor</Label>{c.teamMembers.length > 0 ? (
-      <Select value={c.formData.acolhedor} onValueChange={u('acolhedor', c)}><SelectTrigger><SelectValue placeholder="Selecione o acolhedor..."/></SelectTrigger><SelectContent>{c.teamMembers.map(m=>(<SelectItem key={m.id} value={m.full_name||m.email||m.id}>{m.full_name||m.email||'Sem nome'}</SelectItem>))}</SelectContent></Select>
-    ) : (<Input value={c.formData.acolhedor} onChange={(e)=>u('acolhedor',c)(e.target.value)} placeholder="Nome do acolhedor"/>)}</div>) },
+    render: (c) => { const options = c.acolhedorOptions ?? c.teamMembers.map(m=>m.full_name||m.email||m.id); return (<div><Label>Acolhedor</Label>{options.length > 0 ? (
+      <AcolhedorCombobox value={c.formData.acolhedor} onChange={u('acolhedor', c)} options={options} />
+    ) : (<Input value={c.formData.acolhedor} onChange={(e)=>u('acolhedor',c)(e.target.value)} placeholder="Nome do acolhedor"/>)}</div>); } },
   { key: 'group_link', label: 'Link do Grupo (WhatsApp)', defaultTab: 'basic', defaultOrder: 4, fullWidth: true,
     render: (c) => (<div><Label>Link do Grupo (WhatsApp)</Label><Input value={c.formData.group_link} onChange={(e)=>u('group_link',c)(e.target.value)} placeholder="https://chat.whatsapp.com/..."/></div>) },
   { key: 'news_link', label: 'Link da Notícia', defaultTab: 'basic', defaultOrder: 5, fullWidth: true,

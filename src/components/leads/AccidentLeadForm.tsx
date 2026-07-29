@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { useLeadSources } from '@/hooks/useLeadSources';
+import { TRABALHISTA_ACOLHEDORES, isTrabalhistaBoard } from '@/lib/trabalhistaAcolhedores';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Sparkles, User, MapPin, Building, FileText, Briefcase, Wand2, Check } from 'lucide-react';
@@ -112,8 +113,16 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
     return { display: formatted, iso: '' };
   };
 
+  // Board Trabalhista: só os 6 acolhedores oficiais; demais boards, lista da equipe.
+  const acolhedorOptions = useMemo(() => (
+    isTrabalhistaBoard(boardId)
+      ? TRABALHISTA_ACOLHEDORES
+      : teamMembers.map((m) => m.full_name || m.email || m.id)
+  ), [boardId, teamMembers]);
+
   const ctx: LeadFieldRenderCtx = {
     formData, onChange: handleChange, teamMembers, classifications, leadSources,
+    acolhedorOptions,
     states, cities, loadingCities, geoLoading,
     onAutoLocation: handleAutoLocation, onStateChange: handleStateChange,
     formatDateBR, parseDateBR,
