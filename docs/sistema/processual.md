@@ -62,6 +62,25 @@ Planilha transversal de datas (perícia médica/social etc.) lida dos campos per
 
 ---
 
+## Status do Processo — aba "Status" (painel do processo)
+
+Aba dentro do painel de detalhes do processo (entre "Marcos" e "Movimentações"). Separa o que se **espera** do que já **aconteceu**, e **tira a atualização da mão do usuário**: o status atingido é detectado sozinho, não digitado.
+
+> ⚠️ Grão: o status é **do processo**, não do lead. O lead tem status do **funil de vendas**; cada processo tem o **seu** status, das opções cadastradas no seu POP. Um caso tem vários processos → vários status independentes. Detalhe e regras em `.agents/skills/lead-vs-case-identity`.
+
+**Status esperado (alvo)** — herdado do POP vinculado (`kanban_boards.settings.resultado_esperado_ids`; **pode ser mais de um**, ex.: "Acordo" ou "Procedência"). Cada processo pode **sobrescrever** (override por-processo) e definir uma **data-alvo** (prognóstico). Os status possíveis e o(s) esperado(s) são cadastrados no POP (WorkflowBuilder), onde cada status pode ganhar um **marco gatilho** opcional (liga o marco do Escavador ao status).
+
+**Status atingido (detectado)** — preenchido automaticamente:
+- **POP judicial** → das **movimentações do Escavador** (`process_movements`). Marco inequívoco (**trânsito em julgado, acordo, pagamento**) **auto-confirma**; sentença/acórdão viram **sugestão** que o assessor confirma em 1 clique.
+- **POP administrativo** → das **intimações por e-mail** (`processual_emails`, casadas pelo nº do processo). As intimações aparecem como evidência; o assessor define o status a partir delas (fonte `email_intimacao`, com a intimação de origem guardada).
+- Toda detecção é **auditável** (guarda a movimentação/e-mail de origem). Há "ajustar manualmente" como escape.
+
+**Campos** (Externo, `lead_processes`): `resultado_esperado_id_override`, `resultado_esperado_data_alvo`, `resultado_atingido` (+ `_id`, `_tipo`, `_data`, `_fonte`, `_ref`, `_status`).
+
+**Telão** (`/tv/atividades`, coluna "STATUS ESPERADO"): conta os processos que atingiram o esperado, por **responsável do processo**, no **mês em que o resultado aconteceu** (não quando foi cadastrado). Ver `atividades.md`.
+
+---
+
 ## Audiências — `/hearings`
 
 **Propósito**: agenda de audiências com visualizações Semana/Mês/Dia/Lista e sincronização com planilha externa. Cada audiência tem tipo, categoria, data/hora, fuso, status, local, responsável e observações.

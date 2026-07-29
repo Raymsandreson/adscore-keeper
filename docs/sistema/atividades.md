@@ -89,9 +89,14 @@ Cria uma atividade interna por ditado: "Iniciar gravação" → falar → "Parar
 
 **Propósito**: ranking ao vivo do time (auto-atualiza a cada 45s), feito pra rodar em TV/fullscreen.
 
-- Ordenação exibida: 1º Passos Dados → 2º Concluídas → 3º Menos Atrasadas → 4º Mais Tempo Ativo → 5º Menos Ocioso → 6º Resposta no Chat.
+- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → 4º Passos → 5º Itens do Checklist → 6º Concluídas → 7º Menos Atrasadas → 8º Mais Tempo Ativo → 9º Menos Ocioso → 10º Resposta no Chat.
 - Seletor de time, período "Hoje"/"Semana"/"Mês", "Atualizar", "Modo TV" (tela cheia).
 - Clique num assessor — abre o coach de desempenho ("Analisar & mandar mensagem").
+
+**Coluna "STATUS ESPERADO"** (1º critério) — conta no **grão de processo**, por **responsável**, no **mês em que o resultado aconteceu** (`resultado_atingido_data`), não quando foi cadastrado:
+- Time de execução (POP): processos cujo status atingido (`lead_processes.resultado_atingido_id`, `status='confirmado'`) está entre os esperados do POP (`settings.resultado_esperado_ids` — pode ser mais de um).
+- Time comercial (funil): resultado do lead no funil de vendas (como antes).
+- Os dois somam por pessoa. Fonte: função `tv_atividades_ranking`. O status do processo é detectado das movimentações/e-mail — ver "Status do Processo" em `processual.md`. Grão (processo ≠ lead): `.agents/skills/lead-vs-case-identity`.
 
 ---
 

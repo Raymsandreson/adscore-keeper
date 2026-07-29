@@ -43,6 +43,26 @@ Regras de cardinalidade:
 - "Esse caso está em qual funil?" → Caso não tem funil. Caso tem processos, e cada processo tem POP.
 - "Move o processo pro funil de vendas" → NÃO. Processo só vive em POP.
 
+### Status: do lead (funil) vs do processo (POP) — grãos diferentes
+
+O mesmo corte vale pro **status/resultado**. Nunca faça o status do processo subir pro lead nem vice-versa.
+
+- **Status do lead** = vem do **funil de vendas** (comercial). Ex.: `Fechado`. Lead `Fechado` **gera o caso**.
+- **Status do processo** = vem do **POP daquele processo** (jurídico). Cada processo tem o **seu próprio** status, escolhido entre os cadastrados no POP (`kanban_boards.settings.resultados`).
+- Um caso tem N processos → N status independentes, um por processo/POP. Não existe "o status do caso".
+
+Onde vive (tudo no Externo, tabela `lead_processes`):
+- `resultado_esperado_ids` (no `kanban_boards.settings` do POP) — o(s) status **esperado(s)**; **pode ser mais de um** (ex.: `Acordo` ou `Procedência` contam como sucesso). `resultado_esperado_id` (single) é legado/compat.
+- `resultado_esperado_id_override` — override do esperado **por-processo** (NULL = herda do POP).
+- `resultado_atingido*` (`_id`, `_tipo`, `_data`, `_fonte`, `_ref`, `_status`) — o status **atingido**, detectado sozinho: das **movimentações do Escavador** (POP judicial) ou da **intimação por e-mail** (`processual_emails`, POP administrativo). Não é digitado à mão pelo usuário. Marco inequívoco (trânsito/acordo/pagamento) auto-confirma; o resto é sugestão que o assessor confirma.
+
+**Telão** (`tv_atividades_ranking`, coluna STATUS ESPERADO): conta no **grão de processo**, por **responsável** (`responsible_user_id`), no **mês em que o resultado aconteceu** (`resultado_atingido_data`) — não quando foi cadastrado/detectado. Time comercial (funil) segue contando o resultado do lead; time de execução (POP) conta os processos que atingiram o esperado.
+
+🚫 Recusar:
+- "Espelha o status do processo no lead / em `leads.pop_result_id`." → NÃO. Grãos diferentes; status de processo não sobe pro lead.
+- "Deixa o usuário digitar o status atingido do processo." → NÃO. Ele é detectado das movimentações/e-mail; a mão do usuário é só confirmar/ajustar.
+- "Conta o resultado do telão no mês em que foi cadastrado." → NÃO. Conta no mês em que o resultado efetivamente aconteceu.
+
 ## Quando esta skill DEVE travar uma execução
 
 Se o pedido do usuário (ou de outro agente) violar uma das 3 regras abaixo, **PARE, ADVIRTA e peça confirmação explícita**. Não execute "por boa vontade". A organização tem essas regras por motivo operacional — quebrar é introduzir bug que demora semanas pra aparecer.
