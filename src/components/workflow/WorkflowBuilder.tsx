@@ -310,6 +310,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         const currentWorkflow = {
           name: formName,
           description: formDescription,
+          // Status do POP (moram em settings, fora de phases). Sem isso a IA não
+          // enxerga os resultados e acaba criando "checklist de status" num passo.
+          resultados: formResultados,
+          resultado_esperado_ids: formResultadoEsperadoIds,
           phases: phases.map(p => ({
             stageId: p.stageId,
             stageName: p.stageName,
@@ -401,6 +405,24 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }));
 
         setPhases(editedPhases);
+
+        // Status do POP — a IA devolve a lista completa. Só aplica se vier array
+        // (evita zerar os resultados existentes se a IA omitir o campo).
+        if (Array.isArray(data.resultados)) {
+          setFormResultados(
+            data.resultados
+              .filter((r: any) => r && r.label)
+              .map((r: any) => ({
+                id: r.id || crypto.randomUUID(),
+                label: String(r.label),
+                marco: r.marco || null,
+              })),
+          );
+        }
+        if (Array.isArray(data.resultado_esperado_ids)) {
+          setFormResultadoEsperadoIds(data.resultado_esperado_ids.filter((id: any) => typeof id === 'string'));
+        }
+
         setAiChangelog(data.changelog || []);
         setShowAiDialog(false);
         setAiPrompt('');

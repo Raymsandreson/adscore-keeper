@@ -50,6 +50,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'call-to-activities': 'railway', // transcreve+resume ligação de voz do chat interno → atividades
   'activity-from-movement': 'railway',
   'suggest-step-actions': 'railway',
+  'edit-workflow': 'railway', // POP: editar com IA (agora inclui status/resultados do POP, não só passos)
   'wipe-instance-agent-labels': 'railway',
   'bpc-sheet-sync': 'railway',
   'report-query': 'railway', // gerador de relatórios por IA (NL→SQL read-only)
