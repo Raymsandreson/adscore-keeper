@@ -44,8 +44,10 @@ export const handler: RequestHandler = async (req, res) => {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
     const weekday = new Date().toLocaleDateString('pt-BR', { weekday: 'long', timeZone: 'America/Sao_Paulo' });
     const types = Array.isArray(activity_types) ? activity_types.filter((t) => t?.key) : [];
+    // Legenda completa: o enum do schema leva TODAS as keys, então o prompt
+    // precisa explicar todas — key sem rótulo na legenda vira escolha às cegas.
     const typesList = types.length > 0
-      ? types.slice(0, 40).map((t) => `"${t.key}" (${t.label})`).join(', ')
+      ? types.slice(0, 150).map((t) => `"${t.key}" (${t.label})`).join(', ')
       : '';
     const members = Array.isArray(member_names)
       ? member_names.filter((n) => typeof n === 'string' && n.trim()).slice(0, 60)
@@ -95,7 +97,8 @@ ${typesList
                   ...(types.length > 0 ? {
                     activity_type: {
                       type: 'string',
-                      enum: types.map((t) => t.key),
+                      // Mesmo corte da legenda do prompt — enum e legenda sempre iguais.
+                      enum: types.slice(0, 150).map((t) => t.key),
                       description: 'Key do tipo de atividade mais adequado à tarefa.',
                     },
                   } : {}),

@@ -191,8 +191,14 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       const meeting = meetings.find(t => t.key !== 'reuniao') ?? meetings[0];
       if (meeting) list.push({ value: meeting.key, label: meeting.label });
     }
+    // O tipo já selecionado (rascunho da IA ou atividade existente) fura o filtro
+    // da rotina — senão o select renderiza vazio mesmo com formType preenchido.
+    if (formType && !list.some(t => t.value === formType)) {
+      const cur = activityTypes.find(t => t.key === formType);
+      if (cur) list.push({ value: cur.key, label: cur.label });
+    }
     return list;
-  }, [assigneeRoutine, activityTypes, formIsSystem]);
+  }, [assigneeRoutine, activityTypes, formIsSystem, formType]);
   const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
 
   const loadContactsForLead = useCallback(async (lid: string) => {
