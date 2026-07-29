@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -99,6 +99,11 @@ function chatRespLabel(s: number | null | undefined) {
 function tempoLabel(s: number | null | undefined) {
   return s ? chatRespLabel(s) : '—';
 }
+// Contagem regressiva mm:ss (rotação automática de times).
+function fmtMMSS(s: number) {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(Math.max(0, s % 60)).padStart(2, '0')}`;
+}
 
 // ---- Recorde de passos do período (selo + comemoração) ----
 // value = passos, holder = quem detém. Fonte = servidor (data.meta), filtrado
@@ -152,6 +157,18 @@ export default function TvAtividadesPage() {
   // Painel pra escolher e testar o som da ultrapassagem.
   const [soundPanel, setSoundPanel] = useState(false);
 
+  // ---- Rotação automática de times (telão sem operador) ----
+  // Percorre em ciclo: Ranking Geral (todos) → cada time → volta. Fica
+  // `rotateMin` minutos em cada um. Estado na URL (?rotate=1&rotmin=3) pra
+  // sobreviver a refresh/boot do telão. rotateLeft = segundos até a próxima troca.
+  const [autoRotate, setAutoRotate] = useState(params.get('rotate') === '1');
+  const [rotateMin, setRotateMin] = useState(() => {
+    const m = Number(params.get('rotmin'));
+    return Number.isFinite(m) && m >= 1 && m <= 60 ? m : 2;
+  });
+  const [rotateLeft, setRotateLeft] = useState(0);
+  const rotateDeadlineRef = useRef(0);
+
   // Relógio do cabeçalho.
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30_000);
@@ -199,6 +216,47 @@ export default function TvAtividadesPage() {
       : teams.find(t => t.id === teamId)?.name,
     [teams, teamId],
   );
+  // Nome do que está na tela agora (todos = "Ranking Geral").
+  const currentViewName = teamId === '' ? 'Ranking Geral' : (selectedTeamName || titulo);
+
+  // Sequência do rodízio: Ranking Geral ('') + cada time. O grupo Gerencial não
+  // entra no ciclo automático (é uma visão sob demanda).
+  const rotateCycle = useMemo(() => ['', ...teams.map(t => t.id)], [teams]);
+  const rotateIdx = rotateCycle.indexOf(teamId);
+  const rotatePos = rotateIdx >= 0 ? rotateIdx + 1 : 1;
+
+  // Persiste rotate/rotmin na URL (updater funcional pra não brigar com a troca
+  // de ?team=).
+  useEffect(() => {
+    setSearchParams(prev => {
+      const q = new URLSearchParams(prev);
+      if (autoRotate) q.set('rotate', '1'); else q.delete('rotate');
+      if (autoRotate && rotateMin !== 2) q.set('rotmin', String(rotateMin)); else q.delete('rotmin');
+      return q;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoRotate, rotateMin]);
+
+  // Loop do rodízio: 1 tick/segundo pra contagem regressiva; ao zerar, avança pro
+  // próximo time do ciclo. Trocar de time reinicia o cronômetro (dá tempo cheio a
+  // cada visão, inclusive numa troca manual).
+  useEffect(() => {
+    if (!autoRotate || rotateCycle.length < 2) { setRotateLeft(0); return; }
+    rotateDeadlineRef.current = Date.now() + rotateMin * 60_000;
+    const tick = () => {
+      const left = Math.max(0, Math.round((rotateDeadlineRef.current - Date.now()) / 1000));
+      setRotateLeft(left);
+      if (left <= 0) {
+        const idx = rotateCycle.indexOf(teamId);
+        const next = rotateCycle[(idx + 1) % rotateCycle.length] ?? '';
+        rotateDeadlineRef.current = Date.now() + rotateMin * 60_000;
+        onSelectTeam(next); // dispara re-run deste efeito (teamId muda)
+      }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [autoRotate, rotateMin, rotateCycle, teamId, onSelectTeam]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -526,7 +584,10 @@ export default function TvAtividadesPage() {
               R. <span className="text-amber-400">Prudêncio.</span>
             </div>
             <div className="mt-1 text-[10px] md:text-xs font-semibold uppercase tracking-widest text-white/50 truncate">
-              Atividades · {selectedTeamName || titulo}
+              Atividades ·{' '}
+              <span className={cn(autoRotate && 'text-emerald-300 font-black')}>
+                {currentViewName}
+              </span>
             </div>
           </div>
 
@@ -626,6 +687,38 @@ export default function TvAtividadesPage() {
               </button>
             ))}
           </div>
+          {/* Rodízio automático de times: liga/desliga + minutos por time. */}
+          <div className={cn(
+            'flex items-center gap-1 rounded-full p-0.5 pl-2 transition',
+            autoRotate ? 'bg-emerald-400/20 ring-1 ring-emerald-400/50' : 'bg-white/10',
+          )}>
+            <button
+              onClick={() => setAutoRotate(v => !v)}
+              className={cn(
+                'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-black transition',
+                autoRotate ? 'text-emerald-300' : 'text-white/60 hover:text-white',
+              )}
+              title="Alternar times automaticamente no telão"
+              aria-pressed={autoRotate}
+            >
+              <RotateCw className={cn('h-4 w-4', autoRotate && 'animate-spin [animation-duration:3s]')} />
+              Auto
+            </button>
+            <input
+              type="number"
+              min={1}
+              max={60}
+              value={rotateMin}
+              onChange={e => {
+                const v = Math.min(60, Math.max(1, Math.round(Number(e.target.value) || 1)));
+                setRotateMin(v);
+              }}
+              className="w-11 rounded-full bg-white/10 px-2 py-1 text-center text-xs font-bold tabular-nums text-white outline-none border border-white/10"
+              title="Minutos em cada time"
+              aria-label="Minutos por time"
+            />
+            <span className="pr-2 text-[10px] font-bold uppercase tracking-wider text-white/50">min</span>
+          </div>
           <button
             onClick={load}
             className="rounded-full bg-white/10 p-2 text-white/70 hover:text-white transition"
@@ -710,6 +803,30 @@ export default function TvAtividadesPage() {
             Mensagem pra todos
           </button>
         </div>
+
+        {/* ===== Destaque do rodízio: time atual + contagem pra próxima troca ===== */}
+        {autoRotate && rotateCycle.length >= 2 && (
+          <div className="mt-4 flex justify-center">
+            <div className="flex items-center gap-3 rounded-2xl border-2 border-emerald-400/50 bg-emerald-400/10 px-5 py-2.5 shadow-[0_0_45px_-12px] shadow-emerald-400/60">
+              <RotateCw className="h-5 w-5 shrink-0 text-emerald-300 animate-spin [animation-duration:3s]" />
+              <span className="text-[10px] md:text-xs font-black uppercase tracking-widest text-emerald-300/80">
+                Mostrando
+              </span>
+              <span className="text-lg md:text-2xl font-black leading-none text-emerald-200">
+                {currentViewName}
+              </span>
+              <span className="rounded-full bg-emerald-400/20 px-2 py-0.5 text-[10px] md:text-xs font-black tabular-nums text-emerald-300">
+                {rotatePos}/{rotateCycle.length}
+              </span>
+              <span className="text-emerald-400/40">·</span>
+              <span className="flex items-center gap-1.5 text-white/80">
+                <Timer className="h-4 w-4 shrink-0 text-emerald-300" />
+                <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-white/50">Troca em</span>
+                <span className="text-lg md:text-2xl font-black tabular-nums text-white">{fmtMMSS(rotateLeft)}</span>
+              </span>
+            </div>
+          </div>
+        )}
 
         {ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
