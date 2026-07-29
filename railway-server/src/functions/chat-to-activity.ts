@@ -58,7 +58,9 @@ Data de HOJE: ${today} (${weekday}) — use para resolver datas relativas ("aman
 Regras:
 - Seja fiel: NÃO invente fatos, nomes, datas ou prazos que não estejam na conversa.
 - O título (title) deve ser curto e objetivo, em MAIÚSCULAS, resumindo a TAREFA a fazer (ex.: "PROTOCOLAR PETIÇÃO INICIAL", "COBRAR DOCUMENTOS DO CLIENTE").
-- Organize o conteúdo: what_was_done (o que já foi feito/discutido até aqui), current_status (como a situação está agora), next_steps (o que precisa ser feito, com prazo se citado). Cada campo tem função distinta; deixar vazio é melhor que repetir.
+- Organize o conteúdo: what_was_done (o que já foi feito/discutido até aqui), current_status (como a situação está agora), next_steps (o que precisa ser feito, com prazo se citado). Cada campo tem função distinta; não repita o mesmo texto em dois campos.
+- next_steps NUNCA fica vazio: no mínimo, descreva a própria tarefa que dá título à atividade.
+- Preencha TODOS os campos do formulário que a conversa permitir — o objetivo é o usuário abrir o formulário já pronto, só revisando. Use string vazia "" apenas quando a conversa realmente não der a informação.
 - Se a conversa citar um cliente/lead pelo nome, coloque em lead_name.
 - deadline só se a conversa mencionar prazo/data (formato YYYY-MM-DD). Senão, vazio.
 - priority: "urgente"/"alta" só se a conversa indicar urgência; senão "normal".
@@ -111,7 +113,15 @@ ${typesList
                   next_steps: { type: 'string', description: 'O que precisa ser feito, com prazo se citado.' },
                   notes: { type: 'string', description: 'Observações adicionais relevantes.' },
                 },
-                required: ['title', 'priority'],
+                // Todos required: o Gemini às vezes devolve só os campos obrigatórios,
+                // e o formulário abria quase vazio. required força a presença de todas
+                // as keys (string vazia continua permitida quando não houver informação).
+                required: [
+                  'title', 'priority', 'deadline', 'lead_name',
+                  'what_was_done', 'current_status', 'next_steps', 'notes',
+                  ...(types.length > 0 ? ['activity_type'] : []),
+                  ...(members.length > 0 ? ['assignee_name'] : []),
+                ],
                 additionalProperties: false,
               },
             },
@@ -124,6 +134,15 @@ ${typesList
           const parsed = JSON.parse(toolCall.function.arguments);
           fields = { ...fields, ...parsed };
           fillError = null;
+          // Resposta "rasa" (título sem nenhum campo de detalhe) → re-tenta uma vez.
+          // Na última tentativa aceita o que veio, pra não bloquear o usuário.
+          const shallow = !String(parsed.what_was_done || '').trim()
+            && !String(parsed.current_status || '').trim()
+            && !String(parsed.next_steps || '').trim();
+          if (shallow && attempt < 2) {
+            console.warn(`[chat-to-activity] tentativa ${attempt}: resposta rasa (só título), re-tentando`);
+            continue;
+          }
           break;
         }
         fillError = 'A IA respondeu sem retornar os campos (resposta vazia).';

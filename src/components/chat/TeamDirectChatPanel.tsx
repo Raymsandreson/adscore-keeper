@@ -433,10 +433,24 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         .map(p => p.full_name)
         .filter(Boolean) as string[];
 
+      // Tipos ainda não carregados no clique (cache frio/sessão do Externo atrasada) →
+      // busca direto; com lista vazia a IA é instruída a deixar o TIPO em branco.
+      let typeOptions = activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label }));
+      if (typeOptions.length === 0) {
+        await ensureExternalSession();
+        const { data: tRows } = await externalSupabase
+          .from('activity_types')
+          .select('key, label, is_active')
+          .order('display_order', { ascending: true });
+        typeOptions = ((tRows as { key: string; label: string; is_active: boolean }[]) || [])
+          .filter(t => t.is_active)
+          .map(t => ({ key: t.key, label: t.label }));
+      }
+
       const { data, error } = await cloudFunctions.invoke('chat-to-activity', {
         body: {
           transcript,
-          activity_types: activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label })),
+          activity_types: typeOptions,
           member_names: memberNames,
         },
       });
