@@ -101,6 +101,9 @@ async function discoverSheetTabs(spreadsheetId: string): Promise<{ tab: string; 
   for (const title of titles) {
     if (SKIP_TABS.has(title)) continue;
     const lower = String(title).toLowerCase();
+    // A planilha do Aux Acidente COMPARTILHA abas BPC (ex: "BPC - ISRAEL").
+    // Essas são de OUTRO funil — nunca ler no sync do Aux Acidente.
+    if (lower.includes('bpc')) continue;
     const match = OPERATOR_KEYWORDS.find((k) => lower.includes(k.keyword));
     if (match) found.push({ tab: title, operator: match.operator });
   }
@@ -117,8 +120,15 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   const lovableKey = process.env.LOVABLE_API_KEY || '';
   const gsKey = process.env.GOOGLE_SHEETS_API_KEY || '';
   const url = `${GATEWAY}/spreadsheets/${spreadsheetId}/values/'${encodeURIComponent(meta.tab)}'!A1:Z5000`;
-  const resp = await fetch(url, { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } });
-  if (!resp.ok) throw new Error(`sheet "${meta.tab}" ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+  // Retry em 429 (cota do Sheets por minuto) com backoff — o cron não pode
+  // perder aba por pico momentâneo de leitura.
+  let resp: Response | null = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    resp = await fetch(url, { headers: { Authorization: `Bearer ${lovableKey}`, 'X-Connection-Api-Key': gsKey } });
+    if (resp.status !== 429) break;
+    await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+  }
+  if (!resp || !resp.ok) throw new Error(`sheet "${meta.tab}" ${resp?.status}: ${(await resp?.text())?.slice(0, 200)}`);
   const json = (await resp.json()) as { values?: any[][] };
   const values: any[][] = json.values || [];
   if (values.length < 2) return [];
