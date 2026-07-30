@@ -73,6 +73,7 @@ import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
   DndContext,
@@ -222,6 +223,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // ambos contam como sucesso). Guardado em settings.resultado_esperado_ids (array);
   // settings.resultado_esperado_id segue gravado (= primeiro) por compat do ranking.
   const [formResultadoEsperadoIds, setFormResultadoEsperadoIds] = useState<string[]>([]);
+  // Time responsável pelo POP — o gerente desse time é notificado nas conversas
+  // de passo. Guardado em settings.responsible_team_id. Times lidos do Externo
+  // (mesmo banco de team_managers, então o id casa na hora de notificar).
+  const [formResponsibleTeamId, setFormResponsibleTeamId] = useState<string>('');
+  const [teamsList, setTeamsList] = useState<{ id: string; name: string }[]>([]);
   const [newResultadoLabel, setNewResultadoLabel] = useState<string>('');
   // Template do nome do PROCESSO — só POP (não funil). Guardado em
   // kanban_boards.settings.process_name_template. Ver src/lib/processNameTemplate.ts.
@@ -299,6 +305,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
     fetchBoards();
     fetchTemplates();
+
+    // Times para o seletor de "Time responsável" (Externo, mesmo banco de team_managers).
+    (async () => {
+      await ensureExternalSession();
+      const { data } = await externalSupabase.from('teams').select('id, name').order('name');
+      if (data) setTeamsList(data as { id: string; name: string }[]);
+    })();
   }, [open, initialOpenStepId, initialOpenStepChat, initialHighlightMsgId]);
 
   // Handle initialEditBoardId or initialCreateNew after boards load
@@ -321,6 +334,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setPhases([]);
     setNewPhaseName('');
     setFormProcessNameTemplate('');
+    setFormResponsibleTeamId('');
     setEditingBoardId(null);
     setViewMode('list');
   };
@@ -531,7 +545,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setEditingBoardId(board.id);
     setFormName(board.name);
     setFormDescription(board.description || '');
-    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[]; process_name_template?: string } }).settings;
+    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[]; process_name_template?: string; responsible_team_id?: string } }).settings;
     const cfgResultados = cfg?.resultados || [];
     const cfgEspIds = Array.isArray(cfg?.resultado_esperado_ids)
       ? cfg!.resultado_esperado_ids!
@@ -539,6 +553,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setFormResultados(cfgResultados);
     setFormResultadoEsperadoIds(cfgEspIds);
     setFormProcessNameTemplate(cfg?.process_name_template || '');
+    setFormResponsibleTeamId(cfg?.responsible_team_id || '');
 
     // Sempre busca templates frescos junto com os links pra evitar race
     // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
@@ -1039,7 +1054,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           stages,
           // resultado_esperado_ids = fonte da verdade (múltiplos); resultado_esperado_id
           // = primeiro, mantido por compat com o ranking atual e o LeadEditDialog.
-          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null, process_name_template: formProcessNameTemplate.trim() || null },
+          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null, process_name_template: formProcessNameTemplate.trim() || null, responsible_team_id: formResponsibleTeamId || null },
         } as Partial<KanbanBoard>);
         boardId = editingBoardId;
       } else {
@@ -1498,6 +1513,33 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 <Label className="text-xs font-medium text-muted-foreground">Descrição:</Label>
                 <Textarea value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Descreva o propósito..." className="mt-1 min-h-[60px]" />
               </div>
+
+              {/* Time responsável — o gerente desse time é notificado nas conversas de passo */}
+              {!isFunnel && (
+                <div>
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                    <MessagesSquare className="h-3.5 w-3.5" />
+                    Time responsável
+                  </Label>
+                  <Select
+                    value={formResponsibleTeamId || '__none__'}
+                    onValueChange={v => setFormResponsibleTeamId(v === '__none__' ? '' : v)}
+                  >
+                    <SelectTrigger className="mt-1 h-9 text-sm">
+                      <SelectValue placeholder="Sem time responsável" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__"><span className="text-muted-foreground">Sem time responsável</span></SelectItem>
+                      {teamsList.map(t => (
+                        <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    O gerente deste time é avisado (notificação) quando houver mensagem no chat de qualquer passo deste POP.
+                  </p>
+                </div>
+              )}
 
               {/* AI Generate/Edit + Histórico */}
               <div className="flex gap-2">

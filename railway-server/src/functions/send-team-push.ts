@@ -77,6 +77,52 @@ export const handler: RequestHandler = async (req, res) => {
       });
     }
 
+    // Chat de passo de POP: além dos participantes, notifica o GERENTE do time
+    // responsável pelo POP (responsável = gerente do time em settings.responsible_team_id).
+    // Também injeta a URL de deep-link pra notificação cair direto no passo.
+    let pushUrl: string | undefined = url;
+    if (entity_type === 'pop_step' && entity_id) {
+      try {
+        // step.id → template (items @> [{id}]) → checklist_stage_links.board_id
+        const { data: tmpl } = await (supabase as any)
+          .from('checklist_templates')
+          .select('id')
+          .contains('items', [{ id: entity_id }])
+          .limit(1)
+          .maybeSingle();
+        let boardId: string | null = null;
+        if (tmpl?.id) {
+          const { data: link } = await supabase
+            .from('checklist_stage_links')
+            .select('board_id')
+            .eq('checklist_template_id', tmpl.id)
+            .limit(1)
+            .maybeSingle();
+          boardId = (link as { board_id?: string } | null)?.board_id ?? null;
+        }
+        if (boardId) {
+          pushUrl = `/workflow-progress?editBoard=${boardId}&openStep=${entity_id}&openStepChat=1`;
+          const { data: board } = await supabase
+            .from('kanban_boards')
+            .select('settings')
+            .eq('id', boardId)
+            .maybeSingle();
+          const teamId = (board?.settings as { responsible_team_id?: string } | null)?.responsible_team_id || null;
+          if (teamId) {
+            const { data: mgrs } = await supabase
+              .from('team_managers')
+              .select('manager_user_id')
+              .eq('team_id', teamId);
+            (mgrs || []).forEach((m: { manager_user_id: string | null }) => {
+              if (m.manager_user_id) recipients.add(m.manager_user_id);
+            });
+          }
+        }
+      } catch (e) {
+        console.error('pop_step: falha ao resolver gerente do POP:', e);
+      }
+    }
+
     if (sender_id) recipients.delete(sender_id);
     if (recipients.size === 0) return res.json({ success: true, sent: 0 });
 
@@ -94,7 +140,7 @@ export const handler: RequestHandler = async (req, res) => {
     const payload = JSON.stringify({
       title,
       body,
-      url: url || '/',
+      url: pushUrl || '/',
       urgent: !!is_urgent,
       tag: conversation_id ? `team-conv-${conversation_id}` : `team-${entity_type}-${entity_id}`,
     });
