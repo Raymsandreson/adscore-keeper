@@ -57,6 +57,11 @@ Estas eu abri o código e confirmei o que faz. Para o resto, use `describe-funct
 
 ### Conversação → estruturação
 - `railway/extract-conversation-data.ts` → extrai lead/contato das últimas mensagens + resumos CallFace. Body: `{ phone, instance_name, targetType, extra_context?, call_summaries? }`. Usa Lovable AI Gateway. **Substitui** a edge Cloud homônima (que era proxy).
+- `railway/chat-to-activity.ts` → mensagens do **chat interno** (selecionadas pelo usuário) → campos de uma atividade nova. Body: `{ transcript, activity_types, member_names }`. **Já existe, não recriar** — o front (`TeamDirectChatPanel`) manda o transcript "Nome: texto" e abre o `ActivityFullSheet` em `mode="create"` com o `draft`. Irmãs do mesmo padrão: `dictate-activity` (voz), `activity-from-movement` (movimentação), `extract-activity-from-document` (documento), `call-to-activities` (ligação do chat).
+
+### Atividade pré-preenchida (rascunho → formulário)
+- **Toda** origem de rascunho cai no mesmo lugar: `ActivityFullSheet` com `mode="create"` + `draft: ActivityDraft` → `initFromDraft`. Não criar formulário próprio (ver skill/doc de formulários únicos).
+- `src/components/activities/richTextFields.ts` → `draftRichText` (texto puro → `<p>`), `callFieldTextToHtml`, `stripHtmlToText`. **Obrigatório** pra qualquer campo longo que vá pro `RichTextEditor`: o Lexical só aceita nó de bloco na raiz e **descarta texto puro em silêncio** (campo abre vazio). Coberto por testes em `src/components/activities/__tests__/`.
 
 ### ZapSign
 - `railway/zapsign-webhook.ts` → grava raw em `zapsign_document_events`, atualiza `zapsign_documents`. Sempre 200. Resolve contact/lead por variantes de telefone (com/sem DDI, com/sem 9).
