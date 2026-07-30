@@ -31,6 +31,7 @@ Documentação funcional das telas de atividades, cronômetro/banco de horas e t
 - Título editável inline; badge com o tempo total dedicado (soma das sessões de cronômetro).
 - Menu "Vincular": Caso, Processo, Contato, "Últimas movimentações" do processo.
 - Menu "Preencher com": **"Preenchimento por Áudio"** (grava ligação/ditado, IA transcreve e preenche os campos) e "Preenchimento por Documento".
+  - Comprovantes do **Meu INSS** (protocolo de requerimento, agendamento de perícia médica/avaliação social, exigência) são detectados automaticamente e preenchem "Como está / O que foi feito / Próximo passo" no modelo padrão da equipe (blocos *Perícia médica:* / *Avaliação social:* com dia, local, endereço e orientações fixas); a data da perícia marcada vira o prazo da atividade.
 - Campos: Assessor* (multi — cada responsável recebe a própria atividade), Tipo* (com sugestão de IA), POP*, Observadores, Situação, Prioridade, campos de texto rico com @menções, notas com anexos.
 - "Vincular: Campanha" — associa a atividade a uma campanha.
 - Envio ao grupo: "Copiar" (mensagem pronta), "Avaliação" (gera link público 0–5⭐), "Enviar ao Grupo / Enviar ao Assessor" (preview editável, escolha de instância, opção "Incluir gravação da ligação").
