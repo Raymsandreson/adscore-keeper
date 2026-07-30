@@ -14,6 +14,20 @@ import { useState, useEffect, useCallback } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import type { MarcoTipo } from '@/hooks/useProcessMovements';
 
+// integrations/supabase/types.ts é gerado do CLOUD; as tabelas e RPCs de metas
+// vivem no EXTERNO e não constam lá. Acessor local em vez de `as never` espalhado
+// por cada chamada.
+type PgResult<T> = { data: T | null; error: { message: string } | null };
+const ext = db as unknown as {
+  from: (table: string) => {
+    select: (cols: string) => any;
+    insert: (row: Record<string, unknown>) => Promise<PgResult<unknown>>;
+    update: (row: Record<string, unknown>) => any;
+    delete: () => any;
+  };
+  rpc: <T>(fn: string, args?: Record<string, unknown>) => Promise<PgResult<T>>;
+};
+
 export type GoalPeriodType = 'monthly' | 'quarterly' | 'custom';
 
 /** Linha da RPC de progresso: meta + realizado apurado. */
@@ -45,10 +59,23 @@ export interface TeamProcessGoalProgress {
 /** Retrato por marco usado no formulário ("o que temos hoje"). */
 export interface MarcoBaseline {
   marco_tipo: MarcoTipo;
-  /** Processos que já passaram pelo marco alguma vez. */
+  /** Processos que já passaram pelo marco alguma vez ("Até hoje"). */
   acumulado: number;
-  /** Processos em que esse é o marco mais recente. */
+  /** Processos em que esse é o marco mais recente ("Atualmente"). */
   atual: number;
+}
+
+/** Linha do drill-down: processo por trás do número da tabela de marcos. */
+export interface MarcoProcesso {
+  process_id: string;
+  process_number: string | null;
+  title: string | null;
+  case_id: string | null;
+  lead_id: string | null;
+  lead_name: string | null;
+  responsavel: string | null;
+  data_movimentacao: string | null;
+  descricao: string | null;
 }
 
 export interface TeamLite {
@@ -100,15 +127,15 @@ export function useTeamProcessGoals() {
       await ensureExternalSession();
 
       const [progressRes, teamsRes, boardsRes, mapRes, procRes] = await Promise.all([
-        db.rpc('team_process_goals_progress' as never, {} as never),
+        ext.rpc<TeamProcessGoalProgress[]>('team_process_goals_progress'),
         db.from('teams').select('id, name, color').order('name'),
         db.from('kanban_boards').select('id, name').eq('board_type', 'workflow').order('name'),
-        db.from('team_workflow_boards').select('team_id, board_id'),
+        ext.from('team_workflow_boards').select('team_id, board_id'),
         db.from('lead_processes').select('workflow_id').is('deleted_at', null),
       ]);
 
-      if (progressRes.error) throw progressRes.error;
-      setGoals((progressRes.data as unknown as TeamProcessGoalProgress[]) || []);
+      if (progressRes.error) throw new Error(progressRes.error.message);
+      setGoals(progressRes.data || []);
       setTeams(((teamsRes.data as TeamLite[]) || []));
 
       const boardTeam = new Map<string, string>(
@@ -139,12 +166,27 @@ export function useTeamProcessGoals() {
   /** Quantos processos do time já estão em cada marco — alimenta o formulário. */
   const fetchMarcoBaseline = useCallback(async (teamId: string): Promise<MarcoBaseline[]> => {
     await ensureExternalSession();
-    const { data, error: err } = await db.rpc(
-      'team_process_marco_baseline' as never,
-      { p_team_id: teamId } as never,
+    const { data, error: err } = await ext.rpc<MarcoBaseline[]>(
+      'team_process_marco_baseline',
+      { p_team_id: teamId },
     );
-    if (err) throw err;
-    return (data as unknown as MarcoBaseline[]) || [];
+    if (err) throw new Error(err.message);
+    return data || [];
+  }, []);
+
+  /** Processos por trás de um número da tabela de marcos (drill-down). */
+  const fetchMarcoProcessos = useCallback(async (
+    teamId: string,
+    marco: string,
+    modo: 'acumulado' | 'atual',
+  ): Promise<MarcoProcesso[]> => {
+    await ensureExternalSession();
+    const { data, error: err } = await ext.rpc<MarcoProcesso[]>(
+      'team_process_marco_processos',
+      { p_team_id: teamId, p_marco: marco, p_modo: modo },
+    );
+    if (err) throw new Error(err.message);
+    return data || [];
   }, []);
 
   /**
@@ -165,14 +207,14 @@ export function useTeamProcessGoals() {
     };
 
     // Linhas ativas já existentes para este time/período — para atualizar ou arquivar.
-    const { data: existing, error: exErr } = await db
+    const { data: existing, error: exErr } = await ext
       .from('team_process_goals')
       .select('id, marco_tipo')
       .eq('team_id', input.team_id)
       .eq('period_start', input.period_start)
       .eq('period_end', input.period_end)
       .eq('is_active', true);
-    if (exErr) throw exErr;
+    if (exErr) throw new Error(exErr.message);
 
     const byMarco = new Map<string, string>(
       ((existing as { id: string; marco_tipo: string | null }[]) || [])
@@ -206,19 +248,19 @@ export function useTeamProcessGoals() {
     for (const d of desired) {
       const id = byMarco.get(d.key);
       const { error: err } = id
-        ? await db.from('team_process_goals').update(d.payload as never).eq('id', id)
-        : await db.from('team_process_goals').insert(d.payload as never);
-      if (err) throw err;
+        ? await ext.from('team_process_goals').update(d.payload).eq('id', id)
+        : await ext.from('team_process_goals').insert(d.payload);
+      if (err) throw new Error(err.message);
       byMarco.delete(d.key);
     }
 
     // Sobrou linha ativa que o usuário zerou → arquiva.
     for (const id of byMarco.values()) {
-      const { error: err } = await db
+      const { error: err } = await ext
         .from('team_process_goals')
-        .update({ is_active: false } as never)
+        .update({ is_active: false })
         .eq('id', id);
-      if (err) throw err;
+      if (err) throw new Error(err.message);
     }
 
     await fetchAll();
@@ -227,45 +269,45 @@ export function useTeamProcessGoals() {
   /** Arquiva uma linha de meta (is_active = false) — histórico preservado. */
   const deleteGoal = useCallback(async (id: string) => {
     await ensureExternalSession();
-    const { error: err } = await db
+    const { error: err } = await ext
       .from('team_process_goals')
-      .update({ is_active: false } as never)
+      .update({ is_active: false })
       .eq('id', id);
-    if (err) throw err;
+    if (err) throw new Error(err.message);
     await fetchAll();
   }, [fetchAll]);
 
   /** Arquiva todas as linhas de um time/período (o card inteiro). */
   const deleteGoalSet = useCallback(async (teamId: string, start: string, end: string) => {
     await ensureExternalSession();
-    const { error: err } = await db
+    const { error: err } = await ext
       .from('team_process_goals')
-      .update({ is_active: false } as never)
+      .update({ is_active: false })
       .eq('team_id', teamId)
       .eq('period_start', start)
       .eq('period_end', end)
       .eq('is_active', true);
-    if (err) throw err;
+    if (err) throw new Error(err.message);
     await fetchAll();
   }, [fetchAll]);
 
   /** Define (ou limpa, com teamId null) o time dono de um POP. */
   const setBoardTeam = useCallback(async (boardId: string, teamId: string | null) => {
     await ensureExternalSession();
-    const { error: delErr } = await db.from('team_workflow_boards').delete().eq('board_id', boardId);
-    if (delErr) throw delErr;
+    const { error: delErr } = await ext.from('team_workflow_boards').delete().eq('board_id', boardId);
+    if (delErr) throw new Error(delErr.message);
     if (teamId) {
-      const { error: insErr } = await db
+      const { error: insErr } = await ext
         .from('team_workflow_boards')
-        .insert({ board_id: boardId, team_id: teamId } as never);
-      if (insErr) throw insErr;
+        .insert({ board_id: boardId, team_id: teamId });
+      if (insErr) throw new Error(insErr.message);
     }
     await fetchAll();
   }, [fetchAll]);
 
   return {
     goals, teams, boards, loading, error,
-    fetchMarcoBaseline, saveGoalSet, deleteGoal, deleteGoalSet, setBoardTeam,
+    fetchMarcoBaseline, fetchMarcoProcessos, saveGoalSet, deleteGoal, deleteGoalSet, setBoardTeam,
     refetch: fetchAll,
   };
 }

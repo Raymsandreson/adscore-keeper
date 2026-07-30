@@ -36,6 +36,7 @@ import {
   useTeamProcessGoals, TeamProcessGoalProgress, GoalPeriodType, MarcoBaseline,
 } from '@/hooks/useTeamProcessGoals';
 import type { MarcoTipo } from '@/hooks/useProcessMovements';
+import { TeamMarcoProcessosSheet, MarcoDrill } from './TeamMarcoProcessosSheet';
 
 const MARCO_LABEL: Record<MarcoTipo, string> = {
   peticao_inicial: 'Petição Inicial',
@@ -119,6 +120,27 @@ function DateField({ label, value, onChange }: {
         </PopoverContent>
       </Popover>
     </div>
+  );
+}
+
+/** Número clicável da tabela de marcos — abre a lista dos processos. */
+function CountButton({ value, onClick, muted = false }: {
+  value: number; onClick: () => void; muted?: boolean;
+}) {
+  if (value === 0) {
+    return <span className={cn('text-right text-sm tabular-nums', muted ? 'text-muted-foreground/60' : 'text-muted-foreground')}>0</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'rounded px-1 text-right text-sm tabular-nums underline decoration-dotted underline-offset-2 transition-colors hover:text-primary',
+        muted && 'text-muted-foreground',
+      )}
+    >
+      {value}
+    </button>
   );
 }
 
@@ -218,8 +240,9 @@ function emptyForm(): FormState {
 export function TeamProcessGoals() {
   const {
     goals, teams, boards, loading, error,
-    fetchMarcoBaseline, saveGoalSet, deleteGoalSet, setBoardTeam,
+    fetchMarcoBaseline, fetchMarcoProcessos, saveGoalSet, deleteGoalSet, setBoardTeam,
   } = useTeamProcessGoals();
+  const [drill, setDrill] = useState<MarcoDrill | null>(null);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -584,25 +607,40 @@ export function TeamProcessGoals() {
                   </p>
                 ) : (
                   <div className="overflow-hidden rounded-md border">
-                    <div className="grid grid-cols-[1fr_4rem_4rem_6rem] items-center gap-2 border-b bg-muted/50 px-3 py-2 text-[11px] font-medium text-muted-foreground">
+                    <div className="grid grid-cols-[1fr_4.5rem_5rem_6rem] items-center gap-2 border-b bg-muted/50 px-3 py-2 text-[11px] font-medium text-muted-foreground">
                       <span>Marco</span>
-                      <span className="text-right">Hoje</span>
-                      <span className="text-right">Parados</span>
+                      <span className="text-right">Até hoje</span>
+                      <span className="text-right">Atualmente</span>
                       <span className="text-right">Meta</span>
                     </div>
                     {MARCO_ORDER.map(m => {
                       const b = baselineByMarco.get(m);
+                      const acumulado = b?.acumulado ?? 0;
+                      const atual = b?.atual ?? 0;
                       return (
                         <div
                           key={m}
-                          className="grid grid-cols-[1fr_4rem_4rem_6rem] items-center gap-2 border-b px-3 py-1.5 last:border-b-0"
+                          className="grid grid-cols-[1fr_4.5rem_5rem_6rem] items-center gap-2 border-b px-3 py-1.5 last:border-b-0"
                         >
                           <span className="truncate text-sm">{MARCO_LABEL[m]}</span>
-                          <span className="text-right text-sm tabular-nums">{b?.acumulado ?? 0}</span>
-                          <span className="text-right text-sm tabular-nums text-muted-foreground">{b?.atual ?? 0}</span>
+                          <CountButton
+                            value={acumulado}
+                            onClick={() => setDrill({
+                              teamId: form.team_id, marco: m, marcoLabel: MARCO_LABEL[m],
+                              modo: 'acumulado', esperado: acumulado,
+                            })}
+                          />
+                          <CountButton
+                            value={atual}
+                            muted
+                            onClick={() => setDrill({
+                              teamId: form.team_id, marco: m, marcoLabel: MARCO_LABEL[m],
+                              modo: 'atual', esperado: atual,
+                            })}
+                          />
                           <Input
                             type="number"
-                            min={b?.acumulado ?? 0}
+                            min={acumulado}
                             className="h-8 text-right"
                             value={form.targets[m] ?? ''}
                             onChange={e => setForm(f => ({ ...f, targets: { ...f.targets, [m]: e.target.value } }))}
@@ -614,9 +652,10 @@ export function TeamProcessGoals() {
                   </div>
                 )}
                 <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  <strong>Hoje</strong> = processos que já passaram pelo marco (é daí que a barra parte).
-                  <strong> Parados</strong> = aqueles em que esse é o marco mais recente, ou seja, onde o
-                  processo está agora. Deixe a meta em branco nos marcos que não quer acompanhar.
+                  <strong>Até hoje</strong> = processos que já passaram pelo marco (é daí que a barra parte).
+                  <strong> Atualmente</strong> = aqueles em que esse é o marco mais recente, ou seja, onde o
+                  processo está agora. Clique em qualquer número para ver a lista dos processos. Deixe a
+                  meta em branco nos marcos que não quer acompanhar.
                 </p>
               </div>
 
@@ -647,6 +686,12 @@ export function TeamProcessGoals() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <TeamMarcoProcessosSheet
+        drill={drill}
+        onClose={() => setDrill(null)}
+        fetchMarcoProcessos={fetchMarcoProcessos}
+      />
 
       <AlertDialog open={!!toDelete} onOpenChange={open => !open && setToDelete(null)}>
         <AlertDialogContent>
