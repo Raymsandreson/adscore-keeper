@@ -275,8 +275,9 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
             <div className="flex items-start gap-1.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 p-2">
               <Info className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
               <span className="text-[11px] text-blue-700 dark:text-blue-300">
-                Anexe um <strong>PDF</strong> (publicação, despacho, laudo, e-mail) ou cole um <strong>texto</strong>.
-                A IA lê, entende e preenche os campos da atividade sozinha.
+                Anexe um <strong>PDF</strong> (publicação, despacho, laudo, e-mail, comprovante do INSS) ou cole um <strong>texto</strong>.
+                A IA lê, entende e preenche os campos da atividade sozinha. Comprovantes do Meu INSS
+                (protocolo, agendamento de perícia/avaliação social, exigência) preenchem no modelo padrão da equipe.
               </span>
             </div>
 

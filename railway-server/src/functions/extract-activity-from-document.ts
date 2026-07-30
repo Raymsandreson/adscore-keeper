@@ -212,7 +212,37 @@ Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com
   - PRAZO: se o documento traz um prazo processual (ex.: "prazo de 15 dias", "manifeste-se em 5 dias", data de audiência), calcule/extraia a data e retorne em deadline. Só quando o documento realmente indicar um prazo.
   - ASSESSORES: só preencha assessor_names se o documento indicar explicitamente quem é o responsável pela atividade. Cada nome deve ser EXATAMENTE um dos nomes da equipe listados no contexto; ignore nomes que não corresponderem a ninguém da equipe. Na dúvida, OMITA (documentos raramente designam responsável interno).
 - TIPO DA ATIVIDADE (activity_type): avalie qual dos tipos válidos listados no contexto é o MAIS ADEQUADO ao conteúdo do documento + contexto (ex.: intimação de audiência → audiencia; despacho com prazo → prazo; laudo pericial → diligencia). Se o tipo mais adequado for DIFERENTE do tipo atual da atividade, retorne a key dele em activity_type. Se o tipo atual já for o adequado (ou não houver como saber), OMITA o campo.
-- Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".`;
+- Escreva em português do Brasil, linguagem simples e nada rebuscada. Exemplo de tom: "Cobramos o devido andamento do processo" ou "Solicitamos que a Secretaria/Gabinete proceda com o impulso para seguirmos com os próximos passos".
+
+MODELO OBRIGATÓRIO — comprovantes do Meu INSS. Detecte pelo conteúdo: "PROTOCOLO DE REQUERIMENTO" / "COMPROVANTE DO PROTOCOLO", comprovante de agendamento de perícia médica e/ou avaliação social, ou comprovante de cumprimento de exigência do INSS. Quando o documento for um desses, IGNORE o estilo livre acima e preencha what_was_done, current_status e next_steps EXATAMENTE nos modelos abaixo — troque só o que está entre colchetes pelos dados do documento e mantenha os asteriscos (viram negrito no WhatsApp):
+
+1) current_status ("Como está"):
+- Se o comprovante NÃO traz perícia médica nem avaliação social marcadas (ex.: protocolo recém-aberto):
+"Pedido está em análise documental pelo inss."
+- Se traz perícia médica e/ou avaliação social marcadas, comece com "A perícia médica e a avaliação social estão marcadas:" (se só uma estiver marcada, ajuste: "A perícia médica está marcada:" / "A avaliação social está marcada:") e inclua APENAS o(s) bloco(s) do(s) serviço(s) marcado(s), neste formato literal:
+
+*Perícia médica:*
+Dia: [data e hora da perícia]
+Local: [nome da unidade/agência]
+Endereço: [endereço da unidade]
+Orientação: Levar documento de identificação com foto (RG ou CNH), toda documentação médica que dispuser (exames, atestados, laudos médicos etc) e chegar pontualmente (25min de antecedência do horário agendado).
+
+*Avaliação social:*
+Data: [data e hora da avaliação]
+Local: [nome da unidade/agência]
+Endereço: [endereço da unidade]
+Orientações: Levar Cadúnico, toda documentação médica que dispuser (exames, atestados, laudos médicos etc), comprovante de residência e documentação com foto (RG ou CNH) atualizados. Chegar pontualmente (15min de antecedência do horário agendado).
+
+2) what_was_done ("O que foi feito"):
+- Protocolo sem perícia/avaliação marcadas: "Protocolo administrativo."
+- Protocolo com perícia e avaliação marcadas: "Protocolo administrativo e marcadas perícia médica e avaliação social." (cite só o serviço marcado, se for um só)
+- Comprovante de cumprimento de exigência: "Cumprida exigência."
+
+3) next_steps ("Próximo passo"):
+- Sem perícia/avaliação marcadas: "Continuar acompanhando e monitorando a situação do pedido do benefício e aguardar vaga para marcar perícia médica e avaliação social."
+- Com perícia/avaliação já marcadas: "Continuar acompanhando e monitorando a situação do pedido do benefício e aguardar a realização da perícia médica e da avaliação social."
+
+Dados do comprovante que não couberem no modelo (número do protocolo, serviço/benefício requerido, unidade, data de entrada do requerimento) vão resumidos em notes. Dia/Data nos blocos acima em DD/MM/AAAA com horário quando o comprovante trouxer. Se a perícia/avaliação tiver data marcada, retorne essa data também em deadline (YYYY-MM-DD).`;
 
     // 3) Monta a mensagem do usuário: contexto + documento (texto puro ou multimodal).
     const userParts: any[] = [{ type: 'text', text: `${ctxText}\n\n${sourceLabel}:` }];
