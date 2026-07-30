@@ -1718,8 +1718,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           );
         })()}
 
-        {/* Messages & Call Records Timeline */}
-        <div className="flex-1 min-h-0 px-4">
+        {/* Messages & Call Records Timeline.
+            overflow-hidden: o ScrollArea filho tem h-[50vh] fixa; quando o composer
+            cresce e este wrapper encolhe (min-h-0), sem o clip as mensagens vazavam
+            por cima do campo de texto. */}
+        <div className="flex-1 min-h-0 px-4 overflow-hidden">
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -2065,7 +2068,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 onChange={(e) => setNewMessage(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="Digite uma mensagem..."
-                className="min-h-[40px] resize-none overflow-hidden text-sm flex-1 min-w-0 leading-relaxed"
+                className="min-h-[40px] max-h-40 resize-none overflow-y-auto text-sm flex-1 min-w-0 leading-relaxed"
                 rows={1}
               />
               {newMessage.trim() ? (
