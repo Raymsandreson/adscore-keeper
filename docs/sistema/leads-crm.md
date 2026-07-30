@@ -18,6 +18,19 @@ Documentação funcional das telas de leads, acolhimento, contatos, casos, funis
 - Campo Acolhedor (Editar Lead e Adicionar Lead): combobox com busca por digitação e foto ao lado do nome. No board Trabalhista (Acidente de Trabalho) as opções são só os 6 acolhedores oficiais (lista canônica em `src/lib/trabalhistaAcolhedores.ts`); nos demais boards, lista completa de perfis. Leads antigos com acolhedor fora da lista mantêm o valor até alguém trocar. O dialog "Cadastrar Caso Viável" (Notícias) tem lista restrita própria por user_id, separada desta.
 - Ficha do lead (abas): Básico, Contatos, Atividades, Acidente, Local, Empresas, Jurídico, Documentos, Histórico, Casos (se fechado), Financeiro, Chat IA, Chat Equipe.
 
+### Visualização em lista (toggle colunas | lista) — jul/2026
+
+Toggle no header (ícones colunas/lista) alterna kanban ↔ lista **sem resetar** busca, filtro de acolhedor, filtros avançados nem filtro de checklist (mesmo estado compartilhado). Visualização e ordenação vão pra URL (`?view=list&sort=tempo_estagio.desc`); a última escolha fica em localStorage. O kanban não foi alterado.
+
+- **Dados server-side** via view `lead_list_view` (Supabase Externo): ordenação com `.order()`, páginas de 50 com `.range()`, contagens com `count: exact`. A view espelha a visibilidade do kanban (exclui `noticias`/`viavel` e deletados; inclui Fechado/Recusado/Inviável/Cancelado por `lead_status`).
+- **Tempo no estágio** = último `lead_stage_history.changed_at` com `to_stage = status`, fallback `updated_at` — mesma semântica do badge do kanban. Aging: âmbar ≥30d, vermelho + alerta ≥90d. Cabeçalho mostra "N leads · M parados +90d".
+- **Colunas**: seleção, avatar do acolhedor (tabela `acolhedores`: foto → iniciais com cor determinística → cinza "sem dono"), Vítima (fallback `LEAD<numero>` cinza itálico + alerta "Vítima não identificada"), Empresa e Local ("—" quando vazios), Estágio (badge com a cor da coluna), Tempo no estágio, Data do acidente, ações (compartilhar, etiquetar, visualizar, mais).
+- **Chips rápidos**: "Sem acolhedor", "Parado +90 dias", "Sem vítima identificada" — combináveis com os demais filtros.
+- **Seleção múltipla**: barra fixa no rodapé com "Mover para estágio…" (mesmos efeitos do kanban: histórico, checklists, etiqueta WhatsApp), "Atribuir acolhedor…" (tabela `acolhedores`, só ativos), "Aplicar etiqueta…" (mapeamentos etapa↔etiqueta do board) e "Exportar CSV" (respeita filtros e ordenação). "Selecionar todos os N filtrados" é distinto de "todos da página".
+- **Mobile (<768px)**: blocos de 2 linhas (~72px), ordenação/filtros em bottom sheet, seleção por long-press, "Carregar mais" de 50 em 50.
+- Clique na linha abre a mesma ficha do lead (`LeadEditDialog`).
+- Arquivos: `src/components/kanban/LeadListView.tsx`, `src/hooks/useLeadListView.ts`, `src/hooks/useAcolhedores.ts`, migration `supabase/migrations/20260730120000_acolhedores_lead_list_view.sql`.
+
 **Efeito de fechamento**: mover o card para "✅ Fechado" marca o lead como cliente, gera o número do caso e cria o caso jurídico automaticamente (e a atividade de onboarding, quando aplicável); a etiqueta do WhatsApp é sincronizada.
 
 **Fluxo recomendado**: escolher o funil → localizar o lead (busca/filtro) → arrastar o card entre etapas. Para lead novo, "Adicionar Lead" usando o extrator de IA.

@@ -28,14 +28,16 @@ import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
-import { 
-  Plus, 
-  LayoutGrid, 
+import {
+  Plus,
+  LayoutGrid,
   RefreshCw,
   Search,
   Instagram,
   FileText,
   ChevronRight,
+  Columns3,
+  List,
 } from 'lucide-react';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
@@ -56,6 +58,14 @@ import { StageTimeMetrics } from '@/components/kanban/StageTimeMetrics';
 import { StageFunnelChart } from '@/components/kanban/StageFunnelChart';
 import { KanbanReportDialog } from '@/components/kanban/KanbanReportDialog';
 import { ChecklistFilter } from '@/components/kanban/ChecklistFilter';
+import { LeadListView } from '@/components/kanban/LeadListView';
+import {
+  DEFAULT_LIST_SORT,
+  emptyChips,
+  type ListSort,
+  type ListSortKey,
+  type QuickChips,
+} from '@/hooks/useLeadListView';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 
 interface UnifiedKanbanManagerProps {
@@ -76,6 +86,42 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
   const [acolhedorFilter, setAcolhedorFilter] = usePageState<string>('kanban_acolhedorFilter', '');
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
+
+  // Visualização kanban|lista. Última escolha em localStorage (usePageState);
+  // URL (?view=list&sort=tempo_estagio.desc) tem prioridade ao abrir e é
+  // mantida atualizada para permitir compartilhar o link.
+  const [viewMode, setViewMode] = usePageState<'kanban' | 'list'>('kanban_viewMode', 'kanban');
+  const [listSort, setListSort] = usePageState<ListSort>('kanban_listSort', DEFAULT_LIST_SORT);
+  const [listChips, setListChips] = usePageState<QuickChips>('kanban_listChips', emptyChips);
+
+  useEffect(() => {
+    const view = searchParams.get('view');
+    if (view === 'list' || view === 'kanban') setViewMode(view);
+    const sortParam = searchParams.get('sort');
+    if (sortParam) {
+      const [key, dir] = sortParam.split('.');
+      const validKeys: ListSortKey[] = ['vitima', 'empresa', 'local', 'estagio', 'tempo_estagio', 'data_acidente', 'acolhedor'];
+      if (validKeys.includes(key as ListSortKey) && (dir === 'asc' || dir === 'desc')) {
+        setListSort({ key: key as ListSortKey, dir });
+      }
+    }
+    // Só na montagem: depois disso o estado local é a fonte e reflete na URL.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (viewMode === 'list') {
+        next.set('view', 'list');
+        next.set('sort', `${listSort.key}.${listSort.dir}`);
+      } else {
+        next.delete('view');
+        next.delete('sort');
+      }
+      return next;
+    }, { replace: true });
+  }, [viewMode, listSort, setSearchParams]);
 
   // Handle URL param to auto-open a lead
   const [initialLeadTab, setInitialLeadTab] = useState<string | undefined>();
@@ -649,6 +695,33 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div
+            className="flex items-center rounded-md border p-0.5"
+            role="group"
+            aria-label="Alternar visualização"
+          >
+            <Button
+              variant={viewMode === 'kanban' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 px-2"
+              aria-pressed={viewMode === 'kanban'}
+              title="Visualização em colunas (kanban)"
+              onClick={() => setViewMode('kanban')}
+            >
+              <Columns3 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+              size="sm"
+              className="h-8 px-2"
+              aria-pressed={viewMode === 'list'}
+              title="Visualização em lista"
+              onClick={() => setViewMode('list')}
+            >
+              <List className="h-4 w-4" />
+            </Button>
+          </div>
+
           <div className="relative flex-1 min-w-[150px] max-w-[250px]">
             <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
@@ -738,8 +811,29 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
         </details>
       )}
 
+      {/* Lista (mesmo estado de filtro/busca do kanban; dados server-side) */}
+      {selectedBoard && viewMode === 'list' && (
+        <LeadListView
+          board={selectedBoard}
+          searchQuery={searchQuery}
+          acolhedorFilter={acolhedorFilter}
+          advancedFilters={advancedFilters}
+          checklistFilteredIds={checklistFilteredIds}
+          chips={listChips}
+          onChipsChange={setListChips}
+          sort={listSort}
+          onSortChange={setListSort}
+          onOpenLead={(leadId) => setEditingLeadId(leadId)}
+          onMoveToStage={handleMoveToStage}
+          onAssignAcolhedor={async (leadId, acolhedor) => {
+            await updateLead(leadId, { acolhedor } as any);
+          }}
+          onDeleteLead={deleteLead}
+        />
+      )}
+
       {/* Kanban Board */}
-      {selectedBoard ? (
+      {selectedBoard && viewMode === 'list' ? null : selectedBoard ? (
         <DynamicKanbanBoard
           board={selectedBoard}
           leads={filteredLeads}
