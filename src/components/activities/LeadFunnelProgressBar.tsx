@@ -272,6 +272,30 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
   };
 
+  // Objetivos que AINDA existem no POP.
+  // Quando um objetivo é removido/recriado no POP (template novo, mesmo nome), a
+  // instância antiga do lead continua no banco — e a fase mostrava o objetivo duas
+  // vezes (a velha com os passos marcados + a nova zerada). Só entra na tela quem
+  // tem link vivo em checklist_stage_links. Guarda: se o mapa de links vier vazio
+  // (erro de rede/RLS), não filtra nada — melhor mostrar demais que sumir com tudo.
+  const liveInstances = useMemo(() => {
+    const hasLinks = Object.keys(linkOrder).length > 0;
+    const base = hasLinks
+      ? instances.filter(i => linkOrder[`${i.stage_id}::${i.checklist_template_id}`] !== undefined)
+      : instances;
+
+    // Dedup defensivo: mesma fase + mesmo template gravado 2x (corrida na criação
+    // das instâncias). Fica a que tem mais passos marcados.
+    const doneCount = (i: ChecklistInstance) => i.items.filter(it => it.checked).length;
+    const byKey = new Map<string, ChecklistInstance>();
+    for (const inst of base) {
+      const key = `${inst.stage_id}::${inst.checklist_template_id}`;
+      const prev = byKey.get(key);
+      if (!prev || doneCount(inst) > doneCount(prev)) byKey.set(key, inst);
+    }
+    return Array.from(byKey.values());
+  }, [instances, linkOrder]);
+
   // Hierarchical progress calculation — if lead is closed, always 100%
   const hierarchicalProgress = useMemo(() => {
     if (isLeadClosed) {
@@ -281,7 +305,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       return {
         globalPercent: 100,
         stageDetails: stageIds.map(stageId => {
-          const stageInstances = instances.filter(i => i.stage_id === stageId);
+          const stageInstances = liveInstances.filter(i => i.stage_id === stageId);
           return {
             stageId,
             stagePercent: phaseWeight,
@@ -298,8 +322,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       };
     }
     const stageIds = stages.map(s => s.id);
-    return calculateHierarchicalProgress(stageIds, instances);
-  }, [stages, instances, isLeadClosed]);
+    return calculateHierarchicalProgress(stageIds, liveInstances);
+  }, [stages, liveInstances, isLeadClosed]);
 
   const globalPercent = hierarchicalProgress.globalPercent;
 
@@ -313,7 +337,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const currentStageInstances = useMemo(() => {
     const orderOf = (i: ChecklistInstance) =>
       linkOrder[`${i.stage_id}::${i.checklist_template_id}`] ?? Number.MAX_SAFE_INTEGER;
-    return instances
+    return liveInstances
       .filter(i => i.stage_id === activeViewStageId)
       .slice()
       .sort((a, b) => {
@@ -321,7 +345,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         if (diff !== 0) return diff;
         return ((a as any).created_at || '').localeCompare((b as any).created_at || '');
       });
-  }, [instances, activeViewStageId, linkOrder]);
+  }, [liveInstances, activeViewStageId, linkOrder]);
 
   if (!boardId || stages.length === 0) return null;
 
@@ -343,7 +367,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
               const isCurrent = idx === currentIdx;
               const isViewing = stage.id === activeViewStageId;
 
-              const stageObjectives = instances
+              const stageObjectives = liveInstances
                 .filter(i => i.stage_id === stage.id)
                 .map(i => i.template_name)
                 .filter(Boolean) as string[];
