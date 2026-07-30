@@ -2,6 +2,12 @@ project_id = "gliigkupoebmlbwyvijp"
 
 
 
+[functions.search-jurisprudencia]
+verify_jwt = true
+
+[functions.extract-jurimetria]
+verify_jwt = true
+
 [functions.campaign-ai-assistant]
 verify_jwt = false
 
