@@ -414,12 +414,25 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           phases.flatMap(p => p.objectives.map(o => o.templateId)).filter(Boolean)
         );
 
+        // Antes de desistir do id, procura o objetivo pelo NOME dentro da fase:
+        // se ele já existe, reaproveita o template em vez de criar um novo (o
+        // template antigo seria desvinculado e as instâncias dos leads virariam
+        // órfãs — o mesmo objetivo aparecendo duas vezes na ficha do processo).
+        const templateIdByStageAndName = new Map<string, string>();
+        phases.forEach(p => p.objectives.forEach(o => {
+          if (o.templateId) templateIdByStageAndName.set(`${p.stageId}::${o.name.trim().toLowerCase()}`, o.templateId);
+        }));
+        const reuseTemplateId = (stageId: string, name: string) =>
+          templateIdByStageAndName.get(`${stageId}::${(name || '').trim().toLowerCase()}`);
+
         const editedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
           stageId: phase.stageId,
           stageName: phase.stageName,
           stageColor: phase.stageColor || '#3b82f6',
           objectives: (phase.objectives || []).map((obj: any) => ({
-            templateId: validTemplateIds.has(obj.templateId) ? obj.templateId : undefined,
+            templateId: validTemplateIds.has(obj.templateId)
+              ? obj.templateId
+              : reuseTemplateId(phase.stageId, obj.name),
             name: obj.name,
             description: obj.description || '',
             is_mandatory: obj.is_mandatory || false,
@@ -671,8 +684,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   /** Carrega uma revisão antiga no editor (o save seguinte registra a restauração). */
   const handleRestoreRevision = (rev: WorkflowRevisionRow) => {
     const snap = rev.snapshot;
-    // templateId só sobrevive se o template ainda existir — id órfão quebraria o save
+    // templateId só sobrevive se o template ainda existir — id órfão quebraria o save.
+    // Se o id da revisão já não existe, procura o objetivo pelo nome na fase antes
+    // de deixar undefined: sem isso o save cria template novo, desvincula o atual e
+    // as instâncias dos leads viram órfãs (objetivo repetido na ficha do processo).
     const validIds = new Set(templates.map(t => t.id));
+    const liveIdByStageAndName = new Map<string, string>();
+    phases.forEach(p => p.objectives.forEach(o => {
+      if (o.templateId && validIds.has(o.templateId)) {
+        liveIdByStageAndName.set(`${p.stageId}::${o.name.trim().toLowerCase()}`, o.templateId);
+      }
+    }));
     setFormName(snap.name);
     setFormDescription(snap.description);
     setFormResultados(snap.resultados || []);
@@ -684,7 +706,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       stagnationDays: p.stagnationDays,
       isExpanded: true,
       objectives: p.objectives.map(o => ({
-        templateId: o.templateId && validIds.has(o.templateId) ? o.templateId : undefined,
+        templateId: o.templateId && validIds.has(o.templateId)
+          ? o.templateId
+          : liveIdByStageAndName.get(`${p.stageId}::${(o.name || '').trim().toLowerCase()}`),
         name: o.name,
         description: o.description,
         is_mandatory: o.is_mandatory,
@@ -1114,6 +1138,25 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }
       }
 
+      // Devolve ao ESTADO os templateIds criados neste save. Sem isso o objetivo
+      // novo continuava sem id no editor e o autosave seguinte criava OUTRO
+      // template com o mesmo nome, vinculava o novo e desvinculava o anterior —
+      // as instâncias que os leads já tinham viravam órfãs (o objetivo aparecia
+      // duas vezes na ficha do processo). Casa por fase+posição+nome pra não
+      // colar id errado se o usuário mexeu na lista durante o save.
+      setPhases(prev => prev.map((p, pi) => {
+        const persisted = phasesForPersist[pi];
+        if (!persisted || persisted.stageId !== p.stageId) return p;
+        let changed = false;
+        const objectives = p.objectives.map((o, oi) => {
+          const src = persisted.objectives[oi];
+          if (o.templateId || !src?.templateId || src.name !== o.name) return o;
+          changed = true;
+          return { ...o, templateId: src.templateId };
+        });
+        return changed ? { ...p, objectives } : p;
+      }));
+
       // Snapshot rico pro histórico de revisões (a notificação do time agora
       // sai junto com a revisão — confirmRevisionSave/captureRevisionOnClose.
       // A antiga notify_workflow_change era chamada no client Cloud e gravava
@@ -1122,7 +1165,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         latestName, latestDesc, formResultados, formResultadoEsperadoIds, phasesForPersist,
       );
 
-      lastSyncedSnapshotRef.current = buildSnapshot(latestName, latestDesc, latestPhases);
+      // phasesForPersist (e não latestPhases) porque o snapshot inclui o tid: com
+      // os ids recém-atribuídos acima, usar a versão sem id marcaria o estado como
+      // "sujo" e dispararia mais um autosave logo em seguida.
+      lastSyncedSnapshotRef.current = buildSnapshot(latestName, latestDesc, phasesForPersist);
 
       if (!silent) {
         toast.success(editingBoardId ? 'Fluxo atualizado!' : 'Fluxo criado!');
