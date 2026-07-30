@@ -239,7 +239,7 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // 5) Decide mudanças + órfãos
-    const changes: { lead_id: string; name: string; phone: string; from: string | null; to: string }[] = [];
+    const changes: { lead_id: string; crm_name: string; sheet_name: string; sheet_status: string; phone: string; from: string | null; to: string }[] = [];
     const orphans: { name: string; phone: string; sheet_status: string; mapped: string; operator: string }[] = [];
     for (const [key, r] of bestByKey) {
       const lead = leadByKey.get(key);
@@ -248,7 +248,15 @@ export const handler: RequestHandler = async (req, res) => {
         continue;
       }
       if ((lead.status ?? null) === r.mapped) continue; // já está no alvo → nada a fazer
-      changes.push({ lead_id: lead.id, name: lead.name || r.name, phone: r.phone, from: lead.status ?? null, to: r.mapped });
+      changes.push({
+        lead_id: lead.id,
+        crm_name: lead.name || '',
+        sheet_name: r.name || '',
+        sheet_status: r.sheet_status,
+        phone: r.phone,
+        from: lead.status ?? null,
+        to: r.mapped,
+      });
     }
 
     // Distribuição de→para (pra leitura humana no dry-run)
@@ -275,7 +283,7 @@ export const handler: RequestHandler = async (req, res) => {
         orphans_total: orphans.length,
         orphans_closed: orphansClosed.length,
         tab_errors: tabErrors,
-        sample_changes: changes.slice(0, 10),
+        sample_changes: changes.slice(0, 50),
         sample_orphans_closed: orphansClosed.slice(0, 10),
       });
     }
