@@ -8,7 +8,8 @@ Documentação funcional das telas de leads, acolhimento, contatos, casos, funis
 
 **Propósito**: board Kanban principal de gestão de leads por funil — arrasta cards entre etapas, abre a ficha completa do lead e dispara os efeitos de fechamento (vira cliente, cria caso jurídico automaticamente).
 
-- Seletor de funil — troca o board; permite criar/editar/excluir quadro.
+- Seletor de funil — troca o board; permite criar/editar/excluir quadro. Lista os funis; um POP só aparece nele quando é o quadro aberto no momento.
+- **Abrir por link** (`/leads?board=<id>`) — o "Abrir Kanban" dos cards de funil e de POP, as notificações do chat, o MetricDetailSheet e o checklist do dashboard abrem o quadro do link (antes o param era ignorado e caía sempre no padrão). Id inexistente avisa e cai no padrão; o param é consumido depois de aplicado, como o `?openLead`. Regressão coberta em `src/components/kanban/__tests__/UnifiedKanbanManager.board-param.test.tsx`.
 - "Buscar leads..." — por nome, telefone ou número do caso.
 - Filtro de acolhedor; ícone de atualizar; "Relatório" (relatório do funil); filtro por checklists da etapa.
 - "Adicionar Lead" — cria lead com seleção de funil e formulário de acidente; inclui extrator de dados por IA (cola a notícia, a IA preenche).

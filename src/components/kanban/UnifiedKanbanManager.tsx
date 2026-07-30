@@ -215,6 +215,46 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     }
   }, [categoryRegex, visibleBoards, selectedBoardId, setSelectedBoardId, category]);
 
+  // Quadro vindo por link: ?board=<id> — botão "Abrir Kanban" dos cards de
+  // funil/POP, notificações do chat, MetricDetailSheet etc. Sem isso o link é
+  // ignorado e a tela sempre abre no quadro padrão.
+  //
+  // Este efeito TEM que ficar depois do useKanbanBoards e do auto-select por
+  // categoria: efeito declarado depois roda depois, então a escolha do link é a
+  // última a gravar no mesmo commit. (Mover pra cima nem compila — as deps
+  // referenciam `visibleBoards`.)
+  useEffect(() => {
+    const boardParam = searchParams.get('board');
+    if (!boardParam) return;
+    // Ainda carregando os quadros: espera o próximo render pra não descartar o param.
+    if (visibleBoards.length === 0) return;
+
+    if (visibleBoards.some(b => b.id === boardParam)) {
+      setSelectedBoardId(boardParam);
+    } else {
+      toast.error('Quadro do link não encontrado — abrindo o quadro padrão');
+    }
+
+    // Consome o param (mesmo padrão do ?openLead), pra que trocar de quadro no
+    // seletor depois não seja desfeito por um re-render. Updater funcional: o
+    // efeito de view/sort acima também escreve na URL no mesmo commit.
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('board');
+      return next;
+    }, { replace: true });
+  }, [visibleBoards, searchParams, setSearchParams, setSelectedBoardId]);
+
+  // Quadros do seletor: os funis (público desta tela) + o quadro selecionado
+  // quando ele é um POP. O card do POP também abre o kanban por ?board=<id> e o
+  // dropdown precisa mostrar o que está na tela — mas listar todos os POPs pro
+  // time comercial seria só ruído.
+  const selectorBoards = useMemo(() => {
+    const funnels = visibleBoards.filter(b => b.board_type !== 'workflow');
+    const current = visibleBoards.find(b => b.id === selectedBoardId);
+    return current && current.board_type === 'workflow' ? [...funnels, current] : funnels;
+  }, [visibleBoards, selectedBoardId]);
+
   // Leads hook
   const {
     leads: allLeads,
@@ -684,7 +724,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       <div className="flex flex-col sm:flex-row gap-4 justify-between">
         <div className="flex items-center gap-2">
           <KanbanBoardSelector
-            boards={visibleBoards.filter(b => b.board_type !== 'workflow')}
+            boards={selectorBoards}
             selectedBoardId={selectedBoardId}
             onSelectBoard={setSelectedBoardId}
             onCreateBoard={createBoard}
