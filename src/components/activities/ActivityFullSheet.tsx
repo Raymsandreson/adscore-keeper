@@ -81,8 +81,8 @@ interface ActivityFullSheetProps {
   mode?: 'edit' | 'create';
   /** Valores pré-preenchidos usados no modo 'create'. */
   draft?: ActivityDraft | null;
-  /** Chamado após criar com sucesso no modo 'create'. */
-  onCreated?: () => void;
+  /** Chamado após criar com sucesso no modo 'create' — recebe a atividade criada (id, título…). */
+  onCreated?: (created?: LeadActivity | null) => void;
 }
 
 type CaseRow = { id: string; case_number: string; title: string };
@@ -649,7 +649,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       if (created) {
         toast.success('Atividade criada.');
         onUpdated?.();
-        onCreated?.();
+        onCreated?.(created as LeadActivity);
         onOpenChange(false);
       }
       return;

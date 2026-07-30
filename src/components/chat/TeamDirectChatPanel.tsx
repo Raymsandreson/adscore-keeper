@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { useTeamDirectChat, TeamMessage } from '@/hooks/useTeamDirectChat';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
@@ -109,6 +109,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [creatingActivityDraft, setCreatingActivityDraft] = useState(false);
   const [activityDraft, setActivityDraft] = useState<ActivityDraft | null>(null);
   const [activitySheetOpen, setActivitySheetOpen] = useState(false);
+  // Mensagens que geraram o rascunho aberto — viram vínculo quando a atividade é criada.
+  const [originMsgIds, setOriginMsgIds] = useState<string[]>([]);
+  // Vínculo já gravado: message_id -> atividade (marca a bolha e dá o atalho).
+  const [msgActivities, setMsgActivities] = useState<Record<string, { activity_id: string; activity_title: string | null }>>({});
+  // Atividade aberta pelo atalho da bolha (ficha completa, modo edição).
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   const [urgent, setUrgent] = useState(false);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
@@ -521,6 +527,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         next_steps: f.next_steps || '',
         notes: [f.notes || '', `— Origem: chat interno —\n${transcript}`].filter(Boolean).join('\n\n'),
       });
+      setOriginMsgIds(selected.map(m => m.id));
       setActivitySheetOpen(true);
       cancelActivitySelection();
     } catch (e: any) {
@@ -528,6 +535,61 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       toast.error(e?.message || 'Não foi possível gerar a atividade');
     } finally {
       setCreatingActivityDraft(false);
+    }
+  };
+
+  // ===== Vínculo mensagem → atividade (marca a bolha e dá o atalho) =====
+  // Só os IDs entram na dependência: `messages` muda de identidade a cada evento
+  // do realtime e recarregaria o vínculo à toa.
+  const msgIdsKey = useMemo(() => messages.map(m => m.id).join(','), [messages]);
+
+  const loadMsgActivities = useCallback(async (ids: string[]) => {
+    if (ids.length === 0) { setMsgActivities({}); return; }
+    try {
+      await ensureExternalSession();
+      const { data, error } = await (externalSupabase.from('team_message_activities') as any)
+        .select('message_id, activity_id, activity_title')
+        .in('message_id', ids);
+      if (error) throw error;
+      const map: Record<string, { activity_id: string; activity_title: string | null }> = {};
+      for (const row of (data || []) as { message_id: string; activity_id: string; activity_title: string | null }[]) {
+        map[row.message_id] = { activity_id: row.activity_id, activity_title: row.activity_title };
+      }
+      setMsgActivities(map);
+    } catch (e) {
+      // Chat funciona sem o vínculo — só perde o selo/atalho.
+      console.warn('[TeamDirectChatPanel] vínculos mensagem→atividade indisponíveis:', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMsgActivities(msgIdsKey ? msgIdsKey.split(',') : []);
+  }, [msgIdsKey, loadMsgActivities]);
+
+  /** Grava de quais mensagens a atividade nasceu (chamado ao criar de fato). */
+  const linkMessagesToActivity = async (created?: { id?: string; title?: string } | null) => {
+    const ids = originMsgIds;
+    setOriginMsgIds([]);
+    if (!created?.id || ids.length === 0) return;
+    try {
+      await ensureExternalSession();
+      const rows = ids.map(mid => ({
+        message_id: mid,
+        conversation_id: activeConversationId,
+        activity_id: created.id,
+        activity_title: created.title || null,
+        created_by: user?.id || null,
+      }));
+      const { error } = await (externalSupabase.from('team_message_activities') as any)
+        .upsert(rows, { onConflict: 'message_id,activity_id' });
+      if (error) throw error;
+      setMsgActivities(prev => {
+        const next = { ...prev };
+        ids.forEach(id => { next[id] = { activity_id: created.id!, activity_title: created.title || null }; });
+        return next;
+      });
+    } catch (e) {
+      console.warn('[TeamDirectChatPanel] não consegui registrar a origem da atividade:', e);
     }
   };
 
@@ -1113,6 +1175,24 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       </button>
                     )}
                     {renderMsgContent(msg, isMe)}
+                    {msgActivities[msg.id] && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setOpenActivityId(msgActivities[msg.id].activity_id); }}
+                        className={cn(
+                          'w-full mt-1 flex items-center gap-1 px-1.5 py-1 rounded border text-[10px] font-medium text-left hover:opacity-80 transition-opacity',
+                          isMe
+                            ? 'border-primary-foreground/40 bg-primary-foreground/10'
+                            : 'border-primary/40 bg-background/60'
+                        )}
+                        title="Abrir a atividade criada a partir desta mensagem"
+                      >
+                        <ClipboardList className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                          Virou atividade{msgActivities[msg.id].activity_title ? `: ${msgActivities[msg.id].activity_title}` : ''}
+                        </span>
+                      </button>
+                    )}
                     <div className={cn('flex items-center gap-0.5 mt-0.5 justify-end', isMe ? 'text-primary-foreground/60' : 'text-muted-foreground')}>
                       <span className="text-[9px]">
                         {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
@@ -1439,8 +1519,26 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               mode="create"
               draft={activityDraft}
               activityId={null}
-              onOpenChange={(o) => { if (!o) { setActivitySheetOpen(false); setActivityDraft(null); } }}
-              onCreated={() => toast.success('Atividade criada a partir do chat!')}
+              onOpenChange={(o) => {
+                // Fechar sem criar descarta a origem — senão a próxima atividade
+                // herdaria as mensagens desta.
+                if (!o) { setActivitySheetOpen(false); setActivityDraft(null); setOriginMsgIds([]); }
+              }}
+              onCreated={(created) => {
+                linkMessagesToActivity(created);
+                toast.success('Atividade criada a partir do chat!');
+              }}
+            />
+          </Suspense>
+        )}
+
+        {/* Atalho da bolha: abre a ficha da atividade que nasceu daquela mensagem. */}
+        {openActivityId && (
+          <Suspense fallback={null}>
+            <ActivityFullSheet
+              open={!!openActivityId}
+              activityId={openActivityId}
+              onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
             />
           </Suspense>
         )}
