@@ -115,19 +115,26 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
     enabled: typedBoards.length > 0,
   });
 
-  // Processos vinculados por quadro — query única (evita N+1).
+  // Processos vinculados por quadro — query única (evita N+1), paginada porque
+  // o PostgREST corta em 1000 linhas e já passamos disso (1.6k processos): sem
+  // paginar, a contagem vinha truncada (612 virava 270).
   const { data: processCounts } = useQuery({
     queryKey: ["boards-process-counts", boardType],
     queryFn: async () => {
-      const { data, error } = await db
-        .from("lead_processes")
-        .select("workflow_id")
-        .is("deleted_at", null);
-      if (error) throw error;
+      const PAGE = 1000;
       const counts: Record<string, number> = {};
-      for (const row of data || []) {
-        const wid = (row as { workflow_id: string | null }).workflow_id;
-        if (wid) counts[wid] = (counts[wid] || 0) + 1;
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db
+          .from("lead_processes")
+          .select("workflow_id")
+          .is("deleted_at", null)
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const rows = (data || []) as Array<{ workflow_id: string | null }>;
+        for (const row of rows) {
+          if (row.workflow_id) counts[row.workflow_id] = (counts[row.workflow_id] || 0) + 1;
+        }
+        if (rows.length < PAGE) break;
       }
       return counts;
     },
@@ -336,6 +343,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
           onOpenChange={(o) => !o && setTeamBoard(null)}
           boardId={teamBoard.id}
           boardName={teamBoard.name}
+          boardType={boardType}
         />
       )}
 
