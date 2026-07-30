@@ -14,6 +14,10 @@ import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, 
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { ActivityCallRecorder } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
+import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
+import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
+import { useSystemOabs } from '@/hooks/useSystemOabs';
+import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
@@ -25,6 +29,7 @@ import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
+import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 
 /**
  * Tipos-base jurídicos (mesma seed da ActivitiesPage). Usados como fallback do
@@ -105,6 +110,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
   // ---- Form state (mesmo conjunto do formulário completo) ----
   const [formTitle, setFormTitle] = useState('');
+  const [renamingTitle, setRenamingTitle] = useState(false);
   const [formType, setFormType] = useState('');
   const [formStatus, setFormStatus] = useState('pendente');
   const [formPriority, setFormPriority] = useState('normal');
@@ -201,6 +207,48 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     return list;
   }, [assigneeRoutine, activityTypes, formIsSystem, formType]);
   const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
+
+  // ---- Mensagem da atividade (Copiar / Enviar ao Grupo / Enviar ao Assessor / áudio) ----
+  // Mesma função da ActivitiesPage: a ficha é a mesma em qualquer tela que a abra.
+  const { getTemplateForContext } = useActivityMessageTemplates();
+  const systemOabs = useSystemOabs();
+  const resolveUserName = useCallback((userId: string | null) => {
+    if (!userId) return null;
+    const direct = teamMembers.find(m => m.user_id === userId)?.full_name;
+    if (direct) return direct;
+    const cloudId = remapToCloudSync(userId);
+    if (cloudId && cloudId !== userId) {
+      const viaRemap = teamMembers.find(m => m.user_id === cloudId)?.full_name;
+      if (viaRemap) return viaRemap;
+    }
+    return null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
+
+  // Badges "N atv" ao lado de Prazo/Notificação: quantas atividades abertas o
+  // assessor já tem naquele dia (mesma consulta da tela de Atividades).
+  const [deadlineDateCount, setDeadlineDateCount] = useState<number | null>(null);
+  const [notifDateCount, setNotifDateCount] = useState<number | null>(null);
+  useEffect(() => {
+    const fetchDateCount = async (date: string, setter: (v: number | null) => void) => {
+      if (!date || !formAssignedTo) { setter(null); return; }
+      // lead_activities vive no Externo e assigned_to guarda UUID do Externo;
+      // formAssignedTo é do Cloud — precisa remapear antes de filtrar.
+      const extAssignedTo = await remapToExternal(formAssignedTo);
+      if (!extAssignedTo) { setter(null); return; }
+      const dayStr = date.length >= 10 ? date.slice(0, 10) : date;
+      const { count, error } = await externalSupabase
+        .from('lead_activities')
+        .select('id', { count: 'exact', head: true })
+        .eq('assigned_to', extAssignedTo)
+        .neq('status', 'concluida')
+        .eq('deadline', dayStr);
+      if (!error) setter(count ?? 0);
+    };
+    fetchDateCount(formDeadline, setDeadlineDateCount);
+    // Notificação mostra a mesma ocupação do dia (contagem por `deadline`).
+    fetchDateCount(formNotificationDate, setNotifDateCount);
+  }, [formDeadline, formNotificationDate, formAssignedTo]);
 
   const loadContactsForLead = useCallback(async (lid: string) => {
     try {
@@ -608,6 +656,59 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
   };
 
+  // Renomear o assunto sob demanda: a IA reescreve o título como "o que precisa
+  // ser feito", priorizando o Próximo passo preenchido e o passo atual do fluxo.
+  // Diferente da generateTitleWithAI (que só resume "do que se trata"), aqui o
+  // título é de AÇÃO. Não salva sozinho — só popula o campo; o usuário revisa.
+  const handleRenameWithAI = async () => {
+    const strip = (s: string) => (s || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    setRenamingTitle(true);
+    const loadingId = toast.loading('Renomeando com IA...');
+    try {
+      const nextFlowStep = stepContext ? (() => {
+        const steps = stepContext.allSteps || [];
+        const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+        const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+        return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+      })() : undefined;
+      const { data } = await routedFunctions.invoke('generate-activity-title', {
+        body: {
+          fields: {
+            what_was_done: strip(formWhatWasDone) || undefined,
+            current_status: strip(formCurrentStatus) || undefined,
+            next_steps: strip(formNextSteps) || undefined,
+            notes: strip(formNotes) || undefined,
+          },
+          context: {
+            process_title: formProcessTitle || undefined,
+            case_title: formCaseTitle || undefined,
+            lead_name: formLeadName || undefined,
+            current_title: formTitle || undefined,
+            activity_type: formType || undefined,
+          },
+          step: stepContext ? {
+            step_label: stepContext.stepLabel,
+            phase_label: stepContext.phaseLabel || undefined,
+            next_step: nextFlowStep,
+          } : undefined,
+        },
+      });
+      toast.dismiss(loadingId);
+      if (data?.success && data.title) {
+        setFormTitle(data.title);
+        toast.success('Assunto renomeado. Revise e salve.');
+      } else {
+        toast.error(data?.error || 'Não foi possível gerar o assunto — preencha o próximo passo/contexto.');
+      }
+    } catch (e) {
+      toast.dismiss(loadingId);
+      console.error('[renomear-com-ia]', e);
+      toast.error('Erro ao renomear com IA.');
+    } finally {
+      setRenamingTitle(false);
+    }
+  };
+
   const handleSave = async () => {
     let titleToUse = formTitle.trim();
     // Na criação, o assunto pode vir vazio se houver detalhes para a IA resumir.
@@ -683,6 +784,17 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     if (activityId) window.open(`${window.location.origin}/?openActivity=${activityId}`, '_blank');
   };
 
+  /** Mensagem da atividade — idêntica à da tela de Atividades (função compartilhada). */
+  const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
+    buildActivityMessage({
+      formTitle, formDeadline, formNotificationDate,
+      formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
+      formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
+      formCaseTitle, formProcessId, formProcessTitle,
+      fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
+      currentUserId: user?.id || null, resolveUserName, getTemplateForContext,
+    }, audience);
+
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
       <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
@@ -695,6 +807,18 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               {formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}
             </SheetTitle>
             <div className="flex items-center gap-1">
+              {/* Renomear o assunto com IA (título de ação a partir do próximo passo + fluxo) */}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1 shrink-0"
+                onClick={handleRenameWithAI}
+                disabled={renamingTitle}
+                title="Renomear o assunto com IA, a partir do próximo passo e do contexto"
+              >
+                {renamingTitle ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Renomear
+              </Button>
               {/* Preencher com IA (áudio/documento) — mesma função da ActivitiesPage */}
               <Popover open={preencherOpen} onOpenChange={setPreencherOpen}>
                 <PopoverTrigger asChild>
@@ -1083,8 +1207,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 availableCases={availableCases}
                 leadCases={leadCases}
                 caseProcesses={caseProcesses}
-                deadlineDateCount={null}
-                notifDateCount={null}
+                deadlineDateCount={deadlineDateCount}
+                notifDateCount={notifDateCount}
                 handleTitleChange={handleTitleChange}
                 handleSelectLead={handleSelectLead}
                 handleClearLead={handleClearLead}
@@ -1104,6 +1228,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 reorderFields={reorderFields}
                 selectedActivity={selectedActivity}
                 aiSuggestingType={false}
+                buildMsg={buildMsg}
                 activeRoutine={assigneeRoutine}
                 formAssignedToName={formAssignedToName}
                 formLeadIdForTTS={formLeadId || undefined}
