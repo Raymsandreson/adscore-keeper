@@ -100,8 +100,19 @@ export const handler: RequestHandler = async (req, res) => {
     const latest = pending[0];
 
     // 1) Cria atividade no Externo
-    const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${latest.to_status}`;
-    const activityDesc = `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${latest.to_status}".\n\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}\n\nCaso: ${caseInfo?.case_number || ''} — ${caseInfo?.title || ''}`;
+    // "Concluída" sozinho não diz o desfecho: o INSS só manda o veredito no
+    // Despacho do corpo, que o sync já classificou em proc.resultado.
+    const RESULTADO_LABELS: Record<string, string> = {
+      deferido: 'deferida',
+      indeferido: 'indeferida',
+      arquivado_decurso: 'arquivada por exigência não cumprida',
+    };
+    const resultadoLabel = /conclu[íi]d/i.test(latest.to_status || '') && proc.resultado
+      ? RESULTADO_LABELS[proc.resultado]
+      : undefined;
+    const statusLabel = resultadoLabel ? `${latest.to_status} (${resultadoLabel})` : latest.to_status;
+    const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
+    const activityDesc = `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".\n\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}\n\nCaso: ${caseInfo?.case_number || ''} — ${caseInfo?.title || ''}`;
     let assignedTo: string | null = null;
     if (leadId) {
       const { data: lead } = await supabase

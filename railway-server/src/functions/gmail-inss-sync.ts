@@ -226,6 +226,8 @@ function isLikelyInssAdminEmail(subject: string, fromAddr: string, body: string)
   return false;
 }
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 async function gmailFetch(path: string, gmailKey: string, params?: Record<string, string>): Promise<any> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -233,17 +235,27 @@ async function gmailFetch(path: string, gmailKey: string, params?: Record<string
   if (!lovableKey || !gmailKey) {
     throw new Error('Missing LOVABLE_API_KEY or gmailKey on Railway env');
   }
-  const resp = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${lovableKey}`,
-      'X-Connection-Api-Key': gmailKey,
-    },
-  });
-  if (!resp.ok) {
-    const txt = await resp.text();
-    throw new Error(`Gmail gateway ${resp.status}: ${txt.slice(0, 300)}`);
+  // O gateway limita por janela de 60s ("Rate limit exceeded. Please try again
+  // in 60 seconds"). Sem retry, todo burst acima da cota perdia as mensagens da
+  // rodada e o sync ficava pra trás re-tentando as mesmas a cada hora.
+  for (let attempt = 0; ; attempt++) {
+    const resp = await fetch(url.toString(), {
+      headers: {
+        Authorization: `Bearer ${lovableKey}`,
+        'X-Connection-Api-Key': gmailKey,
+      },
+    });
+    if (resp.status === 429 && attempt < 3) {
+      await resp.text().catch(() => '');
+      await sleep(62_000);
+      continue;
+    }
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`Gmail gateway ${resp.status}: ${txt.slice(0, 300)}`);
+    }
+    return resp.json();
   }
-  return resp.json();
 }
 
 /** Lê a lista de caixas Gmail configuradas (adm + processual etc.).
@@ -299,9 +311,17 @@ function ymFromAfter(after: string): string {
   return m ? `${m[1]}-${m[2]}` : '2022-01';
 }
 
+/** Evita rodadas sobrepostas: com os waits de 429, uma rodada pode passar de 1h
+ * e colidir com o próximo cron — dobrando a pressão no rate limit do gateway. */
+let syncInFlight = false;
+
 export const handler: RequestHandler = async (req, res) => {
   const body = (req.body || {}) as any;
   const query = (req.query || {}) as any;
+
+  if (syncInFlight) {
+    return res.status(200).json({ success: false, error: 'sync já em execução (rodada anterior ainda não terminou)' });
+  }
 
   const lookbackDays = Number(body.lookback_days ?? query.lookback_days ?? 0);
   const lookbackHours = lookbackDays > 0
@@ -340,6 +360,7 @@ export const handler: RequestHandler = async (req, res) => {
     });
   }
 
+  syncInFlight = true;
   try {
     let totalChecked = 0;
     let totalNew = 0;
@@ -369,6 +390,7 @@ export const handler: RequestHandler = async (req, res) => {
         const msg: GmailMessage = await gmailFetch(`/users/me/messages/${item.id}`, inbox.key, {
           format: 'full',
         });
+        inboxResult.rate_limited_streak = 0;
         const subject = getHeader(msg, 'Subject') || '';
         const fromAddr = getHeader(msg, 'From') || '';
         const body = extractPlainText(msg);
@@ -535,7 +557,9 @@ export const handler: RequestHandler = async (req, res) => {
           }).catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
         }
       } catch (err) {
-        inboxResult.errors.push(`${item.id}: ${err instanceof Error ? err.message : String(err)}`);
+        const m = err instanceof Error ? err.message : String(err);
+        if (/gateway 429/.test(m)) inboxResult.rate_limited_streak = (inboxResult.rate_limited_streak || 0) + 1;
+        inboxResult.errors.push(`${item.id}: ${m}`);
       }
     };
 
@@ -555,6 +579,7 @@ export const handler: RequestHandler = async (req, res) => {
         created_processes: 0,
         created_history: 0,
         notify_triggers: 0,
+        rate_limited_streak: 0,
         oldest_email_at: null as string | null,
         newest_email_at: null as string | null,
         errors: [] as string[],
@@ -626,6 +651,14 @@ export const handler: RequestHandler = async (req, res) => {
               // Dentro da página: oldest-first (Gmail devolve newest-first).
               for (const item of [...toProcess].reverse()) {
                 await processItem(item, inbox, inboxResult);
+                // 2 mensagens seguidas rate-limited mesmo após os retries de 60s
+                // = cota do gateway sendo consumida por outro processo. Aborta a
+                // inbox: as não gravadas voltam na lista da próxima rodada.
+                if (inboxResult.rate_limited_streak >= 2) {
+                  inboxResult.errors.push('rate limit persistente: inbox abortada nesta rodada, restante fica para a próxima');
+                  break monthLoop;
+                }
+                await sleep(400);
               }
             }
 
@@ -707,5 +740,7 @@ export const handler: RequestHandler = async (req, res) => {
       last_result: { success: false, error: msg },
     }).eq('id', 1).then(() => {}, () => {});
     return res.status(200).json({ success: false, error: msg });
+  } finally {
+    syncInFlight = false;
   }
 };
