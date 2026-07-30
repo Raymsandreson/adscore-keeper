@@ -8,11 +8,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2 } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2, List, Grid3x3, Filter as FilterIcon } from "lucide-react";
 import { WorkflowVisualizationDialog } from "@/components/workflow/WorkflowVisualizationDialog";
 import { db } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
-import { StageFunnelChart } from "@/components/kanban/StageFunnelChart";
+import { StageFunnelChart, type BoardViewMode } from "@/components/kanban/StageFunnelChart";
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
@@ -30,6 +30,17 @@ interface ChecklistItem {
   id: string;
   label: string;
   checked: boolean;
+}
+
+/** Visualização escolhida vale para todos os quadros, do jeito que o usuário deixou. */
+const VIEW_MODE_KEY = "board-card-view-mode";
+
+function readStoredViewMode(): BoardViewMode {
+  try {
+    const v = localStorage.getItem(VIEW_MODE_KEY);
+    if (v === "lista" || v === "grade" || v === "funil") return v;
+  } catch { /* localStorage indisponível */ }
+  return "lista";
 }
 
 function computeRange(preset: RangePreset, custom?: { from?: Date; to?: Date }): { from: Date | null; to: Date | null } {
@@ -81,8 +92,16 @@ export function BoardCard({
   onDelete,
 }: BoardCardProps) {
   const navigate = useNavigate();
-  const typeLabel = boardType === "funnel" ? "funil" : "POP";
+  const isPop = boardType === "workflow";
+  const typeLabel = isPop ? "POP" : "funil";
+  // POP é populado por PROCESSO (lead_processes.workflow_id); funil, por LEAD.
+  const unitLabel = isPop ? "processos" : "leads";
   const [showVisualization, setShowVisualization] = useState(false);
+  const [viewMode, setViewModeState] = useState<BoardViewMode>(readStoredViewMode);
+  const setViewMode = (v: BoardViewMode) => {
+    setViewModeState(v);
+    try { localStorage.setItem(VIEW_MODE_KEY, v); } catch { /* ignora */ }
+  };
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
@@ -163,7 +182,25 @@ export function BoardCard({
       }
       return all;
     },
-    enabled: true,
+    enabled: !isPop,
+  });
+
+  // POP conta processo, não lead — o badge do cabeçalho segue essa unidade.
+  const { data: processTotal } = useQuery({
+    queryKey: ["board-process-total", board.id, dateFilter],
+    queryFn: async () => {
+      let q = db
+        .from("lead_processes")
+        .select("id", { count: "exact", head: true })
+        .eq("workflow_id", board.id)
+        .is("deleted_at", null);
+      if (dateFilter.from) q = q.gte(dateFilter.field, dateFilter.from);
+      if (dateFilter.to) q = q.lte(dateFilter.field, dateFilter.to);
+      const { count, error } = await q;
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: isPop,
   });
 
   const filteredCounts = useMemo(() => {
@@ -227,7 +264,7 @@ export function BoardCard({
     enabled: expanded,
   });
 
-  const totalLeads = filteredCounts.total;
+  const totalItems = isPop ? (processTotal || 0) : filteredCounts.total;
   const stageData = filteredCounts.byStage;
 
   return (
@@ -240,8 +277,8 @@ export function BoardCard({
           </CardTitle>
           <div className="flex items-center gap-2 shrink-0">
             <Badge variant="secondary" className="text-xs">
-              <Users className="h-3 w-3 mr-1" />
-              {totalLeads} leads
+              {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
+              {totalItems} {unitLabel}
             </Badge>
             <Button
               variant="ghost"
@@ -312,6 +349,28 @@ export function BoardCard({
                 />
               </PopoverContent>
             </Popover>
+          </div>
+
+          {/* Como desenhar as fases. A escolha vale pra todos os quadros. */}
+          <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
+            {([
+              { v: "lista", l: "Lista", Icon: List },
+              { v: "grade", l: "Grade", Icon: Grid3x3 },
+              { v: "funil", l: "Funil", Icon: FilterIcon },
+            ] as { v: BoardViewMode; l: string; Icon: typeof List }[]).map(opt => (
+              <Button
+                key={opt.v}
+                size="sm"
+                variant={viewMode === opt.v ? "default" : "ghost"}
+                className="h-6 px-2 text-[11px] gap-1"
+                onClick={() => setViewMode(opt.v)}
+                title={`Visualizar em ${opt.l.toLowerCase()}`}
+                aria-pressed={viewMode === opt.v}
+              >
+                <opt.Icon className="h-3 w-3" />
+                <span className="hidden sm:inline">{opt.l}</span>
+              </Button>
+            ))}
           </div>
         </div>
       </CardHeader>
@@ -390,7 +449,7 @@ export function BoardCard({
               )}
             </div>
 
-            <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
+            <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} boardType={boardType} viewMode={viewMode} />
 
             <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -414,7 +473,7 @@ export function BoardCard({
           </div>
 
         ) : (
-          <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} />
+          <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} boardType={boardType} viewMode={viewMode} />
         )}
 
         {expanded && objectiveData && board.stages?.length > 0 && (
@@ -432,7 +491,7 @@ export function BoardCard({
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
                       <span className="text-xs font-medium text-foreground">{stage.name}</span>
-                      <span className="text-[10px] text-muted-foreground">({stageData[stage.id] || 0} leads)</span>
+                      <span className="text-[10px] text-muted-foreground">({stageData[stage.id] || 0} {unitLabel})</span>
                     </div>
                     <div className="ml-5 space-y-1.5">
                       {stageObjectives.map(obj => {
