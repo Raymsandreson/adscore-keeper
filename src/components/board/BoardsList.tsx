@@ -10,13 +10,14 @@ import {
   Pagination, PaginationContent, PaginationItem, PaginationLink,
   PaginationNext, PaginationPrevious, PaginationEllipsis,
 } from "@/components/ui/pagination";
-import { Search, Plus, RefreshCw, Scale } from "lucide-react";
+import { Search, Plus, RefreshCw, Scale, List, Grid3x3, Filter as FilterIcon } from "lucide-react";
 import { db } from "@/integrations/supabase";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 import { BoardCard, type BoardType } from "@/components/board/BoardCard";
+import type { BoardViewMode } from "@/components/kanban/StageFunnelChart";
 import type { LeadProcess } from "@/hooks/useLeadProcesses";
 import { toast } from "sonner";
 
@@ -24,6 +25,30 @@ import { toast } from "sonner";
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 
 const BOARDS_PER_PAGE = 6;
+
+/**
+ * Como a PÁGINA lista os quadros. Um controle só, no topo — não é por card.
+ * lista = uma linha por quadro · grade = cards resumidos · funil = card
+ * completo com gráfico e filtro de data.
+ */
+const VIEW_MODE_KEY = "boards-list-view-mode";
+
+function readStoredViewMode(): BoardViewMode {
+  try {
+    const v = localStorage.getItem(VIEW_MODE_KEY);
+    if (v === "lista" || v === "grade" || v === "funil") return v;
+  } catch { /* localStorage indisponível */ }
+  return "lista";
+}
+
+/** Quantos quadros cabem por página em cada densidade. */
+const PER_PAGE: Record<BoardViewMode, number> = { lista: 20, grade: 12, funil: BOARDS_PER_PAGE };
+
+const LAYOUT: Record<BoardViewMode, string> = {
+  lista: "space-y-2",
+  grade: "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3",
+  funil: "grid grid-cols-1 lg:grid-cols-2 gap-4",
+};
 
 const COPY: Record<BoardType, {
   singular: string; plural: string; createLabel: string;
@@ -64,6 +89,12 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [viewMode, setViewModeState] = useState<BoardViewMode>(readStoredViewMode);
+  const setViewMode = (v: BoardViewMode) => {
+    setViewModeState(v);
+    setPage(1);
+    try { localStorage.setItem(VIEW_MODE_KEY, v); } catch { /* ignora */ }
+  };
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editBoardId, setEditBoardId] = useState<string | null>(null);
@@ -87,11 +118,12 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
     [typedBoards, search]
   );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / BOARDS_PER_PAGE));
+  const perPage = PER_PAGE[viewMode];
+  const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   const currentPage = Math.min(page, totalPages);
   const paged = useMemo(
-    () => filtered.slice((currentPage - 1) * BOARDS_PER_PAGE, currentPage * BOARDS_PER_PAGE),
-    [filtered, currentPage]
+    () => filtered.slice((currentPage - 1) * perPage, currentPage * perPage),
+    [filtered, currentPage, perPage]
   );
 
   // Contagem de leads por quadro, sem filtro de data (os filtros são por card).
@@ -207,6 +239,27 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
             className="pl-9"
           />
         </div>
+        {/* Como a página lista os quadros — um controle só, vale pra todos. */}
+        <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
+          {([
+            { v: "lista", l: "Lista", Icon: List },
+            { v: "grade", l: "Grade", Icon: Grid3x3 },
+            { v: "funil", l: "Funil", Icon: FilterIcon },
+          ] as { v: BoardViewMode; l: string; Icon: typeof List }[]).map(opt => (
+            <Button
+              key={opt.v}
+              size="sm"
+              variant={viewMode === opt.v ? "default" : "ghost"}
+              className="h-8 px-2.5 text-xs gap-1.5"
+              onClick={() => setViewMode(opt.v)}
+              title={`Ver os quadros em ${opt.l.toLowerCase()}`}
+              aria-pressed={viewMode === opt.v}
+            >
+              <opt.Icon className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{opt.l}</span>
+            </Button>
+          ))}
+        </div>
         <Button onClick={() => { setEditBoardId(null); setShowBuilder(true); }}>
           <Plus className="h-4 w-4 mr-2" />
           {copy.createLabel}
@@ -258,12 +311,16 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className={LAYOUT[viewMode]}>
             {paged.map(board => (
               <BoardCard
                 key={board.id}
                 board={board}
                 boardType={boardType}
+                variant={viewMode}
+                totalOverride={boardType === "workflow"
+                  ? (processCounts?.[board.id] || 0)
+                  : (totalsByBoard?.[board.id] || 0)}
                 expanded={expandedId === board.id}
                 onToggleExpand={() => setExpandedId(expandedId === board.id ? null : board.id)}
                 onOpenKanban={() => navigate(`/leads?board=${board.id}`)}
@@ -321,7 +378,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 </PaginationItem>
               </PaginationContent>
               <div className="flex justify-center mt-2">
-                <span className="text-xs text-muted-foreground">{BOARDS_PER_PAGE} / página</span>
+                <span className="text-xs text-muted-foreground">{perPage} / página</span>
               </div>
             </Pagination>
           )}

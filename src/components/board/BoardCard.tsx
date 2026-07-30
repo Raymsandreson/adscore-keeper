@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2, List, Grid3x3, Filter as FilterIcon } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2 } from "lucide-react";
 import { WorkflowVisualizationDialog } from "@/components/workflow/WorkflowVisualizationDialog";
 import { db } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
@@ -30,17 +30,6 @@ interface ChecklistItem {
   id: string;
   label: string;
   checked: boolean;
-}
-
-/** Visualização escolhida vale para todos os quadros, do jeito que o usuário deixou. */
-const VIEW_MODE_KEY = "board-card-view-mode";
-
-function readStoredViewMode(): BoardViewMode {
-  try {
-    const v = localStorage.getItem(VIEW_MODE_KEY);
-    if (v === "lista" || v === "grade" || v === "funil") return v;
-  } catch { /* localStorage indisponível */ }
-  return "lista";
 }
 
 function computeRange(preset: RangePreset, custom?: { from?: Date; to?: Date }): { from: Date | null; to: Date | null } {
@@ -69,6 +58,14 @@ interface BoardCardProps {
    * mesmas funcionalidades — a diferença é de qual time o quadro é.
    */
   boardType: BoardType;
+  /**
+   * Densidade do card, escolhida uma vez para a página inteira (ver BoardsList).
+   * lista = linha compacta · grade = card resumido · funil = card completo com
+   * gráfico e filtro de data.
+   */
+  variant?: BoardViewMode;
+  /** Total já contado pela listagem — evita refazer a query em lista/grade. */
+  totalOverride?: number;
   expanded: boolean;
   onToggleExpand: () => void;
   onOpenKanban: () => void;
@@ -82,6 +79,8 @@ interface BoardCardProps {
 export function BoardCard({
   board,
   boardType,
+  variant = "funil",
+  totalOverride,
   expanded,
   onToggleExpand,
   onOpenKanban,
@@ -96,12 +95,10 @@ export function BoardCard({
   const typeLabel = isPop ? "POP" : "funil";
   // POP é populado por PROCESSO (lead_processes.workflow_id); funil, por LEAD.
   const unitLabel = isPop ? "processos" : "leads";
+  // Só o card completo carrega gráfico, filtro de data e prévia de planilha.
+  // Em lista/grade nada disso é exibido, então nada disso é consultado.
+  const isFull = variant === "funil";
   const [showVisualization, setShowVisualization] = useState(false);
-  const [viewMode, setViewModeState] = useState<BoardViewMode>(readStoredViewMode);
-  const setViewMode = (v: BoardViewMode) => {
-    setViewModeState(v);
-    try { localStorage.setItem(VIEW_MODE_KEY, v); } catch { /* ignora */ }
-  };
   const [dateField, setDateField] = useState<DateField>("created_at");
   const [rangePreset, setRangePreset] = useState<RangePreset>("all");
   const [customRange, setCustomRange] = useState<{ from?: Date; to?: Date }>({});
@@ -133,7 +130,7 @@ export function BoardCard({
   const { leads: bpcLeads } = useBpcFormLeads({
     from: bpcRange.from,
     to: bpcRange.to,
-    enabled: isBpc,
+    enabled: isBpc && isFull,
     source: "unificada",
     spreadsheetId: sheetCfg?.spreadsheetId,
   });
@@ -182,7 +179,7 @@ export function BoardCard({
       }
       return all;
     },
-    enabled: !isPop,
+    enabled: !isPop && isFull,
   });
 
   // POP conta processo, não lead — o badge do cabeçalho segue essa unidade.
@@ -200,7 +197,7 @@ export function BoardCard({
       if (error) throw error;
       return count || 0;
     },
-    enabled: isPop,
+    enabled: isPop && isFull,
   });
 
   const filteredCounts = useMemo(() => {
@@ -264,9 +261,142 @@ export function BoardCard({
     enabled: expanded,
   });
 
-  const totalItems = isPop ? (processTotal || 0) : filteredCounts.total;
+  const totalItems = isFull
+    ? (isPop ? (processTotal || 0) : filteredCounts.total)
+    : (totalOverride ?? 0);
   const stageData = filteredCounts.byStage;
 
+  // Mesmas ações em qualquer densidade — lista/grade não perdem funcionalidade.
+  const acoes = (
+    <div className="flex flex-wrap justify-end gap-2 pt-1">
+      <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowVisualization(true)}>
+        <GitBranch className="h-3.5 w-3.5 mr-1.5" />
+        Fluxograma
+      </Button>
+      {onOpenProcesses && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={onOpenProcesses}
+          title={`Ver processos vinculados a este ${typeLabel}`}
+        >
+          <Scale className="h-3.5 w-3.5 mr-1.5" />
+          Processos
+          {processCount > 0 && (
+            <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] leading-4">
+              {processCount}
+            </Badge>
+          )}
+        </Button>
+      )}
+      <Button variant="outline" size="sm" className="text-xs" onClick={onOpenTeam}>
+        <Users className="h-3.5 w-3.5 mr-1.5" />
+        Equipe
+      </Button>
+      <Button variant="outline" size="sm" className="text-xs" onClick={onEdit}>
+        <Settings className="h-3.5 w-3.5 mr-1.5" />
+        Editar
+      </Button>
+      {onDelete && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs text-destructive hover:text-destructive"
+          onClick={onDelete}
+        >
+          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+          Excluir
+        </Button>
+      )}
+      <Button variant="default" size="sm" className="text-xs" onClick={onOpenKanban}>
+        <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
+        Abrir Kanban
+        <ArrowRight className="h-3 w-3 ml-1" />
+      </Button>
+    </div>
+  );
+
+  const dialogos = (
+    <WorkflowVisualizationDialog
+      board={board}
+      open={showVisualization}
+      onOpenChange={setShowVisualization}
+      onEdit={onEdit}
+    />
+  );
+
+  // ─── LISTA: uma linha por quadro, sem gráfico e sem filtro de data ───
+  if (variant === "lista") {
+    return (
+      <>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/50 bg-card p-3 hover:shadow-sm transition-shadow">
+          <LayoutGrid className="h-4 w-4 text-primary shrink-0" />
+          <div className="flex-1 min-w-[180px]">
+            <div className="text-sm font-semibold truncate">{board.name}</div>
+            {board.description && (
+              <div className="text-[11px] text-muted-foreground line-clamp-1">{board.description}</div>
+            )}
+          </div>
+          <Badge variant="secondary" className="text-xs shrink-0">
+            {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
+            {totalItems} {unitLabel}
+          </Badge>
+          <Badge variant="outline" className="text-[10px] shrink-0">
+            {board.stages?.length || 0} etapas
+          </Badge>
+          {acoes}
+        </div>
+        {dialogos}
+      </>
+    );
+  }
+
+  // ─── GRADE: card resumido, etapas como chips ───
+  if (variant === "grade") {
+    return (
+      <>
+        <Card className="border-border/50 hover:shadow-md transition-all">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between gap-2">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2 min-w-0">
+                <LayoutGrid className="h-4 w-4 text-primary shrink-0" />
+                <span className="truncate">{board.name}</span>
+              </CardTitle>
+              <Badge variant="secondary" className="text-xs shrink-0">
+                {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
+                {totalItems}
+              </Badge>
+            </div>
+            {board.description && (
+              <CardDescription className="text-xs line-clamp-1">{board.description}</CardDescription>
+            )}
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            <div className="flex flex-wrap gap-1">
+              {(board.stages || []).map(stage => (
+                <span
+                  key={stage.id}
+                  className="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] text-muted-foreground max-w-full"
+                  title={stage.name}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: stage.color }} />
+                  <span className="truncate">{stage.name}</span>
+                </span>
+              ))}
+              {!board.stages?.length && (
+                <span className="text-[11px] text-muted-foreground">Nenhuma etapa configurada</span>
+              )}
+            </div>
+            {acoes}
+          </CardContent>
+        </Card>
+        {dialogos}
+      </>
+    );
+  }
+
+  // ─── FUNIL: card completo ───
   return (
     <Card className={cn("border-border/50 hover:shadow-md transition-all group", expanded && "lg:col-span-2")}>
       <CardHeader className="pb-2">
@@ -351,27 +481,6 @@ export function BoardCard({
             </Popover>
           </div>
 
-          {/* Como desenhar as fases. A escolha vale pra todos os quadros. */}
-          <div className="flex items-center gap-0.5 rounded-md border bg-background p-0.5">
-            {([
-              { v: "lista", l: "Lista", Icon: List },
-              { v: "grade", l: "Grade", Icon: Grid3x3 },
-              { v: "funil", l: "Funil", Icon: FilterIcon },
-            ] as { v: BoardViewMode; l: string; Icon: typeof List }[]).map(opt => (
-              <Button
-                key={opt.v}
-                size="sm"
-                variant={viewMode === opt.v ? "default" : "ghost"}
-                className="h-6 px-2 text-[11px] gap-1"
-                onClick={() => setViewMode(opt.v)}
-                title={`Visualizar em ${opt.l.toLowerCase()}`}
-                aria-pressed={viewMode === opt.v}
-              >
-                <opt.Icon className="h-3 w-3" />
-                <span className="hidden sm:inline">{opt.l}</span>
-              </Button>
-            ))}
-          </div>
         </div>
       </CardHeader>
       <CardContent className="pt-0 space-y-3">
@@ -449,7 +558,7 @@ export function BoardCard({
               )}
             </div>
 
-            <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} boardType={boardType} viewMode={viewMode} />
+            <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} boardType={boardType} viewMode="funil" />
 
             <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -473,7 +582,7 @@ export function BoardCard({
           </div>
 
         ) : (
-          <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} boardType={boardType} viewMode={viewMode} />
+          <StageFunnelChart board={board} leadsPerStage={stageData} dateFilter={dateFilter} boardType={boardType} viewMode="funil" />
         )}
 
         {expanded && objectiveData && board.stages?.length > 0 && (
@@ -526,54 +635,7 @@ export function BoardCard({
           </div>
         )}
 
-        {/* Ações — flex-wrap para nenhum botão sobrepor outro em tela estreita */}
-        <div className="flex flex-wrap justify-end gap-2 pt-1">
-          <Button variant="outline" size="sm" className="text-xs" onClick={() => setShowVisualization(true)}>
-            <GitBranch className="h-3.5 w-3.5 mr-1.5" />
-            Fluxograma
-          </Button>
-          {onOpenProcesses && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs"
-              onClick={onOpenProcesses}
-              title={`Ver processos vinculados a este ${typeLabel}`}
-            >
-              <Scale className="h-3.5 w-3.5 mr-1.5" />
-              Processos
-              {processCount > 0 && (
-                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] leading-4">
-                  {processCount}
-                </Badge>
-              )}
-            </Button>
-          )}
-          <Button variant="outline" size="sm" className="text-xs" onClick={onOpenTeam}>
-            <Users className="h-3.5 w-3.5 mr-1.5" />
-            Equipe
-          </Button>
-          <Button variant="outline" size="sm" className="text-xs" onClick={onEdit}>
-            <Settings className="h-3.5 w-3.5 mr-1.5" />
-            Editar
-          </Button>
-          {onDelete && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="text-xs text-destructive hover:text-destructive"
-              onClick={onDelete}
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-              Excluir
-            </Button>
-          )}
-          <Button variant="default" size="sm" className="text-xs" onClick={onOpenKanban}>
-            <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
-            Abrir Kanban
-            <ArrowRight className="h-3 w-3 ml-1" />
-          </Button>
-        </div>
+        {acoes}
       </CardContent>
 
       <WorkflowVisualizationDialog
