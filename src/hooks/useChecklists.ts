@@ -3,6 +3,7 @@ import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
+import { insertChecklistInstancesTolerant } from '@/lib/checklistInstanceInsert';
 
 export type ChecklistType = 'documentos' | 'requisitos' | 'perguntas' | 'verificacao' | 'outro';
 
@@ -358,11 +359,15 @@ export const useChecklists = () => {
 
     if (newInstances.length === 0) return;
 
-    const { error } = await supabase
-      .from('lead_checklist_instances')
-      .insert(newInstances);
-
-    if (error) {
+    // O SELECT acima não protege contra corrida: duas abas no mesmo lead passam
+    // por ele antes de qualquer INSERT e ambas inserem. Tolerar a colisão aqui
+    // permite criar o índice único depois sem quebrar esta chamada.
+    try {
+      const { skipped } = await insertChecklistInstancesTolerant(supabase, newInstances);
+      if (skipped > 0) {
+        console.warn(`[useChecklists] ${skipped} instância(s) já existiam — corrida entre abas, ignoradas`);
+      }
+    } catch (error) {
       console.error('Error creating lead checklist instances:', error);
     }
   };

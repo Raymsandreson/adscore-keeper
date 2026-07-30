@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { KanbanStage } from '@/hooks/useKanbanBoards';
+import { insertChecklistInstancesTolerant } from '@/lib/checklistInstanceInsert';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
@@ -401,7 +402,13 @@ function ProcessStageChecklists({
           }));
 
         if (newInstances.length > 0) {
-          await externalSupabase.from('lead_checklist_instances').insert(newInstances);
+          // Mesma corrida do createLeadInstances: o SELECT de existentes acima
+          // não segura duas abas simultâneas. Tolerar colisão aqui é o que
+          // permite criar o índice único depois sem quebrar esta tela.
+          const { skipped } = await insertChecklistInstancesTolerant(externalSupabase, newInstances);
+          if (skipped > 0) {
+            console.warn(`[CaseWorkflowBoard] ${skipped} instância(s) já existiam — corrida entre abas, ignoradas`);
+          }
         }
       }
 
