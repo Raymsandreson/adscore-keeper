@@ -15,7 +15,9 @@
 --   drop table if exists public.acolhedores;
 --   drop index if exists idx_lead_stage_history_lead_stage_changed;
 --
--- Pendente de aplicação no Externo (WhatsJUD, kmedldlepwiityjsdahz).
+-- Aplicada no Externo (WhatsJUD, kmedldlepwiityjsdahz) via MCP em 30/07/2026.
+-- Verificado pós-aplicação: seed 6 acolhedores; view respondendo (920 leads
+-- visíveis no board 2dcd54b5); índice criado; grants anon/authenticated OK.
 
 -- 1) Tabela de acolhedores
 create table if not exists public.acolhedores (
