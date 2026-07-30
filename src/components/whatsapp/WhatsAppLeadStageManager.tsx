@@ -138,7 +138,9 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
     const updatedItems = instance.items.map(item =>
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
-    await updateInstanceItem(instance.id, updatedItems);
+    // false = cancelou na caixa de timing; nada foi gravado, então não mexe na UI.
+    const applied = await updateInstanceItem(instance.id, updatedItems);
+    if (!applied) return;
     setInstances(prev => prev.map(i =>
       i.id === instance.id
         ? { ...i, items: updatedItems, is_completed: updatedItems.every(item => item.checked) }
@@ -149,7 +151,8 @@ export function WhatsAppLeadStageManager({ leadId, boardId, currentStageId, onSt
   const handleCompleteAll = async (instance: LeadChecklistInstance) => {
     if (instance.is_readonly) return;
     const updatedItems = instance.items.map(item => ({ ...item, checked: true }));
-    await updateInstanceItem(instance.id, updatedItems);
+    const applied = await updateInstanceItem(instance.id, updatedItems);
+    if (!applied) return;
     setInstances(prev => prev.map(i =>
       i.id === instance.id ? { ...i, items: updatedItems, is_completed: true } : i
     ));

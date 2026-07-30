@@ -74,7 +74,9 @@ export function LeadChecklistPanel({ leadId, boardId, currentStageId, boards = [
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
 
-    await updateInstanceItem(instance.id, updatedItems);
+    // false = cancelou na caixa de timing; nada foi gravado, então não mexe na UI.
+    const applied = await updateInstanceItem(instance.id, updatedItems);
+    if (!applied) return;
 
     // Update local state
     setInstances(prev => prev.map(i =>

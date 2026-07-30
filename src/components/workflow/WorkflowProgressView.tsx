@@ -339,6 +339,15 @@ export function WorkflowProgressView({
       return;
     }
 
+    // Ao MARCAR, pergunta antes de qualquer efeito: "Cancelar" desiste do passo
+    // inteiro — nada é gravado, nem roteamento de fase, nem status do POP.
+    let retroactive = false;
+    if (willBeChecked && authUser?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
     const updatedItems = instance.items.map(item =>
       item.id === itemId
         // Desmarcar um passo-pergunta também limpa a resposta escolhida.
@@ -362,19 +371,15 @@ export function WorkflowProgressView({
     });
 
     // #8: loga o passo recém-MARCADO no Externo (fonte dos dashboards) via RPC.
-    // Antes do log, pergunta se o passo é de agora ou retroativo (não conta
-    // no ranking); o save abaixo não espera a resposta.
+    // O timing já foi respondido acima (retroativo não conta no ranking).
     if (willBeChecked && authUser?.id) {
-      const userId = authUser.id;
-      askStepTiming().then(retroactive => {
-        (supabase as any).rpc('log_checklist_step', {
-          p_user_id: userId,
-          p_instance_id: instance.id,
-          p_item_label: targetItem?.label || 'Passo',
-          p_retroactive: retroactive,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
-        });
+      (supabase as any).rpc('log_checklist_step', {
+        p_user_id: authUser.id,
+        p_instance_id: instance.id,
+        p_item_label: targetItem?.label || 'Passo',
+        p_retroactive: retroactive,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
       });
     }
 
@@ -413,6 +418,15 @@ export function WorkflowProgressView({
     const answer = targetItem?.answers?.find(a => a.id === answerId);
     if (!targetItem || !answer) return;
 
+    // Mesma pergunta dos passos comuns, antes de gravar: "Cancelar" desiste da
+    // resposta (não conclui o passo, não roteia, não muda status).
+    let retroactive = false;
+    if (authUser?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
     const updatedItems = instance.items.map(item =>
       item.id === itemId ? { ...item, checked: true, selectedAnswerId: answerId } : item
     );
@@ -434,16 +448,13 @@ export function WorkflowProgressView({
 
     // Mesmo log de passo dos checkboxes comuns, com a resposta no rótulo.
     if (authUser?.id) {
-      const userId = authUser.id;
-      askStepTiming().then(retroactive => {
-        (supabase as any).rpc('log_checklist_step', {
-          p_user_id: userId,
-          p_instance_id: instance.id,
-          p_item_label: `${targetItem.label} — ${answer.label}`,
-          p_retroactive: retroactive,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
-        });
+      (supabase as any).rpc('log_checklist_step', {
+        p_user_id: authUser.id,
+        p_instance_id: instance.id,
+        p_item_label: `${targetItem.label} — ${answer.label}`,
+        p_retroactive: retroactive,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
       });
     }
 
@@ -482,6 +493,14 @@ export function WorkflowProgressView({
     const targets = instance.items.filter(it => !isQuestion(it) && !!it.checked !== checked);
     if (targets.length === 0) return;
 
+    // Uma pergunta pro lote inteiro, antes de gravar: "Cancelar" desiste de tudo.
+    let retroactive = false;
+    if (checked && authUser?.id) {
+      const timing = await askStepTiming(targets.length);
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
     const updatedItems = instance.items.map(item =>
       isQuestion(item)
         ? item
@@ -504,22 +523,19 @@ export function WorkflowProgressView({
       });
     }
 
-    // Mesmo log por passo do toggle individual, mas com UMA pergunta de timing
-    // pro lote inteiro (retroativo não conta no ranking do telão).
+    // Mesmo log por passo do toggle individual; o timing do lote já foi
+    // respondido acima (retroativo não conta no ranking do telão).
     if (checked && authUser?.id) {
-      const userId = authUser.id;
-      askStepTiming(targets.length).then(retroactive => {
-        for (const it of targets) {
-          (supabase as any).rpc('log_checklist_step', {
-            p_user_id: userId,
-            p_instance_id: instance.id,
-            p_item_label: it.label || 'Passo',
-            p_retroactive: retroactive,
-          }).then((res: { error?: { message?: string } | null }) => {
-            if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
-          });
-        }
-      });
+      for (const it of targets) {
+        (supabase as any).rpc('log_checklist_step', {
+          p_user_id: authUser.id,
+          p_instance_id: instance.id,
+          p_item_label: it.label || 'Passo',
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
+        });
+      }
     }
 
     const { error } = await supabase

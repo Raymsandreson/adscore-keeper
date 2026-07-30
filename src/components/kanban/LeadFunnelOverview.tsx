@@ -171,7 +171,9 @@ export function LeadFunnelOverview({ leadId, boardId, currentStageId, boards = [
     const updatedItems = instance.items.map(item =>
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
-    await updateInstanceItem(instance.id, updatedItems);
+    // false = cancelou na caixa de timing; nada foi gravado, então não mexe na UI.
+    const applied = await updateInstanceItem(instance.id, updatedItems);
+    if (!applied) return;
     setInstances(prev => prev.map(i =>
       i.id === instance.id
         ? { ...i, items: updatedItems, is_completed: updatedItems.every(item => item.checked) }

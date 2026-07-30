@@ -464,6 +464,15 @@ function ProcessStageChecklists({
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
 
+    // Ao MARCAR, pergunta antes de gravar: "Cancelar" desiste da marcação.
+    const toggled = updatedItems.find(it => it.id === itemId);
+    let retroactive = false;
+    if (toggled?.checked && user?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
     const allChecked = updatedItems.every(i => i.checked);
 
     setInstances(prev => prev.map(inst =>
@@ -482,19 +491,15 @@ function ProcessStageChecklists({
       .eq('id', instance.id);
 
     // #8: loga o passo recém-MARCADO por pessoa (user_activity_log no Externo via RPC).
-    const toggled = updatedItems.find(it => it.id === itemId);
+    // O timing já foi respondido antes do save (retroativo não conta no ranking).
     if (toggled?.checked && user?.id) {
-      const userId = user.id;
-      // Pergunta se o passo é de agora ou retroativo (não conta no ranking).
-      askStepTiming().then(retroactive => {
-        (externalSupabase as any).rpc('log_checklist_step', {
-          p_user_id: userId,
-          p_instance_id: instance.id,
-          p_item_label: toggled.label,
-          p_retroactive: retroactive,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[CaseWorkflowBoard] log de passo falhou:', res.error.message);
-        });
+      (externalSupabase as any).rpc('log_checklist_step', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_item_label: toggled.label,
+        p_retroactive: retroactive,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[CaseWorkflowBoard] log de passo falhou:', res.error.message);
       });
     }
   };

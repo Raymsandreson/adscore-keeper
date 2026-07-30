@@ -175,6 +175,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       item.id === itemId ? { ...item, checked: !item.checked } : item
     );
 
+    // Ao MARCAR, pergunta antes de gravar: "Cancelar" desiste da marcação
+    // inteira (nada é salvo). Desmarcar não pergunta.
+    const toggledItem = updatedItems.find(it => it.id === itemId);
+    let retroactive = false;
+    if (toggledItem?.checked && user?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
       .update({
@@ -190,20 +200,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     // #8: loga o passo recém-MARCADO por pessoa (user_activity_log via RPC).
-    // Fire-and-forget; só quando marca (não no desmarcar). Antes do log,
-    // pergunta se o passo é de agora ou retroativo (não conta no ranking).
-    const toggled = updatedItems.find(it => it.id === itemId);
-    if (toggled?.checked && user?.id) {
-      const userId = user.id;
-      askStepTiming().then(retroactive => {
-        (externalSupabase as any).rpc('log_checklist_step', {
-          p_user_id: userId,
-          p_instance_id: instance.id,
-          p_item_label: toggled.label,
-          p_retroactive: retroactive,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
-        });
+    // Fire-and-forget; só quando marca (não no desmarcar). O timing já foi
+    // respondido antes do save (retroativo não conta no ranking).
+    if (toggledItem?.checked && user?.id) {
+      (externalSupabase as any).rpc('log_checklist_step', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_item_label: toggledItem.label,
+        p_retroactive: retroactive,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
       });
     }
 
@@ -222,6 +228,15 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     const targets = instance.items.filter(it => !!it.checked !== checked);
     if (targets.length === 0) return;
+
+    // Pergunta uma vez pro lote inteiro, antes de gravar: "Cancelar" desiste
+    // de tudo (nenhum passo é marcado).
+    let retroactive = false;
+    if (checked && user?.id) {
+      const timing = await askStepTiming(targets.length);
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
 
     const updatedItems = instance.items.map(item => ({ ...item, checked }));
 
@@ -245,19 +260,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     // Só marcação entra no log (desmarcar segue sem log, igual ao toggle individual).
     if (checked && user?.id) {
-      const userId = user.id;
-      askStepTiming(targets.length).then(retroactive => {
-        for (const it of targets) {
-          (externalSupabase as any).rpc('log_checklist_step', {
-            p_user_id: userId,
-            p_instance_id: instance.id,
-            p_item_label: it.label,
-            p_retroactive: retroactive,
-          }).then((res: { error?: { message?: string } | null }) => {
-            if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
-          });
-        }
-      });
+      for (const it of targets) {
+        (externalSupabase as any).rpc('log_checklist_step', {
+          p_user_id: user.id,
+          p_instance_id: instance.id,
+          p_item_label: it.label,
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+        });
+      }
     }
   };
 
@@ -270,6 +282,13 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     const docs = instance.items.find(it => it.id === itemId)?.docChecklist || [];
     const targets = docs.filter(d => !!d.checked !== checked);
     if (targets.length === 0) return;
+
+    let retroactive = false;
+    if (checked && user?.id) {
+      const timing = await askStepTiming(targets.length);
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
 
     const updatedItems = instance.items.map(item =>
       item.id === itemId
@@ -292,24 +311,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
 
     if (user?.id) {
-      const userId = user.id;
-      const logDocs = (retroactive: boolean) => {
-        for (const d of targets) {
-          (externalSupabase as any).rpc('log_checklist_doc_item', {
-            p_user_id: userId,
-            p_instance_id: instance.id,
-            p_doc_label: d.label,
-            p_checked: checked,
-            p_retroactive: retroactive,
-          }).then((res: { error?: { message?: string } | null }) => {
-            if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
-          });
-        }
-      };
-      if (checked) {
-        askStepTiming(targets.length).then(logDocs);
-      } else {
-        logDocs(false);
+      for (const d of targets) {
+        (externalSupabase as any).rpc('log_checklist_doc_item', {
+          p_user_id: user.id,
+          p_instance_id: instance.id,
+          p_doc_label: d.label,
+          p_checked: checked,
+          p_retroactive: retroactive,
+        }).then((res: { error?: { message?: string } | null }) => {
+          if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
+        });
       }
     }
   };
@@ -325,6 +336,14 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     const targetDoc = instance.items.find(it => it.id === itemId)?.docChecklist?.find(d => d.id === docId);
     const willBeChecked = !targetDoc?.checked;
     const docLabel = targetDoc?.label || 'Item de checklist';
+
+    // Ao marcar, pergunta antes de gravar; "Cancelar" desiste da marcação.
+    let retroactive = false;
+    if (willBeChecked && user?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
 
     const updatedItems = instance.items.map(item => {
       if (item.id !== itemId) return item;
@@ -345,26 +364,19 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     // #telão: loga a marcação/desmarcação do sub-item por pessoa (RPC grava em
-    // user_activity_log no Externo). Fire-and-forget. Ao MARCAR, pergunta se é
-    // de agora ou retroativo (retroativo não conta no ranking). Ao DESMARCAR, é
-    // sempre "agora" — o ranking conta líquido (marcações - desmarcações).
+    // user_activity_log no Externo). Fire-and-forget. O timing do MARCAR já foi
+    // respondido antes do save; DESMARCAR é sempre "agora" — o ranking conta
+    // líquido (marcações - desmarcações).
     if (user?.id) {
-      const userId = user.id;
-      const logDoc = (retroactive: boolean) =>
-        (externalSupabase as any).rpc('log_checklist_doc_item', {
-          p_user_id: userId,
-          p_instance_id: instance.id,
-          p_doc_label: docLabel,
-          p_checked: willBeChecked,
-          p_retroactive: retroactive,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
-        });
-      if (willBeChecked) {
-        askStepTiming().then(logDoc);
-      } else {
-        logDoc(false);
-      }
+      (externalSupabase as any).rpc('log_checklist_doc_item', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_doc_label: docLabel,
+        p_checked: willBeChecked,
+        p_retroactive: retroactive,
+      }).then((res: { error?: { message?: string } | null }) => {
+        if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
+      });
     }
 
     setInstances(prev => prev.map(i =>
