@@ -80,9 +80,27 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 
 **Propósito**: gestão da equipe — produtividade, metas, avaliações, membros, times, férias, permissões e perfis de acesso.
 
-- Pílulas: Produtividade, Métricas, Metas, Avaliações, Tráfego, Membros, Times, Férias, Embaixadores, Carreira, Rotinas, WhatsApp (permissões de instância), Cartões, Contas, Acessos, Perfis.
+- Pílulas: Produtividade, Métricas, Metas, Metas Processuais, Avaliações, Tráfego, Membros, Times, Férias, Embaixadores, Carreira, Rotinas, WhatsApp (permissões de instância), Cartões, Contas, Acessos, Perfis.
 
 **Fluxo recomendado**: Membros pra cadastrar pessoa; Acessos/Perfis pra permissões; Produtividade pro acompanhamento diário.
+
+---
+
+## Metas Processuais (Equipe → aba "Metas Processuais")
+
+**Propósito**: meta de time sobre a carteira de processos — quantos processos precisam atingir um marco processual dentro de um período, e/ou qual o percentual médio de fluxo (POP) concluído.
+
+- "Nova meta" — time, nome, período (Mensal/Trimestral/Personalizado), marco alvo (Petição Inicial → Pagamento, ou "Qualquer marco"), quantidade de processos e/ou % de fluxo médio. Ao menos um dos dois alvos é obrigatório.
+- Card por meta — barra de "Processos no marco (no período)" e barra de "Fluxo médio concluído (hoje)", com o rodapé mostrando quantos processos o time tem, quantos têm passos de POP e quantos têm marco registrado.
+- "POPs por time" (bloco recolhível) — mapeia cada POP a um time. Serve de fallback: processo sem responsável processual em time entra pelo POP.
+- Lixeira arquiva a meta (`is_active = false`); o registro fica no histórico.
+
+**Como o número sai** (RPC `team_process_goals_progress`, Externo):
+- Processo → time: `leads.processual_responsible_id` presente em `team_members`; se não, o POP do processo (`lead_processes.workflow_id`) mapeado em `team_workflow_boards`.
+- Realizado do marco: processos distintos com linha em `process_movements` do tipo alvo com `data_movimentacao` dentro do período.
+- Fluxo médio: média simples, por processo, do % de itens marcados nas `lead_checklist_instances` do POP. **É foto do estado atual** — o checklist não guarda data por item, então esse número não é recortado pelo período.
+
+**Limite conhecido (jul/2026)**: marcos processuais dependem do sync de movimentações do Escavador — na virada, só 89 de 1.647 processos tinham marco. O painel avisa quando a meta cai num time sem marco registrado.
 
 ---
 
