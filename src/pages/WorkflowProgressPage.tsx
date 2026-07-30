@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -7,21 +7,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
-import { ArrowLeft, Search, X, RefreshCw, Settings2, Plus, Pencil, Trash2, GitBranch, Scale } from 'lucide-react';
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from '@/components/ui/pagination';
+import { ArrowLeft, Search, X, RefreshCw, Settings2 } from 'lucide-react';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView';
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
-import { WorkflowVisualizationDialog } from '@/components/workflow/WorkflowVisualizationDialog';
+import { BoardsList } from '@/components/board/BoardsList';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
-import { Badge } from '@/components/ui/badge';
 import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
-import { LeadProcess } from '@/hooks/useLeadProcesses';
 import { toast } from 'sonner';
-
-// Ficha completa do processo (abas Partes/Dados/Atividades/etc.) — lazy para não pesar o bundle da página
-const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface LeadBasic {
   id: string;
@@ -49,43 +42,21 @@ const WorkflowProgressPage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLeadPicker, setShowLeadPicker] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [workflowSearch, setWorkflowSearch] = useState('');
-  const [workflowPage, setWorkflowPage] = useState(1);
   const [editingWorkflow, setEditingWorkflow] = useState<KanbanBoard | null>(null);
   const [createNewMode, setCreateNewMode] = useState(false);
-  const [vizBoard, setVizBoard] = useState<KanbanBoard | null>(null);
-  // Aba lateral com a relação de processos vinculados a um POP
-  const [processesBoard, setProcessesBoard] = useState<KanbanBoard | null>(null);
-  const [boardProcesses, setBoardProcesses] = useState<LeadProcess[]>([]);
-  const [loadingProcesses, setLoadingProcesses] = useState(false);
-  const [processCounts, setProcessCounts] = useState<Record<string, number>>({});
-  const [selectedProcess, setSelectedProcess] = useState<LeadProcess | null>(null);
-  const WORKFLOWS_PER_PAGE = 6;
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [leadsRes, boardsRes, processCountRes] = await Promise.all([
+      const [leadsRes, boardsRes] = await Promise.all([
         externalSupabase.from('leads').select('id, lead_name, status, board_id').order('lead_name'),
         externalSupabase.from('kanban_boards').select('*').order('display_order'),
-        // Query única para contar processos por POP (evita N+1)
-        externalSupabase.from('lead_processes').select('workflow_id').is('deleted_at', null),
       ]);
 
       if (leadsRes.error) throw leadsRes.error;
       if (boardsRes.error) throw boardsRes.error;
 
       setLeads(leadsRes.data || []);
-
-      if (processCountRes.error) {
-        console.error('Erro ao contar processos por POP:', processCountRes.error);
-      } else {
-        const counts: Record<string, number> = {};
-        for (const row of processCountRes.data || []) {
-          const wid = (row as { workflow_id: string | null }).workflow_id;
-          if (wid) counts[wid] = (counts[wid] || 0) + 1;
-        }
-        setProcessCounts(counts);
-      }
 
       const parsedBoards = (boardsRes.data || []).map(b => ({
         ...b,
@@ -173,32 +144,6 @@ const WorkflowProgressPage = () => {
     toast.success('Lead movido de fase');
   };
 
-  const openProcessesSheet = useCallback(async (board: KanbanBoard) => {
-    setProcessesBoard(board);
-    setLoadingProcesses(true);
-    setBoardProcesses([]);
-    try {
-      const { data, error } = await externalSupabase
-        .from('lead_processes')
-        .select('*')
-        .eq('workflow_id', board.id)
-        .is('deleted_at', null)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      setBoardProcesses((data || []) as unknown as LeadProcess[]);
-    } catch (error) {
-      console.error('Erro ao carregar processos do POP:', error);
-      toast.error('Erro ao carregar processos');
-    } finally {
-      setLoadingProcesses(false);
-    }
-  }, []);
-
-  const leadNameById = useCallback(
-    (leadId: string | null) => (leadId ? leads.find(l => l.id === leadId)?.lead_name || null : null),
-    [leads],
-  );
-
   const filteredLeads = searchQuery
     ? leads.filter(l => l.lead_name?.toLowerCase().includes(searchQuery.toLowerCase()))
     : leads;
@@ -248,158 +193,9 @@ const WorkflowProgressPage = () => {
       </div>
 
       {/* Content */}
-      <div className="max-w-3xl mx-auto p-4">
+      <div className={`mx-auto p-4 ${selectedLead ? 'max-w-3xl' : 'max-w-6xl'}`}>
         {!selectedLead ? (
-          (() => {
-            const workflowBoards = boards.filter(b => (b as any).board_type === 'workflow');
-            const filteredWorkflows = workflowSearch
-              ? workflowBoards.filter(b => b.name.toLowerCase().includes(workflowSearch.toLowerCase()))
-              : workflowBoards;
-            const totalPages = Math.max(1, Math.ceil(filteredWorkflows.length / WORKFLOWS_PER_PAGE));
-            const currentPage = Math.min(workflowPage, totalPages);
-            const paged = filteredWorkflows.slice((currentPage - 1) * WORKFLOWS_PER_PAGE, currentPage * WORKFLOWS_PER_PAGE);
-
-            const handleDeleteWorkflow = async (boardId: string) => {
-              if (!confirm('Tem certeza que deseja excluir este fluxo?')) return;
-              const { error } = await externalSupabase.from('kanban_boards').delete().eq('id', boardId);
-              if (error) { toast.error('Erro ao excluir'); return; }
-              toast.success('POP excluído');
-              fetchData();
-            };
-
-            return (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold">POPs</h2>
-                  <Button size="icon" onClick={() => { setCreateNewMode(true); setEditingWorkflow(null); setShowConfig(true); }} title="Criar novo fluxo">
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <div className="relative max-w-sm">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar POPs..."
-                    value={workflowSearch}
-                    onChange={e => { setWorkflowSearch(e.target.value); setWorkflowPage(1); }}
-                    className="pl-9"
-                  />
-                </div>
-
-                {filteredWorkflows.length === 0 ? (
-                  <p className="text-center py-10 text-muted-foreground text-sm">Nenhum fluxo encontrado</p>
-                ) : (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {paged.map(board => (
-                        <div key={board.id} className="border rounded-lg p-4 bg-card hover:shadow-sm transition-shadow">
-                          <div className="flex items-start gap-2">
-                            <h3 className="font-semibold text-sm truncate flex-1">{board.name}</h3>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-7 px-2 text-xs shrink-0"
-                              onClick={() => openProcessesSheet(board)}
-                              title="Ver processos vinculados a este POP"
-                            >
-                              <Scale className="h-3 w-3 mr-1" />
-                              Processos
-                              {processCounts[board.id] ? (
-                                <Badge variant="secondary" className="ml-1.5 px-1.5 py-0 text-[10px] leading-4">
-                                  {processCounts[board.id]}
-                                </Badge>
-                              ) : null}
-                            </Button>
-                          </div>
-                          {board.description && (
-                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{board.description}</p>
-                          )}
-                          <div className="flex items-center gap-2 mt-3 pt-2 border-t">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-1 text-xs h-8"
-                              onClick={() => setVizBoard(board)}
-                            >
-                              <GitBranch className="h-3 w-3 mr-1" /> Visualizar
-                            </Button>
-                            <div className="w-px h-5 bg-border" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-1 text-xs h-8"
-                              onClick={() => { setEditingWorkflow(board); setShowConfig(true); }}
-                            >
-                              <Pencil className="h-3 w-3 mr-1" /> Editar
-                            </Button>
-                            <div className="w-px h-5 bg-border" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="flex-1 text-xs h-8 text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteWorkflow(board.id)}
-                            >
-                              <Trash2 className="h-3 w-3 mr-1" /> Excluir
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {totalPages > 1 && (
-                      <Pagination>
-                        <PaginationContent>
-                          <PaginationItem>
-                            <PaginationPrevious
-                              onClick={() => setWorkflowPage(p => Math.max(1, p - 1))}
-                              className={currentPage <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                            />
-                          </PaginationItem>
-                          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                            let page: number;
-                            if (totalPages <= 5) page = i + 1;
-                            else if (currentPage <= 3) page = i + 1;
-                            else if (currentPage >= totalPages - 2) page = totalPages - 4 + i;
-                            else page = currentPage - 2 + i;
-                            return (
-                              <PaginationItem key={page}>
-                                <PaginationLink
-                                  isActive={page === currentPage}
-                                  onClick={() => setWorkflowPage(page)}
-                                  className="cursor-pointer"
-                                >
-                                  {page}
-                                </PaginationLink>
-                              </PaginationItem>
-                            );
-                          })}
-                          {totalPages > 5 && currentPage < totalPages - 2 && (
-                            <>
-                              <PaginationItem><PaginationEllipsis /></PaginationItem>
-                              <PaginationItem>
-                                <PaginationLink onClick={() => setWorkflowPage(totalPages)} className="cursor-pointer">
-                                  {totalPages}
-                                </PaginationLink>
-                              </PaginationItem>
-                            </>
-                          )}
-                          <PaginationItem>
-                            <PaginationNext
-                              onClick={() => setWorkflowPage(p => Math.min(totalPages, p + 1))}
-                              className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
-                            />
-                          </PaginationItem>
-                        </PaginationContent>
-                        <div className="flex justify-center mt-2">
-                          <span className="text-xs text-muted-foreground">{WORKFLOWS_PER_PAGE} / página</span>
-                        </div>
-                      </Pagination>
-                    )}
-                  </>
-                )}
-              </div>
-            );
-          })()
+          <BoardsList boardType="workflow" />
         ) : !selectedBoard ? (
           <div className="space-y-4 py-10">
             <p className="text-center text-sm text-muted-foreground">
@@ -566,96 +362,7 @@ const WorkflowProgressPage = () => {
         initialHighlightMsgId={deepLinkStep?.msgId || null}
       />
 
-      {/* Visualização (fluxograma / mapa mental / detalhes) */}
-      <WorkflowVisualizationDialog
-        board={vizBoard}
-        open={!!vizBoard}
-        onOpenChange={(open) => { if (!open) setVizBoard(null); }}
-        onEdit={() => { if (vizBoard) { setEditingWorkflow(vizBoard); setShowConfig(true); } }}
-      />
 
-      {/* Aba lateral: relação de processos vinculados ao POP */}
-      <Sheet open={!!processesBoard} onOpenChange={(open) => { if (!open) { setProcessesBoard(null); setBoardProcesses([]); } }}>
-        <SheetContent side="right" className="w-full sm:max-w-md flex flex-col">
-          <SheetHeader>
-            <SheetTitle className="flex items-center gap-2">
-              <Scale className="h-4 w-4" />
-              Processos do POP
-            </SheetTitle>
-            <SheetDescription className="truncate">{processesBoard?.name}</SheetDescription>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-y-auto mt-4">
-            {loadingProcesses ? (
-              <div className="flex items-center justify-center py-16">
-                <RefreshCw className="h-5 w-5 animate-spin text-primary" />
-              </div>
-            ) : boardProcesses.length === 0 ? (
-              <p className="text-center text-sm text-muted-foreground py-16">
-                Nenhum processo vinculado a este POP.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {boardProcesses.map(p => {
-                  const clientName = leadNameById(p.lead_id);
-                  const statusLabel =
-                    p.status === 'concluido' ? 'Concluído' :
-                    p.status === 'arquivado' ? 'Arquivado' : 'Em andamento';
-                  const statusVariant =
-                    p.status === 'concluido' ? 'default' :
-                    p.status === 'arquivado' ? 'secondary' : 'outline';
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => setSelectedProcess(p)}
-                      className="w-full text-left border rounded-lg p-3 bg-card hover:bg-accent hover:shadow-sm transition-colors"
-                      title="Abrir ficha completa do processo"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-sm font-medium leading-snug">{p.title || 'Processo sem título'}</p>
-                        <Badge variant={statusVariant as any} className="shrink-0 text-[10px]">{statusLabel}</Badge>
-                      </div>
-                      {p.process_number && (
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">{p.process_number}</p>
-                      )}
-                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                        <Badge variant="secondary" className="text-[10px] capitalize">{p.process_type}</Badge>
-                        {clientName && (
-                          <span className="text-[11px] text-muted-foreground">Cliente: {clientName}</span>
-                        )}
-                      </div>
-                      {p.started_at && (
-                        <p className="text-[11px] text-muted-foreground mt-1">
-                          Início: {new Date(p.started_at).toLocaleDateString('pt-BR')}
-                        </p>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
-
-      {/* Ficha completa do processo (aberta ao clicar num processo da aba lateral) */}
-      <Suspense fallback={null}>
-        {selectedProcess && (
-          <ProcessDetailSheet
-            open={!!selectedProcess}
-            onOpenChange={(open) => { if (!open) setSelectedProcess(null); }}
-            process={selectedProcess}
-            onUpdated={(updated) => {
-              if (updated) {
-                setBoardProcesses(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } as LeadProcess : p));
-                setSelectedProcess(prev => prev && prev.id === updated.id ? { ...prev, ...updated } as LeadProcess : prev);
-              }
-            }}
-            mode="sheet"
-          />
-        )}
-      </Suspense>
     </div>
   );
 };

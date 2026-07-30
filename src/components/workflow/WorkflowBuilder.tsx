@@ -2115,8 +2115,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   </div>
                 </div>
 
-                {/* Padrão de Nome do Processo — só POP (o nome do lead/caso/grupo mora no funil). */}
-                {!isFunnel && (
+                {/* Padrão de Nome do Processo — disponível nos dois tipos: funil
+                    (comercial) e POP (processual) têm as mesmas funcionalidades,
+                    o board_type só diz de qual time o quadro é. */}
+                {(
                   <div className="mt-4 rounded-lg border p-3 space-y-3">
                     <div className="text-sm font-semibold">🏷️ Padrão de Nome do Processo</div>
                     <p className="text-xs text-muted-foreground">
