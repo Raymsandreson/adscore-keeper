@@ -4,16 +4,19 @@
 //   modo 'atual'     → o marco é o estado mais recente (coluna "Atualmente")
 // Abre por cima do formulário de metas; fechar devolve ao cadastro.
 // =============================================================================
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, ExternalLink } from 'lucide-react';
+import { Loader2, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
-import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import type { MarcoProcesso } from '@/hooks/useTeamProcessGoals';
 import type { MarcoTipo } from '@/hooks/useProcessMovements';
+
+// Mesmo padrão do StageFunnelChart: a ficha do processo é pesada, entra sob demanda.
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 export interface MarcoDrill {
   teamId: string;
@@ -29,9 +32,11 @@ export function TeamMarcoProcessosSheet({ drill, onClose, fetchMarcoProcessos }:
   /** Vem do useTeamProcessGoals do pai — instanciar o hook aqui refaria todo o fetch. */
   fetchMarcoProcessos: (teamId: string, marco: string, modo: 'acumulado' | 'atual') => Promise<MarcoProcesso[]>;
 }) {
-  const navigate = useNavigate();
   const [rows, setRows] = useState<MarcoProcesso[]>([]);
   const [loading, setLoading] = useState(false);
+  /** Linha completa de lead_processes — o ProcessDetailSheet espera o registro inteiro. */
+  const [openProcess, setOpenProcess] = useState<Record<string, unknown> | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!drill) { setRows([]); return; }
@@ -46,7 +51,28 @@ export function TeamMarcoProcessosSheet({ drill, onClose, fetchMarcoProcessos }:
     return () => { cancelado = true; };
   }, [drill, fetchMarcoProcessos]);
 
+  /** Abre a ficha completa do processo por cima da lista (sheet de baixo pra cima). */
+  const abrirProcesso = async (processId: string) => {
+    setOpeningId(processId);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await db
+        .from('lead_processes')
+        .select('*')
+        .eq('id', processId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Processo não encontrado'); return; }
+      setOpenProcess(data as Record<string, unknown>);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
+    } finally {
+      setOpeningId(null);
+    }
+  };
+
   return (
+    <>
     <Sheet open={!!drill} onOpenChange={open => !open && onClose()}>
       <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-lg">
         <SheetHeader className="border-b px-5 py-4">
@@ -78,16 +104,20 @@ export function TeamMarcoProcessosSheet({ drill, onClose, fetchMarcoProcessos }:
                 <button
                   key={r.process_id}
                   type="button"
-                  className="flex w-full flex-col gap-1 px-5 py-3 text-left transition-colors hover:bg-muted/50 disabled:cursor-default disabled:hover:bg-transparent"
-                  disabled={!r.case_id}
-                  onClick={() => { if (r.case_id) { onClose(); navigate(`/cases/${r.case_id}`); } }}
+                  className="flex w-full flex-col gap-1 px-5 py-3 text-left transition-colors hover:bg-muted/50"
+                  onClick={() => abrirProcesso(r.process_id)}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <span className="break-words text-sm font-medium">
-                      {r.lead_name || r.title || 'Sem nome'}
+                      {r.title || r.lead_name || 'Processo sem título'}
                     </span>
-                    {r.case_id && <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                    {openingId === r.process_id
+                      ? <Loader2 className="mt-0.5 h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+                      : <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
                   </div>
+                  {r.lead_name && r.title && (
+                    <span className="break-words text-[11px] text-muted-foreground">{r.lead_name}</span>
+                  )}
                   {r.process_number && (
                     <span className="break-all font-mono text-[11px] text-muted-foreground">
                       {r.process_number}
@@ -106,5 +136,19 @@ export function TeamMarcoProcessosSheet({ drill, onClose, fetchMarcoProcessos }:
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Ficha do processo: irmã do sheet da lista, não filha — evita disputa de foco
+        entre dois Dialogs do Radix aninhados. */}
+    <Suspense fallback={null}>
+      {openProcess && (
+        <ProcessDetailSheet
+          open={!!openProcess}
+          onOpenChange={open => { if (!open) setOpenProcess(null); }}
+          process={openProcess}
+          mode="sheet"
+        />
+      )}
+    </Suspense>
+    </>
   );
 }
