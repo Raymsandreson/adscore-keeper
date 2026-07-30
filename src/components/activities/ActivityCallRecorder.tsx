@@ -10,6 +10,9 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+// O `export { … } from` da linha ~139 não cria binding local — sem este import,
+// as chamadas de stripHtmlToText abaixo viram ReferenceError em runtime.
+import { stripHtmlToText } from './richTextFields';
 
 export interface ActivityCallContext {
   title?: string;
