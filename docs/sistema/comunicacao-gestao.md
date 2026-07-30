@@ -88,19 +88,21 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 
 ## Metas Processuais (Equipe → aba "Metas Processuais")
 
-**Propósito**: meta de time sobre a carteira de processos — quantos processos precisam atingir um marco processual dentro de um período, e/ou qual o percentual médio de fluxo (POP) concluído.
+**Propósito**: meta de time sobre a carteira de processos — a quantos processos o time quer chegar em cada marco processual, e/ou qual o percentual médio de fluxo (POP) concluído.
 
-- "Nova meta" — time, nome, período (Mensal/Trimestral/Personalizado), marco alvo (Petição Inicial → Pagamento, ou "Qualquer marco"), quantidade de processos e/ou % de fluxo médio. Ao menos um dos dois alvos é obrigatório.
-- Card por meta — barra de "Processos no marco (no período)" e barra de "Fluxo médio concluído (hoje)", com o rodapé mostrando quantos processos o time tem, quantos têm passos de POP e quantos têm marco registrado.
+- "Nova meta" — time, nome, período (Mensal/Trimestral/Personalizado, com calendário nas datas) e a **tabela dos 10 marcos de uma vez**: cada linha traz "Hoje" (processos que já passaram pelo marco), "Parados" (processos em que esse é o marco mais recente) e o campo "Meta". Marco sem meta preenchida não é acompanhado.
+- O alvo é **absoluto**: "hoje temos 42 na conciliação, queremos chegar a 60". O número de hoje é carregado automaticamente ao escolher o time e gravado como ponto de partida da barra. Alvo menor que o número atual é recusado — não existe processo saindo de um marco.
+- Card por time/período — uma barra por marco (acumulado × alvo, com "Início", "No período: +N" e "Faltam N") e a barra de "Fluxo médio concluído (hoje)". Rodapé mostra processos do time, quantos têm passos de POP e quantos têm marco.
 - "POPs por time" (bloco recolhível) — mapeia cada POP a um time. Serve de fallback: processo sem responsável processual em time entra pelo POP.
-- Lixeira arquiva a meta (`is_active = false`); o registro fica no histórico.
+- Lixeira arquiva as metas daquele time/período (`is_active = false`); os registros ficam no histórico.
 
-**Como o número sai** (RPC `team_process_goals_progress`, Externo):
-- Processo → time: `leads.processual_responsible_id` presente em `team_members`; se não, o POP do processo (`lead_processes.workflow_id`) mapeado em `team_workflow_boards`.
-- Realizado do marco: processos distintos com linha em `process_movements` do tipo alvo com `data_movimentacao` dentro do período.
+**Como o número sai** (RPCs `team_process_goals_progress` e `team_process_marco_baseline`, Externo):
+- Processo → time (view `vw_team_process_assignment`): `leads.processual_responsible_id` presente em `team_members`; se não, o POP do processo (`lead_processes.workflow_id`) mapeado em `team_workflow_boards`.
+- `realizado_processos`: processos distintos do time com linha em `process_movements` do marco alvo, **sem recorte de data** (acumulado).
+- `realizado_no_periodo`: os que registraram o marco dentro do período — é o ritmo, não a barra.
 - Fluxo médio: média simples, por processo, do % de itens marcados nas `lead_checklist_instances` do POP. **É foto do estado atual** — o checklist não guarda data por item, então esse número não é recortado pelo período.
 
-**Limite conhecido (jul/2026)**: marcos processuais dependem do sync de movimentações do Escavador — na virada, só 89 de 1.647 processos tinham marco. O painel avisa quando a meta cai num time sem marco registrado.
+**Limite conhecido (jul/2026)**: marcos processuais dependem do sync de movimentações do Escavador — só 89 de 1.647 processos tinham marco. A causa não é o parser: apenas 782 processos têm número CNJ, 81 têm `escavador_raw` salvo e `process_movement_monitors` está **vazio**, então a `check-process-movements` (que só varre monitores ativos) nunca baixa movimentação nova. O painel avisa quando a meta cai num time sem marco registrado.
 
 ---
 
