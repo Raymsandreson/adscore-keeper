@@ -214,6 +214,106 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     ));
   };
 
+  // Marca (ou desmarca) TODOS os passos do objetivo de uma vez. Pergunta uma
+  // única vez se todos são de agora ou retroativos e loga cada passo recém-marcado
+  // (mesmo RPC do toggle individual, pra não distorcer o ranking do telão).
+  const handleMarkAllSteps = async (instance: ChecklistInstance, checked: boolean) => {
+    if (instance.is_readonly) return;
+
+    const targets = instance.items.filter(it => !!it.checked !== checked);
+    if (targets.length === 0) return;
+
+    const updatedItems = instance.items.map(item => ({ ...item, checked }));
+
+    const { error } = await externalSupabase
+      .from('lead_checklist_instances')
+      .update({
+        items: updatedItems as any,
+        is_completed: checked,
+        completed_at: checked ? new Date().toISOString() : null,
+      })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao atualizar passos');
+      return;
+    }
+
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id ? { ...i, items: updatedItems, is_completed: checked } : i
+    ));
+
+    // Só marcação entra no log (desmarcar segue sem log, igual ao toggle individual).
+    if (checked && user?.id) {
+      const userId = user.id;
+      askStepTiming(targets.length).then(retroactive => {
+        for (const it of targets) {
+          (externalSupabase as any).rpc('log_checklist_step', {
+            p_user_id: userId,
+            p_instance_id: instance.id,
+            p_item_label: it.label,
+            p_retroactive: retroactive,
+          }).then((res: { error?: { message?: string } | null }) => {
+            if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+          });
+        }
+      });
+    }
+  };
+
+  // Marca/desmarca TODOS os itens do checklist de um passo. Mesma regra do
+  // sub-item individual: não altera a conclusão do passo, e pergunta o timing
+  // uma vez só ao marcar (desmarcar é sempre "agora", o ranking conta líquido).
+  const handleMarkAllDocs = async (instance: ChecklistInstance, itemId: string, checked: boolean) => {
+    if (instance.is_readonly) return;
+
+    const docs = instance.items.find(it => it.id === itemId)?.docChecklist || [];
+    const targets = docs.filter(d => !!d.checked !== checked);
+    if (targets.length === 0) return;
+
+    const updatedItems = instance.items.map(item =>
+      item.id === itemId
+        ? { ...item, docChecklist: (item.docChecklist || []).map(d => ({ ...d, checked })) }
+        : item
+    );
+
+    const { error } = await externalSupabase
+      .from('lead_checklist_instances')
+      .update({ items: JSON.parse(JSON.stringify(updatedItems)) })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao atualizar checklist do passo');
+      return;
+    }
+
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id ? { ...i, items: updatedItems } : i
+    ));
+
+    if (user?.id) {
+      const userId = user.id;
+      const logDocs = (retroactive: boolean) => {
+        for (const d of targets) {
+          (externalSupabase as any).rpc('log_checklist_doc_item', {
+            p_user_id: userId,
+            p_instance_id: instance.id,
+            p_doc_label: d.label,
+            p_checked: checked,
+            p_retroactive: retroactive,
+          }).then((res: { error?: { message?: string } | null }) => {
+            if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
+          });
+        }
+      };
+      if (checked) {
+        askStepTiming(targets.length).then(logDocs);
+      } else {
+        logDocs(false);
+      }
+    }
+  };
+
   // Marca/desmarca um item do checklist ASSOCIADO ao passo (docChecklist).
   // É sub-item: persiste só o doc.checked no JSON de items; NÃO altera a
   // conclusão do passo (is_completed) nem entra no ranking (log_checklist_step).
@@ -503,9 +603,24 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
               return (
                 <div key={instance.id} className="bg-muted/30 rounded-lg p-2 border border-border/50">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs font-medium">{instance.template_name}</span>
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <span className="text-xs font-medium min-w-0 truncate">{instance.template_name}</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {!instance.is_readonly && instance.items.length > 1 && (() => {
+                        const allStepsChecked = instance.items.every(i => i.checked);
+                        return (
+                          <button
+                            type="button"
+                            className="text-[10px] text-primary hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleMarkAllSteps(instance, !allStepsChecked);
+                            }}
+                          >
+                            {allStepsChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                          </button>
+                        );
+                      })()}
                       <span className="text-[10px] text-muted-foreground">
                         {instance.items.filter(i => i.checked).length}/{instance.items.length}
                       </span>
@@ -561,11 +676,28 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                             const docDone = item.docChecklist.filter(d => d.checked).length;
                             return (
                               <div className="ml-6 p-1.5 rounded bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
-                                <div className="flex items-center gap-1 mb-0.5">
-                                  <ClipboardList className="h-2.5 w-2.5 text-orange-600 dark:text-orange-400" />
-                                  <span className="text-[9px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide">
-                                    {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
-                                  </span>
+                                <div className="flex items-center justify-between gap-2 mb-0.5">
+                                  <div className="flex items-center gap-1 min-w-0">
+                                    <ClipboardList className="h-2.5 w-2.5 shrink-0 text-orange-600 dark:text-orange-400" />
+                                    <span className="text-[9px] font-semibold text-orange-700 dark:text-orange-400 uppercase tracking-wide truncate">
+                                      {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
+                                    </span>
+                                  </div>
+                                  {!instance.is_readonly && item.docChecklist.length > 1 && (() => {
+                                    const allDocsChecked = docDone === item.docChecklist!.length;
+                                    return (
+                                      <button
+                                        type="button"
+                                        className="text-[9px] shrink-0 text-orange-700 dark:text-orange-400 hover:underline"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleMarkAllDocs(instance, item.id, !allDocsChecked);
+                                        }}
+                                      >
+                                        {allDocsChecked ? 'Desmarcar todos' : 'Marcar todos'}
+                                      </button>
+                                    );
+                                  })()}
                                 </div>
                                 <div className="space-y-0.5">
                                   {item.docChecklist.map(doc => (

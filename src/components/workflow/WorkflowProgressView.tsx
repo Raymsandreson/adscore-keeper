@@ -472,25 +472,84 @@ export function WorkflowProgressView({
     }
   };
 
+  // Marca (ou desmarca) todos os passos do objetivo de uma vez.
+  // Passo-pergunta fica de fora: concluir depende da resposta escolhida (é ela
+  // que roteia a fase e define o status), então continua exigindo o clique.
   const handleMarkAll = async (instance: LeadChecklistInstance, checked: boolean) => {
     if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
 
-    const updatedItems = instance.items.map(item => ({ ...item, checked }));
+    const isQuestion = (it: ChecklistItem) => !!it.answers?.length;
+    const targets = instance.items.filter(it => !isQuestion(it) && !!it.checked !== checked);
+    if (targets.length === 0) return;
+
+    const updatedItems = instance.items.map(item =>
+      isQuestion(item)
+        ? item
+        : { ...item, checked, selectedAnswerId: checked ? item.selectedAnswerId : undefined }
+    );
+    const allChecked = updatedItems.every(i => i.checked);
 
     setInstances(prev => prev.map(inst =>
       inst.id === instance.id
-        ? { ...inst, items: updatedItems, is_completed: checked }
+        ? { ...inst, items: updatedItems, is_completed: allChecked }
         : inst
     ));
 
-    await supabase
+    for (const it of targets) {
+      logActivity({
+        actionType: checked ? 'checklist_item_checked' : 'checklist_item_unchecked',
+        entityType: 'lead',
+        entityId: leadId,
+        metadata: { checklistId: instance.id, itemId: it.id, itemLabel: it.label },
+      });
+    }
+
+    // Mesmo log por passo do toggle individual, mas com UMA pergunta de timing
+    // pro lote inteiro (retroativo não conta no ranking do telão).
+    if (checked && authUser?.id) {
+      const userId = authUser.id;
+      askStepTiming(targets.length).then(retroactive => {
+        for (const it of targets) {
+          (supabase as any).rpc('log_checklist_step', {
+            p_user_id: userId,
+            p_instance_id: instance.id,
+            p_item_label: it.label || 'Passo',
+            p_retroactive: retroactive,
+          }).then((res: { error?: { message?: string } | null }) => {
+            if (res?.error) console.warn('[WorkflowProgressView] log de passo falhou:', res.error.message);
+          });
+        }
+      });
+    }
+
+    const { error } = await supabase
       .from('lead_checklist_instances')
       .update({
         items: JSON.parse(JSON.stringify(updatedItems)),
-        is_completed: checked,
-        completed_at: checked ? new Date().toISOString() : null,
+        is_completed: allChecked,
+        completed_at: allChecked ? new Date().toISOString() : null,
       })
       .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao atualizar passos');
+      loadData();
+      return;
+    }
+
+    if (checked && instance.items.some(it => isQuestion(it) && !it.checked)) {
+      toast.info('Passos com pergunta ficaram de fora — escolha a resposta em cada um.');
+    }
+
+    // Roteamento e status: vale o ÚLTIMO passo marcado que define cada um
+    // (mesma convenção do marcar em lote do useChecklists).
+    if (checked) {
+      const reversed = [...targets].reverse();
+      const destStageId = reversed.map(it => it.nextStageId).find(Boolean);
+      if (destStageId) applyStageRouting(destStageId);
+      const statusId = reversed.map(it => it.setStatusId).find(Boolean);
+      if (statusId) applyStatusChange(statusId);
+    }
   };
 
   const visiblePhases = viewMode === 'current'
@@ -670,6 +729,20 @@ export function WorkflowProgressView({
                               <CollapsibleContent>
                                 {/* PASSOS — Alíneas */}
                                 <div className="ml-10 mt-0.5 space-y-1 border-l-2 border-green-500/40 pl-3">
+                                  {!isPlaceholder && !objective.instance.is_readonly && totalCount > 1 && (
+                                    <div className="flex justify-end pr-1">
+                                      <button
+                                        type="button"
+                                        className="text-[10px] text-primary hover:underline"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleMarkAll(objective.instance, !allChecked);
+                                        }}
+                                      >
+                                        {allChecked ? 'Desmarcar todos' : 'Marcar todos os passos'}
+                                      </button>
+                                    </div>
+                                  )}
                                   {objective.instance.items.length === 0 ? (
                                     <p className="text-xs text-muted-foreground py-2">
                                       Nenhum passo definido
