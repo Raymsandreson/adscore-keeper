@@ -231,7 +231,25 @@ export function extractMarcos(
     });
   }
 
-  return dedupePeticaoInicial(out);
+  return dedupePeticaoInicial(descartaRedistribuicao(out));
+}
+
+// "Distribuição" também acontece DEPOIS do ajuizamento: quando o processo sobe ao
+// tribunal, a movimentação "Distribuído por sorteio" (ao relator) casa a keyword
+// 'distribuic' e virava uma petição inicial datada de meses após o acórdão — o
+// processo aparecia no começo da linha estando no fim (0000657-98.2025.5.11.0012).
+// Regra: petição inicial posterior a um marco mais avançado não é ajuizamento.
+function descartaRedistribuicao(marcos: MarcoExtraido[]): MarcoExtraido[] {
+  const avancados = marcos.filter((m) => m.marco_ordem > 1 && m.data_movimentacao);
+  if (avancados.length === 0) return marcos;
+  const primeiroAvancado = avancados.reduce((a, b) =>
+    a.data_movimentacao! <= b.data_movimentacao! ? a : b
+  ).data_movimentacao!;
+  return marcos.filter((m) =>
+    m.tipo_movimentacao !== 'peticao_inicial' ||
+    !m.data_movimentacao ||
+    m.data_movimentacao <= primeiroAvancado
+  );
 }
 
 // Petição inicial é única (um ajuizamento). Se o parser pegou várias, mantém só a mais antiga

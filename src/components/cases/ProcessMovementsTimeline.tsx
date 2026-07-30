@@ -269,11 +269,22 @@ export function ProcessMovementsTimeline({
     if (refreshKey) refetch();
   }, [refreshKey, refetch]);
 
-  // movements já vem ordenado por data DESC — o [0] é o status atual.
-  const visible = useMemo(
-    () => (onlyCurrent ? movements.slice(0, 1) : movements),
-    [movements, onlyCurrent],
-  );
+  // Status atual = marco mais AVANÇADO na ordem canônica, não o mais recente por
+  // data. Movimentação de redistribuição ("Distribuído por sorteio" no 2º grau)
+  // vira peticao_inicial com data recente e fazia o processo aparecer no começo
+  // da linha estando no acórdão (0000657-98.2025.5.11.0012, 30/07/2026).
+  // Empate de ordem → a data mais recente. Mesmo critério das RPCs de metas.
+  const visible = useMemo(() => {
+    if (!onlyCurrent) return movements;
+    if (movements.length === 0) return movements;
+    const atual = movements.reduce((melhor, m) => {
+      const ordem = m.marco_ordem ?? 0;
+      const ordemMelhor = melhor.marco_ordem ?? 0;
+      if (ordem !== ordemMelhor) return ordem > ordemMelhor ? m : melhor;
+      return m.data_movimentacao > melhor.data_movimentacao ? m : melhor;
+    }, movements[0]);
+    return [atual];
+  }, [movements, onlyCurrent]);
 
   if (loading) {
     return (

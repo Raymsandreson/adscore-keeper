@@ -53,6 +53,41 @@ Deno.test("pagamento real: alvará de levantamento gera marco pagamento", () => 
   assertEquals(out[0].tipo_movimentacao, "pagamento");
 });
 
+// ────────────────────────────────────────────────────────────────────────────
+// Redistribuição no tribunal não é ajuizamento
+// ────────────────────────────────────────────────────────────────────────────
+
+Deno.test("redistribuição: 'Distribuído por sorteio' depois do acórdão NÃO vira petição inicial", () => {
+  // Caso real 0000657-98.2025.5.11.0012: a distribuição de 08/06/2026 é a remessa
+  // ao relator no TRT, meses após o acórdão de 29/04/2026.
+  const out = extractMarcos([
+    { id: 1, data: "2026-04-29", titulo: "Acórdão", conteudo: "Acórdão do Tribunal Regional do Trabalho." },
+    { id: 2, data: "2026-06-08", titulo: "Distribuição", conteudo: "Distribuído por sorteio" },
+  ], { numeroCnj: "0000657-98.2025.5.11.0012" });
+
+  assertEquals(out.filter((m) => m.tipo_movimentacao === "peticao_inicial").length, 0);
+  assertEquals(out.filter((m) => m.tipo_movimentacao === "acordao_2grau").length, 1);
+});
+
+Deno.test("ajuizamento: distribuição ANTES dos demais marcos continua sendo petição inicial", () => {
+  const out = extractMarcos([
+    { id: 1, data: "2025-03-10", titulo: "Distribuição", conteudo: "Distribuído por sorteio" },
+    { id: 2, data: "2026-04-29", titulo: "Acórdão", conteudo: "Acórdão do Tribunal Regional do Trabalho." },
+  ]);
+
+  const pi = out.filter((m) => m.tipo_movimentacao === "peticao_inicial");
+  assertEquals(pi.length, 1);
+  assertEquals(pi[0].data_movimentacao, "2025-03-10");
+});
+
+Deno.test("processo novo: só a distribuição, sem marco avançado, vira petição inicial", () => {
+  const out = extractMarcos([
+    { id: 1, data: "2026-07-20", titulo: "Distribuição", conteudo: "Distribuído por sorteio" },
+  ]);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].tipo_movimentacao, "peticao_inicial");
+});
+
 Deno.test("indeferimento: decisão de tutela indeferida NÃO vira pagamento", () => {
   // Cabeçalho real da decisão — a palavra "pagamento" aparece só no corpo (verba alimentar),
   // fora da janela de cabeçalho, então não deve casar marco de pagamento.
