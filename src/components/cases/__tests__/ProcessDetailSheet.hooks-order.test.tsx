@@ -58,6 +58,28 @@ vi.mock('@/lib/lovableCloudFunctions', () => ({
   cloudFunctions: { invoke: async () => ({ data: null, error: null }) },
 }));
 
+// O AuthProvider de verdade abre timers de 15s e faz health-check no banco — aqui
+// só interessa que `useAuthContext()` devolva um usuário. Sem isso o
+// ActivityFullSheet (montado pelo ProcessDetailSheet) joga "must be used within
+// an AuthProvider" e o render morre antes de a contagem de hooks ser medida.
+vi.mock('@/contexts/AuthContext', () => ({
+  AuthProvider: ({ children }: { children: React.ReactNode }) => children,
+  useAuthContext: () => ({
+    user: { id: 'u1', email: 'u1@test.local' },
+    session: null,
+    profile: null,
+    loading: false,
+    connectionError: null,
+    isOfflineMode: false,
+    isAuthenticated: true,
+    signUp: async () => ({}),
+    signIn: async () => ({}),
+    signOut: async () => ({}),
+    updateProfile: async () => ({}),
+    retry: () => {},
+  }),
+}));
+
 import ProcessDetailSheet from '../ProcessDetailSheet';
 import { ActivityTimerProvider } from '@/contexts/ActivityTimerContext';
 
