@@ -45,6 +45,25 @@ const fmtDateBr = (s?: string | null): string | null => {
 export const inssProcessTitle = (proc: InssProcessRow): string =>
   `INSS Administrativo — Req. ${proc.requerimento_number}${proc.benefit_type ? ` (${proc.benefit_type})` : ''}`;
 
+/**
+ * Traduz o status do INSS para os três valores que a constraint
+ * `lead_processes_status_check` aceita.
+ *
+ * O status detalhado ("Exigência", "Protocolado", "Cancelada"…) não se perde:
+ * continua em `inss_admin_processes.current_status` e vai na descrição.
+ */
+export function inssStatusToProcessStatus(
+  current?: string | null,
+  resultado?: string | null,
+): 'em_andamento' | 'concluido' | 'arquivado' {
+  const s = (current || '').toLowerCase();
+  if (s.includes('cancel')) return 'arquivado';
+  if (resultado === 'arquivado_decurso') return 'arquivado';
+  if (s.includes('conclu')) return 'concluido';
+  // Protocolado, Em análise, Pendente, Exigência → o caso segue vivo.
+  return 'em_andamento';
+}
+
 export interface UpsertInssLeadProcessParams {
   caseId: string;
   leadId: string | null;
@@ -101,11 +120,14 @@ export async function upsertInssLeadProcess(
   const payload: Record<string, unknown> = {
     lead_id: leadId,
     case_id: caseId,
-    process_type: 'inss_admin',
+    // `lead_processes_process_type_check` só aceita judicial|administrativo.
+    // O valor 'inss_admin' que estava aqui violava a constraint — nenhuma linha
+    // do INSS chegou a ser gravada por este caminho (0 registros no banco).
+    process_type: 'administrativo',
     process_number: proc.requerimento_number,
     title: inssProcessTitle(proc),
     description: descLines.join('\n'),
-    status: proc.current_status || 'Em andamento',
+    status: inssStatusToProcessStatus(proc.current_status, proc.resultado),
     started_at: proc.protocol_date || proc.created_at,
     fonte_nome: 'INSS',
     fonte_tipo: 'Administrativo',
