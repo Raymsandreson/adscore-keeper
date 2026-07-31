@@ -3089,8 +3089,15 @@ const ActivitiesPage = () => {
 
 
 
+  // A altura desconta --timer-dock-h (faixa do cronômetro flutuante, no rodapé).
+  // Reservar só padding no fim da rolagem não bastava: em qualquer outra posição
+  // de scroll o badge continuava por cima dos botões do card. Tirando altura da
+  // página inteira, nada é renderizado embaixo dele. (skill: ui-sem-sobreposicao)
   return (
-    <div className="h-[calc(100dvh-44px)] flex flex-col bg-background overflow-hidden">
+    <div
+      className="flex flex-col bg-background overflow-hidden"
+      style={{ height: 'calc(100dvh - 44px - var(--timer-dock-h, 0px))' }}
+    >
       {/* Header */}
       <div className="bg-primary text-primary-foreground px-4 py-2.5 flex flex-wrap items-center justify-between gap-y-2 shrink-0 shadow-md z-20">
         <div className="flex items-center gap-3">
@@ -4257,14 +4264,8 @@ const ActivitiesPage = () => {
             )}
           </div>
 
-          {/* Activity list - scrollable like WhatsApp chat.
-              paddingBottom = altura do cronômetro flutuante (canto de baixo):
-              sem isso o último card nasce embaixo dele e não dá pra clicar em
-              concluir. A var vem do ActivityTimerOverlay. (skill: ui-sem-sobreposicao) */}
-          <div
-            className="flex-1 overflow-y-auto bg-muted/10"
-            style={{ paddingBottom: 'var(--timer-dock-h, 0px)' }}
-          >
+          {/* Activity list - scrollable like WhatsApp chat */}
+          <div className="flex-1 overflow-y-auto bg-muted/10">
             {selectedCalDays.length > 0 && (
               <div className="sticky top-0 z-10 flex justify-center py-1.5">
                 <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-full px-2">
@@ -5135,8 +5136,8 @@ const ActivitiesPage = () => {
               </button>
             </div>
 
-            {/* Form body - scrollable (reserva o rodapé do cronômetro flutuante) */}
-            <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'var(--timer-dock-h, 0px)' }}>
+            {/* Form body - scrollable */}
+            <div className="flex-1 overflow-y-auto p-4">
               <div className="max-w-[1200px] mx-auto">
                 {activityFormContent}
 
