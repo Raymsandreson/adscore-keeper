@@ -33,7 +33,7 @@ import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/A
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 
-const TeamChatPanel = lazy(() => import('@/components/chat/TeamChatPanel').then(m => ({ default: m.TeamChatPanel })));
+import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -153,7 +153,6 @@ const TABS = [
   { id: 'partes', label: 'Partes', icon: Users },
   { id: 'dados', label: 'Dados', icon: Scale },
   { id: 'atividades', label: 'Atividades', icon: ClipboardList },
-  { id: 'chat', label: 'Chat Interno', icon: MessageSquare },
   { id: 'documentos', label: 'Documentos', icon: FolderOpen },
   { id: 'tribunal', label: 'Tribunal', icon: Landmark },
   { id: 'local', label: 'Local', icon: MapPin },
@@ -1295,21 +1294,6 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
               </div>
             )}
 
-            {activeTab === 'chat' && process?.id && (
-              <div
-                className="rounded-md border bg-background overflow-hidden"
-                style={{ height: 'min(60vh, 520px)', minHeight: '320px' }}
-              >
-                <Suspense fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>}>
-                  <TeamChatPanel
-                    entityType="process"
-                    entityId={process.id}
-                    entityName={form.process_number || form.title || 'Processo'}
-                  />
-                </Suspense>
-              </div>
-            )}
-
             {activeTab === 'notas' && (
               <>
                 <div className="flex items-center justify-between">
@@ -1657,7 +1641,21 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             </div>
           </div>
         )}
+
       </div>
+
+      {/* Chat interno da equipe — fixo no rodapé da ficha, fora das abas e fora
+          da área que rola: fica visível em qualquer aba do processo. */}
+      {process?.id && (
+        <div className="shrink-0 border-t bg-background px-3 py-2">
+          <EntityTeamChatDock
+            entityType="process"
+            entityId={process.id}
+            entityName={form.process_number || form.title || 'Processo'}
+            height={220}
+          />
+        </div>
+      )}
 
       {/* Formulário completo (único do sistema) — abre empilhado ao clicar numa atividade do Histórico */}
       <ActivityFullSheet

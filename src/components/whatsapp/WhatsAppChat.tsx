@@ -24,6 +24,7 @@ import { mediaThumb, mediaPreview, handleMediaThumbError, THUMB_SUFFIX } from '@
 import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
+import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
 import { MediaLightbox } from './MediaLightbox';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -169,6 +170,36 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [refreshingRoster, setRefreshingRoster] = useState(false);
   
   const [showSessionEditor, setShowSessionEditor] = useState(false);
+  // Chat interno da equipe sobre esta conversa. Em tela larga fica ao lado da
+  // conversa; em tela estreita abre como painel lateral (nunca por cima do chat).
+  const [teamChatOpen, setTeamChatOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem('wa-conversation-team-chat');
+      if (saved === '0') return false;
+      if (saved === '1') return true;
+    } catch {
+      /* localStorage pode estar bloqueado */
+    }
+    return typeof window !== 'undefined' && window.innerWidth >= 1280;
+  });
+  // Abaixo de 1024px não cabe coluna ao lado: vira painel deslizante.
+  const [isNarrowForTeamChat, setIsNarrowForTeamChat] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth < 1024
+  );
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 1023px)');
+    const onChange = () => setIsNarrowForTeamChat(mql.matches);
+    onChange();
+    mql.addEventListener('change', onChange);
+    return () => mql.removeEventListener('change', onChange);
+  }, []);
+  const toggleTeamChat = useCallback(() => {
+    setTeamChatOpen(prev => {
+      const next = !prev;
+      try { localStorage.setItem('wa-conversation-team-chat', next ? '1' : '0'); } catch { /* ok */ }
+      return next;
+    });
+  }, []);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [linkedGroupId, setLinkedGroupId] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
@@ -2542,7 +2573,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const pwaDialPhone = whatsappPhone.startsWith('55') ? whatsappPhone.slice(2) : phoneDigits;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-w-0">
+    <div className="flex flex-col h-full flex-1 min-w-0">
       {/* Chat Header */}
       <div className="flex items-center gap-2 md:gap-3 p-3 border-b bg-card shrink-0">
         {onBack && (
@@ -2874,6 +2906,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             leadId={conversation.lead_id}
             instanceName={conversation.instance_name}
           />
+          <Button
+            variant={teamChatOpen ? 'secondary' : 'ghost'}
+            size="icon"
+            className="h-8 w-8"
+            onClick={toggleTeamChat}
+            title="Chat interno da equipe sobre esta conversa"
+          >
+            <Users className="h-4 w-4" />
+          </Button>
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           <WhatsAppMediaGallery
             messages={conversation.messages}
@@ -4398,6 +4439,34 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         instanceName={conversation.instance_name || undefined}
       />
       <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
+    </div>
+
+      {/* Chat interno da equipe sobre esta conversa — coluna própria no desktop,
+          para não cobrir nada da conversa do cliente. */}
+      {teamChatOpen && !isNarrowForTeamChat && (
+        <aside className="flex w-[340px] xl:w-[380px] shrink-0 border-l h-full">
+          <WhatsAppConversationTeamChat
+            phone={conversation.phone}
+            instanceName={conversation.instance_name}
+            contactName={conversation.contact_name}
+            onClose={toggleTeamChat}
+            className="w-full h-full"
+          />
+        </aside>
+      )}
+
+      {/* Telas menores: painel lateral deslizante (sem sobrepor o conteúdo aberto). */}
+      <Sheet open={teamChatOpen && isNarrowForTeamChat} onOpenChange={o => { if (!o) toggleTeamChat(); }}>
+        <SheetContent side="right" className="w-full sm:max-w-md p-0">
+          <div className="sr-only"><SheetHeader><SheetTitle>Chat interno da equipe</SheetTitle></SheetHeader></div>
+          <WhatsAppConversationTeamChat
+            phone={conversation.phone}
+            instanceName={conversation.instance_name}
+            contactName={conversation.contact_name}
+            className="h-full"
+          />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

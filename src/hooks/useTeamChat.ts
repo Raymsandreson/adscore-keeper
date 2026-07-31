@@ -191,6 +191,8 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
         entityType === 'activity' ? `/?openActivity=${entityId}`
         : entityType === 'lead' ? `/leads?openLead=${entityId}`
         : entityType === 'contact' ? `/leads?openContact=${entityId}`
+        : entityType === 'whatsapp' ? `/whatsapp?openChat=${encodeURIComponent(entityId)}`
+        : entityType === 'case' ? `/cases/${entityId}`
         : '/';
       cloudFunctions.invoke('send-team-push', {
         body: {

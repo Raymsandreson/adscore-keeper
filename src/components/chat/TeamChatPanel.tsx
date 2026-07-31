@@ -20,6 +20,14 @@ interface TeamChatPanelProps {
   entityId: string;
   entityName?: string;
   highlightMessageId?: string | null;
+  /**
+   * Chamado antes de enviar quando a mensagem menciona alguém. Usado no chat da
+   * conversa do WhatsApp para liberar o acesso à conversa a quem foi marcado
+   * (a pessoa precisa poder ler o que está sendo discutido).
+   */
+  onMentionUsers?: (mentionedUserIds: string[]) => Promise<void> | void;
+  /** Aviso curto exibido acima do campo de digitação. */
+  footerNote?: React.ReactNode;
 }
 
 const MEDIA_BUCKET = 'team-chat-media';
@@ -53,7 +61,7 @@ function formatDuration(seconds?: number | null) {
   return `${m}:${(s % 60).toString().padStart(2, '0')}`;
 }
 
-export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId }: TeamChatPanelProps) {
+export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId, onMentionUsers, footerNote }: TeamChatPanelProps) {
   const { user } = useAuthContext();
   const { messages, loading, sendMessage, updateMessage } = useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
@@ -178,6 +186,15 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     if (!text || sending) return;
     setSending(true);
     const mentionedIds = collectMentionedIds(text);
+    // Libera o acesso antes de avisar — quem é marcado precisa conseguir abrir
+    // o que está sendo discutido, não receber uma notificação sem contexto.
+    if (mentionedIds.length > 0 && onMentionUsers) {
+      try {
+        await onMentionUsers(mentionedIds);
+      } catch (e) {
+        console.error('[TeamChatPanel] falha ao liberar acesso aos mencionados:', e);
+      }
+    }
     await sendMessage(text, mentionedIds, urgent ? { is_urgent: true } : undefined);
     setInputText('');
     sessionStorage.removeItem(draftKey);
@@ -527,6 +544,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
       {/* Input + ações ricas */}
       <div className="shrink-0 border-t bg-muted/30">
+        {footerNote && (
+          <div className="px-3 pt-1.5 text-[10px] leading-snug text-muted-foreground">{footerNote}</div>
+        )}
         {isRecording && (
           <div className="flex items-center justify-between px-3 py-1.5 text-xs text-destructive">
             <span className="flex items-center gap-1.5">

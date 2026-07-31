@@ -4,7 +4,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,6 +27,8 @@ const entityIcons: Record<string, React.ReactNode> = {
   workflow: <Workflow className="h-3.5 w-3.5" />,
   whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
   team_chat: <MessageCircle className="h-3.5 w-3.5" />,
+  process: <Scale className="h-3.5 w-3.5" />,
+  case: <Briefcase className="h-3.5 w-3.5" />,
 };
 
 const entityLabels: Record<string, string> = {
@@ -36,6 +38,8 @@ const entityLabels: Record<string, string> = {
   workflow: 'POP',
   whatsapp: 'WhatsApp',
   team_chat: 'Chat da Equipe',
+  process: 'Processo',
+  case: 'Caso',
 };
 
 const entityColors: Record<string, string> = {
@@ -45,6 +49,8 @@ const entityColors: Record<string, string> = {
   workflow: 'bg-orange-500/10 text-orange-600',
   whatsapp: 'bg-green-500/10 text-green-600',
   team_chat: 'bg-sky-500/10 text-sky-600',
+  process: 'bg-amber-500/10 text-amber-600',
+  case: 'bg-indigo-500/10 text-indigo-600',
 };
 
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
@@ -158,6 +164,26 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
       case 'whatsapp':
         navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
         break;
+      case 'case':
+        navigate(`/cases/${mention.entity_id}`);
+        break;
+      case 'process': {
+        // Processo não tem rota própria — abre o caso-pai (mesma regra da busca global).
+        try {
+          const { data: proc } = await externalSupabase
+            .from('lead_processes')
+            .select('case_id, lead_id')
+            .eq('id', mention.entity_id)
+            .maybeSingle();
+          const p = proc as { case_id?: string | null; lead_id?: string | null } | null;
+          if (p?.case_id) navigate(`/cases/${p.case_id}`);
+          else if (p?.lead_id) navigate(`/leads?openLead=${p.lead_id}`);
+          else toast.error('Processo não encontrado.');
+        } catch (e) {
+          console.error('Erro ao resolver o processo da menção:', e);
+        }
+        break;
+      }
     }
   };
 

@@ -24,6 +24,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
 import {
   Briefcase, Search, Scale, ChevronDown, ChevronRight,
   Gavel, FileText, Users, ArrowLeft, ExternalLink, Plus,
@@ -1127,6 +1128,15 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   </p>
                 </TabsContent>
               </Tabs>
+
+              {/* Chat interno da equipe do caso — visível junto do conteúdo, fora das abas. */}
+              <EntityTeamChatDock
+                entityType="case"
+                entityId={legalCase.id}
+                entityName={legalCase.case_number || legalCase.title || 'Caso'}
+                className="mt-3"
+                height={260}
+              />
 
               {legalCase.lead_id && (
                 <AddProcessDialog

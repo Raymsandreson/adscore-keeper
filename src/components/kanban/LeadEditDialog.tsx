@@ -123,7 +123,7 @@ import {
 } from 'lucide-react';
 import { classificationColors } from '@/hooks/useContactClassifications';
 import { ShareMenu } from '@/components/ShareMenu';
-const TeamChatPanel = lazy(() => import('@/components/chat/TeamChatPanel').then(m => ({ default: m.TeamChatPanel })));
+import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
 const LegalCasesTab = lazy(() => import('@/components/leads/LegalCasesTab').then(m => ({ default: m.LegalCasesTab })));
 const LeadFinancialsTab = lazy(() => import('@/components/leads/LeadFinancialsTab').then(m => ({ default: m.LeadFinancialsTab })));
 const ContactDetailSheet = lazy(() => import('@/components/contacts/ContactDetailSheet').then(m => ({ default: m.ContactDetailSheet })));
@@ -2272,10 +2272,6 @@ ${scrapeData.content || ''}
                 <Sparkles className="h-3 w-3 mr-1" />
                 Chat IA
               </TabsTrigger>
-              <TabsTrigger value="team_chat" className="text-xs py-1.5 px-2.5">
-                <Users className="h-3 w-3 mr-1" />
-                Chat Equipe
-              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -3729,21 +3725,20 @@ ${scrapeData.content || ''}
               )}
             </TabsContent>
 
-            {/* Chat Equipe Tab */}
-            <TabsContent value="team_chat" className="mt-0" style={{ height: 'calc(90vh - 320px)', minHeight: '300px' }}>
-              {activeTab === 'team_chat' && (
-                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
-                  <TeamChatPanel
-                    entityType="lead"
-                    entityId={lead.id}
-                    entityName={lead.lead_name || 'Lead'}
-                  />
-                </Suspense>
-              )}
-            </TabsContent>
           </div>
         </Tabs>
+
         </div>
+
+        {/* Chat interno da equipe — fixo na ficha, fora das abas e fora da área
+            que rola: acompanha qualquer aba sem precisar procurar. */}
+        <EntityTeamChatDock
+          entityType="lead"
+          entityId={lead.id}
+          entityName={lead.lead_name || 'Lead'}
+          className="mt-3 flex-shrink-0"
+          height={220}
+        />
 
         <Footer className="mt-4 flex-shrink-0 flex-row sm:justify-between gap-2 border-t pt-4">
           {currentLead ? (
