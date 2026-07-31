@@ -456,19 +456,26 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       .then(({ data }) => setLeadCaseType((data as { case_type: string | null } | null)?.case_type ?? null));
   }, [activeTab, process?.lead_id]);
 
-  // Fetch documents when tab is activated
+  // Fetch documents when tab is activated.
+  // process_documents vive no Externo e a RLS exige `authenticated` — sem a sessão
+  // anônima pronta o select volta 0 linhas em silêncio.
   useEffect(() => {
     if (activeTab !== 'documentos' || !process?.id) return;
+    let cancelled = false;
     setLoadingDocuments(true);
-    externalSupabase
-      .from('process_documents')
-      .select('*')
-      .eq('process_id', process.id)
-      .order('document_date', { ascending: false, nullsFirst: false })
-      .then(({ data }) => {
-        setDocuments((data || []) as unknown as ProcessDocument[]);
-        setLoadingDocuments(false);
-      });
+    (async () => {
+      await ensureExternalSession().catch(() => {});
+      const { data, error } = await externalSupabase
+        .from('process_documents')
+        .select('*')
+        .eq('process_id', process.id)
+        .order('document_date', { ascending: false, nullsFirst: false });
+      if (cancelled) return;
+      if (error) console.error('Error loading process documents:', error);
+      setDocuments((data || []) as unknown as ProcessDocument[]);
+      setLoadingDocuments(false);
+    })();
+    return () => { cancelled = true; };
   }, [activeTab, process?.id]);
 
   const fetchEscavadorDocuments = async () => {
@@ -478,6 +485,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     }
     setFetchingEscavadorDocs(true);
     try {
+      await ensureExternalSession().catch(() => {});
       const { data, error } = await cloudFunctions.invoke('search-escavador', {
         body: { action: 'buscar_documentos', numero_cnj: form.process_number },
       });
@@ -504,7 +512,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
         const docType = classifyDocumentType(doc.tipo || doc.descricao || doc.titulo || '');
         
-        const { error: insertErr } = await supabase.from('process_documents').insert({
+        // Grava no Externo — é de lá que a lista acima lê. Gravar no Cloud fazia o
+        // documento importado nunca aparecer na aba.
+        const { error: insertErr } = await externalSupabase.from('process_documents').insert({
           process_id: process.id,
           case_id: process.case_id || null,
           lead_id: process.lead_id || null,
@@ -518,13 +528,14 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           metadata: doc,
         } as any);
         
-        if (!insertErr) inserted++;
+        if (insertErr) console.error('Error inserting process document:', insertErr);
+        else inserted++;
       }
 
       toast.success(`${inserted} documento(s) importado(s) do Escavador`);
-      
+
       // Refresh documents list
-      const { data: refreshed } = await supabase
+      const { data: refreshed } = await externalSupabase
         .from('process_documents')
         .select('*')
         .eq('process_id', process.id)
@@ -540,7 +551,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
   const deleteDocument = async (docId: string) => {
     if (!confirm('Excluir este documento?')) return;
-    const { error } = await supabase.from('process_documents').delete().eq('id', docId);
+    await ensureExternalSession().catch(() => {});
+    const { error } = await externalSupabase.from('process_documents').delete().eq('id', docId);
     if (error) {
       toast.error('Erro ao excluir documento');
       return;
