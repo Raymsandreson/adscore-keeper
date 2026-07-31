@@ -1367,11 +1367,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     }
     // Document
     const fileName = msg.media_url.split('/').pop() || 'Documento';
-    const isPdf = /\.pdf($|\?)/i.test(msg.media_url);
+    // Imagem/PDF abrem no visualizador interno; só o resto sai pra outra página.
+    const previewable = /\.(pdf|jpe?g|png|webp|gif)($|\?)/i.test(msg.media_url) || /^image\//i.test(type || '');
     return (
       <button
         type="button"
-        onClick={() => isPdf ? setLightboxUrl(msg.media_url!) : window.open(msg.media_url!, '_blank', 'noopener,noreferrer')}
+        onClick={() => previewable ? setLightboxUrl(msg.media_url!) : window.open(msg.media_url!, '_blank', 'noopener,noreferrer')}
         className="flex items-center gap-1.5 text-[11px] underline"
       >
         📄 {fileName.length > 30 ? fileName.slice(0, 30) + '...' : fileName}

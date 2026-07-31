@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface TeamNotificationToastProps {
   toastId: string | number;
@@ -58,6 +59,8 @@ export function TeamNotificationToast({
 }: TeamNotificationToastProps) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  // Imagem sempre abre no visualizador interno — nunca em outra página.
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   // Swipe-to-dismiss state
   const touchStartX = useRef<number | null>(null);
@@ -184,11 +187,20 @@ export function TeamNotificationToast({
       {fileUrl && (
         <div className="mt-2" onClick={(event) => event.stopPropagation()}>
           {messageType === 'image' ? (
-            <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+            <button type="button" onClick={() => setLightboxUrl(fileUrl)} className="block cursor-zoom-in">
               <img src={fileUrl} alt={fileName || 'Imagem'} className="rounded-lg max-h-32 w-auto object-cover border border-border" />
-            </a>
+            </button>
           ) : messageType === 'audio' ? (
             <audio controls preload="none" src={fileUrl} className="w-full h-9" />
+          ) : /^image\//i.test(fileType || '') || /\.(jpe?g|png|webp|gif|pdf)($|\?)/i.test(fileUrl) ? (
+            <button
+              type="button"
+              onClick={() => setLightboxUrl(fileUrl)}
+              className="flex w-full items-center gap-2 rounded-lg border border-border bg-accent/40 px-3 py-2 text-sm hover:bg-accent transition-colors text-left"
+            >
+              <FileText className="h-4 w-4 shrink-0 text-primary" />
+              <span className="truncate flex-1">{fileName || 'Ver arquivo'}</span>
+            </button>
           ) : (
             <a
               href={fileUrl}
@@ -251,6 +263,8 @@ export function TeamNotificationToast({
           Abrir chat
         </Button>
       </div>
+
+      <MediaLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }

@@ -39,6 +39,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Sparkles } from 'lucide-react';
 import type { TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
 
@@ -54,7 +55,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
     loading, sendingMessage, sendMessage, sendMessageTo, alertMessageAgain, dismissPending, startDirectChat, ensureGeneralChat,
-    otherMembersReadAt,
+    otherMembersReadAt, typingPeers, sendTypingSignal,
   } = useTeamDirectChat();
   const profiles = useProfilesList();
   const [messageText, setMessageText] = useState('');
@@ -116,6 +117,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   // Atividade aberta pelo atalho da bolha (ficha completa, modo edição).
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   const [urgent, setUrgent] = useState(false);
+  // Imagem sempre abre no visualizador interno — nunca em outra página.
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -125,6 +128,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Parou de teclar por um tempo => avisa que não está mais digitando.
+  const typingStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Track which user_ids were @mentioned in the current draft
   const mentionedUsersRef = useRef<Map<string, string>>(new Map()); // name -> user_id
 
@@ -146,8 +151,34 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       .slice(0, 6);
   })();
 
+  /** Sinaliza "digitando" e reagenda o "parou de digitar" (3s sem tecla). */
+  const pingTyping = useCallback(() => {
+    sendTypingSignal('typing');
+    if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current);
+    typingStopTimerRef.current = setTimeout(() => sendTypingSignal('stop'), 3000);
+  }, [sendTypingSignal]);
+
+  /** Encerra o indicador na hora (enviou, limpou o campo, saiu da conversa). */
+  const stopTyping = useCallback(() => {
+    if (typingStopTimerRef.current) {
+      clearTimeout(typingStopTimerRef.current);
+      typingStopTimerRef.current = null;
+    }
+    sendTypingSignal('stop');
+  }, [sendTypingSignal]);
+
+  // Trocou/fechou a conversa ou desmontou o painel: não deixa o outro
+  // vendo "digitando" pra sempre.
+  useEffect(() => {
+    return () => {
+      if (typingStopTimerRef.current) clearTimeout(typingStopTimerRef.current);
+      sendTypingSignal('stop');
+    };
+  }, [activeConversationId, sendTypingSignal]);
+
   const handleMessageChange = (value: string) => {
     setMessageText(value);
+    if (value.trim()) pingTyping(); else stopTyping();
     const m = value.match(/(?:^|\s)@([\wÀ-ÿ.\- ]{0,30})$/);
     if (m) {
       setMentionQuery(m[1]);
@@ -325,6 +356,24 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
   };
 
+  // ===== "Fulano está digitando / gravando áudio" =====
+  // Vem do broadcast do canal da conversa (nada é gravado no banco).
+  const someoneRecording = typingPeers.some(p => p.kind === 'recording');
+  const typingLabel = useMemo(() => {
+    if (typingPeers.length === 0) return null;
+    const firstName = (n: string) => (n || 'Alguém').trim().split(/\s+/)[0];
+    const phrase = (list: typeof typingPeers, one: string, many: string) => {
+      if (list.length === 0) return null;
+      if (list.length === 1) return `${firstName(list[0].name)} ${one}`;
+      if (list.length === 2) return `${firstName(list[0].name)} e ${firstName(list[1].name)} ${many}`;
+      return `${list.length} pessoas ${many}`;
+    };
+    return [
+      phrase(typingPeers.filter(p => p.kind === 'recording'), 'está gravando um áudio', 'estão gravando áudio'),
+      phrase(typingPeers.filter(p => p.kind === 'typing'), 'está digitando', 'estão digitando'),
+    ].filter(Boolean).join(' · ');
+  }, [typingPeers]);
+
   // ===== Responder no privado (mensagem de grupo → conversa direta) =====
   // Como no "Encaminhar", o contexto vai no próprio content (cabeçalho + trecho
   // citado): fica legível no preview, no push e pra IA, sem mudança de schema.
@@ -365,6 +414,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
 
   const handleSend = async () => {
     if (!messageText.trim()) return;
+    stopTyping();
     const mentionedIds = resolveMentionedUserIds(messageText);
     const content = privateReply
       ? `${buildPrivateReplyHeader(privateReply)}\n${messageText}`
@@ -642,6 +692,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         setIsRecording(false);
         setRecordingDuration(0);
         if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
+        stopTyping();
 
         // Upload
         setUploading(true);
@@ -690,14 +741,17 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       recorder.start();
       setIsRecording(true);
       setRecordingDuration(0);
+      // Enquanto grava, o outro lado vê "está gravando um áudio...".
+      sendTypingSignal('recording');
 
       recordingTimerRef.current = setInterval(() => {
         setRecordingDuration(prev => prev + 1);
+        sendTypingSignal('recording'); // o hook limita a 1 envio a cada 2s
       }, 1000);
     } catch {
       toast.error('Permissão de microfone negada');
     }
-  }, [user?.id, sendMessage, recordingDuration]);
+  }, [user?.id, sendMessage, recordingDuration, sendTypingSignal, stopTyping]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -871,9 +925,9 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       return (
         <div>
           {fwdHeader}
-          <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
+          <button type="button" onClick={() => setLightboxUrl(msg.file_url!)} className="block cursor-zoom-in">
             <img src={msg.file_url} alt={msg.file_name || 'Imagem'} className="rounded-lg max-w-full max-h-48 object-cover" />
-          </a>
+          </button>
           {fwd.body && fwd.body !== '📷 Imagem' && (
             <p className="text-sm mt-1 whitespace-pre-wrap break-words">
               {renderMessageWithMentions(fwd.body, handleMentionNavigate)}
@@ -884,25 +938,34 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     }
 
     if (msg.message_type === 'file' && msg.file_url) {
+      // Anexo que na verdade é imagem/PDF também abre no visualizador interno.
+      const previewable = /^image\//i.test(msg.file_type || '') || /\.(jpe?g|png|webp|gif|pdf)($|\?)/i.test(msg.file_url);
+      const fileClass = 'flex items-center gap-2 py-1 hover:opacity-80 w-full text-left';
+      const fileBody = (
+        <>
+          <FileText className="h-4 w-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium truncate">{msg.file_name || 'Arquivo'}</div>
+            {msg.file_size && (
+              <div className="text-[10px] opacity-60">
+                {(msg.file_size / 1024).toFixed(0)} KB
+              </div>
+            )}
+          </div>
+        </>
+      );
       return (
         <div>
           {fwdHeader}
-          <a
-            href={msg.file_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-2 py-1 hover:opacity-80"
-          >
-            <FileText className="h-4 w-4 shrink-0" />
-            <div className="min-w-0 flex-1">
-              <div className="text-xs font-medium truncate">{msg.file_name || 'Arquivo'}</div>
-              {msg.file_size && (
-                <div className="text-[10px] opacity-60">
-                  {(msg.file_size / 1024).toFixed(0)} KB
-                </div>
-              )}
-            </div>
-          </a>
+          {previewable ? (
+            <button type="button" onClick={() => setLightboxUrl(msg.file_url!)} className={fileClass}>
+              {fileBody}
+            </button>
+          ) : (
+            <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={fileClass}>
+              {fileBody}
+            </a>
+          )}
         </div>
       );
     }
@@ -1384,6 +1447,29 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
           )}
 
 
+          {/* "Fulano está digitando / gravando um áudio" — bloco no fluxo, empurra
+              o composer pra baixo em vez de cobrir qualquer coisa. */}
+          {typingLabel && (
+            <div className="px-3 py-1 border-b bg-muted/20 flex items-center gap-2">
+              {someoneRecording ? (
+                <Mic className="h-3.5 w-3.5 text-destructive animate-pulse shrink-0" />
+              ) : (
+                <span className="flex items-end gap-0.5 shrink-0 h-3.5">
+                  {[0, 150, 300].map(delay => (
+                    <span
+                      key={delay}
+                      className="w-1 h-1 rounded-full bg-primary animate-bounce"
+                      style={{ animationDelay: `${delay}ms` }}
+                    />
+                  ))}
+                </span>
+              )}
+              <span className="text-[11px] text-muted-foreground italic truncate">
+                {typingLabel}...
+              </span>
+            </div>
+          )}
+
           {isRecording ? (
             <div className="px-3 py-2 flex items-center gap-3">
               <span className="w-2.5 h-2.5 rounded-full bg-destructive animate-pulse" />
@@ -1542,6 +1628,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             />
           </Suspense>
         )}
+
+        <MediaLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
       </div>
     );
   }

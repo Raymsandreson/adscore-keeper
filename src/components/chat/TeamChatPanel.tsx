@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface TeamChatPanelProps {
   entityType: string;
@@ -67,6 +68,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   // Recursos ricos (paridade com o chat direto).
   const [urgent, setUrgent] = useState(false);
+  // Imagem sempre abre no visualizador interno — nunca em outra página.
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showEntityMention, setShowEntityMention] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -413,21 +416,28 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     }
     if (msg.message_type === 'image' && msg.file_url) {
       return (
-        <a href={msg.file_url} target="_blank" rel="noopener noreferrer">
+        <button type="button" onClick={() => setLightboxUrl(msg.file_url!)} className="block cursor-zoom-in">
           <img src={msg.file_url} alt={msg.file_name || 'imagem'} className="max-h-48 rounded-lg object-cover" />
-        </a>
+        </button>
       );
     }
     if (msg.message_type === 'file' && msg.file_url) {
-      return (
-        <a
-          href={msg.file_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn('flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs underline', isMe ? 'bg-primary-foreground/15' : 'bg-background/60')}
-        >
+      // Anexo que na verdade é imagem/PDF também abre no visualizador interno.
+      const previewable = /^image\//i.test(msg.file_type || '') || /\.(jpe?g|png|webp|gif|pdf)($|\?)/i.test(msg.file_url);
+      const className = cn('flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs underline', isMe ? 'bg-primary-foreground/15' : 'bg-background/60');
+      const label = (
+        <>
           <FileText className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate max-w-[180px]">{msg.file_name || 'Arquivo'}</span>
+        </>
+      );
+      return previewable ? (
+        <button type="button" onClick={() => setLightboxUrl(msg.file_url!)} className={className}>
+          {label}
+        </button>
+      ) : (
+        <a href={msg.file_url} target="_blank" rel="noopener noreferrer" className={className}>
+          {label}
         </a>
       );
     }
@@ -602,6 +612,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           </Button>
         </div>
       </div>
+
+      <MediaLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }
