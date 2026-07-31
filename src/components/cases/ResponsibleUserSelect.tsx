@@ -65,19 +65,34 @@ function useAssignableTeam(): TeamOption[] {
 /**
  * Seletor de "Responsável pelo processo".
  * Valor de entrada/saída é o UUID do Externo, sem remap.
+ *
+ * A lista é a UNIÃO de duas fontes, pra bater com o seletor de assessor das
+ * atividades sem perder ninguém:
+ * 1. profiles do Cloud menos ASSIGNEE_BLOCKLIST — as mesmas pessoas das
+ *    atividades. Quem não tem mapping grava o próprio UUID do Cloud (mesmo
+ *    fallback que o remap antigo fazia).
+ * 2. quem está no auth_uuid_mapping mas sem perfil no Cloud (ex.: Abderaman).
  */
 export function ResponsibleUserSelect({ value, onChange, className, placeholder, disabled }: Props) {
   const team = useAssignableTeam();
   const cloudProfiles = useProfilesList();
 
   const options = useMemo(() => {
-    const nameByCloud = new Map(cloudProfiles.map(p => [p.user_id, p.full_name || p.email]));
-    return team
-      .map(m => ({
-        ext_uuid: m.ext_uuid,
-        name: nameByCloud.get(m.user_id) || m.ext_name || m.ext_uuid.slice(0, 8),
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+    const mappedByCloud = new Map(team.map(m => [m.user_id, m]));
+    const seenCloud = new Set<string>();
+    const opts: { ext_uuid: string; name: string }[] = [];
+    for (const p of filterAssignableMembers(cloudProfiles)) {
+      seenCloud.add(p.user_id);
+      opts.push({
+        ext_uuid: mappedByCloud.get(p.user_id)?.ext_uuid || p.user_id,
+        name: p.full_name || p.email || p.user_id.slice(0, 8),
+      });
+    }
+    for (const m of team) {
+      if (seenCloud.has(m.user_id)) continue;
+      opts.push({ ext_uuid: m.ext_uuid, name: m.ext_name || m.ext_uuid.slice(0, 8) });
+    }
+    return opts.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   }, [team, cloudProfiles]);
 
   return (
