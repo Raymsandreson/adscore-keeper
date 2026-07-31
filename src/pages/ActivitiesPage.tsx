@@ -615,11 +615,29 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     const loadSupport = async () => {
+      // legal_cases já passa de 1.000 linhas e o PostgREST corta em 1.000/request —
+      // sem paginação os casos mais antigos somem do filtro de caso.
+      const fetchAllCases = async () => {
+        const pageSize = 1000;
+        const all: { id: string; case_number: string; title: string; lead_id: string | null }[] = [];
+        for (let from = 0; from < 10000; from += pageSize) {
+          const { data } = await externalSupabase
+            .from('legal_cases')
+            .select('id, case_number, title, lead_id')
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false })
+            .range(from, from + pageSize - 1);
+          if (!data || data.length === 0) break;
+          all.push(...(data as typeof all));
+          if (data.length < pageSize) break;
+        }
+        return { data: all };
+      };
       const [leadsRes, membersRes, contactsRes, casesRes] = await Promise.all([
         externalSupabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(500),
-        externalSupabase.from('legal_cases').select('id, case_number, title, lead_id').is('deleted_at', null).order('created_at', { ascending: false }).limit(2000),
+        fetchAllCases(),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
