@@ -5,10 +5,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Mic, Play, Pause, Upload, Check, Loader2, Volume2, Trash2, Square, Circle } from 'lucide-react';
+import { Mic, Play, Pause, Upload, Check, Loader2, Volume2, Trash2, Square, Circle, MonitorSpeaker, AudioLines } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { AudioWaveform } from './AudioWaveform';
+
+type RecordSource = 'mic' | 'system' | 'both';
+
+const SOURCE_LABEL: Record<RecordSource, string> = {
+  mic: 'microfone',
+  system: 'interno',
+  both: 'mic+interno',
+};
 
 interface VoicePreset {
   id: string;
@@ -44,20 +53,78 @@ export function VoiceSettings() {
   const [recording, setRecording] = useState(false);
   const [recordedBlobs, setRecordedBlobs] = useState<{ blob: Blob; name: string }[]>([]);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [source, setSource] = useState<RecordSource>('mic');
+  const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamsRef = useRef<MediaStream[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const stopRecordingRef = useRef<() => void>(() => {});
+
+  const canCaptureSystem =
+    typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
 
   const getUserId = async () => {
     const { data: { session } } = await supabase.auth.getSession();
     return session?.user?.id;
   };
 
+  const releaseCapture = useCallback(() => {
+    streamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
+    streamsRef.current = [];
+    audioCtxRef.current?.close().catch(() => {});
+    audioCtxRef.current = null;
+    setAnalyser(null);
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    else releaseCapture();
+    setRecording(false);
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, [releaseCapture]);
+
+  stopRecordingRef.current = stopRecording;
+
   const startRecording = useCallback(async () => {
+    const wantsMic = source === 'mic' || source === 'both';
+    const wantsSystem = source === 'system' || source === 'both';
+
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      const ctx = new AudioContext();
+      const destination = ctx.createMediaStreamDestination();
+      const analyserNode = ctx.createAnalyser();
+      analyserNode.fftSize = 1024;
+      analyserNode.smoothingTimeConstant = 0.6;
+      analyserNode.connect(destination);
+
+      if (wantsMic) {
+        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamsRef.current.push(micStream);
+        ctx.createMediaStreamSource(micStream).connect(analyserNode);
+      }
+
+      if (wantsSystem) {
+        // Chrome exige video:true para liberar o áudio da aba/tela
+        const sysStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        streamsRef.current.push(sysStream);
+        if (sysStream.getAudioTracks().length === 0) throw new Error('NO_SYSTEM_AUDIO');
+        ctx.createMediaStreamSource(new MediaStream(sysStream.getAudioTracks())).connect(analyserNode);
+        // usuário clicou em "Parar compartilhamento" na barra do navegador
+        sysStream.getVideoTracks().forEach(t => { t.onended = () => stopRecordingRef.current(); });
+      }
+
+      await ctx.resume();
+      audioCtxRef.current = ctx;
+      setAnalyser(analyserNode);
+
+      const mediaRecorder = new MediaRecorder(destination.stream, { mimeType: 'audio/webm' });
       const chunks: BlobPart[] = [];
+      const sourceTag = SOURCE_LABEL[source];
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunks.push(e.data);
@@ -65,9 +132,8 @@ export function VoiceSettings() {
 
       mediaRecorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'audio/webm' });
-        const name = `gravacao_${recordedBlobs.length + 1}.webm`;
-        setRecordedBlobs(prev => [...prev, { blob, name }]);
-        stream.getTracks().forEach(t => t.stop());
+        setRecordedBlobs(prev => [...prev, { blob, name: `gravacao_${prev.length + 1}_${sourceTag}.webm` }]);
+        releaseCapture();
         setRecordingTime(0);
       };
 
@@ -76,19 +142,19 @@ export function VoiceSettings() {
       setRecording(true);
       setRecordingTime(0);
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
-    } catch {
-      toast.error('Não foi possível acessar o microfone');
+    } catch (e: any) {
+      releaseCapture();
+      if (e?.message === 'NO_SYSTEM_AUDIO') {
+        toast.error('Marque "Compartilhar áudio da aba" na janela de seleção do navegador');
+      } else if (e?.name === 'NotAllowedError') {
+        toast.error('Permissão de captura negada');
+      } else if (wantsSystem && !canCaptureSystem) {
+        toast.error('Este navegador não captura áudio interno — use o microfone');
+      } else {
+        toast.error('Não foi possível iniciar a gravação');
+      }
     }
-  }, [recordedBlobs.length]);
-
-  const stopRecording = useCallback(() => {
-    mediaRecorderRef.current?.stop();
-    setRecording(false);
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-  }, []);
+  }, [source, releaseCapture, canCaptureSystem]);
 
   const removeRecording = (index: number) => {
     setRecordedBlobs(prev => prev.filter((_, i) => i !== index));
@@ -97,6 +163,8 @@ export function VoiceSettings() {
   useEffect(() => {
     loadVoices();
   }, []);
+
+  useEffect(() => releaseCapture, [releaseCapture]);
 
   const loadVoices = async () => {
     try {
@@ -378,6 +446,48 @@ export function VoiceSettings() {
 
           {/* Recorder */}
           <div>
+            <Label>Fonte do áudio</Label>
+            <div className="mt-1 grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {([
+                { key: 'mic' as const, icon: Mic, title: 'Microfone', hint: 'Sua voz pelo mic' },
+                { key: 'system' as const, icon: MonitorSpeaker, title: 'Áudio interno', hint: 'Som da aba/tela' },
+                { key: 'both' as const, icon: AudioLines, title: 'Ambos', hint: 'Mic + interno juntos' },
+              ]).map(({ key, icon: Icon, title, hint }) => {
+                const disabled = key !== 'mic' && !canCaptureSystem;
+                const selected = source === key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    disabled={recording || disabled}
+                    onClick={() => setSource(key)}
+                    title={disabled ? 'Navegador não suporta captura de áudio interno' : hint}
+                    className={`flex items-start gap-2 rounded-lg border p-2 text-left transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                      selected ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/40 hover:bg-muted/50'
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 mt-0.5 shrink-0 ${selected ? 'text-primary' : 'text-muted-foreground'}`} />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium leading-tight">{title}</span>
+                      <span className="block text-[11px] text-muted-foreground leading-tight">{hint}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {source !== 'mic' && canCaptureSystem && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                O navegador vai pedir para escolher a aba/tela — marque a opção "Compartilhar áudio" antes de confirmar.
+              </p>
+            )}
+            {!canCaptureSystem && (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Captura de áudio interno disponível apenas no Chrome/Edge no computador.
+              </p>
+            )}
+          </div>
+
+          <div>
             <Label>Gravar áudio</Label>
             <div className="mt-1 flex items-center gap-2">
               {recording ? (
@@ -395,6 +505,11 @@ export function VoiceSettings() {
                 </Button>
               )}
             </div>
+
+            {recording && (
+              <AudioWaveform analyser={analyser} active={recording} className="mt-2" />
+            )}
+
             {recordedBlobs.length > 0 && (
               <div className="mt-2 space-y-1">
                 {recordedBlobs.map((r, i) => (
