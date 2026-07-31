@@ -99,45 +99,104 @@ export default function InssEmailSearchTab({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [autoTerms, setAutoTerms] = useState<string[]>([]);
+  /** Nome civil vindo da procuração — mostrado pra deixar claro de onde veio a busca. */
+  const [procName, setProcName] = useState<string | null>(null);
   const didAutoSearch = useRef(false);
 
   /**
-   * Nomes que valem como pista do cliente: título do caso, nome/apelido e
-   * vítima do lead, e os contatos amarrados a ele — o nome civil completo
-   * (o que o INSS usa) quase sempre está no contato, não no lead_name.
+   * Pistas do cliente, da mais confiável pra menos:
+   *
+   *  1. **Procuração (ZapSign)** — `outorgante_name`/`outorgante_cpf` saem do PDF
+   *     assinado. É o nome civil completo, o mesmo que o INSS usa nos e-mails.
+   *     Achamos a procuração pelo `lead_id` e, quando ela está órfã, pelo
+   *     telefone do lead/contato (comparando os últimos 8 dígitos, porque o
+   *     nono dígito aparece num cadastro e some no outro).
+   *  2. Contatos do lead (`lead_id` e `contact_leads`) — nome civil parcial.
+   *  3. Título do caso / nome do lead — costumam vir com apelido e lixo
+   *     ("✅PREV 542 | Cícero/Milla").
+   *
+   * `victim_name` entra só como último recurso: o campo é de acidente de
+   * trabalho e em previdenciário não existe vítima. Ele só tem nome de cliente
+   * porque o trigger `copy_zapsign_data_to_lead` despeja a procuração ali.
    */
-  const loadClientTerms = useCallback(async (): Promise<{ tokens: string[]; cpfs: string[] }> => {
+  const loadClientTerms = useCallback(async (): Promise<{
+    tokens: string[]; cpfs: string[]; procuracaoName: string | null;
+  }> => {
     const names: string[] = [];
     const cpfs: string[] = [];
+    const phones: string[] = [];
+    let procuracaoName: string | null = null;
+    /** Últimos 8 dígitos: o que sobra igual com ou sem nono dígito e com/sem DDI. */
+    const phoneTail = (p?: string | null): string | null => {
+      const d = String(p || '').replace(/\D/g, '');
+      // <10 dígitos não é telefone; >15 é jid de grupo do WhatsApp.
+      if (d.length < 10 || d.length > 15) return null;
+      return d.slice(-8);
+    };
     try {
-      const [caseRes, leadRes, contactsRes, linksRes] = await Promise.all([
+      const [caseRes, leadRes, contactsRes, linksRes, procRes] = await Promise.all([
         db.from('legal_cases' as any).select('title, client_name').eq('id', caseId).maybeSingle(),
-        db.from('leads' as any).select('lead_name, victim_name, cpf').eq('id', leadId).maybeSingle(),
-        db.from('contacts' as any).select('full_name, cpf').eq('lead_id', leadId).limit(20),
+        db.from('leads' as any).select('lead_name, victim_name, cpf, lead_phone, lead_phone_raw').eq('id', leadId).maybeSingle(),
+        db.from('contacts' as any).select('full_name, cpf, phone').eq('lead_id', leadId).limit(20),
         db.from('contact_leads' as any).select('contact_id').eq('lead_id', leadId).limit(20),
+        db.from('zapsign_documents' as any)
+          .select('outorgante_name, outorgante_cpf, signer_name, document_name')
+          .eq('lead_id', leadId).limit(10),
       ]);
       const c = (caseRes.data || {}) as any;
       const l = (leadRes.data || {}) as any;
       names.push(c.client_name, c.title, l.victim_name, l.lead_name);
       if (l.cpf) cpfs.push(String(l.cpf).replace(/\D/g, ''));
+      for (const p of [l.lead_phone, l.lead_phone_raw]) {
+        const t = phoneTail(p);
+        if (t) phones.push(t);
+      }
       const pushContact = (ct: any) => {
         names.push(ct.full_name);
         if (ct.cpf) cpfs.push(String(ct.cpf).replace(/\D/g, ''));
+        const t = phoneTail(ct.phone);
+        if (t) phones.push(t);
       };
       for (const ct of ((contactsRes.data || []) as any[])) pushContact(ct);
-      // Contatos ligados por contact_leads (N:N) — é onde costuma estar o nome
-      // civil completo, que é o que o INSS usa nos e-mails.
       const contactIds = ((linksRes.data || []) as any[]).map((r) => r.contact_id).filter(Boolean);
       if (contactIds.length) {
         const { data: more } = await db
-          .from('contacts' as any).select('full_name, cpf').in('id', contactIds);
+          .from('contacts' as any).select('full_name, cpf, phone').in('id', contactIds);
         for (const ct of ((more || []) as any[])) pushContact(ct);
+      }
+
+      const pushProcuracao = (docs: any[]) => {
+        for (const d of docs) {
+          const nome = String(d.outorgante_name || d.signer_name || '').trim();
+          if (nome) {
+            names.push(nome);
+            if (!procuracaoName) procuracaoName = nome;
+          }
+          if (d.outorgante_cpf) cpfs.push(String(d.outorgante_cpf).replace(/\D/g, ''));
+        }
+      };
+      pushProcuracao((procRes.data || []) as any[]);
+
+      // Procuração órfã (lead_id nulo — a maioria delas): acha pelo telefone de
+      // quem assinou. Sem isso o nome civil fica invisível pro caso.
+      if (!procuracaoName && phones.length) {
+        const uniqPhones = Array.from(new Set(phones)).slice(0, 6);
+        const { data: byPhone } = await db
+          .from('zapsign_documents' as any)
+          .select('outorgante_name, outorgante_cpf, signer_name, signer_phone')
+          .or(uniqPhones.map((t) => `signer_phone.ilike.%${t}`).join(','))
+          .limit(10);
+        pushProcuracao((byPhone || []) as any[]);
       }
     } catch (e) {
       console.warn('[InssEmailSearchTab] falha ao carregar pistas do cliente:', e);
     }
     const tokens = Array.from(new Set(names.filter(Boolean).flatMap((n) => nameTokens(String(n)))));
-    return { tokens, cpfs: Array.from(new Set(cpfs.filter((c) => c.length === 11))) };
+    return {
+      tokens,
+      cpfs: Array.from(new Set(cpfs.filter((c) => c.length === 11))),
+      procuracaoName,
+    };
   }, [caseId, leadId]);
 
   /** Enriquece com o nome do lead/caso onde o requerimento já está preso. */
@@ -244,10 +303,11 @@ export default function InssEmailSearchTab({
     if (didAutoSearch.current) return;
     didAutoSearch.current = true;
     (async () => {
-      const { tokens, cpfs } = await loadClientTerms();
+      const { tokens, cpfs, procuracaoName } = await loadClientTerms();
       setAutoTerms(tokens);
+      setProcName(procuracaoName);
       if (tokens.length === 0 && cpfs.length === 0) {
-        setError('Sem nome ou CPF no cadastro do cliente — digite o nome ou o nº do requerimento.');
+        setError('Sem nome, CPF ou procuração no cadastro do cliente — digite o nome ou o nº do requerimento.');
         return;
       }
       await runSearch({ tokens, cpfs });
@@ -280,7 +340,8 @@ export default function InssEmailSearchTab({
       } else {
         toast.success(`Gmail lido: ${j.checked || 0} e-mail(s), ${j.created_processes || 0} novo(s)`);
       }
-      const { tokens, cpfs } = await loadClientTerms();
+      const { tokens, cpfs, procuracaoName } = await loadClientTerms();
+      setProcName(procuracaoName);
       await runSearch({ tokens, cpfs, raw: query });
     } catch (e: any) {
       toast.error('Falha ao chamar o sync: ' + (e?.message || 'erro'));
@@ -396,9 +457,11 @@ export default function InssEmailSearchTab({
         </Button>
       </div>
 
-      {autoTerms.length > 0 && !query.trim() && (
-        <p className="text-[10px] text-muted-foreground">
-          Buscando pelo cliente do caso: {autoTerms.slice(0, 6).join(', ')}
+      {!query.trim() && (procName || autoTerms.length > 0) && (
+        <p className="text-[10px] text-muted-foreground break-words">
+          {procName
+            ? <>Nome da procuração: <span className="font-medium text-foreground">{procName}</span></>
+            : <>Buscando pelo cliente do caso: {autoTerms.slice(0, 6).join(', ')}</>}
         </p>
       )}
 
