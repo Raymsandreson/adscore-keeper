@@ -1,10 +1,18 @@
-// Pós-assinatura ZapSign: REGISTRA 5 checkpoints como `pending` em
-// `onboarding_checkpoints` no Externo. NÃO executa nada automaticamente.
-// O frontend (modal bloqueante) é quem dispara cada passo após confirmação manual.
+// Pós-assinatura ZapSign: registra e executa os 3 passos automáticos em
+// `onboarding_checkpoints` no Externo (que passa a servir de LOG do pós-assinatura,
+// não de fila de trabalho humano).
 //
-// Histórico: antes este arquivo criava grupo + importava docs em paralelo,
-// causando duplicações (3 grupos, contatos órfãos, casos com defaults silenciosos).
-// Migrado para fluxo de checkpoint manual em 2026-05-07.
+// Histórico:
+// - 2026-05-07: virou fluxo de checkpoint manual (modal bloqueante) porque a
+//   execução paralela duplicava grupo/contato/caso.
+// - 2026-07-31: o modal foi removido. Nos 30 dias anteriores, 100% dos passos
+//   concluídos tinham `confirmed_by = NULL` (auto-exec do servidor) e nenhum
+//   humano confirmou nada. Os 4 passos manuais restantes não rodavam desde
+//   23/05 e eram redundantes:
+//     · send_initial_message / import_docs → já feitos dentro de
+//       create-whatsapp-group (sendInitialMessage + forwardConversationMedia)
+//     · create_case_process / create_onboarding_activity → nascem por outro
+//       fluxo (733 casos e 367 atividades em 60d, zero via checkpoint)
 import { supabase } from '../lib/supabase';
 
 interface PostSignInput {
@@ -15,11 +23,7 @@ interface PostSignInput {
 const STEPS = [
   'confirm_funnel',        // 0. Confirmar/escolher funil (board) do lead antes de tudo
   'setup_lead_close',      // 1. Garantir lead/contato + marcar lead como fechado
-  'create_group',          // 2. Criar grupo WhatsApp
-  'send_initial_message',  // 3. Enviar mensagem de boas-vindas
-  'import_docs',           // 4. Importar docs (WhatsApp 7d + ZapSign extras)
-  'create_case_process',   // 5. Criar Caso + Processo (pergunta tipo + honorários)
-  'create_onboarding_activity', // 6. Atividade ONBOARDING CLIENTE
+  'create_group',          // 2. Criar grupo WhatsApp (já envia boas-vindas e docs)
 ] as const;
 
 export async function runPostSignExtras(input: PostSignInput): Promise<void> {
@@ -110,10 +114,8 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
   console.log('[post-sign-extras] checkpoints registered for lead', doc.lead_id);
 
   // ─────────────────────────────────────────────────────────────────────────
-  // AUTO-EXECUÇÃO dos passos que NÃO exigem decisão humana.
-  // Os demais (`send_initial_message`, `import_docs`, `create_case_process`,
-  // `create_onboarding_activity`) continuam pendentes pra revisão via modal.
-  // Roda em sequência, fire-and-forget, em background.
+  // AUTO-EXECUÇÃO dos 3 passos. Roda em sequência, fire-and-forget, em background.
+  // Se um falhar, a corrente para e o checkpoint fica `failed` como registro.
   // ─────────────────────────────────────────────────────────────────────────
   void autoExecuteCheckpoints(doc.lead_id).catch((err) =>
     console.error('[post-sign-extras] auto-execute error:', err),

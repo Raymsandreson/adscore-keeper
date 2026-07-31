@@ -6,8 +6,6 @@ import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppAssigneeSummary } from './WhatsAppAssigneeSummary';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
-import { OnboardingCheckpointHost } from './OnboardingCheckpointHost';
-import { hasOnboardingPending, getPendingLeadId } from '@/lib/onboardingGuard';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -817,42 +815,14 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
-  // Guard: se a conversa atual tem onboarding pendente, perguntar antes de sair.
-  const [pendingNav, setPendingNav] = useState<null | (() => void)>(null);
-
-  const guardLeaveCurrent = useCallback((after: () => void) => {
-    if (selectedPhone && hasOnboardingPending(selectedPhone)) {
-      setPendingNav(() => after);
-    } else {
-      after();
-    }
-  }, [selectedPhone]);
-
   const handleSelectConversation = (conv: WhatsAppConversation) => {
-    const apply = () => {
-      setSelectedPhone(normalizeWhatsAppConversationPhone(conv.phone));
-      setSelectedInstance(conv.instance_name);
-      fetchFullConversation(conv.phone, conv.instance_name);
-      if (conv.unread_count > 0) {
-        markAsRead(conv.phone, conv.instance_name);
-      }
-    };
-    // Se for a mesma conversa, não pergunta
-    if (conv.phone === selectedPhone) { apply(); return; }
-    guardLeaveCurrent(apply);
+    setSelectedPhone(normalizeWhatsAppConversationPhone(conv.phone));
+    setSelectedInstance(conv.instance_name);
+    fetchFullConversation(conv.phone, conv.instance_name);
+    if (conv.unread_count > 0) {
+      markAsRead(conv.phone, conv.instance_name);
+    }
   };
-
-  // Finaliza (cancela) os checkpoints pendentes do lead da conversa atual.
-  const finalizeOnboardingForCurrent = useCallback(async () => {
-    const lid = getPendingLeadId(selectedPhone);
-    if (!lid) return;
-    const dbAny = externalSupabase as any;
-    await dbAny
-      .from('onboarding_checkpoints')
-      .update({ status: 'done', result: { cancelled_by_user: true, at: new Date().toISOString() } })
-      .eq('lead_id', lid)
-      .in('status', ['pending', 'running', 'failed']);
-  }, [selectedPhone]);
 
   const [extracting, setExtracting] = useState(false);
   const [extractionStep, setExtractionStep] = useState('');
@@ -1584,7 +1554,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         )}
 
         {!isMinimal && inboxTab !== 'cloud_api' && instances.length > 0 && (
-          <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { guardLeaveCurrent(() => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }); }}>
+          <Select open={instanceSelectOpen} onOpenChange={setInstanceSelectOpen} value={selectedInstanceId} onValueChange={(val) => { setSelectedInstanceId(val); setSelectedPhone(null); setSelectedInstance(null); if (val !== 'all') localStorage.setItem('whatsapp_last_instance_id', val); }}>
             <SelectTrigger data-tour="instance-selector" className="w-52 h-8 text-xs ml-0 md:ml-2">
               <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground" />
               <SelectValue placeholder="Todas instâncias" />
@@ -1980,7 +1950,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               {selectedConversation && (
                 <WhatsAppChat
                   conversation={selectedConversation}
-                  onBack={() => { guardLeaveCurrent(() => { setSelectedPhone(null); setSelectedInstance(null); }); }}
+                  onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
@@ -2062,7 +2032,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             {selectedConversation ? (
                 <WhatsAppChat
                   conversation={selectedConversation}
-                  onBack={() => { guardLeaveCurrent(() => { setSelectedPhone(null); setSelectedInstance(null); }); }}
+                  onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
                     if (share) {
@@ -2375,47 +2345,6 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       )}
       <ZapSignLeadCreationListener />
       <ZapSignDialogHost />
-      <OnboardingCheckpointHost selectedPhone={selectedPhone} />
-
-      <AlertDialog
-        open={!!pendingNav}
-        onOpenChange={(o) => { if (!o) setPendingNav(null); }}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Onboarding pendente nesta conversa</AlertDialogTitle>
-            <AlertDialogDescription>
-              Há etapas de onboarding pós-assinatura abertas para este cliente.
-              Se você sair, o formulário será fechado. O que deseja fazer?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="gap-2 sm:gap-2">
-            <AlertDialogCancel onClick={() => setPendingNav(null)}>
-              Continuar onboarding
-            </AlertDialogCancel>
-            <Button
-              variant="outline"
-              onClick={() => {
-                const nav = pendingNav;
-                setPendingNav(null);
-                nav?.();
-              }}
-            >
-              Sair sem finalizar
-            </Button>
-            <AlertDialogAction
-              onClick={async () => {
-                await finalizeOnboardingForCurrent();
-                const nav = pendingNav;
-                setPendingNav(null);
-                nav?.();
-              }}
-            >
-              Finalizar onboarding
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <SharedConversationsPanel open={sharedPanelOpen} onOpenChange={setSharedPanelOpen} />
 
