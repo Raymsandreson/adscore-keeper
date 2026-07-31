@@ -60,26 +60,78 @@ export interface TeamMember {
   email: string | null;
 }
 
+/** A lista de membros muda muito pouco — não vale uma query por painel aberto. */
+let membersCache: TeamMember[] | null = null;
+let membersPromise: Promise<TeamMember[]> | null = null;
+
 export function useTeamMembers() {
-  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>(() => membersCache || []);
 
   useEffect(() => {
-    // profiles continua no Cloud
-    supabase.from('profiles').select('user_id, full_name, email').then(({ data }) => {
-      if (data) setMembers(data);
-    });
+    if (membersCache) return;
+    if (!membersPromise) {
+      // profiles continua no Cloud
+      membersPromise = supabase
+        .from('profiles')
+        .select('user_id, full_name, email')
+        .then(({ data }) => {
+          membersCache = data || [];
+          return membersCache;
+        });
+    }
+    let alive = true;
+    membersPromise.then(list => { if (alive) setMembers(list); });
+    return () => { alive = false; };
   }, []);
 
   return members;
 }
 
+/**
+ * Cache das últimas conversas abertas. Reabrir a mesma atividade/lead mostra o
+ * histórico na hora e revalida por baixo, em vez de encarar o spinner de novo.
+ */
+const messagesCache = new Map<string, TeamMessage[]>();
+const CACHE_MAX_ENTITIES = 40;
+
+function cacheGet(key: string) {
+  return messagesCache.get(key);
+}
+
+function cacheSet(key: string, msgs: TeamMessage[]) {
+  if (messagesCache.size >= CACHE_MAX_ENTITIES && !messagesCache.has(key)) {
+    const oldest = messagesCache.keys().next().value;
+    if (oldest) messagesCache.delete(oldest);
+  }
+  messagesCache.set(key, msgs);
+}
+
 export function useTeamChat(entityType: string, entityId: string, entityName?: string) {
   const { user } = useAuthContext();
-  const [messages, setMessages] = useState<TeamMessage[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cacheKey = `${entityType}:${entityId}`;
+  const [messages, setMessagesState] = useState<TeamMessage[]>(() => cacheGet(cacheKey) || []);
+  const [loading, setLoading] = useState(() => !cacheGet(cacheKey));
+
+  // Toda escrita de mensagens passa aqui para o cache não ficar defasado.
+  const setMessages = useCallback((updater: React.SetStateAction<TeamMessage[]>) => {
+    setMessagesState(prev => {
+      const next = typeof updater === 'function' ? (updater as (p: TeamMessage[]) => TeamMessage[])(prev) : updater;
+      cacheSet(cacheKey, next);
+      return next;
+    });
+  }, [cacheKey]);
+
+  // Troca de entidade: mostra o que já está em cache imediatamente.
+  useEffect(() => {
+    const cached = cacheGet(cacheKey);
+    setMessagesState(cached || []);
+    setLoading(!cached);
+  }, [cacheKey]);
 
   const loadMessages = useCallback(async () => {
-    setLoading(true);
+    const started = performance.now();
+    // Sem cache é carregamento de verdade; com cache, revalida em silêncio.
+    if (!cacheGet(cacheKey)) setLoading(true);
     await ensureExternalSession();
     const { data } = await externalSupabase
       .from('team_chat_messages')
@@ -89,9 +141,13 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .limit(200);
-    if (data) setMessages(data as TeamMessage[]);
+    if (data) {
+      cacheSet(cacheKey, data as TeamMessage[]);
+      setMessagesState(data as TeamMessage[]);
+    }
     setLoading(false);
-  }, [entityType, entityId]);
+    console.debug(`[team-chat] ${cacheKey} carregou em ${Math.round(performance.now() - started)}ms`);
+  }, [entityType, entityId, cacheKey]);
 
   useEffect(() => {
     loadMessages();
@@ -216,7 +272,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     await ensureExternalSession();
     await externalSupabase.from('team_chat_messages').update(patch).eq('id', id);
     setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)));
-  }, []);
+  }, [setMessages]);
 
   return { messages, loading, sendMessage, updateMessage };
 }

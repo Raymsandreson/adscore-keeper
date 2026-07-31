@@ -461,21 +461,18 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     return null;
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-32">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
   const hasAttachment = (t?: string | null) => t === 'audio' || t === 'image' || t === 'file';
 
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-        {messages.length === 0 ? (
+        {messages.length === 0 && loading ? (
+          /* Só a lista espera — o campo de digitação já está disponível. */
+          <div className="flex items-center justify-center h-32 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-muted-foreground text-xs text-center gap-2">
             <Users className="h-8 w-8 opacity-30" />
             <p>Nenhuma mensagem da equipe.<br/>Use <span className="font-medium text-primary">@nome</span> para mencionar alguém.</p>
