@@ -182,6 +182,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
   const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
 
+  // Herda o POP do processo vinculado quando a atividade não tem um próprio
+  // (paridade com a ActivitiesPage). Sem isso o campo ficava vazio e vermelho
+  // enquanto a barra de progresso já mostrava as fases do POP do processo.
+  // Só preenche quando está vazio — escolha manual do usuário não é sobrescrita.
+  useEffect(() => {
+    if (formWorkflowId) return;
+    if (linkedProcess?.workflow_id) setFormWorkflowId(linkedProcess.workflow_id);
+  }, [linkedProcess?.workflow_id, formWorkflowId]);
+
   // Rotina do assessor selecionado (ou do usuário logado, se nenhum) — usada pra
   // filtrar o seletor de TIPO. `user_timeblock_settings` guarda user_id em UUID do
   // Cloud, mesmo namespace de formAssignedTo (remapToCloud) e de user.id.
