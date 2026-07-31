@@ -9,6 +9,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 
 /** Contexto do alerta — muda as frases prontas e o rótulo do botão. */
 type AlertContext = 'idle' | 'break' | 'not_started';
@@ -90,6 +92,8 @@ interface MemberStatus {
   breakNote?: string | null;
   /** Previsão que a pessoa deu ao registrar a pausa (min), quando deu. */
   breakEtaMin?: number | null;
+  /** "Férias"/"Folga"/… — só sobra quem está de folga e mesmo assim trabalhando. */
+  awayLabel?: string | null;
   activityTitle: string | null;
   activityType: string | null; // key do tipo (rotina) — rótulo resolvido na renderização
   activityId: string | null;   // permite o atalho "abrir a atividade"
@@ -206,13 +210,27 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
   const load = useCallback(async () => {
     try {
       // 1) Estrutura: times/membros/nomes (Cloud) + gestão (Externo)
-      const [{ data: teams }, { data: teamMembers }, { data: profiles }, { data: managers }, { data: directors }] = await Promise.all([
+      await ensureExternalSession().catch(() => {}); // RLS do Externo (org_user_status, member_time_off)
+      const [{ data: teams }, { data: teamMembers }, { data: profiles }, { data: managers }, { data: directors }, { data: inactiveRows }, timeOff] = await Promise.all([
         authClient.from('teams').select('id, name, color').order('name'),
         authClient.from('team_members').select('team_id, user_id'),
         authClient.from('profiles').select('user_id, full_name'),
         dbAny.from('team_managers').select('manager_user_id, manager_name, team_name'),
         dbAny.from('org_directors').select('user_id, name'),
+        // Desativados e ausências de hoje — ambos chaveados pelo Cloud user_id.
+        ((externalSupabase as unknown as SupabaseClient).from('org_user_status') as ReturnType<SupabaseClient['from']>)
+          .select('user_id').eq('active', false),
+        getTimeOffForDate(brasiliaToday()),
       ]);
+
+      // Quem não deve ser cobrado hoje: desligado do escritório, ou de
+      // férias/folga/compensação cobrindo a data. Some do painel inteiro — dos
+      // filtros, das contagens e do ranking do dia (ver filtro em buildMembers).
+      const inactiveCloudIds = new Set<string>(
+        ((inactiveRows as { user_id: string }[]) || []).map(r => r.user_id).filter(Boolean),
+      );
+      const awayByCloudId = new Map<string, TimeOffEntry>();
+      (timeOff || []).forEach(t => { if (t.user_id) awayByCloudId.set(t.user_id, t); });
 
       // 2) Cloud → Externo (o cronômetro grava ext uid)
       await ensureRemapCache().catch(() => {});
@@ -308,7 +326,17 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
           .map(cid => {
             const ext = cloudToExt.get(cid);
             if (!ext) return null;
-            return statusOf(ext, cid, nameByCloud.get(cid) || 'Membro');
+            if (inactiveCloudIds.has(cid)) return null; // desligado: nunca aparece
+            const m = statusOf(ext, cid, nameByCloud.get(cid) || 'Membro');
+            const away = awayByCloudId.get(cid);
+            if (away) {
+              // De férias/folga hoje: sai do painel. A exceção é quem está de
+              // folga e mesmo assim tocando uma atividade — aí é informação,
+              // não cobrança, e o selo diz por que ele está aí.
+              if (m.state !== 'working') return null;
+              m.awayLabel = TIME_OFF_TYPE_LABELS[away.type] || 'Ausente';
+            }
+            return m;
           })
           .filter(Boolean)
           .map(m => m as MemberStatus)
@@ -649,6 +677,14 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                       <div className="text-xs font-medium truncate">
                         {m.name}
                         {m.role && <span className="ml-1 text-[10px] font-normal text-indigo-600 dark:text-indigo-400">{m.role}</span>}
+                        {m.awayLabel && (
+                          <span
+                            className="ml-1 text-[10px] font-normal rounded px-1 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                            title={`Está de ${m.awayLabel.toLowerCase()} hoje, mas com atividade em andamento`}
+                          >
+                            {m.awayLabel}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[11px] text-muted-foreground truncate">
                         {m.state === 'working' && (
