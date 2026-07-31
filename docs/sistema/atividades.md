@@ -57,6 +57,17 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
 
+### Bloqueio sem expediente aberto (ShiftGate)
+
+Sem ponto batido o sistema **não é utilizável**: `src/components/activities/ShiftGate.tsx` cobre a tela inteira (montado no `SidebarLayout`, em `App.tsx`) com o **POP "Início de expediente"** — os 6 passos do procedimento — e o botão "Iniciar expediente", que chama o mesmo `startShift()` do cronômetro. Só há duas saídas: bater o ponto ou "Sair da conta".
+
+Quem **não** é bloqueado:
+- **diretoria** (`org_directors`, via `useTeamLeadership`) — gestores continuam bloqueados;
+- **visitante sem sessão** — senão a própria tela de login travaria;
+- **telão `/tv/atividades` e páginas públicas** (booking, revisar, avaliar, landing) — ficam fora do `SidebarLayout`.
+
+Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada é bloqueado — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (5 casos).
+
 ---
 
 ## Registro rápido por voz — "O que você está fazendo?"

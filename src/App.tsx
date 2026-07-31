@@ -29,6 +29,7 @@ import { MobileSwipeHandler } from "@/components/MobileSwipeHandler";
 import { OrgMetaSync } from "@/components/OrgMetaSync";
 import { ActivityTimerProvider } from "@/contexts/ActivityTimerContext";
 import { ActivityTimerOverlay } from "@/components/activities/ActivityTimerOverlay";
+import { ShiftGate } from "@/components/activities/ShiftGate";
 import { CallProvider } from "@/contexts/CallContext";
 import { CallOverlay } from "@/components/chat/CallOverlay";
 import { CallSummaryDialog } from "@/components/chat/CallSummaryDialog";
@@ -318,6 +319,9 @@ function SidebarLayout() {
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
             <ActivityTimerOverlay />
+            {/* Sem expediente aberto o sistema fica bloqueado (tela cheia com o
+                POP de início de expediente). Diretoria e rotas públicas passam. */}
+            <ShiftGate />
             <CallOverlay />
             <CallSummaryDialog />
             <FeatureGuidePopup />
