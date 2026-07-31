@@ -51,11 +51,29 @@ const notStarted = (m: MemberStatus) => m.state === 'off' && m.dayActive === 0 &
 const matchesFilter = (m: MemberStatus, f: StatusFilter) =>
   f === 'all' ? true : f === 'not_started' ? notStarted(m) : m.state === f;
 
-/** Pausa sem previsão só vira "longa" depois disto (almoço cabe em 1h). */
-const LONG_BREAK_SECS = 60 * 60;
-/** Pausa estourada: passou da previsão que a própria pessoa deu, ou de 1h sem previsão. */
-const breakOverdue = (m: MemberStatus) =>
-  m.state === 'break' && m.currentSecs > (m.breakEtaMin && m.breakEtaMin > 0 ? m.breakEtaMin * 60 : LONG_BREAK_SECS);
+/**
+ * Teto por tipo de pausa, em minutos, para quando a pessoa não informa previsão
+ * — que é o caso comum: em 31/07/2026, as 10 pausas do dia tinham
+ * `estimated_minutes` nulo. `compensacao` fica de fora de propósito: banco de
+ * horas é longo por definição, alertar ali seria só ruído.
+ */
+const BREAK_LIMIT_MIN: Record<BreakType, number | null> = {
+  almoco: 90,
+  intervalo: 30,
+  cafe: 20,
+  lanche: 20,
+  descanso: 20,
+  compensacao: null,
+};
+
+/** Pausa estourada: passou da previsão que a pessoa deu; sem previsão, do teto do tipo. */
+const breakOverdue = (m: MemberStatus) => {
+  if (m.state !== 'break') return false;
+  const limitMin = m.breakEtaMin && m.breakEtaMin > 0
+    ? m.breakEtaMin
+    : BREAK_LIMIT_MIN[m.breakType || 'intervalo'];
+  return limitMin !== null && m.currentSecs > limitMin * 60;
+};
 
 /** Sem batimento (flush 30s) por 2 min = cronômetro não está mais rodando. */
 const HEARTBEAT_MS = 2 * 60 * 1000;
@@ -645,9 +663,9 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                         {m.state === 'break' && (
                           <span className={breakOverdue(m) ? 'text-red-600 dark:text-red-400 font-medium' : 'text-sky-700 dark:text-sky-300'}>
                             {BREAK_LABELS[m.breakType || 'intervalo']}{m.breakNote ? ` · ${m.breakNote}` : ''}
-                            {breakOverdue(m) && (m.breakEtaMin && m.breakEtaMin > 0
-                              ? ` · passou dos ${m.breakEtaMin} min`
-                              : ' · mais de 1h')}
+                            {breakOverdue(m) && ` · passou dos ${
+                              m.breakEtaMin && m.breakEtaMin > 0 ? m.breakEtaMin : BREAK_LIMIT_MIN[m.breakType || 'intervalo']
+                            } min`}
                           </span>
                         )}
                         {m.state === 'off' && (notStarted(m)
