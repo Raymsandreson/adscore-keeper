@@ -18,6 +18,9 @@ import {
   narracaoUltrapassagem,
   narracaoRecorde,
   OVERTAKE_PRESETS,
+  NARRATION_STYLES,
+  type NarrationStyleId,
+  type VozDisponivel,
   type Ultrapassagem,
 } from '@/hooks/useRaceSfx';
 
@@ -170,6 +173,9 @@ export default function TvAtividadesPage() {
   const [recordHit, setRecordHit] = useState<RecordMark | null>(null);
   // Painel pra escolher e testar o som da ultrapassagem.
   const [soundPanel, setSoundPanel] = useState(false);
+  // Vozes da conta ElevenLabs pro seletor de locutor (carrega ao abrir o painel).
+  const [vozes, setVozes] = useState<VozDisponivel[] | null>(null);
+  const [vozesLoading, setVozesLoading] = useState(false);
 
   // ---- Rotação automática de times (telão sem operador) ----
   // Percorre em ciclo: Ranking Geral (todos) → cada time → volta. Fica
@@ -437,6 +443,15 @@ export default function TvAtividadesPage() {
 
   const { vroom, recordSound, say, preset, setPreset, preview } = sfx;
 
+  // Lista as vozes disponíveis quando o painel de som abre com o locutor ligado.
+  useEffect(() => {
+    if (!soundPanel || !sfx.narrator || vozes !== null || vozesLoading) return;
+    setVozesLoading(true);
+    sfx.listVoices()
+      .then(setVozes)
+      .finally(() => setVozesLoading(false));
+  }, [soundPanel, sfx.narrator, sfx.listVoices, vozes, vozesLoading]);
+
   // Recorde do período/time = SERVIDOR (data.meta), sempre filtrado pelo time
   // selecionado — nada de localStorage, então não vaza entre times. O selo mostra
   // o recorde histórico a bater; ao vivo, se o topo do ranking o superar, comemora
@@ -636,6 +651,72 @@ export default function TvAtividadesPage() {
                   Testar voz
                 </button>
               </div>
+              {/* Seletor de locutor: lista as vozes da conta ElevenLabs. Pra
+                  ter outra voz aqui, é só adicioná-la na conta — voz de pessoa
+                  real só com autorização de quem fala. */}
+              {sfx.narrator && (
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-xs font-bold text-white/60">Locutor</span>
+                  <select
+                    value={sfx.voiceId || ''}
+                    onChange={e => sfx.setVoiceId(e.target.value || null)}
+                    className="w-full rounded-lg border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white"
+                    disabled={vozesLoading}
+                  >
+                    <option value="">
+                      {vozesLoading ? 'Carregando vozes…' : 'Padrão do sistema (Adam)'}
+                    </option>
+                    {(vozes || []).map(v => (
+                      <option key={v.voice_id} value={v.voice_id}>
+                        {v.nome}
+                        {v.genero ? ` · ${v.genero}` : ''}
+                        {v.sotaque ? ` · ${v.sotaque}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {vozes !== null && vozes.length === 0 && !vozesLoading && (
+                    <span className="mt-1 block text-[11px] text-white/40">
+                      Não consegui listar as vozes da conta ElevenLabs.
+                    </span>
+                  )}
+                </label>
+              )}
+
+              {/* Estilos de frase: dá pra deixar só narração, só provocação, ou misturar. */}
+              <div className="mt-3">
+                <div className="mb-1 text-xs font-bold text-white/60">Estilo das frases</div>
+                <div className="space-y-1.5">
+                  {NARRATION_STYLES.map(s => {
+                    const on = sfx.styles.includes(s.id);
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => sfx.setStyles(
+                          on
+                            ? sfx.styles.filter(x => x !== s.id)
+                            : ([...sfx.styles, s.id] as NarrationStyleId[]),
+                        )}
+                        className={cn(
+                          'flex w-full items-start gap-2 rounded-lg border p-2 text-left transition',
+                          on ? 'border-sky-400/60 bg-sky-400/10' : 'border-white/10 bg-white/[0.02] hover:bg-white/[0.06]',
+                        )}
+                        aria-pressed={on}
+                      >
+                        {on ? (
+                          <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-400" />
+                        ) : (
+                          <span className="mt-0.5 h-3.5 w-3.5 shrink-0 rounded-full border border-white/25" />
+                        )}
+                        <span className="min-w-0">
+                          <span className="block text-xs font-black">{s.nome}</span>
+                          <span className="block text-[11px] italic text-white/45">“{s.exemplo}”</span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <button
                 onClick={() => sfx.setNarrator(!sfx.narrator)}
                 className={cn(

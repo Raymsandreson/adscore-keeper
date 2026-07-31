@@ -16,6 +16,8 @@ import { cloudFunctions } from '@/lib/functionRouter';
 const LS_KEY = 'telao_sfx_on';
 // Voz de locutor (ElevenLabs). '0' = usa só a voz do navegador.
 const LS_NARRATOR = 'telao_voz_locutor';
+// Voz escolhida no painel (id do ElevenLabs). Vazio = padrão do servidor.
+const LS_VOICE_ID = 'telao_locutor_voice_id';
 
 // Som de RECORDE: um ARQUIVO configurável toca quando alguém bate o recorde de
 // passos do período. Ordem de prioridade:
@@ -221,26 +223,87 @@ function escolherVoz(vozes: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null
   return pt.find((v) => VOZ_MASCULINA.test(v.name)) || pt[0] || null;
 }
 
-// Bordões de narrador. Sorteia sem repetir a frase anterior, pra não virar
-// papagaio num telão que dispara isso o dia inteiro. Sem pronome de gênero —
-// o ranking tem gente de todo tipo e a voz não vai errar com ninguém.
-const BORDOES_ULTRAPASSAGEM: ((a: string, b: string) => string)[] = [
-  (a, b) => `Olha lá, amigos! ${a} ultrapassou ${b}!`,
-  (a, b) => `Que ultrapassagem! ${a} deixou ${b} pra trás!`,
-  (a, b) => `Tá lá! ${a} passou ${b} por dentro!`,
-  (a, b) => `Não acredito! ${a} tomou a posição de ${b}!`,
-  (a, b) => `Haja coração! ${a} ultrapassou ${b}!`,
-  (a, b) => `Voando baixo! ${a} passou ${b}!`,
-  (a, b) => `Pegou a curva e foi! ${a} deixou ${b} no retrovisor!`,
+// Bordões de narrador, em três estilos que podem ser ligados/desligados no
+// painel do telão. Sorteia sem repetir a frase anterior, pra não virar papagaio
+// num telão que dispara isso o dia inteiro. Sem pronome de gênero — o ranking
+// tem gente de todo tipo e a voz não vai errar com ninguém.
+//   • narração — locução clássica de corrida
+//   • pergunta — o locutor cutuca em forma de pergunta
+//   • provocação — zoeira entre os dois envolvidos (leve, sem ofensa pessoal)
+export type NarrationStyleId = 'narracao' | 'pergunta' | 'provocacao';
+export interface NarrationStyle { id: NarrationStyleId; nome: string; desc: string; exemplo: string; }
+export const NARRATION_STYLES: NarrationStyle[] = [
+  { id: 'narracao', nome: 'Narração', desc: 'Locução clássica de corrida', exemplo: 'Olha lá, amigos! Maria ultrapassou João!' },
+  { id: 'pergunta', nome: 'Interrogação', desc: 'O locutor cutuca perguntando', exemplo: 'Vai deixar assim, João? Maria acabou de passar!' },
+  { id: 'provocacao', nome: 'Provocação', desc: 'Zoeira entre os dois — leve', exemplo: 'Acordou, Maria? Passou por cima do João!' },
 ];
 
-const BORDOES_RECORDE: ((nome: string, passos: number) => string)[] = [
-  (n, p) => `Amigos, novo recorde! ${n}, ${p} passos!`,
-  (n, p) => `Isso é história! ${n} bateu o recorde com ${p} passos!`,
-  (n, p) => `Novo recorde da casa! ${n}, ${p} passos!`,
-  (n, p) => `Tá lá o recorde! ${n}, com ${p} passos!`,
-  (n, p) => `Que fenômeno! ${n} fez ${p} passos e é o novo recorde!`,
-];
+const LS_STYLES = 'telao_narracao_estilos';
+
+const ULTRAPASSAGEM: Record<NarrationStyleId, ((a: string, b: string) => string)[]> = {
+  narracao: [
+    (a, b) => `Olha lá, amigos! ${a} ultrapassou ${b}!`,
+    (a, b) => `Que ultrapassagem! ${a} deixou ${b} pra trás!`,
+    (a, b) => `Tá lá! ${a} passou ${b} por dentro!`,
+    (a, b) => `Não acredito! ${a} tomou a posição de ${b}!`,
+    (a, b) => `Haja coração! ${a} ultrapassou ${b}!`,
+    (a, b) => `Voando baixo! ${a} passou ${b}!`,
+    (a, b) => `Pegou a curva e foi! ${a} deixou ${b} no retrovisor!`,
+  ],
+  pergunta: [
+    (a, b) => `Vai deixar assim, ${b}? ${a} acabou de passar!`,
+    (a, b) => `Cadê a reação, ${b}? ${a} tomou a sua posição!`,
+    (a, b) => `Quem segura ${a} hoje? Passou por ${b}!`,
+    (a, b) => `Será que ${b} devolve? ${a} está na frente!`,
+    (a, b) => `Viu isso, ${b}? ${a} não deu chance!`,
+    (a, b) => `E agora, ${b}? ${a} passou e não olhou pra trás!`,
+  ],
+  provocacao: [
+    (a, b) => `Acordou, ${a}? Passou por cima de ${b}!`,
+    (a, b) => `Tchau, ${b}! ${a} passou e mandou lembranças!`,
+    (a, b) => `Pode ir buscar o café, ${b}: ${a} passou!`,
+    (a, b) => `${b} ficou no retrovisor, e ${a} nem acenou!`,
+    (a, b) => `Segura essa, ${b}! ${a} passou voando!`,
+    (a, b) => `${a} passou tão rápido que ${b} nem viu a cor do carro!`,
+  ],
+};
+
+const RECORDE: Record<NarrationStyleId, ((nome: string, passos: number) => string)[]> = {
+  narracao: [
+    (n, p) => `Amigos, novo recorde! ${n}, ${p} passos!`,
+    (n, p) => `Isso é história! ${n} bateu o recorde com ${p} passos!`,
+    (n, p) => `Novo recorde da casa! ${n}, ${p} passos!`,
+    (n, p) => `Tá lá o recorde! ${n}, com ${p} passos!`,
+    (n, p) => `Que fenômeno! ${n} fez ${p} passos e é o novo recorde!`,
+  ],
+  pergunta: [
+    (n, p) => `Alguém aí alcança ${n}? Novo recorde, ${p} passos!`,
+    (n, p) => `Quem vai tirar ${n} do topo? ${p} passos, recorde novo!`,
+    (n, p) => `Vocês viram isso? ${n} fez ${p} passos e bateu o recorde!`,
+    (n, p) => `Tem alguém pra brigar com ${n}? ${p} passos!`,
+  ],
+  provocacao: [
+    (n, p) => `Bota o nome de ${n} na parede: ${p} passos, recorde novo!`,
+    (n, p) => `O resto tá passeando! ${n} fez ${p} passos!`,
+    (n, p) => `${n} resolveu jogar sozinho hoje: ${p} passos, recorde!`,
+    (n, p) => `Anota aí: ${n}, ${p} passos. O recorde mudou de dono!`,
+  ],
+};
+
+const TODOS_ESTILOS: NarrationStyleId[] = ['narracao', 'pergunta', 'provocacao'];
+
+export function loadStyles(): NarrationStyleId[] {
+  try {
+    const raw = window.localStorage.getItem(LS_STYLES);
+    if (raw) {
+      const ids = raw.split(',').filter((v): v is NarrationStyleId => TODOS_ESTILOS.includes(v as NarrationStyleId));
+      if (ids.length) return ids;
+    }
+  } catch {
+    /* ignora */
+  }
+  return TODOS_ESTILOS;
+}
 
 function sorteiaDiferente(total: number, ultimo: number): number {
   if (total <= 1) return 0;
@@ -249,16 +312,26 @@ function sorteiaDiferente(total: number, ultimo: number): number {
   return i;
 }
 
+// Junta as frases dos estilos ligados e sorteia entre todas — assim um estilo
+// com mais frases não some no meio dos outros.
+function frasesDe<T>(mapa: Record<NarrationStyleId, T[]>, estilos?: NarrationStyleId[]): T[] {
+  const ativos = estilos?.length ? estilos : loadStyles();
+  const lista = ativos.flatMap((id) => mapa[id] || []);
+  return lista.length ? lista : mapa.narracao;
+}
+
 let ultimoUltra = -1;
-export function narracaoUltrapassagem(a: string, b: string): string {
-  ultimoUltra = sorteiaDiferente(BORDOES_ULTRAPASSAGEM.length, ultimoUltra);
-  return BORDOES_ULTRAPASSAGEM[ultimoUltra](a, b);
+export function narracaoUltrapassagem(a: string, b: string, estilos?: NarrationStyleId[]): string {
+  const frases = frasesDe(ULTRAPASSAGEM, estilos);
+  ultimoUltra = sorteiaDiferente(frases.length, ultimoUltra);
+  return frases[ultimoUltra](a, b);
 }
 
 let ultimoRecorde = -1;
-export function narracaoRecorde(nome: string, passos: number): string {
-  ultimoRecorde = sorteiaDiferente(BORDOES_RECORDE.length, ultimoRecorde);
-  return BORDOES_RECORDE[ultimoRecorde](nome, passos);
+export function narracaoRecorde(nome: string, passos: number, estilos?: NarrationStyleId[]): string {
+  const frases = frasesDe(RECORDE, estilos);
+  ultimoRecorde = sorteiaDiferente(frases.length, ultimoRecorde);
+  return frases[ultimoRecorde](nome, passos);
 }
 
 const LS_PRESET = 'telao_overtake_preset';
@@ -272,6 +345,15 @@ function loadPreset(): OvertakePresetId {
   return 'chime';
 }
 
+export interface VozDisponivel {
+  voice_id: string;
+  nome: string;
+  categoria?: string | null;
+  genero?: string | null;
+  sotaque?: string | null;
+  descricao?: string | null;
+}
+
 export interface RaceSfx {
   vroom: () => void;
   recordSound: () => void;
@@ -283,6 +365,14 @@ export interface RaceSfx {
   /** Voz de locutor (ElevenLabs) ligada. Desligada = só a voz do navegador. */
   narrator: boolean;
   setNarrator: (b: boolean) => void;
+  /** Voz escolhida no painel (null = a padrão do servidor). */
+  voiceId: string | null;
+  setVoiceId: (id: string | null) => void;
+  /** Vozes disponíveis na conta ElevenLabs, pro seletor. */
+  listVoices: () => Promise<VozDisponivel[]>;
+  /** Estilos de frase ligados (narração / interrogação / provocação). */
+  styles: NarrationStyleId[];
+  setStyles: (ids: NarrationStyleId[]) => void;
   /** De onde saiu a última narração — pro painel mostrar o que está valendo. */
   lastNarration: 'locutor' | 'navegador' | null;
   enabled: boolean;
@@ -331,6 +421,16 @@ export function useRaceSfx(): RaceSfx {
   const narratorRef = useRef(narrator);
   narratorRef.current = narrator;
   const [lastNarration, setLastNarration] = useState<'locutor' | 'navegador' | null>(null);
+  const [voiceId, setVoiceIdState] = useState<string | null>(() => {
+    try {
+      return window.localStorage.getItem(LS_VOICE_ID);
+    } catch {
+      return null;
+    }
+  });
+  const voiceIdRef = useRef(voiceId);
+  voiceIdRef.current = voiceId;
+  const [styles, setStylesState] = useState<NarrationStyleId[]>(loadStyles);
   const falaRef = useRef<SpeechSynthesisUtterance | null>(null);
   const falaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vozAquecidaRef = useRef(false);
@@ -612,7 +712,7 @@ export function useRaceSfx(): RaceSfx {
           success: boolean;
           audio_url?: string;
           reason?: string;
-        }>('telao-narrar', { body: { texto } });
+        }>('telao-narrar', { body: { texto, voice_id: voiceIdRef.current || undefined } });
 
         if (error || !data?.success || !data.audio_url) {
           // Sem chave/crédito não adianta insistir a cada ultrapassagem:
@@ -664,6 +764,43 @@ export function useRaceSfx(): RaceSfx {
     narrar(texto);
   }, [aquecerVoz, narrar]);
 
+  // Trocar de voz invalida o cache local (as URLs são por voz no servidor).
+  const setVoiceId = useCallback((id: string | null) => {
+    setVoiceIdState(id);
+    voiceIdRef.current = id;
+    narrCacheRef.current.clear();
+    narrOffAteRef.current = 0;
+    try {
+      if (id) window.localStorage.setItem(LS_VOICE_ID, id);
+      else window.localStorage.removeItem(LS_VOICE_ID);
+    } catch {
+      /* ignora */
+    }
+  }, []);
+
+  const listVoices = useCallback(async (): Promise<VozDisponivel[]> => {
+    try {
+      const { data, error } = await cloudFunctions.invoke<{ success: boolean; vozes?: VozDisponivel[] }>(
+        'telao-narrar',
+        { body: { modo: 'vozes' } },
+      );
+      if (error || !data?.success) return [];
+      return data.vozes || [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const setStyles = useCallback((ids: NarrationStyleId[]) => {
+    const limpos = ids.length ? ids : (['narracao'] as NarrationStyleId[]);
+    setStylesState(limpos);
+    try {
+      window.localStorage.setItem(LS_STYLES, limpos.join(','));
+    } catch {
+      /* ignora */
+    }
+  }, []);
+
   const setNarrator = useCallback((b: boolean) => {
     setNarratorState(b);
     narrOffAteRef.current = 0; // religar limpa o silêncio de uma falha anterior
@@ -690,6 +827,7 @@ export function useRaceSfx(): RaceSfx {
   return {
     vroom, recordSound, say, sayPreview, voiceName,
     narrator, setNarrator, lastNarration,
+    voiceId, setVoiceId, listVoices, styles, setStyles,
     enabled, setEnabled, preset, setPreset, preview,
   };
 }

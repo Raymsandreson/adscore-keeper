@@ -51,9 +51,41 @@ function dentroDoTeto(): boolean {
   return geracoesNaJanela < MAX_GERACOES_HORA;
 }
 
-function caminhoDoCache(texto: string): string {
-  const hash = createHash('sha1').update(`${MODEL_ID}|${VOICE_ID}|${texto}`).digest('hex').slice(0, 24);
+function caminhoDoCache(texto: string, voiceId: string): string {
+  const hash = createHash('sha1').update(`${MODEL_ID}|${voiceId}|${texto}`).digest('hex').slice(0, 24);
   return `telao-narracao/${hash}.mp3`;
+}
+
+/** Voz escolhida no painel do telão. Formato do id do ElevenLabs, nada além. */
+function voiceIdValido(v: unknown): v is string {
+  return typeof v === 'string' && /^[A-Za-z0-9]{16,40}$/.test(v);
+}
+
+// Lista de vozes da conta, pro seletor do painel. Cache curto: a conta não
+// muda de voz o tempo todo e isso evita bater na API a cada abertura.
+let vozesCache: { em: number; vozes: unknown[] } | null = null;
+
+async function listarVozes() {
+  if (vozesCache && Date.now() - vozesCache.em < 10 * 60_000) return vozesCache.vozes;
+
+  const res = await fetch('https://api.elevenlabs.io/v1/voices', {
+    headers: { 'xi-api-key': ELEVENLABS_API_KEY },
+  });
+  if (!res.ok) throw new Error(`voices ${res.status}`);
+
+  const json = (await res.json()) as { voices?: any[] };
+  const vozes = (json.voices || []).map((v) => ({
+    voice_id: v.voice_id,
+    nome: v.name,
+    categoria: v.category, // premade | cloned | generated | professional
+    genero: v.labels?.gender || null,
+    sotaque: v.labels?.accent || null,
+    descricao: v.labels?.description || null,
+    preview_url: v.preview_url || null,
+  }));
+
+  vozesCache = { em: Date.now(), vozes };
+  return vozes;
 }
 
 function urlPublica(path: string): string | null {
@@ -73,7 +105,19 @@ async function jaExiste(url: string): Promise<boolean> {
 
 export async function handler(req: Request, res: Response, _next: unknown) {
   try {
+    // modo "vozes": só lista as vozes da conta pro seletor do painel.
+    if (req.body?.modo === 'vozes') {
+      if (!ELEVENLABS_API_KEY) return res.json({ success: false, reason: 'sem_api_key', vozes: [] });
+      try {
+        return res.json({ success: true, vozes: await listarVozes(), padrao: VOICE_ID });
+      } catch (e) {
+        console.error('[telao-narrar] listar vozes falhou:', e);
+        return res.json({ success: false, reason: 'listagem_falhou', vozes: [] });
+      }
+    }
+
     const texto = String(req.body?.texto ?? '').trim();
+    const voiceId = voiceIdValido(req.body?.voice_id) ? req.body.voice_id : VOICE_ID;
 
     if (!texto) return res.status(400).json({ success: false, error: 'texto é obrigatório' });
     if (texto.length > MAX_CHARS) {
@@ -84,7 +128,7 @@ export async function handler(req: Request, res: Response, _next: unknown) {
       return res.json({ success: false, reason: 'sem_api_key' });
     }
 
-    const path = caminhoDoCache(texto);
+    const path = caminhoDoCache(texto, voiceId);
     const url = urlPublica(path);
     if (!url) return res.status(500).json({ success: false, error: 'storage indisponível' });
 
@@ -103,7 +147,7 @@ export async function handler(req: Request, res: Response, _next: unknown) {
     }
 
     const ttsRes = await fetchWithRetry(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}?output_format=mp3_44100_64`,
+      `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_64`,
       {
         method: 'POST',
         headers: { 'xi-api-key': ELEVENLABS_API_KEY, 'Content-Type': 'application/json' },
