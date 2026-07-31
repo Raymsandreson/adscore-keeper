@@ -136,6 +136,12 @@ Cria uma atividade interna por ditado: "Iniciar gravação" → falar → "Parar
 - Retroativo é ignorado em **PASSOS**, **ITENS DO CHECKLIST** e, desde 31/07/2026, também em **FASES** e **OBJETIVOS** (`inst_last` só considera passo não-retroativo dentro do período — migration `20260731180000`). Antes disso o mesmo clique não valia passo mas fechava fase e objetivo, que pesam mais na ordenação.
 - Sintoma clássico de "marquei tudo e aparece 0 PASSOS": os logs do dia estão com `retroactive = true`. Confere com `select metadata->>'retroactive', count(*) from user_activity_log where action_type='checklist_item_checked' and created_at >= current_date group by 1`.
 
+**Checklist do passo é condição, não pontuação** (desde 31/07/2026) — o passo **não fecha** enquanto sobrar item do seu checklist em aberto. Não existe critério novo no telão: requisito/pergunta/verificação continuam somando em ITENS DO CHECKLIST, e o que mudou é que o **PASSO** (e, por consequência, objetivo e fase) só conta com o procedimento conferido. Motivo: 1.690 dos 2.506 passos com sub-item (67%) estavam sendo concluídos sem nenhum item conferido.
+- Regra única em `src/lib/stepSubitems.ts`, aplicada nos quatro caminhos de marcação (ficha da atividade, visão de fluxo, board do caso e `useChecklists`). "Marcar todos os passos" pula o passo travado e avisa quantos ficaram de fora.
+- **"Não se aplica"** (`notApplicable` no sub-item): escape para o item que não cabe naquele caso — destrava o passo sem afirmar que foi feito e **não** entra no ranking. Clicar de novo desfaz.
+- **Não existe mais "Marcar todos" de sub-item**: era o atalho que anulava a leitura item a item.
+- Fora da conta de pendência: o **espelho de resposta** (item cujo rótulo repete uma resposta do passo — quem o marca é a resposta escolhida; ver `src/lib/popAnswerMirror.ts`).
+
 ---
 
 ## Campeonato de Engajamento — `/leaderboard`
