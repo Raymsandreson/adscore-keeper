@@ -224,8 +224,9 @@ export function WorkflowProgressView({
 
   // Overall progress
   const { totalItems, checkedItems, overallPercent } = useMemo(() => {
-    const total = instances.reduce((sum, i) => sum + i.items.length, 0);
-    const checked = instances.reduce((sum, i) => sum + i.items.filter(it => it.checked).length, 0);
+    // Histórico de passo substituído (supersededBy) fica fora da conta.
+    const total = instances.reduce((sum, i) => sum + i.items.filter(it => !it.supersededBy).length, 0);
+    const checked = instances.reduce((sum, i) => sum + i.items.filter(it => !it.supersededBy && it.checked).length, 0);
     const percent = total > 0 ? Math.round((checked / total) * 100) : 0;
     return { totalItems: total, checkedItems: checked, overallPercent: percent };
   }, [instances]);
@@ -330,6 +331,14 @@ export function WorkflowProgressView({
     }
   };
 
+  // Passos do POP de hoje. O registro do passo anterior à mudança
+  // (supersededBy) fica visível como histórico, mas não conta em nada.
+  const liveItemsOf = (items: ChecklistItem[]) => items.filter(i => !i.supersededBy);
+  const allLiveChecked = (items: ChecklistItem[]) => {
+    const live = liveItemsOf(items);
+    return live.length > 0 && live.every(i => i.checked);
+  };
+
   const handleToggleItem = async (instance: LeadChecklistInstance, itemId: string) => {
     if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
 
@@ -357,7 +366,7 @@ export function WorkflowProgressView({
         ? { ...item, checked: !item.checked, selectedAnswerId: item.checked ? undefined : item.selectedAnswerId }
         : item
     );
-    const allChecked = updatedItems.every(i => i.checked);
+    const allChecked = allLiveChecked(updatedItems);
 
     // Optimistic update
     setInstances(prev => prev.map(inst =>
@@ -433,7 +442,7 @@ export function WorkflowProgressView({
     const updatedItems = instance.items.map(item =>
       item.id === itemId ? { ...item, checked: true, selectedAnswerId: answerId } : item
     );
-    const allChecked = updatedItems.every(i => i.checked);
+    const allChecked = allLiveChecked(updatedItems);
 
     // Optimistic update
     setInstances(prev => prev.map(inst =>
@@ -493,7 +502,7 @@ export function WorkflowProgressView({
     if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
 
     const isQuestion = (it: ChecklistItem) => !!it.answers?.length;
-    const targets = instance.items.filter(it => !isQuestion(it) && !!it.checked !== checked);
+    const targets = instance.items.filter(it => !isQuestion(it) && !it.supersededBy && !!it.checked !== checked);
     if (targets.length === 0) return;
 
     // Uma pergunta pro lote inteiro, antes de gravar: "Cancelar" desiste de tudo.
@@ -505,11 +514,11 @@ export function WorkflowProgressView({
     }
 
     const updatedItems = instance.items.map(item =>
-      isQuestion(item)
+      isQuestion(item) || item.supersededBy
         ? item
         : { ...item, checked, selectedAnswerId: checked ? item.selectedAnswerId : undefined }
     );
-    const allChecked = updatedItems.every(i => i.checked);
+    const allChecked = allLiveChecked(updatedItems);
 
     setInstances(prev => prev.map(inst =>
       inst.id === instance.id
@@ -644,8 +653,8 @@ export function WorkflowProgressView({
             const isExpanded = expandedPhases.has(phase.stage.id);
             const phaseCompleted = phase.objectives.length > 0 &&
               phase.objectives.every(o => o.instance.is_completed);
-            const phaseItemsTotal = phase.objectives.reduce((s, o) => s + o.instance.items.length, 0);
-            const phaseItemsChecked = phase.objectives.reduce((s, o) => s + o.instance.items.filter(i => i.checked).length, 0);
+            const phaseItemsTotal = phase.objectives.reduce((s, o) => s + liveItemsOf(o.instance.items).length, 0);
+            const phaseItemsChecked = phase.objectives.reduce((s, o) => s + liveItemsOf(o.instance.items).filter(i => i.checked).length, 0);
 
             return (
               <div key={phase.stage.id}>
@@ -696,11 +705,12 @@ export function WorkflowProgressView({
                       ) : (
                         phase.objectives.map((objective, objIndex) => {
                           const objExpanded = expandedObjectives.has(objective.instance.id);
-                          const completedCount = objective.instance.items.filter(i => i.checked).length;
-                          const totalCount = objective.instance.items.length;
+                          const objLiveItems = liveItemsOf(objective.instance.items);
+                          const completedCount = objLiveItems.filter(i => i.checked).length;
+                          const totalCount = objLiveItems.length;
                           const isPlaceholder = objective.instance.id.startsWith('placeholder-');
                           const allChecked = totalCount > 0 && completedCount === totalCount;
-                          const nextUncheckedIndex = objective.instance.items.findIndex(i => !i.checked);
+                          const nextUncheckedIndex = objective.instance.items.findIndex(i => !i.checked && !i.supersededBy);
 
                           return (
                             <Collapsible
@@ -769,7 +779,9 @@ export function WorkflowProgressView({
                                   ) : (
                                     objective.instance.items.map((item, itemIndex) => {
                                       const isNext = itemIndex === nextUncheckedIndex && !item.checked;
-                                      const isReadonly = objective.instance.is_readonly || isPlaceholder;
+                                      // Registro do passo anterior à mudança do POP: só leitura.
+                                      const isHistory = !!item.supersededBy;
+                                      const isReadonly = objective.instance.is_readonly || isPlaceholder || isHistory;
                                       const letter = String.fromCharCode(97 + itemIndex); // a, b, c...
 
                                       return (

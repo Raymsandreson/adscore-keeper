@@ -14,6 +14,12 @@
 interface ProgressItem {
   id: string;
   checked?: boolean;
+  /**
+   * Registro do passo como era antes de o POP mudar (ver
+   * src/lib/syncChecklistInstances.ts). É histórico: não conta no progresso,
+   * senão o percentual seguiria refletindo um POP que não existe mais.
+   */
+  supersededBy?: string;
 }
 
 interface ProgressInstance {
@@ -70,8 +76,9 @@ export function calculateHierarchicalProgress(
     let stageCompletedPercent = 0;
 
     const objectives = stageInstances.map(instance => {
-      const totalSteps = instance.items.length;
-      const completedSteps = instance.items.filter(item => item.checked).length;
+      const liveItems = instance.items.filter(item => !item.supersededBy);
+      const totalSteps = liveItems.length;
+      const completedSteps = liveItems.filter(item => item.checked).length;
 
       let objCompletedPercent = 0;
       if (totalSteps > 0) {

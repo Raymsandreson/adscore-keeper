@@ -12,14 +12,23 @@
  * - Passo AINDA NÃO marcado → adota o conteúdo novo do template (nome,
  *   descrição, script, automação, checklist do passo). Preserva as marcas
  *   de documento que continuam existindo.
- * - Passo JÁ marcado → NÃO é reescrito: o que foi feito fica registrado como
- *   foi feito. Só recebe um aviso de que o POP mudou (`popChange`):
- *     'alterado' → o passo continua no POP, mas com outro conteúdo
- *     'removido' → o passo não existe mais no POP
+ * - Passo JÁ marcado cujo TRABALHO mudou (nome, checklist do passo ou
+ *   respostas) → o registro do que foi feito continua na lista, riscado e
+ *   com o selo 'alterado', e o passo novo entra logo abaixo DESMARCADO, para
+ *   ser executado. O registro antigo guarda `supersededBy` (id do passo que
+ *   o substituiu), o que o mantém preso ao passo certo nos loads seguintes.
+ * - Passo JÁ marcado com mudança que NÃO exige refazer (script, descrição,
+ *   modelo de mensagem, destino/status) → fica como está, sem duplicar; só
+ *   recebe o selo 'alterado'.
+ * - Passo JÁ marcado que saiu do POP → fica na lista com o selo 'removido'.
  * - Passo não marcado que saiu do POP → some da instância (nada a preservar).
  *
+ * O registro antigo (`supersededBy`) é histórico: não é marcável e não entra
+ * no cálculo de progresso — quem manda no percentual é o POP de hoje.
+ *
  * `popChange`/`popNewLabel` são campos de EXIBIÇÃO, calculados a cada load e
- * removidos antes de gravar (`itemsToPersist`) — o banco não guarda selo.
+ * removidos antes de gravar (`itemsToPersist`) — o banco guarda só o
+ * `supersededBy`, que é o que amarra o histórico ao passo atual.
  */
 
 export type PopChange = 'alterado' | 'removido';
@@ -38,10 +47,22 @@ export interface SyncItem {
   checked?: boolean;
   selectedAnswerId?: string;
   docChecklist?: SyncDocItem[];
+  /**
+   * Registro do que foi feito antes de o POP mudar: guarda o id do passo
+   * ATUAL que substituiu este. Persiste no banco — é o que mantém o
+   * histórico colado ao passo certo e impede que ele seja confundido com
+   * um passo excluído do POP.
+   */
+  supersededBy?: string;
   popChange?: PopChange;
   /** Nome atual no POP, quando o passo marcado foi renomeado. */
   popNewLabel?: string;
   [key: string]: unknown;
+}
+
+/** Passos históricos não são marcáveis nem entram no progresso. */
+export function isHistoryItem(item: { supersededBy?: string }): boolean {
+  return !!item.supersededBy;
 }
 
 /** JSON com chaves ordenadas — comparação estável entre loads. */
@@ -61,6 +82,36 @@ function configOf(item: SyncItem): string {
     return docRest;
   });
   return stableStringify({ ...rest, docChecklist: docs });
+}
+
+/**
+ * O passo precisa ser REFEITO? Só quando muda o trabalho em si — o nome, o
+ * checklist do passo ou as respostas da pergunta. Mexer em script, descrição,
+ * modelo de mensagem, tipo de atividade ou destino/status não obriga ninguém
+ * a refazer o que já foi feito (e duplicar a linha nesses casos só poluiria a
+ * ficha a cada ajuste de texto do POP).
+ */
+function needsRedo(templateItem: SyncItem, existing: SyncItem): boolean {
+  if ((templateItem.label || '') !== (existing.label || '')) return true;
+  if (stableStringify(templateItem.answers) !== stableStringify(existing.answers)) return true;
+
+  const docsOf = (item: SyncItem) =>
+    (item.docChecklist || []).map(d => {
+      const { checked: _c, popChange: _p, ...rest } = d;
+      return rest;
+    });
+  return stableStringify(docsOf(templateItem)) !== stableStringify(docsOf(existing));
+}
+
+/** Id estável e sem colisão para o registro do passo que foi substituído. */
+function historyIdFor(baseId: string, usedIds: Set<string>): string {
+  let candidate = `${baseId}__feito`;
+  let n = 2;
+  while (usedIds.has(candidate)) {
+    candidate = `${baseId}__feito${n}`;
+    n += 1;
+  }
+  return candidate;
 }
 
 /**
@@ -128,32 +179,67 @@ export function syncInstanceItems(
 ): SyncResult {
   const template = templateItems || [];
   const instance = instanceItems || [];
-  const instanceById = new Map(instance.map(i => [i.id, i]));
+  const templateById = new Map(template.map(t => [t.id, t]));
+  const templateIds = new Set(template.map(t => t.id));
 
+  // Registros de passos já substituídos em syncs anteriores.
+  const history = instance.filter(isHistoryItem);
+  const live = instance.filter(i => !isHistoryItem(i));
+  const liveById = new Map(live.map(i => [i.id, i]));
+
+  const usedIds = new Set(instance.map(i => i.id));
   const items: SyncItem[] = [];
 
+  /**
+   * Passo saindo do template para a instância. Os documentos passam pelo
+   * mergeDocs mesmo sem estado anterior: é o que garante `checked: false`
+   * neles e, com isso, que o sync seguinte não veja diferença e regrave
+   * (idempotência).
+   */
+  const fromTemplate = (templateItem: SyncItem): SyncItem => {
+    const docs = mergeDocs(templateItem.docChecklist, undefined);
+    const fresh: SyncItem = { ...templateItem, checked: false };
+    if (docs) fresh.docChecklist = docs;
+    else delete fresh.docChecklist;
+    return fresh;
+  };
+
+  const historyBadge = (item: SyncItem): SyncItem => {
+    const current = item.supersededBy ? templateById.get(item.supersededBy) : undefined;
+    if (!current) return { ...item, popChange: 'removido' };
+    return {
+      ...item,
+      popChange: 'alterado',
+      ...(current.label && current.label !== item.label ? { popNewLabel: current.label } : {}),
+    };
+  };
+
   for (const templateItem of template) {
-    const existing = instanceById.get(templateItem.id);
+    // Histórico deste passo vem primeiro (o que foi feito antes da mudança).
+    for (const old of history) {
+      if (old.supersededBy === templateItem.id) items.push(historyBadge(old));
+    }
+
+    const existing = liveById.get(templateItem.id);
 
     if (!existing) {
-      items.push({ ...templateItem, checked: false });
+      items.push(fromTemplate(templateItem));
       continue;
     }
 
     if (existing.checked) {
-      // Passo já marcado: conteúdo congelado. Só avisa se o POP mudou.
-      const changed = configOf(templateItem) !== configOf(existing);
-      items.push(
-        changed
-          ? {
-              ...existing,
-              popChange: 'alterado',
-              ...(templateItem.label && templateItem.label !== existing.label
-                ? { popNewLabel: templateItem.label }
-                : {}),
-            }
-          : existing,
-      );
+      if (!needsRedo(templateItem, existing)) {
+        // Mudança que não obriga a refazer: mantém como está, só sinaliza.
+        const changed = configOf(templateItem) !== configOf(existing);
+        items.push(changed ? { ...existing, popChange: 'alterado' } : existing);
+        continue;
+      }
+
+      // O trabalho mudou: guarda o que foi feito e reabre o passo novo.
+      const historyId = historyIdFor(templateItem.id, usedIds);
+      usedIds.add(historyId);
+      items.push(historyBadge({ ...existing, id: historyId, supersededBy: templateItem.id }));
+      items.push(fromTemplate(templateItem));
       continue;
     }
 
@@ -166,15 +252,22 @@ export function syncInstanceItems(
   }
 
   // Passos que saíram do POP: só ficam os que já tinham sido marcados.
-  const templateIds = new Set(template.map(t => t.id));
-  for (const existing of instance) {
+  for (const existing of live) {
     if (templateIds.has(existing.id)) continue;
     if (existing.checked) items.push({ ...existing, popChange: 'removido' });
   }
 
+  // Histórico cujo passo atual também saiu do POP: vira registro removido.
+  for (const old of history) {
+    if (old.supersededBy && templateIds.has(old.supersededBy)) continue;
+    items.push({ ...old, popChange: 'removido' });
+  }
+
   const itemsToPersist = stripDisplayFields(items);
   const changed = stableStringify(itemsToPersist) !== stableStringify(stripDisplayFields(instance));
-  const isCompleted = itemsToPersist.length > 0 && itemsToPersist.every(i => !!i.checked);
+  // Só os passos vivos definem a conclusão — histórico é registro do passado.
+  const liveFinal = itemsToPersist.filter(i => !isHistoryItem(i));
+  const isCompleted = liveFinal.length > 0 && liveFinal.every(i => !!i.checked);
 
   return { items, itemsToPersist, changed, isCompleted };
 }

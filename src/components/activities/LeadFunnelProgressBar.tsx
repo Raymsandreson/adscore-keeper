@@ -39,6 +39,8 @@ interface ChecklistItem {
   description?: string;
   checked?: boolean;
   docChecklist?: DocChecklistItem[];
+  /** Registro do passo como era antes de o POP mudar (persiste; não é marcável). */
+  supersededBy?: string;
   /** Selos de exibição calculados no load contra o template. Não persistem. */
   popChange?: PopChange;
   popNewLabel?: string;
@@ -213,6 +215,13 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const itemsForDb = (items: ChecklistItem[]) =>
     JSON.parse(JSON.stringify(stripDisplayFields(items as unknown as SyncItem[])));
 
+  // Conclusão olha só os passos do POP de hoje — o registro do passo antigo
+  // (supersededBy) é histórico e não segura nem completa o objetivo.
+  const allLiveChecked = (items: ChecklistItem[]) => {
+    const live = items.filter(i => !i.supersededBy);
+    return live.length > 0 && live.every(i => i.checked);
+  };
+
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
 
@@ -234,8 +243,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       .from('lead_checklist_instances')
       .update({
         items: itemsForDb(updatedItems),
-        is_completed: updatedItems.every(item => item.checked),
-        completed_at: updatedItems.every(item => item.checked) ? new Date().toISOString() : null,
+        is_completed: allLiveChecked(updatedItems),
+        completed_at: allLiveChecked(updatedItems) ? new Date().toISOString() : null,
       })
       .eq('id', instance.id);
 
@@ -260,7 +269,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     setInstances(prev => prev.map(i =>
       i.id === instance.id
-        ? { ...i, items: updatedItems, is_completed: updatedItems.every(item => item.checked) }
+        ? { ...i, items: updatedItems, is_completed: allLiveChecked(updatedItems) }
         : i
     ));
   };
@@ -271,7 +280,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const handleMarkAllSteps = async (instance: ChecklistInstance, checked: boolean) => {
     if (instance.is_readonly) return;
 
-    const targets = instance.items.filter(it => !!it.checked !== checked);
+    // Registro histórico (supersededBy) fica fora do marcar/desmarcar todos.
+    const targets = instance.items.filter(it => !it.supersededBy && !!it.checked !== checked);
     if (targets.length === 0) return;
 
     // Pergunta uma vez pro lote inteiro, antes de gravar: "Cancelar" desiste
@@ -283,7 +293,9 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       retroactive = timing === 'before';
     }
 
-    const updatedItems = instance.items.map(item => ({ ...item, checked }));
+    const updatedItems = instance.items.map(item =>
+      item.supersededBy ? item : { ...item, checked }
+    );
 
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
@@ -658,13 +670,17 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                 ? Math.round((objDetail.completedPercent / objDetail.objectiveWeight) * 100)
                 : 0;
 
+              // Passos do POP de hoje. O registro do passo antigo aparece na
+              // lista, mas não entra na contagem nem no "marcar todos".
+              const liveItems = instance.items.filter(i => !i.supersededBy);
+
               return (
                 <div key={instance.id} className="bg-muted/30 rounded-lg p-2 border border-border/50">
                   <div className="flex items-center justify-between gap-2 mb-1.5">
                     <span className="text-xs font-medium min-w-0 truncate">{instance.template_name}</span>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      {!instance.is_readonly && instance.items.length > 1 && (() => {
-                        const allStepsChecked = instance.items.every(i => i.checked);
+                      {!instance.is_readonly && liveItems.length > 1 && (() => {
+                        const allStepsChecked = liveItems.every(i => i.checked);
                         return (
                           <button
                             type="button"
@@ -679,7 +695,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                         );
                       })()}
                       <span className="text-[10px] text-muted-foreground">
-                        {instance.items.filter(i => i.checked).length}/{instance.items.length}
+                        {liveItems.filter(i => i.checked).length}/{liveItems.length}
                       </span>
                       <span className={cn(
                         "text-[10px] font-semibold",
@@ -696,18 +712,23 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                         ? (objDetail.objectiveWeight / objDetail.totalSteps)
                         : 0;
 
+                      // Registro do que foi feito antes de o POP mudar: fica
+                      // visível como histórico, mas não é marcável nem conta.
+                      const isHistory = !!item.supersededBy;
+
                       return (
                         <div key={item.id} className="space-y-0.5">
                           <label
                             className={cn(
                               "flex items-start gap-2 py-0.5 text-xs rounded px-1 -mx-1",
-                              instance.is_readonly ? "cursor-default" : "cursor-pointer hover:bg-accent/50",
+                              instance.is_readonly || isHistory ? "cursor-default" : "cursor-pointer hover:bg-accent/50",
+                              isHistory && "opacity-70",
                             )}
                           >
                             <Checkbox
                               checked={item.checked || false}
                               onCheckedChange={() => handleToggleItem(instance, item.id)}
-                              disabled={instance.is_readonly}
+                              disabled={instance.is_readonly || isHistory}
                               className="mt-0.5"
                             />
                             <div className="flex-1 min-w-0">
@@ -727,8 +748,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                   title={
                                     item.popChange === 'removido'
                                       ? 'Este passo não existe mais no POP. Ficou aqui porque já tinha sido marcado.'
-                                      : item.popNewLabel
-                                        ? `O POP mudou depois que este passo foi marcado. Agora se chama: ${item.popNewLabel}`
+                                      : isHistory
+                                        ? `Registro do que foi feito antes de o POP mudar. O passo atual${item.popNewLabel ? ` (${item.popNewLabel})` : ''} está logo abaixo, para ser executado.`
                                         : 'O conteúdo deste passo mudou no POP depois que ele foi marcado.'
                                   }
                                 >
@@ -744,7 +765,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                 </p>
                               )}
                             </div>
-                            {stepWeight > 0 && (
+                            {stepWeight > 0 && !isHistory && (
                               <span className="text-[9px] text-muted-foreground shrink-0 mt-0.5">
                                 {stepWeight.toFixed(1)}%
                               </span>
@@ -766,7 +787,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                       {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
                                     </span>
                                   </div>
-                                  {!instance.is_readonly && item.docChecklist.length > 1 && (() => {
+                                  {!instance.is_readonly && !isHistory && item.docChecklist.length > 1 && (() => {
                                     const allDocsChecked = docDone === item.docChecklist!.length;
                                     return (
                                       <button
@@ -794,7 +815,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                       <Checkbox
                                         checked={doc.checked || false}
                                         onCheckedChange={() => handleToggleDocItem(instance, item.id, doc.id)}
-                                        disabled={instance.is_readonly}
+                                        disabled={instance.is_readonly || isHistory}
                                         className="h-3 w-3"
                                       />
                                       <span className={cn(doc.checked && "line-through text-muted-foreground")}>

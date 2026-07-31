@@ -22,15 +22,70 @@ describe('syncInstanceItems', () => {
     expect(r.changed).toBe(true);
   });
 
-  it('passo JÁ marcado não é reescrito — só recebe o aviso de alterado', () => {
+  it('passo JÁ marcado vira histórico e o passo novo entra aberto abaixo', () => {
     const r = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: true }]);
 
-    expect(r.items[0].label).toBe('PEDIDO');
-    expect(r.items[0].checked).toBe(true);
+    expect(r.items).toHaveLength(2);
+
+    const [historico, novo] = r.items;
+    expect(historico.label).toBe('PEDIDO');
+    expect(historico.checked).toBe(true);
+    expect(historico.id).toBe('5ef2b06f__feito');
+    expect(historico.supersededBy).toBe('5ef2b06f');
+    expect(historico.popChange).toBe('alterado');
+    expect(historico.popNewLabel).toBe('REGISTRAR RESULTADO DO BENEFÍCIO');
+
+    expect(novo.id).toBe('5ef2b06f');
+    expect(novo.label).toBe('REGISTRAR RESULTADO DO BENEFÍCIO');
+    expect(novo.checked).toBe(false);
+    expect(novo.docChecklist).toHaveLength(1);
+
+    expect(r.changed).toBe(true);
+    // O passo novo está pendente: o objetivo deixa de estar concluído.
+    expect(r.isCompleted).toBe(false);
+  });
+
+  it('roda de novo sem duplicar histórico nem reabrir nada (idempotente)', () => {
+    const primeiro = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: true }]);
+    const segundo = syncInstanceItems([passoNoPop], primeiro.itemsToPersist);
+
+    expect(segundo.items).toHaveLength(2);
+    expect(segundo.changed).toBe(false);
+    expect(segundo.items[0].popChange).toBe('alterado');
+    expect(segundo.items[0].popNewLabel).toBe('REGISTRAR RESULTADO DO BENEFÍCIO');
+  });
+
+  it('marcar o passo novo conclui o objetivo — histórico não segura', () => {
+    const sync = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: true }]);
+    const respondido = sync.itemsToPersist.map(i => (i.supersededBy ? i : { ...i, checked: true }));
+
+    const depois = syncInstanceItems([passoNoPop], respondido);
+    expect(depois.isCompleted).toBe(true);
+    expect(depois.changed).toBe(false);
+  });
+
+  it('mudança que não exige refazer (script) não duplica o passo', () => {
+    const template: SyncItem[] = [{ ...passoNoPop, script: 'Ligar antes de registrar' }];
+    const instancia: SyncItem[] = [{
+      ...passoNoPop,
+      checked: true,
+      docChecklist: [{ ...passoNoPop.docChecklist![0], checked: true }],
+    }];
+
+    const r = syncInstanceItems(template, instancia);
+    expect(r.items).toHaveLength(1);
     expect(r.items[0].popChange).toBe('alterado');
-    expect(r.items[0].popNewLabel).toBe('REGISTRAR RESULTADO DO BENEFÍCIO');
-    // Nada muda no banco: o selo é só exibição.
+    expect(r.items[0].supersededBy).toBeUndefined();
     expect(r.changed).toBe(false);
+  });
+
+  it('histórico cujo passo atual saiu do POP vira registro removido', () => {
+    const primeiro = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: true }]);
+    const depois = syncInstanceItems([], primeiro.itemsToPersist);
+
+    expect(depois.items).toHaveLength(1);
+    expect(depois.items[0].id).toBe('5ef2b06f__feito');
+    expect(depois.items[0].popChange).toBe('removido');
   });
 
   it('passo marcado que saiu do POP fica na lista com aviso de removido', () => {
@@ -95,20 +150,25 @@ describe('syncInstanceItems', () => {
     expect(r.changed).toBe(false);
   });
 
-  it('itemsToPersist nunca leva os selos para o banco', () => {
+  it('itemsToPersist leva o supersededBy mas nunca os selos', () => {
     const r = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: true }]);
     const json = JSON.stringify(r.itemsToPersist);
 
     expect(json).not.toContain('popChange');
     expect(json).not.toContain('popNewLabel');
+    expect(json).toContain('supersededBy');
     expect(JSON.stringify(stripDisplayFields(r.items))).toBe(json);
   });
 
-  it('is_completed sai de todos os passos finais marcados', () => {
+  it('is_completed sai dos passos do POP de hoje', () => {
     const semMarcar = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: false }]);
-    const marcado = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: true }]);
+    const igualAoPop = syncInstanceItems([passoNoPop], [{
+      ...passoNoPop,
+      checked: true,
+      docChecklist: [{ ...passoNoPop.docChecklist![0], checked: false }],
+    }]);
 
     expect(semMarcar.isCompleted).toBe(false);
-    expect(marcado.isCompleted).toBe(true);
+    expect(igualAoPop.isCompleted).toBe(true);
   });
 });

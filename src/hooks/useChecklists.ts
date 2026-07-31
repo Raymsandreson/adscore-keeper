@@ -62,6 +62,12 @@ export interface ChecklistItem {
   answers?: StepAnswerOption[]; // se presente, o passo é uma pergunta: concluir = escolher resposta, e o destino vem da resposta (ignora nextStageId)
   selectedAnswerId?: string; // resposta escolhida na instância do lead
   docChecklist?: DocChecklistItem[]; // checklist de documentação
+  /**
+   * Registro do que foi feito antes de o POP mudar: guarda o id do passo
+   * ATUAL que substituiu este. Persiste no banco. Item com supersededBy é
+   * histórico — não é marcável e não entra em progresso/conclusão.
+   */
+  supersededBy?: string;
   // Selos de EXIBIÇÃO do passo já marcado quando o POP muda depois:
   // 'alterado' = continua no POP com outro conteúdo, 'removido' = saiu do POP.
   // Calculados a cada load (src/lib/syncChecklistInstances.ts) e nunca gravados.
