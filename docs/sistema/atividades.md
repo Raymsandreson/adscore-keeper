@@ -57,6 +57,19 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
 
+### Painel "Time agora" (`TeamTimersPanel`)
+
+Abre pelo badge do cronômetro; agrupa por time (Gestão no topo) e atualiza a cada 20s lendo `activity_time_entries` do dia (`work_date`). Filtros por status:
+
+| Chip | Quem aparece |
+|---|---|
+| Fazendo | atividade em andamento (`status='running'` com `activity_id`, batimento < 2 min) |
+| Ocioso | cronômetro rodando sem atividade |
+| Intervalo | pausa justificada (`break_type`) — almoço, café, banheiro |
+| Não iniciou | não entrou no sistema hoje: zero produtivo **e** zero ocioso |
+
+Quem bateu o ponto e já encerrou **não** entra em "Não iniciou" — aparece como "Hoje: HH:MM:SS produtivo · fora do ar". Gestor/diretor ainda podem pausar ou encerrar o expediente do membro pelo menu `⋮`, e alertar o ocioso pelo sino.
+
 ### Bloqueio sem expediente aberto (ShiftGate)
 
 Sem ponto batido o sistema **não é utilizável**: `src/components/activities/ShiftGate.tsx` cobre a tela inteira (montado no `SidebarLayout`, em `App.tsx`) com o **POP "Início de expediente"** — os 6 passos do procedimento — e o botão "Iniciar expediente", que chama o mesmo `startShift()` do cronômetro. Só há duas saídas: bater o ponto ou "Sair da conta".
