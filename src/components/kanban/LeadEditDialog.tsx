@@ -127,6 +127,10 @@ import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
 const LegalCasesTab = lazy(() => import('@/components/leads/LegalCasesTab').then(m => ({ default: m.LegalCasesTab })));
 const LeadFinancialsTab = lazy(() => import('@/components/leads/LeadFinancialsTab').then(m => ({ default: m.LeadFinancialsTab })));
 const ContactDetailSheet = lazy(() => import('@/components/contacts/ContactDetailSheet').then(m => ({ default: m.ContactDetailSheet })));
+// Conversa do grupo dentro da ficha — mesmo componente que a ActivitiesPage usa no
+// botão "Grupo WA". Import dinâmico de propósito: o DashboardChatPreview importa o
+// LeadEditDialog, e um import estático fecharia o ciclo entre os dois módulos.
+const DashboardChatPreview = lazy(() => import('@/components/whatsapp/DashboardChatPreview').then(m => ({ default: m.DashboardChatPreview })));
 import { Contact as ContactType } from '@/hooks/useContacts';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -287,6 +291,8 @@ export function LeadEditDialog({
   const [fetchingInviteJids, setFetchingInviteJids] = useState<Set<string>>(new Set());
   const autoFetchedJidsRef = useRef<Set<string>>(new Set());
   const [syncGroupData, setSyncGroupData] = useState<{ jid: string; name: string; instanceId?: string } | null>(null);
+  // Conversa do grupo aberta pela ficha (mesmo drawer da página de atividades).
+  const [groupChatPreview, setGroupChatPreview] = useState<{ phone: string; name: string | null; privatePhone: string | null } | null>(null);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
   const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
@@ -2600,6 +2606,29 @@ ${scrapeData.content || ''}
                               <ExternalLink className="h-3 w-3" /> Abrir
                             </Button>
                           )}
+                          {(g.group_jid?.includes('@g.us') || /^\d{15,}$/.test((g.group_jid || '').trim())) && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="gap-1 text-emerald-600 border-emerald-200 shrink-0"
+                              title="Ver a conversa deste grupo (histórico completo, do mais antigo pro mais recente)"
+                              onClick={() => {
+                                const raw = (g.group_jid || '').trim();
+                                // O preview identifica grupo pelo sufixo @g.us; o JID salvo pode
+                                // vir bare (só dígitos). A query interna usa só os dígitos.
+                                const jid = raw.includes('@g.us') ? raw : `${raw}@g.us`;
+                                const priv = (leadPhone || '').replace(/\D/g, '');
+                                setGroupChatPreview({
+                                  phone: jid,
+                                  name: g.group_name || currentLead?.lead_name || null,
+                                  privatePhone: priv && priv.length <= 13 ? leadPhone : null,
+                                });
+                              }}
+                            >
+                              <MessageSquare className="h-3 w-3" /> Conversa
+                            </Button>
+                          )}
                           {g.group_jid?.includes('@g.us') && currentLead && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
@@ -3995,6 +4024,26 @@ ${scrapeData.content || ''}
             boardId={currentLead.board_id || selectedBoardId || ''}
             boardName={boards.find(b => b.id === (currentLead.board_id || selectedBoardId))?.name}
             adAccountId={adAccountId}
+          />
+        </Suspense>
+      )}
+
+      {/* Conversa do grupo vinculado — mesmo drawer da página de atividades:
+          histórico completo em ordem cronológica (antiga em cima, recente embaixo),
+          já rolado pro fim, com realtime das novas mensagens. */}
+      {groupChatPreview && (
+        <Suspense fallback={null}>
+          <DashboardChatPreview
+            open={!!groupChatPreview}
+            onOpenChange={(open) => { if (!open) setGroupChatPreview(null); }}
+            phone={groupChatPreview.phone}
+            contactName={groupChatPreview.name}
+            instanceName={null}
+            privatePhone={groupChatPreview.privatePhone}
+            hasLead={!!currentLead?.id}
+            hasContact={false}
+            wasResponded={false}
+            responseTimeMinutes={null}
           />
         </Suspense>
       )}
