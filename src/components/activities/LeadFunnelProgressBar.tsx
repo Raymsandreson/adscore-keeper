@@ -17,6 +17,10 @@ import {
   type SyncItem,
   type PopChange,
 } from '@/lib/syncChecklistInstances';
+import {
+  normalizeLabel as normalizePopLabel,
+  mirrorLabelsOf as mirrorLabels,
+} from '@/lib/popAnswerMirror';
 
 interface Stage {
   id: string;
@@ -28,6 +32,20 @@ interface Stage {
 type RpcResult = { error?: { message?: string } | null };
 const rpcExternal = (fn: string, args: Record<string, unknown>): PromiseLike<RpcResult> =>
   (externalSupabase.rpc as unknown as (f: string, a: Record<string, unknown>) => PromiseLike<RpcResult>)(fn, args);
+
+/**
+ * Item de checklist que ESPELHA uma resposta do passo — no POP o gerente
+ * costuma cadastrar a mesma coisa nos dois lugares (ex.: resposta
+ * "Requerimento Deferido" + item de verificação "Requerimento Deferido").
+ * Casamos por rótulo (sem acento/caixa/espaço extra) porque o POP não guarda
+ * vínculo entre resposta e item. O espelho não é marcável: quem marca é a
+ * resposta escolhida — senão haveria dois lugares para dizer a mesma coisa,
+ * e só um deles dispara fase e status.
+ */
+const normalizeLabel = normalizePopLabel;
+
+const mirrorLabelsOf = (item: { answers?: AnswerOption[] }) =>
+  mirrorLabels({ answers: item.answers?.map(a => ({ ...a })) });
 
 /**
  * Consulta a colunas que existem no banco mas ainda não nos tipos gerados —
@@ -349,11 +367,23 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       return;
     }
 
-    const updatedItems = instance.items.map(item =>
-      item.id === itemId
-        ? { ...item, checked: !item.checked, selectedAnswerId: item.checked ? undefined : item.selectedAnswerId }
-        : item
-    );
+    // Desmarcar a pergunta desfaz também o item de checklist que a resposta
+    // tinha marcado — a escolha deixou de existir.
+    const updatedItems = instance.items.map(item => {
+      if (item.id !== itemId) return item;
+      const undoing = !!item.checked && !!item.answers?.length;
+      const mirrors = undoing ? mirrorLabelsOf(item) : null;
+      return {
+        ...item,
+        checked: !item.checked,
+        selectedAnswerId: item.checked ? undefined : item.selectedAnswerId,
+        docChecklist: mirrors
+          ? (item.docChecklist || []).map(d =>
+              mirrors.has(normalizeLabel(d.label)) ? { ...d, checked: false } : d
+            )
+          : item.docChecklist,
+      };
+    });
 
     // Ao MARCAR, pergunta antes de gravar: "Cancelar" desiste da marcação
     // inteira (nada é salvo). Desmarcar não pergunta.
@@ -468,9 +498,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const handleMarkAllDocs = async (instance: ChecklistInstance, itemId: string, checked: boolean) => {
     if (instance.is_readonly) return;
 
-    const docs = instance.items.find(it => it.id === itemId)?.docChecklist || [];
-    // Pergunta fica fora do lote ao MARCAR: a resposta é escolhida uma a uma.
-    const targets = docs.filter(d => !!d.checked !== checked && !(checked && d.answers?.length));
+    const step = instance.items.find(it => it.id === itemId);
+    const docs = step?.docChecklist || [];
+    // Fora do lote: item-pergunta ao MARCAR (a resposta é escolhida uma a uma)
+    // e o espelho de resposta do passo (quem manda nele é a resposta).
+    const mirrors = mirrorLabelsOf(step || {});
+    const targets = docs.filter(d =>
+      !!d.checked !== checked
+      && !(checked && d.answers?.length)
+      && !mirrors.has(normalizeLabel(d.label))
+    );
     if (targets.length === 0) return;
 
     let retroactive = false;
@@ -666,9 +703,17 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       retroactive = timing === 'before';
     }
 
-    const updatedItems = instance.items.map(it =>
-      it.id === item.id ? { ...it, checked: true, selectedAnswerId: answer.id } : it
-    );
+    // A resposta escolhida marca sozinha o item de checklist que a espelha
+    // (mesmo rótulo) e desmarca o das outras respostas — é uma escolha só.
+    const mirrors = mirrorLabelsOf(item);
+    const chosen = normalizeLabel(answer.label);
+    const updatedItems = instance.items.map(it => {
+      if (it.id !== item.id) return it;
+      const docs = (it.docChecklist || []).map(d =>
+        mirrors.has(normalizeLabel(d.label)) ? { ...d, checked: normalizeLabel(d.label) === chosen } : d
+      );
+      return { ...it, checked: true, selectedAnswerId: answer.id, docChecklist: docs };
+    });
 
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
@@ -1067,6 +1112,9 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                             const checklistType = item.docChecklist[0]?.type || 'documentos';
                             const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
                             const docDone = item.docChecklist.filter(d => d.checked).length;
+                            // Itens que repetem as respostas do passo: a escolha da
+                            // resposta é que marca (e desmarca) esses.
+                            const stepMirrors = mirrorLabelsOf(item);
                             return (
                               <div className="ml-6 p-1.5 rounded bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
                                 <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -1098,18 +1146,23 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                     // é dela que saem a fase de destino e o status do POP.
                                     const docAnswers = doc.answers || [];
                                     const chosenDocAnswer = docAnswers.find(a => a.id === doc.selectedAnswerId);
+                                    // Espelho de uma resposta do passo: quem marca é a
+                                    // resposta escolhida, não o clique aqui.
+                                    const isMirror = stepMirrors.has(normalizeLabel(doc.label));
                                     return (
                                     <div key={doc.id}>
                                     <label
                                       className={cn(
                                         "flex items-center gap-1.5 text-[11px] py-0.5",
-                                        instance.is_readonly ? "cursor-default" : "cursor-pointer",
+                                        instance.is_readonly || isMirror ? "cursor-default" : "cursor-pointer",
+                                        isMirror && !doc.checked && "opacity-60",
                                       )}
+                                      title={isMirror ? 'Marcado pela resposta escolhida no passo' : undefined}
                                     >
                                       <Checkbox
                                         checked={doc.checked || false}
                                         onCheckedChange={() => handleToggleDocItem(instance, item.id, doc.id)}
-                                        disabled={instance.is_readonly || isHistory}
+                                        disabled={instance.is_readonly || isHistory || isMirror}
                                         className="h-3 w-3"
                                       />
                                       <span className={cn(doc.checked && "line-through text-muted-foreground")}>
