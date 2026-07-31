@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, authClient } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
-import { formatHMS, brasiliaToday, BREAK_LABELS, type BreakType } from '@/contexts/ActivityTimerContext';
+import { formatHMS, brasiliaToday, BREAK_LABELS, type BreakType, type TimerCommand } from '@/contexts/ActivityTimerContext';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useTeamLeadership } from '@/hooks/useTeamLeadership';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,7 +15,7 @@ const ALERT_PRESETS = [
   'Podemos falar rapidinho? Me chama.',
   'Retome as atividades, por favor.',
 ];
-import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2, Search, X } from 'lucide-react';
+import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2, LogOut, MoreVertical, PauseCircle, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
@@ -74,20 +75,30 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
     return new Set();
   });
 
+  // Só gestor de time e diretoria comandam o cronômetro de terceiros.
+  const { isManager, isDirector } = useTeamLeadership();
+  const canManage = isManager || isDirector;
+
+  // Identidade de quem está mandando o alerta/comando (ext uid + nome).
+  const resolveSender = useCallback(async (): Promise<{ id: string | null; name: string | null }> => {
+    const { data: { user } } = await authClient.auth.getUser();
+    const id = await remapToExternal(user?.id || null);
+    let name: string | null = null;
+    try {
+      const { data: p } = await authClient.from('profiles').select('full_name').eq('user_id', user?.id || '').maybeSingle();
+      name = p?.full_name || null;
+    } catch { /* segue sem nome */ }
+    return { id, name };
+  }, []);
+
   // Alerta da gestão pro membro ocioso — mensagem escolhida/escrita pelo remetente
   const sendIdleAlert = useCallback(async (m: MemberStatus, message: string) => {
     try {
-      const { data: { user } } = await authClient.auth.getUser();
-      const fromExt = await remapToExternal(user?.id || null);
-      let fromName: string | null = null;
-      try {
-        const { data: p } = await authClient.from('profiles').select('full_name').eq('user_id', user?.id || '').maybeSingle();
-        fromName = p?.full_name || null;
-      } catch { /* segue sem nome */ }
+      const sender = await resolveSender();
       const { error } = await dbAny.from('activity_timer_alerts').insert({
         to_user_id: m.extUserId,
-        from_user_id: fromExt,
-        from_name: fromName,
+        from_user_id: sender.id,
+        from_name: sender.name,
         message,
       });
       if (error) throw error;
@@ -96,7 +107,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
       console.warn('[team-timers] alerta falhou', e);
       toast.error('Não foi possível enviar o alerta.');
     }
-  }, []);
+  }, [resolveSender]);
 
   const toggleCollapsed = useCallback((teamId: string) => {
     setCollapsed(prev => {
@@ -250,6 +261,48 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
       setLoading(false);
     }
   }, []);
+
+  /**
+   * Comando remoto da gestão sobre o cronômetro do membro (gravado em
+   * activity_timer_alerts — serve também de log de quem mandou o quê):
+   * - 'pause'     → o cliente dele salva a sessão atual e cai no ocioso;
+   * - 'end_shift' → o cliente encerra o expediente. Aqui o banco também é
+   *   fechado, rede de segurança para quem largou a aba e foi embora.
+   * Quem executa é sempre o cliente do membro (é ele que "possui" o cronômetro,
+   * ver assertOwnership) — daí o comando em vez de escrever a sessão por fora.
+   */
+  const sendCommand = useCallback(async (m: MemberStatus, command: TimerCommand) => {
+    const firstName = m.name.split(' ')[0];
+    try {
+      const sender = await resolveSender();
+      const who = sender.name || 'A gestão';
+      const message = command === 'pause'
+        ? `${who} pausou seu cronômetro — você está ocioso. Retome uma atividade ou registre uma pausa.`
+        : `${who} encerrou seu expediente. O cronômetro parou de contar.`;
+      const { error } = await dbAny.from('activity_timer_alerts').insert({
+        to_user_id: m.extUserId, from_user_id: sender.id, from_name: sender.name, message, command,
+      });
+      if (error) throw error;
+      if (command === 'end_shift') {
+        // Depois do comando: se a aba dele responder, o flush dela grava os
+        // segundos exatos antes destes updates encontrarem algo 'running'.
+        const now = new Date().toISOString();
+        await dbAny.from('activity_time_entries')
+          .update({ status: 'paused', ended_at: now })
+          .eq('user_id', m.extUserId).eq('status', 'running');
+        await dbAny.from('work_shifts')
+          .update({ ended_at: now })
+          .eq('user_id', m.extUserId).is('ended_at', null);
+      }
+      toast.success(command === 'pause'
+        ? `Cronômetro de ${firstName} pausado — ele fica ocioso.`
+        : `Expediente de ${firstName} encerrado.`);
+      setTimeout(load, 2000); // dá tempo do cliente dele aplicar antes do refresh
+    } catch (e) {
+      console.warn('[team-timers] comando falhou', e);
+      toast.error('Não foi possível comandar o cronômetro.');
+    }
+  }, [resolveSender, load]);
 
   useEffect(() => {
     load();
@@ -513,6 +566,9 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                     {m.state === 'idle' && (
                       <IdleAlertButton member={m} onSend={sendIdleAlert} />
                     )}
+                    {canManage && m.state !== 'off' && (
+                      <MemberActionsButton member={m} onCommand={sendCommand} />
+                    )}
                     {m.state !== 'off' && (
                       <span className={`text-[11px] font-mono tabular-nums shrink-0 ${m.state === 'working' ? 'text-emerald-600 dark:text-emerald-400' : m.state === 'break' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
                         {formatHMS(m.currentSecs)}
@@ -528,6 +584,85 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Ações da gestão (gestor de time / diretoria) sobre o cronômetro do membro:
+ * pausar (deixa ocioso) e encerrar o expediente. Encerrar pede confirmação —
+ * mexe no ponto do outro e não dá pra desfazer com um clique.
+ */
+function MemberActionsButton({
+  member, onCommand,
+}: {
+  member: MemberStatus;
+  onCommand: (m: MemberStatus, command: TimerCommand) => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
+  const firstName = member.name.split(' ')[0];
+  const canPause = member.state === 'working' || member.state === 'break';
+  const close = () => { setOpen(false); setConfirmEnd(false); };
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setConfirmEnd(false); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground shrink-0"
+          title={`Pausar ou encerrar o cronômetro de ${firstName}`}
+        >
+          <MoreVertical className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" side="left" className="w-64 p-2">
+        <div className="text-xs font-medium mb-1.5">Cronômetro de {firstName}</div>
+        <div className="space-y-1">
+          <button
+            type="button"
+            disabled={!canPause}
+            onClick={() => { onCommand(member, 'pause'); close(); }}
+            className="w-full text-left px-2 py-1.5 rounded border hover:bg-accent disabled:opacity-50 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+          >
+            <span className="flex items-center gap-1.5 text-xs font-medium">
+              <PauseCircle className="h-3.5 w-3.5 text-amber-500" /> Pausar — deixar ocioso
+            </span>
+            <span className="block text-[11px] text-muted-foreground leading-snug mt-0.5">
+              {canPause
+                ? 'Salva o tempo da sessão atual; daí em diante conta como ocioso.'
+                : 'Já está ocioso — nada em andamento para pausar.'}
+            </span>
+          </button>
+          {!confirmEnd ? (
+            <button
+              type="button"
+              onClick={() => setConfirmEnd(true)}
+              className="w-full text-left px-2 py-1.5 rounded border hover:bg-accent"
+            >
+              <span className="flex items-center gap-1.5 text-xs font-medium">
+                <LogOut className="h-3.5 w-3.5 text-red-500" /> Encerrar expediente
+              </span>
+              <span className="block text-[11px] text-muted-foreground leading-snug mt-0.5">
+                Bate o ponto de saída e para o cronômetro do dia.
+              </span>
+            </button>
+          ) : (
+            <div className="px-2 py-1.5 rounded border border-red-300 dark:border-red-800">
+              <div className="text-[11px] leading-snug mb-1.5">
+                Encerrar o expediente de <b>{firstName}</b> agora? Ele precisa bater o ponto de novo para voltar a contar.
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="destructive" className="h-7 text-xs" onClick={() => { onCommand(member, 'end_shift'); close(); }}>
+                  Encerrar
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setConfirmEnd(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

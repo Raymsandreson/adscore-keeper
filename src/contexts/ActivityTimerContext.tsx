@@ -47,6 +47,14 @@ export interface TimerActivityRef {
   estimated_minutes?: number | null;
 }
 
+/**
+ * Comando remoto da gestão sobre o cronômetro do membro (activity_timer_alerts.command):
+ * - 'pause'     → encerra o que está rodando e deixa o membro OCIOSO (linha de gap);
+ * - 'end_shift' → encerra o expediente (bate o ponto de saída).
+ * Alerta sem comando (null) continua sendo só o chamado "por que está ocioso?".
+ */
+export type TimerCommand = 'pause' | 'end_shift';
+
 export type BreakType = 'almoco' | 'intervalo' | 'compensacao' | 'cafe' | 'lanche' | 'descanso';
 export const BREAK_LABELS: Record<BreakType, string> = {
   almoco: 'Almoço',
@@ -114,8 +122,8 @@ interface ActivityTimerCtx {
   showTimer: () => void;
   /** Define/edita a previsão de tempo (min) da atividade atual. */
   setEstimate: (minutes: number | null) => Promise<void>;
-  /** Alerta recebido da gestão ("por que está ocioso?"). */
-  managerAlert: { from: string | null; message: string | null } | null;
+  /** Alerta recebido da gestão ("por que está ocioso?") ou comando remoto (pausar/encerrar). */
+  managerAlert: { from: string | null; message: string | null; command?: TimerCommand | null } | null;
   dismissManagerAlert: () => void;
   /** Pausa justificada. etaMinutes = previsão de retorno (sem apito até estourar). */
   startBreak: (type: BreakType, note?: string, etaMinutes?: number) => Promise<void>;
@@ -285,8 +293,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   }, []);
   const lastActivityRef = useRef<TimerActivityRef | null>(null);
   const [lastActivity, setLastActivity] = useState<TimerActivityRef | null>(null);
-  const [managerAlert, setManagerAlert] = useState<{ from: string | null; message: string | null } | null>(null);
+  const [managerAlert, setManagerAlert] = useState<{ from: string | null; message: string | null; command?: TimerCommand | null } | null>(null);
   const dismissManagerAlert = useCallback(() => setManagerAlert(null), []);
+  // Ponte para o listener de realtime executar comandos da gestão sem recriar a
+  // inscrição a cada render (as ações abaixo dependem de estado/refs do provider).
+  const remoteRef = useRef<{ forceIdle: () => Promise<void>; endShift: () => Promise<void> } | null>(null);
 
   // Guarda a atv que estava rodando como "última" (para o botão Retomar).
   const rememberLast = useCallback(() => {
@@ -616,7 +627,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     return () => clearInterval(id);
   }, [sync, flush]);
 
-  // ---- Alertas da gestão ("por que está ocioso?") via realtime ----
+  // ---- Alertas e comandos da gestão via realtime ----
   useEffect(() => {
     let channel: ReturnType<typeof dbAny.channel> | null = null;
     let cancelled = false;
@@ -629,10 +640,22 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         .on('postgres_changes', {
           event: 'INSERT', schema: 'public', table: 'activity_timer_alerts',
           filter: `to_user_id=eq.${u.userId}`,
-        }, (payload: { new: { id: string; from_name: string | null; message: string | null } }) => {
-          setManagerAlert({ from: payload.new.from_name, message: payload.new.message });
+        }, (payload: { new: { id: string; from_name: string | null; message: string | null; command?: string | null } }) => {
+          const cmd = (payload.new.command as TimerCommand | null) || null;
+          const who = payload.new.from_name || 'Gestão';
+          setManagerAlert({ from: payload.new.from_name, message: payload.new.message, command: cmd });
           playAlarmSound();
-          notifyDesktop('🚨 Chamado da gestão', `${payload.new.from_name || 'Gestão'}: ${payload.new.message || 'Por que você está ocioso?'}`);
+          if (cmd === 'pause') {
+            notifyDesktop('⏸️ Cronômetro pausado pela gestão', `${who} pausou seu cronômetro: você está OCIOSO. Retome uma atividade ou registre uma pausa.`);
+            // A execução é local (o dono do cronômetro é o cliente do membro):
+            // salva o tempo da sessão atual e cai na linha de gap (ocioso).
+            remoteRef.current?.forceIdle().catch(() => {});
+          } else if (cmd === 'end_shift') {
+            notifyDesktop('🚪 Expediente encerrado pela gestão', `${who} encerrou seu expediente. O cronômetro parou de contar.`);
+            remoteRef.current?.endShift().catch(() => {});
+          } else {
+            notifyDesktop('🚨 Chamado da gestão', `${who}: ${payload.new.message || 'Por que você está ocioso?'}`);
+          }
           dbAny.from('activity_timer_alerts')
             .update({ seen_at: new Date().toISOString() })
             .eq('id', payload.new.id)
@@ -731,6 +754,22 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     if (wasActivity) await startGap();
     else sync(null);
   }, [flush, startGap, sync, rememberLast]);
+
+  /**
+   * Pausa REMOTA (gestão): encerra o que estiver rodando — atividade, pausa
+   * justificada ou o próprio gap — salvando o tempo, e deixa o membro na linha
+   * de ociosidade. Diferente do finalizeToGap, cai no gap venha de onde vier
+   * (o gestor pausa justamente quem está em atividade/pausa sem estar ali).
+   */
+  const forceIdle = useCallback(async () => {
+    rememberLast();
+    if (entryRef.current) await flush('paused');
+    awaitingConfirmRef.current = false;
+    breakOverNotifiedRef.current = false;
+    setIdlePrompt(false); setLeavePrompt(false); setSwitchPrompt(false);
+    setAwayPrompt(false); setBreakOverdue(false);
+    await startGap(); // sem expediente aberto, startGap já resolve para sync(null)
+  }, [rememberLast, flush, startGap]);
 
   const showTimer = useCallback(() => setHidden(false), []);
   const hideTimer = useCallback(() => setHidden(true), []);
@@ -995,6 +1034,9 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     setOnShift(false);
     toast.success('Expediente encerrado. Até logo!');
   }, [rememberLast, flush, sync]);
+
+  // Mantém a ponte do listener de realtime apontando para as versões atuais.
+  useEffect(() => { remoteRef.current = { forceIdle, endShift }; }, [forceIdle, endShift]);
 
   // Ao abrir o app: recupera o ponto aberto de hoje e REIDRATA qualquer
   // sessão com status='running' no banco (atividade/pausa/gap). Antes um F5

@@ -742,22 +742,28 @@ export function ActivityTimerOverlay() {
         </DialogContent>
       </Dialog>
 
-      {/* Alerta da gestão: "por que está ocioso?" */}
+      {/* Gestão: chamado "por que está ocioso?" ou comando (pausar / encerrar expediente) */}
       <Dialog open={!!managerAlert} onOpenChange={(o) => { if (!o) dismissManagerAlert(); }}>
-        <DialogContent className="sm:max-w-md border-red-300 dark:border-red-800">
+        <DialogContent className={`sm:max-w-md ${managerAlert?.command === 'pause' ? 'border-amber-300 dark:border-amber-800' : 'border-red-300 dark:border-red-800'}`}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              🚨 Chamado da gestão
+            <DialogTitle className={`flex items-center gap-2 ${managerAlert?.command === 'pause' ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400'}`}>
+              {managerAlert?.command === 'pause' && '⏸️ Cronômetro pausado pela gestão'}
+              {managerAlert?.command === 'end_shift' && '🚪 Expediente encerrado pela gestão'}
+              {!managerAlert?.command && '🚨 Chamado da gestão'}
             </DialogTitle>
             <DialogDescription>
               <b>{managerAlert?.from || 'Gestão'}</b>: {managerAlert?.message || 'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.'}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
-            <Button variant="outline" className="gap-1.5" onClick={() => { dismissManagerAlert(); setVoiceOpen(true); }}>
-              <Mic className="h-4 w-4" /> Dizer o que estou fazendo
+            {managerAlert?.command !== 'end_shift' && (
+              <Button variant="outline" className="gap-1.5" onClick={() => { dismissManagerAlert(); setVoiceOpen(true); }}>
+                <Mic className="h-4 w-4" /> Dizer o que estou fazendo
+              </Button>
+            )}
+            <Button onClick={dismissManagerAlert}>
+              {managerAlert?.command === 'end_shift' ? 'Entendi' : 'Entendi, vou retomar'}
             </Button>
-            <Button onClick={dismissManagerAlert}>Entendi, vou retomar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
