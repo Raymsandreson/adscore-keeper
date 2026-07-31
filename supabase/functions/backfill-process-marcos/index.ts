@@ -6,6 +6,10 @@
 //                    Custo zero de API. Serve para reaplicar regras novas do parser.
 // modo 'backfill'  — busca as movimentações no Escavador (1 chamada por CNJ),
 //                    salva no processo e extrai os marcos.
+// modo 'push'      — MESMO que backfill, mas só nos processos que apareceram no
+//                    push do e-mail nos últimos `dias` (processual_emails). É o
+//                    modo do dia a dia: consulta só quem se mexeu (8 a 40 por dia
+//                    em vez de 780) e mantém marcos e movimentações em dia.
 //
 // Processa em lotes: cada invocação atende `limit` processos e devolve
 // `proximo_offset`. Quem chama é que decide continuar — evita estourar o tempo
@@ -29,17 +33,25 @@ const LIMITE_MAXIMO = 100;
 const PAUSA_MS = 250;
 
 interface Corpo {
-  mode?: 'reextract' | 'backfill';
+  mode?: 'reextract' | 'backfill' | 'push';
   limit?: number;
   offset?: number;
   /** Obrigatório em backfill: gasta cota da API. */
   confirm?: string;
   /** Restringe a um POP (lead_processes.workflow_id). */
   workflow_id?: string;
+  /** Só no modo push: janela de e-mails a considerar (padrão 1 = hoje). */
+  dias?: number;
   dry_run?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+// Número CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO. O Escavador só entende esse formato —
+// processo administrativo guarda número de requerimento em process_number e a
+// consulta voltava 422 (206 desperdiçadas no backfill de 30/07/2026).
+const CNJ_RE = /^\d{7}-?\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/;
+const ehCnj = (s: string | null | undefined) => !!s && CNJ_RE.test(s.trim());
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -57,6 +69,8 @@ Deno.serve(async (req: Request) => {
     const offset = Math.max(corpo.offset ?? 0, 0);
     const dryRun = corpo.dry_run === true;
 
+    // backfill varre a base inteira e gasta cota — exige confirmação explícita.
+    // push é dirigido pelo e-mail do dia (dezenas, não centenas), roda no cron.
     if (mode === 'backfill' && corpo.confirm !== 'BACKFILL') {
       return json({
         success: false,
@@ -69,6 +83,33 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    let cnjsDoPush: string[] | null = null;
+    if (mode === 'push') {
+      const dias = Math.min(Math.max(corpo.dias ?? 1, 1), 30);
+      const desde = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+
+      const { data: emails, error: eErr } = await supabase
+        .from('processual_emails')
+        .select('process_number')
+        .is('deleted_at', null)
+        .not('process_number', 'is', null)
+        .gte('received_at', desde);
+      if (eErr) throw eErr;
+
+      cnjsDoPush = [...new Set(
+        (emails ?? []).map((e: { process_number: string }) => e.process_number).filter(ehCnj),
+      )];
+
+      if (cnjsDoPush.length === 0) {
+        return json({
+          success: true, mode, dias,
+          processos_lidos: 0, com_movimentacoes: 0, sem_movimentacao: 0,
+          marcos_extraidos: 0, marcos_inseridos: 0, erros: [], proximo_offset: null,
+          detalhe: 'nenhum processo com CNJ no push da janela',
+        });
+      }
+    }
+
     let query = supabase
       .from('lead_processes')
       .select('id, process_number, case_id, lead_id, movimentacoes')
@@ -77,17 +118,15 @@ Deno.serve(async (req: Request) => {
       .range(offset, offset + limit - 1);
 
     if (corpo.workflow_id) query = query.eq('workflow_id', corpo.workflow_id);
-
-    if (mode === 'backfill') {
-      // Só quem tem CNJ dá para consultar.
-      query = query.not('process_number', 'is', null);
-    }
+    if (mode !== 'reextract') query = query.not('process_number', 'is', null);
+    if (cnjsDoPush) query = query.in('process_number', cnjsDoPush);
 
     const { data: processos, error: qErr } = await query;
     if (qErr) throw qErr;
 
     const token = Deno.env.get('ESCAVADOR_API_TOKEN');
-    if (mode === 'backfill' && !token) {
+    const consultaApi = mode === 'backfill' || mode === 'push';
+    if (consultaApi && !token) {
       return json({ success: false, error: 'ESCAVADOR_API_TOKEN ausente' }, 500);
     }
 
@@ -95,14 +134,16 @@ Deno.serve(async (req: Request) => {
     let marcosExtraidos = 0;
     let marcosInseridos = 0;
     let semMovimentacao = 0;
+    let semCnj = 0;
     const erros: { process_number: string | null; erro: string }[] = [];
 
     for (const p of processos ?? []) {
       const cnj: string | null = p.process_number;
       let movs: unknown[] = Array.isArray(p.movimentacoes) ? p.movimentacoes : [];
 
-      if (mode === 'backfill') {
-        if (!cnj) { semMovimentacao++; continue; }
+      if (consultaApi) {
+        // Número que não é CNJ (requerimento administrativo) volta 422 — nem tenta.
+        if (!ehCnj(cnj)) { semCnj++; continue; }
         try {
           const url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(cnj)}/movimentacoes`;
           const resp = await fetch(url, {
@@ -176,9 +217,11 @@ Deno.serve(async (req: Request) => {
       success: true,
       mode,
       dry_run: dryRun,
+      processos_no_push: cnjsDoPush?.length ?? null,
       processos_lidos: lidos,
       com_movimentacoes: comMovimentacoes,
       sem_movimentacao: semMovimentacao,
+      sem_cnj: semCnj,
       marcos_extraidos: marcosExtraidos,
       marcos_inseridos: marcosInseridos,
       erros,
