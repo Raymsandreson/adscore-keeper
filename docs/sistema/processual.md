@@ -104,10 +104,14 @@ A IA (Railway `suggest-revision-reason`, Gemini flash) lê o diff e **sugere mot
 **A revisão chega nos processos que já estão andando.** Os passos que o assessor vê na ficha (`lead_checklist_instances.items`) são uma cópia do POP feita quando o processo entrou na fase — até 31/07/2026 essa cópia nunca era atualizada, então editar o POP não mudava nada em quem já tinha o passo instanciado (o POP Salário Maternidade Urbano renomeou "PEDIDO" para "REGISTRAR RESULTADO DO BENEFÍCIO" e as 92 instâncias seguiram com o texto antigo). Agora, ao abrir a atividade/processo, a instância é reconciliada com o POP atual (`src/lib/syncChecklistInstances.ts`):
 
 - **Passo ainda não marcado** → adota o conteúdo novo (nome, descrição, script, checklist do passo, automação de resposta), preservando a resposta escolhida e os documentos já marcados.
-- **Passo já marcado** → **não é reescrito**: o que foi feito fica registrado como foi feito, e o passo só ganha o selo **"alterado no POP"** (com "Agora no POP: <nome atual>") ou **"removido do POP"**.
+- **Passo já marcado cujo trabalho mudou** (nome, checklist do passo ou respostas) → o registro do que foi feito **continua na lista**, riscado, com o selo **"alterado no POP"**, e o **passo novo entra logo abaixo, desmarcado**, para ser executado. Sem isso a pergunta nova do POP nunca chegaria a quem já tinha marcado o passo antigo.
+- **Passo já marcado com mudança que não exige refazer** (script, descrição, modelo de mensagem, destino/status) → fica como está, sem duplicar; só o selo.
+- **Passo já marcado que saiu do POP** → fica na lista com o selo **"removido do POP"**.
 - **Passo não marcado que saiu do POP** → some da instância.
 
-Os selos são calculados a cada abertura, comparando com o template — não ficam gravados no banco. Não há aprovação de gestora envolvida: quem edita o POP grava direto (inclusive por autosave), e a revisão registrada em `workflow_revisions` é histórico, não fila de aprovação.
+O registro do passo antigo guarda `supersededBy` (id do passo que o substituiu) — é o único campo do sync que persiste. Ele é histórico: não é marcável, fica fora do "marcar todos" e **não entra no progresso nem na conclusão do objetivo**, para o percentual refletir o POP de hoje. Consequência esperada: um objetivo que estava 100% volta a pendente quando o POP reabre um passo.
+
+Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparando com o template — não ficam gravados no banco. Não há aprovação de gestora envolvida: quem edita o POP grava direto (inclusive por autosave), e a revisão registrada em `workflow_revisions` é histórico, não fila de aprovação.
 
 ## Audiências — `/hearings`
 
