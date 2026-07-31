@@ -143,6 +143,7 @@ function BreakMenu({ className, onStart, onEndShift }: { className?: string; onS
       </PopoverTrigger>
       <PopoverContent
         align="end" side="top" className="w-64 p-2 z-[9999]"
+        collisionPadding={{ top: 8, right: 8, bottom: 8, left: contentLeftEdge() }}
         onPointerDown={(e) => e.stopPropagation()}
         onPointerUp={(e) => e.stopPropagation()}
       >
@@ -187,7 +188,12 @@ function EstimateControl({
           <span className="tabular-nums">{label}{estimateMinutes ? ` · ${estimateMinutes}m` : ''}</span>
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-56 p-2 z-[9999]" onPointerDown={(e) => e.stopPropagation()}>
+      <PopoverContent
+        align="end"
+        className="w-56 p-2 z-[9999]"
+        collisionPadding={{ top: 8, right: 8, bottom: 8, left: contentLeftEdge() }}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <div className="text-xs font-medium mb-1.5">Previsão de tempo</div>
         <div className="flex flex-wrap gap-1 mb-2">
           {ESTIMATE_CHIPS.map((m) => (
@@ -223,6 +229,26 @@ function EstimateControl({
 
 const POS_STORAGE_KEY = 'activity-timer-badge-pos';
 
+/** Folga entre o badge e a borda da área livre. */
+const EDGE_GUTTER = 8;
+
+/**
+ * Borda esquerda da área livre = borda direita do MENU LATERAL.
+ * O menu é `fixed z-10` e o badge é `fixed z-[9990]`: colar em `left: 4` punha o
+ * cronômetro POR CIMA dos itens do menu (Contatos, Chat…). Medimos a cada uso
+ * porque o menu muda de largura (16rem ↔ 3rem no modo ícone) e some no mobile.
+ * O menu mobile (Sheet, `data-mobile`) é ignorado — é temporário e cobre a tela
+ * inteira. (skill: ui-sem-sobreposicao)
+ */
+function contentLeftEdge(): number {
+  if (typeof document === 'undefined') return EDGE_GUTTER;
+  const el = document.querySelector('[data-sidebar="sidebar"]:not([data-mobile])');
+  if (!el) return EDGE_GUTTER;
+  const r = el.getBoundingClientRect();
+  // Offcanvas/escondido: o menu sai da tela (right <= 0) e não atrapalha.
+  return r.width > 0 && r.right > 0 ? Math.round(r.right) + EDGE_GUTTER : EDGE_GUTTER;
+}
+
 function useDraggablePosition() {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
     try {
@@ -240,21 +266,25 @@ function useDraggablePosition() {
     const el = elRef.current;
     const w = el?.offsetWidth ?? 160;
     const h = el?.offsetHeight ?? 40;
-    const maxX = window.innerWidth - w - 4;
-    const maxY = window.innerHeight - h - 4;
-    return { x: Math.max(4, Math.min(x, maxX)), y: Math.max(4, Math.min(y, maxY)) };
+    const minX = contentLeftEdge();
+    const maxX = Math.max(minX, window.innerWidth - w - EDGE_GUTTER);
+    const maxY = window.innerHeight - h - EDGE_GUTTER;
+    return { x: Math.max(minX, Math.min(x, maxX)), y: Math.max(EDGE_GUTTER, Math.min(y, maxY)) };
   };
 
   // Cola na borda vertical (esquerda/direita) mais próxima do centro do badge.
   // Assim o cronômetro flutuante nunca descansa no meio do conteúdo — fica só nas
-  // margens, sem cobrir títulos/campos. (skill: ui-sem-sobreposicao)
+  // margens, sem cobrir títulos/campos. A borda esquerda é a do CONTEÚDO (depois
+  // do menu lateral), nunca a da janela. (skill: ui-sem-sobreposicao)
   const snapToEdge = (x: number, y: number) => {
     const el = elRef.current;
     const w = el?.offsetWidth ?? 160;
+    const minX = contentLeftEdge();
+    const maxX = Math.max(minX, window.innerWidth - w - EDGE_GUTTER);
     const c = clamp(x, y);
     const center = c.x + w / 2;
-    const snappedX = center < window.innerWidth / 2 ? 4 : Math.max(4, window.innerWidth - w - 4);
-    return { x: snappedX, y: c.y };
+    const contentCenter = (minX + window.innerWidth) / 2;
+    return { x: center < contentCenter ? minX : maxX, y: c.y };
   };
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
@@ -297,19 +327,42 @@ function useDraggablePosition() {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // Corrige posição salva antiga que tenha ficado no meio do conteúdo:
-  // ao montar, puxa o badge para a borda mais próxima. (skill: ui-sem-sobreposicao)
+  // Corrige posição salva antiga que tenha ficado no meio do conteúdo (ou por
+  // cima do menu lateral): ao montar, puxa o badge para a borda mais próxima da
+  // área livre. (skill: ui-sem-sobreposicao)
   useEffect(() => {
     setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // O menu lateral alterna entre 16rem e 3rem (modo ícone). Sem reagir a isso, o
+  // badge colado à esquerda volta a ficar POR CIMA dos itens do menu quando ele
+  // reexpande. (skill: ui-sem-sobreposicao)
+  useEffect(() => {
+    if (typeof document === 'undefined' || typeof ResizeObserver === 'undefined') return;
+    const el = document.querySelector('[data-sidebar="sidebar"]:not([data-mobile])');
+    if (!el) return;
+    const ro = new ResizeObserver(() => setPos((p) => (p ? snapToEdge(p.x, p.y) : p)));
+    ro.observe(el);
+    return () => ro.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // O ref só chega depois da 1ª posição: reclampa com largura/altura reais — o
+  // fallback 160x40 pode deixar o badge estourando a borda de baixo.
+  const setElRef = useCallback((el: HTMLElement | null) => {
+    elRef.current = el;
+    if (el) setPos((p) => (p ? clamp(p.x, p.y) : p));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const wasDragged = () => movedRef.current;
+  // Sem posição salva: canto inferior da área livre, já depois do menu lateral.
   const style: React.CSSProperties = pos
     ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' }
-    : { left: 16, bottom: 16 };
+    : { left: contentLeftEdge(), bottom: 16 };
 
-  return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef: (el: HTMLElement | null) => { elRef.current = el; } };
+  return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef };
 }
 
 /** Botão que expande o painel "Time agora" a partir do badge do cronômetro. */
@@ -335,7 +388,9 @@ function TeamPanelButton({ className, onOpenActivity }: { className?: string; on
       <PopoverContent
         align="end"
         side="top"
-        collisionPadding={8}
+        // left = borda do conteúdo: sem isso o painel (w-80) escorrega por cima do
+        // menu lateral quando o badge está colado à esquerda. (skill: ui-sem-sobreposicao)
+        collisionPadding={{ top: 8, right: 8, bottom: 8, left: contentLeftEdge() }}
         className="p-0 w-auto overflow-hidden z-[9999]"
         onPointerDown={(e) => e.stopPropagation()}
         onPointerMove={(e) => e.stopPropagation()}
