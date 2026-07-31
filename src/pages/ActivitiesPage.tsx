@@ -619,7 +619,7 @@ const ActivitiesPage = () => {
         externalSupabase.from('leads').select('id, lead_name').order('lead_name').limit(500),
         supabase.from('profiles').select('user_id, full_name'),
         externalSupabase.from('contacts').select('id, full_name').order('full_name').limit(500),
-        externalSupabase.from('legal_cases').select('id, case_number, title, lead_id').order('created_at', { ascending: false }).limit(500),
+        externalSupabase.from('legal_cases').select('id, case_number, title, lead_id').is('deleted_at', null).order('created_at', { ascending: false }).limit(2000),
       ]);
       setLeads(leadsRes.data || []);
       setTeamMembers(membersRes.data || []);
@@ -1238,7 +1238,7 @@ const ActivitiesPage = () => {
     if (activity.lead_id) {
       promises.push(
         Promise.all([
-          externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
+          externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).is('deleted_at', null),
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]).then(async ([casesRes, linkedRes, leadPreviewRes]) => {
@@ -1823,7 +1823,7 @@ const ActivitiesPage = () => {
     if (activity.lead_id) {
       try {
         const [casesData, linkedData, leadPreviewRes] = await Promise.all([
-          externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id),
+          externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).is('deleted_at', null),
           externalSupabase.from('contact_leads').select('contact_id').eq('lead_id', activity.lead_id),
           externalSupabase.from('leads').select('case_type, damage_description, accident_date, updated_at, board_id, lead_status, whatsapp_group_id, lead_phone').eq('id', activity.lead_id).maybeSingle(),
         ]);
@@ -1960,7 +1960,7 @@ const ActivitiesPage = () => {
     setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
     // Load cases for this lead
-    externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).then(({ data }) => {
+    externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).then(({ data }) => {
       setLeadCases(data || []);
     });
     // Load lead preview (needed for header progress bar)
