@@ -7,7 +7,7 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
-import { useCampaigns } from '@/hooks/useCampaigns';
+import { CampaignPicker } from '@/components/leads/CampaignPicker';
 const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
@@ -388,7 +388,8 @@ export function LeadEditDialog({
   const [tempNewsLink, setTempNewsLink] = useState('');
   const [selectedBoardId, setSelectedBoardId] = useState('');
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
-  const { data: campaignsList = [] } = useCampaigns();
+  const [selectedMetaCampaignId, setSelectedMetaCampaignId] = useState('');
+  const [selectedMetaCampaignName, setSelectedMetaCampaignName] = useState('');
 
   const currentLead = lead;
   // Board Trabalhista: só os 6 acolhedores oficiais; demais boards, lista completa de perfis.
@@ -489,6 +490,8 @@ export function LeadEditDialog({
     setExpectedBirthDate(leadAny.expected_birth_date || '');
     setSelectedBoardId(leadAny.board_id || '');
     setSelectedCampaignId(leadAny.crm_campaign_id || '');
+    setSelectedMetaCampaignId(leadAny.campaign_id || '');
+    setSelectedMetaCampaignName(leadAny.campaign_name || '');
     setPopResult(leadAny.pop_result_id || '');
     setPopResultDate(leadAny.pop_result_date || '');
     // Outcome
@@ -1640,6 +1643,8 @@ ${scrapeData.content || ''}
         legal_viability: legalViability || null,
         board_id: selectedBoardId || null,
         crm_campaign_id: selectedCampaignId || null,
+        campaign_id: selectedMetaCampaignId || null,
+        campaign_name: selectedMetaCampaignName || null,
         ...(selectedBoardId && selectedBoardId !== (currentLead as any).board_id ? (() => {
           const newBoard = boards.find(b => b.id === selectedBoardId);
           const firstStage = newBoard?.stages?.[0] as any;
@@ -3195,24 +3200,20 @@ ${scrapeData.content || ''}
                 )}
 
                 <div className="col-span-2">
-                  <Label>Campanha (opcional)</Label>
-                  <Select
-                    value={selectedCampaignId || '__none__'}
-                    onValueChange={(val) => setSelectedCampaignId(val === '__none__' ? '' : val)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Sem campanha" />
-                    </SelectTrigger>
-                    <SelectContent className="pointer-events-auto z-[9999]" position="popper" sideOffset={4}>
-                      <SelectItem value="__none__">Sem campanha</SelectItem>
-                      {campaignsList.filter(c => c.status !== 'closed').map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-[10px] text-muted-foreground mt-1">
-                    Vincula o lead a uma campanha para consolidar métricas de ROI/CAC.
-                  </p>
+                  <CampaignPicker
+                    label="Campanha (opcional)"
+                    contentClassName="z-[9999]"
+                    value={{
+                      crmCampaignId: selectedCampaignId,
+                      metaCampaignId: selectedMetaCampaignId,
+                      metaCampaignName: selectedMetaCampaignName,
+                    }}
+                    onChange={(v) => {
+                      setSelectedCampaignId(v.crmCampaignId);
+                      setSelectedMetaCampaignId(v.metaCampaignId);
+                      setSelectedMetaCampaignName(v.metaCampaignName);
+                    }}
+                  />
                 </div>
               </div>
               <div className="pt-4 border-t">

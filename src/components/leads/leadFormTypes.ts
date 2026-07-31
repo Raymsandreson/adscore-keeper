@@ -6,6 +6,11 @@ export interface AccidentLeadFormData {
   source: string;
   notes: string;
 
+  // Campanha de origem — CRM (campaigns.id) + espelho do Meta Ads
+  crm_campaign_id?: string;
+  campaign_id?: string;
+  campaign_name?: string;
+
   // Accident specific
   acolhedor: string;
   case_type: string;

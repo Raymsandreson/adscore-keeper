@@ -36,7 +36,7 @@ export interface UseLeadsOptions {
 
 // Colunas "full" — usadas pela maioria dos consumidores que precisam do lead completo.
 const LEAD_FULL_COLUMNS = [
-  'id', 'ad_account_id', 'campaign_id', 'campaign_name', 'adset_id', 'adset_name',
+  'id', 'ad_account_id', 'campaign_id', 'campaign_name', 'crm_campaign_id', 'adset_id', 'adset_name',
   'creative_id', 'creative_name', 'ad_name', 'ad_start_date',
   'lead_name', 'lead_phone', 'lead_email', 'source', 'status',
   'ad_spend_at_conversion', 'conversion_value', 'notes',
@@ -202,6 +202,8 @@ export interface Lead {
   ad_account_id: string | null;
   campaign_id: string | null;
   campaign_name: string | null;
+  /** campaigns.id do CRM — vínculo do lead com a campanha (métricas de ROI/CAC). */
+  crm_campaign_id: string | null;
   adset_id: string | null;
   adset_name: string | null;
   creative_id: string | null;

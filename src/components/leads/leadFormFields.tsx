@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { LocateFixed, Loader2 } from 'lucide-react';
 import type { AccidentLeadFormData } from './leadFormTypes';
 import { AcolhedorCombobox } from './AcolhedorCombobox';
+import { CampaignPicker } from './CampaignPicker';
 
 export type LeadFieldTab = 'basic' | 'accident' | 'location' | 'companies' | 'legal';
 
@@ -54,19 +55,35 @@ export const LEAD_FIELD_REGISTRY: LeadFieldDef[] = [
     render: (c) => { const options = c.acolhedorOptions ?? c.teamMembers.map(m=>m.full_name||m.email||m.id); return (<div><Label>Acolhedor</Label>{options.length > 0 ? (
       <AcolhedorCombobox value={c.formData.acolhedor} onChange={u('acolhedor', c)} options={options} />
     ) : (<Input value={c.formData.acolhedor} onChange={(e)=>u('acolhedor',c)(e.target.value)} placeholder="Nome do acolhedor"/>)}</div>); } },
-  { key: 'group_link', label: 'Link do Grupo (WhatsApp)', defaultTab: 'basic', defaultOrder: 4, fullWidth: true,
+  { key: 'campaign', label: 'Campanha', defaultTab: 'basic', defaultOrder: 4, fullWidth: true,
+    render: (c) => (
+      <CampaignPicker
+        contentClassName="z-[9999]"
+        value={{
+          crmCampaignId: c.formData.crm_campaign_id || '',
+          metaCampaignId: c.formData.campaign_id || '',
+          metaCampaignName: c.formData.campaign_name || '',
+        }}
+        onChange={(v) => c.onChange({
+          crm_campaign_id: v.crmCampaignId,
+          campaign_id: v.metaCampaignId,
+          campaign_name: v.metaCampaignName,
+        })}
+      />
+    ) },
+  { key: 'group_link', label: 'Link do Grupo (WhatsApp)', defaultTab: 'basic', defaultOrder: 5, fullWidth: true,
     render: (c) => (<div><Label>Link do Grupo (WhatsApp)</Label><Input value={c.formData.group_link} onChange={(e)=>u('group_link',c)(e.target.value)} placeholder="https://chat.whatsapp.com/..."/></div>) },
-  { key: 'news_link', label: 'Link da Notícia', defaultTab: 'basic', defaultOrder: 5, fullWidth: true,
+  { key: 'news_link', label: 'Link da Notícia', defaultTab: 'basic', defaultOrder: 6, fullWidth: true,
     render: (c) => (<div><Label>Link da Notícia</Label><Input value={c.formData.news_link} onChange={(e)=>u('news_link',c)(e.target.value)} placeholder="https://..."/></div>) },
-  { key: 'notes', label: 'Observações', defaultTab: 'basic', defaultOrder: 6, fullWidth: true,
+  { key: 'notes', label: 'Observações', defaultTab: 'basic', defaultOrder: 7, fullWidth: true,
     render: (c) => (<div><Label>Observações</Label><Textarea value={c.formData.notes} onChange={(e)=>u('notes',c)(e.target.value)} placeholder="Notas sobre o lead..." rows={2}/></div>) },
-  { key: 'client_classification', label: 'Classificação', defaultTab: 'basic', defaultOrder: 7,
+  { key: 'client_classification', label: 'Classificação', defaultTab: 'basic', defaultOrder: 8,
     render: (c) => c.classifications.length === 0 ? null : (<div><Label>Classificação</Label>
       <Select value={c.formData.client_classification || '__none__'} onValueChange={(v)=>c.onChange({client_classification: v==='__none__' ? '' : v})}>
         <SelectTrigger><SelectValue placeholder="Selecione..."/></SelectTrigger>
         <SelectContent><SelectItem value="__none__">Sem classificação</SelectItem>{c.classifications.map(cl=>(<SelectItem key={cl.id} value={cl.name}><div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full ${cl.color}`}/>{cl.name.replace(/_/g,' ')}</div></SelectItem>))}</SelectContent>
       </Select></div>) },
-  { key: 'expected_birth_date', label: 'Previsão do Parto', defaultTab: 'basic', defaultOrder: 8,
+  { key: 'expected_birth_date', label: 'Previsão do Parto', defaultTab: 'basic', defaultOrder: 9,
     render: (c) => !c.formData.client_classification?.toLowerCase().includes('parto') ? null : (<div><Label>Previsão do Parto</Label><Input type="date" value={c.formData.expected_birth_date} onChange={(e)=>c.onChange({expected_birth_date: e.target.value})}/></div>) },
 
   // ===== ACCIDENT =====

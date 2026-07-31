@@ -104,6 +104,57 @@ export function useCreateCampaign() {
   });
 }
 
+/**
+ * Garante que exista uma campanha do CRM espelhando uma campanha do Meta.
+ * Chave de deduplicação: `meta_campaign_id`. Se já existir (inclusive arquivada),
+ * devolve a existente em vez de duplicar — assim o mesmo anúncio nunca gera duas
+ * linhas de campanha e as métricas de ROI/CAC não racham.
+ */
+export function useEnsureCampaignFromMeta() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (meta: { metaCampaignId: string; name: string; metaAdAccountId?: string | null; createdBy?: string | null }) => {
+      const { data: existing, error: findError } = await client
+        .from('campaigns')
+        .select('*')
+        .eq('meta_campaign_id', meta.metaCampaignId)
+        .limit(1);
+      if (findError) throw findError;
+      if (existing && existing.length > 0) {
+        // Campanha arquivada volta a valer quando alguém a escolhe de novo.
+        if (existing[0].deleted_at) {
+          const { data: revived, error: reviveError } = await client
+            .from('campaigns')
+            .update({ deleted_at: null })
+            .eq('id', existing[0].id)
+            .select()
+            .single();
+          if (reviveError) throw reviveError;
+          return revived as Campaign;
+        }
+        return existing[0] as Campaign;
+      }
+
+      const { data, error } = await client
+        .from('campaigns')
+        .insert({
+          name: meta.name,
+          status: 'active',
+          meta_campaign_id: meta.metaCampaignId,
+          meta_ad_account_id: meta.metaAdAccountId || null,
+          created_by: meta.createdBy || null,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Campaign;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaigns'] });
+    },
+  });
+}
+
 export function useUpdateCampaign() {
   const qc = useQueryClient();
   return useMutation({
