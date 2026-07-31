@@ -5071,6 +5071,11 @@ const ActivitiesPage = () => {
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
 
+                // POP escolhido na própria atividade tem prioridade — mesma regra
+                // do activeStepBoardId (contexto de passo/modelos).
+                if (formWorkflowId) {
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} />;
+                }
                 // Se há processo vinculado: só mostra se o processo tem fluxo próprio.
                 // Sem fluxo no processo = sem barra (não cai no funil do lead).
                 if (formProcessId) {

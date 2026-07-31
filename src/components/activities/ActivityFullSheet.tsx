@@ -175,9 +175,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
 
-  // Board dos "Modelos do passo"/checklist: workflow do processo tem prioridade; senão funil do lead
+  // Board dos "Modelos do passo"/checklist: POP escolhido na atividade tem
+  // prioridade (mesma regra do activeStepBoardId da ActivitiesPage); senão
+  // workflow do processo; senão funil do lead
   const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-  const stepBoardId = linkedProcess?.workflow_id || leadPreview?.board_id || null;
+  const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
   const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
 
   // Rotina do assessor selecionado (ou do usuário logado, se nenhum) — usada pra
@@ -1135,8 +1137,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             )}
           </div>
 
-          {/* Fluxo de trabalho: workflow do processo tem prioridade; senão funil do lead */}
+          {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead */}
           {formLeadId && (() => {
+            if (formWorkflowId) {
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} />;
+            }
             if (formProcessId) {
               if (linkedProcess?.workflow_id) {
                 return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} />;
