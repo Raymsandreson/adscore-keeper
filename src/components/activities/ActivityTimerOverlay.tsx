@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Hourglass, Maximize2, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -249,53 +249,36 @@ function contentLeftEdge(): number {
   return r.width > 0 && r.right > 0 ? Math.round(r.right) + EDGE_GUTTER : EDGE_GUTTER;
 }
 
+/**
+ * Posição da aba do cronômetro. O X é SEMPRE a borda do conteúdo (logo depois do
+ * menu lateral) — a aba mora colada nessa borda e o painel desliza dela para a
+ * direita. Só o Y é arrastável: assim o cronômetro nunca "descansa" no meio da
+ * tela nem cobre o menu, e recolhido ocupa uma tira de ~26px.
+ * (skill: ui-sem-sobreposicao)
+ */
 function useDraggablePosition() {
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(() => {
+  const [y, setY] = useState<number | null>(() => {
     try {
       const raw = localStorage.getItem(POS_STORAGE_KEY);
-      if (raw) return JSON.parse(raw);
+      // Formato antigo era { x, y } — só o y sobrevive.
+      if (raw) { const p = JSON.parse(raw); if (typeof p?.y === 'number') return p.y; }
     } catch { /* ignora */ }
     return null;
   });
   const draggingRef = useRef(false);
   const movedRef = useRef(false);
-  const offsetRef = useRef({ x: 0, y: 0 });
+  const offsetRef = useRef(0);
   const elRef = useRef<HTMLElement | null>(null);
-  const dockRoRef = useRef<ResizeObserver | null>(null);
 
-  const clamp = (x: number, y: number) => {
-    const el = elRef.current;
-    const w = el?.offsetWidth ?? 160;
-    const h = el?.offsetHeight ?? 40;
-    const minX = contentLeftEdge();
-    const maxX = Math.max(minX, window.innerWidth - w - EDGE_GUTTER);
-    const maxY = window.innerHeight - h - EDGE_GUTTER;
-    return { x: Math.max(minX, Math.min(x, maxX)), y: Math.max(EDGE_GUTTER, Math.min(y, maxY)) };
-  };
-
-  // Cola no CANTO DE BAIXO da área livre (esquerda ou direita, o que estiver mais
-  // perto). Só travar o X não bastava: parado no meio da tela o badge cobria a
-  // linha de botões dos cards (não dava pra clicar em concluir). No rodapé ele é
-  // previsível e as listas reservam espaço via --timer-dock-h.
-  // A borda esquerda é a do CONTEÚDO (depois do menu lateral), nunca a da janela.
-  // (skill: ui-sem-sobreposicao)
-  const snapToEdge = (x: number, y: number) => {
-    const el = elRef.current;
-    const w = el?.offsetWidth ?? 160;
-    const h = el?.offsetHeight ?? 40;
-    const minX = contentLeftEdge();
-    const maxX = Math.max(minX, window.innerWidth - w - EDGE_GUTTER);
-    const c = clamp(x, y);
-    const center = c.x + w / 2;
-    const contentCenter = (minX + window.innerWidth) / 2;
-    return { x: center < contentCenter ? minX : maxX, y: window.innerHeight - h - EDGE_GUTTER };
+  const clampY = (v: number) => {
+    const h = elRef.current?.offsetHeight ?? 40;
+    return Math.max(EDGE_GUTTER, Math.min(v, window.innerHeight - h - EDGE_GUTTER));
   };
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const el = e.currentTarget;
     elRef.current = el;
-    const rect = el.getBoundingClientRect();
-    offsetRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    offsetRef.current = e.clientY - el.getBoundingClientRect().top;
     draggingRef.current = true;
     movedRef.current = false;
     el.setPointerCapture(e.pointerId);
@@ -303,14 +286,9 @@ function useDraggablePosition() {
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (!draggingRef.current) return;
-    const nx = e.clientX - offsetRef.current.x;
-    const ny = e.clientY - offsetRef.current.y;
-    if (!movedRef.current) {
-      const dx = Math.abs(e.movementX);
-      const dy = Math.abs(e.movementY);
-      if (dx + dy > 3) movedRef.current = true;
-    }
-    setPos(clamp(nx, ny));
+    if (!movedRef.current && Math.abs(e.movementX) + Math.abs(e.movementY) > 3) movedRef.current = true;
+    setY(clampY(e.clientY - offsetRef.current));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLElement>) => {
@@ -318,73 +296,31 @@ function useDraggablePosition() {
     draggingRef.current = false;
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
     if (movedRef.current) {
-      const snapped = pos ? snapToEdge(pos.x, pos.y) : pos;
-      if (snapped) setPos(snapped);
-      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(snapped)); } catch { /* ignora */ }
+      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify({ y })); } catch { /* ignora */ }
     }
-  }, [pos]);
+  }, [y]);
 
-  // Reajusta se a janela mudar de tamanho — volta pro canto de baixo.
+  // Reajusta se a janela encolher.
   useEffect(() => {
-    const onResize = () => setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
+    const onResize = () => setY((v) => (v == null ? v : clampY(v)));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Corrige posição salva antiga que tenha ficado no meio do conteúdo (ou por
-  // cima do menu lateral): ao montar, puxa o badge para a borda mais próxima da
-  // área livre. (skill: ui-sem-sobreposicao)
-  useEffect(() => {
-    setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // O menu lateral alterna entre 16rem e 3rem (modo ícone). Sem reagir a isso, o
-  // badge colado à esquerda volta a ficar POR CIMA dos itens do menu quando ele
-  // reexpande. (skill: ui-sem-sobreposicao)
-  useEffect(() => {
-    if (typeof document === 'undefined' || typeof ResizeObserver === 'undefined') return;
-    const el = document.querySelector('[data-sidebar="sidebar"]:not([data-mobile])');
-    if (!el) return;
-    const ro = new ResizeObserver(() => setPos((p) => (p ? snapToEdge(p.x, p.y) : p)));
-    ro.observe(el);
-    return () => ro.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // O ref só chega depois da 1ª posição: recola com largura/altura reais — o
-  // fallback 160x40 deixaria o badge estourando a borda de baixo.
-  // Também publica `--timer-dock-h` = altura ocupada no rodapé. Quem tem rolagem
-  // própria consome como padding-bottom, senão a última linha da lista nasce
-  // embaixo do cronômetro e não dá pra clicar nela. (skill: ui-sem-sobreposicao)
+  // O ref só chega depois da 1ª posição: reclampa com a altura real (o fallback
+  // de 40px deixaria a aba estourando a borda de baixo).
   const setElRef = useCallback((el: HTMLElement | null) => {
     elRef.current = el;
-    dockRoRef.current?.disconnect();
-    dockRoRef.current = null;
-    const root = document.documentElement;
-    if (!el) { root.style.setProperty('--timer-dock-h', '0px'); return; }
-    setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
-    const sync = () => root.style.setProperty('--timer-dock-h', `${el.offsetHeight + EDGE_GUTTER * 2}px`);
-    sync();
-    if (typeof ResizeObserver !== 'undefined') {
-      dockRoRef.current = new ResizeObserver(sync);
-      dockRoRef.current.observe(el);
-    }
+    if (el) setY((v) => (v == null ? v : clampY(v)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Sem cronômetro na tela, ninguém reserva rodapé.
-  useEffect(() => () => {
-    dockRoRef.current?.disconnect();
-    document.documentElement.style.setProperty('--timer-dock-h', '0px');
   }, []);
 
   const wasDragged = () => movedRef.current;
-  // Sem posição salva: canto inferior da área livre, já depois do menu lateral.
-  const style: React.CSSProperties = pos
-    ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' }
-    : { left: contentLeftEdge(), bottom: 16 };
+  // Sem posição salva: rodapé da área livre, já depois do menu lateral.
+  const style: React.CSSProperties = y == null
+    ? { left: contentLeftEdge(), bottom: 16, top: 'auto', right: 'auto' }
+    : { left: contentLeftEdge(), top: y, bottom: 'auto', right: 'auto' };
 
   return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef };
 }
@@ -489,13 +425,13 @@ export function ActivityTimerOverlay() {
   const [teamViewActivityId, setTeamViewActivityId] = useState<string | null>(null);
   const timedActivityId = current?.kind === 'activity' ? current.activityId : null;
 
-  // Cronômetro SEMPRE flutuante e arrastável. Ele já cola na borda mais próxima
-  // (snapToEdge), então não cobre conteúdo — e o usuário pode movê-lo à vontade.
-  // Maximizado x minimizado é controlado só por `hidden`:
-  //   hidden=true  → pill compacto (só o relógio)
-  //   hidden=false → cronômetro grande flutuante (todos os controles)
-  // (Antes existia um `docked` fixo em false que matava o modo grande — não dava
-  //  pra maximizar de jeito nenhum.)
+  // Cronômetro = ABA LATERAL colada na borda do conteúdo (logo depois do menu),
+  // controlada por `hidden`:
+  //   hidden=true  → aba fina em pé (só o tempo na vertical) — ocupa ~26px
+  //   hidden=false → o cronômetro desliza da aba para a DIREITA, com os controles
+  // Recolhida, a aba não cobre nada; aberto, ele recolhe sozinho no primeiro
+  // clique fora. Foi o que substituiu o badge flutuante que cobria os botões dos
+  // cards em qualquer posição de scroll. (skill: ui-sem-sobreposicao)
   // Portala o badge para o body: preso dentro de <main> (SidebarLayout) ele fica
   // num contexto de empilhamento e qualquer Dialog (portalado como irmão do #root)
   // pinta por cima, mesmo com z menor. Fora, no body, o z-[9990] vence o z-50 do
@@ -508,13 +444,35 @@ export function ActivityTimerOverlay() {
   // depende do bubbling — usa pointer capture no próprio elemento).
   const floatWrap = 'pointer-events-auto fixed z-[9990] shadow-lg backdrop-blur touch-none ';
   const grab = 'cursor-grab active:cursor-grabbing';
+  // Aberto, o painel entra deslizando da aba para a direita.
+  const slideIn = 'animate-in slide-in-from-left-4 fade-in-0 duration-200 ';
+  // data-timer-badge: marca tudo que é do cronômetro para o clique-fora não
+  // recolher quando o clique foi nele mesmo.
   const dragAttrs = {
     ref: drag.setElRef,
     style: drag.style,
+    'data-timer-badge': '',
     onPointerDown: (e: React.PointerEvent<HTMLElement>) => { e.stopPropagation(); drag.onPointerDown(e); },
     onPointerMove: drag.onPointerMove,
     onPointerUp: drag.onPointerUp,
   };
+
+  // Clique fora recolhe a aba. Ignora o próprio cronômetro, os popovers dele
+  // (portalados pelo Radix) e diálogos/abas que ele abriu — senão escolher uma
+  // pausa ou abrir a ficha fecharia o painel no meio do caminho.
+  useEffect(() => {
+    if (hidden || !current) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (!t?.closest) return;
+      if (t.closest('[data-timer-badge]')) return;
+      if (t.closest('[data-radix-popper-content-wrapper]')) return;
+      if (t.closest('[role="dialog"]')) return;
+      hideTimer();
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    return () => document.removeEventListener('pointerdown', onDown, true);
+  }, [hidden, current, hideTimer]);
 
   return (
     <>
@@ -534,9 +492,9 @@ export function ActivityTimerOverlay() {
         </button>
       )}
 
-      {/* Minimizado: o cronômetro nunca some — fica só o relógio; clique expande.
-          Pill compacto (só o tempo) quando hidden=true. Clicar chama showTimer()
-          (hidden=false) e o badge grande aparece no lugar. (skill: ui-sem-sobreposicao) */}
+      {/* Recolhido: aba fina em pé colada na borda do conteúdo. Mostra só o tempo
+          na vertical — clique desliza o cronômetro pra direita; arrastar sobe/desce
+          a aba. Recolhida ela não cobre conteúdo. (skill: ui-sem-sobreposicao) */}
       {current && hidden && (() => {
         const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
         const palette = current.kind === 'activity'
@@ -551,8 +509,8 @@ export function ActivityTimerOverlay() {
           <div
             {...dragAttrs}
             onClick={() => { if (!drag.wasDragged()) showTimer(); }}
-            className={`${floatWrap}flex items-center gap-1.5 rounded-full px-2.5 py-1 select-none cursor-pointer hover:opacity-90 ${palette}`}
-            title="Cronômetro minimizado · clique para expandir · arraste para mover"
+            className={`${floatWrap}flex flex-col items-center gap-1.5 rounded-l-none rounded-r-xl border-l-0 px-1 py-2.5 select-none cursor-pointer hover:opacity-90 ${palette}`}
+            title="Cronômetro · clique para abrir · arraste para subir/descer"
           >
             {current.kind === 'activity' && (
               <span className="relative flex h-2 w-2">
@@ -564,10 +522,10 @@ export function ActivityTimerOverlay() {
               ? <Clock className="h-3 w-3" />
               : <Coffee className="h-3 w-3" />)}
             {current.kind === 'break' && <UtensilsCrossed className="h-3 w-3" />}
-            <span className="flex items-center gap-1.5 font-mono text-sm tabular-nums font-semibold">
+            <span className="font-mono text-[11px] tabular-nums font-semibold [writing-mode:vertical-rl]">
               {formatHMS(seconds)}
-              <Maximize2 className="h-3 w-3 opacity-60" />
             </span>
+            <ChevronRight className="h-3 w-3 opacity-60" />
           </div>
         );
       })()}
@@ -575,7 +533,7 @@ export function ActivityTimerOverlay() {
       {current && current.kind === 'activity' && !hidden && dock(
         <div
           {...dragAttrs}
-          className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
+          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
           title="Arraste para mover · clique no tempo para abrir a atividade"
         >
           <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
@@ -630,7 +588,7 @@ export function ActivityTimerOverlay() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground"
-            title="Minimizar cronômetro (deixa só o relógio)"
+            title="Recolher para a aba lateral"
           >
             <Minimize2 className="h-3.5 w-3.5" />
           </button>
@@ -663,7 +621,7 @@ export function ActivityTimerOverlay() {
       {current && current.kind === 'gap' && !hidden && dock(
         <div
           {...dragAttrs}
-          className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
+          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
           title={gapWorking
             ? 'Sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
             : 'Tempo ocioso entre atividades'}
@@ -717,7 +675,7 @@ export function ActivityTimerOverlay() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
-            title="Minimizar cronômetro (deixa só o relógio)"
+            title="Recolher para a aba lateral"
           >
             <Minimize2 className="h-3.5 w-3.5" />
           </button>
@@ -729,7 +687,7 @@ export function ActivityTimerOverlay() {
       {current && current.kind === 'break' && !hidden && dock(
         <div
           {...dragAttrs}
-          className={`${floatWrap}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
+          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
           title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
         >
           <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
@@ -763,7 +721,7 @@ export function ActivityTimerOverlay() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
             className="rounded-full p-1 hover:bg-sky-200/50 dark:hover:bg-sky-800/50 text-sky-700 dark:text-sky-300"
-            title="Minimizar cronômetro (deixa só o relógio)"
+            title="Recolher para a aba lateral"
           >
             <Minimize2 className="h-3.5 w-3.5" />
           </button>

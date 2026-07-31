@@ -3089,15 +3089,8 @@ const ActivitiesPage = () => {
 
 
 
-  // A altura desconta --timer-dock-h (faixa do cronômetro flutuante, no rodapé).
-  // Reservar só padding no fim da rolagem não bastava: em qualquer outra posição
-  // de scroll o badge continuava por cima dos botões do card. Tirando altura da
-  // página inteira, nada é renderizado embaixo dele. (skill: ui-sem-sobreposicao)
   return (
-    <div
-      className="flex flex-col bg-background overflow-hidden"
-      style={{ height: 'calc(100dvh - 44px - var(--timer-dock-h, 0px))' }}
-    >
+    <div className="h-[calc(100dvh-44px)] flex flex-col bg-background overflow-hidden">
       {/* Header */}
       <div className="bg-primary text-primary-foreground px-4 py-2.5 flex flex-wrap items-center justify-between gap-y-2 shrink-0 shadow-md z-20">
         <div className="flex items-center gap-3">

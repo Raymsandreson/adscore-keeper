@@ -238,7 +238,10 @@ function notifyDesktop(title: string, body: string) {
 export function ActivityTimerProvider({ children }: { children: React.ReactNode }) {
   const [current, setCurrent] = useState<TimerEntry | null>(null);
   const [dayBase, setDayBase] = useState<{ active: number; idle: number }>({ active: 0, idle: 0 });
-  const [hidden, setHidden] = useState(false);
+  // Começa RECOLHIDO (aba lateral): abrindo o sistema, o cronômetro não pode
+  // nascer por cima do conteúdo. Expande em showTimer() — ao iniciar/trocar de
+  // atividade — e recolhe no primeiro clique fora. (skill: ui-sem-sobreposicao)
+  const [hidden, setHidden] = useState(true);
   const [idlePrompt, setIdlePrompt] = useState(false);
   const [leavePrompt, setLeavePrompt] = useState(false);
   const [switchPrompt, setSwitchPrompt] = useState(false);
