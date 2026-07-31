@@ -1,10 +1,13 @@
-import { useMemo } from 'react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useMemo, useState } from 'react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Button } from '@/components/ui/button';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useSharedFetch } from '@/lib/sharedFetch';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
-import { UserCheck } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Check, ChevronDown, UserCheck } from 'lucide-react';
 
 interface Props {
   /** External UUID stored in lead_processes.responsible_user_id */
@@ -63,7 +66,9 @@ function useAssignableTeam(): TeamOption[] {
 }
 
 /**
- * Seletor de "Responsável pelo processo".
+ * Seletor de "Responsável pelo processo" — combobox com busca (Popover+Command,
+ * o mesmo padrão do seletor de assessor das atividades). O Select do Radix
+ * cortava a lista dentro da sheet e não tinha filtro por texto.
  * Valor de entrada/saída é o UUID do Externo, sem remap.
  *
  * A lista é a UNIÃO de duas fontes, pra bater com o seletor de assessor das
@@ -74,6 +79,7 @@ function useAssignableTeam(): TeamOption[] {
  * 2. quem está no auth_uuid_mapping mas sem perfil no Cloud (ex.: Abderaman).
  */
 export function ResponsibleUserSelect({ value, onChange, className, placeholder, disabled }: Props) {
+  const [open, setOpen] = useState(false);
   const team = useAssignableTeam();
   const cloudProfiles = useProfilesList();
 
@@ -95,26 +101,57 @@ export function ResponsibleUserSelect({ value, onChange, className, placeholder,
     return opts.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   }, [team, cloudProfiles]);
 
+  const selected = value ? options.find(o => o.ext_uuid === value) : undefined;
+
   return (
-    <Select
-      value={value || '__none__'}
-      onValueChange={(v) => onChange(v === '__none__' ? null : v)}
-      disabled={disabled}
-    >
-      <SelectTrigger className={className}>
-        <span className="flex items-center gap-1.5 truncate">
-          <UserCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-          <SelectValue placeholder={placeholder || 'Sem responsável'} />
-        </span>
-      </SelectTrigger>
-      <SelectContent className="z-[9999]">
-        <SelectItem value="__none__">Sem responsável</SelectItem>
-        {options.map(o => (
-          <SelectItem key={o.ext_uuid} value={o.ext_uuid}>
-            {o.name}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          className={cn('w-full justify-between font-normal px-3', className)}
+        >
+          <span className="flex items-center gap-1.5 truncate">
+            <UserCheck className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            <span className={cn('truncate', !selected && 'text-muted-foreground')}>
+              {selected ? selected.name : (placeholder || 'Sem responsável')}
+            </span>
+          </span>
+          <ChevronDown className="h-3.5 w-3.5 opacity-50 shrink-0 ml-1" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[280px] z-[9999]" align="start">
+        <Command>
+          <CommandInput placeholder="Buscar responsável..." className="h-8 text-xs" />
+          <CommandList>
+            <CommandEmpty className="text-xs py-4 text-center">Nenhum encontrado</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="__sem_responsavel__"
+                onSelect={() => { onChange(null); setOpen(false); }}
+                className="text-xs"
+              >
+                <Check className={cn('mr-2 h-3 w-3 shrink-0', !value ? 'opacity-100' : 'opacity-0')} />
+                <span className="text-muted-foreground italic">Sem responsável</span>
+              </CommandItem>
+              {options.map(o => (
+                <CommandItem
+                  key={o.ext_uuid}
+                  value={`${o.name} ${o.ext_uuid}`}
+                  onSelect={() => { onChange(o.ext_uuid); setOpen(false); }}
+                  className="text-xs"
+                >
+                  <Check className={cn('mr-2 h-3 w-3 shrink-0', value === o.ext_uuid ? 'opacity-100' : 'opacity-0')} />
+                  <span className="truncate">{o.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
