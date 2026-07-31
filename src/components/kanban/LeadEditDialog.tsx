@@ -79,7 +79,7 @@ import type { EnrichReviewData } from '@/components/leads/EnrichReviewDialog';
 import { useAutoImportGroupDocs } from '@/hooks/useAutoImportGroupDocs';
 import { useAutoLinkGroupByName } from '@/hooks/useAutoLinkGroupByName';
 import { cn } from '@/lib/utils';
-import { KanbanBoard } from '@/hooks/useKanbanBoards';
+import { KanbanBoard, useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { 
   User, 
   Phone, 
@@ -235,7 +235,7 @@ export function LeadEditDialog({
   onSave,
   onDeleted,
   adAccountId,
-  boards = [],
+  boards: boardsProp = [],
   mode = 'dialog',
   sheetSide = 'right',
   initialTab,
@@ -397,7 +397,50 @@ export function LeadEditDialog({
   const [selectedMetaCampaignId, setSelectedMetaCampaignId] = useState('');
   const [selectedMetaCampaignName, setSelectedMetaCampaignName] = useState('');
 
-  const currentLead = lead;
+  // Track previous lead id to only reset tab on lead change, not hydration
+  const prevLeadIdRef = useRef<string | null>(null);
+
+  // Funis: alguns pontos de entrada (Atividades, painéis de time, monitor de agentes)
+  // não passam a lista. Sem ela o seletor "Vincular/Trocar funil" some da ficha.
+  const { boards: fetchedBoards } = useKanbanBoards();
+  const boards = boardsProp.length > 0 ? boardsProp : fetchedBoards;
+
+  // Lead "magro": vários pontos de entrada abrem a ficha só com { id, lead_name }.
+  // Sem board_id/status o funil nunca aparece, e pior: o handleSave monta o payload a
+  // partir do state (vazio) e grava null por cima do que existe no banco. Hidrata do
+  // Externo antes de preencher o formulário.
+  const [hydratedLead, setHydratedLead] = useState<Lead | null>(null);
+  const [hydrationTick, setHydrationTick] = useState(0);
+  const isThinLead = !!lead && !('board_id' in (lead as Record<string, unknown>));
+  const hydrating = isThinLead && (!hydratedLead || hydratedLead.id !== lead?.id);
+  const currentLead = (hydratedLead && lead && hydratedLead.id === lead.id) ? hydratedLead : lead;
+
+  useEffect(() => {
+    if (!open || !lead?.id || !isThinLead) return;
+    if (hydratedLead?.id === lead.id) return;
+    let cancelled = false;
+    (async () => {
+      let full: Lead | null = null;
+      try {
+        const { data } = await externalSupabase.from('leads').select('*').eq('id', lead.id).maybeSingle();
+        if (data) full = { ...(data as unknown as Lead), ...lead };
+      } catch (e) {
+        console.warn('[LeadEditDialog] hidratação do lead falhou', e);
+      }
+      if (cancelled) return;
+      // Falhou? segue com o objeto magro — comportamento anterior, sem travar a ficha.
+      setHydratedLead(full || lead);
+      prevLeadIdRef.current = null;
+      setHydrationTick(t => t + 1);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lead?.id, isThinLead]);
+
+  useEffect(() => {
+    if (!open) setHydratedLead(null);
+  }, [open]);
+
   // Board Trabalhista: só os 6 acolhedores oficiais; demais boards, lista completa de perfis.
   const acolhedorOptions = useMemo(() => (
     isTrabalhistaBoard((currentLead as any)?.board_id)
@@ -448,9 +491,6 @@ export function LeadEditDialog({
     if (activeTab === 'checklist') setActiveTab('basic');
   }, [activeTab]);
 
-  // Track previous lead id to only reset tab on lead change, not hydration
-  const prevLeadIdRef = useRef<string | null>(null);
-
   // Hydrate form fields ONLY when opening the dialog or switching to a different lead.
   // We intentionally DO NOT re-hydrate on every currentLead reference change, otherwise
   // realtime/refetch updates would overwrite fields the user just edited (ex: Acolhedor
@@ -462,6 +502,9 @@ export function LeadEditDialog({
       return;
     }
     if (!currentLead) return;
+    // Lead magro ainda buscando os campos reais: preencher agora encheria o formulário
+    // de vazios — e o Salvar gravaria esses vazios por cima do banco.
+    if (hydrating) return;
 
     const isNewLead = prevLeadIdRef.current !== currentLead.id;
     if (!isNewLead) return;
@@ -586,7 +629,7 @@ export function LeadEditDialog({
       )),
     ]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentLead?.id, open]);
+  }, [currentLead?.id, open, hydrationTick]);
 
   // Verifica (apenas no front, ao abrir) se o nº do caso fechado mudou de posição
   // na fila de assinaturas. Se mudou, mostra banner pedindo confirmação pra
@@ -2150,15 +2193,15 @@ ${scrapeData.content || ''}
                       variant="outline"
                       size="sm"
                       className="h-7 ml-1 gap-1 px-2 text-xs"
-                      title="Trocar funil"
+                      title={selectedBoardId ? 'Trocar funil' : 'Vincular a um funil'}
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Pencil className="h-3 w-3" />
-                      Trocar
+                      {selectedBoardId ? 'Trocar' : 'Vincular'}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72 p-2 z-[10000]" align="start" onClick={(e) => e.stopPropagation()}>
-                    <Label className="text-xs px-1">Trocar funil</Label>
+                    <Label className="text-xs px-1">{selectedBoardId ? 'Trocar funil' : 'Vincular a um funil'}</Label>
                     <Select
                       value={selectedBoardId || '__none__'}
                       onValueChange={(val) => {
@@ -2192,20 +2235,20 @@ ${scrapeData.content || ''}
               <Suspense fallback={<div className="flex items-center justify-center p-4"><Loader2 className="h-4 w-4 animate-spin" /></div>}>
                 <LeadFunnelOverview
                   leadId={lead.id}
-                  boardId={selectedBoardId || lead.board_id || null}
-                  currentStageId={lead.status || null}
+                  boardId={selectedBoardId || currentLead?.board_id || null}
+                  currentStageId={currentLead?.status || null}
                   boards={boards}
                   isClosed={leadOutcome === 'closed'}
                   hideStagesList={!funnelPanelOpen}
-                  autoExpandStageId={funnelPanelOpen ? (lead.status || null) : null}
+                  autoExpandStageId={funnelPanelOpen ? (currentLead?.status || null) : null}
                   onHeaderClick={() => setFunnelPanelOpen(o => !o)}
                 />
               </Suspense>
-              {(selectedBoardId || lead.board_id) && (
+              {(selectedBoardId || currentLead?.board_id) && (
                 <StageLabelSelect
                   leadId={lead.id}
-                  boardId={selectedBoardId || lead.board_id!}
-                  currentStageId={lead.status || null}
+                  boardId={selectedBoardId || currentLead!.board_id!}
+                  currentStageId={currentLead?.status || null}
                   variant="dialog"
                 />
               )}
@@ -3785,8 +3828,9 @@ ${scrapeData.content || ''}
             <Button variant="outline" onClick={() => guardedOpenChange(false)}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveClick} disabled={saving}>
-              {saving ? 'Salvando...' : 'Salvar'}
+            {/* Enquanto os campos reais do lead não chegam, salvar gravaria vazio por cima. */}
+            <Button onClick={handleSaveClick} disabled={saving || hydrating}>
+              {saving ? 'Salvando...' : hydrating ? 'Carregando...' : 'Salvar'}
             </Button>
           </div>
         </Footer>
