@@ -12,7 +12,14 @@ import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
-import { useRaceSfx, detectarUltrapassagens, OVERTAKE_PRESETS, type Ultrapassagem } from '@/hooks/useRaceSfx';
+import {
+  useRaceSfx,
+  detectarUltrapassagens,
+  narracaoUltrapassagem,
+  narracaoRecorde,
+  OVERTAKE_PRESETS,
+  type Ultrapassagem,
+} from '@/hooks/useRaceSfx';
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
@@ -147,7 +154,8 @@ export default function TvAtividadesPage() {
   const music = useRaceMusic();
   // Efeitos de corrida: zoada de aceleração + narração quando alguém ultrapassa.
   const sfx = useRaceSfx();
-  const prevOrderRef = useRef<Map<string, number> | null>(null);
+  // Ordem anterior do ranking por chave time+período+dia (ver orderKey adiante).
+  const prevOrderRef = useRef<Map<string, Map<string, number>>>(new Map());
   const lastSfxRef = useRef(0);
   const overtakeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [overtakes, setOvertakes] = useState<Ultrapassagem[]>([]);
@@ -418,8 +426,14 @@ export default function TvAtividadesPage() {
   const list = useMemo(() => ranking.slice(3, 3 + LIST_MAX), [ranking]);
   const resumo = data?.resumo ?? null;
 
-  // Trocar de time/período reinicia a comparação (senão dispara ultrapassagem falsa).
-  useEffect(() => { prevOrderRef.current = null; }, [teamId, period]);
+  // Chave da comparação de ordem: time + período + dia. A ordem anterior fica
+  // guardada POR chave (não zerada na troca de time), senão o rodízio automático
+  // — que troca de time a cada 2 min, contra um refresh de 45s — praticamente
+  // nunca deixa duas leituras do mesmo time se compararem, e a ultrapassagem
+  // nunca é narrada. Assim, ao voltar pro time, ele compara com a última ordem
+  // que aquele time tinha. O dia entra na chave pra virada de período não
+  // comparar com o ranking zerado e inventar ultrapassagem.
+  const orderKey = `${teamId || 'all'}|${period}|${periodSince(period).toISOString().slice(0, 10)}`;
 
   const { vroom, recordSound, say, preset, setPreset, preview } = sfx;
 
@@ -453,7 +467,7 @@ export default function TvAtividadesPage() {
       lastRecordRef.current = now;
       lastSfxRef.current = now; // suprime a zoada normal desta rodada
       recordSound();
-      say(`Novo recorde! ${shortName(top!.nome)}, ${top!.passos} passos!`);
+      say(narracaoRecorde(shortName(top!.nome), top!.passos));
       setRecordHit({ value: top!.passos, holder: top!.nome });
       if (recordTimer.current) clearTimeout(recordTimer.current);
       recordTimer.current = setTimeout(() => setRecordHit(null), 8000);
@@ -466,9 +480,9 @@ export default function TvAtividadesPage() {
     const order = ranking.map(r => r.nome);
     const nextMap = new Map<string, number>();
     order.forEach((n, i) => nextMap.set(n, i));
-    const prev = prevOrderRef.current;
-    prevOrderRef.current = nextMap;
-    if (!prev) return; // primeira carga: só registra a ordem, sem alarme
+    const prev = prevOrderRef.current.get(orderKey);
+    prevOrderRef.current.set(orderKey, nextMap);
+    if (!prev) return; // primeira leitura desta chave: só registra, sem alarme
 
     const evs = detectarUltrapassagens(prev, order, 2);
     if (!evs.length) return;
@@ -478,11 +492,11 @@ export default function TvAtividadesPage() {
     lastSfxRef.current = now;
 
     vroom();
-    say(`${shortName(evs[0].a)} ultrapassou ${shortName(evs[0].b)}`);
+    say(narracaoUltrapassagem(shortName(evs[0].a), shortName(evs[0].b)));
     setOvertakes(evs);
     if (overtakeTimer.current) clearTimeout(overtakeTimer.current);
     overtakeTimer.current = setTimeout(() => setOvertakes([]), 6000);
-  }, [ranking, vroom, say]);
+  }, [ranking, orderKey, vroom, say]);
 
   useEffect(() => () => {
     if (overtakeTimer.current) clearTimeout(overtakeTimer.current);
@@ -596,6 +610,25 @@ export default function TvAtividadesPage() {
                   </button>
                 </div>
               ))}
+            </div>
+            {/* Narração: teste + qual voz o navegador escolheu. O clique aqui
+                também libera a fala no Chrome, que só narra depois de um gesto. */}
+            <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <div className="flex items-center gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-black">Narração</div>
+                  <div className="truncate text-xs text-white/50">
+                    {sfx.voiceName ? `Voz: ${sfx.voiceName}` : 'Nenhuma voz em português instalada neste aparelho'}
+                  </div>
+                </div>
+                <button
+                  onClick={() => sfx.sayPreview(narracaoUltrapassagem('Maria', 'João'))}
+                  className="flex shrink-0 items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 text-xs font-bold text-white/80 transition hover:bg-white/20"
+                >
+                  <Megaphone className="h-3.5 w-3.5" />
+                  Testar voz
+                </button>
+              </div>
             </div>
             <p className="mt-4 text-[11px] text-white/40">
               O som do recorde (bater o topo de passos) é separado e usa o arquivo do Airton — este painel é só da ultrapassagem comum.

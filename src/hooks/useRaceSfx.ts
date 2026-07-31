@@ -199,6 +199,65 @@ const PRESET_PLAY: Record<OvertakePresetId, (ctx: AudioContext) => void> = {
   sino: playSino,
 };
 
+// ===================== Narração (voz de locutor) =====================
+// A voz é a do próprio navegador (SpeechSynthesis). Três detalhes fazem ela
+// funcionar de verdade num telão que fica ligado o dia todo:
+//   1. getVoices() volta [] na primeira chamada — a lista carrega assíncrona,
+//      via evento 'voiceschanged'. Sem esperar, cai na voz padrão do Windows.
+//   2. speak() no mesmo tick de cancel() é engolido (cancel é assíncrono).
+//   3. o Chrome suspende o synth quando a aba passa horas em fullscreen; sem
+//      resume() a fala entra na fila e nunca sai.
+// Preferimos voz masculina pt-BR (Daniel, no Windows) com pitch grave pra dar
+// clima de narração esportiva.
+const VOZ_MASCULINA =
+  /(daniel|ant[oô]nio|antonio|ricardo|felipe|thiago|jo[aã]o|paulo|h[eé]lio|heitor|f[aá]bio|male|homem|man\b)/i;
+
+function escolherVoz(vozes: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  const ptBR = vozes.filter((v) => /pt[-_]?BR/i.test(v.lang));
+  const pt = ptBR.length ? ptBR : vozes.filter((v) => /^pt/i.test(v.lang));
+  return pt.find((v) => VOZ_MASCULINA.test(v.name)) || pt[0] || null;
+}
+
+// Bordões de narrador. Sorteia sem repetir a frase anterior, pra não virar
+// papagaio num telão que dispara isso o dia inteiro. Sem pronome de gênero —
+// o ranking tem gente de todo tipo e a voz não vai errar com ninguém.
+const BORDOES_ULTRAPASSAGEM: ((a: string, b: string) => string)[] = [
+  (a, b) => `Olha lá, amigos! ${a} ultrapassou ${b}!`,
+  (a, b) => `Que ultrapassagem! ${a} deixou ${b} pra trás!`,
+  (a, b) => `Tá lá! ${a} passou ${b} por dentro!`,
+  (a, b) => `Não acredito! ${a} tomou a posição de ${b}!`,
+  (a, b) => `Haja coração! ${a} ultrapassou ${b}!`,
+  (a, b) => `Voando baixo! ${a} passou ${b}!`,
+  (a, b) => `Pegou a curva e foi! ${a} deixou ${b} no retrovisor!`,
+];
+
+const BORDOES_RECORDE: ((nome: string, passos: number) => string)[] = [
+  (n, p) => `Amigos, novo recorde! ${n}, ${p} passos!`,
+  (n, p) => `Isso é história! ${n} bateu o recorde com ${p} passos!`,
+  (n, p) => `Novo recorde da casa! ${n}, ${p} passos!`,
+  (n, p) => `Tá lá o recorde! ${n}, com ${p} passos!`,
+  (n, p) => `Que fenômeno! ${n} fez ${p} passos e é o novo recorde!`,
+];
+
+function sorteiaDiferente(total: number, ultimo: number): number {
+  if (total <= 1) return 0;
+  let i = Math.floor(Math.random() * total);
+  if (i === ultimo) i = (i + 1) % total;
+  return i;
+}
+
+let ultimoUltra = -1;
+export function narracaoUltrapassagem(a: string, b: string): string {
+  ultimoUltra = sorteiaDiferente(BORDOES_ULTRAPASSAGEM.length, ultimoUltra);
+  return BORDOES_ULTRAPASSAGEM[ultimoUltra](a, b);
+}
+
+let ultimoRecorde = -1;
+export function narracaoRecorde(nome: string, passos: number): string {
+  ultimoRecorde = sorteiaDiferente(BORDOES_RECORDE.length, ultimoRecorde);
+  return BORDOES_RECORDE[ultimoRecorde](nome, passos);
+}
+
 const LS_PRESET = 'telao_overtake_preset';
 function loadPreset(): OvertakePresetId {
   try {
@@ -214,6 +273,10 @@ export interface RaceSfx {
   vroom: () => void;
   recordSound: () => void;
   say: (texto: string) => void;
+  /** Igual ao say, mas ignora o botão de som — é um teste explícito. */
+  sayPreview: (texto: string) => void;
+  /** Nome da voz que o navegador vai usar (null = nenhuma voz pt disponível). */
+  voiceName: string | null;
   enabled: boolean;
   setEnabled: (b: boolean) => void;
   preset: OvertakePresetId;
@@ -240,6 +303,13 @@ export function useRaceSfx(): RaceSfx {
   // Arquivo de recorde (opcional). fileOk vira true só quando carrega.
   const recordAudioRef = useRef<HTMLAudioElement | null>(null);
   const recordOkRef = useRef(false);
+  // Narração: lista de vozes (carrega assíncrona) + referência da fala em curso
+  // (sem guardar, o Chrome coleta a utterance no meio e a voz simplesmente some).
+  const vozesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const [voiceName, setVoiceName] = useState<string | null>(null);
+  const falaRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const falaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vozAquecidaRef = useRef(false);
 
   const getCtx = useCallback((): AudioContext | null => {
     try {
@@ -256,16 +326,70 @@ export function useRaceSfx(): RaceSfx {
     }
   }, []);
 
+  // Aquece a voz junto com o áudio: o Chrome só deixa falar depois de um gesto
+  // do usuário na página, e uma fala muda no clique já registra essa permissão.
+  const aquecerVoz = useCallback(() => {
+    if (vozAquecidaRef.current) return;
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      synth.resume();
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      u.rate = 2;
+      u.lang = 'pt-BR';
+      synth.speak(u);
+      vozAquecidaRef.current = true;
+    } catch {
+      /* sem voz — os sons continuam */
+    }
+  }, []);
+
   // Destrava o áudio no primeiro gesto (o telão pode nunca ter recebido clique).
   useEffect(() => {
-    const unlock = () => getCtx();
+    const unlock = () => {
+      getCtx();
+      aquecerVoz();
+    };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
     return () => {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
     };
-  }, [getCtx]);
+  }, [getCtx, aquecerVoz]);
+
+  // Lista de vozes: getVoices() volta [] na primeira chamada e só se popula no
+  // evento 'voiceschanged'. Sem isso, a narração cai na voz padrão do sistema.
+  useEffect(() => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+    const carregar = () => {
+      try {
+        vozesRef.current = synth.getVoices() || [];
+      } catch {
+        vozesRef.current = [];
+      }
+      setVoiceName(escolherVoz(vozesRef.current)?.name ?? null);
+    };
+    carregar();
+    synth.addEventListener?.('voiceschanged', carregar);
+    return () => synth.removeEventListener?.('voiceschanged', carregar);
+  }, []);
+
+  // O Chrome suspende o synth quando a aba passa horas em fullscreen/segundo
+  // plano: a fala vai pra fila e nunca sai. Um resume() periódico destrava.
+  useEffect(() => {
+    const id = setInterval(() => {
+      try {
+        const synth = window.speechSynthesis;
+        if (synth?.paused) synth.resume();
+      } catch {
+        /* ignora */
+      }
+    }, 10_000);
+    return () => clearInterval(id);
+  }, []);
 
   // Probe do arquivo de recorde: só marca ok quando dá pra tocar.
   useEffect(() => {
@@ -411,31 +535,62 @@ export function useRaceSfx(): RaceSfx {
     synthFanfarra();
   }, [synthFanfarra]);
 
-  const say = useCallback((texto: string) => {
-    if (!enabledRef.current) return;
+  const falarTexto = useCallback((texto: string) => {
+    const synth = window.speechSynthesis;
+    if (!synth) return;
+
+    const falar = () => {
+      try {
+        const u = new SpeechSynthesisUtterance(texto);
+        u.lang = 'pt-BR';
+        u.rate = 1.12; // um tico acelerado, como locutor
+        u.pitch = 0.9; // mais grave
+        u.volume = 1;
+        const voz = escolherVoz(vozesRef.current.length ? vozesRef.current : synth.getVoices() || []);
+        if (voz) u.voice = voz;
+        falaRef.current = u; // segura a referência até terminar (senão o GC come)
+        u.onend = () => {
+          if (falaRef.current === u) falaRef.current = null;
+        };
+        synth.resume(); // pode estar suspenso desde a última vez que a aba dormiu
+        synth.speak(u);
+      } catch {
+        /* voz indisponível — segue só com o som + banner */
+      }
+    };
+
     try {
-      const synth = window.speechSynthesis;
-      if (!synth) return;
-      const u = new SpeechSynthesisUtterance(texto);
-      u.lang = 'pt-BR';
-      u.rate = 1.08;
-      u.pitch = 1.05;
-      u.volume = 1;
-      const ptVoice =
-        synth.getVoices().find((v) => /pt[-_]?BR/i.test(v.lang)) ||
-        synth.getVoices().find((v) => /^pt/i.test(v.lang));
-      if (ptVoice) u.voice = ptVoice;
-      synth.cancel(); // evita fila acumulando em vários eventos seguidos
-      synth.speak(u);
+      if (falaTimerRef.current) clearTimeout(falaTimerRef.current);
+      // cancel() é assíncrono: falar no mesmo tick faz o Chrome engolir a fala.
+      // Só cancela quando há algo na fila, e aí espera o cancel assentar.
+      if (synth.speaking || synth.pending) {
+        synth.cancel();
+        falaTimerRef.current = setTimeout(falar, 140);
+      } else {
+        falar();
+      }
     } catch {
-      /* voz indisponível — segue só com o som + banner */
+      /* ignora */
     }
   }, []);
+
+  const say = useCallback((texto: string) => {
+    if (!enabledRef.current) return;
+    falarTexto(texto);
+  }, [falarTexto]);
+
+  // Teste explícito da narração: fala mesmo com o som desligado e, como vem de
+  // um clique, também serve de gesto que libera a voz no Chrome.
+  const sayPreview = useCallback((texto: string) => {
+    aquecerVoz();
+    falarTexto(texto);
+  }, [aquecerVoz, falarTexto]);
 
   // Silencia a fala pendente ao desmontar o telão.
   useEffect(() => {
     return () => {
       try {
+        if (falaTimerRef.current) clearTimeout(falaTimerRef.current);
         window.speechSynthesis?.cancel();
       } catch {
         /* ignora */
@@ -443,7 +598,7 @@ export function useRaceSfx(): RaceSfx {
     };
   }, []);
 
-  return { vroom, recordSound, say, enabled, setEnabled, preset, setPreset, preview };
+  return { vroom, recordSound, say, sayPreview, voiceName, enabled, setEnabled, preset, setPreset, preview };
 }
 
 // Detecta ultrapassagens comparando a ordem anterior com a nova.
