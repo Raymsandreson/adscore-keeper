@@ -597,7 +597,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     if (ids.length === 0) { setMsgActivities({}); return; }
     try {
       await ensureExternalSession();
-      const { data, error } = await (externalSupabase.from('team_message_activities') as any)
+      const { data, error } = await ((externalSupabase as any).from('team_message_activities') as any)
         .select('message_id, activity_id, activity_title')
         .in('message_id', ids);
       if (error) throw error;
@@ -630,7 +630,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         activity_title: created.title || null,
         created_by: user?.id || null,
       }));
-      const { error } = await (externalSupabase.from('team_message_activities') as any)
+      const { error } = await ((externalSupabase as any).from('team_message_activities') as any)
         .upsert(rows, { onConflict: 'message_id,activity_id' });
       if (error) throw error;
       setMsgActivities(prev => {

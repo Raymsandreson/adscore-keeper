@@ -232,7 +232,7 @@ export function StageFunnelChart({
   const { data: sheetProcesses, isLoading: sheetProcLoading } = useQuery({
     queryKey: ['pop-sheet-processes', board.id, activeFilter, activeStageId, dateFilter],
     queryFn: async () => {
-      let query = db
+      let query = (db as any)
         .from('lead_processes')
         .select('*')
         .eq('workflow_id', board.id)
