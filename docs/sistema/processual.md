@@ -111,7 +111,9 @@ A IA (Railway `suggest-revision-reason`, Gemini flash) lê o diff e **sugere mot
 
 O registro do passo antigo guarda `supersededBy` (id do passo que o substituiu) — é o único campo do sync que persiste. Ele é histórico: não é marcável, fica fora do "marcar todos" e **não entra no progresso nem na conclusão do objetivo**, para o percentual refletir o POP de hoje. Consequência esperada: um objetivo que estava 100% volta a pendente quando o POP reabre um passo.
 
-Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparando com o template — não ficam gravados no banco. Não há aprovação de gestora envolvida: quem edita o POP grava direto (inclusive por autosave), e a revisão registrada em `workflow_revisions` é histórico, não fila de aprovação.
+Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparando com o template — não ficam gravados no banco.
+
+**Perguntas do POP valem na ficha da atividade.** A barra de progresso da atividade/processo (`LeadFunnelProgressBar`) desenha as respostas configuradas no POP, tanto no passo (`item.answers`) quanto no checklist do passo (`doc.answers`) — antes só mostrava o texto, e as automações ficavam presas na página de fluxo. Cada resposta é um botão com os selos do que ela faz: **fase de destino** e **status do POP**. Escolher a resposta marca o item, grava a escolha (`selectedAnswerId`), loga no ranking, aplica o status (`leads.pop_result_id` + `log_pop_result_change`) e move o lead (em `leads.status` quando é o funil do próprio lead, sempre com registro em `lead_stage_history` no board do POP). Marcar uma pergunta direto no checkbox é bloqueado, e ela fica fora do "marcar todos" — a resposta tem que ser escolhida. Não há aprovação de gestora envolvida: quem edita o POP grava direto (inclusive por autosave), e a revisão registrada em `workflow_revisions` é histórico, não fila de aprovação.
 
 ## Audiências — `/hearings`
 
