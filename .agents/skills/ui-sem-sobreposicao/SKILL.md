@@ -29,6 +29,7 @@ Se um elemento precisa aparecer "na frente", o layout está errado — conserte 
 
 - **Título de ficha:** `line-clamp-2 flex-1 min-w-0 font-semibold` + `title={texto}` — ver o header em `src/components/activities/ActivityFullSheet.tsx`.
 - **Badge do cronômetro** (`src/components/activities/ActivityTimerOverlay.tsx`): flutuante `fixed`, arrastável. Deve **colar na borda** ao soltar e ao montar — nunca descansar no meio do conteúdo. Minimiza para o pill compacto (`hideTimer`) para reduzir a área ocupada.
+- **Borda = borda do CONTEÚDO, não da janela.** O menu lateral é `fixed z-10`; qualquer flutuante com z maior colado em `left: 0` fica **por cima dos itens do menu**. Use `contentLeftEdge()` (mede `[data-sidebar="sidebar"]:not([data-mobile])` no DOM) como limite esquerdo de clamp/snap e como `collisionPadding.left` dos popovers ancorados no flutuante. O menu troca de largura (16rem ↔ 3rem no modo ícone) — reagir com `ResizeObserver`, senão o badge volta a ficar por cima quando ele reexpande.
 
 ## Como verificar
 
