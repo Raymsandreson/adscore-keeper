@@ -101,6 +101,14 @@ A IA (Railway `suggest-revision-reason`, Gemini flash) lê o diff e **sugere mot
 
 > ⚠️ É **correlação, não causalidade**: época, time e mix de leads pesam. Abaixo de 5 resultados na janela a aba não dá veredito, só mostra a amostra.
 
+**A revisão chega nos processos que já estão andando.** Os passos que o assessor vê na ficha (`lead_checklist_instances.items`) são uma cópia do POP feita quando o processo entrou na fase — até 31/07/2026 essa cópia nunca era atualizada, então editar o POP não mudava nada em quem já tinha o passo instanciado (o POP Salário Maternidade Urbano renomeou "PEDIDO" para "REGISTRAR RESULTADO DO BENEFÍCIO" e as 92 instâncias seguiram com o texto antigo). Agora, ao abrir a atividade/processo, a instância é reconciliada com o POP atual (`src/lib/syncChecklistInstances.ts`):
+
+- **Passo ainda não marcado** → adota o conteúdo novo (nome, descrição, script, checklist do passo, automação de resposta), preservando a resposta escolhida e os documentos já marcados.
+- **Passo já marcado** → **não é reescrito**: o que foi feito fica registrado como foi feito, e o passo só ganha o selo **"alterado no POP"** (com "Agora no POP: <nome atual>") ou **"removido do POP"**.
+- **Passo não marcado que saiu do POP** → some da instância.
+
+Os selos são calculados a cada abertura, comparando com o template — não ficam gravados no banco. Não há aprovação de gestora envolvida: quem edita o POP grava direto (inclusive por autosave), e a revisão registrada em `workflow_revisions` é histórico, não fila de aprovação.
+
 ## Audiências — `/hearings`
 
 **Propósito**: agenda de audiências com visualizações Semana/Mês/Dia/Lista e sincronização com planilha externa. Cada audiência tem tipo, categoria, data/hora, fuso, status, local, responsável e observações.
