@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { cloudFunctions } from '@/lib/functionRouter';
 
 // useRaceSfx — efeitos sonoros do telão da Corrida Maluca.
 //   • vroom(): zoada de aceleração (motor cantando pneu) numa ultrapassagem comum
@@ -13,6 +14,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 // enabled fica salvo no localStorage pra o telão lembrar entre recargas.
 
 const LS_KEY = 'telao_sfx_on';
+// Voz de locutor (ElevenLabs). '0' = usa só a voz do navegador.
+const LS_NARRATOR = 'telao_voz_locutor';
 
 // Som de RECORDE: um ARQUIVO configurável toca quando alguém bate o recorde de
 // passos do período. Ordem de prioridade:
@@ -277,6 +280,11 @@ export interface RaceSfx {
   sayPreview: (texto: string) => void;
   /** Nome da voz que o navegador vai usar (null = nenhuma voz pt disponível). */
   voiceName: string | null;
+  /** Voz de locutor (ElevenLabs) ligada. Desligada = só a voz do navegador. */
+  narrator: boolean;
+  setNarrator: (b: boolean) => void;
+  /** De onde saiu a última narração — pro painel mostrar o que está valendo. */
+  lastNarration: 'locutor' | 'navegador' | null;
   enabled: boolean;
   setEnabled: (b: boolean) => void;
   preset: OvertakePresetId;
@@ -307,6 +315,22 @@ export function useRaceSfx(): RaceSfx {
   // (sem guardar, o Chrome coleta a utterance no meio e a voz simplesmente some).
   const vozesRef = useRef<SpeechSynthesisVoice[]>([]);
   const [voiceName, setVoiceName] = useState<string | null>(null);
+  // Voz de locutor (ElevenLabs via telao-narrar). Elemento de áudio reusado,
+  // cache de URL por frase (a mesma frase não paga geração duas vezes) e um
+  // "silêncio" temporário quando a rota responde que não dá (sem chave/crédito).
+  const narrAudioRef = useRef<HTMLAudioElement | null>(null);
+  const narrCacheRef = useRef<Map<string, string>>(new Map());
+  const narrOffAteRef = useRef(0);
+  const [narrator, setNarratorState] = useState<boolean>(() => {
+    try {
+      return window.localStorage.getItem(LS_NARRATOR) !== '0';
+    } catch {
+      return true;
+    }
+  });
+  const narratorRef = useRef(narrator);
+  narratorRef.current = narrator;
+  const [lastNarration, setLastNarration] = useState<'locutor' | 'navegador' | null>(null);
   const falaRef = useRef<SpeechSynthesisUtterance | null>(null);
   const falaTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const vozAquecidaRef = useRef(false);
@@ -574,17 +598,81 @@ export function useRaceSfx(): RaceSfx {
     }
   }, []);
 
+  // Voz de locutor: pede o mp3 pro telao-narrar (Railway → ElevenLabs, com
+  // cache no storage) e toca. Devolve false quando não rolou — aí quem chamou
+  // cai na voz do navegador, que é feia mas nunca deixa o telão mudo.
+  const narrarComLocutor = useCallback(async (texto: string): Promise<boolean> => {
+    if (!narratorRef.current) return false;
+    if (Date.now() < narrOffAteRef.current) return false; // silenciado após falha
+
+    try {
+      let url = narrCacheRef.current.get(texto);
+      if (!url) {
+        const { data, error } = await cloudFunctions.invoke<{
+          success: boolean;
+          audio_url?: string;
+          reason?: string;
+        }>('telao-narrar', { body: { texto } });
+
+        if (error || !data?.success || !data.audio_url) {
+          // Sem chave/crédito não adianta insistir a cada ultrapassagem:
+          // segura a camada por 30 min e narra com a voz do navegador.
+          const motivo = data?.reason || 'erro';
+          const grave = motivo === 'sem_api_key' || motivo === 'sem_credito';
+          narrOffAteRef.current = Date.now() + (grave ? 30 * 60_000 : 2 * 60_000);
+          console.warn('[telao] narração de locutor indisponível:', motivo);
+          return false;
+        }
+        url = data.audio_url;
+        // Cache pequeno: o telão repete muito as mesmas frases num dia.
+        if (narrCacheRef.current.size > 60) narrCacheRef.current.clear();
+        narrCacheRef.current.set(texto, url);
+      }
+
+      if (!narrAudioRef.current) narrAudioRef.current = new Audio();
+      const a = narrAudioRef.current;
+      a.src = url;
+      a.currentTime = 0;
+      a.volume = 1;
+      await a.play();
+      setLastNarration('locutor');
+      return true;
+    } catch (e) {
+      console.warn('[telao] falha ao tocar narração de locutor:', e);
+      narrOffAteRef.current = Date.now() + 2 * 60_000;
+      return false;
+    }
+  }, []);
+
+  const narrar = useCallback((texto: string) => {
+    void narrarComLocutor(texto).then((ok) => {
+      if (ok) return;
+      setLastNarration('navegador');
+      falarTexto(texto);
+    });
+  }, [narrarComLocutor, falarTexto]);
+
   const say = useCallback((texto: string) => {
     if (!enabledRef.current) return;
-    falarTexto(texto);
-  }, [falarTexto]);
+    narrar(texto);
+  }, [narrar]);
 
   // Teste explícito da narração: fala mesmo com o som desligado e, como vem de
   // um clique, também serve de gesto que libera a voz no Chrome.
   const sayPreview = useCallback((texto: string) => {
     aquecerVoz();
-    falarTexto(texto);
-  }, [aquecerVoz, falarTexto]);
+    narrar(texto);
+  }, [aquecerVoz, narrar]);
+
+  const setNarrator = useCallback((b: boolean) => {
+    setNarratorState(b);
+    narrOffAteRef.current = 0; // religar limpa o silêncio de uma falha anterior
+    try {
+      window.localStorage.setItem(LS_NARRATOR, b ? '1' : '0');
+    } catch {
+      /* ignora */
+    }
+  }, []);
 
   // Silencia a fala pendente ao desmontar o telão.
   useEffect(() => {
@@ -592,13 +680,18 @@ export function useRaceSfx(): RaceSfx {
       try {
         if (falaTimerRef.current) clearTimeout(falaTimerRef.current);
         window.speechSynthesis?.cancel();
+        narrAudioRef.current?.pause();
       } catch {
         /* ignora */
       }
     };
   }, []);
 
-  return { vroom, recordSound, say, sayPreview, voiceName, enabled, setEnabled, preset, setPreset, preview };
+  return {
+    vroom, recordSound, say, sayPreview, voiceName,
+    narrator, setNarrator, lastNarration,
+    enabled, setEnabled, preset, setPreset, preview,
+  };
 }
 
 // Detecta ultrapassagens comparando a ordem anterior com a nova.

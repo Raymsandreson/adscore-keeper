@@ -611,15 +611,22 @@ export default function TvAtividadesPage() {
                 </div>
               ))}
             </div>
-            {/* Narração: teste + qual voz o navegador escolheu. O clique aqui
-                também libera a fala no Chrome, que só narra depois de um gesto. */}
+            {/* Narração: voz de locutor (ElevenLabs) com a voz do navegador de
+                reserva. O clique no teste também libera a fala no Chrome. */}
             <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
               <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-black">Narração</div>
                   <div className="truncate text-xs text-white/50">
-                    {sfx.voiceName ? `Voz: ${sfx.voiceName}` : 'Nenhuma voz em português instalada neste aparelho'}
+                    {sfx.narrator ? 'Voz de locutor' : 'Voz do navegador'}
+                    {' · reserva: '}
+                    {sfx.voiceName || 'nenhuma voz em português neste aparelho'}
                   </div>
+                  {sfx.lastNarration && (
+                    <div className="mt-0.5 text-[11px] text-white/40">
+                      Última narração saiu {sfx.lastNarration === 'locutor' ? 'com a voz de locutor' : 'na voz do navegador'}
+                    </div>
+                  )}
                 </div>
                 <button
                   onClick={() => sfx.sayPreview(narracaoUltrapassagem('Maria', 'João'))}
@@ -629,6 +636,18 @@ export default function TvAtividadesPage() {
                   Testar voz
                 </button>
               </div>
+              <button
+                onClick={() => sfx.setNarrator(!sfx.narrator)}
+                className={cn(
+                  'mt-3 w-full rounded-lg px-3 py-2 text-xs font-bold transition',
+                  sfx.narrator
+                    ? 'bg-sky-400/15 text-sky-200 hover:bg-sky-400/25'
+                    : 'bg-white/10 text-white/60 hover:bg-white/20',
+                )}
+                aria-pressed={sfx.narrator}
+              >
+                {sfx.narrator ? 'Voz de locutor ligada — clique para usar só a do navegador' : 'Ligar voz de locutor'}
+              </button>
             </div>
             <p className="mt-4 text-[11px] text-white/40">
               O som do recorde (bater o topo de passos) é separado e usa o arquivo do Airton — este painel é só da ultrapassagem comum.
