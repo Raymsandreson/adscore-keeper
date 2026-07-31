@@ -64,6 +64,8 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
   const [search, setSearch] = useState('');
   const [searchResults, setSearchResults] = useState<CaseHit[]>([]);
   const [searching, setSearching] = useState(false);
+  const [caseProcs, setCaseProcs] = useState<ProcessHit[]>([]);
+  const [procPickerOpen, setProcPickerOpen] = useState(false);
 
   const cnj = snapshot.process_number.trim();
 
@@ -82,7 +84,7 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
   const fetchProcessesOfCase = async (caseId: string): Promise<ProcessHit[]> => {
     const { data } = await (db as any).from('lead_processes')
       .select('id, process_number, title, case_id, lead_id, workflow_id')
-      .eq('case_id', caseId).limit(10);
+      .eq('case_id', caseId).is('deleted_at', null).order('created_at');
     return (data as ProcessHit[]) || [];
   };
 
@@ -95,6 +97,7 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
       setSearchMode(false);
       setSearch('');
       setSearchResults([]);
+      setProcPickerOpen(false);
       try {
         let proc: ProcessHit | null = null;
         let hit: CaseHit | null = null;
@@ -122,16 +125,19 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
           }
         }
 
-        // Caso achado mas processo não: tenta os processos do caso (preferindo o CNJ da audiência)
-        if (hit && !proc) {
-          const procs = await fetchProcessesOfCase(hit.id);
-          proc = procs.find((p) => (p.process_number || '').trim() === cnj) || procs[0] || null;
+        // Lista completa de processos do caso alimenta o seletor "Trocar processo";
+        // sem processo resolvido pelo CNJ, cai no que bate com o CNJ ou no primeiro
+        let procs: ProcessHit[] = [];
+        if (hit) {
+          procs = await fetchProcessesOfCase(hit.id);
+          if (!proc) proc = procs.find((p) => (p.process_number || '').trim() === cnj) || procs[0] || null;
         }
 
         const ln = await fetchLeadName(hit?.lead_id || proc?.lead_id);
         if (!cancelled) {
           setCaso(hit);
           setProcesso(proc);
+          setCaseProcs(procs);
           setLeadName(ln);
         }
       } catch (e) {
@@ -164,10 +170,17 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
   const pickCase = async (c: CaseHit) => {
     setCaso(c);
     setSearchMode(false);
+    setProcPickerOpen(false);
     const procs = await fetchProcessesOfCase(c.id);
+    setCaseProcs(procs);
     const proc = procs.find((p) => (p.process_number || '').trim() === cnj) || procs[0] || null;
     setProcesso(proc);
     setLeadName(await fetchLeadName(c.lead_id || proc?.lead_id));
+  };
+
+  const pickProcess = (p: ProcessHit | null) => {
+    setProcesso(p);
+    setProcPickerOpen(false);
   };
 
   const assignedProfile = useMemo(
@@ -211,7 +224,7 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
           case_id: caso?.id || null,
           case_title: caso ? (caso.title || caso.case_number) : null,
           process_id: processo?.id || null,
-          process_title: processo?.title || cnj || null,
+          process_title: processo ? (processo.title || processo.process_number) : (cnj || null),
           workflow_id: processo?.workflow_id || null,
           description: descLines,
           deadline: deadlineIso,
@@ -333,6 +346,34 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
                     ? `Nenhum processo cadastrado com o número ${cnj}. A atividade será criada só com o vínculo do caso.`
                     : 'Audiência sem número de processo.'}
                 </p>
+              )}
+              {caseProcs.length > 0 && (
+                <>
+                  <Button variant="ghost" size="sm" className="mt-1 h-7 px-2 text-xs" onClick={() => setProcPickerOpen((v) => !v)}>
+                    <Search className="h-3 w-3 mr-1" /> {processo ? 'Trocar processo' : 'Escolher processo'}
+                  </Button>
+                  {procPickerOpen && (
+                    <div className="mt-2 max-h-40 overflow-auto rounded border divide-y">
+                      {caseProcs.map((p) => (
+                        <button
+                          key={p.id}
+                          className={`w-full text-left px-2 py-1.5 text-sm hover:bg-muted/60 ${processo?.id === p.id ? 'bg-emerald-50 dark:bg-emerald-900/20' : ''}`}
+                          onClick={() => pickProcess(p)}
+                        >
+                          <span className="font-mono text-xs mr-2">{p.process_number || 'sem CNJ'}</span>
+                          <span className="text-muted-foreground">{p.title}</span>
+                          {processo?.id === p.id && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 inline ml-1" />}
+                        </button>
+                      ))}
+                      <button
+                        className="w-full text-left px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/60"
+                        onClick={() => pickProcess(null)}
+                      >
+                        Nenhum — vincular a atividade só ao caso
+                      </button>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
