@@ -143,6 +143,22 @@ describe('syncInstanceItems', () => {
     expect(docs.find(d => d.id === 'd_removido_2')).toBeUndefined();
   });
 
+  it('preserva a resposta escolhida no item-pergunta do checklist do passo', () => {
+    const respondido: SyncItem[] = [{
+      ...passoNoPop,
+      checked: false,
+      docChecklist: [{ ...passoNoPop.docChecklist![0], checked: true, selectedAnswerId: 'ans_indeferido_1' }],
+    }];
+
+    const r = syncInstanceItems([passoNoPop], respondido);
+    const doc = r.items[0].docChecklist![0];
+
+    expect(doc.checked).toBe(true);
+    expect(doc.selectedAnswerId).toBe('ans_indeferido_1');
+    // Responder não é mudança de POP: nada a regravar.
+    expect(r.changed).toBe(false);
+  });
+
   it('não grava nada quando instância e POP já estão iguais', () => {
     const instancia: SyncItem[] = [{ ...passoNoPop, checked: false, docChecklist: [{ ...passoNoPop.docChecklist![0], checked: false }] }];
     const r = syncInstanceItems([passoNoPop], instancia);

@@ -37,6 +37,8 @@ export interface SyncDocItem {
   id: string;
   label?: string;
   checked?: boolean;
+  /** Resposta escolhida quando o item é uma pergunta (estado do lead). */
+  selectedAnswerId?: string;
   popChange?: PopChange;
   [key: string]: unknown;
 }
@@ -78,7 +80,7 @@ function stableStringify(value: unknown): string {
 function configOf(item: SyncItem): string {
   const { checked: _c, selectedAnswerId: _s, popChange: _p, popNewLabel: _n, docChecklist, ...rest } = item;
   const docs = (docChecklist || []).map(d => {
-    const { checked: _dc, popChange: _dp, ...docRest } = d;
+    const { checked: _dc, selectedAnswerId: _ds, popChange: _dp, ...docRest } = d;
     return docRest;
   });
   return stableStringify({ ...rest, docChecklist: docs });
@@ -97,7 +99,7 @@ function needsRedo(templateItem: SyncItem, existing: SyncItem): boolean {
 
   const docsOf = (item: SyncItem) =>
     (item.docChecklist || []).map(d => {
-      const { checked: _c, popChange: _p, ...rest } = d;
+      const { checked: _c, selectedAnswerId: _s, popChange: _p, ...rest } = d;
       return rest;
     });
   return stableStringify(docsOf(templateItem)) !== stableStringify(docsOf(existing));
@@ -150,7 +152,11 @@ function mergeDocs(
   const byId = new Map((instanceDocs || []).map(d => [d.id, d]));
   const merged: SyncDocItem[] = templateDocs.map(td => {
     const existing = byId.get(td.id);
-    return existing ? { ...td, checked: existing.checked || false } : { ...td, checked: false };
+    if (!existing) return { ...td, checked: false };
+    // Preserva o estado do lead: marcação e resposta escolhida (item-pergunta).
+    const kept: SyncDocItem = { ...td, checked: existing.checked || false };
+    if (existing.selectedAnswerId) kept.selectedAnswerId = existing.selectedAnswerId;
+    return kept;
   });
 
   const templateIds = new Set(templateDocs.map(d => d.id));

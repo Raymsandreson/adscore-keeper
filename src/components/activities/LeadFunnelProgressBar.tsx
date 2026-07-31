@@ -24,11 +24,42 @@ interface Stage {
   color: string;
 }
 
+/** RPCs do Externo que não estão nos tipos gerados (log_*, etc.). */
+type RpcResult = { error?: { message?: string } | null };
+const rpcExternal = (fn: string, args: Record<string, unknown>): PromiseLike<RpcResult> =>
+  (externalSupabase.rpc as unknown as (f: string, a: Record<string, unknown>) => PromiseLike<RpcResult>)(fn, args);
+
+/**
+ * Consulta a colunas que existem no banco mas ainda não nos tipos gerados —
+ * hoje `kanban_boards.settings` (jsonb com os status possíveis do POP).
+ */
+type LooseQuery = {
+  select: (cols: string) => LooseQuery;
+  eq: (col: string, val: string) => LooseQuery;
+  maybeSingle: () => PromiseLike<{ data: Record<string, unknown> | null }>;
+};
+const fromExternalLoose = (table: string): LooseQuery =>
+  (externalSupabase.from as unknown as (t: string) => LooseQuery)(table);
+
+// Resposta configurável de um passo-pergunta ou de um item de checklist do
+// passo. O destino da fase e o status do POP vêm da resposta escolhida.
+interface AnswerOption {
+  id: string;
+  label: string;
+  nextStageId?: string;
+  setStatusId?: string;
+}
+
 interface DocChecklistItem {
   id: string;
   label: string;
   checked?: boolean;
   type?: string;
+  nextStageId?: string;
+  setStatusId?: string;
+  answers?: AnswerOption[];
+  /** Resposta escolhida neste lead (persiste junto do items). */
+  selectedAnswerId?: string;
   /** Selo de exibição: documento marcado que saiu do POP. Não persiste. */
   popChange?: PopChange;
 }
@@ -38,6 +69,10 @@ interface ChecklistItem {
   label: string;
   description?: string;
   checked?: boolean;
+  nextStageId?: string;
+  setStatusId?: string;
+  answers?: AnswerOption[];
+  selectedAnswerId?: string;
   docChecklist?: DocChecklistItem[];
   /** Registro do passo como era antes de o POP mudar (persiste; não é marcável). */
   supersededBy?: string;
@@ -76,6 +111,12 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const [isLeadClosed, setIsLeadClosed] = useState(false);
   const [boardName, setBoardName] = useState<string>('');
   const [boardType, setBoardType] = useState<string>('');
+  // Status possíveis do POP (kanban_boards.settings.resultados) — usados no
+  // rótulo do status aplicado pela resposta escolhida.
+  const [popResultados, setPopResultados] = useState<{ id: string; label: string }[]>([]);
+  // Funil do próprio lead: só nele a fase mora em leads.status (no POP de
+  // processo a fase vem do lead_stage_history deste board).
+  const [leadBoardId, setLeadBoardId] = useState<string | null>(null);
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
@@ -85,14 +126,17 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     try {
-      const [boardRes, historyRes, leadRes, linksRes] = await Promise.all([
+      const [boardRes, historyRes, leadRes, linksRes, settingsRes] = await Promise.all([
         externalSupabase.from('kanban_boards').select('stages, board_type, name').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
         externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
         externalSupabase.from('checklist_stage_links').select('stage_id, checklist_template_id, display_order').eq('board_id', boardId),
+        fromExternalLoose('kanban_boards').select('settings').eq('id', boardId).maybeSingle(),
       ]);
       setBoardName((boardRes.data as any)?.name || '');
       setBoardType((boardRes.data as any)?.board_type || '');
+      const boardSettings = (settingsRes?.data?.settings || {}) as { resultados?: { id: string; label: string }[] };
+      setPopResultados(boardSettings.resultados || []);
 
       // Mapa da ordem projetada de cada objetivo dentro da fase.
       const orderMap: Record<string, number> = {};
@@ -107,6 +151,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       const isShowingSalesFunnel = boardData?.board_type !== 'workflow' && leadData?.board_id === boardId;
       const isClosed = isShowingSalesFunnel && (leadData?.lead_status === 'closed' || !!leadData?.became_client_date);
       setIsLeadClosed(isClosed);
+      setLeadBoardId(leadData?.board_id || null);
 
       let stageId: string | null = null;
       let parsedStages: Stage[] = [];
@@ -156,7 +201,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
       if (allInstances.length > 0) {
         const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
-        let templateNames: Record<string, string> = {};
+        const templateNames: Record<string, string> = {};
         const templateItems: Record<string, SyncItem[]> = {};
         if (templateIds.length > 0) {
           const { data: templates } = await externalSupabase
@@ -212,6 +257,77 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
   // Todo update de items passa por aqui: os selos popChange/popNewLabel são
   // calculados no load contra o template e NÃO podem ir para o banco.
+  const statusLabel = (id?: string) => popResultados.find(r => r.id === id)?.label;
+
+  // Aplica o STATUS do POP no lead (pop_result_id + data) e loga a mudança —
+  // mesma regra do WorkflowProgressView e do useChecklists.updateInstanceItem.
+  // Fire-and-forget: não bloqueia a marcação nem quebra o fluxo se falhar.
+  const applyStatusChange = (setStatusId: string) => {
+    (async () => {
+      try {
+        const { data: lead } = await externalSupabase
+          .from('leads')
+          .select('pop_result_id')
+          .eq('id', leadId)
+          .maybeSingle();
+        const from = (lead as { pop_result_id?: string | null } | null)?.pop_result_id ?? null;
+        if (from === setStatusId) return;
+        const today = new Date().toISOString().slice(0, 10);
+        await externalSupabase.from('leads').update({ pop_result_id: setStatusId, pop_result_date: today } as never).eq('id', leadId);
+        const label = statusLabel(setStatusId);
+        if (label) toast.success(`Status do POP: ${label}`);
+        if (user?.id) {
+          rpcExternal('log_pop_result_change', {
+            p_user_id: user.id,
+            p_lead_id: leadId,
+            p_board_id: boardId,
+            p_from: from,
+            p_to: setStatusId,
+            p_date: today,
+          }).then((res: { error?: { message?: string } | null }) => {
+            if (res?.error) console.warn('[LeadFunnelProgressBar] log status POP falhou:', res.error.message);
+          });
+        }
+      } catch (e) {
+        console.warn('[LeadFunnelProgressBar] aplicar status POP falhou:', e);
+      }
+    })();
+  };
+
+  // Move o lead para a fase de destino da resposta. '__finalize__' cai na fase
+  // de fechamento (ou na última). No funil do próprio lead a fase mora em
+  // leads.status; no POP de processo só o histórico manda — por isso o
+  // lead_stage_history é sempre gravado, com o board deste POP.
+  const applyStageRouting = async (destStageId: string) => {
+    const isFinalize = destStageId === '__finalize__';
+    const closedNames = ['closed', 'fechado', 'done', 'concluído', 'concluido', 'finalizado'];
+    const target = isFinalize
+      ? (stages.find(s => closedNames.includes(s.id.toLowerCase()) || closedNames.includes(s.name.toLowerCase())) || stages[stages.length - 1])
+      : stages.find(s => s.id === destStageId);
+    if (!target || target.id === currentStageId) return;
+
+    const fromStage = currentStageId;
+    try {
+      if (leadBoardId === boardId) {
+        await externalSupabase.from('leads').update({ status: target.id } as never).eq('id', leadId);
+      }
+      await externalSupabase.from('lead_stage_history').insert({
+        lead_id: leadId,
+        from_stage: fromStage,
+        to_stage: target.id,
+        from_board_id: boardId,
+        to_board_id: boardId,
+        changed_by: user?.id || null,
+      } as never);
+      setCurrentStageId(target.id);
+      setViewingStageId(null);
+      toast.success(isFinalize ? `Finalizado! Movido para: ${target.name}` : `Movido para: ${target.name}`);
+    } catch (e) {
+      console.warn('[LeadFunnelProgressBar] mover de fase falhou:', e);
+      toast.error('Erro ao mover de fase');
+    }
+  };
+
   const itemsForDb = (items: ChecklistItem[]) =>
     JSON.parse(JSON.stringify(stripDisplayFields(items as unknown as SyncItem[])));
 
@@ -225,8 +341,18 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
 
+    // Passo-pergunta: concluir é escolher uma resposta (é dela que saem a fase
+    // de destino e o status do POP). Desmarcar segue livre e limpa a escolha.
+    const target = instance.items.find(it => it.id === itemId);
+    if (target?.answers?.length && !target.checked) {
+      toast.info('Escolha uma das respostas para concluir este passo');
+      return;
+    }
+
     const updatedItems = instance.items.map(item =>
-      item.id === itemId ? { ...item, checked: !item.checked } : item
+      item.id === itemId
+        ? { ...item, checked: !item.checked, selectedAnswerId: item.checked ? undefined : item.selectedAnswerId }
+        : item
     );
 
     // Ao MARCAR, pergunta antes de gravar: "Cancelar" desiste da marcação
@@ -280,8 +406,11 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const handleMarkAllSteps = async (instance: ChecklistInstance, checked: boolean) => {
     if (instance.is_readonly) return;
 
-    // Registro histórico (supersededBy) fica fora do marcar/desmarcar todos.
-    const targets = instance.items.filter(it => !it.supersededBy && !!it.checked !== checked);
+    // Fora do marcar/desmarcar todos: registro histórico (supersededBy) e
+    // passo-pergunta ao MARCAR (a resposta tem que ser escolhida uma a uma).
+    const targets = instance.items.filter(it =>
+      !it.supersededBy && !!it.checked !== checked && !(checked && it.answers?.length)
+    );
     if (targets.length === 0) return;
 
     // Pergunta uma vez pro lote inteiro, antes de gravar: "Cancelar" desiste
@@ -293,8 +422,11 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       retroactive = timing === 'before';
     }
 
+    const targetIds = new Set(targets.map(t => t.id));
     const updatedItems = instance.items.map(item =>
-      item.supersededBy ? item : { ...item, checked }
+      targetIds.has(item.id)
+        ? { ...item, checked, selectedAnswerId: checked ? item.selectedAnswerId : undefined }
+        : item
     );
 
     const { error } = await externalSupabase
@@ -337,7 +469,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     if (instance.is_readonly) return;
 
     const docs = instance.items.find(it => it.id === itemId)?.docChecklist || [];
-    const targets = docs.filter(d => !!d.checked !== checked);
+    // Pergunta fica fora do lote ao MARCAR: a resposta é escolhida uma a uma.
+    const targets = docs.filter(d => !!d.checked !== checked && !(checked && d.answers?.length));
     if (targets.length === 0) return;
 
     let retroactive = false;
@@ -347,9 +480,17 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       retroactive = timing === 'before';
     }
 
+    const targetDocIds = new Set(targets.map(t => t.id));
     const updatedItems = instance.items.map(item =>
       item.id === itemId
-        ? { ...item, docChecklist: (item.docChecklist || []).map(d => ({ ...d, checked })) }
+        ? {
+            ...item,
+            docChecklist: (item.docChecklist || []).map(d =>
+              targetDocIds.has(d.id)
+                ? { ...d, checked, selectedAnswerId: checked ? d.selectedAnswerId : undefined }
+                : d
+            ),
+          }
         : item
     );
 
@@ -394,6 +535,12 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     const willBeChecked = !targetDoc?.checked;
     const docLabel = targetDoc?.label || 'Item de checklist';
 
+    // Pergunta: marcar exige escolher a resposta (handleAnswerDocItem).
+    if (willBeChecked && targetDoc?.answers?.length) {
+      toast.info('Escolha uma das respostas abaixo');
+      return;
+    }
+
     // Ao marcar, pergunta antes de gravar; "Cancelar" desiste da marcação.
     let retroactive = false;
     if (willBeChecked && user?.id) {
@@ -405,7 +552,9 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     const updatedItems = instance.items.map(item => {
       if (item.id !== itemId) return item;
       const docs = (item.docChecklist || []).map(d =>
-        d.id === docId ? { ...d, checked: !d.checked } : d
+        d.id === docId
+          ? { ...d, checked: !d.checked, selectedAnswerId: d.checked ? undefined : d.selectedAnswerId }
+          : d
       );
       return { ...item, docChecklist: docs };
     });
@@ -439,6 +588,123 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     setInstances(prev => prev.map(i =>
       i.id === instance.id ? { ...i, items: updatedItems } : i
     ));
+  };
+
+  /**
+   * Responde uma PERGUNTA do checklist do passo (doc.answers). Escolher a
+   * resposta é o que marca o item — daí sai o destino da fase e o status do
+   * POP (a resposta manda; o do item só vale como reserva). Desmarcar limpa a
+   * resposta e não desfaz fase/status já aplicados.
+   */
+  const handleAnswerDocItem = async (
+    instance: ChecklistInstance,
+    itemId: string,
+    doc: DocChecklistItem,
+    answer: AnswerOption,
+  ) => {
+    if (instance.is_readonly) return;
+
+    let retroactive = false;
+    if (user?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
+    const updatedItems = instance.items.map(item => {
+      if (item.id !== itemId) return item;
+      const docs = (item.docChecklist || []).map(d =>
+        d.id === doc.id ? { ...d, checked: true, selectedAnswerId: answer.id } : d
+      );
+      return { ...item, docChecklist: docs };
+    });
+
+    const { error } = await externalSupabase
+      .from('lead_checklist_instances')
+      .update({ items: itemsForDb(updatedItems) })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao registrar a resposta');
+      return;
+    }
+
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id ? { ...i, items: updatedItems } : i
+    ));
+
+    if (user?.id) {
+      rpcExternal('log_checklist_doc_item', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_doc_label: `${doc.label} — ${answer.label}`,
+        p_checked: true,
+        p_retroactive: retroactive,
+      }).then(res => {
+        if (res?.error) console.warn('[LeadFunnelProgressBar] log de resposta falhou:', res.error.message);
+      });
+    }
+
+    const statusToApply = answer.setStatusId || doc.setStatusId;
+    if (statusToApply) applyStatusChange(statusToApply);
+    const destStage = answer.nextStageId || doc.nextStageId;
+    if (destStage) await applyStageRouting(destStage);
+  };
+
+  /** Mesma mecânica, quando a pergunta é o PRÓPRIO passo (item.answers). */
+  const handleAnswerStep = async (
+    instance: ChecklistInstance,
+    item: ChecklistItem,
+    answer: AnswerOption,
+  ) => {
+    if (instance.is_readonly) return;
+
+    let retroactive = false;
+    if (user?.id) {
+      const timing = await askStepTiming();
+      if (timing === 'cancel') return;
+      retroactive = timing === 'before';
+    }
+
+    const updatedItems = instance.items.map(it =>
+      it.id === item.id ? { ...it, checked: true, selectedAnswerId: answer.id } : it
+    );
+
+    const { error } = await externalSupabase
+      .from('lead_checklist_instances')
+      .update({
+        items: itemsForDb(updatedItems),
+        is_completed: allLiveChecked(updatedItems),
+        completed_at: allLiveChecked(updatedItems) ? new Date().toISOString() : null,
+      })
+      .eq('id', instance.id);
+
+    if (error) {
+      toast.error('Erro ao registrar a resposta');
+      return;
+    }
+
+    setInstances(prev => prev.map(i =>
+      i.id === instance.id
+        ? { ...i, items: updatedItems, is_completed: allLiveChecked(updatedItems) }
+        : i
+    ));
+
+    if (user?.id) {
+      rpcExternal('log_checklist_step', {
+        p_user_id: user.id,
+        p_instance_id: instance.id,
+        p_item_label: `${item.label} — ${answer.label}`,
+        p_retroactive: retroactive,
+      }).then(res => {
+        if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+      });
+    }
+
+    const statusToApply = answer.setStatusId || item.setStatusId;
+    if (statusToApply) applyStatusChange(statusToApply);
+    const destStage = answer.nextStageId || item.nextStageId;
+    if (destStage) await applyStageRouting(destStage);
   };
 
   // Objetivos que AINDA existem no POP.
@@ -772,6 +1038,29 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                             )}
                           </label>
 
+                          {/* Passo-pergunta: concluir = escolher a resposta. */}
+                          {(item.answers?.length || 0) > 0 && !item.checked && !isHistory && !instance.is_readonly && (
+                            <div className="ml-6 mb-1 flex flex-col gap-1">
+                              {item.answers!.map(ans => (
+                                <AnswerButton
+                                  key={ans.id}
+                                  answer={ans}
+                                  stages={stages}
+                                  statusLabel={statusLabel}
+                                  onClick={() => handleAnswerStep(instance, item, ans)}
+                                />
+                              ))}
+                            </div>
+                          )}
+                          {(item.answers?.length || 0) > 0 && item.checked && (
+                            <p className="ml-6 text-[10px] text-purple-600 dark:text-purple-400 break-words">
+                              Resposta:{' '}
+                              <span className="font-medium">
+                                {item.answers!.find(a => a.id === item.selectedAnswerId)?.label || '—'}
+                              </span>
+                            </p>
+                          )}
+
                           {/* Checklist associado ao passo (documentos/requisitos/etc.):
                               antes nem aparecia aqui — agora é visível e marcável. */}
                           {item.docChecklist && item.docChecklist.length > 0 && (() => {
@@ -804,9 +1093,14 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                   })()}
                                 </div>
                                 <div className="space-y-0.5">
-                                  {item.docChecklist.map(doc => (
+                                  {item.docChecklist.map(doc => {
+                                    // Item-pergunta: marcar é escolher uma das respostas —
+                                    // é dela que saem a fase de destino e o status do POP.
+                                    const docAnswers = doc.answers || [];
+                                    const chosenDocAnswer = docAnswers.find(a => a.id === doc.selectedAnswerId);
+                                    return (
+                                    <div key={doc.id}>
                                     <label
-                                      key={doc.id}
                                       className={cn(
                                         "flex items-center gap-1.5 text-[11px] py-0.5",
                                         instance.is_readonly ? "cursor-default" : "cursor-pointer",
@@ -830,7 +1124,29 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                         </span>
                                       )}
                                     </label>
-                                  ))}
+
+                                    {docAnswers.length > 0 && !doc.checked && !isHistory && !instance.is_readonly && (
+                                      <div className="ml-4.5 mt-0.5 mb-1 flex flex-col gap-1">
+                                        {docAnswers.map(ans => (
+                                          <AnswerButton
+                                            key={ans.id}
+                                            answer={ans}
+                                            stages={stages}
+                                            statusLabel={statusLabel}
+                                            onClick={() => handleAnswerDocItem(instance, item.id, doc, ans)}
+                                          />
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {docAnswers.length > 0 && doc.checked && (
+                                      <p className="ml-5 text-[10px] text-purple-600 dark:text-purple-400 break-words">
+                                        Resposta: <span className="font-medium">{chosenDocAnswer?.label || '—'}</span>
+                                      </p>
+                                    )}
+                                    </div>
+                                    );
+                                  })}
                                 </div>
                               </div>
                             );
@@ -850,5 +1166,50 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         </div>
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+/**
+ * Botão de resposta de uma pergunta do POP (passo-pergunta ou item de
+ * checklist do passo). Mostra, junto do texto, para onde a resposta leva o
+ * processo: a fase de destino e o status do POP que ela aplica — os mesmos
+ * selos da visão de fluxo, para o assessor decidir sabendo o efeito.
+ */
+function AnswerButton({
+  answer,
+  stages,
+  statusLabel,
+  onClick,
+}: {
+  answer: AnswerOption;
+  stages: Stage[];
+  statusLabel: (id?: string) => string | undefined;
+  onClick: () => void;
+}) {
+  const destName = answer.nextStageId === '__finalize__'
+    ? 'Finalizar'
+    : stages.find(s => s.id === answer.nextStageId)?.name;
+  const status = statusLabel(answer.setStatusId);
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); onClick(); }}
+      className="w-full flex items-start justify-between gap-2 rounded border border-border bg-background px-2 py-1 text-left text-[11px] hover:bg-accent/60 transition-colors"
+    >
+      <span className="min-w-0 break-words">{answer.label}</span>
+      <span className="flex items-center gap-1 shrink-0">
+        {destName && (
+          <span className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] whitespace-nowrap">
+            → {destName}
+          </span>
+        )}
+        {status && (
+          <span className="px-1 py-px rounded bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400 text-[9px] whitespace-nowrap">
+            {status}
+          </span>
+        )}
+      </span>
+    </button>
   );
 }
