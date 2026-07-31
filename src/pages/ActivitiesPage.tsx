@@ -4257,8 +4257,14 @@ const ActivitiesPage = () => {
             )}
           </div>
 
-          {/* Activity list - scrollable like WhatsApp chat */}
-          <div className="flex-1 overflow-y-auto bg-muted/10">
+          {/* Activity list - scrollable like WhatsApp chat.
+              paddingBottom = altura do cronômetro flutuante (canto de baixo):
+              sem isso o último card nasce embaixo dele e não dá pra clicar em
+              concluir. A var vem do ActivityTimerOverlay. (skill: ui-sem-sobreposicao) */}
+          <div
+            className="flex-1 overflow-y-auto bg-muted/10"
+            style={{ paddingBottom: 'var(--timer-dock-h, 0px)' }}
+          >
             {selectedCalDays.length > 0 && (
               <div className="sticky top-0 z-10 flex justify-center py-1.5">
                 <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-full px-2">
@@ -5129,8 +5135,8 @@ const ActivitiesPage = () => {
               </button>
             </div>
 
-            {/* Form body - scrollable */}
-            <div className="flex-1 overflow-y-auto p-4">
+            {/* Form body - scrollable (reserva o rodapé do cronômetro flutuante) */}
+            <div className="flex-1 overflow-y-auto p-4" style={{ paddingBottom: 'var(--timer-dock-h, 0px)' }}>
               <div className="max-w-[1200px] mx-auto">
                 {activityFormContent}
 

@@ -261,6 +261,7 @@ function useDraggablePosition() {
   const movedRef = useRef(false);
   const offsetRef = useRef({ x: 0, y: 0 });
   const elRef = useRef<HTMLElement | null>(null);
+  const dockRoRef = useRef<ResizeObserver | null>(null);
 
   const clamp = (x: number, y: number) => {
     const el = elRef.current;
@@ -272,19 +273,22 @@ function useDraggablePosition() {
     return { x: Math.max(minX, Math.min(x, maxX)), y: Math.max(EDGE_GUTTER, Math.min(y, maxY)) };
   };
 
-  // Cola na borda vertical (esquerda/direita) mais próxima do centro do badge.
-  // Assim o cronômetro flutuante nunca descansa no meio do conteúdo — fica só nas
-  // margens, sem cobrir títulos/campos. A borda esquerda é a do CONTEÚDO (depois
-  // do menu lateral), nunca a da janela. (skill: ui-sem-sobreposicao)
+  // Cola no CANTO DE BAIXO da área livre (esquerda ou direita, o que estiver mais
+  // perto). Só travar o X não bastava: parado no meio da tela o badge cobria a
+  // linha de botões dos cards (não dava pra clicar em concluir). No rodapé ele é
+  // previsível e as listas reservam espaço via --timer-dock-h.
+  // A borda esquerda é a do CONTEÚDO (depois do menu lateral), nunca a da janela.
+  // (skill: ui-sem-sobreposicao)
   const snapToEdge = (x: number, y: number) => {
     const el = elRef.current;
     const w = el?.offsetWidth ?? 160;
+    const h = el?.offsetHeight ?? 40;
     const minX = contentLeftEdge();
     const maxX = Math.max(minX, window.innerWidth - w - EDGE_GUTTER);
     const c = clamp(x, y);
     const center = c.x + w / 2;
     const contentCenter = (minX + window.innerWidth) / 2;
-    return { x: center < contentCenter ? minX : maxX, y: c.y };
+    return { x: center < contentCenter ? minX : maxX, y: window.innerHeight - h - EDGE_GUTTER };
   };
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
@@ -320,11 +324,12 @@ function useDraggablePosition() {
     }
   }, [pos]);
 
-  // Reajusta se a janela encolher
+  // Reajusta se a janela mudar de tamanho — volta pro canto de baixo.
   useEffect(() => {
-    const onResize = () => setPos((p) => (p ? clamp(p.x, p.y) : p));
+    const onResize = () => setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Corrige posição salva antiga que tenha ficado no meio do conteúdo (ou por
@@ -348,12 +353,31 @@ function useDraggablePosition() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // O ref só chega depois da 1ª posição: reclampa com largura/altura reais — o
-  // fallback 160x40 pode deixar o badge estourando a borda de baixo.
+  // O ref só chega depois da 1ª posição: recola com largura/altura reais — o
+  // fallback 160x40 deixaria o badge estourando a borda de baixo.
+  // Também publica `--timer-dock-h` = altura ocupada no rodapé. Quem tem rolagem
+  // própria consome como padding-bottom, senão a última linha da lista nasce
+  // embaixo do cronômetro e não dá pra clicar nela. (skill: ui-sem-sobreposicao)
   const setElRef = useCallback((el: HTMLElement | null) => {
     elRef.current = el;
-    if (el) setPos((p) => (p ? clamp(p.x, p.y) : p));
+    dockRoRef.current?.disconnect();
+    dockRoRef.current = null;
+    const root = document.documentElement;
+    if (!el) { root.style.setProperty('--timer-dock-h', '0px'); return; }
+    setPos((p) => (p ? snapToEdge(p.x, p.y) : p));
+    const sync = () => root.style.setProperty('--timer-dock-h', `${el.offsetHeight + EDGE_GUTTER * 2}px`);
+    sync();
+    if (typeof ResizeObserver !== 'undefined') {
+      dockRoRef.current = new ResizeObserver(sync);
+      dockRoRef.current.observe(el);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Sem cronômetro na tela, ninguém reserva rodapé.
+  useEffect(() => () => {
+    dockRoRef.current?.disconnect();
+    document.documentElement.style.setProperty('--timer-dock-h', '0px');
   }, []);
 
   const wasDragged = () => movedRef.current;
