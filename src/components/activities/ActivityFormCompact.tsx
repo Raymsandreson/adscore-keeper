@@ -17,7 +17,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Search, X, ChevronDown, Copy, Loader2, UserPlus, Building2, Briefcase, Send, Info, Settings2, FileText, Plus, Mic, Check, Star, Eye, Users, Sparkles } from 'lucide-react';
-import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
+import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
 import { reviewActivityWithAI, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -692,8 +692,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     [props.teamMembers],
   );
   const [detailsOpen, setDetailsOpen] = useState(true);
-  // Chat interno da equipe (colapsável) + estado de "Revisar com IA" no feedback.
-  const [chatOpen, setChatOpen] = useState(false);
+  // Estado de "Revisar com IA" no feedback.
   const [summarizing, setSummarizing] = useState(false);
   const [expandedFieldKey, setExpandedFieldKey] = useState<string | null>(null);
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
@@ -1176,35 +1175,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
 
-      {/* Chat interno da equipe + Feedback — só em atividade INTERNA (demanda de
-          membro para membro). Retorno do responsável; observadores recebem popup ao salvar. */}
+      {/* Chat interno da equipe — em QUALQUER atividade (não só nas internas) e
+          aberto por padrão, igual à ficha de lead/processo/caso/conversa. */}
+      {props.selectedActivity?.id && (
+        <EntityTeamChatDock
+          entityType="activity"
+          entityId={props.selectedActivity.id}
+          entityName={props.formTitle}
+          height={240}
+        />
+      )}
+
+      {/* Feedback — só em atividade INTERNA (demanda de membro para membro).
+          Retorno do responsável; observadores recebem popup ao salvar. */}
       {props.setFormFeedback && props.formIsSystem && (
         <div className="space-y-2">
-          {/* Chat interno da equipe embutido (colapsável). Só após a atv existir. */}
-          {props.selectedActivity?.id && (
-            <div className="rounded-lg border border-primary/20 overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setChatOpen(o => !o)}
-                className="w-full flex items-center justify-between px-2.5 py-1.5 bg-primary/5 hover:bg-primary/10 transition-colors"
-              >
-                <span className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
-                  <Users className="h-3.5 w-3.5" /> Chat interno da equipe
-                </span>
-                <ChevronDown className={cn("h-3.5 w-3.5 text-primary transition-transform", chatOpen && "rotate-180")} />
-              </button>
-              {chatOpen && (
-                <div className="h-64 bg-background border-t">
-                  <TeamChatPanel
-                    entityType="activity"
-                    entityId={props.selectedActivity.id}
-                    entityName={props.formTitle}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Feedback da atv (resumo do que foi dito e feito) */}
           <div>
             <div className="flex items-center justify-between mb-0.5">
