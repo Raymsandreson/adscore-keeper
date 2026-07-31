@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { insertChecklistInstancesTolerant } from '@/lib/checklistInstanceInsert';
+import { isStepBlockedBySubItems, pendingSubItemsMessage } from '@/lib/stepSubitems';
 
 export type ChecklistType = 'documentos' | 'requisitos' | 'perguntas' | 'verificacao' | 'outro';
 
@@ -25,6 +26,12 @@ export interface DocChecklistItem {
    */
   popChange?: 'alterado' | 'removido';
   type?: ChecklistType;
+  /**
+   * "Não se aplica" a este caso: destrava o passo sem afirmar que o item foi
+   * feito. É o escape da regra de src/lib/stepSubitems.ts — sem ele, item que
+   * não cabe no caso travaria o passo e o assessor marcaria tudo só pra sair.
+   */
+  notApplicable?: boolean;
   nextStageId?: string;
   setStatusId?: string; // ao marcar, define o STATUS do POP do lead (id em settings.resultados)
   answers?: StepAnswerOption[]; // pergunta com respostas: o destino vem da resposta escolhida (ignora nextStageId)
@@ -421,6 +428,16 @@ export const useChecklists = () => {
     // "Cancelar" não deixe rastro (nem checked, nem status do POP).
     const prevById = new Map(prevItems.map(p => [p.id, !!p.checked]));
     const newlyChecked = items.filter(it => it.checked && !prevById.get(it.id));
+
+    // Sub-item do passo é CONDIÇÃO, não pontuação: passo com item de checklist
+    // em aberto não fecha (ver src/lib/stepSubitems.ts). Devolver false faz quem
+    // chamou descartar a marcação otimista — nada é gravado nem logado.
+    const blocked = newlyChecked.filter(isStepBlockedBySubItems);
+    if (blocked.length > 0) {
+      toast.info(pendingSubItemsMessage(blocked[0]));
+      return false;
+    }
+
     let retroactive = false;
     if (newlyChecked.length > 0 && user?.id) {
       const timing = await askStepTiming(newlyChecked.length);

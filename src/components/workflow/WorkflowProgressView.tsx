@@ -25,6 +25,7 @@ import { ChecklistItem, LeadChecklistInstance, DocChecklistItem, CHECKLIST_TYPES
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
+import { isStepBlockedBySubItems, pendingSubItemsMessage } from '@/lib/stepSubitems';
 import {
   syncInstanceItems,
   stripDisplayFields,
@@ -339,6 +340,55 @@ export function WorkflowProgressView({
     return live.length > 0 && live.every(i => i.checked);
   };
 
+  /**
+   * Passo com o checklist visto pela sessão: o que já está no banco mais o que
+   * foi marcado agora nesta tela (docCheckStates). Sem isso, a regra de
+   * conferência (src/lib/stepSubitems.ts) veria como pendente o item que o
+   * assessor acabou de marcar aqui.
+   */
+  const stepWithSessionDocs = (item: ChecklistItem | undefined): ChecklistItem | undefined => {
+    if (!item?.docChecklist?.length) return item;
+    const local = docCheckStates[item.id] || {};
+    return {
+      ...item,
+      docChecklist: item.docChecklist.map(d => ({ ...d, checked: !!d.checked || !!local[d.id] })),
+    };
+  };
+
+  /** Trava do passo por sub-item em aberto — mesma regra das outras telas. */
+  const blockedBySubItems = (item: ChecklistItem | undefined): boolean =>
+    isStepBlockedBySubItems(stepWithSessionDocs(item));
+
+  /**
+   * Marcação do sub-item PERSISTE (antes era só estado local da sessão, então
+   * quem reabria a tela via o checklist zerado mesmo tendo conferido tudo — e
+   * com a trava nova isso seria um passo impossível de fechar).
+   */
+  const persistDocPatch = async (
+    instance: LeadChecklistInstance,
+    itemId: string,
+    docId: string,
+    patch: Partial<DocChecklistItem>,
+  ) => {
+    if (instance.id.startsWith('placeholder-')) return;
+    const updatedItems = instance.items.map(it =>
+      it.id !== itemId
+        ? it
+        : { ...it, docChecklist: (it.docChecklist || []).map(d => (d.id === docId ? { ...d, ...patch } : d)) }
+    );
+    setInstances(prev => prev.map(i => (i.id === instance.id ? { ...i, items: updatedItems } : i)));
+    const { error } = await supabase
+      .from('lead_checklist_instances')
+      .update({
+        items: JSON.parse(JSON.stringify(stripDisplayFields(updatedItems as unknown as SyncItem[]))),
+      })
+      .eq('id', instance.id);
+    if (error) {
+      console.warn('[WorkflowProgressView] gravar item do checklist falhou:', error.message);
+      toast.error('Erro ao atualizar item do checklist');
+    }
+  };
+
   const handleToggleItem = async (instance: LeadChecklistInstance, itemId: string) => {
     if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
 
@@ -348,6 +398,12 @@ export function WorkflowProgressView({
     // Passo-pergunta: concluir exige escolher uma das respostas configuradas.
     if (willBeChecked && targetItem?.answers?.length) {
       toast.info('Escolha uma das respostas para concluir este passo');
+      return;
+    }
+
+    // Checklist do passo é condição: item em aberto trava a conclusão.
+    if (willBeChecked && blockedBySubItems(targetItem)) {
+      toast.info(pendingSubItemsMessage(stepWithSessionDocs(targetItem)));
       return;
     }
 
@@ -430,6 +486,12 @@ export function WorkflowProgressView({
     const answer = targetItem?.answers?.find(a => a.id === answerId);
     if (!targetItem || !answer) return;
 
+    // Responder também conclui o passo — logo, vale a mesma trava do checklist.
+    if (blockedBySubItems(targetItem)) {
+      toast.info(pendingSubItemsMessage(stepWithSessionDocs(targetItem)));
+      return;
+    }
+
     // Mesma pergunta dos passos comuns, antes de gravar: "Cancelar" desiste da
     // resposta (não conclui o passo, não roteia, não muda status).
     let retroactive = false;
@@ -502,7 +564,16 @@ export function WorkflowProgressView({
     if (instance.is_readonly || instance.id.startsWith('placeholder-')) return;
 
     const isQuestion = (it: ChecklistItem) => !!it.answers?.length;
-    const targets = instance.items.filter(it => !isQuestion(it) && !it.supersededBy && !!it.checked !== checked);
+    const candidates = instance.items.filter(it => !isQuestion(it) && !it.supersededBy && !!it.checked !== checked);
+    // Passo com checklist em aberto fica de fora do lote: o item a item é o
+    // ponto da regra (src/lib/stepSubitems.ts).
+    const targets = checked ? candidates.filter(it => !blockedBySubItems(it)) : candidates;
+    const travados = candidates.length - targets.length;
+    if (travados > 0) {
+      toast.info(travados === 1
+        ? '1 passo ficou de fora: tem item de checklist em aberto'
+        : `${travados} passos ficaram de fora: têm itens de checklist em aberto`);
+    }
     if (targets.length === 0) return;
 
     // Uma pergunta pro lote inteiro, antes de gravar: "Cancelar" desiste de tudo.
@@ -513,10 +584,13 @@ export function WorkflowProgressView({
       retroactive = timing === 'before';
     }
 
+    // Só os alvos que sobreviveram ao filtro acima — passo travado por checklist
+    // continua desmarcado, e por isso o objetivo também não fecha.
+    const targetIds = new Set(targets.map(t => t.id));
     const updatedItems = instance.items.map(item =>
-      isQuestion(item) || item.supersededBy
-        ? item
-        : { ...item, checked, selectedAnswerId: checked ? item.selectedAnswerId : undefined }
+      targetIds.has(item.id)
+        ? { ...item, checked, selectedAnswerId: checked ? item.selectedAnswerId : undefined }
+        : item
     );
     const allChecked = allLiveChecked(updatedItems);
 
@@ -970,7 +1044,10 @@ export function WorkflowProgressView({
                                                   </div>
                                                   <div className="space-y-1">
                                                     {item.docChecklist.map(doc => {
-                                                      const isDocChecked = docCheckStates[item.id]?.[doc.id] || false;
+                                                      // Banco primeiro (agora persiste); o estado local só
+                                                      // cobre o intervalo até o update voltar.
+                                                      const isDocChecked = !!doc.checked || docCheckStates[item.id]?.[doc.id] || false;
+                                                      const isDocNA = !!doc.notApplicable;
                                                       const docHasAnswers = !!doc.answers?.length;
                                                       const chosenAnswer = docHasAnswers
                                                         ? doc.answers!.find(a => a.id === docAnswerStates[item.id]?.[doc.id])
@@ -985,6 +1062,7 @@ export function WorkflowProgressView({
                                                         >
                                                           <Checkbox
                                                             checked={isDocChecked}
+                                                            disabled={isDocNA}
                                                             onCheckedChange={(checked) => {
                                                               // Pergunta com respostas: marcar exige escolher uma resposta
                                                               if (checked && docHasAnswers) {
@@ -998,6 +1076,12 @@ export function WorkflowProgressView({
                                                                   [doc.id]: !!checked,
                                                                 },
                                                               }));
+                                                              // Agora grava: o checklist do passo é condição pra
+                                                              // fechá-lo, então não pode viver só na sessão.
+                                                              persistDocPatch(objective.instance, item.id, doc.id, {
+                                                                checked: !!checked,
+                                                                ...(checked ? {} : { selectedAnswerId: undefined }),
+                                                              });
                                                               // Desmarcar limpa a resposta escolhida
                                                               if (!checked && docHasAnswers) {
                                                                 setDocAnswerStates(prev => ({
@@ -1018,10 +1102,28 @@ export function WorkflowProgressView({
                                                           />
                                                           <span className={cn(
                                                             "text-xs flex-1",
-                                                            isDocChecked && "line-through text-muted-foreground"
+                                                            (isDocChecked || isDocNA) && "line-through text-muted-foreground"
                                                           )}>
                                                             {doc.label}
                                                           </span>
+                                                          {/* Escape do item que não cabe neste caso: destrava o
+                                                              passo sem afirmar que foi feito. Não é trabalho,
+                                                              então não entra no ranking. */}
+                                                          {!isReadonly && !isDocChecked && (
+                                                            <button
+                                                              type="button"
+                                                              className="shrink-0 text-[9px] text-muted-foreground hover:text-foreground hover:underline"
+                                                              onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                persistDocPatch(objective.instance, item.id, doc.id, {
+                                                                  notApplicable: !isDocNA,
+                                                                });
+                                                              }}
+                                                            >
+                                                              {isDocNA ? 'aplica-se' : 'não se aplica'}
+                                                            </button>
+                                                          )}
                                                           {doc.popChange === 'removido' && (
                                                             <Badge
                                                               variant="secondary"

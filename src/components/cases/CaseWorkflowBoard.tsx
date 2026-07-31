@@ -12,6 +12,7 @@ import { CheckCircle2, Circle, ChevronRight, ArrowRight, Workflow, ListChecks, M
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
+import { isStepBlockedBySubItems, pendingSubItems } from '@/lib/stepSubitems';
 import { KanbanStage } from '@/hooks/useKanbanBoards';
 import { insertChecklistInstancesTolerant } from '@/lib/checklistInstanceInsert';
 import { cn } from '@/lib/utils';
@@ -29,7 +30,7 @@ interface ChecklistItemData {
   description?: string;
   checked?: boolean;
   script?: string;
-  docChecklist?: { id: string; label: string; checked?: boolean; type?: string }[];
+  docChecklist?: { id: string; label: string; checked?: boolean; notApplicable?: boolean; type?: string }[];
 }
 
 interface ChecklistInstance {
@@ -459,6 +460,16 @@ function ProcessStageChecklists({
 
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
+
+    // Aqui o checklist do passo só aparece como resumo (tooltip), não é
+    // marcável — então a trava manda resolver onde dá pra resolver, em vez de
+    // deixar marcar por fora do procedimento (src/lib/stepSubitems.ts).
+    const target = instance.items.find(it => it.id === itemId);
+    if (!target?.checked && isStepBlockedBySubItems(target)) {
+      const n = pendingSubItems(target).length;
+      toast.info(`Confira o checklist deste passo na ficha da atividade — ${n} ${n === 1 ? 'item em aberto' : 'itens em aberto'}`);
+      return;
+    }
 
     const updatedItems = instance.items.map(item =>
       item.id === itemId ? { ...item, checked: !item.checked } : item

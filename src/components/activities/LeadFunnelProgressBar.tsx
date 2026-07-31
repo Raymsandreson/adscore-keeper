@@ -21,6 +21,7 @@ import {
   normalizeLabel as normalizePopLabel,
   mirrorLabelsOf as mirrorLabels,
 } from '@/lib/popAnswerMirror';
+import { isStepBlockedBySubItems, pendingSubItemsMessage } from '@/lib/stepSubitems';
 
 interface Stage {
   id: string;
@@ -72,6 +73,8 @@ interface DocChecklistItem {
   id: string;
   label: string;
   checked?: boolean;
+  /** "Não se aplica" a este caso (persiste): destrava o passo sem dizer que foi feito. */
+  notApplicable?: boolean;
   type?: string;
   nextStageId?: string;
   setStatusId?: string;
@@ -367,6 +370,13 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       return;
     }
 
+    // Sub-item em aberto trava o passo (src/lib/stepSubitems.ts). Item que não
+    // cabe no caso sai do caminho pelo "não se aplica", não pela marcação falsa.
+    if (!target?.checked && isStepBlockedBySubItems(target)) {
+      toast.info(pendingSubItemsMessage(target));
+      return;
+    }
+
     // Desmarcar a pergunta desfaz também o item de checklist que a resposta
     // tinha marcado — a escolha deixou de existir.
     const updatedItems = instance.items.map(item => {
@@ -436,11 +446,20 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   const handleMarkAllSteps = async (instance: ChecklistInstance, checked: boolean) => {
     if (instance.is_readonly) return;
 
-    // Fora do marcar/desmarcar todos: registro histórico (supersededBy) e
-    // passo-pergunta ao MARCAR (a resposta tem que ser escolhida uma a uma).
-    const targets = instance.items.filter(it =>
+    // Fora do marcar/desmarcar todos: registro histórico (supersededBy),
+    // passo-pergunta ao MARCAR (a resposta tem que ser escolhida uma a uma) e
+    // passo com sub-item em aberto (o checklist do passo tem que ser conferido
+    // item a item — src/lib/stepSubitems.ts).
+    const candidates = instance.items.filter(it =>
       !it.supersededBy && !!it.checked !== checked && !(checked && it.answers?.length)
     );
+    const targets = checked ? candidates.filter(it => !isStepBlockedBySubItems(it)) : candidates;
+    const travados = candidates.length - targets.length;
+    if (travados > 0) {
+      toast.info(travados === 1
+        ? '1 passo ficou de fora: tem item de checklist em aberto'
+        : `${travados} passos ficaram de fora: têm itens de checklist em aberto`);
+    }
     if (targets.length === 0) return;
 
     // Pergunta uma vez pro lote inteiro, antes de gravar: "Cancelar" desiste
@@ -459,12 +478,16 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         : item
     );
 
+    // Conclusão recalculada dos itens (não é mais `checked` direto): com passo
+    // travado por sub-item, o objetivo não fecha só porque clicaram em "marcar
+    // todos" — senão fase e objetivo contariam o que o passo não contou.
+    const objetivoFechado = allLiveChecked(updatedItems);
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
       .update({
         items: itemsForDb(updatedItems),
-        is_completed: checked,
-        completed_at: checked ? new Date().toISOString() : null,
+        is_completed: objetivoFechado,
+        completed_at: objetivoFechado ? new Date().toISOString() : null,
       })
       .eq('id', instance.id);
 
@@ -474,7 +497,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
 
     setInstances(prev => prev.map(i =>
-      i.id === instance.id ? { ...i, items: updatedItems, is_completed: checked } : i
+      i.id === instance.id ? { ...i, items: updatedItems, is_completed: objetivoFechado } : i
     ));
 
     // Só marcação entra no log (desmarcar segue sem log, igual ao toggle individual).
@@ -492,44 +515,31 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     }
   };
 
-  // Marca/desmarca TODOS os itens do checklist de um passo. Mesma regra do
-  // sub-item individual: não altera a conclusão do passo, e pergunta o timing
-  // uma vez só ao marcar (desmarcar é sempre "agora", o ranking conta líquido).
-  const handleMarkAllDocs = async (instance: ChecklistInstance, itemId: string, checked: boolean) => {
+  /**
+   * "Não se aplica" no sub-item: destrava o passo sem afirmar que o item foi
+   * feito. É o escape da regra de conferência (src/lib/stepSubitems.ts) — sem
+   * ele, item que não cabe no caso travaria o passo e o assessor marcaria tudo
+   * só pra sair. NÃO entra no ranking: não é trabalho, é uma decisão sobre o
+   * caso. Clicar de novo desfaz.
+   *
+   * Substituiu o "Marcar todos" dos sub-itens (removido de propósito): enquanto
+   * um clique fechava os 20 itens de uma vez, ninguém lia nenhum — 67% dos
+   * passos com sub-item eram concluídos sem conferir um só (medido em 31/07/2026).
+   */
+  const handleToggleDocNotApplicable = async (instance: ChecklistInstance, itemId: string, docId: string) => {
     if (instance.is_readonly) return;
 
-    const step = instance.items.find(it => it.id === itemId);
-    const docs = step?.docChecklist || [];
-    // Fora do lote: item-pergunta ao MARCAR (a resposta é escolhida uma a uma)
-    // e o espelho de resposta do passo (quem manda nele é a resposta).
-    const mirrors = mirrorLabelsOf(step || {});
-    const targets = docs.filter(d =>
-      !!d.checked !== checked
-      && !(checked && d.answers?.length)
-      && !mirrors.has(normalizeLabel(d.label))
-    );
-    if (targets.length === 0) return;
-
-    let retroactive = false;
-    if (checked && user?.id) {
-      const timing = await askStepTiming(targets.length);
-      if (timing === 'cancel') return;
-      retroactive = timing === 'before';
-    }
-
-    const targetDocIds = new Set(targets.map(t => t.id));
-    const updatedItems = instance.items.map(item =>
-      item.id === itemId
-        ? {
-            ...item,
-            docChecklist: (item.docChecklist || []).map(d =>
-              targetDocIds.has(d.id)
-                ? { ...d, checked, selectedAnswerId: checked ? d.selectedAnswerId : undefined }
-                : d
-            ),
-          }
-        : item
-    );
+    const updatedItems = instance.items.map(item => {
+      if (item.id !== itemId) return item;
+      const docs = (item.docChecklist || []).map(d =>
+        d.id === docId
+          // Marcar como "não se aplica" limpa a marcação de feito: são
+          // respostas concorrentes para o mesmo item.
+          ? { ...d, notApplicable: !d.notApplicable, checked: d.notApplicable ? d.checked : false }
+          : d
+      );
+      return { ...item, docChecklist: docs };
+    });
 
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
@@ -537,27 +547,13 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       .eq('id', instance.id);
 
     if (error) {
-      toast.error('Erro ao atualizar checklist do passo');
+      toast.error('Erro ao atualizar item do checklist');
       return;
     }
 
     setInstances(prev => prev.map(i =>
       i.id === instance.id ? { ...i, items: updatedItems } : i
     ));
-
-    if (user?.id) {
-      for (const d of targets) {
-        (externalSupabase as any).rpc('log_checklist_doc_item', {
-          p_user_id: user.id,
-          p_instance_id: instance.id,
-          p_doc_label: d.label,
-          p_checked: checked,
-          p_retroactive: retroactive,
-        }).then((res: { error?: { message?: string } | null }) => {
-          if (res?.error) console.warn('[LeadFunnelProgressBar] log de sub-item falhou:', res.error.message);
-        });
-      }
-    }
   };
 
   // Marca/desmarca um item do checklist ASSOCIADO ao passo (docChecklist).
@@ -1111,7 +1107,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                           {item.docChecklist && item.docChecklist.length > 0 && (() => {
                             const checklistType = item.docChecklist[0]?.type || 'documentos';
                             const typeInfo = CHECKLIST_TYPES.find(t => t.value === checklistType) || CHECKLIST_TYPES[0];
-                            const docDone = item.docChecklist.filter(d => d.checked).length;
+                            const docDone = item.docChecklist.filter(d => d.checked || d.notApplicable).length;
                             // Itens que repetem as respostas do passo: a escolha da
                             // resposta é que marca (e desmarca) esses.
                             const stepMirrors = mirrorLabelsOf(item);
@@ -1124,21 +1120,14 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                       {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
                                     </span>
                                   </div>
-                                  {!instance.is_readonly && !isHistory && item.docChecklist.length > 1 && (() => {
-                                    const allDocsChecked = docDone === item.docChecklist!.length;
-                                    return (
-                                      <button
-                                        type="button"
-                                        className="text-[9px] shrink-0 text-orange-700 dark:text-orange-400 hover:underline"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleMarkAllDocs(instance, item.id, !allDocsChecked);
-                                        }}
-                                      >
-                                        {allDocsChecked ? 'Desmarcar todos' : 'Marcar todos'}
-                                      </button>
-                                    );
-                                  })()}
+                                  {/* Sem "marcar todos" aqui, de propósito: o passo só
+                                      fecha com o checklist conferido item a item —
+                                      o que não couber no caso vai em "não se aplica". */}
+                                  {!instance.is_readonly && !isHistory && docDone < item.docChecklist.length && (
+                                    <span className="text-[9px] shrink-0 text-orange-700/80 dark:text-orange-400/80 whitespace-nowrap">
+                                      trava o passo
+                                    </span>
+                                  )}
                                 </div>
                                 <div className="space-y-0.5">
                                   {item.docChecklist.map(doc => {
@@ -1156,18 +1145,24 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                         "flex items-center gap-1.5 text-[11px] py-0.5",
                                         instance.is_readonly || isMirror ? "cursor-default" : "cursor-pointer",
                                         isMirror && !doc.checked && "opacity-60",
+                                        doc.notApplicable && "opacity-70",
                                       )}
                                       title={isMirror ? 'Marcado pela resposta escolhida no passo' : undefined}
                                     >
                                       <Checkbox
                                         checked={doc.checked || false}
                                         onCheckedChange={() => handleToggleDocItem(instance, item.id, doc.id)}
-                                        disabled={instance.is_readonly || isHistory || isMirror}
+                                        disabled={instance.is_readonly || isHistory || isMirror || doc.notApplicable}
                                         className="h-3 w-3"
                                       />
-                                      <span className={cn(doc.checked && "line-through text-muted-foreground")}>
+                                      <span className={cn((doc.checked || doc.notApplicable) && "line-through text-muted-foreground")}>
                                         {doc.label}
                                       </span>
+                                      {doc.notApplicable && (
+                                        <span className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap">
+                                          não se aplica
+                                        </span>
+                                      )}
                                       {doc.popChange === 'removido' && (
                                         <span
                                           className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap"
@@ -1176,9 +1171,24 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                           {POP_CHANGE_LABEL.removido}
                                         </span>
                                       )}
+                                      {/* Escape do item que não cabe neste caso: destrava o passo
+                                          sem dizer que foi feito. Não conta como trabalho. */}
+                                      {!instance.is_readonly && !isHistory && !isMirror && !doc.checked && (
+                                        <button
+                                          type="button"
+                                          className="ml-auto shrink-0 text-[9px] text-muted-foreground hover:text-foreground hover:underline"
+                                          onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            handleToggleDocNotApplicable(instance, item.id, doc.id);
+                                          }}
+                                        >
+                                          {doc.notApplicable ? 'aplica-se' : 'não se aplica'}
+                                        </button>
+                                      )}
                                     </label>
 
-                                    {docAnswers.length > 0 && !doc.checked && !isHistory && !instance.is_readonly && (
+                                    {docAnswers.length > 0 && !doc.checked && !doc.notApplicable && !isHistory && !instance.is_readonly && (
                                       <div className="ml-4.5 mt-0.5 mb-1 flex flex-col gap-1">
                                         {docAnswers.map(ans => (
                                           <AnswerButton

@@ -39,6 +39,13 @@ export interface SyncDocItem {
   checked?: boolean;
   /** Resposta escolhida quando o item é uma pergunta (estado do lead). */
   selectedAnswerId?: string;
+  /**
+   * "Não se aplica" a este caso — estado do LEAD, igual a `checked`: destrava o
+   * passo sem afirmar que o item foi feito (ver src/lib/stepSubitems.ts). Fica
+   * fora das comparações com o template, senão o passo seria dado como alterado
+   * no POP e reaberto a cada marcação.
+   */
+  notApplicable?: boolean;
   popChange?: PopChange;
   [key: string]: unknown;
 }
@@ -80,7 +87,7 @@ function stableStringify(value: unknown): string {
 function configOf(item: SyncItem): string {
   const { checked: _c, selectedAnswerId: _s, popChange: _p, popNewLabel: _n, docChecklist, ...rest } = item;
   const docs = (docChecklist || []).map(d => {
-    const { checked: _dc, selectedAnswerId: _ds, popChange: _dp, ...docRest } = d;
+    const { checked: _dc, selectedAnswerId: _ds, notApplicable: _dn, popChange: _dp, ...docRest } = d;
     return docRest;
   });
   return stableStringify({ ...rest, docChecklist: docs });
@@ -99,7 +106,7 @@ function needsRedo(templateItem: SyncItem, existing: SyncItem): boolean {
 
   const docsOf = (item: SyncItem) =>
     (item.docChecklist || []).map(d => {
-      const { checked: _c, selectedAnswerId: _s, popChange: _p, ...rest } = d;
+      const { checked: _c, selectedAnswerId: _s, notApplicable: _n, popChange: _p, ...rest } = d;
       return rest;
     });
   return stableStringify(docsOf(templateItem)) !== stableStringify(docsOf(existing));
@@ -153,9 +160,12 @@ function mergeDocs(
   const merged: SyncDocItem[] = templateDocs.map(td => {
     const existing = byId.get(td.id);
     if (!existing) return { ...td, checked: false };
-    // Preserva o estado do lead: marcação e resposta escolhida (item-pergunta).
+    // Preserva o estado do lead: marcação, resposta escolhida (item-pergunta)
+    // e o "não se aplica" — quem já resolveu o item não refaz a decisão a cada
+    // ajuste de texto do POP.
     const kept: SyncDocItem = { ...td, checked: existing.checked || false };
     if (existing.selectedAnswerId) kept.selectedAnswerId = existing.selectedAnswerId;
+    if (existing.notApplicable) kept.notApplicable = true;
     return kept;
   });
 
