@@ -13,7 +13,7 @@ const GATEWAY = "https://connector-gateway.lovable.dev/google_drive/drive/v3";
 const UPLOAD_GATEWAY = "https://connector-gateway.lovable.dev/google_drive/upload/drive/v3";
 const ROOT_FOLDER_NAME = "AdScore Keeper - Leads";
 const MAX_ANALYZE_BYTES = 8 * 1024 * 1024;
-const FUNCTION_VERSION = 5; // v5: análise IA persistida no arquivo (description + appProperties.ai_at); list_files devolve ai_analysis
+const FUNCTION_VERSION = 6; // v6: consolidate_lead_fields — a IA lê o dossiê inteiro do lead antes de decidir cada campo
 
 // Retry automático para falhas transitórias do gateway do Google Drive.
 // Envolvemos o fetch global para não precisar tocar em ~30 call sites.
@@ -1012,6 +1012,230 @@ Deno.serve(async (req) => {
         JSON.stringify({ ok: true, file: meta, analysis, renamed, cached: false, persisted }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    if (action === "consolidate_lead_fields") {
+      // FASE 2 da extração. `analyze_file` lê UM documento por vez e não sabe
+      // que os outros existem — por isso o RG frente não sabia do verso e o
+      // desempate entre valores conflitantes acabava sendo "o primeiro arquivo
+      // da fila vence" (decisão do loop no front, não da IA).
+      //
+      // Aqui a IA recebe o DOSSIÊ INTEIRO do lead (todas as análises já
+      // gravadas no Drive) numa única chamada e decide cada campo olhando o
+      // conjunto: quem é o cliente vs terceiros, qual documento manda quando
+      // dois discordam, e o que ficou em conflito sem resolução.
+      const { custom_fields } = body as {
+        custom_fields?: Array<{ id: string; name: string; type: string; options?: string[] }>;
+      };
+      const cfList = Array.isArray(custom_fields) ? custom_fields.filter((f) => f && f.id && f.name) : [];
+      if (cfList.length === 0) throw new Error("custom_fields required");
+
+      const folderId = await getOrCreateLeadFolder(lead_id, lead_name, ext);
+      const listQ = encodeURIComponent(`'${folderId}' in parents and trashed=false`);
+      const listRes = await fetch(
+        `${GATEWAY}/files?q=${listQ}&fields=files(id,name,mimeType,modifiedTime,description)&orderBy=modifiedTime desc&pageSize=1000`,
+        { headers: gwHeaders() },
+      );
+      if (!listRes.ok) throw new Error(`drive list failed [${listRes.status}]: ${await listRes.text()}`);
+      const listData = await listRes.json();
+
+      // Só entram documentos já analisados: o dossiê é feito das análises, não
+      // dos bytes (custo baixo e reaproveita o cache gravado no Drive).
+      const docs: Array<{ ref: string; file: any; analysis: any }> = [];
+      for (const file of listData.files || []) {
+        const analysis = parseStoredAnalysis(file.description);
+        if (!analysis) continue;
+        docs.push({ ref: `D${docs.length + 1}`, file, analysis });
+      }
+
+      if (docs.length === 0) {
+        return new Response(JSON.stringify({
+          ok: false,
+          error: "Nenhum documento analisado ainda. Rode a extração por documento antes de consolidar.",
+          docs_considered: 0,
+        }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+      }
+
+      const fieldNameById = new Map(cfList.map((f) => [f.id, f.name]));
+      const dossier = docs.map(({ ref, file, analysis }) => {
+        const lines: string[] = [];
+        const subtype = analysis.document_subtype ? ` (${analysis.document_subtype})` : "";
+        lines.push(`[${ref}] ${analysis.document_type || "Tipo desconhecido"}${subtype}`);
+        lines.push(`  arquivo: ${file.name}`);
+        if (file.modifiedTime) lines.push(`  data no Drive: ${String(file.modifiedTime).slice(0, 10)}`);
+        if (analysis.holder_name) lines.push(`  titular identificado: ${analysis.holder_name}`);
+        if (analysis.holder_cpf) lines.push(`  CPF do titular: ${analysis.holder_cpf}`);
+        if (analysis.confidence) lines.push(`  confiança da leitura: ${analysis.confidence}`);
+        if (analysis.description) lines.push(`  resumo: ${analysis.description}`);
+        const efs = Array.isArray(analysis.extracted_fields) ? analysis.extracted_fields : [];
+        if (efs.length) {
+          lines.push(`  campos que este documento mostrou:`);
+          for (const ef of efs) {
+            const nm = fieldNameById.get(ef.field_id);
+            // Campo de outro funil (ou apagado) não deve virar candidato aqui.
+            if (!nm) continue;
+            lines.push(`    - field_id=${ef.field_id} | "${nm}" = ${ef.value}`);
+          }
+        }
+        const ofs = Array.isArray(analysis.other_findings) ? analysis.other_findings : [];
+        if (ofs.length) {
+          lines.push(`  outros dados vistos no documento (sem campo no funil):`);
+          for (const of of ofs) lines.push(`    - ${of.label}: ${of.value}`);
+        }
+        return lines.join("\n");
+      }).join("\n\n");
+
+      const fieldsList = cfList
+        .map((f) => `- id=${f.id} | nome="${f.name}" | tipo=${f.type}${f.options?.length ? ` | opções=[${f.options.join(", ")}]` : ""}`)
+        .join("\n");
+
+      if (!Deno.env.get("GOOGLE_AI_API_KEY")) throw new Error("GOOGLE_AI_API_KEY missing");
+
+      const aiData = await geminiChat({
+        model: "google/gemini-2.5-flash",
+        max_tokens: 8192,
+        messages: [
+          {
+            role: "system",
+            content: `Você consolida o cadastro de um cliente de escritório de advocacia brasileiro a partir do CONJUNTO de documentos dele.
+
+Cada documento já foi lido individualmente. Seu trabalho NÃO é reler documento por documento: é cruzar tudo e decidir, para cada campo do CRM, qual é o valor correto do CLIENTE.
+
+COMO DECIDIR:
+1. Primeiro identifique quem é o CLIENTE/titular principal — a pessoa que outorga poderes na procuração ou assina o contrato de honorários, ou a pessoa que aparece como titular na maioria dos documentos pessoais. Documentos de terceiros (mãe, pai, cônjuge, filho, empregador, advogado outorgado, perito, testemunha) descrevem OUTRAS pessoas.
+2. Um dado só vira valor de campo do cliente se pertencer ao cliente. Dado da mãe vai para o campo da mãe, nunca para o campo do titular. Advogado/escritório/sociedade de advogados NUNCA é valor de campo nenhum do cliente.
+3. Quando dois documentos discordam sobre o mesmo campo, prefira nesta ordem: (a) documento oficial de órgão público sobre documento informal ou foto de tela; (b) documento com leitura de confiança alta sobre baixa; (c) documento mais recente sobre mais antigo. Explique a escolha no campo reasoning.
+4. Frente e verso do mesmo documento não são fontes concorrentes — são o mesmo documento, complete um com o outro.
+5. Use também os "outros dados vistos no documento": um dado que apareceu num documento pode preencher um campo que outro documento deixou vazio.
+6. NUNCA invente. Se nenhum documento mostra a informação, simplesmente não devolva aquele campo.
+7. Se a discordância for relevante e você não tiver base para escolher, devolva o campo em "conflicts" em vez de chutar um valor.
+
+Devolva APENAS via tool call.`,
+          },
+          {
+            role: "user",
+            content: `CAMPOS DO CRM que podem ser preenchidos:
+${fieldsList}
+
+DOSSIÊ COMPLETO DO LEAD — ${docs.length} documento(s) já analisado(s):
+
+${dossier}
+
+Cruze todos os documentos acima e devolva o valor consolidado de cada campo, citando de quais documentos ([D1], [D2]...) veio cada decisão.`,
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "save_consolidation",
+              parameters: {
+                type: "object",
+                properties: {
+                  main_holder_name: { type: "string", description: "Nome do cliente/titular principal identificado no conjunto. String vazia se não der para determinar." },
+                  main_holder_cpf: { type: "string", description: "CPF do cliente/titular principal. String vazia se não aparecer." },
+                  summary: { type: "string", description: "1-3 linhas explicando o que o conjunto de documentos mostra sobre este cliente." },
+                  fields: {
+                    type: "array",
+                    description: "Um item por campo do CRM que os documentos permitem preencher com segurança. Não inclua campos sem base documental.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: "string", description: "Exatamente um dos ids listados em CAMPOS DO CRM." },
+                        value: { type: "string", description: "Valor consolidado, sempre string. Datas em YYYY-MM-DD. Checkbox como 'true'/'false'." },
+                        source_refs: { type: "array", description: "Refs dos documentos que sustentam este valor. Ex: ['D1','D4'].", items: { type: "string" } },
+                        reasoning: { type: "string", description: "Uma frase curta explicando por que este valor venceu." },
+                        confidence: { type: "string", enum: ["alta", "média", "baixa"] },
+                      },
+                      required: ["field_id", "value", "source_refs", "reasoning", "confidence"],
+                    },
+                  },
+                  conflicts: {
+                    type: "array",
+                    description: "Campos em que os documentos discordam e você não teve base para escolher. Máximo 10.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        field_id: { type: "string" },
+                        note: { type: "string", description: "O que está em conflito e o que falta para resolver." },
+                        candidates: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              value: { type: "string" },
+                              source_ref: { type: "string" },
+                            },
+                            required: ["value", "source_ref"],
+                          },
+                        },
+                      },
+                      required: ["field_id", "note", "candidates"],
+                    },
+                  },
+                },
+                required: ["main_holder_name", "main_holder_cpf", "summary", "fields", "conflicts"],
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "save_consolidation" } },
+      });
+
+      const rawArgs = aiData?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
+      let out: any = {};
+      try { out = rawArgs ? JSON.parse(rawArgs) : {}; } catch { out = {}; }
+
+      // Traduz as refs ([D1]) de volta para arquivos reais e descarta field_id
+      // que a IA tenha inventado — só campo existente neste funil passa.
+      const byRef = new Map(docs.map((d) => [d.ref, d]));
+      const refToFiles = (refs: any) =>
+        (Array.isArray(refs) ? refs : [])
+          .map((r: any) => byRef.get(String(r).replace(/[^A-Za-z0-9]/g, "")))
+          .filter(Boolean)
+          .map((d: any) => ({ file_id: d.file.id, file_name: d.file.name, document_type: d.analysis.document_type || null }));
+
+      const fields = (Array.isArray(out.fields) ? out.fields : [])
+        .filter((f: any) => f && fieldNameById.has(f.field_id) && f.value != null && String(f.value).trim() !== "")
+        .map((f: any) => ({
+          field_id: f.field_id,
+          field_name: fieldNameById.get(f.field_id),
+          value: String(f.value),
+          reasoning: typeof f.reasoning === "string" ? f.reasoning : "",
+          confidence: f.confidence || null,
+          sources: refToFiles(f.source_refs),
+        }));
+
+      const conflicts = (Array.isArray(out.conflicts) ? out.conflicts : [])
+        .filter((c: any) => c && fieldNameById.has(c.field_id))
+        .slice(0, 10)
+        .map((c: any) => ({
+          field_id: c.field_id,
+          field_name: fieldNameById.get(c.field_id),
+          note: typeof c.note === "string" ? c.note : "",
+          candidates: (Array.isArray(c.candidates) ? c.candidates : []).map((cd: any) => ({
+            value: String(cd?.value ?? ""),
+            source: refToFiles([cd?.source_ref])[0] || null,
+          })),
+        }));
+
+      console.log(`[lead-drive] CONSOLIDATE_LEAD_FIELDS ${JSON.stringify({
+        lead_id,
+        docs_considered: docs.length,
+        fields_returned: fields.length,
+        conflicts: conflicts.length,
+        holder_found: !!out.main_holder_name,
+      })}`);
+
+      return new Response(JSON.stringify({
+        ok: true,
+        docs_considered: docs.length,
+        main_holder_name: out.main_holder_name || null,
+        main_holder_cpf: out.main_holder_cpf || null,
+        summary: out.summary || null,
+        fields,
+        conflicts,
+      }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (action === "upload_url_typed") {

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2, MessagesSquare, Combine, X, ShieldCheck, Check } from 'lucide-react';
+import { ExternalLink, Upload, Trash2, FileText, Loader2, RefreshCw, Sparkles, Wand2, MessagesSquare, Combine, X, ShieldCheck, Check, AlertTriangle, User } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import ImportGroupDocsDialog from '@/components/leads/ImportGroupDocsDialog';
@@ -44,6 +44,32 @@ interface Analysis {
   other_findings?: Array<{ label: string; value: string }>;
 }
 
+/** Campo decidido pela IA depois de cruzar TODOS os documentos do lead. */
+interface ConsolidatedField {
+  field_id: string;
+  field_name?: string;
+  value: string;
+  reasoning?: string;
+  confidence?: string | null;
+  sources?: Array<{ file_id: string; file_name: string; document_type: string | null }>;
+}
+
+interface ConsolidationConflict {
+  field_id: string;
+  field_name?: string;
+  note?: string;
+  candidates?: Array<{ value: string; source: { file_id: string; file_name: string } | null }>;
+}
+
+interface Consolidation {
+  docs_considered: number;
+  main_holder_name?: string | null;
+  main_holder_cpf?: string | null;
+  summary?: string | null;
+  fields: ConsolidatedField[];
+  conflicts: ConsolidationConflict[];
+}
+
 export interface DocCustomFieldDef {
   id: string;
   name: string;
@@ -59,6 +85,20 @@ interface Props {
   onApplyExtractedFields?: (
     values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }>,
   ) => Promise<void> | void;
+}
+
+/** Converte o valor que a IA devolve (sempre string) para o tipo do campo do CRM. */
+function coerceFieldValue(
+  type: DocCustomFieldDef['type'],
+  raw: string,
+): string | number | boolean | null {
+  if (type === 'number') {
+    const n = Number(String(raw).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+  if (type === 'checkbox') return String(raw).toLowerCase() === 'true';
+  if (type === 'date') return raw || null;
+  return raw;
 }
 
 function formatBytes(bytes?: string) {
@@ -87,6 +127,11 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   const [batchSummaryOpen, setBatchSummaryOpen] = useState(false);
   const [batchResults, setBatchResults] = useState<Array<{ file: DriveFile; analysis: Analysis }>>([]);
   const [batchSelected, setBatchSelected] = useState<Record<string, boolean>>({});
+
+  const [consolidating, setConsolidating] = useState(false);
+  const [consolidation, setConsolidation] = useState<Consolidation | null>(null);
+  const [consolidationOpen, setConsolidationOpen] = useState(false);
+  const [consolidationSelected, setConsolidationSelected] = useState<Record<string, boolean>>({});
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -308,6 +353,65 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   }
 
   const pendingFiles = useMemo(() => files.filter((f) => !analyses[f.id]), [files, analyses]);
+  const analyzedCount = useMemo(() => files.filter((f) => !!analyses[f.id]).length, [files, analyses]);
+
+  /**
+   * FASE 2 da extração: manda o dossiê inteiro do lead para a IA decidir cada
+   * campo olhando o CONJUNTO dos documentos.
+   *
+   * A fase 1 (`analyze_file`) lê um documento por vez e não sabe que os outros
+   * existem — então o RG frente não sabia do verso, e quando dois documentos
+   * traziam o mesmo campo quem desempatava era a ordem da fila, não a IA.
+   * Aqui ela vê tudo junto antes de escolher.
+   */
+  const runConsolidation = useCallback(async (): Promise<Consolidation | null> => {
+    if (!onApplyExtractedFields || cfPayload.length === 0) return null;
+    setConsolidating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('lead-drive', {
+        body: {
+          action: 'consolidate_lead_fields',
+          lead_id: leadId,
+          lead_name: leadName,
+          custom_fields: cfPayload,
+        },
+      });
+      if (error) throw error;
+      const d = data as any;
+      if (d?.ok === false) throw new Error(d?.error || 'Falha ao cruzar os documentos');
+      const result: Consolidation = {
+        docs_considered: d.docs_considered || 0,
+        main_holder_name: d.main_holder_name || null,
+        main_holder_cpf: d.main_holder_cpf || null,
+        summary: d.summary || null,
+        fields: Array.isArray(d.fields) ? d.fields : [],
+        conflicts: Array.isArray(d.conflicts) ? d.conflicts : [],
+      };
+      setConsolidation(result);
+      const sel: Record<string, boolean> = {};
+      // Confiança baixa não vem pré-marcada — o usuário confirma antes de gravar.
+      result.fields.forEach((f) => { sel[f.field_id] = f.confidence !== 'baixa'; });
+      setConsolidationSelected(sel);
+      return result;
+    } catch (e: any) {
+      console.error('[LeadDocumentsTab] consolidate error', e);
+      toast.error(`Erro ao cruzar documentos: ${e.message || e}`);
+      return null;
+    } finally {
+      setConsolidating(false);
+    }
+  }, [leadId, leadName, cfPayload, onApplyExtractedFields]);
+
+  /** Só a fase 2, para quando todos os documentos já estão extraídos. */
+  async function handleConsolidateOnly() {
+    const result = await runConsolidation();
+    if (!result) return;
+    if (result.fields.length === 0 && result.conflicts.length === 0) {
+      toast.info(`Cruzei ${result.docs_considered} documento(s) e nenhum campo do funil pôde ser preenchido com segurança.`);
+      return;
+    }
+    setConsolidationOpen(true);
+  }
 
   /**
    * Extrai em lote todos os documentos ainda não analisados.
@@ -317,7 +421,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
   async function handleAnalyzeAll() {
     const queue = [...pendingFiles];
     if (queue.length === 0) {
-      toast.info('Todos os documentos já foram extraídos.');
+      await handleConsolidateOnly();
       return;
     }
     batchAbort.current = false;
@@ -349,25 +453,63 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
       } else if (!batchAbort.current) {
         toast.success(`${results.length} documento(s) extraído(s)`);
       }
-      const withFields = results.filter((r) => (r.analysis.extracted_fields || []).length > 0);
-      if (withFields.length && onApplyExtractedFields) {
-        setBatchResults(withFields);
-        // Pré-seleciona 1 valor por campo: o primeiro documento que trouxe aquele
-        // campo vence. Documento repetido (frente/verso) não sobrescreve.
-        const sel: Record<string, boolean> = {};
-        const seenField = new Set<string>();
-        for (const r of withFields) {
-          for (const ef of r.analysis.extracted_fields || []) {
-            const key = `${r.file.id}:${ef.field_id}`;
-            sel[key] = !seenField.has(ef.field_id);
-            seenField.add(ef.field_id);
-          }
-        }
-        setBatchSelected(sel);
-        setBatchSummaryOpen(true);
-      }
     } finally {
       setBatchRunning(false);
+    }
+
+    if (batchAbort.current || !onApplyExtractedFields) return;
+
+    // FASE 2: agora que todo documento tem leitura própria, a IA cruza o
+    // conjunto inteiro e decide os campos. Se ela falhar, cai no resumo antigo
+    // (um bloco por documento) para o trabalho da fase 1 não se perder.
+    const consolidated = await runConsolidation();
+    if (consolidated && (consolidated.fields.length > 0 || consolidated.conflicts.length > 0)) {
+      setConsolidationOpen(true);
+      return;
+    }
+
+    const withFields = results.filter((r) => (r.analysis.extracted_fields || []).length > 0);
+    if (withFields.length) {
+      setBatchResults(withFields);
+      // Fallback: pré-seleciona 1 valor por campo, o primeiro documento vence.
+      const sel: Record<string, boolean> = {};
+      const seenField = new Set<string>();
+      for (const r of withFields) {
+        for (const ef of r.analysis.extracted_fields || []) {
+          const key = `${r.file.id}:${ef.field_id}`;
+          sel[key] = !seenField.has(ef.field_id);
+          seenField.add(ef.field_id);
+        }
+      }
+      setBatchSelected(sel);
+      setBatchSummaryOpen(true);
+    }
+  }
+
+  /** Grava no lead os campos consolidados que o usuário deixou marcados. */
+  async function handleApplyConsolidation() {
+    if (!consolidation || !onApplyExtractedFields) return;
+    const defs = customFields || [];
+    const values: Record<string, { type: DocCustomFieldDef['type']; value: string | number | boolean | null }> = {};
+    for (const f of consolidation.fields) {
+      if (!consolidationSelected[f.field_id]) continue;
+      const def = defs.find((d) => d.id === f.field_id);
+      if (!def) continue;
+      values[f.field_id] = { type: def.type, value: coerceFieldValue(def.type, f.value) };
+    }
+    if (Object.keys(values).length === 0) {
+      toast.info('Nenhum campo selecionado');
+      return;
+    }
+    setApplyingFields(true);
+    try {
+      await onApplyExtractedFields(values);
+      toast.success(`${Object.keys(values).length} campo(s) atualizado(s)`);
+      setConsolidationOpen(false);
+    } catch (e: any) {
+      toast.error(`Erro ao aplicar: ${e.message || e}`);
+    } finally {
+      setApplyingFields(false);
     }
   }
 
@@ -381,16 +523,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
         if (!batchSelected[`${r.file.id}:${ef.field_id}`]) continue;
         const def = defs.find((d) => d.id === ef.field_id);
         if (!def) continue;
-        let v: string | number | boolean | null = ef.value;
-        if (def.type === 'number') {
-          const n = Number(String(ef.value).replace(',', '.'));
-          v = Number.isFinite(n) ? n : null;
-        } else if (def.type === 'checkbox') {
-          v = String(ef.value).toLowerCase() === 'true';
-        } else if (def.type === 'date') {
-          v = ef.value || null;
-        }
-        values[ef.field_id] = { type: def.type, value: v };
+        values[ef.field_id] = { type: def.type, value: coerceFieldValue(def.type, ef.value) };
       }
     }
     if (Object.keys(values).length === 0) {
@@ -418,16 +551,7 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
       if (!selectedExtracted[ef.field_id]) continue;
       const def = defs.find((d) => d.id === ef.field_id);
       if (!def) continue;
-      let v: string | number | boolean | null = ef.value;
-      if (def.type === 'number') {
-        const n = Number(String(ef.value).replace(',', '.'));
-        v = Number.isFinite(n) ? n : null;
-      } else if (def.type === 'checkbox') {
-        v = String(ef.value).toLowerCase() === 'true';
-      } else if (def.type === 'date') {
-        v = ef.value || null;
-      }
-      values[ef.field_id] = { type: def.type, value: v };
+      values[ef.field_id] = { type: def.type, value: coerceFieldValue(def.type, ef.value) };
     }
     if (Object.keys(values).length === 0) {
       toast.info('Nenhum campo selecionado');
@@ -509,19 +633,21 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
             variant="outline"
             size="sm"
             onClick={handleAnalyzeAll}
-            disabled={batchRunning || loading || pendingFiles.length === 0}
-            title="Analisa com IA todos os documentos ainda não extraídos, um após o outro"
+            disabled={batchRunning || consolidating || loading || files.length === 0}
+            title="Lê os documentos que faltam e depois cruza TODOS eles numa análise só, para a IA decidir cada campo com o contexto completo do lead"
           >
-            {batchRunning ? (
+            {batchRunning || consolidating ? (
               <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
             ) : (
               <Sparkles className="h-3.5 w-3.5 mr-1" />
             )}
             {batchRunning
-              ? `Extraindo ${batchProgress.done}/${batchProgress.total}…`
-              : pendingFiles.length > 0
-                ? `Extrair todos com IA (${pendingFiles.length})`
-                : 'Tudo extraído'}
+              ? `Lendo ${batchProgress.done}/${batchProgress.total}…`
+              : consolidating
+                ? 'Cruzando documentos…'
+                : pendingFiles.length > 0
+                  ? `Extrair e cruzar com IA (${pendingFiles.length})`
+                  : `Cruzar os ${analyzedCount} documentos`}
           </Button>
           {batchRunning && (
             <Button variant="ghost" size="sm" onClick={() => { batchAbort.current = true; }}>
@@ -840,6 +966,144 @@ export default function LeadDocumentsTab({ leadId, leadName, whatsappGroupId, cu
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Resultado da FASE 2: a IA já cruzou todos os documentos e traz UM valor
+          por campo, com a origem e o motivo da escolha. */}
+      <Dialog open={consolidationOpen} onOpenChange={(o) => !applyingFields && setConsolidationOpen(o)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-primary shrink-0" />
+              Análise cruzada dos documentos
+            </DialogTitle>
+            <DialogDescription>
+              A IA leu os {consolidation?.docs_considered ?? 0} documentos deste lead em conjunto antes de decidir cada campo.
+            </DialogDescription>
+          </DialogHeader>
+
+          {consolidation && (
+            <div className="max-h-[60vh] overflow-auto space-y-3 pr-1">
+              {(consolidation.main_holder_name || consolidation.summary) && (
+                <div className="rounded-lg border bg-muted/30 p-3 space-y-1.5">
+                  {consolidation.main_holder_name && (
+                    <div className="flex items-start gap-2 text-sm">
+                      <User className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs text-muted-foreground">Titular identificado no conjunto</div>
+                        <div className="font-medium break-words">
+                          {consolidation.main_holder_name}
+                          {consolidation.main_holder_cpf && (
+                            <span className="font-mono text-xs text-muted-foreground ml-2">
+                              {consolidation.main_holder_cpf}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {consolidation.summary && (
+                    <div className="text-sm leading-relaxed text-muted-foreground">{consolidation.summary}</div>
+                  )}
+                </div>
+              )}
+
+              {consolidation.fields.length === 0 ? (
+                <div className="text-sm text-muted-foreground py-4 text-center">
+                  Nenhum campo do funil pôde ser preenchido com segurança a partir destes documentos.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <div className="text-xs font-semibold text-muted-foreground">
+                    Campos decididos · marque o que deve ir para o lead
+                  </div>
+                  {consolidation.fields.map((f) => (
+                    <label
+                      key={f.field_id}
+                      className="flex items-start gap-2.5 p-2 rounded-lg border hover:bg-muted/40 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-1 shrink-0"
+                        checked={!!consolidationSelected[f.field_id]}
+                        onChange={(e) =>
+                          setConsolidationSelected((p) => ({ ...p, [f.field_id]: e.target.checked }))
+                        }
+                      />
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs text-muted-foreground">{f.field_name || f.field_id}</span>
+                          {f.confidence && (
+                            <Badge variant={confidenceVariant(f.confidence) as any} className="h-4 px-1 text-[10px]">
+                              {f.confidence}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="font-medium break-words">{f.value}</div>
+                        {f.reasoning && (
+                          <div className="text-xs text-muted-foreground leading-relaxed">{f.reasoning}</div>
+                        )}
+                        {(f.sources || []).length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {(f.sources || []).map((s) => (
+                              <Badge
+                                key={s.file_id}
+                                variant="outline"
+                                className="h-4 px-1 text-[10px] max-w-[220px] truncate"
+                                title={s.file_name}
+                              >
+                                {s.document_type || s.file_name}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {consolidation.conflicts.length > 0 && (
+                <div className="space-y-1.5 border-t pt-3">
+                  <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Documentos discordam · precisa de conferência humana
+                  </div>
+                  {consolidation.conflicts.map((c) => (
+                    <div key={c.field_id} className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-2 space-y-1">
+                      <div className="text-xs font-medium">{c.field_name || c.field_id}</div>
+                      {c.note && <div className="text-xs text-muted-foreground leading-relaxed">{c.note}</div>}
+                      {(c.candidates || []).map((cd, i) => (
+                        <div key={`${c.field_id}-${i}`} className="text-sm flex items-baseline gap-2 flex-wrap">
+                          <span className="break-words">{cd.value}</span>
+                          {cd.source && (
+                            <span className="text-[10px] text-muted-foreground truncate max-w-[220px]" title={cd.source.file_name}>
+                              · {cd.source.file_name}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" size="sm" onClick={() => setConsolidationOpen(false)} disabled={applyingFields}>
+              Fechar
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleApplyConsolidation}
+              disabled={applyingFields || !consolidation?.fields.length}
+            >
+              {applyingFields ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Wand2 className="h-3.5 w-3.5 mr-1" />}
+              Aplicar aos campos
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 
