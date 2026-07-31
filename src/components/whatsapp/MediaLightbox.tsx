@@ -102,10 +102,14 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
     });
   };
 
+  // pointer-events-auto: Dialog/Sheet modal do Radix seta pointer-events:none no body
+  // inteiro. Como este overlay é portalado pro body, sem religar aqui o X, o fundo e os
+  // botões de zoom ficam inclicáveis sempre que o visualizador for aberto de dentro de
+  // um sheet/dialog (chat interno, ficha de atividade).
   return createPortal(
     <div
       data-media-lightbox="true"
-      className="fixed inset-0 z-[1000] bg-background/95 flex items-center justify-center p-4 animate-in fade-in overflow-hidden"
+      className="pointer-events-auto fixed inset-0 z-[1000] bg-background/95 flex items-center justify-center p-4 animate-in fade-in overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-label={title}
