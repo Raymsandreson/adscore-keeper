@@ -1,5 +1,9 @@
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 
 /**
  * Envia um áudio (URL pública) como mensagem de voz (PTT) no WhatsApp.
@@ -31,16 +35,28 @@ export async function sendVoiceToWa(
     : ext === 'mp3' ? 'audio/mpeg'
     : 'audio/webm';
 
-  // 2) Descobre instância: usa o override do chamador, ou o default do profile.
+  // 2) Descobre instância: override do chamador > (grupo) instância-membro
+  //    preferida > (pessoa) default do perfil no EXTERNO.
   let instanceId: string | undefined = instanceIdOverride || undefined;
-  if (!instanceId) {
+  let instanceName: string | undefined;
+  if (!instanceId && isWhatsAppGroupId(target)) {
+    // Grupo NUNCA usa default pessoal: a mensagem é da firma, não do usuário
+    // logado. Incidente 31/07/2026: o default legado gravado no Cloud (campo
+    // que o ProfilePage nem escreve mais) mandou áudio de grupo pelo Raym.
+    instanceName = await resolveGroupSenderInstanceName(target);
+  } else if (!instanceId) {
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (authUser) {
-        const { data: profile } = await supabase
+      // default_instance_id vive no profiles do EXTERNO (fonte da verdade —
+      // é lá que o ProfilePage salva). O campo homônimo no Cloud é legado e
+      // pode apontar pra instância errada.
+      const extUserId = await remapToExternal(authUser?.id || null);
+      if (extUserId) {
+        await ensureExternalSession();
+        const { data: profile } = await externalSupabase
           .from('profiles')
           .select('default_instance_id')
-          .eq('user_id', authUser.id)
+          .eq('user_id', extUserId)
           .maybeSingle();
         instanceId = (profile as any)?.default_instance_id || undefined;
       }
@@ -61,6 +77,7 @@ export async function sendVoiceToWa(
       is_voice: true,
       lead_id: leadId || null,
       ...(instanceId ? { instance_id: instanceId } : {}),
+      ...(instanceName ? { instance_name: instanceName } : {}),
     },
   });
   if (sendErr || !data?.success) {
