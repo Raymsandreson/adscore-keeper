@@ -25,6 +25,12 @@ import { ChecklistItem, LeadChecklistInstance, DocChecklistItem, CHECKLIST_TYPES
 import { useActivityLogger } from '@/hooks/useActivityLogger';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
+import {
+  syncInstanceItems,
+  stripDisplayFields,
+  POP_CHANGE_LABEL,
+  type SyncItem,
+} from '@/lib/syncChecklistInstances';
 import { toast } from 'sonner';
 
 interface WorkflowProgressViewProps {
@@ -119,31 +125,28 @@ export function WorkflowProgressView({
         setTemplateInfo(info);
       }
 
-      // Sync: reflete o template nas instâncias — adiciona passos novos,
-      // remove os excluídos e atualiza a configuração dos existentes
-      // (respostas de pergunta, script, destino etc.), preservando só o
-      // estado do lead (checked / resposta escolhida).
+      // Sync: reflete o template nas instâncias. Regra única, compartilhada
+      // com a barra de progresso da atividade/processo
+      // (src/lib/syncChecklistInstances.ts): passo ainda não marcado adota o
+      // conteúdo novo; passo JÁ marcado não é reescrito — só recebe o selo de
+      // "alterado/removido no POP".
       const updatedParsed = [...parsed];
       for (const instance of updatedParsed) {
         const template = templatesFullData.find(t => t.id === instance.checklist_template_id);
         if (!template) continue;
-        const templateItems = (template.items as unknown as ChecklistItem[]) || [];
-        const instanceById = new Map(instance.items.map(i => [i.id, i]));
-        const mergedItems = templateItems.map(ti => {
-          const existing = instanceById.get(ti.id);
-          return existing
-            ? { ...ti, checked: existing.checked || false, selectedAnswerId: existing.selectedAnswerId }
-            : { ...ti, checked: false };
-        });
+        const result = syncInstanceItems(
+          (template.items as SyncItem[]) || [],
+          instance.items as unknown as SyncItem[],
+        );
 
-        if (JSON.stringify(mergedItems) !== JSON.stringify(instance.items)) {
-          instance.items = mergedItems;
-          // Update in DB
+        instance.items = result.items as unknown as ChecklistItem[];
+
+        if (result.changed) {
           await supabase
             .from('lead_checklist_instances')
             .update({
-              items: JSON.parse(JSON.stringify(mergedItems)),
-              is_completed: mergedItems.length > 0 && mergedItems.every(i => i.checked),
+              items: JSON.parse(JSON.stringify(result.itemsToPersist)),
+              is_completed: result.isCompleted,
             })
             .eq('id', instance.id);
         }
@@ -386,7 +389,7 @@ export function WorkflowProgressView({
     const { error } = await supabase
       .from('lead_checklist_instances')
       .update({
-        items: JSON.parse(JSON.stringify(updatedItems)),
+        items: JSON.parse(JSON.stringify(stripDisplayFields(updatedItems as unknown as SyncItem[]))),
         is_completed: allChecked,
         completed_at: allChecked ? new Date().toISOString() : null,
       })
@@ -461,7 +464,7 @@ export function WorkflowProgressView({
     const { error } = await supabase
       .from('lead_checklist_instances')
       .update({
-        items: JSON.parse(JSON.stringify(updatedItems)),
+        items: JSON.parse(JSON.stringify(stripDisplayFields(updatedItems as unknown as SyncItem[]))),
         is_completed: allChecked,
         completed_at: allChecked ? new Date().toISOString() : null,
       })
@@ -541,7 +544,7 @@ export function WorkflowProgressView({
     const { error } = await supabase
       .from('lead_checklist_instances')
       .update({
-        items: JSON.parse(JSON.stringify(updatedItems)),
+        items: JSON.parse(JSON.stringify(stripDisplayFields(updatedItems as unknown as SyncItem[]))),
         is_completed: allChecked,
         completed_at: allChecked ? new Date().toISOString() : null,
       })
@@ -829,7 +832,35 @@ export function WorkflowProgressView({
                                                   ) : null;
                                                 })()}
                                                 {!item.answers?.length && renderStatusBadge(item.setStatusId)}
+                                                {/* Passo já marcado não é reescrito quando o POP muda:
+                                                    fica como foi feito e só avisa o que mudou. */}
+                                                {item.popChange && (
+                                                  <Badge
+                                                    variant="secondary"
+                                                    className={cn(
+                                                      "text-[9px] h-4",
+                                                      item.popChange === 'alterado'
+                                                        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                                                        : "bg-muted text-muted-foreground",
+                                                    )}
+                                                    title={
+                                                      item.popChange === 'removido'
+                                                        ? 'Este passo não existe mais no POP. Ficou aqui porque já tinha sido marcado.'
+                                                        : item.popNewLabel
+                                                          ? `O POP mudou depois que este passo foi marcado. Agora se chama: ${item.popNewLabel}`
+                                                          : 'O conteúdo deste passo mudou no POP depois que ele foi marcado.'
+                                                    }
+                                                  >
+                                                    {POP_CHANGE_LABEL[item.popChange]}
+                                                  </Badge>
+                                                )}
                                               </div>
+
+                                              {item.popChange === 'alterado' && item.popNewLabel && (
+                                                <p className="text-[10px] text-amber-700 dark:text-amber-500 mt-0.5 leading-snug break-words">
+                                                  Agora no POP: {item.popNewLabel}
+                                                </p>
+                                              )}
 
                                               {item.description && (
                                                 <p className="text-[10px] text-muted-foreground/60 mt-0.5 leading-snug line-clamp-2 italic">
@@ -979,6 +1010,15 @@ export function WorkflowProgressView({
                                                           )}>
                                                             {doc.label}
                                                           </span>
+                                                          {doc.popChange === 'removido' && (
+                                                            <Badge
+                                                              variant="secondary"
+                                                              className="text-[8px] h-3.5 bg-muted text-muted-foreground flex-shrink-0"
+                                                              title="Este item não existe mais no POP. Ficou aqui porque já tinha sido marcado."
+                                                            >
+                                                              {POP_CHANGE_LABEL.removido}
+                                                            </Badge>
+                                                          )}
                                                           {docHasAnswers && (
                                                             <Badge variant="secondary" className="text-[8px] h-3.5 gap-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 flex-shrink-0">
                                                               <HelpCircle className="h-2 w-2" />

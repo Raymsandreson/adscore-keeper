@@ -19,6 +19,11 @@ export interface DocChecklistItem {
   id: string;
   label: string;
   checked?: boolean;
+  /**
+   * Selo de EXIBIÇÃO: item marcado que saiu do POP. Calculado a cada load
+   * em src/lib/syncChecklistInstances.ts e removido antes de gravar.
+   */
+  popChange?: 'alterado' | 'removido';
   type?: ChecklistType;
   nextStageId?: string;
   setStatusId?: string; // ao marcar, define o STATUS do POP do lead (id em settings.resultados)
@@ -57,6 +62,11 @@ export interface ChecklistItem {
   answers?: StepAnswerOption[]; // se presente, o passo é uma pergunta: concluir = escolher resposta, e o destino vem da resposta (ignora nextStageId)
   selectedAnswerId?: string; // resposta escolhida na instância do lead
   docChecklist?: DocChecklistItem[]; // checklist de documentação
+  // Selos de EXIBIÇÃO do passo já marcado quando o POP muda depois:
+  // 'alterado' = continua no POP com outro conteúdo, 'removido' = saiu do POP.
+  // Calculados a cada load (src/lib/syncChecklistInstances.ts) e nunca gravados.
+  popChange?: 'alterado' | 'removido';
+  popNewLabel?: string;
   // Modelo de mensagem por campo da atividade gerada neste passo.
   // Chaves correspondem a ACTIVITY_MESSAGE_FIELDS (current_status, what_was_done, next_steps, notes).
   // Aceita string (legado, 1 modelo) OU array de variações (novo, múltiplos modelos por campo).

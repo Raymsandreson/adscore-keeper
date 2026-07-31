@@ -10,6 +10,13 @@ import { useChecklists, CHECKLIST_TYPES } from '@/hooks/useChecklists';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
+import {
+  syncInstanceItems,
+  stripDisplayFields,
+  POP_CHANGE_LABEL,
+  type SyncItem,
+  type PopChange,
+} from '@/lib/syncChecklistInstances';
 
 interface Stage {
   id: string;
@@ -22,6 +29,8 @@ interface DocChecklistItem {
   label: string;
   checked?: boolean;
   type?: string;
+  /** Selo de exibição: documento marcado que saiu do POP. Não persiste. */
+  popChange?: PopChange;
 }
 
 interface ChecklistItem {
@@ -30,6 +39,9 @@ interface ChecklistItem {
   description?: string;
   checked?: boolean;
   docChecklist?: DocChecklistItem[];
+  /** Selos de exibição calculados no load contra o template. Não persistem. */
+  popChange?: PopChange;
+  popNewLabel?: string;
 }
 
 interface ChecklistInstance {
@@ -143,18 +155,46 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
       if (allInstances.length > 0) {
         const templateIds = [...new Set(allInstances.map(i => i.checklist_template_id))];
         let templateNames: Record<string, string> = {};
+        const templateItems: Record<string, SyncItem[]> = {};
         if (templateIds.length > 0) {
           const { data: templates } = await externalSupabase
             .from('checklist_templates')
-            .select('id, name')
+            .select('id, name, items')
             .in('id', templateIds);
-          (templates || []).forEach(t => { templateNames[t.id] = t.name; });
+          (templates || []).forEach(t => {
+            templateNames[t.id] = t.name;
+            templateItems[t.id] = ((t as { items?: unknown }).items as SyncItem[]) || [];
+          });
         }
 
-        setInstances(allInstances.map(i => ({
-          ...i,
-          items: (i.items as unknown as ChecklistItem[]) || [],
-          template_name: templateNames[i.checklist_template_id] || 'Passos',
+        // Reflete a versão ATUAL do POP nos passos que ainda não foram
+        // marcados. Passo já marcado não é reescrito — só ganha o selo de
+        // "alterado/removido no POP" (ver src/lib/syncChecklistInstances.ts).
+        const synced = allInstances.map(i => {
+          const template = templateItems[i.checklist_template_id];
+          const current = ((i.items as unknown as SyncItem[]) || []);
+          if (!template) return { instance: i, items: current, changed: false, isCompleted: i.is_completed };
+          const result = syncInstanceItems(template, current);
+          if (result.changed) {
+            externalSupabase
+              .from('lead_checklist_instances')
+              .update({
+                items: result.itemsToPersist as any,
+                is_completed: result.isCompleted,
+              })
+              .eq('id', i.id)
+              .then(({ error }) => {
+                if (error) console.warn('[LeadFunnelProgressBar] sync do POP falhou:', error.message);
+              });
+          }
+          return { instance: i, items: result.items, changed: result.changed, isCompleted: result.isCompleted };
+        });
+
+        setInstances(synced.map(({ instance, items, isCompleted }) => ({
+          ...instance,
+          items: items as unknown as ChecklistItem[],
+          is_completed: isCompleted,
+          template_name: templateNames[instance.checklist_template_id] || 'Passos',
         })));
       }
     } catch (err) {
@@ -167,6 +207,11 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Todo update de items passa por aqui: os selos popChange/popNewLabel são
+  // calculados no load contra o template e NÃO podem ir para o banco.
+  const itemsForDb = (items: ChecklistItem[]) =>
+    JSON.parse(JSON.stringify(stripDisplayFields(items as unknown as SyncItem[])));
 
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
@@ -188,7 +233,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
       .update({
-        items: updatedItems as any,
+        items: itemsForDb(updatedItems),
         is_completed: updatedItems.every(item => item.checked),
         completed_at: updatedItems.every(item => item.checked) ? new Date().toISOString() : null,
       })
@@ -243,7 +288,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
       .update({
-        items: updatedItems as any,
+        items: itemsForDb(updatedItems),
         is_completed: checked,
         completed_at: checked ? new Date().toISOString() : null,
       })
@@ -298,7 +343,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
-      .update({ items: JSON.parse(JSON.stringify(updatedItems)) })
+      .update({ items: itemsForDb(updatedItems) })
       .eq('id', instance.id);
 
     if (error) {
@@ -355,7 +400,7 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
 
     const { error } = await externalSupabase
       .from('lead_checklist_instances')
-      .update({ items: JSON.parse(JSON.stringify(updatedItems)) })
+      .update({ items: itemsForDb(updatedItems) })
       .eq('id', instance.id);
 
     if (error) {
@@ -669,8 +714,34 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                               <span className={cn(item.checked && "line-through text-muted-foreground")}>
                                 {item.label}
                               </span>
+                              {/* Passo já marcado NÃO é reescrito quando o POP muda —
+                                  fica registrado como foi feito, só avisa o que mudou. */}
+                              {item.popChange && (
+                                <span
+                                  className={cn(
+                                    "ml-1.5 inline-block align-middle px-1 py-px rounded text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap",
+                                    item.popChange === 'alterado'
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-400"
+                                      : "bg-muted text-muted-foreground",
+                                  )}
+                                  title={
+                                    item.popChange === 'removido'
+                                      ? 'Este passo não existe mais no POP. Ficou aqui porque já tinha sido marcado.'
+                                      : item.popNewLabel
+                                        ? `O POP mudou depois que este passo foi marcado. Agora se chama: ${item.popNewLabel}`
+                                        : 'O conteúdo deste passo mudou no POP depois que ele foi marcado.'
+                                  }
+                                >
+                                  {POP_CHANGE_LABEL[item.popChange]}
+                                </span>
+                              )}
                               {item.description && (
                                 <p className="text-[10px] text-muted-foreground mt-0.5">{item.description}</p>
+                              )}
+                              {item.popChange === 'alterado' && item.popNewLabel && (
+                                <p className="text-[10px] text-amber-700 dark:text-amber-500 mt-0.5 break-words">
+                                  Agora no POP: {item.popNewLabel}
+                                </p>
                               )}
                             </div>
                             {stepWeight > 0 && (
@@ -729,6 +800,14 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
                                       <span className={cn(doc.checked && "line-through text-muted-foreground")}>
                                         {doc.label}
                                       </span>
+                                      {doc.popChange === 'removido' && (
+                                        <span
+                                          className="px-1 py-px rounded bg-muted text-muted-foreground text-[9px] font-semibold uppercase tracking-wide whitespace-nowrap"
+                                          title="Este item não existe mais no POP. Ficou aqui porque já tinha sido marcado."
+                                        >
+                                          {POP_CHANGE_LABEL.removido}
+                                        </span>
+                                      )}
                                     </label>
                                   ))}
                                 </div>
