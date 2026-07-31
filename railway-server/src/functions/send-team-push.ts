@@ -5,6 +5,9 @@
 //
 // Body: { entity_type, entity_id, sender_id, sender_name, content, is_urgent?,
 //         mentioned_user_ids?: string[], url?: string }
+// Também aceita `user_ids: string[]` — destinatários diretos, sem thread nenhum
+// (usado pelo alerta da gestão no painel "Time agora", que precisa alcançar
+// quem está com o sistema fechado). Nesse caso `title` e `tag` são opcionais.
 // Retorno: HTTP 200 { success, sent?, failed?, error? }
 //
 // Env no Railway: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (opcional).
@@ -40,15 +43,20 @@ export const handler: RequestHandler = async (req, res) => {
       content,
       is_urgent,
       mentioned_user_ids,
+      user_ids,
+      title: titleOverride,
+      tag: tagOverride,
       url,
     } = req.body || {};
 
-    if (!entity_id && !conversation_id) {
-      return res.json({ success: false, error: 'entity_id ou conversation_id obrigatório' });
+    const directIds = (Array.isArray(user_ids) ? user_ids : []).filter(Boolean) as string[];
+
+    if (!entity_id && !conversation_id && directIds.length === 0) {
+      return res.json({ success: false, error: 'entity_id, conversation_id ou user_ids obrigatório' });
     }
 
     // Destinatários: mencionados + participantes, menos o remetente.
-    const recipients = new Set<string>();
+    const recipients = new Set<string>(directIds);
     (Array.isArray(mentioned_user_ids) ? mentioned_user_ids : []).forEach((id: string) => {
       if (id) recipients.add(id);
     });
@@ -62,7 +70,7 @@ export const handler: RequestHandler = async (req, res) => {
       (members || []).forEach((m: { user_id: string | null }) => {
         if (m.user_id) recipients.add(m.user_id);
       });
-    } else {
+    } else if (entity_id) {
       // Chat de entidade (atv/lead/processo/contato): quem já participou do thread.
       const { data: parts } = await supabase
         .from('team_chat_messages')
@@ -133,7 +141,8 @@ export const handler: RequestHandler = async (req, res) => {
 
     if (!subs || subs.length === 0) return res.json({ success: true, sent: 0 });
 
-    const title = is_urgent ? `⚠ URGENTE — ${sender_name || 'Equipe'}` : (sender_name || 'Chat da equipe');
+    const title = titleOverride
+      || (is_urgent ? `⚠ URGENTE — ${sender_name || 'Equipe'}` : (sender_name || 'Chat da equipe'));
     const body = String(content || '')
       .replace(/\[(lead|contact|activity):[a-f0-9-]+:([^\]]+)\]/g, '$2')
       .slice(0, 180);
@@ -142,7 +151,8 @@ export const handler: RequestHandler = async (req, res) => {
       body,
       url: pushUrl || '/',
       urgent: !!is_urgent,
-      tag: conversation_id ? `team-conv-${conversation_id}` : `team-${entity_type}-${entity_id}`,
+      tag: tagOverride
+        || (conversation_id ? `team-conv-${conversation_id}` : `team-${entity_type}-${entity_id}`),
     });
 
     let sent = 0;

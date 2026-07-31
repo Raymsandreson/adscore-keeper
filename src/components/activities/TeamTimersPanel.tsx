@@ -8,13 +8,31 @@ import { useTeamLeadership } from '@/hooks/useTeamLeadership';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { cloudFunctions } from '@/lib/functionRouter';
 
-const ALERT_PRESETS = [
-  'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.',
-  'Precisa de ajuda com alguma coisa?',
-  'Podemos falar rapidinho? Me chama.',
-  'Retome as atividades, por favor.',
-];
+/** Contexto do alerta — muda as frases prontas e o rótulo do botão. */
+type AlertContext = 'idle' | 'break' | 'not_started';
+
+const ALERT_PRESETS: Record<AlertContext, string[]> = {
+  idle: [
+    'Por que você está ocioso? Retome uma atividade ou avise o que está fazendo.',
+    'Precisa de ajuda com alguma coisa?',
+    'Podemos falar rapidinho? Me chama.',
+    'Retome as atividades, por favor.',
+  ],
+  break: [
+    'Seu intervalo passou do previsto. Está tudo bem?',
+    'Quanto tempo você ainda precisa? Me avisa aqui.',
+    'Pode voltar ao trabalho e registrar a volta, por favor?',
+    'Se precisou de mais tempo, justifique o intervalo no cronômetro.',
+  ],
+  not_started: [
+    'Você ainda não iniciou o expediente hoje. Está tudo bem?',
+    'Bate o ponto, por favor — e avisa se tiver algum problema.',
+    'Está com dificuldade para acessar o sistema?',
+    'Vai atrasar hoje? Me dá um retorno, por favor.',
+  ],
+};
 import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2, LogOut, MoreVertical, PauseCircle, Search, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -33,17 +51,27 @@ const notStarted = (m: MemberStatus) => m.state === 'off' && m.dayActive === 0 &
 const matchesFilter = (m: MemberStatus, f: StatusFilter) =>
   f === 'all' ? true : f === 'not_started' ? notStarted(m) : m.state === f;
 
+/** Pausa sem previsão só vira "longa" depois disto (almoço cabe em 1h). */
+const LONG_BREAK_SECS = 60 * 60;
+/** Pausa estourada: passou da previsão que a própria pessoa deu, ou de 1h sem previsão. */
+const breakOverdue = (m: MemberStatus) =>
+  m.state === 'break' && m.currentSecs > (m.breakEtaMin && m.breakEtaMin > 0 ? m.breakEtaMin * 60 : LONG_BREAK_SECS);
+
 /** Sem batimento (flush 30s) por 2 min = cronômetro não está mais rodando. */
 const HEARTBEAT_MS = 2 * 60 * 1000;
 
 interface MemberStatus {
   extUserId: string;
+  /** UUID do Cloud — é por ele que `push_subscriptions` indexa o aparelho. */
+  cloudUserId: string | null;
   name: string;
   /** Cargo (só na seção Gestão): "Diretor" ou "Gestor · <times>". */
   role?: string;
   state: 'working' | 'idle' | 'break' | 'off';
   breakType?: BreakType | null;
   breakNote?: string | null;
+  /** Previsão que a pessoa deu ao registrar a pausa (min), quando deu. */
+  breakEtaMin?: number | null;
   activityTitle: string | null;
   activityType: string | null; // key do tipo (rotina) — rótulo resolvido na renderização
   activityId: string | null;   // permite o atalho "abrir a atividade"
@@ -100,8 +128,19 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
     return { id, name };
   }, []);
 
-  // Alerta da gestão pro membro ocioso — mensagem escolhida/escrita pelo remetente
+  /**
+   * Alerta da gestão pro membro (ocioso, em intervalo esticado ou que não bateu
+   * o ponto) — mensagem escolhida/escrita pelo remetente.
+   *
+   * Dois canais, porque o alvo pode nem estar com o sistema aberto:
+   * - `activity_timer_alerts` → chega na hora via Realtime SE a aba estiver
+   *   aberta (toca som + prompt 🚨). Quem está fora vê ao entrar.
+   * - Web Push (`send-team-push` com `user_ids`) → notificação nativa no
+   *   celular/notebook mesmo com tudo fechado. Único canal que alcança quem
+   *   não iniciou o expediente — daí ele ser obrigatório aqui.
+   */
   const sendIdleAlert = useCallback(async (m: MemberStatus, message: string) => {
+    const firstName = m.name.split(' ')[0];
     try {
       const sender = await resolveSender();
       const { error } = await dbAny.from('activity_timer_alerts').insert({
@@ -111,7 +150,26 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         message,
       });
       if (error) throw error;
-      toast.success(`Alerta enviado para ${m.name.split(' ')[0]}`);
+
+      let pushed = 0;
+      if (m.cloudUserId) {
+        try {
+          const { data } = await cloudFunctions.invoke('send-team-push', {
+            body: {
+              user_ids: [m.cloudUserId],
+              sender_id: null,
+              title: `🚨 ${sender.name || 'Gestão'}`,
+              content: message,
+              tag: `timer-alert-${m.extUserId}`,
+              url: '/',
+            },
+          });
+          pushed = (data as { sent?: number } | null)?.sent || 0;
+        } catch { /* push é complemento; o alerta já está gravado */ }
+      }
+
+      if (pushed > 0) toast.success(`Alerta enviado para ${firstName} (notificação no aparelho).`);
+      else toast.success(`Alerta enviado para ${firstName} — aparece quando ele abrir o sistema (sem notificação ativada no aparelho).`);
     } catch (e) {
       console.warn('[team-timers] alerta falhou', e);
       toast.error('Não foi possível enviar o alerta.');
@@ -149,7 +207,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
       // Filtra por work_date (partição por dia): antes somava active_seconds
       // vitalício de qualquer linha "tocada hoje", inflando o total (ex.: 12h50).
       const { data: entries } = await dbAny.from('activity_time_entries')
-        .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at, break_type, break_note')
+        .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at, break_type, break_note, estimated_minutes')
         .eq('work_date', brasiliaToday());
 
       type Entry = {
@@ -158,6 +216,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         active_seconds: number; idle_seconds: number; status: string;
         ended_at: string | null; started_at: string;
         break_type: BreakType | null; break_note: string | null;
+        estimated_minutes: number | null;
       };
       const byUser = new Map<string, { latest: Entry | null; dayActive: number; dayIdle: number }>();
       for (const r of ((entries as Entry[]) || [])) {
@@ -171,10 +230,10 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
       }
 
       const now = Date.now();
-      const statusOf = (extId: string, name: string): MemberStatus => {
+      const statusOf = (extId: string, cloudId: string, name: string): MemberStatus => {
         const u = byUser.get(extId);
         const base: MemberStatus = {
-          extUserId: extId, name, state: 'off', activityTitle: null, activityType: null, activityId: null,
+          extUserId: extId, cloudUserId: cloudId, name, state: 'off', activityTitle: null, activityType: null, activityId: null,
           currentSecs: 0, dayActive: u?.dayActive || 0, dayIdle: u?.dayIdle || 0,
         };
         const latest = u?.latest;
@@ -194,6 +253,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
           return {
             ...base, state: 'break',
             breakType: latest.break_type, breakNote: latest.break_note,
+            breakEtaMin: latest.estimated_minutes,
             currentSecs: latest.idle_seconds || 0,
           };
         }
@@ -230,11 +290,14 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
           .map(cid => {
             const ext = cloudToExt.get(cid);
             if (!ext) return null;
-            return statusOf(ext, nameByCloud.get(cid) || 'Membro');
+            return statusOf(ext, cid, nameByCloud.get(cid) || 'Membro');
           })
           .filter(Boolean)
           .map(m => m as MemberStatus)
-          .sort((a, b) => rank[a.state] - rank[b.state] || a.name.localeCompare(b.name));
+          // Dentro do "em intervalo", quem estourou a previsão vem primeiro.
+          .sort((a, b) => rank[a.state] - rank[b.state]
+            || (Number(breakOverdue(b)) - Number(breakOverdue(a)))
+            || a.name.localeCompare(b.name));
 
       // Gestão em seção própria no topo — diretor/gestor não aparecem nos times
       const leadership = buildMembers(Array.from(leadershipCloudIds)).map(m => m);
@@ -333,6 +396,11 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
     groups.forEach(g => g.members.forEach(m => { if (m.state === 'break') seen.add(m.extUserId); }));
     return seen.size;
   }, [groups]);
+  const breakOverdueCount = useMemo(() => {
+    const seen = new Set<string>();
+    groups.forEach(g => g.members.forEach(m => { if (breakOverdue(m)) seen.add(m.extUserId); }));
+    return seen.size;
+  }, [groups]);
   const notStartedCount = useMemo(() => {
     const seen = new Set<string>();
     groups.forEach(g => g.members.forEach(m => { if (notStarted(m)) seen.add(m.extUserId); }));
@@ -411,11 +479,11 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         {view === 'now' && (
         <div className="flex flex-wrap items-center gap-1">
           {([
-            { key: 'all' as const, label: 'Todos', title: 'Todo mundo' },
-            { key: 'working' as const, label: `Fazendo${workingCount ? ` ${workingCount}` : ''}`, title: 'Com atividade em andamento' },
-            { key: 'idle' as const, label: `Ocioso${idleCount ? ` ${idleCount}` : ''}`, title: 'Sem atividade, cronômetro rodando' },
-            { key: 'break' as const, label: `Intervalo${breakCount ? ` ${breakCount}` : ''}`, title: 'Em pausa justificada (almoço, café, banheiro…)' },
-            { key: 'not_started' as const, label: `Não iniciou${notStartedCount ? ` ${notStartedCount}` : ''}`, title: 'Não entrou no sistema / não bateu o ponto hoje' },
+            { key: 'all' as const, label: 'Todos', title: 'Todo mundo', alert: 0 },
+            { key: 'working' as const, label: `Fazendo${workingCount ? ` ${workingCount}` : ''}`, title: 'Com atividade em andamento', alert: 0 },
+            { key: 'idle' as const, label: `Ocioso${idleCount ? ` ${idleCount}` : ''}`, title: 'Sem atividade, cronômetro rodando', alert: 0 },
+            { key: 'break' as const, label: `Intervalo${breakCount ? ` ${breakCount}` : ''}`, title: breakOverdueCount ? `${breakOverdueCount} passou do tempo previsto` : 'Em pausa justificada (almoço, café, banheiro…)', alert: breakOverdueCount },
+            { key: 'not_started' as const, label: `Não iniciou${notStartedCount ? ` ${notStartedCount}` : ''}`, title: 'Não entrou no sistema / não bateu o ponto hoje', alert: 0 },
           ]).map(f => (
             <button
               key={f.key}
@@ -429,6 +497,9 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
               }`}
             >
               {f.label}
+              {f.alert > 0 && (
+                <span className={`ml-1 ${statusFilter === f.key ? 'text-red-200' : 'text-red-500'}`}>⚠{f.alert}</span>
+              )}
             </button>
           ))}
         </div>
@@ -551,7 +622,10 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                       </span>
                     ) : (
-                      <span className={`h-2 w-2 rounded-full shrink-0 ${m.state === 'idle' ? 'bg-amber-400' : m.state === 'break' ? 'bg-sky-400' : 'bg-muted-foreground/30'}`} />
+                      <span className={`h-2 w-2 rounded-full shrink-0 ${
+                        m.state === 'idle' ? 'bg-amber-400'
+                        : m.state === 'break' ? (breakOverdue(m) ? 'bg-red-500' : 'bg-sky-400')
+                        : 'bg-muted-foreground/30'}`} />
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="text-xs font-medium truncate">
@@ -569,8 +643,11 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                         )}
                         {m.state === 'idle' && 'Ocioso (entre atividades)'}
                         {m.state === 'break' && (
-                          <span className="text-sky-700 dark:text-sky-300">
+                          <span className={breakOverdue(m) ? 'text-red-600 dark:text-red-400 font-medium' : 'text-sky-700 dark:text-sky-300'}>
                             {BREAK_LABELS[m.breakType || 'intervalo']}{m.breakNote ? ` · ${m.breakNote}` : ''}
+                            {breakOverdue(m) && (m.breakEtaMin && m.breakEtaMin > 0
+                              ? ` · passou dos ${m.breakEtaMin} min`
+                              : ' · mais de 1h')}
                           </span>
                         )}
                         {m.state === 'off' && (notStarted(m)
@@ -592,13 +669,22 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                       </button>
                     )}
                     {m.state === 'idle' && (
-                      <IdleAlertButton member={m} onSend={sendIdleAlert} />
+                      <MemberAlertButton member={m} context="idle" onSend={sendIdleAlert} />
+                    )}
+                    {m.state === 'break' && (
+                      <MemberAlertButton member={m} context="break" onSend={sendIdleAlert} />
+                    )}
+                    {notStarted(m) && (
+                      <MemberAlertButton member={m} context="not_started" onSend={sendIdleAlert} />
                     )}
                     {canManage && m.state !== 'off' && (
                       <MemberActionsButton member={m} onCommand={sendCommand} />
                     )}
                     {m.state !== 'off' && (
-                      <span className={`text-[11px] font-mono tabular-nums shrink-0 ${m.state === 'working' ? 'text-emerald-600 dark:text-emerald-400' : m.state === 'break' ? 'text-sky-600 dark:text-sky-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      <span className={`text-[11px] font-mono tabular-nums shrink-0 ${
+                        m.state === 'working' ? 'text-emerald-600 dark:text-emerald-400'
+                        : m.state === 'break' ? (breakOverdue(m) ? 'text-red-600 dark:text-red-400 font-semibold' : 'text-sky-600 dark:text-sky-400')
+                        : 'text-amber-600 dark:text-amber-400'}`}>
                         {formatHMS(m.currentSecs)}
                       </span>
                     )}
@@ -694,32 +780,57 @@ function MemberActionsButton({
   );
 }
 
-/** Sino de alerta pro ocioso: mensagens prontas ou texto livre. */
-function IdleAlertButton({
-  member, onSend,
+const ALERT_STYLE: Record<AlertContext, { button: string; hint: string }> = {
+  idle: {
+    button: 'bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/60 text-amber-600 dark:text-amber-400',
+    hint: 'está ocioso',
+  },
+  break: {
+    button: 'bg-sky-100 dark:bg-sky-900/40 hover:bg-sky-200 dark:hover:bg-sky-800/60 text-sky-600 dark:text-sky-400',
+    hint: 'está em intervalo',
+  },
+  not_started: {
+    button: 'bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-800/60 text-red-600 dark:text-red-400',
+    hint: 'não iniciou o expediente hoje',
+  },
+};
+
+/**
+ * Sino de alerta: mensagens prontas (por contexto) ou texto livre.
+ * Usado no ocioso, no intervalo esticado e em quem não bateu o ponto.
+ */
+function MemberAlertButton({
+  member, context, onSend,
 }: {
   member: MemberStatus;
+  context: AlertContext;
   onSend: (m: MemberStatus, message: string) => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
   const [custom, setCustom] = useState('');
   const firstName = member.name.split(' ')[0];
+  const style = ALERT_STYLE[context];
   const send = (msg: string) => { onSend(member, msg); setOpen(false); setCustom(''); };
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setCustom(''); }}>
       <PopoverTrigger asChild>
         <button
           type="button"
-          className="rounded p-1 bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/60 text-amber-600 dark:text-amber-400 shrink-0"
-          title={`Enviar alerta para ${firstName} (com som)`}
+          className={`rounded p-1 shrink-0 ${style.button}`}
+          title={`${firstName} ${style.hint} — enviar alerta (som no sistema + notificação no aparelho)`}
         >
           <BellRing className="h-3 w-3" />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" side="left" className="w-72 p-2">
-        <div className="text-xs font-medium mb-1.5">Alertar {firstName}</div>
+        <div className="text-xs font-medium mb-0.5">Alertar {firstName}</div>
+        <div className="text-[10px] text-muted-foreground mb-1.5 leading-snug">
+          {context === 'not_started'
+            ? 'Ele está fora do sistema — o alerta vai como notificação no aparelho e reaparece quando ele entrar.'
+            : 'Toca um alerta na tela dele e manda notificação no aparelho.'}
+        </div>
         <div className="space-y-1 mb-2">
-          {ALERT_PRESETS.map((p) => (
+          {ALERT_PRESETS[context].map((p) => (
             <button
               key={p}
               type="button"
