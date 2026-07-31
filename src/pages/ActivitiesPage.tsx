@@ -472,6 +472,7 @@ const ActivitiesPage = () => {
     lead_id: filterLead.length > 0 ? filterLead : 'all',
     contact_id: filterContact.length > 0 ? filterContact : 'all',
     workflow_id: filterWorkflow.length > 0 ? filterWorkflow : 'all',
+    case_id: filterCase.length > 0 ? filterCase : 'all',
     // Sem isso, o teto padrão de 500 corta pendentes antigas quando "Todos" está ativo
     // (as mais recentes 500 enchem com concluídas e a lista perde pendentes).
     limit: 5000,
@@ -501,7 +502,7 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     fetchActivities(getFilterParams());
-  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow]);
+  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow, filterCase]);
 
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
@@ -2248,9 +2249,10 @@ const ActivitiesPage = () => {
           const dateKey = raw ? raw.slice(0, 10) : null;
           return dateKey ? selectedCalDays.includes(dateKey) : false;
         });
-      } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution) {
+      } else if (viewMode === 'list' && !filterStatus.includes('atrasada') && !filterInExecution && filterCase.length === 0) {
         // Sem dia selecionado: a lista acompanha o mês exibido no calendário.
         // Exceção: com o filtro 'Atrasada' ativo, mostramos vencidas de qualquer mês.
+        // Filtro por caso também ignora o mês — quem filtra por caso quer o caso inteiro.
         // Atividades sem nenhuma data continuam visíveis (não têm lugar no calendário).
         const monthPrefix = format(calendarMonth, 'yyyy-MM');
         list = list.filter(a => {

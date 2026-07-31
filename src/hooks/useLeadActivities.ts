@@ -75,6 +75,9 @@ export function useLeadActivities() {
     lead_id?: string | string[];
     contact_id?: string | string[];
     workflow_id?: string | string[];
+    /** Filtra por caso no SERVIDOR — sem isso o filtro de caso da página só enxerga as
+     *  ~1.000 atividades mais recentes (teto do PostgREST) e casos antigos somem. */
+    case_id?: string | string[];
     limit?: number;
     /** Busca também TODAS as atrasadas (prazo vencido, não concluídas), paginando sem teto de linhas. */
     overdue?: boolean;
@@ -91,6 +94,7 @@ export function useLeadActivities() {
       const leadVals = toVals(filters?.lead_id);
       const contactVals = toVals(filters?.contact_id);
       const workflowVals = toVals(filters?.workflow_id);
+      const caseVals = toVals(filters?.case_id);
 
       const assigneeVals = toVals(filters?.assigned_to);
       const hasUnassigned = assigneeVals.includes('__unassigned__');
@@ -124,6 +128,9 @@ export function useLeadActivities() {
 
         if (contactVals.length === 1) q = q.eq('contact_id', contactVals[0]);
         else if (contactVals.length > 1) q = q.in('contact_id', contactVals);
+
+        if (caseVals.length === 1) q = q.eq('case_id', caseVals[0]);
+        else if (caseVals.length > 1) q = q.in('case_id', caseVals);
 
         const hasNullWorkflow = workflowVals.includes('__unassigned__');
         const workflowIds = workflowVals.filter(v => v !== '__unassigned__');
