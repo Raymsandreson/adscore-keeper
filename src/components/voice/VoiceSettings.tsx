@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Mic, Play, Pause, Upload, Check, Loader2, Volume2, Trash2, Square, Circle, MonitorSpeaker, AudioLines } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -55,6 +56,8 @@ export function VoiceSettings() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [source, setSource] = useState<RecordSource>('mic');
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
+  const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [inputDeviceId, setInputDeviceId] = useState<string>('default');
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -64,6 +67,32 @@ export function VoiceSettings() {
 
   const canCaptureSystem =
     typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia;
+
+  /** Entradas que na verdade são o som do sistema (loopback) — dispensam compartilhar a tela */
+  const isLoopbackDevice = (label: string) =>
+    /mixagem est|stereo mix|vb-?audio|cable output|loopback|what u hear|blackhole|soundflower/i.test(label);
+
+  const deviceLabelsHidden = inputDevices.length > 0 && inputDevices.every(d => !d.label);
+
+  const loadInputDevices = useCallback(async () => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      setInputDevices(all.filter(d => d.kind === 'audioinput'));
+    } catch {
+      /* sem permissão ainda — a lista aparece depois de liberar o microfone */
+    }
+  }, []);
+
+  /** Pede o microfone só para o Chrome revelar os nomes das entradas */
+  const revealInputDevices = useCallback(async () => {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+      s.getTracks().forEach(t => t.stop());
+      await loadInputDevices();
+    } catch {
+      toast.error('Permissão do microfone negada');
+    }
+  }, [loadInputDevices]);
 
   const getUserId = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -103,7 +132,11 @@ export function VoiceSettings() {
       analyserNode.connect(destination);
 
       if (wantsMic) {
-        const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const micStream = await navigator.mediaDevices.getUserMedia({
+          audio: inputDeviceId && inputDeviceId !== 'default'
+            ? { deviceId: { exact: inputDeviceId } }
+            : true,
+        });
         streamsRef.current.push(micStream);
         ctx.createMediaStreamSource(micStream).connect(analyserNode);
       }
@@ -144,7 +177,11 @@ export function VoiceSettings() {
       recordingTimerRef.current = setInterval(() => setRecordingTime(t => t + 1), 1000);
     } catch (e: any) {
       releaseCapture();
-      if (e?.message === 'NO_SYSTEM_AUDIO') {
+      if (e?.name === 'OverconstrainedError' || e?.name === 'NotFoundError') {
+        toast.error('Entrada de áudio indisponível — escolha outra na lista');
+        setInputDeviceId('default');
+        loadInputDevices();
+      } else if (e?.message === 'NO_SYSTEM_AUDIO') {
         toast.error('Marque "Compartilhar áudio da aba" na janela de seleção do navegador');
       } else if (e?.name === 'NotAllowedError') {
         toast.error(
@@ -158,7 +195,7 @@ export function VoiceSettings() {
         toast.error('Não foi possível iniciar a gravação');
       }
     }
-  }, [source, releaseCapture, canCaptureSystem]);
+  }, [source, inputDeviceId, releaseCapture, canCaptureSystem, loadInputDevices]);
 
   const removeRecording = (index: number) => {
     setRecordedBlobs(prev => prev.filter((_, i) => i !== index));
@@ -169,6 +206,12 @@ export function VoiceSettings() {
   }, []);
 
   useEffect(() => releaseCapture, [releaseCapture]);
+
+  useEffect(() => {
+    loadInputDevices();
+    navigator.mediaDevices?.addEventListener?.('devicechange', loadInputDevices);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', loadInputDevices);
+  }, [loadInputDevices]);
 
   const loadVoices = async () => {
     try {
@@ -493,6 +536,41 @@ export function VoiceSettings() {
               </p>
             )}
           </div>
+
+          {/* Entrada usada quando a fonte inclui o microfone */}
+          {source !== 'system' && (
+            <div>
+              <Label>Entrada de áudio</Label>
+              {deviceLabelsHidden || inputDevices.length === 0 ? (
+                <div className="mt-1">
+                  <Button variant="outline" size="sm" onClick={revealInputDevices} className="gap-2">
+                    <Mic className="h-3 w-3" /> Liberar microfone para listar as entradas
+                  </Button>
+                </div>
+              ) : (
+                <Select value={inputDeviceId} onValueChange={setInputDeviceId} disabled={recording}>
+                  <SelectTrigger className="mt-1">
+                    <SelectValue placeholder="Padrão do sistema" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Padrão do sistema</SelectItem>
+                    {inputDevices
+                      .filter(d => d.deviceId && d.deviceId !== 'default')
+                      .map(d => (
+                        <SelectItem key={d.deviceId} value={d.deviceId}>
+                          {d.label || 'Entrada sem nome'}
+                          {isLoopbackDevice(d.label) ? ' — som do computador' : ''}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Se o Windows tiver "Mixagem estéreo" (ou um cabo virtual tipo VB-Cable) ativado, ele aparece aqui e grava o
+                som do computador direto, sem a janela de compartilhar tela.
+              </p>
+            </div>
+          )}
 
           <div>
             <Label>Gravar áudio</Label>
