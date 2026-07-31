@@ -147,7 +147,11 @@ export function VoiceSettings() {
       if (e?.message === 'NO_SYSTEM_AUDIO') {
         toast.error('Marque "Compartilhar áudio da aba" na janela de seleção do navegador');
       } else if (e?.name === 'NotAllowedError') {
-        toast.error('Permissão de captura negada');
+        toast.error(
+          wantsSystem
+            ? 'Compartilhamento cancelado — nada foi gravado'
+            : 'Permissão do microfone negada'
+        );
       } else if (wantsSystem && !canCaptureSystem) {
         toast.error('Este navegador não captura áudio interno — use o microfone');
       } else {
@@ -477,7 +481,10 @@ export function VoiceSettings() {
             </div>
             {source !== 'mic' && canCaptureSystem && (
               <p className="mt-1 text-[11px] text-muted-foreground">
-                O navegador vai pedir para escolher a aba/tela — marque a opção "Compartilhar áudio" antes de confirmar.
+                O Chrome vai abrir a janela "Escolha o que compartilhar" — é a permissão, sem ela não há áudio interno.
+                Em <strong>Guia do Chrome</strong>, clique na miniatura da aba que está tocando o som (não a deste app),
+                deixe ligado "Compartilhar também o áudio da guia" e confirme. Para som de fora do navegador, use
+                {' '}<strong>Tela inteira</strong> e marque o áudio do sistema.
               </p>
             )}
             {!canCaptureSystem && (
@@ -501,7 +508,8 @@ export function VoiceSettings() {
                 </>
               ) : (
                 <Button variant="outline" size="sm" onClick={startRecording} className="gap-2">
-                  <Mic className="h-3 w-3" /> Gravar amostra
+                  <Mic className="h-3 w-3" />
+                  {source === 'mic' ? 'Gravar amostra' : 'Escolher a aba e gravar'}
                 </Button>
               )}
             </div>
