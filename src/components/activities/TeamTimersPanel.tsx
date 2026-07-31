@@ -19,10 +19,19 @@ import { BellRing, ChevronDown, ChevronRight, ExternalLink, Loader2, LogOut, Mor
 import { toast } from 'sonner';
 
 const COLLAPSED_KEY = 'team-timers-collapsed';
-type StatusFilter = 'all' | 'working' | 'idle';
+type StatusFilter = 'all' | 'working' | 'idle' | 'break' | 'not_started';
 type PanelView = 'now' | 'rank';
 
 const dbAny = db as unknown as SupabaseClient;
+
+/**
+ * "Não iniciou" ≠ "off": quem bateu o ponto e já encerrou também fica 'off',
+ * mas apareceu no sistema hoje. Aqui o alvo é só quem não começou o expediente
+ * (nenhum segundo produtivo nem ocioso registrado no dia).
+ */
+const notStarted = (m: MemberStatus) => m.state === 'off' && m.dayActive === 0 && m.dayIdle === 0;
+const matchesFilter = (m: MemberStatus, f: StatusFilter) =>
+  f === 'all' ? true : f === 'not_started' ? notStarted(m) : m.state === f;
 
 /** Sem batimento (flush 30s) por 2 min = cronômetro não está mais rodando. */
 const HEARTBEAT_MS = 2 * 60 * 1000;
@@ -318,6 +327,17 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
     () => groups.reduce((s, g) => s + g.members.filter(m => m.state === 'idle').length, 0),
     [groups],
   );
+  // Contagens de membro único: quem está em dois times contaria duas vezes.
+  const breakCount = useMemo(() => {
+    const seen = new Set<string>();
+    groups.forEach(g => g.members.forEach(m => { if (m.state === 'break') seen.add(m.extUserId); }));
+    return seen.size;
+  }, [groups]);
+  const notStartedCount = useMemo(() => {
+    const seen = new Set<string>();
+    groups.forEach(g => g.members.forEach(m => { if (notStarted(m)) seen.add(m.extUserId); }));
+    return seen.size;
+  }, [groups]);
 
   // Filtros do "Time agora": status (chips) + busca por texto (nome do membro
   // ou nome do time). Se a busca casar o nome do time, mostra o time inteiro;
@@ -327,7 +347,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
     let gs = groups;
     if (statusFilter !== 'all') {
       gs = gs
-        .map(g => ({ ...g, members: g.members.filter(m => m.state === statusFilter) }))
+        .map(g => ({ ...g, members: g.members.filter(m => matchesFilter(m, statusFilter)) }))
         .filter(g => g.members.length > 0);
     }
     if (q) {
@@ -389,15 +409,18 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
           {view === 'now' && <span className="text-[11px] text-muted-foreground">{workingCount} em atividade</span>}
         </div>
         {view === 'now' && (
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {([
-            { key: 'all' as const, label: 'Todos' },
-            { key: 'working' as const, label: `Fazendo${workingCount ? ` ${workingCount}` : ''}` },
-            { key: 'idle' as const, label: `Ocioso${idleCount ? ` ${idleCount}` : ''}` },
+            { key: 'all' as const, label: 'Todos', title: 'Todo mundo' },
+            { key: 'working' as const, label: `Fazendo${workingCount ? ` ${workingCount}` : ''}`, title: 'Com atividade em andamento' },
+            { key: 'idle' as const, label: `Ocioso${idleCount ? ` ${idleCount}` : ''}`, title: 'Sem atividade, cronômetro rodando' },
+            { key: 'break' as const, label: `Intervalo${breakCount ? ` ${breakCount}` : ''}`, title: 'Em pausa justificada (almoço, café, banheiro…)' },
+            { key: 'not_started' as const, label: `Não iniciou${notStartedCount ? ` ${notStartedCount}` : ''}`, title: 'Não entrou no sistema / não bateu o ponto hoje' },
           ]).map(f => (
             <button
               key={f.key}
               type="button"
+              title={f.title}
               onClick={() => setStatusFilter(f.key)}
               className={`px-2 py-0.5 rounded-full text-[11px] border transition-colors ${
                 statusFilter === f.key
@@ -482,7 +505,10 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
             <div className="py-6 text-center text-muted-foreground text-sm">
               {query.trim() ? `Nada encontrado para "${query.trim()}".`
                 : statusFilter === 'all' ? 'Nenhum membro encontrado.'
-                : statusFilter === 'working' ? 'Ninguém em atividade agora.' : 'Ninguém ocioso agora.'}
+                : statusFilter === 'working' ? 'Ninguém em atividade agora.'
+                : statusFilter === 'idle' ? 'Ninguém ocioso agora.'
+                : statusFilter === 'break' ? 'Ninguém em intervalo agora.'
+                : 'Todo mundo já iniciou o expediente.'}
             </div>
           )}
           {view === 'now' && visibleGroups.map(g => {
@@ -547,7 +573,9 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                             {BREAK_LABELS[m.breakType || 'intervalo']}{m.breakNote ? ` · ${m.breakNote}` : ''}
                           </span>
                         )}
-                        {m.state === 'off' && (m.dayActive > 0 ? `Hoje: ${formatHMS(m.dayActive)} produtivo` : 'Sem cronômetro hoje')}
+                        {m.state === 'off' && (notStarted(m)
+                          ? 'Não iniciou o expediente hoje'
+                          : `Hoje: ${formatHMS(m.dayActive)} produtivo · fora do ar`)}
                       </div>
                     </div>
                     {m.activityId && (
