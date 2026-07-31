@@ -134,7 +134,7 @@ export function StageFunnelChart({
       let semResultado = 0;
       let total = 0;
       for (let from = 0; ; from += PAGE) {
-        let q = db
+        let q = (db as any)
           .from('lead_processes')
           .select('resultado_atingido_id, workflow_stage_id')
           .eq('workflow_id', board.id)
