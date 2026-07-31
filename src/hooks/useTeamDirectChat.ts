@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -39,6 +39,17 @@ export interface TeamMessage {
   urgent_alert_at?: string | null;
 }
 
+/** Quem está digitando/gravando agora na conversa aberta (sinal efêmero). */
+export interface TypingPeer {
+  userId: string;
+  name: string;
+  kind: 'typing' | 'recording';
+  at: number;
+}
+
+/** Sem sinal novo nesse tempo, o indicador some sozinho (aba fechada, queda de rede). */
+const TYPING_TTL_MS = 5000;
+
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
 
 export function useTeamDirectChat() {
@@ -49,6 +60,27 @@ export function useTeamDirectChat() {
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
   const [otherMembersReadAt, setOtherMembersReadAt] = useState<string[]>([]);
+  // "Fulano está digitando/gravando" — via broadcast no canal da conversa,
+  // não passa pelo banco (seria 1 write por tecla).
+  const [typingPeers, setTypingPeers] = useState<TypingPeer[]>([]);
+  const channelRef = useRef<ReturnType<typeof externalSupabase.channel> | null>(null);
+  const myNameRef = useRef<string>('');
+  const lastTypingSentRef = useRef<{ kind: string; at: number }>({ kind: '', at: 0 });
+
+  // Nome pro payload do broadcast (o receptor não tem os profiles do Cloud à mão).
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!cancelled) myNameRef.current = data?.full_name || user.email || 'Alguém';
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id, user?.email]);
 
   const fetchConversations = useCallback(async () => {
     if (!user?.id) return;
@@ -229,6 +261,9 @@ export function useTeamDirectChat() {
   }, [activeConversationId, fetchMessages]);
 
   useEffect(() => {
+    // Trocou de conversa: o "digitando" da anterior não vale mais.
+    setTypingPeers((prev) => (prev.length ? [] : prev));
+    lastTypingSentRef.current = { kind: '', at: 0 };
     if (!activeConversationId) return;
 
     const channel = externalSupabase
@@ -244,6 +279,10 @@ export function useTeamDirectChat() {
         (payload) => {
           const newMsg = payload.new as TeamMessage;
           setMessages((prev) => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
+          // Mandou a mensagem => parou de digitar/gravar (não espera o TTL).
+          setTypingPeers((prev) => prev.some(p => p.userId === newMsg.sender_id)
+            ? prev.filter(p => p.userId !== newMsg.sender_id)
+            : prev);
 
           if (user?.id && newMsg.sender_id !== user.id) {
             externalSupabase
@@ -285,7 +324,24 @@ export function useTeamDirectChat() {
           }
         }
       )
+      // "Está digitando..." / "Está gravando áudio..." — efêmero, nada é gravado.
+      .on('broadcast', { event: 'typing' }, ({ payload }) => {
+        const p = (payload || {}) as { user_id?: string; name?: string; kind?: string };
+        if (!p.user_id || p.user_id === user?.id) return;
+        setTypingPeers((prev) => {
+          const others = prev.filter((x) => x.userId !== p.user_id);
+          if (p.kind !== 'typing' && p.kind !== 'recording') return others;
+          return [...others, {
+            userId: p.user_id!,
+            name: p.name || 'Alguém',
+            kind: p.kind,
+            at: Date.now(),
+          }];
+        });
+      })
       .subscribe();
+
+    channelRef.current = channel;
 
     // Polling fallback: se Realtime falhar/atrasar, garante que novas mensagens
     // apareçam sem precisar sair e voltar da conversa.
@@ -311,10 +367,47 @@ export function useTeamDirectChat() {
     }, 4000);
 
     return () => {
+      if (channelRef.current === channel) channelRef.current = null;
       externalSupabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
   }, [activeConversationId, user?.id]);
+
+  // Expira o indicador de quem parou de digitar sem avisar (fechou a aba, caiu a rede).
+  useEffect(() => {
+    if (typingPeers.length === 0) return;
+    const id = setInterval(() => {
+      const cutoff = Date.now() - TYPING_TTL_MS;
+      setTypingPeers((prev) => {
+        const alive = prev.filter((p) => p.at > cutoff);
+        return alive.length === prev.length ? prev : alive;
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, [typingPeers.length]);
+
+  /**
+   * Avisa os outros da conversa que estou digitando/gravando.
+   * 'stop' encerra na hora; os demais são limitados a 1 envio a cada 2s
+   * (o TTL de 5s do receptor cobre o intervalo).
+   */
+  const sendTypingSignal = useCallback((kind: 'typing' | 'recording' | 'stop') => {
+    const ch = channelRef.current;
+    if (!ch || !user?.id) return;
+    const now = Date.now();
+    if (kind === 'stop') {
+      if (!lastTypingSentRef.current.kind) return; // nada a cancelar
+      lastTypingSentRef.current = { kind: '', at: now };
+    } else {
+      if (lastTypingSentRef.current.kind === kind && now - lastTypingSentRef.current.at < 2000) return;
+      lastTypingSentRef.current = { kind, at: now };
+    }
+    ch.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { user_id: user.id, name: myNameRef.current || 'Alguém', kind },
+    });
+  }, [user?.id]);
 
   // Envia pra uma conversa específica (usado também pelo "Encaminhar",
   // que manda pra outra conversa sem precisar trocar a tela antes)
@@ -551,5 +644,7 @@ export function useTeamDirectChat() {
     fetchConversations,
     fetchMessages,
     otherMembersReadAt,
+    typingPeers,
+    sendTypingSignal,
   };
 }
