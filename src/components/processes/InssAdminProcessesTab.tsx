@@ -6,6 +6,7 @@ import { useLeads, type Lead } from "@/hooks/useLeads";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { db } from "@/integrations/supabase";
 import { authClient } from "@/integrations/supabase";
+import { upsertInssLeadProcess } from "@/lib/inssLeadProcess";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -864,55 +865,10 @@ export default function InssAdminProcessesTab() {
 
   const INSS_FIELD_ID = "111f9a38-98c3-4f83-9095-5c469106a7bf";
 
-  // Cria (ou atualiza) lead_processes com todos os dados do INSS puxados do email
+  // Cria (ou atualiza) lead_processes com todos os dados do INSS puxados do email.
+  // Lógica compartilhada com a aba "Buscar no E-mail" do Cadastrar Processo.
   const upsertLeadProcess = async (caseId: string, leadId: string | null, proc: InssProcess) => {
-    if (!proc.requerimento_number) return;
-    // Pega o último despacho do histórico para popular description
-    const { data: lastHist } = await db
-      .from("inss_status_history" as any)
-      .select("email_snippet, email_subject, email_received_at, to_status")
-      .eq("process_id", proc.id)
-      .order("email_received_at", { ascending: false })
-      .limit(1);
-    const last = (lastHist || [])[0] as any;
-
-    const title = `INSS Administrativo — Req. ${proc.requerimento_number}${proc.benefit_type ? ` (${proc.benefit_type})` : ""}`;
-    const descLines = [
-      proc.nome_segurado ? `Segurado: ${proc.nome_segurado}` : null,
-      proc.cpf_segurado ? `CPF: ${proc.cpf_segurado}` : null,
-      proc.benefit_type ? `Benefício: ${proc.benefit_type}` : null,
-      proc.benefit_number ? `NB: ${proc.benefit_number}` : null,
-      proc.protocol_date ? `Protocolo: ${fmtDate(proc.protocol_date)}` : null,
-      proc.current_status ? `Status: ${proc.current_status}` : null,
-      last?.email_snippet ? `\nÚltimo despacho: ${last.email_snippet}` : null,
-    ].filter(Boolean);
-
-    // Já existe lead_processes para este requerimento? (procura por process_number ou case_id+tipo)
-    const { data: existing } = await db
-      .from("lead_processes" as any)
-      .select("id")
-      .eq("process_number", proc.requerimento_number)
-      .limit(1);
-
-    const payload: any = {
-      lead_id: leadId,
-      case_id: caseId,
-      process_type: "inss_admin",
-      process_number: proc.requerimento_number,
-      title,
-      description: descLines.join("\n"),
-      status: proc.current_status || "Em andamento",
-      started_at: proc.protocol_date || proc.created_at,
-      fonte_nome: "INSS",
-      fonte_tipo: "Administrativo",
-      data_ultima_verificacao: proc.last_email_at,
-    };
-
-    if (existing && existing[0]) {
-      await db.from("lead_processes" as any).update(payload).eq("id", (existing[0] as any).id);
-    } else {
-      await db.from("lead_processes" as any).insert({ ...payload, created_by: userId });
-    }
+    await upsertInssLeadProcess({ caseId, leadId, proc, createdBy: userId });
   };
 
   const linkToCase = async (caseOpt: CaseOption) => {

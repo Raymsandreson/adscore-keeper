@@ -14,7 +14,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList, Plus } from 'lucide-react';
+import { Search, Gavel, FileText, Loader2, AlertCircle, CheckCircle2, ClipboardList, Plus, Mail } from 'lucide-react';
+import InssEmailSearchTab from './InssEmailSearchTab';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -28,27 +29,7 @@ import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 import { renderProcessTitle, processTypeLabel, cityStateToken, type ProcessNameContext } from '@/lib/processNameTemplate';
 
 // Resolver de atribuição centralizado em src/lib/processAssignment.ts
-import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
-
-async function resolveAssignment(
-  processTitle: string,
-  caseId: string,
-  currentUserId: string | undefined,
-): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
-  // Busca title + case_number do caso para alimentar a regra especial do INSS.
-  let caseTitle: string | null = null;
-  let caseNumber: string | null = null;
-  try {
-    const { data } = await externalSupabase
-      .from('legal_cases')
-      .select('title, case_number')
-      .eq('id', caseId)
-      .maybeSingle();
-    caseTitle = (data as any)?.title || null;
-    caseNumber = (data as any)?.case_number || null;
-  } catch {}
-  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber);
-}
+import { resolveAssignmentForCase as resolveAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
 
 
 
@@ -83,7 +64,7 @@ interface EscavadorResult {
 }
 
 export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, onProcessAdded, boards = [] }: AddProcessDialogProps) {
-  const [tab, setTab] = useState<'escavador' | 'manual'>('escavador');
+  const [tab, setTab] = useState<'escavador' | 'email' | 'manual'>('escavador');
   const [searching, setSearching] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchType, setSearchType] = useState<'numero' | 'nome' | 'cpf' | 'oab'>('numero');
@@ -727,12 +708,17 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
         </div>
 
         <Tabs value={tab} onValueChange={v => setTab(v as any)}>
+          {/* 3 abas em diálogo estreito: rótulos curtos + min-w-0 pra ninguém
+              cortar texto (o nome completo fica no title do trigger). */}
           <TabsList className="w-full">
-            <TabsTrigger value="escavador" className="flex-1 gap-1.5">
-              <Search className="h-3.5 w-3.5" /> Buscar no Escavador
+            <TabsTrigger value="escavador" className="flex-1 min-w-0 gap-1.5 px-2" title="Buscar no Escavador">
+              <Search className="h-3.5 w-3.5 shrink-0" /> Escavador
             </TabsTrigger>
-            <TabsTrigger value="manual" className="flex-1 gap-1.5">
-              <FileText className="h-3.5 w-3.5" /> Cadastro Manual
+            <TabsTrigger value="email" className="flex-1 min-w-0 gap-1.5 px-2" title="Buscar nos e-mails do INSS já lidos">
+              <Mail className="h-3.5 w-3.5 shrink-0" /> E-mail
+            </TabsTrigger>
+            <TabsTrigger value="manual" className="flex-1 min-w-0 gap-1.5 px-2" title="Cadastro manual">
+              <FileText className="h-3.5 w-3.5 shrink-0" /> Manual
             </TabsTrigger>
           </TabsList>
 
@@ -832,6 +818,21 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
                 {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
                 Vincular {selectedResults.size} processo(s) ao Caso
               </Button>
+            )}
+          </TabsContent>
+
+          <TabsContent value="email">
+            {/* Monta só quando a aba abre: a busca automática dispara no mount. */}
+            {tab === 'email' && (
+              <InssEmailSearchTab
+                caseId={caseId}
+                leadId={leadId}
+                workflowId={workflowId}
+                workflowName={selectedBoard?.name || null}
+                responsibleExtId={responsibleExtId}
+                onProcessAdded={onProcessAdded}
+                onDone={() => { onOpenChange(false); resetForm(); }}
+              />
             )}
           </TabsContent>
 

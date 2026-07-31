@@ -94,6 +94,29 @@ export async function resolveProcessAssignment(
 }
 
 /**
+ * Mesma decisão do `resolveProcessAssignment`, mas buscando título e número do
+ * caso a partir do `caseId` — que é o que os pontos de cadastro têm em mãos.
+ */
+export async function resolveAssignmentForCase(
+  processTitle: string,
+  caseId: string,
+  currentUserId: string | undefined,
+): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
+  let caseTitle: string | null = null;
+  let caseNumber: string | null = null;
+  try {
+    const { data } = await externalSupabase
+      .from('legal_cases')
+      .select('title, case_number')
+      .eq('id', caseId)
+      .maybeSingle();
+    caseTitle = (data as any)?.title || null;
+    caseNumber = (data as any)?.case_number || null;
+  } catch {}
+  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber);
+}
+
+/**
  * Prompt nativo simples (window.prompt) para escolher o responsável do
  * Benefício INSS quando o caso é PREV. Retorna null se o usuário cancelar
  * ou digitar opção inválida.

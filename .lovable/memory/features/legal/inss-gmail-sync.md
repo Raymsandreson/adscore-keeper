@@ -24,6 +24,32 @@ CPF/nome/benefício extraídos do corpo (text/plain decodificado base64url).
 
 Sempre órfão por padrão (cliente pediu revisão manual). Ao vincular um caso, todos os updates não notificados (`notified=false`) viram atividade + zap.
 
+## Aba "E-mail" no Cadastrar Processo (jul/2026)
+
+Caminho inverso do vínculo: em vez de sair da aba INSS procurando o caso, o
+assessor abre o caso e procura o requerimento.
+
+- `src/components/cases/InssEmailSearchTab.tsx` — 3ª aba do `AddProcessDialog`.
+  Busca em `inss_admin_processes` (não no Gmail ao vivo), com auto-busca pelos
+  nomes do cliente (título do caso, lead, vítima, contatos via `lead_id` **e**
+  `contact_leads`) + CPF. Score = tokens que batem no `nome_segurado`, com +2
+  quando é o primeiro nome — sem isso "Cícero" empata com "Francisco Cícero".
+- Requerimento já preso a outro lead/caso aparece com selo "Vinculado a: X" e só
+  é movido após `confirm()` explícito.
+- Botão "procurar no Gmail agora" chama `gmail-inss-sync` com `lookback_days: 30`.
+- `src/lib/inssLeadProcess.ts` — `upsertInssLeadProcess`, extraído do
+  `InssAdminProcessesTab`. É a única ponte `inss_admin_processes` →
+  `lead_processes`; agora grava também POP e responsável escolhidos no modal.
+
+**Por que existe:** o dado do e-mail só aparece na ficha do caso quando existe
+linha em `lead_processes`, e isso só acontecia quando o processo tinha `case_id`.
+Em 31/07/2026: 250 de 789 requerimentos tinham lead mas nenhum caso — invisíveis
+na ficha. Ex.: req. 485096106 (Cícero) estava no lead "Cicero" (0 casos) em vez
+do `PREV 542`, porque o matcher casa por `victim_name`/`contacts.full_name` e o
+PREV 542 não tem nenhum dos dois preenchido.
+
+Pendente: verificar na UI após o publish.
+
 ## Envs Railway necessárias
 
 - `LOVABLE_API_KEY`
