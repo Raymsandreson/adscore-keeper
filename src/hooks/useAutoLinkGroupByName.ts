@@ -21,6 +21,16 @@ import { toast } from 'sonner';
 
 const SESSION_PREFIX = 'auto-link-group:v1:';
 
+// DESLIGADO em 31/07/2026 — o matching por token vinculava grupo de outro cliente.
+// Evidência: 815 vínculos auto_linked no Externo, 101 com número de caso divergente
+// entre lead e grupo (ex: lead "PREV 1092 /MONICA" ficou com o grupo "PREV 1174 ANA
+// CRISTINA"), e 77 grupos colados em mais de um lead — o pior em 18 leads.
+// Motivos no algoritmo: tokens <4 chars são descartados (o número do caso "PREV 390"
+// nunca entra no score), o match é substring sem fronteira de palavra ("cris" casa
+// "CRISTINA") e o `.limit(20)` por `fetched_at` costuma nem trazer o grupo certo.
+// Só religar depois de exigir âncora no código do caso (PREV/FAMÍLIA nnn).
+const AUTO_LINK_ENABLED = false;
+
 function tokenizeName(name: string): string[] {
   if (!name) return [];
   const stop = new Set(['da', 'de', 'do', 'das', 'dos', 'e', 'a', 'o', 'lead', 'caso']);
@@ -52,6 +62,7 @@ export function useAutoLinkGroupByName({
   const ranRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (!AUTO_LINK_ENABLED) return;
     if (!leadId || !leadName) return;
     if (!hasCaseClosed) return;
     if (currentGroupId) return;
