@@ -253,7 +253,13 @@ Deno.serve(async (req) => {
             const jid = g.id || g.jid || g.JID || null;
             if (!jid) return null;
             const participants = (g.participants || g.Participants || []).map((p: any) => {
-              const id = String(p?.id || p?.jid || p?.phone || p || "");
+              // `String(p)` num objeto vira "[object Object]" — foi assim que 50
+              // linhas do cache viraram lixo. Só cai no participante cru se ele
+              // for string mesmo.
+              const id = String(
+                p?.id || p?.jid || p?.JID || p?.phone || p?.PhoneNumber || p?.LID || p?.lid ||
+                (typeof p === "string" ? p : ""),
+              );
               return { id, key: phoneMatchKey(id) };
             });
             return {

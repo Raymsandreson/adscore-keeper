@@ -168,6 +168,7 @@ Regras de conduta obrigatórias durante qualquer execução:
 - **Supabase Externo** `kmedldlepwiityjsdahz` — `whatsapp_messages`, webhooks
 - **Supabase Cloud** `gliigkupoebmlbwyvijp` — auth, perfis, leads, instâncias
 - **GitHub** `github.com/Raymsandreson/adscore-keeper`
+- **Railway** `WhatsJud/production` — deploy automático via GitHub a cada commit em `main`. Push em branch de feature não publica; só o merge sobe o código. Não existe passo manual de deploy (`railway-redeploy` só reinicia com o mesmo código).
 - **Frontend** Lovable — autorização durável do usuário (jul/2026): alterar e publicar mudanças de front sem pedir confirmação expressa a cada vez. Condição obrigatória: toda mudança de front precisa ser reversível antes de publicar (commit/branch git ou ponto de rollback documentado) e mostrar o diff resumido no resumo pós-publicação.
 
 ---

@@ -40,6 +40,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'list-stage-label-mappings': 'railway',
   'set-stage-result-key': 'railway',
   'get-whatsapp-group-info': 'railway',
+  'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
   'scan-duplicate-contacts': 'railway',
   'recover-leads-phone-55': 'railway',
   'transcribe-activity-call': 'railway',
