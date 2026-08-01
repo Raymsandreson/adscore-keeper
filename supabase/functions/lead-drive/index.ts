@@ -1,5 +1,5 @@
 // Lead Drive Integration
-// Actions: ensure_folder, list_files, upload, delete, get_root
+// Actions: ensure_folder, list_files, upload, delete, trash, get_root
 // Storage: pasta única por lead dentro do Drive do escritório
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { geminiChat } from "../_shared/gemini.ts";
@@ -471,6 +471,25 @@ Deno.serve(async (req) => {
       const res = await fetch(`${GATEWAY}/files/${file_id}`, { method: "DELETE", headers: gwHeaders() });
       if (!res.ok && res.status !== 404) throw new Error(`drive delete failed [${res.status}]: ${await res.text()}`);
       return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    }
+
+    // Manda pra lixeira em vez de apagar. DELETE do Drive é definitivo e não
+    // passa pela lixeira — em remoção automática (ex.: desvincular grupo do
+    // caso) queremos os ~30 dias de arrependimento.
+    if (action === "trash") {
+      const { file_id } = body;
+      if (!file_id) throw new Error("file_id required");
+      const res = await fetch(`${GATEWAY}/files/${file_id}?fields=id,name,trashed`, {
+        method: "PATCH",
+        headers: gwHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ trashed: true }),
+      });
+      if (!res.ok && res.status !== 404) throw new Error(`drive trash failed [${res.status}]: ${await res.text()}`);
+      const file = res.ok ? await res.json().catch(() => null) : null;
+      return new Response(
+        JSON.stringify({ ok: true, already_gone: res.status === 404, file }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
     if (action === "upload_url") {

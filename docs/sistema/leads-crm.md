@@ -19,6 +19,16 @@ Documentação funcional das telas de leads, acolhimento, contatos, casos, funis
 - Campo Acolhedor (Editar Lead e Adicionar Lead): combobox com busca por digitação e foto ao lado do nome. No board Trabalhista (Acidente de Trabalho) as opções são só os 6 acolhedores oficiais (lista canônica em `src/lib/trabalhistaAcolhedores.ts`); nos demais boards, lista completa de perfis. Leads antigos com acolhedor fora da lista mantêm o valor até alguém trocar. O dialog "Cadastrar Caso Viável" (Notícias) tem lista restrita própria por user_id, separada desta.
 - Ficha do lead (abas): Básico, Contatos, Atividades, Acidente, Local, Empresas, Jurídico, Documentos, Histórico, Casos (se fechado), Financeiro, Chat IA, Chat Equipe.
 
+### Desvincular grupo do caso → documentos saem do Drive — ago/2026
+
+Remover um grupo de WhatsApp da ficha do lead e salvar agora **limpa também os documentos que vieram daquele grupo**. Antes, grupo colado errado saía do vínculo mas o RG/procuração do outro cliente continuava na pasta do caso no Drive.
+
+- Alvo: `process_documents` do lead com `source = 'whatsapp_group'` e `metadata.group_jid` = o grupo removido (documento antigo sem `group_jid` é resolvido pelo `external_message_id` em `whatsapp_messages.phone`).
+- Arquivo do Drive vai pra **lixeira** (`trashed=true`), não delete definitivo — recuperável ~30 dias. Só quem for pra lixeira tem a linha em `process_documents` apagada; falha no Drive mantém a linha (nada de arquivo órfão sem registro).
+- O backup em Storage (`whatsapp-media`) **não** é apagado — é ele que permite reimportar se o grupo voltar a ser vinculado.
+- Roda fora do await do salvar (cada arquivo custa ~1s no Drive); resultado vem em toast. Também dispara ao "excluir" um grupo em Contatos → Grupos (limpa para cada caso que estava vinculado).
+- Arquivos: `supabase/functions/unlink-group-docs/index.ts`, ação `trash` em `supabase/functions/lead-drive/index.ts`, `src/lib/unlinkGroupDocs.ts`, chamada em `LeadEditDialog.handleSave` e `ContactsListPage.handleDeleteGroup`.
+
 ### Visualização em lista (toggle colunas | lista) — jul/2026
 
 Toggle no header (ícones colunas/lista) alterna kanban ↔ lista **sem resetar** busca, filtro de acolhedor, filtros avançados nem filtro de checklist (mesmo estado compartilhado). Visualização e ordenação vão pra URL (`?view=list&sort=tempo_estagio.desc`); a última escolha fica em localStorage. O kanban não foi alterado.
@@ -59,7 +69,7 @@ Toggle no header (ícones colunas/lista) alterna kanban ↔ lista **sem resetar*
 
 - Cabeçalho: "Classificar Clientes", "Resolver duplicados", "Novo Contato", "Mapa"; com seleção ativa: "Nova Lista" e "Enviar".
 - Contatos: busca + filtros (Estado, Cidade, Origem, Criado por, Relacionamento, Grupo, Lead); clique abre a ficha do contato.
-- Grupos: busca; "Atualizar dados em lote" (data/criador via UazAPI); "Filtrar e ordenar" (escopo, ordenação, vínculo, funil, período, ocultos); **Modo auditoria** (tabela tipo planilha: nº lead, nº caso, nomes, criado em/por; por linha: abrir conversa, abrir/vincular lead, atualizar dados, editar nº do funil — renomeia o grupo no WhatsApp —, ver contatos, excluir).
+- Grupos: busca; "Atualizar dados em lote" (data/criador via UazAPI); "Filtrar e ordenar" (escopo, ordenação, vínculo, funil, período, ocultos); **Modo auditoria** (tabela tipo planilha: nº lead, nº caso, nomes, criado em/por; por linha: abrir conversa, abrir/vincular lead, atualizar dados, editar nº do funil — renomeia o grupo no WhatsApp —, ver contatos, excluir — "excluir" também manda pra lixeira do Drive os documentos que esse grupo levou para os casos vinculados).
 - Listas: "Nova Lista"; por lista: atribuir Agente IA, adicionar selecionados, "Enviar" transmissão (instância + mídia + mensagem), excluir.
 
 **Fluxo recomendado (auditoria)**: aba Grupos → Modo auditoria → vincular os grupos órfãos e corrigir nº do funil. **Fluxo (transmissão)**: selecionar contatos → "Nova Lista" → na aba Listas, "Enviar".

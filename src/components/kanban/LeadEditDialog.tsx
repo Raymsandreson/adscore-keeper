@@ -142,6 +142,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Pencil, Trash2, Search } from 'lucide-react';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
+import { unlinkGroupDocsWithToast } from '@/lib/unlinkGroupDocs';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
 import { OpenWhatsAppLeadButton } from '@/components/leads/OpenWhatsAppLeadButton';
@@ -1521,9 +1522,17 @@ ${scrapeData.content || ''}
         .eq('lead_id', currentLead.id);
 
       // Audit unlinks: groups that existed before but are not in the new list
+      const bareJid = (v: unknown) => String(v || '').split('@')[0].replace(/\D/g, '');
       const newJids = new Set(whatsappGroups.map(g => g.group_jid).filter(Boolean));
+      const newBareJids = new Set(Array.from(newJids).map(bareJid).filter(Boolean));
+      const unlinkedJids: string[] = [];
       for (const old of existingGroups || []) {
         if (!old.group_jid || !newJids.has(old.group_jid)) {
+          // Comparação pelo número puro: lead_whatsapp_groups grava ora com
+          // @g.us, ora sem — só a string não basta pra decidir "saiu do caso".
+          if (old.group_jid && !newBareJids.has(bareJid(old.group_jid))) {
+            unlinkedJids.push(old.group_jid);
+          }
           await logGroupAudit({
             action: 'unlink',
             group_jid: old.group_jid,
@@ -1535,6 +1544,22 @@ ${scrapeData.content || ''}
             source: 'LeadEditDialog.handleSave',
           });
         }
+      }
+
+      // Grupo saiu do caso → os documentos dele saem da pasta do caso no Drive
+      // (lixeira, recuperável) e o registro em process_documents é apagado.
+      // Fora do await do save: é 1 chamada por grupo e cada arquivo custa ~1s
+      // no Drive; segurar o diálogo por isso travaria o usuário à toa.
+      if (!deleteErr && unlinkedJids.length > 0) {
+        const leadIdForDocs = currentLead.id;
+        void unlinkGroupDocsWithToast(leadIdForDocs, unlinkedJids).then(() => {
+          // O hook de import automático guarda "já importei tudo" na sessão.
+          // Sem limpar, a próxima abertura do lead não reavaliaria o que sobrou.
+          try {
+            sessionStorage.removeItem(`auto-import-docs:v6:${leadIdForDocs}:done`);
+            sessionStorage.removeItem(`auto-import-docs:v6:${leadIdForDocs}:attempted`);
+          } catch { /* sessionStorage indisponível — sem impacto no fluxo */ }
+        });
       }
 
       const resolvedGroups = [...whatsappGroups];
@@ -3872,6 +3897,8 @@ ${scrapeData.content || ''}
                   <>Grupo: <strong>{whatsappGroups[groupRemovalIdx]?.group_name || whatsappGroups[groupRemovalIdx]?.label || whatsappGroups[groupRemovalIdx]?.group_jid || 'sem nome'}</strong>.{' '}</>
                 )}
                 Se for caso fechado, o lead será marcado como <strong>Fechado</strong> com a data de criação do grupo, o grupo continuará vinculado e será obrigatório cadastrar o processo do caso antes de salvar.
+                {' '}Se só remover, ao salvar os documentos que vieram desse grupo vão para a{' '}
+                <strong>lixeira do Google Drive</strong> (recuperáveis por ~30 dias) e saem da pasta do caso.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>

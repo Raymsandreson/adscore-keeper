@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 
 import { cloudFunctions } from '@/lib/functionRouter';
+import { unlinkGroupDocsWithToast } from '@/lib/unlinkGroupDocs';
 
 export function ContactsListPage() {
   const navigate = useNavigate();
@@ -109,10 +110,24 @@ export function ContactsListPage() {
 
   const handleDeleteGroup = async (jid: string, name: string | null) => {
     if (!jid) return;
-    const ok = window.confirm(`Excluir o grupo "${name || jid}" da lista?\n\nIsso remove o cache do grupo e o vínculo com lead (se houver). A conversa no WhatsApp não é afetada.`);
+    const ok = window.confirm(`Excluir o grupo "${name || jid}" da lista?\n\nIsso remove o cache do grupo e o vínculo com lead (se houver). Os documentos que vieram desse grupo vão para a lixeira do Google Drive e saem da pasta do caso. A conversa no WhatsApp não é afetada.`);
     if (!ok) return;
     try {
+      // Casos que perdem o vínculo agora — precisa ser lido ANTES do delete,
+      // senão não há mais como saber de que pasta tirar os documentos.
+      const { data: linkedLeads } = await externalSupabase
+        .from('lead_whatsapp_groups')
+        .select('lead_id')
+        .eq('group_jid', jid);
+
       await externalSupabase.from('lead_whatsapp_groups').delete().eq('group_jid', jid);
+
+      const leadIds = Array.from(
+        new Set(((linkedLeads || []) as any[]).map((r) => r?.lead_id).filter(Boolean)),
+      ) as string[];
+      for (const leadId of leadIds) {
+        void unlinkGroupDocsWithToast(leadId, [jid]);
+      }
       await externalSupabase.from('whatsapp_groups_cache').delete().eq('group_jid', jid);
       setGroups(prev => prev.filter(g => g.group_jid !== jid));
       toast.success('Grupo removido da lista');
