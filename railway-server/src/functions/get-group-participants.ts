@@ -279,16 +279,19 @@ export const handler: RequestHandler = async (req, res) => {
       else byKey.set(p.key, { ...prev, ...p, display_name: prev.display_name || p.display_name, is_admin: prev.is_admin || p.is_admin });
     }
 
-    // Remove as instâncias da própria org (somos nós no grupo, não contatos do caso).
-    const filtered = Array.from(byKey.values()).filter((p) => {
-      if (!p.phone) return true;
-      const k = p.phone.slice(-10);
-      return !(k.length >= 8 && ownerKeys.has(k));
+    // Chips da própria operação são marcados, não removidos: o contador do modal
+    // precisa bater com o do WhatsApp, e boa parte dos membros desses grupos é
+    // instância nossa. Quem separa cliente de equipe é o selo, não o filtro.
+    const filtered = Array.from(byKey.values()).map((p) => {
+      const k = p.phone ? p.phone.slice(-10) : '';
+      return { ...p, is_team: !!(k.length >= 8 && ownerKeys.has(k)) };
     });
-    const excluded = byKey.size - filtered.length;
+    const teamCount = filtered.filter((p) => p.is_team).length;
 
     // --- enriquecimento via /chat/details (só para quem tem telefone) ---
-    const withPhone = filtered.filter((p) => p.phone);
+    // Instância nossa não precisa de enriquecimento — é chip interno, e cada
+    // consulta dessas é uma chamada à UazAPI.
+    const withPhone = filtered.filter((p) => p.phone && !p.is_team);
     const phones = withPhone.map((p) => p.phone);
     const cachedDetails: Record<string, any> = {};
     if (phones.length > 0) {
@@ -345,6 +348,7 @@ export const handler: RequestHandler = async (req, res) => {
         raw: p.raw,
         lid: p.lid,
         is_admin: p.is_admin,
+        is_team: p.is_team,
         name: d.name || p.display_name || null,
         image: d.image || null,
         lead_email: d.lead_email || null,
@@ -368,7 +372,7 @@ export const handler: RequestHandler = async (req, res) => {
       fetched_at: fetchedAt,
       from_cache: fromCache,
       participants,
-      excluded_instances_count: excluded,
+      team_count: teamCount,
       enriched_count: participants.filter((p) => p.name).length,
       // Quantos o /group/info trouxe mas não deram nem telefone nem LID.
       unresolved_count: rawParts.length - baseList.length,

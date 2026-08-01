@@ -25,6 +25,9 @@ interface GroupParticipant {
   name: string;
   admin?: string;
   lid?: string;
+  // Chip de uma instância nossa (Atendimento Previdenciário, João Manoel…).
+  // Marcado, não escondido — ver comentário em `teamKeys`.
+  isTeam?: boolean;
 }
 
 interface ContactInfo {
@@ -86,7 +89,8 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [showAddMember, setShowAddMember] = useState(false);
   const [newMemberPhone, setNewMemberPhone] = useState('');
   const [addingMember, setAddingMember] = useState(false);
-  const [ownerPhone, setOwnerPhone] = useState<string | null>(null);
+  // tail do telefone (8 dígitos) → nome da instância
+  const [teamKeys, setTeamKeys] = useState<Map<string, string>>(new Map());
 
   const callManage = async (action: 'add' | 'remove' | 'promote' | 'demote', numbers: string[]) => {
     if (!groupJid || !instanceName) throw new Error('Grupo ou instância não definidos');
@@ -266,19 +270,33 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     }
   }, [open, isGroup, groupJid, instanceName]);
 
-  // Carrega o owner_phone da instância (essa é "nós mesmos" no grupo, não um contato do caso).
+  // Carrega o owner_phone de TODAS as instâncias, não só a da conversa.
+  // Antes só a instância atual era reconhecida, então os chips das outras
+  // apareciam como se fossem membros do caso — com o nome de contatos antigos
+  // cadastrados naquele número (ex.: "Gisele Santos" era o Atendimento
+  // Previdenciário 2).
   useEffect(() => {
-    if (!open || !instanceName) { setOwnerPhone(null); return; }
+    if (!open) { setTeamKeys(new Map()); return; }
     (async () => {
       const { data } = await (externalSupabase as any)
         .from('whatsapp_instances')
-        .select('owner_phone')
-        .ilike('instance_name', instanceName)
-        .maybeSingle();
-      const raw = (data?.owner_phone || '').replace(/\D/g, '');
-      setOwnerPhone(raw || null);
+        .select('instance_name, owner_phone');
+      const keys = new Map<string, string>();
+      for (const row of (data as any[]) || []) {
+        const d = String(row?.owner_phone || '').replace(/\D/g, '');
+        if (d.length >= 8) keys.set(d.slice(-8), String(row?.instance_name || ''));
+      }
+      setTeamKeys(keys);
     })();
-  }, [open, instanceName]);
+  }, [open]);
+
+  const isTeamPhone = (phone: string) =>
+    !!phone && phone.length >= 8 && teamKeys.has(phone.slice(-8));
+
+  // Para um chip nosso, o nome certo é o da instância. O contato cadastrado
+  // naquele número costuma ser antigo e de outra pessoa.
+  const teamNameFor = (phone: string) =>
+    (phone && phone.length >= 8 ? teamKeys.get(phone.slice(-8)) : '') || '';
 
   // Realtime: quando o webhook atualizar o cache do grupo (entrou/saiu/promoveu membro),
   // refaz a leitura automaticamente — sem o usuário precisar clicar em nada.
@@ -323,17 +341,28 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         if (!key) return null;
         const name = p.name || p.display_name || p.notify || p.pushName || phone || 'Sem nome';
         const isAdmin = !!(p.is_admin || p.admin === 'admin' || p.admin === 'superadmin' || p.IsAdmin);
-        return { key, phone, name, admin: isAdmin ? 'admin' : undefined, lid: lid || undefined } as GroupParticipant;
+        return {
+          key, phone, name,
+          admin: isAdmin ? 'admin' : undefined,
+          lid: lid || undefined,
+          isTeam: p.is_team ?? isTeamPhone(phone),
+        } as GroupParticipant;
       })
       .filter(Boolean) as GroupParticipant[];
   };
 
-  const mergeWithMessages = (apiList: GroupParticipant[]): GroupParticipant[] => {
+  // `rosterIsComplete`: a lista veio do /group/info, então ela é a verdade sobre
+  // quem está no grupo. Nesse caso as mensagens só completam nomes — quem falou
+  // no grupo e não consta do roster (saiu, ou é chip que só passou por lá) não
+  // pode ser inventado como membro. Era assim que entrava gente que não está no
+  // grupo.
+  const mergeWithMessages = (apiList: GroupParticipant[], rosterIsComplete = false): GroupParticipant[] => {
     const merged = new Map<string, GroupParticipant>();
     for (const p of apiList) merged.set(p.key, p);
     for (const p of messageParticipants) {
       if (!merged.has(p.phone) && p.phone.length >= 8) {
-        merged.set(p.phone, { key: p.phone, phone: p.phone, name: p.name });
+        if (rosterIsComplete) continue;
+        merged.set(p.phone, { key: p.phone, phone: p.phone, name: p.name, isTeam: isTeamPhone(p.phone) });
       } else if (merged.has(p.phone)) {
         const existing = merged.get(p.phone)!;
         if ((existing.name === existing.phone || !existing.name || existing.name === 'Desconhecido') && p.name !== p.phone) {
@@ -377,10 +406,17 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         if (!key) return null;
         const name = p?.DisplayName || p?.displayName || p?.Name || p?.name || p?.PushName || p?.pushName || phone || 'Sem nome';
         const isAdmin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
-        return { key, phone: phone.length >= 4 ? phone : '', name, admin: isAdmin ? 'admin' : undefined, lid: lid || undefined };
+        const finalPhone = phone.length >= 4 ? phone : '';
+        return {
+          key, phone: finalPhone, name,
+          admin: isAdmin ? 'admin' : undefined,
+          lid: lid || undefined,
+          isTeam: isTeamPhone(finalPhone),
+        };
       })
       .filter(Boolean) as GroupParticipant[];
-    const merged = mergeWithMessages(apiList);
+    // O cache também guarda o roster do /group/info — é lista completa.
+    const merged = mergeWithMessages(apiList, true);
     setParticipants(merged);
     enrichWithContactData(merged).catch(() => {});
     return merged.length > 0;
@@ -414,7 +450,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       }
       if (data?.success && Array.isArray(data?.participants)) {
         const apiList = mapApiParticipants(data.participants);
-        const allParticipants = mergeWithMessages(apiList);
+        const allParticipants = mergeWithMessages(apiList, true);
         setParticipants(allParticipants);
         await enrichWithContactData(allParticipants);
       }
@@ -749,15 +785,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const isGroupLikeName = (name?: string | null) =>
     !!name && /^\s*grupo\b/i.test(name.trim());
 
+  // Instâncias nossas continuam na lista (com selo "Equipe") para o total bater
+  // com o do WhatsApp. Só grupos-como-contato saem daqui.
   const nonGroupParticipants = participants.filter(p => {
     const contact = contactsMap.get(p.phone);
-    if (isGroupLikeName(p.name) || isGroupLikeName(contact?.full_name)) return false;
-    // Esconde a própria instância (somos nós no grupo, não um contato do caso).
-    if (ownerPhone && ownerPhone.length >= 8) {
-      const tail = ownerPhone.slice(-8);
-      if (p.phone.endsWith(tail)) return false;
-    }
-    return true;
+    return !(isGroupLikeName(p.name) || isGroupLikeName(contact?.full_name));
   });
 
   const filteredParticipants = searchQuery
@@ -943,11 +975,18 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium truncate">
-                          {hasContact ? contact.full_name : p.name}
+                          {p.isTeam
+                            ? (teamNameFor(p.phone) || p.name)
+                            : (hasContact ? contact.full_name : p.name)}
                         </p>
                         {p.admin && (
                           <Badge variant="secondary" className="text-[10px] px-1.5 py-0 shrink-0">
                             Admin
+                          </Badge>
+                        )}
+                        {p.isTeam && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 shrink-0 border-primary/40 text-primary">
+                            Equipe
                           </Badge>
                         )}
                       </div>
