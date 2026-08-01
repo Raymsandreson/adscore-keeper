@@ -15,7 +15,7 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList, RefreshCw, Pencil } from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
@@ -27,6 +27,8 @@ import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import { GroupMembersDialog } from '@/components/whatsapp/GroupMembersDialog';
+import { SessionFieldEditor } from '@/components/whatsapp/SessionFieldEditor';
+import { WhatsAppConversationShareDialog } from '@/components/whatsapp/WhatsAppConversationShareDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Lead } from '@/hooks/useLeads';
@@ -136,6 +138,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [callRecords, setCallRecords] = useState<CallRecord[]>([]);
   const [availableAgents, setAvailableAgents] = useState<{ id: string; name: string }[]>([]);
   const [suggestingAgent, setSuggestingAgent] = useState(false);
+  const [fetchingHistory, setFetchingHistory] = useState(false);
+  const [refreshingRoster, setRefreshingRoster] = useState(false);
+  const [showSessionEditor, setShowSessionEditor] = useState(false);
   const [identifySender, setIdentifySender] = useState(true);
   const [treatmentTitle, setTreatmentTitle] = useState<string>('');
   const [nameFormat, setNameFormat] = useState<string>('first_last');
@@ -1380,6 +1385,58 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     );
   };
 
+  // Mesma ação do menu da sessão WhatsApp (WhatsAppChat): pede à UazAPI as mensagens
+  // antigas que nunca chegaram por webhook. Usa resolveSendInstanceName() porque em grupo
+  // a instância que saiu não consegue puxar histórico.
+  const handleFetchHistory = async () => {
+    const targetInstance = resolveSendInstanceName();
+    if (!phone || !targetInstance) {
+      toast.info('Não foi possível identificar a instância desta conversa.');
+      return;
+    }
+    setFetchingHistory(true);
+    const t = toast.loading('Buscando histórico de mensagens antigas...');
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-fetch-history', {
+        body: { phone, instance_name: targetInstance, count: 50 },
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao solicitar histórico');
+      toast.success('Sync solicitado! As mensagens antigas chegarão em alguns segundos.', { id: t });
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao buscar histórico', { id: t });
+    } finally {
+      setFetchingHistory(false);
+    }
+  };
+
+  // Aqui o `phone` já é o JID do grupo (a aba Grupos abre o chat passando group_jid),
+  // então não precisa garimpar o chatid no metadata como o WhatsAppChat faz.
+  const handleRefreshRoster = async () => {
+    const targetInstance = resolveSendInstanceName();
+    if (!phone || !targetInstance) {
+      toast.info('Não foi possível identificar o grupo.');
+      return;
+    }
+    setRefreshingRoster(true);
+    const t = toast.loading('Atualizando participantes...');
+    try {
+      const { data } = await supabase.functions.invoke('get-group-participants', {
+        body: { group_jid: phone, instance_name: targetInstance, refresh: true },
+      });
+      const resp = data as { success?: boolean; participants?: unknown[] } | null;
+      if (resp?.success && Array.isArray(resp.participants)) {
+        toast.success(`${resp.participants.length} participante(s) atualizado(s)`, { id: t });
+      } else {
+        toast.error('Não foi possível atualizar os participantes', { id: t });
+      }
+    } catch {
+      toast.error('Erro ao atualizar participantes', { id: t });
+    } finally {
+      setRefreshingRoster(false);
+    }
+  };
+
   let lastDateLabel = '';
 
   // Detecta grupo mesmo quando o sufixo @g.us foi removido em algum ponto do pipeline.
@@ -1394,8 +1451,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       onOpenChange(nextOpen);
     }}>
       <DrawerContent className="max-h-[92vh] flex flex-col">
-        <DrawerHeader className="pb-2 shrink-0">
-          <div className="flex items-center justify-between">
+        {/* grid-cols-[minmax(0,1fr)]: sem isso a track "auto" do DrawerHeader se dimensiona
+            pelo max-content do título (que é whitespace-nowrap por causa do truncate), e o
+            bloco de ícones à direita — inclusive o menu ⋮ — sai da tela em grupo de nome longo. */}
+        <DrawerHeader className="pb-2 shrink-0 grid-cols-[minmax(0,1fr)]">
+          <div className="flex items-center justify-between gap-2 min-w-0">
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-base truncate flex items-center gap-2">
                 {isGroupChat ? <Users className="h-4 w-4 text-muted-foreground shrink-0" /> : <User className="h-4 w-4 text-muted-foreground shrink-0" />}
@@ -1522,6 +1582,12 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 />
               )}
               <WhatsAppMediaGallery messages={messages as any} leadId={linkedLead?.id || null} />
+              {phone && (
+                <WhatsAppConversationShareDialog
+                  phone={phone}
+                  instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || null}
+                />
+              )}
               {isGroupChat && (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1549,6 +1615,17 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onClick={handleFetchHistory} disabled={fetchingHistory}>
+                    {fetchingHistory ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Buscar histórico (msgs antigas)
+                  </DropdownMenuItem>
+                  {isGroupChat && (
+                    <DropdownMenuItem onClick={handleRefreshRoster} disabled={refreshingRoster}>
+                      {refreshingRoster ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
+                      Atualizar participantes
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => handleAction('link')}>
                     <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
                   </DropdownMenuItem>
@@ -1570,6 +1647,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setShowZapSign(true)}>
                     <FileSignature className="h-4 w-4 mr-2" /> Gerar Documento para Assinatura
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setShowSessionEditor(true)}>
+                    <Pencil className="h-4 w-4 mr-2" /> Editar Campos da Sessão
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleCreateGroup} disabled={creatingGroup}>
                     {creatingGroup ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Users className="h-4 w-4 mr-2" />}
@@ -2182,6 +2262,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         leadId={linkedLead?.id || null}
         isGroup={true}
         messageParticipants={[]}
+      />
+    )}
+    {phone && (
+      <SessionFieldEditor
+        open={showSessionEditor}
+        onOpenChange={setShowSessionEditor}
+        phone={phone}
+        instanceName={instanceName || messages.find(m => m.instance_name)?.instance_name || undefined}
       />
     )}
     <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
