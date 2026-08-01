@@ -42,6 +42,7 @@ export const BUSINESS_TABLES: readonly string[] = [
   'lead_checklist_instances',
   'whatsapp_messages',
   'whatsapp_instances',
+  'whatsapp_groups_cache',
   'whatsapp_conversation_agents',
   'lead_processes_movements',
   'process_parties',

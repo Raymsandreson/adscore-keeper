@@ -18,6 +18,9 @@ import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import type { Contact } from '@/hooks/useContacts';
 
 interface GroupParticipant {
+  // Identidade do participante na lista. É o telefone quando existe; para quem o
+  // WhatsApp só identifica por LID (conta já migrada), é `lid:<digitos>`.
+  key: string;
   phone: string;
   name: string;
   admin?: string;
@@ -281,7 +284,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   // refaz a leitura automaticamente — sem o usuário precisar clicar em nada.
   useEffect(() => {
     if (!open || !isGroup || !groupJid || !instanceName) return;
-    const channel = supabase
+    const channel = externalSupabase
       .channel(`group-cache-${groupJid}`)
       .on(
         'postgres_changes',
@@ -297,7 +300,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         },
       )
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => { externalSupabase.removeChannel(channel); };
   }, [open, isGroup, groupJid, instanceName]);
 
   const fetchClassificationsAndTypes = async () => {
@@ -309,25 +312,28 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     if (relRes.data) setRelationshipTypes(relRes.data);
   };
 
-  // Mapeia a resposta enriquecida do edge get-group-participants ou linhas do cache puro.
+  // Mapeia a resposta enriquecida de get-group-participants ou linhas do cache puro.
   const mapApiParticipants = (list: any[]): GroupParticipant[] => {
     return (list || [])
       .map((p: any) => {
         const phone = String(p.phone || '').replace(/\D/g, '');
-        if (!phone || phone.length < 4) return null;
-        const name = p.name || p.display_name || p.notify || p.pushName || phone;
+        const lid = p.lid ? String(p.lid).replace(/\D/g, '') : '';
+        // Sem telefone o membro continua na lista, identificado pelo LID.
+        const key = String(p.key || '') || (phone.length >= 4 ? phone : (lid ? `lid:${lid}` : ''));
+        if (!key) return null;
+        const name = p.name || p.display_name || p.notify || p.pushName || phone || 'Sem nome';
         const isAdmin = !!(p.is_admin || p.admin === 'admin' || p.admin === 'superadmin' || p.IsAdmin);
-        return { phone, name, admin: isAdmin ? 'admin' : undefined, lid: p.lid || undefined } as GroupParticipant;
+        return { key, phone, name, admin: isAdmin ? 'admin' : undefined, lid: lid || undefined } as GroupParticipant;
       })
       .filter(Boolean) as GroupParticipant[];
   };
 
   const mergeWithMessages = (apiList: GroupParticipant[]): GroupParticipant[] => {
     const merged = new Map<string, GroupParticipant>();
-    for (const p of apiList) merged.set(p.phone, p);
+    for (const p of apiList) merged.set(p.key, p);
     for (const p of messageParticipants) {
       if (!merged.has(p.phone) && p.phone.length >= 8) {
-        merged.set(p.phone, { phone: p.phone, name: p.name });
+        merged.set(p.phone, { key: p.phone, phone: p.phone, name: p.name });
       } else if (merged.has(p.phone)) {
         const existing = merged.get(p.phone)!;
         if ((existing.name === existing.phone || !existing.name || existing.name === 'Desconhecido') && p.name !== p.phone) {
@@ -345,9 +351,10 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   };
 
   // Leitura instantânea do cache local (sem chamar UazAPI).
+  // O cache vive no Externo — é dado de negócio, não metadado de auth.
   const readFromCacheAndMerge = async () => {
     if (!groupJid) return false;
-    const { data } = await supabase
+    const { data } = await externalSupabase
       .from('whatsapp_groups_cache')
       .select('participants')
       .eq('group_jid', groupJid)
@@ -359,13 +366,18 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     // O cache guarda o payload bruto da UazAPI — precisa extrair phone/admin.
     const apiList: GroupParticipant[] = raw
       .map((p: any) => {
-        const rawId = p?.JID || p?.jid || p?.id || p?.participant || '';
-        let phone = String(p?.PhoneNumber || p?.phoneNumber || p?.phone || rawId).replace('@s.whatsapp.net', '').replace('@lid', '').replace(/\D/g, '');
-        if (!phone || phone.length < 4) return null;
-        const name = p?.DisplayName || p?.displayName || p?.Name || p?.name || p?.PushName || p?.pushName || phone;
+        const rawId = String(p?.JID || p?.jid || p?.id || p?.participant || '');
+        const isLid = rawId.includes('@lid');
+        // Dígitos de um @lid não são telefone — tratar como tal já exibiu número
+        // falso na ficha do membro.
+        const phoneSource = p?.PhoneNumber || p?.phoneNumber || p?.phone || (isLid ? '' : rawId);
+        const phone = String(phoneSource).replace('@s.whatsapp.net', '').replace(/\D/g, '');
+        const lid = isLid ? rawId.replace('@lid', '').replace(/\D/g, '') : '';
+        const key = phone.length >= 4 ? phone : (lid ? `lid:${lid}` : '');
+        if (!key) return null;
+        const name = p?.DisplayName || p?.displayName || p?.Name || p?.name || p?.PushName || p?.pushName || phone || 'Sem nome';
         const isAdmin = !!(p?.IsAdmin || p?.isAdmin || p?.admin || p?.IsSuperAdmin || p?.superAdmin);
-        const isLid = String(rawId).includes('@lid');
-        return { phone, name, admin: isAdmin ? 'admin' : undefined, lid: isLid ? rawId : undefined };
+        return { key, phone: phone.length >= 4 ? phone : '', name, admin: isAdmin ? 'admin' : undefined, lid: lid || undefined };
       })
       .filter(Boolean) as GroupParticipant[];
     const merged = mergeWithMessages(apiList);
@@ -382,13 +394,22 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         await readFromCacheAndMerge();
       }
 
-      // 2) Chama o edge get-group-participants (usa cache de 24h + enriquece nomes/fotos via /chat/details).
+      // 2) Chama get-group-participants pelo router (Railway) — cache de 24h +
+      //    enriquecimento de nomes/fotos via /chat/details.
       if (!groupJid || !instanceName) return;
-      const { data, error } = await (supabase as any).functions.invoke('get-group-participants', {
+      const { data, error } = await cloudFunctions.invoke<any>('get-group-participants', {
         body: { group_jid: groupJid, instance_name: instanceName, refresh: forceRefresh },
       });
       if (error) {
         console.warn('[GroupMembers] get-group-participants error:', error);
+        toast.error('Não foi possível sincronizar os membros com o WhatsApp');
+        return;
+      }
+      // A função responde HTTP 200 mesmo em falha de regra de negócio; sem este
+      // aviso a lista ficava silenciosamente incompleta.
+      if (data && data.success === false) {
+        console.warn('[GroupMembers] get-group-participants falhou:', data.error);
+        toast.error(`Não foi possível ler os membros: ${data.error || 'erro desconhecido'}`);
         return;
       }
       if (data?.success && Array.isArray(data?.participants)) {
@@ -400,7 +421,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
     } catch (e) {
       console.error('Error fetching group participants:', e);
       if (participants.length === 0) {
-        setParticipants(messageParticipants.filter(p => p.name !== 'Você').map(p => ({ ...p })));
+        setParticipants(messageParticipants.filter(p => p.name !== 'Você').map(p => ({ ...p, key: p.phone })));
       }
     } finally {
       setLoading(false);
@@ -410,7 +431,9 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const enrichWithContactData = async (parts: GroupParticipant[]) => {
     if (parts.length === 0) return;
 
-    const phones = parts.map(p => p.phone);
+    // Membro só-LID não tem telefone para casar com `contacts`.
+    const phones = parts.map(p => p.phone).filter(ph => ph && ph.length >= 8);
+    if (phones.length === 0) return;
     const orConditions = phones.flatMap(ph => [
       `phone.eq.${ph}`,
       `phone.eq.+${ph}`,
@@ -888,15 +911,18 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
             {filteredParticipants.map(p => {
               const contact = contactsMap.get(p.phone);
               const relationship = relationshipsMap.get(p.phone);
-              const isExpanded = expandedPhone === p.phone;
+              const isExpanded = expandedPhone === p.key;
               const hasContact = !!contact;
+              // Membro que o WhatsApp só identifica por LID: sem número, as ações
+              // que dependem dele (admin, remover, virar contato) não se aplicam.
+              const hasPhone = !!p.phone;
               const isPrimary = primaryPhone === p.phone;
               const primaryContact = primaryPhone ? contactsMap.get(primaryPhone) : null;
               const primaryName = primaryContact?.full_name || (primaryPhone ? 'cliente principal' : null);
 
               return (
                 <div
-                  key={p.phone}
+                  key={p.key}
                   className={cn(
                     "rounded-lg border transition-colors",
                     isExpanded ? "bg-muted/30 border-border" : "border-transparent hover:bg-muted/30"
@@ -905,7 +931,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                   {/* Main row */}
                   <div
                     className="flex items-center gap-3 py-2.5 px-3 cursor-pointer"
-                    onClick={() => setExpandedPhone(isExpanded ? null : p.phone)}
+                    onClick={() => setExpandedPhone(isExpanded ? null : p.key)}
                   >
                     <div className={cn(
                       "h-9 w-9 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold",
@@ -929,7 +955,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                       <div className="flex items-center gap-2 flex-wrap mt-0.5">
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                           <Phone className="h-3 w-3" />
-                          {formatPhone(p.phone)}
+                          {hasPhone ? formatPhone(p.phone) : 'Número oculto pelo WhatsApp'}
                         </span>
 
                         {/* Quick info badges */}
@@ -996,7 +1022,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            disabled={managingPhone === p.phone}
+                            disabled={managingPhone === p.phone || !hasPhone}
                             onClick={(e) => {
                               e.stopPropagation();
                               p.admin ? handleDemote(p) : handlePromote(p);
@@ -1011,7 +1037,11 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             )}
                           </Button>
                         </TooltipTrigger>
-                        <TooltipContent>{p.admin ? 'Rebaixar (remover admin)' : 'Tornar admin'}</TooltipContent>
+                        <TooltipContent>
+                          {!hasPhone
+                            ? 'Sem número visível — o WhatsApp não permite gerenciar este membro por aqui'
+                            : p.admin ? 'Rebaixar (remover admin)' : 'Tornar admin'}
+                        </TooltipContent>
                       </Tooltip>
                       <Tooltip>
                         <TooltipTrigger asChild>
@@ -1019,7 +1049,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7"
-                            disabled={managingPhone === p.phone}
+                            disabled={managingPhone === p.phone || !hasPhone}
                             onClick={(e) => { e.stopPropagation(); handleRemove(p); }}
                           >
                             <UserMinus className="h-3.5 w-3.5 text-destructive" />
@@ -1028,7 +1058,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                         <TooltipContent>Remover do grupo</TooltipContent>
                       </Tooltip>
 
-                      {!hasContact && (
+                      {!hasContact && hasPhone && (
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Button
@@ -1227,13 +1257,15 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                     <div className="px-3 pb-3 pt-1 border-t border-border/50 mx-3 space-y-2">
                       <div className="flex items-center gap-2 py-2">
                         <p className="text-xs text-muted-foreground flex-1">
-                          Este participante ainda não é um contato salvo.
+                          {hasPhone
+                            ? 'Este participante ainda não é um contato salvo.'
+                            : 'O WhatsApp não expõe o número deste membro. Ele aparece quando enviar uma mensagem no grupo.'}
                         </p>
                         <Button
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs"
-                          disabled={addingPhone === p.phone}
+                          disabled={addingPhone === p.phone || !hasPhone}
                           onClick={() => handleAddAsContact(p)}
                         >
                           {addingPhone === p.phone ? (
@@ -1247,6 +1279,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                           size="sm"
                           variant="outline"
                           className="h-7 text-xs"
+                          disabled={!hasPhone}
                           onClick={() => {
                             setLinkingPhone(linkingPhone === p.phone ? null : p.phone);
                             setLinkSearchQuery(p.name !== p.phone ? p.name : '');

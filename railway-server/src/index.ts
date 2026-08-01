@@ -23,6 +23,7 @@ import { handler as whatsappDownloadMedia } from './functions/whatsapp-download-
 import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-media';
 import { handler as extractConversationData } from './functions/extract-conversation-data';
 import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
+import { handler as getGroupParticipants } from './functions/get-group-participants';
 import { handler as listUazapiLabels } from './functions/list-uazapi-labels';
 import { handler as manageUazapiLabel } from './functions/manage-uazapi-label';
 import { handler as prepareLabelDocumentTrigger } from './functions/prepare-label-document-trigger';
@@ -94,6 +95,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'whatsapp-backfill-media': whatsappBackfillMedia,
   'extract-conversation-data': extractConversationData,
   'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
+  'get-group-participants': getGroupParticipants,
   'list-uazapi-labels': listUazapiLabels,
   'manage-uazapi-label': manageUazapiLabel,
   'prepare-label-document-trigger': prepareLabelDocumentTrigger,

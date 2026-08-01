@@ -15,7 +15,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { authClient as cloudClient } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
@@ -87,7 +86,7 @@ export function useAutoLinkGroupByName({
           .map((t) => `group_name.ilike.%${t.replace(/[%,()]/g, ' ')}%`)
           .join(',');
 
-        const { data, error } = await cloudClient
+        const { data, error } = await externalSupabase
           .from('whatsapp_groups_cache')
           .select('group_jid, group_name, instance_name, fetched_at')
           .or(orFilter)

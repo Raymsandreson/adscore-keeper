@@ -1601,7 +1601,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const fetchRoster = async (opts: { refresh: boolean }) => {
       if (!conversation.instance_name) return;
       try {
-        const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+        const { data: fnData } = await cloudFunctions.invoke<any>('get-group-participants', {
           body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: opts.refresh },
         });
         const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
@@ -1610,8 +1610,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     };
 
     (async () => {
-      // (a) Cache local
-      const { data } = await supabase
+      // (a) Cache local (Externo — mesma tabela que o roster grava)
+      const { data } = await externalSupabase
         .from('whatsapp_groups_cache')
         .select('participants')
         .eq('group_jid', groupJid)
