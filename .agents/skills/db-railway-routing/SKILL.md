@@ -69,6 +69,26 @@ export const handler: RequestHandler = async (req, res) => {
 
 Sempre HTTP 200 com `{ success, error? }` — nunca 4xx/5xx para regra de negócio.
 
+## Como o Railway sobe (deploy automático a partir de `main`)
+
+Não existe passo manual de deploy do Railway. O projeto `WhatsJud` / ambiente
+`production` está ligado ao GitHub e **deploya sozinho a cada commit que chega
+em `main`** — o painel mostra cada deploy como "via GitHub", um por commit de
+`main`, e o anterior vira `REMOVED`.
+
+Consequência prática, e é o erro fácil de cometer:
+
+- Push em branch de feature **não** deploya. O código só entra no ar quando a
+  branch é mergeada em `main`.
+- Portanto, quando terminar uma função no `railway-server/`, o trabalho não
+  acaba no push: ou o merge em `main` acontece, ou nada mudou em produção.
+- Não peça ao usuário para "rodar o deploy", nem invoque `railway-redeploy`
+  para publicar código novo — basta o merge. (`railway-redeploy` serve para
+  reiniciar o serviço com o mesmo código, não para publicar commit novo.)
+
+Verificar de qual commit é o deploy ativo: o título do deploy ACTIVE no painel
+é a primeira linha do commit no topo de `origin/main`.
+
 ## Anti-padrões — recusar e corrigir
 
 - "Vou criar tabela no Cloud" → NÃO. Externo.
