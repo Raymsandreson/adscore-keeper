@@ -94,7 +94,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
 
   const callManage = async (action: 'add' | 'remove' | 'promote' | 'demote', numbers: string[]) => {
     if (!groupJid || !instanceName) throw new Error('Grupo ou instância não definidos');
-    const { data, error } = await (supabase as any).functions.invoke('manage-whatsapp-group-participants', {
+    const { data, error } = await cloudFunctions.invoke<any>('manage-whatsapp-group-participants', {
       body: { instance_name: instanceName, group_jid: groupJid, action, numbers },
     });
     if (error) throw new Error(error.message);

@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { supabase as ext } from '../lib/supabase';
 
 interface Instance {
   id: string;
@@ -27,12 +28,37 @@ async function uazUpdate(actor: Instance, groupJid: string, action: Action, numb
   return { ok: resp.ok, status: resp.status, body };
 }
 
+// Resolve a instância no Externo (fonte de verdade de `whatsapp_instances`).
+// Antes só existia o caminho `actor` pronto, o que obrigava um proxy no Cloud a
+// buscar o token antes de chamar aqui — e esse proxy lia a tabela do Cloud, onde
+// ela não vive. Aceitando `instance_name`/`instance_id`, o front chama direto.
+async function resolveInstance(instance_id?: string, instance_name?: string): Promise<Instance | null> {
+  if (!instance_id && !instance_name) return null;
+  let q = ext
+    .from('whatsapp_instances')
+    .select('id, instance_name, instance_token, base_url')
+    .eq('is_active', true);
+  q = instance_id ? q.eq('id', instance_id) : q.ilike('instance_name', instance_name!);
+  const { data } = await q.limit(1).maybeSingle();
+  return (data as any)?.instance_token ? (data as any as Instance) : null;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { actor, group_jid, action, numbers } = req.body || {};
+    const { actor: actorFromBody, instance_id, instance_name, group_jid, action, numbers } = req.body || {};
+
+    // `actor` continua aceito: o proxy do Cloud ainda manda nesse formato.
+    const actor: Instance | null = actorFromBody?.instance_token
+      ? actorFromBody
+      : await resolveInstance(instance_id, instance_name);
 
     if (!actor?.instance_token) {
-      return res.json({ success: false, error: 'actor instance with token is required' });
+      return res.json({
+        success: false,
+        error: instance_id || instance_name || actorFromBody
+          ? 'instance not found or missing token'
+          : 'actor, instance_name or instance_id is required',
+      });
     }
     if (!group_jid) {
       return res.json({ success: false, error: 'group_jid is required' });
