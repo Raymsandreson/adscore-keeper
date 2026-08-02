@@ -60,10 +60,18 @@ function phoneFromJid(value: unknown): string {
 }
 
 function extractParticipant(p: any): Extracted {
-  const jid = firstText(p?.JID, p?.jid, p?.id, p?.participant, typeof p === 'string' ? p : null) || '';
+  // `id` pode ser objeto ({_serialized, user}) — por isso não entra direto no
+  // firstText, que espera string/número.
+  const jid = firstText(
+    p?.JID, p?.jid,
+    p?.id?._serialized, p?.id?.user,
+    typeof p?.id === 'string' ? p.id : null,
+    p?.participant,
+    typeof p === 'string' ? p : null,
+  ) || '';
   const phone =
     phoneFromPhoneField(firstText(
-      p?.PhoneNumber, p?.phoneNumber, p?.Phone, p?.phone,
+      p?.PhoneNumber, p?.phoneNumber, p?.Phone, p?.phone, p?.PN, p?.pn,
       p?.Number, p?.number, p?.participantPn, p?.sender_pn,
       p?.Contact?.PhoneNumber, p?.contact?.phone,
     )) || phoneFromJid(jid);
@@ -78,22 +86,70 @@ function extractParticipant(p: any): Extracted {
   return { phone, lid: digits(lidRaw), jid, display_name, is_admin };
 }
 
+// A lista de participantes já apareceu em vários formatos nesta base. O
+// recover-leads-phone-55 acumulou esses caminhos ao longo do tempo e é o que
+// funciona hoje em produção — olhar só `Participants`/`participants` devolvia
+// lista vazia quando a resposta vinha aninhada.
+function extractParticipantList(data: any): any[] {
+  const raw =
+    data?.Participants ||
+    data?.participants ||
+    data?.data?.Participants ||
+    data?.data?.participants ||
+    data?.Group?.Participants ||
+    data?.group?.Participants ||
+    data?.group?.participants ||
+    data?.groupMetadata?.participants ||
+    data?.GroupMetadata?.Participants ||
+    data?.data?.groupMetadata?.participants ||
+    data?.data?.GroupMetadata?.Participants ||
+    data?.members ||
+    data?.data?.members ||
+    [];
+  if (Array.isArray(raw)) return raw;
+  // Algumas respostas mandam um mapa jid -> participante em vez de array.
+  return raw && typeof raw === 'object' ? Object.values(raw) : [];
+}
+
+function extractGroupName(data: any): string | null {
+  return (
+    data?.Name || data?.name || data?.subject ||
+    data?.data?.Name || data?.data?.name || data?.data?.subject ||
+    data?.group?.Name || data?.group?.name || data?.group?.subject ||
+    null
+  );
+}
+
 async function fetchGroupInfo(baseUrl: string, token: string, groupJid: string) {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/group/info`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token },
-    body: JSON.stringify({ groupjid: groupJid, force: true }),
+    // Mesmo corpo que o recover-leads-phone-55 usa. `groupjid` é o único campo
+    // obrigatório segundo a doc do uazapiGO V2.
+    body: JSON.stringify({
+      groupjid: groupJid,
+      getInviteLink: false,
+      getRequestsParticipants: false,
+      force: true,
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`uazapi /group/info ${res.status}: ${text.slice(0, 200)}`);
   }
   const data: any = await res.json().catch(() => null);
-  const participants =
-    data?.Participants || data?.participants ||
-    data?.group?.Participants || data?.group?.participants || [];
-  const name = data?.Name || data?.name || data?.subject || null;
-  return { participants: Array.isArray(participants) ? participants : [], name };
+  const participants = extractParticipantList(data);
+
+  // Diagnóstico sem vazar dado: só os NOMES das chaves, nunca os valores.
+  // Se a lista vier vazia, é isso que diz se a resposta mudou de formato.
+  console.log(
+    `[get-group-participants] /group/info ${groupJid}: ` +
+    `top_keys=${JSON.stringify(Object.keys(data || {}))} ` +
+    `participants=${participants.length} ` +
+    `participant_keys=${JSON.stringify(participants[0] ? Object.keys(participants[0]) : [])}`,
+  );
+
+  return { participants, name: extractGroupName(data) };
 }
 
 async function fetchChatDetails(baseUrl: string, token: string, number: string) {
