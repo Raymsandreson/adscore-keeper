@@ -69,6 +69,26 @@ export const handler: RequestHandler = async (req, res) => {
 
 Sempre HTTP 200 com `{ success, error? }` — nunca 4xx/5xx para regra de negócio.
 
+## Armadilha de tipo no `railway-server` (`res.json()` é `unknown`)
+
+O `railway-server/tsconfig.json` compila com `"lib": ["ES2020"]` — **sem DOM**.
+O `fetch` vem do `@types/node`, e lá `res.json()` devolve `unknown`, não `any`.
+Qualquer `(await res.json()).campo` vira `error TS2339: Property 'campo' does
+not exist on type 'unknown'` e **quebra o build** — ou seja, quebra o deploy.
+
+Sempre anote o retorno:
+
+```ts
+const data: any = await res.json().catch(() => null);            // em variável
+async function fetchX(...): Promise<any> { return res.json(); }  // em função
+```
+
+Cuidado ao validar: compilar o arquivo avulso com `--lib ES2020,DOM` **esconde
+esse erro**, porque no DOM `json()` retorna `any`. Se não der para rodar
+`npm run build` dentro de `railway-server/`, reproduza as condições reais —
+`--lib ES2020` e um stub de `fetch` cujo `json()` devolva `unknown` — e confirme
+que o harness acusa o erro antes de confiar que ele passa.
+
 ## Como o Railway sobe (deploy automático a partir de `main`)
 
 Não existe passo manual de deploy do Railway. O projeto `WhatsJud` / ambiente
