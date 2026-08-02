@@ -19,6 +19,10 @@ const DEFAULT_BASE = 'https://abraci.uazapi.com';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h — vale para roster e chat/details
 const CONCURRENCY = 6;
 const LID_NAME_LOOKUP_LIMIT = 500; // mensagens do grupo lidas para resolver LID→telefone
+// Teto de instâncias sondadas quando a da conversa não enxerga o grupo. Cada
+// tentativa é uma chamada à UazAPI; com ~26 instâncias, varrer todas sairia caro
+// para o caso (raro) de nenhuma ser membro.
+const MAX_INSTANCE_PROBES = 8;
 
 interface Extracted {
   phone: string;
@@ -152,6 +156,32 @@ async function fetchGroupInfo(baseUrl: string, token: string, groupJid: string) 
   return { participants, name: extractGroupName(data) };
 }
 
+// A instância da conversa nem sempre é membro do grupo — nesse caso a UazAPI
+// responde 404 ("grupo não encontrado"). get-whatsapp-group-info,
+// recover-leads-phone-55 e sync-whatsapp-group-description já tratavam isso
+// varrendo as instâncias ativas; este handler não, e uma instância fora do
+// grupo bastava para o roster vir vazio.
+async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any, groupJid: string) {
+  const others = instances
+    .filter((i) => i.instance_name !== preferred.instance_name && i.is_active !== false)
+    .slice(0, MAX_INSTANCE_PROBES);
+  const tried: string[] = [];
+
+  for (const inst of [preferred, ...others]) {
+    try {
+      const info = await fetchGroupInfo(inst.base_url || DEFAULT_BASE, inst.instance_token, groupJid);
+      if (info.participants.length > 0) {
+        return { ...info, used_instance: inst.instance_name as string, tried };
+      }
+      tried.push(`${inst.instance_name}: 0 participantes`);
+    } catch (e) {
+      tried.push(`${inst.instance_name}: ${(e as Error)?.message?.slice(0, 80)}`);
+    }
+  }
+  console.warn(`[get-group-participants] nenhuma instância retornou roster de ${groupJid}: ${tried.join(' | ')}`);
+  return { participants: [] as any[], name: null as string | null, used_instance: null, tried };
+}
+
 async function fetchChatDetails(baseUrl: string, token: string, number: string) {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/details`, {
     method: 'POST',
@@ -247,7 +277,7 @@ export const handler: RequestHandler = async (req, res) => {
     // --- instâncias (Externo — fonte de verdade, ver db-routing.ts) ---
     const { data: allInst } = await ext
       .from('whatsapp_instances')
-      .select('instance_name, owner_phone, base_url, instance_token');
+      .select('instance_name, owner_phone, base_url, instance_token, is_active');
     const instances = ((allInst as any[]) || []).filter((r) => r?.instance_token);
 
     const instRow = instances.find(
@@ -282,6 +312,8 @@ export const handler: RequestHandler = async (req, res) => {
     let groupName: string | null = null;
     let fetchedAt = new Date().toISOString();
     let fromCache = false;
+    let usedInstance: string | null = null;
+    let triedInstances: string[] = [];
 
     if (cacheUsable) {
       rawParts = cacheRow!.participants as any[];
@@ -289,18 +321,24 @@ export const handler: RequestHandler = async (req, res) => {
       fetchedAt = (cacheRow as any).fetched_at;
       fromCache = true;
     } else {
-      const info = await fetchGroupInfo(instRow.base_url || DEFAULT_BASE, instRow.instance_token, group_jid);
+      const info = await fetchGroupInfoAcrossInstances(instances, instRow, group_jid);
       rawParts = info.participants;
       groupName = info.name;
-      const { error: upErr } = await ext.from('whatsapp_groups_cache').upsert({
-        instance_name: instRow.instance_name,
-        group_jid,
-        group_name: groupName,
-        participants: rawParts,
-        participants_count: rawParts.length,
-        fetched_at: fetchedAt,
-      }, { onConflict: 'instance_name,group_jid' });
-      if (upErr) console.warn('[get-group-participants] groups_cache upsert failed:', upErr.message);
+      usedInstance = info.used_instance;
+      triedInstances = info.tried;
+      // Roster vazio não vira cache: gravar [] só faria a próxima leitura
+      // repetir a falha em vez de tentar de novo.
+      if (rawParts.length > 0) {
+        const { error: upErr } = await ext.from('whatsapp_groups_cache').upsert({
+          instance_name: instRow.instance_name,
+          group_jid,
+          group_name: groupName,
+          participants: rawParts,
+          participants_count: rawParts.length,
+          fetched_at: fetchedAt,
+        }, { onConflict: 'instance_name,group_jid' });
+        if (upErr) console.warn('[get-group-participants] groups_cache upsert failed:', upErr.message);
+      }
     }
 
     // --- extração: LID entra na lista em vez de ser descartado ---
@@ -429,6 +467,10 @@ export const handler: RequestHandler = async (req, res) => {
       from_cache: fromCache,
       participants,
       team_count: teamCount,
+      used_instance: usedInstance,
+      // Só preenchido quando nenhuma instância devolveu roster — diz qual falhou
+      // e por quê, sem precisar abrir o log.
+      tried_instances: participants.length === 0 ? triedInstances : undefined,
       enriched_count: participants.filter((p) => p.name).length,
       // Quantos o /group/info trouxe mas não deram nem telefone nem LID.
       unresolved_count: rawParts.length - baseList.length,
