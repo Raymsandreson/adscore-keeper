@@ -81,6 +81,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
   const [descSaving, setDescSaving] = useState(false);
   const [descPulling, setDescPulling] = useState(false);
   const [descriptionUpdatedAt, setDescriptionUpdatedAt] = useState<string | null>(null);
+  const [showDescription, setShowDescription] = useState(false);
   const [quickContact, setQuickContact] = useState<Contact | null>(null);
   const [quickContactOpen, setQuickContactOpen] = useState(false);
   const [quickContactLoading, setQuickContactLoading] = useState<string | null>(null);
@@ -833,7 +834,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         </DialogHeader>
 
         {/* Search */}
-        <div className="relative">
+        <div className="relative shrink-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Buscar membro..."
@@ -844,7 +845,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         </div>
 
         {/* Group management toolbar */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <Button
             size="sm"
             variant="outline"
@@ -866,7 +867,7 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
         </div>
 
         {showAddMember && (
-          <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2">
+          <div className="flex items-center gap-2 rounded-md border bg-muted/30 p-2 shrink-0">
             <Input
               autoFocus
               placeholder="Ex: 5511999998888 (com DDI+DDD)"
@@ -885,25 +886,39 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
           </div>
         )}
 
-        {/* Group description (sync with WhatsApp) */}
-        <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
+        {/* Group description (sync with WhatsApp) — recolhida por padrão.
+            Aberta, o bloco ocupava metade do modal e empurrava os membros para
+            fora da área visível. */}
+        <div className="rounded-lg border bg-muted/30 p-3 space-y-2 shrink-0">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <button
+              type="button"
+              className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setShowDescription(v => !v)}
+            >
               <FileText className="h-3.5 w-3.5" />
               Descrição do grupo
-            </div>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs gap-1"
-              onClick={() => loadDescription('pull')}
-              disabled={descPulling || descSaving}
-              title="Buscar a descrição atual diretamente do WhatsApp"
-            >
-              {descPulling ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
-              Buscar do WhatsApp
-            </Button>
+              {!showDescription && groupDescription.trim() !== '' && (
+                <span className="max-w-[140px] truncate italic opacity-70">— {groupDescription}</span>
+              )}
+              {showDescription ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+            {showDescription && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => loadDescription('pull')}
+                disabled={descPulling || descSaving}
+                title="Buscar a descrição atual diretamente do WhatsApp"
+              >
+                {descPulling ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Buscar do WhatsApp
+              </Button>
+            )}
           </div>
+          {showDescription && (
+          <>
           <Textarea
             value={groupDescription}
             onChange={(e) => setGroupDescription(e.target.value)}
@@ -935,9 +950,14 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
               Salvar no WhatsApp
             </Button>
           </div>
+          </>
+          )}
         </div>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        {/* `min-h-0` é obrigatório: num flex column com altura máxima, o item
+            flex-1 tem min-height:auto e não encolhe abaixo do próprio conteúdo,
+            então a lista era cortada sem nunca rolar. */}
+        <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
           {loading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
