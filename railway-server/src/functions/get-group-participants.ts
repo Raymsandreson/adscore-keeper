@@ -94,25 +94,36 @@ function extractParticipant(p: any): Extracted {
 // recover-leads-phone-55 acumulou esses caminhos ao longo do tempo e é o que
 // funciona hoje em produção — olhar só `Participants`/`participants` devolvia
 // lista vazia quando a resposta vinha aninhada.
-function extractParticipantList(data: any): any[] {
-  const raw =
-    data?.Participants ||
-    data?.participants ||
-    data?.data?.Participants ||
-    data?.data?.participants ||
-    data?.Group?.Participants ||
-    data?.group?.Participants ||
-    data?.group?.participants ||
-    data?.groupMetadata?.participants ||
-    data?.GroupMetadata?.Participants ||
-    data?.data?.groupMetadata?.participants ||
-    data?.data?.GroupMetadata?.Participants ||
-    data?.members ||
-    data?.data?.members ||
-    [];
+function toList(raw: any): any[] {
   if (Array.isArray(raw)) return raw;
   // Algumas respostas mandam um mapa jid -> participante em vez de array.
   return raw && typeof raw === 'object' ? Object.values(raw) : [];
+}
+
+function extractParticipantList(data: any): any[] {
+  // Encadear com `||` seria mais curto, mas `[]` é truthy em JS: um
+  // `Participants: []` no topo interromperia a busca e esconderia a lista real
+  // aninhada. Por isso: primeiro caminho que render lista NÃO VAZIA.
+  const candidates = [
+    data?.Participants,
+    data?.participants,
+    data?.data?.Participants,
+    data?.data?.participants,
+    data?.Group?.Participants,
+    data?.group?.Participants,
+    data?.group?.participants,
+    data?.groupMetadata?.participants,
+    data?.GroupMetadata?.Participants,
+    data?.data?.groupMetadata?.participants,
+    data?.data?.GroupMetadata?.Participants,
+    data?.members,
+    data?.data?.members,
+  ];
+  for (const c of candidates) {
+    const list = toList(c);
+    if (list.length > 0) return list;
+  }
+  return [];
 }
 
 function extractGroupName(data: any): string | null {
