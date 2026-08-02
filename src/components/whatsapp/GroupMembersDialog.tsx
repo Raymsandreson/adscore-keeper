@@ -438,14 +438,20 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       });
       if (error) {
         console.warn('[GroupMembers] get-group-participants error:', error);
-        toast.error('Não foi possível sincronizar os membros com o WhatsApp');
+        // Mensagem crua no toast de propósito: sem ela, "não foi possível
+        // sincronizar" não diz se o problema é rota inexistente, instância fora
+        // do grupo ou falha da UazAPI.
+        toast.error(`Falha ao sincronizar membros: ${String(error.message || error).slice(0, 160)}`);
         return;
       }
       // A função responde HTTP 200 mesmo em falha de regra de negócio; sem este
       // aviso a lista ficava silenciosamente incompleta.
       if (data && data.success === false) {
-        console.warn('[GroupMembers] get-group-participants falhou:', data.error);
-        toast.error(`Não foi possível ler os membros: ${data.error || 'erro desconhecido'}`);
+        console.warn('[GroupMembers] get-group-participants falhou:', data);
+        const tried = Array.isArray(data.tried_instances) && data.tried_instances.length
+          ? ` (tentadas: ${data.tried_instances.join('; ').slice(0, 200)})`
+          : '';
+        toast.error(`Não foi possível ler os membros: ${data.error || 'erro desconhecido'}${tried}`);
         return;
       }
       if (data?.success && Array.isArray(data?.participants)) {
