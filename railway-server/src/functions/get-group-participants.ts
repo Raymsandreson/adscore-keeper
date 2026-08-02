@@ -193,7 +193,9 @@ async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any, g
   return { participants: [] as any[], name: null as string | null, used_instance: null, tried };
 }
 
-async function fetchChatDetails(baseUrl: string, token: string, number: string) {
+// `Promise<any>` explícito: com a lib do Node (sem DOM), `res.json()` devolve
+// `unknown`, e qualquer acesso a campo depois vira erro de compilação.
+async function fetchChatDetails(baseUrl: string, token: string, number: string): Promise<any> {
   const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/details`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token },
