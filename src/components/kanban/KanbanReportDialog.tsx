@@ -15,7 +15,8 @@ import {
   TrendingUp,
   Calendar,
   RefreshCw,
-  User
+  User,
+  UserPlus
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -23,6 +24,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { format, subDays, startOfDay, endOfDay } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { CADASTRO_SOURCES, SOURCE_LABELS } from "@/lib/leadCadastroSources";
 import { KanbanBoard } from "@/hooks/useKanbanBoards";
 import { Lead } from "@/hooks/useLeads";
 import {
@@ -66,6 +68,8 @@ export function KanbanReportDialog({
   const [loading, setLoading] = useState(false);
   const [movements, setMovements] = useState<StageMovement[]>([]);
   const [period, setPeriod] = useState("today");
+  /** Cadastros do período neste board, quebrados por origem (source). */
+  const [createdBySource, setCreatedBySource] = useState<Record<string, number>>({});
 
   // Fetch stage movements with user info
   useEffect(() => {
@@ -79,6 +83,8 @@ export function KanbanReportDialog({
     try {
       let startDate: Date;
       const now = new Date();
+      // "Ontem" é uma janela fechada; os demais períodos vão até agora.
+      let endDate: Date = now;
 
       switch (period) {
         case "today":
@@ -86,6 +92,7 @@ export function KanbanReportDialog({
           break;
         case "yesterday":
           startDate = startOfDay(subDays(now, 1));
+          endDate = endOfDay(subDays(now, 1));
           break;
         case "week":
           startDate = startOfDay(subDays(now, 7));
@@ -97,11 +104,32 @@ export function KanbanReportDialog({
           startDate = startOfDay(now);
       }
 
+      // Cadastros do período neste board (aba "Adicionar Lead" + fluxo de Notícias).
+      // Exclui google_alerts, que é ingestão automática do coletor, não cadastro.
+      const { data: createdData, error: createdError } = await externalSupabase
+        .from("leads")
+        .select("source")
+        .eq("board_id", board.id)
+        .is("deleted_at", null)
+        .in("source", CADASTRO_SOURCES as unknown as string[])
+        .gte("created_at", startDate.toISOString())
+        .lte("created_at", endDate.toISOString());
+
+      if (createdError) throw createdError;
+
+      const bySource: Record<string, number> = {};
+      (createdData || []).forEach(l => {
+        const key = (l as { source: string | null }).source || "outros";
+        bySource[key] = (bySource[key] || 0) + 1;
+      });
+      setCreatedBySource(bySource);
+
       // Fetch stage history
       const { data: historyData, error: historyError } = await externalSupabase
         .from("lead_stage_history")
         .select("*")
         .gte("changed_at", startDate.toISOString())
+        .lte("changed_at", endDate.toISOString())
         .order("changed_at", { ascending: false });
 
       if (historyError) throw historyError;
@@ -186,15 +214,24 @@ export function KanbanReportDialog({
     const newLeadsCount = movementsByStage[firstStage?.id]?.in || 0;
     const convertedCount = movementsByStage[lastStage?.id]?.in || 0;
 
+    // Cadastros do período: total e quebra por origem (só as que tiveram cadastro).
+    const createdCount = Object.values(createdBySource).reduce((a, b) => a + b, 0);
+    const createdBreakdown = Object.entries(createdBySource)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([source, n]) => `${SOURCE_LABELS[source] || source} ${n}`);
+
     return {
       totalLeads,
       totalMovements: movements.length,
       newLeadsCount,
       convertedCount,
+      createdCount,
+      createdBreakdown,
       stageNames,
       movementsByStage,
     };
-  }, [leads, board, movements]);
+  }, [leads, board, movements, createdBySource]);
 
   // Get stage name helper
   const getStageName = (stageId: string | null) => {
@@ -227,6 +264,10 @@ export function KanbanReportDialog({
     message += `⏰ Período: ${periodLabels[period]}\n\n`;
 
     message += `📈 *Resumo:*\n`;
+    message += `   📝 Casos cadastrados: ${stats.createdCount}`;
+    message += stats.createdBreakdown.length > 0
+      ? ` (${stats.createdBreakdown.join(", ")})\n`
+      : `\n`;
     message += `   📦 Total de Leads: ${stats.totalLeads}\n`;
     message += `   🔄 Movimentações: ${stats.totalMovements}\n`;
     message += `   ➕ Novos: ${stats.newLeadsCount}\n`;
@@ -318,6 +359,20 @@ export function KanbanReportDialog({
 
         <ScrollArea className="flex-1 pr-2">
           <div className="space-y-4">
+            {/* Cadastros do período — destaque */}
+            <div className="p-3 rounded-lg border bg-card">
+              <div className="flex items-center gap-2 text-muted-foreground mb-1">
+                <UserPlus className="h-4 w-4" />
+                <span className="text-xs">Casos cadastrados ({periodLabels[period]})</span>
+              </div>
+              <p className="text-2xl font-bold text-emerald-600">{stats.createdCount}</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                {stats.createdBreakdown.length > 0
+                  ? stats.createdBreakdown.join(" · ")
+                  : "Nenhum cadastro no período"}
+              </p>
+            </div>
+
             {/* Stats Cards */}
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 rounded-lg border bg-card">

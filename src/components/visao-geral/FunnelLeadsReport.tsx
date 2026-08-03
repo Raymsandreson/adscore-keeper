@@ -54,21 +54,8 @@ interface Props {
   boardMatcher: RegExp;
 }
 
-/**
- * Origens que contam como cadastro genuíno de caso trabalhista:
- *   - "Internet" → lead veio de Notícias e completou o fluxo "Cadastrar Caso Viável".
- *   - "manual"   → cadastrado diretamente na aba de Leads.
- *   - "whatsapp" → caso captado/registrado pelo fluxo de WhatsApp.
- * Excluímos "google_alerts" (itens brutos de notícia auto-importados) e demais
- * origens automáticas (referral, etc.).
- */
-const CADASTRO_SOURCES = ["Internet", "manual", "whatsapp"] as const;
-
-const SOURCE_LABELS: Record<string, string> = {
-  Internet: "Notícias",
-  manual: "Manual",
-  whatsapp: "WhatsApp",
-};
+/** Origens que contam como cadastro genuíno — ver leadCadastroSources.ts. */
+import { CADASTRO_SOURCES, SOURCE_LABELS } from "@/lib/leadCadastroSources";
 
 /** Status especiais (desfechos) que não são colunas do funil. */
 const STATUS_LABELS: Record<string, string> = {
