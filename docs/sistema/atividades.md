@@ -108,6 +108,15 @@ Cria uma atividade interna por ditado: "Iniciar gravação" → falar → "Parar
 - Cartões de Processos: Acompanhamento Processual, Gerenciamento Acolhimento.
 - Dentro do funil: "Abrir Kanban", "Time", "Editar"; "Voltar" retorna à grade.
 
+### Relatório de Leads (dentro do funil) — `FunnelLeadsReport.tsx`
+
+Cadastros e movimentações do funil por período. Conta só cadastro genuíno — `source` em `CADASTRO_SOURCES` (`src/lib/leadCadastroSources.ts`), excluindo `google_alerts`.
+
+- **Períodos são âncoras de calendário**: "Esta semana" = a partir de segunda (numa segunda-feira, é igual a "Hoje"); "Este mês" = dia 1º. Os botões "Últimos 7/30 dias" são janelas móveis. Por isso os valores diferem legitimamente entre si e do card do Relatório do Kanban (03/08/26 no Trabalhista: semana 5, mês 6, 7 dias 27, 30 dias 102).
+- **Dedup por `whatsapp_group_id`**: cadastros que compartilham o mesmo grupo contam 1 (30 dias: 102 → 99). O card do Relatório do Kanban não deduplica — divergência esperada em janelas longas.
+- **"Cadastros por acolhedor"**: usa o campo texto `acolhedor`; sem ele, cai no nome de quem criou (`created_by`), e só então em "— sem acolhedor —". Cadastro vindo das Notícias grava `acolhedor` e deixa `created_by` nulo; cadastro vindo do WhatsApp faz o inverso.
+- **Nome de quem criou/moveu sai do `profiles` do EXTERNO por `user_id`** (ago/2026): `leads.created_by` e `lead_stage_history.changed_by` guardam o uuid do Externo (`remapToExternal`), então o `profiles` do Cloud não casa nenhum uuid e todos caíam em "— sem acolhedor —". Conferido: 28 de 28 uuids distintos casam em `profiles.user_id` do Externo, 0 em `profiles.id` — nunca juntar por `profiles.id`. A mesma armadilha já apareceu no filtro de Assessor de Atividades.
+
 ---
 
 ## Banco de Horas — `/banco-horas`
