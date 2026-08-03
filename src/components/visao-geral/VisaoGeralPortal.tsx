@@ -22,6 +22,7 @@ import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import GenericFunnelDashboard from "./GenericFunnelDashboard";
+import ProtocolosDiaCard from "@/components/protocolos/ProtocolosDiaCard";
 
 const FunnelLeadsReport = lazy(() => import("./FunnelLeadsReport"));
 
@@ -264,6 +265,12 @@ export default function VisaoGeralPortal() {
           </div>
         </div>
       </header>
+
+      {/* Exceção deliberada ao "nada é processado até você abrir" do topo: uma
+          RPC agregada sobre ~800 linhas, sem PII. O custo é irrelevante perto
+          dos dashboards que a frase descreve, e o número do dia só é útil se
+          estiver na cara de quem entra. */}
+      <ProtocolosDiaCard variant="compact" />
 
       <section className="space-y-3">
         <div className="flex items-center gap-2">

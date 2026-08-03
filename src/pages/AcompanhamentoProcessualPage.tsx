@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Users,
 } from "lucide-react";
+import ProtocolosDiaCard from "@/components/protocolos/ProtocolosDiaCard";
 import { RelatorioDiarioUsuariosSheet } from "@/components/processual/RelatorioDiarioUsuariosSheet";
 import { OverdueActivitiesToday } from "@/components/processual/OverdueActivitiesToday";
 import {
@@ -303,7 +304,23 @@ export default function AcompanhamentoProcessualPage() {
           </Card>
         </section>
 
-        {/* 3. Fechamento → Protocolo */}
+        {/* 3. Protocolos administrativos INSS do dia.
+            Vem antes do bloco de gargalo de propósito: aquele mede tempo médio
+            no período selecionado, este é o número de hoje. Fontes diferentes —
+            o gargalo sai de legal_cases/lead_processes, este sai de
+            inss_admin_processes. */}
+        <section>
+          <SectionTitle
+            icon={<FileText className="h-4 w-4" />}
+            title="Protocolos administrativos INSS"
+            subtitle="Número do dia, direto dos comprovantes que chegam por e-mail do INSS"
+          />
+          <div className="mt-3">
+            <ProtocolosDiaCard variant="full" />
+          </div>
+        </section>
+
+        {/* 4. Fechamento → Protocolo */}
         <section>
           <SectionTitle
             icon={<Clock className="h-4 w-4" />}

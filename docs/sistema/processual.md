@@ -141,8 +141,34 @@ Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparand
 - Filtros: Responsável, Ação (Petições/Audiências/Despachos/Publicações), Etiqueta.
 - Ícone de atualizar — recarrega o dashboard.
 - Painel "Atividades atrasadas — hoje": filtro por responsável, "Mostrar mais", clique na linha abre a atividade.
+- Bloco "Protocolos administrativos INSS" — número do dia (ver seção abaixo).
 
 **Fluxo recomendado**: período Mês → ler SLAs e gargalo de protocolo por categoria → descer até as atividades atrasadas filtrando por responsável.
+
+---
+
+## Protocolos administrativos INSS do dia
+
+**Onde aparece**: card na Visão Geral (`/`), bloco em `/processual/acompanhamento`, e vista própria no telão (`/tv/atividades`, item "Protocolos do Dia" no rodízio).
+
+**Fonte**: RPC `tv_protocolos_dia(p_dias)` no Externo, sobre `inss_admin_processes`. Agregada, sem PII.
+
+**Os dois números, e por que não se somam** (levantado em 03/08/2026):
+
+Nada é registrado no ato do protocolo. Todo registro entra pelo `gmail-inss-sync`, que parseia o e-mail do INSS e grava `protocol_date` — não existe outro caminho de escrita. Daí saem duas medidas diferentes:
+
+| Medida | O que é | Comportamento |
+|---|---|---|
+| `registrados` | Comprovantes que chegaram no dia (`created_at`) | Tem movimento diário. É o número em destaque. |
+| `protocolados` | Cuja data de protocolo é o dia (`protocol_date`) | Produção real, mas só se completa depois: 92% dos registros entram após a data do protocolo, atraso mediano ~10 dias. Começa em 0 e sobe. |
+
+Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apareceriam picos artificiais de quando alguém rodou o sync na mão (30/07/2026 tem 174 numa rodada de backfill). Barras tracejadas = dias ainda dentro da janela de atraso.
+
+**Alerta de sync parado**: se o `gmail-inss-sync` não roda há mais de 2h, as telas avisam. Sem isso, sync parado exibe 0 e parece que ninguém protocolou.
+
+**Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
+
+**O que NÃO existe** (pedido, mas sem dado): ranking de quem protocolou. Nenhuma fonte identifica o operador — `linked_by` é 0% preenchido, responsável do caso cobre 9%, atividade "PROTOCOLAR" casada cobre 24%. Só uma captura no ato do protocolo resolve, e ela não teria histórico.
 
 ---
 
