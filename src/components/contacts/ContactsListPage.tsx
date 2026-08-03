@@ -31,6 +31,7 @@ import {
   SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw, Scale
 } from 'lucide-react';
 import { LeadProcessesSheet, type LeadProcessesTarget } from '@/components/cases/LeadProcessesSheet';
+import { CasesWithoutGroupSheet } from './CasesWithoutGroupSheet';
 
 import { cloudFunctions } from '@/lib/functionRouter';
 
@@ -329,9 +330,12 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null; process_count: number; orphan_process_count: number; case_ids: string[] }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null; process_count: number; orphan_process_count: number; case_ids: string[]; linked_lead_count: number }[]>([]);
   // Painel lateral com os processos vinculados ao caso (coluna "Processos")
   const [processesTarget, setProcessesTarget] = useState<LeadProcessesTarget | null>(null);
+  // Filtros de divergência da auditoria (ver bloco de filtros "Divergências")
+  const [issueFilter, setIssueFilter] = useState<Set<'noProcess' | 'multiLead'>>(new Set());
+  const [showCasesWithoutGroup, setShowCasesWithoutGroup] = useState(false);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsLastUpdatedAt, setGroupsLastUpdatedAt] = useState<Date | null>(null);
   const [groupsRefreshingSilently, setGroupsRefreshingSilently] = useState(false);
@@ -453,6 +457,7 @@ export function ContactsListPage() {
               process_count: 0,
               orphan_process_count: 0,
               case_ids: [],
+              linked_lead_count: 0,
             });
           }
         }
@@ -461,6 +466,11 @@ export function ContactsListPage() {
 
       // 2) Enriquecimento: vínculo com lead (nome + status + board). LEFT JOIN feito em JS.
       //    Também garante grupos que existem só em lead_whatsapp_groups e não no index.
+      //    linkedLeadsByJid guarda TODOS os leads de cada grupo (o groupMap fica só
+      //    com o primeiro): um grupo apontando pra mais de um lead é divergência —
+      //    grupo pertence a um caso só. Em 03/08/2026 são 250 grupos assim, um deles
+      //    com 24 leads. É o que alimenta o filtro "grupo em mais de um lead".
+      const linkedLeadsByJid = new Map<string, Set<string>>();
       for (let from = 0; ; from += pageSize) {
         const to = from + pageSize - 1;
         const { data: page, error } = await externalSupabase
@@ -477,6 +487,11 @@ export function ContactsListPage() {
           // Sem normalizar, o mesmo grupo aparecia duplicado na listagem.
           const rawJid = String(g.group_jid || '');
           const normJid = rawJid.includes('@') ? rawJid : `${rawJid}@g.us`;
+          if (g.lead_id) {
+            const set = linkedLeadsByJid.get(normJid) || new Set<string>();
+            set.add(g.lead_id);
+            linkedLeadsByJid.set(normJid, set);
+          }
           const existing = groupMap.get(normJid);
           if (existing) {
             if (!existing.group_name && g.group_name) existing.group_name = g.group_name;
@@ -510,6 +525,7 @@ export function ContactsListPage() {
               process_count: 0,
               orphan_process_count: 0,
               case_ids: [],
+              linked_lead_count: 0,
             });
           }
         }
@@ -686,6 +702,11 @@ export function ContactsListPage() {
           g.case_ids = caseIdsByLead.get(g.lead_id) || [];
         });
       }
+
+      // 2.f) Quantos leads distintos apontam para cada grupo (ver bloco 2).
+      groupMap.forEach((g) => {
+        g.linked_lead_count = linkedLeadsByJid.get(g.group_jid)?.size || (g.lead_id ? 1 : 0);
+      });
 
       // 3) Fallback de nome via whatsapp_messages para os que ainda não têm nome
       const stillMissing = Array.from(groupMap.values())
@@ -1511,7 +1532,7 @@ export function ContactsListPage() {
                 <Button variant="outline" size="sm" className="shrink-0 gap-2">
                   <SlidersHorizontal className="h-4 w-4" />
                   Filtrar e ordenar
-                  {(excludedGroups.size > 0 || groupSort !== 'date' || groupSortDir !== 'desc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all' || boardFilter.size > 0 || dateFrom || dateTo) && (
+                  {(excludedGroups.size > 0 || groupSort !== 'date' || groupSortDir !== 'desc' || groupSearchScope !== 'group' || auditMode || leadStatusFilter.size > 0 || leadLinkFilter !== 'all' || boardFilter.size > 0 || dateFrom || dateTo || issueFilter.size > 0) && (
                     <Badge variant="secondary" className="h-5 px-1.5 text-[10px] rounded-full">
                       {[
                         groupSearchScope !== 'group',
@@ -1523,6 +1544,7 @@ export function ContactsListPage() {
                         leadLinkFilter !== 'all',
                         boardFilter.size > 0,
                         !!(dateFrom || dateTo),
+                        issueFilter.size > 0,
                       ].filter(Boolean).length}
                     </Badge>
                   )}
@@ -1628,6 +1650,68 @@ export function ContactsListPage() {
                         <Label htmlFor="link-without" className="flex-1 cursor-pointer text-sm">Somente sem lead vinculado</Label>
                       </div>
                     </RadioGroup>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <Label className="text-sm font-medium">Divergências</Label>
+                      {issueFilter.size > 0 && (
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setIssueFilter(new Set())}>
+                          Limpar
+                        </Button>
+                      )}
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      Recortes de auditoria. Somam-se aos outros filtros.
+                    </p>
+                    <div className="space-y-1">
+                      {([
+                        {
+                          key: 'noProcess' as const,
+                          label: 'Casos sem processo vinculado',
+                          hint: 'Caso já existe, mas nenhum processo foi cadastrado nele.',
+                          count: groups.filter(g => g.case_ids.length > 0 && g.process_count === 0).length,
+                        },
+                        {
+                          key: 'multiLead' as const,
+                          label: 'Grupo em mais de um lead',
+                          hint: 'O mesmo grupo está vinculado a leads diferentes — grupo pertence a um caso só.',
+                          count: groups.filter(g => g.linked_lead_count > 1).length,
+                        },
+                      ]).map(opt => (
+                        <div key={opt.key} className="flex items-start gap-2 p-2 rounded-lg border hover:bg-muted/50">
+                          <Checkbox
+                            id={`issue-${opt.key}`}
+                            className="mt-0.5"
+                            checked={issueFilter.has(opt.key)}
+                            onCheckedChange={(v) => {
+                              setIssueFilter(prev => {
+                                const next = new Set(prev);
+                                if (v) next.add(opt.key); else next.delete(opt.key);
+                                return next;
+                              });
+                            }}
+                          />
+                          <Label htmlFor={`issue-${opt.key}`} className="flex-1 cursor-pointer">
+                            <p className="text-sm">{opt.label}</p>
+                            <p className="text-xs text-muted-foreground">{opt.hint}</p>
+                          </Label>
+                          <Badge variant="outline" className="text-[10px]">{opt.count}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2 w-full justify-start gap-2 text-xs"
+                      onClick={() => { setShowGroupFilters(false); setShowCasesWithoutGroup(true); }}
+                    >
+                      <Link2 className="h-3.5 w-3.5" />
+                      Casos sem grupo vinculado — abrir e vincular
+                    </Button>
+                    <p className="mt-1 text-[11px] text-muted-foreground">
+                      Esses casos não têm linha aqui (a lista é de grupos), então abrem em painel próprio.
+                    </p>
                   </div>
 
                   {(() => {
@@ -1848,6 +1932,50 @@ export function ContactsListPage() {
                 Sem lead: {groups.filter(g => !g.lead_id).length}
               </Badge>
               <span className="text-[11px] text-muted-foreground">de {groups.length} grupos</span>
+              {/* Atalhos de auditoria — mesmos recortes do sheet "Filtrar e ordenar" */}
+              {(() => {
+                const semProcesso = groups.filter(g => g.case_ids.length > 0 && g.process_count === 0).length;
+                const multiLead = groups.filter(g => g.linked_lead_count > 1).length;
+                const toggle = (key: 'noProcess' | 'multiLead') => setIssueFilter(prev => {
+                  const next = new Set(prev);
+                  if (next.has(key)) next.delete(key); else next.add(key);
+                  return next;
+                });
+                return (
+                  <>
+                    <Button
+                      size="sm"
+                      variant={issueFilter.has('noProcess') ? 'default' : 'outline'}
+                      className="h-6 gap-1 px-2 text-[11px]"
+                      title="Casos que já existem mas não têm nenhum processo cadastrado"
+                      onClick={() => toggle('noProcess')}
+                    >
+                      <Scale className="h-3 w-3" />
+                      Caso sem processo: {semProcesso}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={issueFilter.has('multiLead') ? 'default' : 'outline'}
+                      className="h-6 gap-1 px-2 text-[11px]"
+                      title="O mesmo grupo está vinculado a mais de um lead — grupo pertence a um caso só"
+                      onClick={() => toggle('multiLead')}
+                    >
+                      <AlertTriangle className="h-3 w-3 text-amber-500" />
+                      Grupo em +1 lead: {multiLead}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-6 gap-1 px-2 text-[11px]"
+                      title="Casos sem grupo vinculado — abre em painel próprio, com busca e botão de vincular"
+                      onClick={() => setShowCasesWithoutGroup(true)}
+                    >
+                      <Link2 className="h-3 w-3" />
+                      Casos sem grupo
+                    </Button>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -2115,6 +2243,11 @@ export function ContactsListPage() {
                     return false;
                   }
                 }
+                // Divergências (cumulativas com o resto dos filtros)
+                // "Caso sem processo": só faz sentido em linha que já virou caso —
+                // grupo sem lead ou lead sem caso não é caso sem processo, é outro problema.
+                if (issueFilter.has('noProcess') && !(g.case_ids.length > 0 && g.process_count === 0)) return false;
+                if (issueFilter.has('multiLead') && g.linked_lead_count <= 1) return false;
                 return true;
               });
 
@@ -2487,7 +2620,16 @@ export function ContactsListPage() {
                             {creatorDisplay(group)}
                           </span>
                           <div className="flex items-center gap-1">
-                            {matches ? (
+                            {group.linked_lead_count > 1 ? (
+                              <span
+                                className="inline-flex items-center gap-0.5 text-amber-600 dark:text-amber-400"
+                                title={`Este grupo está vinculado a ${group.linked_lead_count} leads — grupo pertence a um caso só`}
+                                aria-label={`Grupo em ${group.linked_lead_count} leads`}
+                              >
+                                <AlertTriangle className="h-4 w-4" />
+                                <span className="text-[10px] font-semibold tabular-nums">{group.linked_lead_count}</span>
+                              </span>
+                            ) : matches ? (
                               <CheckCircle2 className="h-4 w-4 text-emerald-500" aria-label="Bate" />
                             ) : (
                               <AlertTriangle
@@ -3149,6 +3291,13 @@ export function ContactsListPage() {
 
       {/* Processos vinculados ao caso (coluna "Processos" da auditoria) */}
       <LeadProcessesSheet target={processesTarget} onClose={() => setProcessesTarget(null)} />
+
+      {/* Casos sem grupo — o outro lado da auditoria, com botão de vincular */}
+      <CasesWithoutGroupSheet
+        open={showCasesWithoutGroup}
+        onOpenChange={setShowCasesWithoutGroup}
+        onLinked={() => fetchGroups({ silent: true })}
+      />
     </div>
 
   );
