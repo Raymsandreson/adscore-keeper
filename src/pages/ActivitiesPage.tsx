@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToCloud, remapToCloudSync, remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { remapToCloud, remapToCloudSync, remapToExternal, remapToExternalSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -224,6 +224,9 @@ const ActivitiesPage = () => {
   const [filterContact, setFilterContact] = usePageState<string[]>('activities_filterContact', []);
   const [filterCase, setFilterCase] = usePageState<string[]>('activities_filterCase', []);
   const [filterWorkflow, setFilterWorkflow] = usePageState<string[]>('activities_filterWorkflow', []);
+  // Quem criou a atividade. Guarda Cloud UUIDs (igual filterAssignee) — o remap
+  // para o UUID do Externo é feito no hook e nas contagens.
+  const [filterCreatedBy, setFilterCreatedBy] = usePageState<string[]>('activities_filterCreatedBy', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
   // Atividades com cronômetro ATIVO AGORA (heartbeat fresco): id -> { secs, userName }
@@ -354,7 +357,7 @@ const ActivitiesPage = () => {
   const [contactSearch, setContactSearch] = useState('');
 
   // Activity counts for filter badges
-  const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; activity_type: string; status: string; workflow_id: string | null }[]>([]);
+  const [allActivitiesRaw, setAllActivitiesRaw] = useState<{ lead_id: string | null; contact_id: string | null; assigned_to: string | null; created_by: string | null; activity_type: string; status: string; workflow_id: string | null }[]>([]);
   const [openFilterKey, setOpenFilterKey] = useState<string | null>(null);
   const [showAllTypes, setShowAllTypes] = useState(false);
 
@@ -469,6 +472,7 @@ const ActivitiesPage = () => {
     overdue: filterStatus.includes('atrasada'),
     activity_type: filterType.length > 0 ? filterType : 'all',
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
+    created_by: filterCreatedBy.length > 0 ? filterCreatedBy : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
     contact_id: filterContact.length > 0 ? filterContact : 'all',
     workflow_id: filterWorkflow.length > 0 ? filterWorkflow : 'all',
@@ -502,7 +506,7 @@ const ActivitiesPage = () => {
 
   useEffect(() => {
     fetchActivities(getFilterParams());
-  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow, filterCase]);
+  }, [fetchActivities, filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase]);
 
   useEffect(() => {
     if (viewMode === 'blocks') setOpenFilterKey(null);
@@ -591,7 +595,7 @@ const ActivitiesPage = () => {
   const countsLoadedRef = useRef(false);
   useEffect(() => {
     const loadCounts = async () => {
-      const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status, workflow_id').limit(2000);
+      const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, created_by, activity_type, status, workflow_id').limit(2000);
       setAllActivitiesRaw(data || []);
       countsLoadedRef.current = true;
     };
@@ -607,7 +611,7 @@ const ActivitiesPage = () => {
   
   // Refresh counts only after mutations (create/update/delete) - not on every fetch
   const refreshCounts = useCallback(async () => {
-    const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, activity_type, status, workflow_id').limit(2000);
+    const { data } = await (externalSupabase as any).from('lead_activities').select('lead_id, contact_id, assigned_to, created_by, activity_type, status, workflow_id').limit(2000);
     setAllActivitiesRaw(data || []);
   }, []);
   
@@ -704,6 +708,18 @@ const ActivitiesPage = () => {
       let filtered = allActivitiesRaw;
       if (excludeField !== 'assigned_to' && filterAssignee.length > 0)
         filtered = filtered.filter(a => a.assigned_to && filterAssignee.includes(a.assigned_to));
+      // O raw traz created_by com o UUID do Externo; o filtro guarda Cloud UUID.
+      if (excludeField !== 'created_by' && filterCreatedBy.length > 0) {
+        const hasNoCreator = filterCreatedBy.includes('__unassigned__');
+        const extIds = filterCreatedBy
+          .filter(v => v !== '__unassigned__')
+          .map(v => remapToExternalSync(v))
+          .filter(Boolean) as string[];
+        filtered = filtered.filter(a => {
+          if (hasNoCreator && !a.created_by) return true;
+          return !!a.created_by && extIds.includes(a.created_by);
+        });
+      }
       if (excludeField !== 'activity_type' && filterType.length > 0)
         filtered = filtered.filter(a => filterType.includes(a.activity_type));
       if (excludeField !== 'status' && filterStatus.length > 0) {
@@ -726,11 +742,11 @@ const ActivitiesPage = () => {
       }
       return filtered;
     };
-  }, [allActivitiesRaw, filterAssignee, filterType, filterStatus, filterLead, filterContact, filterWorkflow]);
+  }, [allActivitiesRaw, filterAssignee, filterCreatedBy, filterType, filterStatus, filterLead, filterContact, filterWorkflow]);
 
   // Count helpers - contextual to other active filters
   const countByField = useMemo(() => {
-    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'activity_type' | 'status' | 'workflow_id', value: string) => {
+    const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'created_by' | 'activity_type' | 'status' | 'workflow_id', value: string) => {
       const filtered = getFilteredRaw(fieldKey);
       const matching = filtered.filter(a => a[fieldKey] === value);
       return {
@@ -2296,7 +2312,7 @@ const ActivitiesPage = () => {
   const [renderLimit, setRenderLimit] = useState(RENDER_BATCH);
   useEffect(() => {
     setRenderLimit(RENDER_BATCH);
-  }, [filterStatus, filterType, filterAssignee, filterLead, filterContact, filterWorkflow, filterCase, selectedCalDays, calendarMonth, viewMode]);
+  }, [filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase, selectedCalDays, calendarMonth, viewMode]);
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -3212,6 +3228,61 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
+        {/* Criado por — lead_activities.created_by (quem cadastrou, não quem executa) */}
+        <Popover open={openFilterKey === 'createdBy'} onOpenChange={o => setOpenFilterKey(o ? 'createdBy' : null)}>
+          <PopoverTrigger asChild>
+            <Button variant={filterCreatedBy.length > 0 ? "default" : "outline"} size="sm" className="h-7 text-xs shrink-0 gap-1">
+              <Pencil className="h-3 w-3" />
+              {filterCreatedBy.length === 0 ? 'Criado por' : filterCreatedBy.length === 1 ? (filterCreatedBy[0] === '__unassigned__' ? 'Sem registro' : (teamMembers.find(m => m.user_id === filterCreatedBy[0])?.full_name?.split(' ')[0] || '1')) : `${filterCreatedBy.length}`}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[260px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Buscar quem criou..." />
+              <CommandList>
+                <CommandEmpty>Nenhum encontrado</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem value="__clear_all_criador" onSelect={() => setFilterCreatedBy([])}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterCreatedBy.length === 0 ? "opacity-100" : "opacity-0")} />
+                    Todos
+                  </CommandItem>
+                  {filterAssignableMembers([...teamMembers]).sort((a, b) => {
+                    const aSel = filterCreatedBy.includes(a.user_id) ? 0 : 1;
+                    const bSel = filterCreatedBy.includes(b.user_id) ? 0 : 1;
+                    if (aSel !== bSel) return aSel - bSel;
+                    return (a.full_name || '').localeCompare(b.full_name || '');
+                  }).map(m => {
+                    const c = countByField('created_by', remapToExternalSync(m.user_id) || m.user_id);
+                    const isSelected = filterCreatedBy.includes(m.user_id);
+                    return (
+                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterCreatedBy, filterCreatedBy, m.user_id)}>
+                        <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
+                        <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
+                        <span className="ml-2 flex gap-1 text-[10px]">
+                          <Badge variant="outline" className="px-1 py-0 text-[10px]">{c.open}⏳</Badge>
+                          <Badge variant="secondary" className="px-1 py-0 text-[10px]">{c.done}✓</Badge>
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
+                  <CommandItem value="__unassigned__" onSelect={() => toggleFilter(setFilterCreatedBy, filterCreatedBy, '__unassigned__')}>
+                    <Check className={cn("mr-2 h-3.5 w-3.5", filterCreatedBy.includes('__unassigned__') ? "opacity-100" : "opacity-0")} />
+                    <span className="flex-1 truncate text-muted-foreground italic">Sem registro</span>
+                    <span className="ml-2 flex gap-1 text-[10px]">
+                      <Badge variant="outline" className="px-1 py-0 text-[10px]">
+                        {getFilteredRaw('created_by').filter(a => !a.created_by && a.status !== 'concluida').length}⏳
+                      </Badge>
+                      <Badge variant="secondary" className="px-1 py-0 text-[10px]">
+                        {getFilteredRaw('created_by').filter(a => !a.created_by && a.status === 'concluida').length}✓
+                      </Badge>
+                    </span>
+                  </CommandItem>
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
         {/* Tipo */}
         <Popover open={openFilterKey === 'type'} onOpenChange={o => setOpenFilterKey(o ? 'type' : null)}>
           <PopoverTrigger asChild>
@@ -3559,8 +3630,8 @@ const ActivitiesPage = () => {
           )}
         </div>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || searchText) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterCreatedBy.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || searchText) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}

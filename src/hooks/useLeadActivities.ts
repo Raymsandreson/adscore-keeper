@@ -72,6 +72,9 @@ export function useLeadActivities() {
     status?: string | string[];
     activity_type?: string | string[];
     assigned_to?: string | string[];
+    /** Quem CRIOU a atividade (lead_activities.created_by). Recebe Cloud UUIDs — o remap
+     *  para o Externo acontece aqui dentro, igual ao assigned_to. '__unassigned__' = sem registro. */
+    created_by?: string | string[];
     lead_id?: string | string[];
     contact_id?: string | string[];
     workflow_id?: string | string[];
@@ -103,6 +106,13 @@ export function useLeadActivities() {
       const remapped = await Promise.all(cloudUserIds.map(id => remapToExternal(id)));
       const assigneeExtIds = remapped.filter(Boolean) as string[];
 
+      // created_by guarda o UUID do auth do Externo — mesmo espaço do assigned_to.
+      const creatorVals = toVals(filters?.created_by);
+      const hasNoCreator = creatorVals.includes('__unassigned__');
+      const creatorCloudIds = creatorVals.filter(v => v !== '__unassigned__');
+      const creatorRemapped = await Promise.all(creatorCloudIds.map(id => remapToExternal(id)));
+      const creatorExtIds = creatorRemapped.filter(Boolean) as string[];
+
       // Filtros comuns (tudo exceto status/ordenação) — usados na busca normal e na de atrasadas
       const buildQuery = () => {
         let q = externalSupabase
@@ -121,6 +131,17 @@ export function useLeadActivities() {
           q = q.is('assigned_to', null);
         } else if (assigneeExtIds.length > 0) {
           q = q.or(`assigned_to.in.(${assigneeExtIds.join(',')}),assigned_to_ids.ov.{${assigneeExtIds.join(',')}}`);
+        }
+
+        // Criador. Sem __unassigned__ dá pra usar in/eq direto (mais barato que or).
+        if (hasNoCreator && creatorExtIds.length > 0) {
+          q = (q as any).or(`created_by.in.(${creatorExtIds.join(',')}),created_by.is.null`);
+        } else if (hasNoCreator) {
+          q = q.is('created_by', null);
+        } else if (creatorExtIds.length === 1) {
+          q = q.eq('created_by', creatorExtIds[0]);
+        } else if (creatorExtIds.length > 1) {
+          q = q.in('created_by', creatorExtIds);
         }
 
         if (leadVals.length === 1) q = q.eq('lead_id', leadVals[0]);
