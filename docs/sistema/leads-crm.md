@@ -36,6 +36,14 @@ Toggle no header (ícones colunas/lista) alterna kanban ↔ lista **sem resetar*
 
 **Fluxo recomendado**: escolher o funil → localizar o lead (busca/filtro) → arrastar o card entre etapas. Para lead novo, "Adicionar Lead" usando o extrator de IA.
 
+### Relatório do Kanban (botão "Relatório") — ago/2026
+
+Dialog com resumo do quadro por período (Hoje / Ontem / 7 dias / 30 dias), copiável e enviável ao WhatsApp (`src/components/kanban/KanbanReportDialog.tsx`).
+
+- **Casos cadastrados (período)** — card de destaque no topo: leads criados no board no período, com quebra por origem (Notícias · Manual · WhatsApp). Conta `leads.created_at` com `source` em `CADASTRO_SOURCES` (`src/lib/leadCadastroSources.ts`, mesma regra do relatório de funil da Visão Geral): cobre a aba "Adicionar Lead" e o fluxo "Cadastrar Caso Viável" das Notícias, e **exclui `google_alerts`**, que é ingestão automática do coletor, não cadastro. Por isso o número é bem menor que o volume bruto do board (03/08/26 no Trabalhista: 5 cadastros contra 53 leads criados no dia, 48 deles `google_alerts`).
+- **Novos Leads** é métrica diferente: entradas no 1º estágio segundo `lead_stage_history`, não cadastros — fica 0 em dias sem movimentação, mesmo com cadastros no dia.
+- O período "Ontem" é janela fechada (ontem 00:00→23:59); antes ia de ontem 00:00 até agora e somava o dia corrente.
+
 ---
 
 ## Gerenciamento Acolhimento — `/acolhimento`
