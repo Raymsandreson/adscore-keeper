@@ -152,7 +152,8 @@ function pickInssPrevAssignee(): { userId: string; userName: string } | null {
  * Retorna { ok, mode: 'inserted'|'attached'|'skipped', error? }.
  */
 export interface AndamentoActivityInput {
-  leadId: string;
+  /** Null em caso órfão (lead purgado): a atividade nasce ligada só ao caso. */
+  leadId: string | null;
   caseId: string | null;
   caseTitle?: string | null;
   processId: string | null;
@@ -205,10 +206,12 @@ export async function createOrAttachAndamentoActivity(
     let q = externalSupabase
       .from('lead_activities')
       .select('id')
-      .eq('lead_id', input.leadId)
       .eq('status', 'pendente')
       .is('deleted_at', null)
       .ilike('title', escapeLike(title));
+    // Sem lead o filtro viraria `lead_id=eq.null`; o vínculo por case_id
+    // (aplicado logo abaixo) é o que de fato restringe a busca.
+    q = input.leadId ? q.eq('lead_id', input.leadId) : q;
     q = input.caseId ? q.eq('case_id', input.caseId) : q.is('case_id', null);
 
     const { data: existing } = await q
