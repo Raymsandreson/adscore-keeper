@@ -28,8 +28,9 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw, Scale
 } from 'lucide-react';
+import { LeadProcessesSheet, type LeadProcessesTarget } from '@/components/cases/LeadProcessesSheet';
 
 import { cloudFunctions } from '@/lib/functionRouter';
 
@@ -328,7 +329,9 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null; process_count: number }[]>([]);
+  // Painel lateral com os processos vinculados ao caso (coluna "Processos")
+  const [processesTarget, setProcessesTarget] = useState<LeadProcessesTarget | null>(null);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsLastUpdatedAt, setGroupsLastUpdatedAt] = useState<Date | null>(null);
   const [groupsRefreshingSilently, setGroupsRefreshingSilently] = useState(false);
@@ -355,11 +358,11 @@ export function ContactsListPage() {
   const [creatorFilter, setCreatorFilter] = useState<string>('all');
   // Larguras das colunas do modo auditoria (estilo planilha — usuário arrasta o limite direito)
   const [auditColW, setAuditColW] = useState<Record<string, number>>({
-    check: 36, leadN: 90, caseN: 70, groupName: 280, leadName: 220, createdAt: 130, createdBy: 220, actions: 60,
+    check: 36, leadN: 90, caseN: 70, processes: 90, groupName: 280, leadName: 220, createdAt: 130, createdBy: 220, actions: 60,
   });
   // Filtros por coluna (texto livre, "contém") — estilo Google Sheets
   const [auditColFilter, setAuditColFilter] = useState<Record<string, string>>({
-    leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '',
+    leadN: '', caseN: '', processes: '', groupName: '', leadName: '', createdAt: '', createdBy: '',
   });
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
@@ -447,6 +450,7 @@ export function ContactsListPage() {
               product_service_id: null,
               owner_phone: null,
               creator_instance_name: null,
+              process_count: 0,
             });
           }
         }
@@ -501,6 +505,7 @@ export function ContactsListPage() {
               product_service_id: lead?.product_service_id || null,
               owner_phone: null,
               creator_instance_name: null,
+              process_count: 0,
             });
           }
         }
@@ -585,6 +590,42 @@ export function ContactsListPage() {
             .map(([id, name]) => ({ id, name }))
             .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
         );
+      }
+
+      // 2.e) Contagem de processos vinculados ao caso (coluna "Processos").
+      //      Agrega por lead_id — não por case_id: em 03/08/2026 os 1.666 registros
+      //      vivos de lead_processes têm lead_id preenchido, mas só 1.572 têm case_id,
+      //      então contar por case_id perderia ~94 processos.
+      //      A query usa o índice parcial idx_lead_processes_lead_id_active
+      //      (lead_id) WHERE deleted_at IS NULL. Chunk de 200 ids + paginação por
+      //      range: hoje são ~1.4k leads com grupo → ~7 requests por refresh.
+      const leadIdsWithGroup = Array.from(new Set(
+        Array.from(groupMap.values()).filter(g => g.lead_id).map(g => g.lead_id as string)
+      ));
+      if (leadIdsWithGroup.length > 0) {
+        const countByLead = new Map<string, number>();
+        const chunkSize = 200;
+        for (let i = 0; i < leadIdsWithGroup.length; i += chunkSize) {
+          const chunk = leadIdsWithGroup.slice(i, i + chunkSize);
+          for (let from = 0; ; from += pageSize) {
+            const { data: procs, error: procErr } = await externalSupabase
+              .from('lead_processes')
+              .select('lead_id')
+              .in('lead_id', chunk)
+              .is('deleted_at', null)
+              .range(from, from + pageSize - 1);
+            if (procErr) { console.error('fetchGroups process count error:', procErr); break; }
+            const procRows = (procs as any[]) || [];
+            for (const p of procRows) {
+              if (!p.lead_id) continue;
+              countByLead.set(p.lead_id, (countByLead.get(p.lead_id) || 0) + 1);
+            }
+            if (procRows.length < pageSize) break;
+          }
+        }
+        groupMap.forEach((g) => {
+          if (g.lead_id) g.process_count = countByLead.get(g.lead_id) || 0;
+        });
       }
 
       // 3) Fallback de nome via whatsapp_messages para os que ainda não têm nome
@@ -2132,6 +2173,7 @@ export function ContactsListPage() {
                   switch (col) {
                     case 'leadN': return g.lead_number != null ? `LEAD-${g.lead_number}${g.product_case_prefix ? `(${g.product_case_prefix})` : ''}` : '';
                     case 'caseN': return g.case_number || '';
+                    case 'processes': return g.lead_id ? String(g.process_count ?? 0) : '';
                     case 'groupName': return g.group_name || '';
                     case 'leadName': return g.lead_name || '';
                     case 'createdAt': return g.created_at ? new Date(g.created_at).toLocaleString('pt-BR') : '';
@@ -2153,7 +2195,7 @@ export function ContactsListPage() {
                 const cappedAfterCols = colFilterActive ? visibleAfterCols.slice(0, RENDER_CAP) : capped;
 
                 // Grid template a partir das larguras (px). Última coluna em 1fr seria ruim aqui — manter px.
-                const cols = ['check', 'leadN', 'caseN', 'groupName', 'leadName', 'createdAt', 'createdBy', 'actions'] as const;
+                const cols = ['check', 'leadN', 'caseN', 'processes', 'groupName', 'leadName', 'createdAt', 'createdBy', 'actions'] as const;
                 const gridTemplate = cols.map(c => `${auditColW[c]}px`).join(' ');
                 const startResize = (col: string, e: React.MouseEvent) => {
                   e.preventDefault();
@@ -2226,7 +2268,7 @@ export function ContactsListPage() {
                           </Button>
                         )}
                         {colFilterActive && (
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '' })}>
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', processes: '', groupName: '', leadName: '', createdAt: '', createdBy: '' })}>
                             Limpar filtros de coluna
                           </Button>
                         )}
@@ -2236,6 +2278,7 @@ export function ContactsListPage() {
                       <div className="relative"><span></span></div>
                       <HeaderCell col="leadN" label="Nº lead" title="Sequência do lead (LEAD-N(PFX))" />
                       <HeaderCell col="caseN" label="Nº caso" title="Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis." />
+                      <HeaderCell col="processes" label="Processos" title="Processos vinculados ao caso (lead_processes). Clique no número para ver a lista e abrir a ficha completa." align="center" />
                       <HeaderCell col="groupName" label="Nome do grupo" />
                       <HeaderCell col="leadName" label="Nome do lead" align="center" />
                       <HeaderCell col="createdAt" label="Criado em" title="Data e hora de criação do grupo no WhatsApp" />
@@ -2292,6 +2335,33 @@ export function ContactsListPage() {
                           >
                             {caseNum || '—'}
                           </span>
+                          {group.lead_id ? (
+                            <button
+                              type="button"
+                              className={`mx-auto inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs tabular-nums transition-colors ${
+                                group.process_count > 0
+                                  ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                                  : 'text-muted-foreground hover:bg-accent'
+                              }`}
+                              title={group.process_count > 0
+                                ? `${group.process_count} processo(s) vinculado(s) — clique para ver a lista`
+                                : 'Nenhum processo vinculado a este caso'}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setProcessesTarget({
+                                  leadId: group.lead_id!,
+                                  leadName: group.lead_name || null,
+                                  caseNumber: caseNum || null,
+                                  groupName: group.group_name || null,
+                                });
+                              }}
+                            >
+                              <Scale className="h-3.5 w-3.5 shrink-0" />
+                              {group.process_count}
+                            </button>
+                          ) : (
+                            <span className="text-center text-xs text-muted-foreground" title="Grupo sem lead — não há caso para vincular processos">—</span>
+                          )}
                           <span
                             className="text-sm truncate cursor-pointer hover:underline pr-3"
                             title="Abrir conversa do grupo"
@@ -3006,6 +3076,9 @@ export function ContactsListPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Processos vinculados ao caso (coluna "Processos" da auditoria) */}
+      <LeadProcessesSheet target={processesTarget} onClose={() => setProcessesTarget(null)} />
     </div>
 
   );
