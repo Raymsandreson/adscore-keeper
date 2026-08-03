@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { format, parseISO, startOfDay, differenceInCalendarDays, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
 export interface FeedbackRow {
@@ -155,12 +156,18 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [lateRows, setLateRows] = useState<LateRow[]>([]);
   const [loading, setLoading] = useState(false);
   // Visão (funil kanban ou calendário) + filtros de assessor e período.
-  const [view, setView] = useState<'funil' | 'calendario'>('funil');
+  // Calendário é a visão padrão — é como o time olha a agenda de retorno.
+  const [view, setView] = useState<'funil' | 'calendario'>('calendario');
   const [calMonth, setCalMonth] = useState(() => new Date());
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [filterAssessor, setFilterAssessor] = useState('all');
   const [filterFrom, setFilterFrom] = useState('');
   const [filterTo, setFilterTo] = useState('');
+  // Feedback é sobre o trabalho DO OUTRO: as atividades em que você é o próprio
+  // responsável ficam de fora por padrão (ninguém se autoavalia aqui).
+  const [incluirMinhas, setIncluirMinhas] = useState(false);
+  // Atividade aberta na aba lateral (formulário completo), sem sair do painel.
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   // Estado por cartão (avaliação em andamento)
   const [draft, setDraft] = useState<Record<string, { rating: number; justification: string; praise: string }>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -185,14 +192,18 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       const eid = (await remapToExternal(user.id)) as string | null;
       setExtId(eid);
       if (!eid) { setRows([]); return; }
+      // Sem "autofeedback": fora as atividades em que eu mesmo sou o responsável.
+      const semAsMinhas = `assigned_to.is.null,assigned_to.neq.${eid}`;
       // Feedbacks onde sou observador OU criador.
-      const { data, error } = await (externalSupabase as any)
+      let q = (externalSupabase as any)
         .from('lead_activities')
         .select('id, title, feedback, feedback_rating, feedback_outcome, feedback_rated_by_name, feedback_rated_at, assigned_to, assigned_to_name, created_by, observer_ids, lead_id, lead_name, case_id, case_title, process_id, process_title, activity_type, status, deadline, rescheduled_to, completed_at, updated_at')
         .not('feedback', 'is', null)
         .neq('feedback', '')
         .is('deleted_at', null)
-        .or(`observer_ids.cs.{${eid}},created_by.eq.${eid}`)
+        .or(`observer_ids.cs.{${eid}},created_by.eq.${eid}`);
+      if (!incluirMinhas) q = q.or(semAsMinhas);
+      const { data, error } = await q
         .order('updated_at', { ascending: false })
         .limit(300);
       if (error) throw error;
@@ -201,12 +212,14 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       // Atrasadas/reagendadas que você observa — ainda sem retorno, por isso não entram no funil normal.
       const todayStart = new Date();
       todayStart.setHours(0, 0, 0, 0);
-      const { data: late, error: lateErr } = await (externalSupabase as any)
+      let lq = (externalSupabase as any)
         .from('lead_activities')
         .select('id, title, status, deadline, rescheduled_to, assigned_to, assigned_to_name, lead_name, case_title, process_title')
         .is('deleted_at', null)
         .or(`observer_ids.cs.{${eid}},created_by.eq.${eid}`)
-        .or(`status.eq.reagendada,and(status.neq.concluida,deadline.lt.${todayStart.toISOString()})`)
+        .or(`status.eq.reagendada,and(status.neq.concluida,deadline.lt.${todayStart.toISOString()})`);
+      if (!incluirMinhas) lq = lq.or(semAsMinhas);
+      const { data: late, error: lateErr } = await lq
         .order('deadline', { ascending: true })
         .limit(300);
       if (lateErr) throw lateErr;
@@ -251,7 +264,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, incluirMinhas]);
 
   useEffect(() => { if (open) load(); }, [open, load]);
 
@@ -516,12 +529,24 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-1 shadow-sm">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
+            <button
+              type="button"
+              onClick={() => setOpenActivityId(row.id)}
+              className="text-xs font-medium truncate block max-w-full text-left hover:underline"
+              title={row.title}
+            >
+              {row.title}
+            </button>
             <p className="text-[10px] text-muted-foreground truncate">{row.lead_name || row.case_title || row.process_title || ''}</p>
           </div>
-          <a href={`/?openActivity=${row.id}`} className="shrink-0 text-muted-foreground hover:text-foreground" title="Abrir atividade">
+          <button
+            type="button"
+            onClick={() => setOpenActivityId(row.id)}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
+            title="Abrir atividade na aba lateral"
+          >
             <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+          </button>
         </div>
         <p className="text-[10px] text-muted-foreground">
           Responsável: <strong>{row.assigned_to_name || '—'}</strong>
@@ -597,7 +622,14 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       <div key={row.id} className="rounded-md border bg-card p-2.5 space-y-2 shadow-sm">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-xs font-medium truncate" title={row.title}>{row.title}</p>
+            <button
+              type="button"
+              onClick={() => setOpenActivityId(row.id)}
+              className="text-xs font-medium truncate block max-w-full text-left hover:underline"
+              title={row.title}
+            >
+              {row.title}
+            </button>
             <p className="text-[10px] text-muted-foreground truncate">{linkFor(row)}</p>
             {situacao && (
               <span className={cn('inline-block mt-1 rounded border px-1.5 py-0.5 text-[9px] font-medium', situacao.className)}>
@@ -605,13 +637,14 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
               </span>
             )}
           </div>
-          <a
-            href={`/?openActivity=${row.id}`}
+          <button
+            type="button"
+            onClick={() => setOpenActivityId(row.id)}
             className="shrink-0 text-muted-foreground hover:text-foreground"
-            title="Abrir atividade"
+            title="Abrir atividade na aba lateral"
           >
             <ExternalLink className="h-3.5 w-3.5" />
-          </a>
+          </button>
         </div>
 
         <div className="rounded bg-muted/50 p-1.5 text-[11px] max-h-24 overflow-auto whitespace-pre-wrap">
@@ -685,7 +718,8 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   };
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-[95vw] p-0 flex flex-col">
         <SheetHeader className="px-4 py-3 border-b shrink-0">
           <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -743,6 +777,16 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
               <span>até</span>
               <input type="date" value={filterTo} onChange={e => setFilterTo(e.target.value)} className="h-7 rounded border bg-background px-1.5 text-[11px]" />
             </div>
+            {/* Autofeedback fica fora por padrão — só entra se você pedir. */}
+            <label className="flex items-center gap-1.5 text-[11px] text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={incluirMinhas}
+                onChange={e => setIncluirMinhas(e.target.checked)}
+                className="h-3.5 w-3.5 accent-primary"
+              />
+              Incluir as minhas (sou o responsável)
+            </label>
             {(filterAssessor !== 'all' || filterFrom || filterTo) && (
               <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => { setFilterAssessor('all'); setFilterFrom(''); setFilterTo(''); }}>
                 Limpar filtros
@@ -872,6 +916,15 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
           )}
         </div>
       </SheetContent>
-    </Sheet>
+      </Sheet>
+
+      {/* Abrir a atividade sem sair do painel: mesmo formulário completo do sistema. */}
+      <ActivityFullSheet
+        open={!!openActivityId}
+        onOpenChange={(v) => { if (!v) setOpenActivityId(null); }}
+        activityId={openActivityId}
+        onUpdated={load}
+      />
+    </>
   );
 }
