@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { db, authClient } from "@/integrations/supabase";
+import { db } from "@/integrations/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -310,9 +310,13 @@ export default function FunnelLeadsReport({ boardMatcher }: Props) {
             ].filter(Boolean),
           ),
         ] as string[];
+        // `leads.created_by` e `lead_stage_history.changed_by` guardam o uuid do
+        // Supabase EXTERNO (useLeads grava via remapToExternal), então o nome sai
+        // do profiles do Externo por user_id — no profiles do Cloud esses uuids
+        // não casam e todo mundo caía em "— sem acolhedor —".
         const userNames: Record<string, string> = {};
         if (userIds.length > 0) {
-          const { data: profs } = await authClient
+          const { data: profs } = await db
             .from("profiles")
             .select("user_id, full_name, email")
             .in("user_id", userIds);
