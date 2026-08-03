@@ -418,3 +418,40 @@ async function runInssReport() {
   }
 }
 setInterval(runInssReport, 10 * 60 * 1000);
+
+// ============================================================
+// CRON: sincroniza a caixa do INSS a cada INSS_SYNC_INTERVAL_MIN
+// (padrão 20). Até 03/08/2026 este sync só rodava quando alguém
+// clicava na tela — a última execução tinha 3 dias, e é por isso
+// que "protocolos de hoje" vivia zerado.
+//
+// Janela curta (6h) de propósito: rodando de 20 em 20 min, tudo
+// que passar disso é releitura das mesmas mensagens, gastando
+// cota do gateway à toa. As 6h dão folga pra cobrir uma janela
+// de instabilidade sem precisar de backfill.
+//
+// Seguro pra rodar sozinho: o handler tem trava anti-sobreposição
+// (syncInFlight), retry de 429 com espera de 62s e pacing de 400ms
+// entre mensagens — o comentário dele já previa este cron.
+// ============================================================
+const INSS_SYNC_INTERVAL_MS = Number(process.env.INSS_SYNC_INTERVAL_MIN || 20) * 60 * 1000;
+async function runInssSync() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/gmail-inss-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({ lookback_hours: 6 }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    // Rodada que não achou nada é o caso comum — só loga quando houve novidade
+    // ou problema, pra não afogar o log do Railway.
+    if (json?.new > 0 || json?.errors?.length) {
+      console.log(`[cron:gmail-inss-sync] new=${json.new} checked=${json.checked} errors=${json.errors?.length || 0}`);
+    }
+  } catch (err) {
+    console.warn('[cron:gmail-inss-sync] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Escalonado do orphan scan (60s) pra não competirem no boot.
+setTimeout(runInssSync, 120_000);
+setInterval(runInssSync, INSS_SYNC_INTERVAL_MS);

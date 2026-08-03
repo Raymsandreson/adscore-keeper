@@ -10,6 +10,7 @@ import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetailSheet';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
+import TvProtocolosPanel from '@/components/tv/TvProtocolosPanel';
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
 import {
@@ -67,6 +68,11 @@ const LIST_MAX = 7; // linhas abaixo do pódio (posições 4..10)
 // Valor sentinela no seletor de time: só gestores de time + diretoria
 // (team_managers + org_directors no Externo; a RPC resolve via p_grupo).
 const GRUPO_GERENCIAL = 'gerencial';
+// Segundo pseudo-item do rodízio (mesmo mecanismo do GRUPO_GERENCIAL): não é um
+// time, é uma vista inteira diferente — protocolos INSS do dia, sem ranking por
+// pessoa (ninguém registra quem protocolou). Reaproveita rodízio, seletor e
+// persistência na URL sem tocar no motor.
+const VISTA_PROTOCOLOS = 'protocolos';
 // Token na URL pro "Ranking Geral" (teamId '') na lista de itens fora do rodízio.
 function rotEnc(v: string) { return v === '' ? 'geral' : v; }
 function rotDec(t: string) { return t === 'geral' ? '' : t; }
@@ -238,24 +244,31 @@ export default function TvAtividadesPage() {
     setSearchParams(next, { replace: true });
   }, [params, setSearchParams]);
 
+  // Vista de protocolos: tela própria, não é ranking de assessor.
+  const vistaProtocolos = teamId === VISTA_PROTOCOLOS;
+
   const selectedTeamName = useMemo(
     () => teamId === GRUPO_GERENCIAL
       ? 'Gerencial e Diretoria'
+      : teamId === VISTA_PROTOCOLOS
+      ? 'Protocolos do Dia'
       : teams.find(t => t.id === teamId)?.name,
     [teams, teamId],
   );
   // Nome do que está na tela agora (todos = "Ranking Geral").
   const currentViewName = teamId === '' ? 'Ranking Geral' : (selectedTeamName || titulo);
 
-  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial.
+  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial →
+  // Protocolos.
   const rotatable = useMemo(
-    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL],
+    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL, VISTA_PROTOCOLOS],
     [teams],
   );
   // Nome legível de um item do rodízio.
   const rotItemName = useCallback(
     (v: string) => v === '' ? 'Ranking Geral'
       : v === GRUPO_GERENCIAL ? 'Gerencial e Diretoria'
+      : v === VISTA_PROTOCOLOS ? 'Protocolos do Dia'
       : (teams.find(t => t.id === v)?.name || v),
     [teams],
   );
@@ -320,6 +333,9 @@ export default function TvAtividadesPage() {
   }, [autoRotate, rotateMin, rotateCycle, teamId, onSelectTeam]);
 
   const load = useCallback(async () => {
+    // A vista de protocolos tem fonte própria (TvProtocolosPanel busca sozinho).
+    // Sem isto, o rodízio dispararia o ranking a cada 45s por nada.
+    if (vistaProtocolos) { setLoading(false); return; }
     setLoading(true);
     try {
       await ensureExternalSession();
@@ -338,7 +354,7 @@ export default function TvAtividadesPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, teamId]);
+  }, [period, teamId, vistaProtocolos]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -920,6 +936,7 @@ export default function TvAtividadesPage() {
           >
             <option value="">Todos os times</option>
             <option value={GRUPO_GERENCIAL}>Gerencial e Diretoria</option>
+            <option value={VISTA_PROTOCOLOS}>Protocolos do Dia</option>
             {teams.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
@@ -1090,7 +1107,9 @@ export default function TvAtividadesPage() {
           </div>
         )}
 
-        {ranking.length === 0 && pit.length === 0 ? (
+        {vistaProtocolos ? (
+          <TvProtocolosPanel />
+        ) : ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
           </div>
