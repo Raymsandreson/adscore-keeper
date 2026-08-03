@@ -86,11 +86,14 @@ Quem bateu o ponto e já encerrou **não** entra em "Não iniciou" — aparece c
 Sem ponto batido o sistema **não é utilizável**: `src/components/activities/ShiftGate.tsx` cobre a tela inteira (montado no `SidebarLayout`, em `App.tsx`) com o **POP "Início de expediente"** — os 6 passos do procedimento — e o botão "Iniciar expediente", que chama o mesmo `startShift()` do cronômetro. Só há duas saídas: bater o ponto ou "Sair da conta".
 
 Quem **não** é bloqueado:
+- **quem já encerrou o expediente hoje** (`shiftEndedToday`) — depois da saída batida a pessoa volta livremente para uma consulta pontual. Nada é cronometrado nesse estado, e o cronômetro flutuante segue mostrando "Iniciar expediente" se ela for retomar o trabalho (o clique reabre um `work_shifts` novo). O bloqueio vale só para **quem ainda não bateu a entrada** no dia;
 - **diretoria** (`org_directors`, via `useTeamLeadership`) — gestores continuam bloqueados;
 - **visitante sem sessão** — senão a própria tela de login travaria;
 - **telão `/tv/atividades` e páginas públicas** (booking, revisar, avaliar, landing) — ficam fora do `SidebarLayout`.
 
-Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada é bloqueado — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (5 casos).
+`shiftEndedToday` vem do `ActivityTimerContext`: na carga ele lê o **último** `work_shifts` de hoje (antes filtrava só `ended_at IS NULL`, e por isso não distinguia "não iniciou" de "já encerrou") — com `ended_at` preenchido, o dia está encerrado. `endShift()` liga a flag, `startShift()` desliga. O encerramento remoto da gestão (`command = 'end_shift'`) passa pelo mesmo `endShift()`, então quem foi encerrado à distância também não fica trancado.
+
+Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada é bloqueado — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (6 casos).
 
 ---
 

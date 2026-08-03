@@ -10,7 +10,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ShiftGate } from '../ShiftGate';
 
-const timer = vi.hoisted(() => ({ onShift: false as boolean | null, startShift: vi.fn() }));
+const timer = vi.hoisted(() => ({
+  onShift: false as boolean | null,
+  shiftEndedToday: false,
+  startShift: vi.fn(),
+}));
 const auth = vi.hoisted(() => ({
   user: { id: 'u1', email: 'membro@rprudencioadv.com' } as { id: string; email: string } | null,
   loading: false,
@@ -30,6 +34,7 @@ vi.mock('@/hooks/useTeamLeadership', () => ({
 
 beforeEach(() => {
   timer.onShift = false;
+  timer.shiftEndedToday = false;
   auth.user = { id: 'u1', email: 'membro@rprudencioadv.com' };
   auth.loading = false;
   leadership.isDirector = false;
@@ -46,6 +51,14 @@ describe('ShiftGate', () => {
 
   it('libera quem já bateu o ponto', () => {
     timer.onShift = true;
+    const { container } = render(<ShiftGate />);
+    expect(container.innerHTML).toBe('');
+    expect(screen.queryByText('Expediente não iniciado')).toBeNull();
+  });
+
+  it('libera quem já encerrou o expediente hoje (voltou só para consultar)', () => {
+    timer.onShift = false;
+    timer.shiftEndedToday = true;
     const { container } = render(<ShiftGate />);
     expect(container.innerHTML).toBe('');
     expect(screen.queryByText('Expediente não iniciado')).toBeNull();
