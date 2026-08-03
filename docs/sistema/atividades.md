@@ -38,6 +38,7 @@ Documentação funcional das telas de atividades, cronômetro/banco de horas e t
 - "Vincular: Campanha" — associa a atividade a uma campanha.
 - Envio ao grupo: "Copiar" (mensagem pronta), "Avaliação" (gera link público 0–5⭐), "Enviar ao Grupo / Enviar ao Assessor" (preview editável, escolha de instância, opção "Incluir gravação da ligação").
 - Rodapé: "Excluir", "Salvar", "Concluir + próxima", "Concluir"; na criação: "Cancelar", "Chat", "Criar".
+- **"Concluir + próxima"** conclui a atividade aberta e cria outra copiando o formulário inteiro (o que foi feito, como está, próximo passo, responsável, prazos, anexos). **O assunto digitado é preservado na filha** — a IA (`generate-activity-title`) só nomeia quando o campo está vazio. Entre 30/07 e 03/08/2026 a IA sobrescrevia o assunto escrito pelo usuário, o que fazia a atividade parecer que "mudava de nome sozinha" ao concluir (a mãe some da lista de Pendentes e a filha ocupa o lugar) e gerava títulos idênticos em casos diferentes; corrigido em `99223b072`. Para renomear de propósito, usar o botão **"Renomear com IA"** no cabeçalho, que só popula o campo — o usuário revisa e salva.
 
 ### Cronômetro (automático)
 Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir atividade de outro assessor é só consulta. Concluir encerra o cronômetro.
