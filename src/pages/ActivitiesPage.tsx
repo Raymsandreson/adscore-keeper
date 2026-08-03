@@ -1602,46 +1602,50 @@ const ActivitiesPage = () => {
         duration: 6000,
       });
 
-      // Título da próxima atividade gerado por IA. Sem isso, `title: formTitle`
-      // acima copia o título da atividade concluída — é o que propaga "Dar
-      // andamento" indefinidamente a cada conclusão. A IA nomeia a próxima com
-      // "o que precisa ser feito", olhando o Próximo passo preenchido + o passo
-      // atual do fluxo. Best-effort e síncrono aqui (fluxo client-side): se
-      // falhar, mantém o título copiado — NUNCA trava a conclusão.
-      try {
-        const nextFlowStep = stepContext ? (() => {
-          const steps = stepContext.allSteps || [];
-          const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
-          const after = idx >= 0 ? steps.slice(idx + 1) : steps;
-          return (after.find((s) => !s.checked) || after[0])?.stepLabel;
-        })() : undefined;
-        const { data: titleData } = await routedFunctions.invoke('generate-activity-title', {
-          body: {
-            fields: {
-              what_was_done: nextData.what_was_done || undefined,
-              current_status: nextData.current_status_notes || undefined,
-              next_steps: nextData.next_steps || undefined,
-              notes: nextData.notes || undefined,
+      // Título da próxima atividade: o assunto escrito pelo usuário SEMPRE vence.
+      // A IA só nomeia quando o campo está vazio — antes ela sobrescrevia o
+      // assunto digitado, e quem usa o nome da ação como título ("ACIDENTE DE
+      // TRABALHO") via a atividade "mudar de nome sozinha" ao concluir, além de
+      // gerar títulos idênticos em casos diferentes. Para renomear de propósito,
+      // existe o botão "Renomear com IA" no cabeçalho.
+      // Best-effort e síncrono aqui (fluxo client-side): se falhar, mantém o
+      // título copiado — NUNCA trava a conclusão.
+      if (!nextData.title?.trim()) {
+        try {
+          const nextFlowStep = stepContext ? (() => {
+            const steps = stepContext.allSteps || [];
+            const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+            const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+            return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+          })() : undefined;
+          const { data: titleData } = await routedFunctions.invoke('generate-activity-title', {
+            body: {
+              fields: {
+                what_was_done: nextData.what_was_done || undefined,
+                current_status: nextData.current_status_notes || undefined,
+                next_steps: nextData.next_steps || undefined,
+                notes: nextData.notes || undefined,
+              },
+              context: {
+                process_title: nextData.process_title || undefined,
+                case_title: nextData.case_title || undefined,
+                lead_name: nextData.lead_name || undefined,
+                current_title: nextData.title || undefined,
+                activity_type: nextData.activity_type || undefined,
+              },
+              step: stepContext ? {
+                step_label: stepContext.stepLabel,
+                phase_label: stepContext.phaseLabel || undefined,
+                next_step: nextFlowStep,
+              } : undefined,
             },
-            context: {
-              process_title: nextData.process_title || undefined,
-              case_title: nextData.case_title || undefined,
-              lead_name: nextData.lead_name || undefined,
-              current_title: nextData.title || undefined,
-              activity_type: nextData.activity_type || undefined,
-            },
-            step: stepContext ? {
-              step_label: stepContext.stepLabel,
-              phase_label: stepContext.phaseLabel || undefined,
-              next_step: nextFlowStep,
-            } : undefined,
-          },
-        });
-        if (titleData?.success && titleData.title) {
-          nextData.title = titleData.title;
+          });
+          if (titleData?.success && titleData.title) {
+            nextData.title = titleData.title;
+          }
+        } catch (e) {
+          console.warn('[completeAndNext] geração de título por IA falhou; próxima nasce sem assunto', e);
         }
-      } catch (e) {
-        console.warn('[completeAndNext] geração de título por IA falhou; mantém título copiado', e);
       }
 
       // Create the next activity with the captured form data
