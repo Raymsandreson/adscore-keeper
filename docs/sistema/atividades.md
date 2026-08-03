@@ -18,7 +18,8 @@ Documentação funcional das telas de atividades, cronômetro/banco de horas e t
 - "Nova Atividade" — abre a ficha em modo criação.
 
 ### Filtros
-- Chips: Assessor, Tipo, POP, Lead, Contato, Caso (cada um com busca).
+- Chips: Assessor, **Criado por**, Tipo, POP, Lead, Contato, Caso (cada um com busca).
+- **Criado por** (`created_by`) responde "o que fulano cadastrou", diferente de Assessor (`assigned_to`), que é quem executa. Multi-seleção + opção "Sem registro". Ressalva: ~9.090 atividades antigas não têm criador gravado e caem em "Sem registro" — a cobertura melhorou com o tempo (mai/26 49% sem criador → ago/26 1,8%), então o filtro é confiável para o período recente. `DynamicKanbanBoard.tsx` ainda cria atividade sem gravar o campo.
 - "Com documentação" e "Cronômetro ativo" (só atividades com cronômetro rodando agora).
 - Busca "Buscar nas atividades…" e "Limpar" (zera tudo).
 - Calendário lateral — selecionar dias vira filtro; botão de compartilhar resumo do dia.
