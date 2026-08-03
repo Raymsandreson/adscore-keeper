@@ -35,6 +35,7 @@ import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
 import { isInstanceDisconnectedError, showInstanceDisconnectedToast } from '@/lib/whatsappReconnectEvent';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { resolveGroupSenderInstanceName, normalizeInstanceName } from '@/lib/whatsappGroupInstance';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
 import { useUserRole } from '@/hooks/useUserRole';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -373,47 +374,60 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
         if (cancelled) return;
         const list = (data || []) as { id: string; instance_name: string }[];
         setInstances(list);
-        // Pré-seleciona a instância default do perfil; senão, a primeira da lista.
+        // Pré-seleção: lead com grupo usa a instância-membro preferida do grupo
+        // (Atend. Previdenciário 1/2 — mensagem de grupo é da firma, não do
+        // usuário logado; mesma regra do áudio, incidente 31/07/2026). Sem
+        // grupo, default do perfil; senão, a primeira da lista.
+        let groupPreferredId: string | undefined;
+        if (leadId) {
+          const { data: leadRow } = await externalSupabase
+            .from('leads')
+            .select('whatsapp_group_id')
+            .eq('id', leadId)
+            .maybeSingle();
+          const gid = (leadRow as any)?.whatsapp_group_id;
+          if (gid) {
+            const name = await resolveGroupSenderInstanceName(gid);
+            if (name) {
+              groupPreferredId = list.find(
+                i => normalizeInstanceName(i.instance_name) === normalizeInstanceName(name)
+              )?.id;
+            }
+          }
+        }
         const { data: prof } = await supabase
           .from('profiles')
           .select('default_instance_id')
           .eq('user_id', user.id)
           .maybeSingle();
         const def = (prof as any)?.default_instance_id;
-        setSelectedInstanceId(prev => prev || (def && list.some(i => i.id === def) ? def : (list[0]?.id || '')));
+        if (cancelled) return;
+        setSelectedInstanceId(prev =>
+          prev || groupPreferredId || (def && list.some(i => i.id === def) ? def : (list[0]?.id || '')));
       } catch {
         if (!cancelled) setInstances([]);
       }
     };
     loadInstances();
     return () => { cancelled = true; };
-  }, [user?.id, isAdmin]);
+  }, [user?.id, isAdmin, leadId]);
 
   // Envia o texto (já editado) ao grupo do lead.
   const sendToGroupNow = async (text: string): Promise<void> => {
     if (!leadId) return;
     await ensureExternalSession();
-    const [leadRes, profileRes] = await Promise.all([
-      externalSupabase
-        .from('leads')
-        .select('whatsapp_group_id, board_id')
-        .eq('id', leadId)
-        .maybeSingle(),
-      supabase.auth.getUser().then(async ({ data: { user } }) => {
-        if (!user) return null;
-        const { data } = await supabase
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        return (data as any)?.default_instance_id || null;
-      }),
-    ]);
+    const leadRes = await externalSupabase
+      .from('leads')
+      .select('whatsapp_group_id, board_id')
+      .eq('id', leadId)
+      .maybeSingle();
     const lead = leadRes.data as any;
     const groupId = lead?.whatsapp_group_id;
     if (!groupId) { toast.error('Este lead não tem grupo WhatsApp vinculado'); return; }
 
-    let instanceId: string | undefined = selectedInstanceId || profileRes || undefined;
+    // Grupo NUNCA cai no default_instance_id pessoal (incidente 31/07/2026 —
+    // o campo do Cloud é legado/stale): seletor > instância do board > edge.
+    let instanceId: string | undefined = selectedInstanceId || undefined;
     if (!instanceId && lead?.board_id) {
       const { data: boardInstances } = await externalSupabase
         .from('board_group_instances')

@@ -1,6 +1,6 @@
 import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
 
-const normalizeInstance = (s: string) =>
+export const normalizeInstanceName = (s: string) =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 
 const PREFERRED_GROUP_SENDERS = ['atendimento previdenciario', 'atendimento previdenciario 2'];
@@ -36,7 +36,7 @@ export async function resolveGroupSenderInstanceName(groupTarget: string): Promi
     const rows = (data || []) as { instance_name: string; created_at: string }[];
     const newest = rows[0];
     if (!newest) return undefined;
-    const preferred = rows.find(r => PREFERRED_GROUP_SENDERS.includes(normalizeInstance(r.instance_name)));
+    const preferred = rows.find(r => PREFERRED_GROUP_SENDERS.includes(normalizeInstanceName(r.instance_name)));
     const aindaNoGrupo =
       preferred &&
       new Date(newest.created_at).getTime() - new Date(preferred.created_at).getTime() <= SAIU_DO_GRUPO_MS;
