@@ -8,6 +8,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { formatProcessLabel } from '@/lib/processLabel';
 
 
 export const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName: string }> = {
@@ -158,6 +159,8 @@ export interface AndamentoActivityInput {
   caseTitle?: string | null;
   processId: string | null;
   processTitle: string;
+  /** Nº do processo. Se omitido, é buscado em `lead_processes` pelo processId. */
+  processNumber?: string | null;
   extAssignedTo: string | null;
   assignedName: string | null;
   extCreatedBy: string | null;
@@ -181,6 +184,25 @@ export async function createOrAttachAndamentoActivity(
   if (!input.processId) {
     return { ok: false, mode: 'skipped', error: 'processo não retornou id — atividade não criada' };
   }
+
+  // `process_title` da atividade tem que sair no mesmo formato que o formulário
+  // grava ("<nº> - <título>"), senão a atividade auto-criada mostra só
+  // "INDENIZAÇÃO" onde deveria aparecer o número do processo. Nenhum dos 5
+  // callers repassa o número, então buscamos aqui — vale 1 SELECT por atividade.
+  let processNumber = input.processNumber?.trim() || null;
+  if (!processNumber) {
+    try {
+      const { data: p } = await externalSupabase
+        .from('lead_processes')
+        .select('process_number')
+        .eq('id', input.processId)
+        .maybeSingle();
+      processNumber = (p?.process_number || '').trim() || null;
+    } catch {
+      // processo sem número (ou consulta falhou): rótulo fica só com o título
+    }
+  }
+  const processLabel = formatProcessLabel(processNumber, input.processTitle);
 
   // O caller nem sempre tem o título do caso à mão (AddProcessDialog só recebe
   // o caseId). Busca aqui para que case_title nunca fique nulo.
@@ -226,7 +248,7 @@ export async function createOrAttachAndamentoActivity(
         assigned_to: input.extAssignedTo,
         assigned_to_name: input.assignedName,
         process_id: input.processId,
-        process_title: input.processTitle,
+        process_title: processLabel,
         description,
       };
       if (input.caseId) updates.case_id = input.caseId;
@@ -258,7 +280,7 @@ export async function createOrAttachAndamentoActivity(
     // Sem notification_date o Salvar do editor reprova qualquer edição posterior.
     notification_date: today,
     process_id: input.processId,
-    process_title: input.processTitle,
+    process_title: processLabel,
   };
   if (input.caseId) payload.case_id = input.caseId;
   if (caseTitle) payload.case_title = caseTitle;

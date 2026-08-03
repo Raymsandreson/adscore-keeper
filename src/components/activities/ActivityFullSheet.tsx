@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
+import { displayProcessLabel } from '@/lib/processLabel';
 import { ActivityCallRecorder } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
@@ -1108,7 +1109,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             )}
             {formProcessTitle ? (
               <Badge variant="outline" className="text-[10px] gap-1 max-w-[260px]">
-                <FileText className="h-3 w-3 shrink-0" /><span className="truncate">{formProcessTitle}</span>
+                {/* Rótulo vem do processo vivo, não do snapshot `process_title`:
+                    atividades auto-criadas nasciam só com o título e mostravam
+                    "INDENIZAÇÃO" no lugar do nº do processo. */}
+                <FileText className="h-3 w-3 shrink-0" />
+                <span className="truncate" title={displayProcessLabel(linkedProcess, formProcessTitle)}>
+                  {displayProcessLabel(linkedProcess, formProcessTitle)}
+                </span>
                 {formCaseId && (
                   <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar processo"
                     onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}>

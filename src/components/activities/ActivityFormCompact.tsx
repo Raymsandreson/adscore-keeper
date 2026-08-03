@@ -33,6 +33,7 @@ import { StepChecklistButton } from '@/components/activities/StepChecklistButton
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
+import { formatProcessLabel } from '@/lib/processLabel';
 import { isInstanceDisconnectedError, showInstanceDisconnectedToast } from '@/lib/whatsappReconnectEvent';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { resolveGroupSenderInstanceName, normalizeInstanceName } from '@/lib/whatsappGroupInstance';
@@ -738,7 +739,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     const onOpenLead = () => setLinkLeadOpen(true);
     const onOpenCase = () => setLinkCaseOpen(true);
     const onOpenContact = () => setLinkContactOpen(true);
-    const onOpenProcess = () => setProcessPopoverOpen(true);
+    // Sem caso vinculado não há processo para escolher: abre o sheet de caso,
+    // que é o pré-requisito.
+    const onOpenProcess = () => {
+      if (!props.formCaseId) { setLinkCaseOpen(true); return; }
+      setLinkProcessOpen(true);
+    };
     window.addEventListener('activity-form:open-link-lead', onOpenLead);
     window.addEventListener('activity-form:open-link-case', onOpenCase);
     window.addEventListener('activity-form:open-link-contact', onOpenContact);
@@ -749,8 +755,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       window.removeEventListener('activity-form:open-link-contact', onOpenContact);
       window.removeEventListener('activity-form:open-link-process', onOpenProcess);
     };
-  }, []);
-  const [processPopoverOpen, setProcessPopoverOpen] = useState(false);
+  }, [props.formCaseId]);
+  // `linkProcessOpen` substitui o antigo `processPopoverOpen`, que virou state
+  // órfão quando o Popover do processo foi removido (380a054ea, 18/05/2026) —
+  // desde então "Trocar processo" só mexia num state que ninguém lia.
+  const [linkProcessOpen, setLinkProcessOpen] = useState(false);
   const [editProcessData, setEditProcessData] = useState<any>(null);
   const [loadingProcessEdit, setLoadingProcessEdit] = useState(false);
 
@@ -821,6 +830,13 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
       .eq('case_id', props.formCaseId);
     props.setCaseProcesses(procs || []);
   };
+
+  // Ao abrir o sheet de processo, recarrega a lista do caso: a atividade pode ter
+  // sido aberta antes de o processo existir (ou o número ter sido preenchido).
+  useEffect(() => {
+    if (linkProcessOpen && props.formCaseId) void refreshCaseProcesses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkProcessOpen, props.formCaseId]);
 
 
   const openProcessEditor = async (processId: string) => {
@@ -1883,6 +1899,78 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <div className="border-t px-6 py-3 shrink-0">
               <Button type="button" size="sm" className="w-full" onClick={() => setLinkCaseOpen(false)}>
                 Confirmar
+              </Button>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
+
+      {/* === SHEET: Link/Trocar Processo ===
+          Atalho direto para trocar só o processo, sem obrigar a reselecionar o
+          caso (o caminho antigo passava pelo sheet de caso). */}
+      <Sheet open={linkProcessOpen} onOpenChange={setLinkProcessOpen}>
+        <SheetContent className="w-full sm:max-w-sm flex flex-col p-0">
+          <SheetHeader className="px-6 pt-6 pb-3 shrink-0">
+            <SheetTitle className="text-base">
+              {props.formProcessId ? 'Trocar Processo' : 'Vincular Processo'}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="px-6 pb-2 shrink-0 flex items-center justify-between gap-2">
+            <span className="text-xs text-muted-foreground truncate" title={props.formCaseTitle}>
+              {props.formCaseTitle || 'Sem caso vinculado'}
+            </span>
+            {props.formCaseId && props.formLeadId && (
+              <Button type="button" size="sm" variant="ghost" className="h-6 gap-1 text-[10px] shrink-0" onClick={() => setNewProcessOpen(true)}>
+                <Plus className="h-3 w-3" /> Novo processo
+              </Button>
+            )}
+          </div>
+          <ScrollArea className="flex-1 min-h-0 px-6">
+            <div className="space-y-0.5 pb-4">
+              {props.caseProcesses.length === 0 && (
+                <p className="text-[11px] text-muted-foreground py-4 text-center">
+                  Nenhum processo neste caso
+                </p>
+              )}
+              {props.caseProcesses.map(p => (
+                <button
+                  key={p.id}
+                  className={cn(
+                    'w-full text-left px-3 py-2 text-sm rounded-md hover:bg-accent transition-colors',
+                    props.formProcessId === p.id && 'bg-accent font-medium',
+                  )}
+                  onClick={() => {
+                    props.setFormProcessId(p.id);
+                    props.setFormProcessTitle(formatProcessLabel(p.process_number, p.title));
+                    setLinkProcessOpen(false);
+                  }}
+                >
+                  <div className="flex flex-col gap-0.5">
+                    <div>
+                      {p.process_number && <span className="font-semibold">{p.process_number}</span>}
+                      {p.process_number ? ' — ' : ''}<span className="font-medium">{p.title}</span>
+                    </div>
+                    {(p.polo_passivo || p.tribunal) && (
+                      <div className="text-[11px] text-muted-foreground flex flex-wrap gap-x-2">
+                        {p.polo_passivo && <span>⚔️ vs {p.polo_passivo}</span>}
+                        {p.tribunal && <span>📍 {p.tribunal}</span>}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+          {props.formProcessId && (
+            <div className="border-t px-6 py-3 shrink-0">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="w-full"
+                onClick={() => { props.setFormProcessId(''); props.setFormProcessTitle(''); setLinkProcessOpen(false); }}
+              >
+                Remover vínculo de processo
               </Button>
             </div>
           )}

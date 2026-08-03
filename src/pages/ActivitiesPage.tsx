@@ -69,6 +69,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
+import { displayProcessLabel } from '@/lib/processLabel';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -5047,6 +5048,10 @@ const ActivitiesPage = () => {
                   {formProcessTitle && (() => {
                     const proc = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                     const procNumber = proc?.process_number || formProcessTitle;
+                    // Exibe o rótulo do processo vivo ("<nº> - <título>"): o
+                    // snapshot `process_title` das atividades auto-criadas vinha
+                    // só com o título e escondia o número do processo.
+                    const procLabel = displayProcessLabel(proc, formProcessTitle);
                     // Tempo sem andamento efetivo: dias desde a última movimentação (fonte Escavador),
                     // mesma métrica do relatório "Processos sem movimentação" (faixas 30/60/90).
                     const ultMov = proc?.data_ultima_movimentacao ? new Date(proc.data_ultima_movimentacao) : null;
@@ -5067,7 +5072,7 @@ const ActivitiesPage = () => {
                       'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300';
                     return (
                       <>
-                      <span className="flex items-center gap-1 min-w-0 max-w-full" title={procNumber}>
+                      <span className="flex items-center gap-1 min-w-0 max-w-full" title={procLabel}>
                         <FileText className="h-3 w-3 shrink-0" />
                         <button
                           type="button"
@@ -5079,7 +5084,7 @@ const ActivitiesPage = () => {
                           className="truncate hover:text-primary text-left"
                           title="Clique para copiar o nº"
                         >
-                          {formProcessTitle}
+                          {procLabel}
                         </button>
                         {formProcessId && (
                           <button
