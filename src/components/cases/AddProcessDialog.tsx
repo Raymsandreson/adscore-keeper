@@ -38,7 +38,9 @@ interface AddProcessDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   caseId: string;
-  leadId: string;
+  /** Null em caso órfão (lead purgado). O cadastro funciona; só não há
+   *  contexto de cliente para pré-preencher a busca no Escavador. */
+  leadId: string | null;
   onProcessAdded: () => void;
   boards?: KanbanBoard[];
 }
@@ -155,8 +157,12 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
     let cancelled = false;
     (async () => {
       try {
+        // Sem leadId (caso órfão) a query viraria `id=eq.null` e estouraria:
+        // resolve para vazio e o contexto vem só do caso.
         const [leadRes, caseRes] = await Promise.all([
-          externalSupabase.from('leads').select('lead_name, victim_name, city, state').eq('id', leadId).maybeSingle(),
+          leadId
+            ? externalSupabase.from('leads').select('lead_name, victim_name, city, state').eq('id', leadId).maybeSingle()
+            : Promise.resolve({ data: null }),
           externalSupabase.from('legal_cases').select('client_name').eq('id', caseId).maybeSingle(),
         ]);
         if (cancelled) return;

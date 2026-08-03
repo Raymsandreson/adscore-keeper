@@ -32,7 +32,8 @@ const RAILWAY_BASE =
 
 interface Props {
   caseId: string;
-  leadId: string;
+  /** Null em caso órfão (lead purgado): a busca cai só no contexto do caso. */
+  leadId: string | null;
   /** POP e responsável escolhidos no topo do modal. */
   workflowId: string;
   workflowName: string | null;
@@ -134,14 +135,17 @@ export default function InssEmailSearchTab({
       return d.slice(-8);
     };
     try {
+      // Caso órfão não tem lead: as quatro queries por lead_id sairiam como
+      // `eq.null` e derrubariam o Promise.all inteiro, levando junto o caso.
+      const semLead = Promise.resolve({ data: null });
       const [caseRes, leadRes, contactsRes, linksRes, procRes] = await Promise.all([
         db.from('legal_cases' as any).select('title, client_name').eq('id', caseId).maybeSingle(),
-        db.from('leads' as any).select('lead_name, victim_name, cpf, lead_phone, lead_phone_raw').eq('id', leadId).maybeSingle(),
-        db.from('contacts' as any).select('full_name, cpf, phone').eq('lead_id', leadId).limit(20),
-        db.from('contact_leads' as any).select('contact_id').eq('lead_id', leadId).limit(20),
-        db.from('zapsign_documents' as any)
+        leadId ? db.from('leads' as any).select('lead_name, victim_name, cpf, lead_phone, lead_phone_raw').eq('id', leadId).maybeSingle() : semLead,
+        leadId ? db.from('contacts' as any).select('full_name, cpf, phone').eq('lead_id', leadId).limit(20) : semLead,
+        leadId ? db.from('contact_leads' as any).select('contact_id').eq('lead_id', leadId).limit(20) : semLead,
+        leadId ? db.from('zapsign_documents' as any)
           .select('outorgante_name, outorgante_cpf, signer_name, document_name')
-          .eq('lead_id', leadId).limit(10),
+          .eq('lead_id', leadId).limit(10) : semLead,
       ]);
       const c = (caseRes.data || {}) as any;
       const l = (leadRes.data || {}) as any;

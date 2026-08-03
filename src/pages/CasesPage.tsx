@@ -538,7 +538,6 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
   // Cadastra de verdade um processo que só existia como texto em atividades
   const registerMentionedProcess = async (title: string) => {
-    if (!legalCase.lead_id) { toast.error('Caso sem lead vinculado'); return; }
     setRegisteringTitle(title);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -548,7 +547,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         ? (title.replace(processNumber, '').replace(/^[\s\-–—:]+|[\s\-–—:]+$/g, '') || title)
         : title;
       const { data: saved, error } = await externalSupabase.from('lead_processes').insert({
-        lead_id: legalCase.lead_id,
+        lead_id: legalCase.lead_id ?? null,
         case_id: legalCase.id,
         title: cleanTitle,
         process_number: processNumber,
@@ -920,17 +919,22 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 {/* Aba: Processos */}
                 <TabsContent value="processos" className="mt-3 space-y-4">
                   <div>
-                    <div className="flex items-center justify-end mb-2">
-                      {legalCase.lead_id && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-6 text-[10px] gap-1"
-                          onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
-                        >
-                          <Plus className="h-3 w-3" /> Cadastrar Processo
-                        </Button>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      {/* Caso órfão (lead purgado) não pode virar beco sem saída: o botão
+                          continua, só avisa que a busca não vai pré-preencher o cliente. */}
+                      {!legalCase.lead_id && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-500">
+                          Caso sem lead vinculado — cadastro manual e busca por número funcionam normalmente.
+                        </span>
                       )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-[10px] gap-1 ml-auto"
+                        onClick={(e) => { e.stopPropagation(); setShowAddProcess(true); }}
+                      >
+                        <Plus className="h-3 w-3" /> Cadastrar Processo
+                      </Button>
                     </div>
                     {processes.length === 0 && (
                   <p className="text-xs text-muted-foreground text-center py-2">Nenhum processo neste caso.</p>
@@ -1138,15 +1142,13 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 height={260}
               />
 
-              {legalCase.lead_id && (
-                <AddProcessDialog
-                  open={showAddProcess}
-                  onOpenChange={setShowAddProcess}
-                  caseId={legalCase.id}
-                  leadId={legalCase.lead_id}
-                  onProcessAdded={loadDetails}
-                />
-              )}
+              <AddProcessDialog
+                open={showAddProcess}
+                onOpenChange={setShowAddProcess}
+                caseId={legalCase.id}
+                leadId={legalCase.lead_id ?? null}
+                onProcessAdded={loadDetails}
+              />
             </div>
           </CollapsibleContent>
         </Collapsible>
