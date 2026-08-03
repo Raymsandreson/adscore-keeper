@@ -329,7 +329,7 @@ export function ContactsListPage() {
   const [classifyingClients, setClassifyingClients] = useState(false);
 
   // Groups data
-  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null; process_count: number }[]>([]);
+  const [groups, setGroups] = useState<{ group_jid: string; group_name: string; lead_name: string; lead_status: string; lead_id: string | null; contact_count: number; instance_name: string | null; created_at: string | null; lead_created_at: string | null; board_id: string | null; board_name: string | null; case_number: string | null; lead_number: number | null; product_case_prefix: string | null; product_service_id: string | null; owner_phone: string | null; creator_instance_name: string | null; process_count: number; orphan_process_count: number; case_ids: string[] }[]>([]);
   // Painel lateral com os processos vinculados ao caso (coluna "Processos")
   const [processesTarget, setProcessesTarget] = useState<LeadProcessesTarget | null>(null);
   const [groupsLoading, setGroupsLoading] = useState(false);
@@ -451,6 +451,8 @@ export function ContactsListPage() {
               owner_phone: null,
               creator_instance_name: null,
               process_count: 0,
+              orphan_process_count: 0,
+              case_ids: [],
             });
           }
         }
@@ -506,6 +508,8 @@ export function ContactsListPage() {
               owner_phone: null,
               creator_instance_name: null,
               process_count: 0,
+              orphan_process_count: 0,
+              case_ids: [],
             });
           }
         }
@@ -592,39 +596,94 @@ export function ContactsListPage() {
         );
       }
 
-      // 2.e) Contagem de processos vinculados ao caso (coluna "Processos").
-      //      Agrega por lead_id — não por case_id: em 03/08/2026 os 1.666 registros
-      //      vivos de lead_processes têm lead_id preenchido, mas só 1.572 têm case_id,
-      //      então contar por case_id perderia ~94 processos.
-      //      A query usa o índice parcial idx_lead_processes_lead_id_active
-      //      (lead_id) WHERE deleted_at IS NULL. Chunk de 200 ids + paginação por
-      //      range: hoje são ~1.4k leads com grupo → ~7 requests por refresh.
+      // 2.e) Contagem de processos vinculados ao CASO (coluna "Processos").
+      //      Hierarquia (skill lead-vs-case-identity): Lead → Caso → Processos.
+      //      Processo pertence ao caso, então a contagem sai de
+      //      lead_processes.case_id — nunca de lead_id, que é só espelho de
+      //      conveniência (e em 4 registros aponta pro lead errado).
+      //      Caminho: lead do grupo → legal_cases (id) → lead_processes (case_id).
+      //      Índices usados: idx_legal_cases_lead_id_active e
+      //      idx_lead_processes_case_id_active. Chunks de 200 ids + paginação.
       const leadIdsWithGroup = Array.from(new Set(
         Array.from(groupMap.values()).filter(g => g.lead_id).map(g => g.lead_id as string)
       ));
       if (leadIdsWithGroup.length > 0) {
-        const countByLead = new Map<string, number>();
         const chunkSize = 200;
+        // 2.e.1) Casos de cada lead
+        const caseIdsByLead = new Map<string, string[]>();
+        const leadByCase = new Map<string, string>();
         for (let i = 0; i < leadIdsWithGroup.length; i += chunkSize) {
           const chunk = leadIdsWithGroup.slice(i, i + chunkSize);
           for (let from = 0; ; from += pageSize) {
+            const { data: cases, error: caseErr } = await externalSupabase
+              .from('legal_cases')
+              .select('id, lead_id')
+              .in('lead_id', chunk)
+              .is('deleted_at', null)
+              .range(from, from + pageSize - 1);
+            if (caseErr) { console.error('fetchGroups legal_cases error:', caseErr); break; }
+            const caseRows = (cases as any[]) || [];
+            for (const c of caseRows) {
+              if (!c.lead_id || !c.id) continue;
+              const arr = caseIdsByLead.get(c.lead_id) || [];
+              arr.push(c.id);
+              caseIdsByLead.set(c.lead_id, arr);
+              leadByCase.set(c.id, c.lead_id);
+            }
+            if (caseRows.length < pageSize) break;
+          }
+        }
+
+        // 2.e.2) Processos de cada caso
+        const countByLead = new Map<string, number>();
+        const allCaseIds = Array.from(leadByCase.keys());
+        for (let i = 0; i < allCaseIds.length; i += chunkSize) {
+          const chunk = allCaseIds.slice(i, i + chunkSize);
+          for (let from = 0; ; from += pageSize) {
             const { data: procs, error: procErr } = await externalSupabase
               .from('lead_processes')
-              .select('lead_id')
-              .in('lead_id', chunk)
+              .select('case_id')
+              .in('case_id', chunk)
               .is('deleted_at', null)
               .range(from, from + pageSize - 1);
             if (procErr) { console.error('fetchGroups process count error:', procErr); break; }
             const procRows = (procs as any[]) || [];
             for (const p of procRows) {
-              if (!p.lead_id) continue;
-              countByLead.set(p.lead_id, (countByLead.get(p.lead_id) || 0) + 1);
+              const lead = p.case_id ? leadByCase.get(p.case_id) : null;
+              if (!lead) continue;
+              countByLead.set(lead, (countByLead.get(lead) || 0) + 1);
             }
             if (procRows.length < pageSize) break;
           }
         }
+
+        // 2.e.3) Órfãos: processo sem case_id não deveria existir (filho fora do
+        //        casamento). Em 03/08/2026 são 94, criados entre 05 e 15/07/2026,
+        //        e 91 deles estão em leads que nem caso têm. Não somam na
+        //        contagem do caso — aparecem como divergência de auditoria.
+        //        Uma query só: são poucos e o índice de case_id cobre o IS NULL.
+        const orphanByLead = new Map<string, number>();
+        for (let from = 0; ; from += pageSize) {
+          const { data: orphans, error: orphanErr } = await externalSupabase
+            .from('lead_processes')
+            .select('lead_id')
+            .is('case_id', null)
+            .is('deleted_at', null)
+            .range(from, from + pageSize - 1);
+          if (orphanErr) { console.error('fetchGroups orphan process error:', orphanErr); break; }
+          const orphanRows = (orphans as any[]) || [];
+          for (const p of orphanRows) {
+            if (!p.lead_id) continue;
+            orphanByLead.set(p.lead_id, (orphanByLead.get(p.lead_id) || 0) + 1);
+          }
+          if (orphanRows.length < pageSize) break;
+        }
+
         groupMap.forEach((g) => {
-          if (g.lead_id) g.process_count = countByLead.get(g.lead_id) || 0;
+          if (!g.lead_id) return;
+          g.process_count = countByLead.get(g.lead_id) || 0;
+          g.orphan_process_count = orphanByLead.get(g.lead_id) || 0;
+          g.case_ids = caseIdsByLead.get(g.lead_id) || [];
         });
       }
 
@@ -2343,13 +2402,21 @@ export function ContactsListPage() {
                                   ? 'bg-primary/10 text-primary hover:bg-primary/20'
                                   : 'text-muted-foreground hover:bg-accent'
                               }`}
-                              title={group.process_count > 0
-                                ? `${group.process_count} processo(s) vinculado(s) — clique para ver a lista`
-                                : 'Nenhum processo vinculado a este caso'}
+                              title={[
+                                group.case_ids.length === 0
+                                  ? 'Lead ainda sem caso — processo só existe dentro de um caso'
+                                  : group.process_count > 0
+                                    ? `${group.process_count} processo(s) do caso — clique para ver a lista`
+                                    : 'Caso sem processos cadastrados',
+                                group.orphan_process_count > 0
+                                  ? `+${group.orphan_process_count} processo(s) sem caso vinculado (corrigir)`
+                                  : '',
+                              ].filter(Boolean).join(' · ')}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setProcessesTarget({
                                   leadId: group.lead_id!,
+                                  caseIds: group.case_ids,
                                   leadName: group.lead_name || null,
                                   caseNumber: caseNum || null,
                                   groupName: group.group_name || null,
@@ -2358,6 +2425,9 @@ export function ContactsListPage() {
                             >
                               <Scale className="h-3.5 w-3.5 shrink-0" />
                               {group.process_count}
+                              {group.orphan_process_count > 0 && (
+                                <span className="text-amber-600 dark:text-amber-400">+{group.orphan_process_count}</span>
+                              )}
                             </button>
                           ) : (
                             <span className="text-center text-xs text-muted-foreground" title="Grupo sem lead — não há caso para vincular processos">—</span>
