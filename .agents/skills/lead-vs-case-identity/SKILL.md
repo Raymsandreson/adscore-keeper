@@ -1,6 +1,6 @@
 ---
 name: lead-vs-case-identity
-description: Regras invioláveis sobre a hierarquia organizacional do AdScore Keeper — Empresa→Núcleo→Produto→Funil de Vendas→(fechado)→Caso→Processos→POP. Cobre identidade de Lead vs Caso, numeração separada, nome de grupo WhatsApp, vinculação de processo (INSS/judicial), e diferença entre Funil de Vendas (lead) e POP (processo; antigo "Fluxo de Trabalho"). Use pra ADVERTIR quando o pedido contrair essa lógica.
+description: Regras invioláveis sobre a hierarquia organizacional do AdScore Keeper — Empresa→Núcleo→Produto→Funil de Vendas→(fechado)→Caso→Processos→POP — e sobre a cadeia de vinculação Anúncio→Lead(pode ter grupo WhatsApp)→Contatos→Caso(sempre tem grupo)→Processo→Partes(viram contatos). Cobre identidade de Lead vs Caso, numeração separada, nome de grupo WhatsApp, vinculação de processo (INSS/judicial), e diferença entre Funil de Vendas (lead) e POP (processo; antigo "Fluxo de Trabalho"). Use pra ADVERTIR quando o pedido contrair essa lógica.
 ---
 
 # Lead vs Caso vs Processo — Identidade e Hierarquia
@@ -27,6 +27,55 @@ Regras de cardinalidade:
 - 1 Caso → N Processos.
 - 1 Processo → 1 Produto → 1 Núcleo.
 - 1 Processo → 1 POP próprio.
+
+## Cadeia de vinculação (ponta a ponta)
+
+A ordem em que as coisas nascem e se penduram umas nas outras. Toda tela, contagem
+ou relatório tem que respeitar esta cadeia — pular um elo é o bug clássico aqui.
+
+```
+Anúncio
+  └── Lead ................... pode ou não ter grupo WhatsApp
+        ├── Contatos ......... as pessoas por trás do lead
+        └── Caso ............. SEMPRE tem grupo WhatsApp
+              └── Processo ... nunca pende do lead, só do caso
+                    └── Partes → viram Contatos
+```
+
+Onde cada elo vive (tudo no Externo):
+
+| Elo | Vínculo |
+|---|---|
+| Anúncio → Lead | `leads.campaign_id`, `adset_id`, `ad_name`, `ad_account_id`, `facebook_lead_id`, `source` / `action_source` |
+| Lead → Grupo WA | `lead_whatsapp_groups` (`lead_id`, `group_jid`); `leads.whatsapp_group_id` é espelho |
+| Lead → Contatos | `contact_leads` |
+| Lead → Caso | `legal_cases.lead_id` (1 lead → no máx. 1 caso) |
+| Caso → Processos | `lead_processes.case_id` — **fonte de verdade**; `lead_processes.lead_id` é só espelho |
+| Processo → Partes | `process_parties.process_id` |
+| Partes → Contatos | `process_parties.contact_id` |
+
+Regras da cadeia:
+- **Lead pode não ter grupo; caso sempre tem.** Quando o lead fecha, o grupo existe e é
+  renomeado pro nome do caso (Regra 2). Caso sem grupo é pendência, não estado normal.
+- **Processo pende do caso, nunca do lead.** Contagem de "processos do caso" agrega por
+  `case_id`. Usar `lead_id` para isso é errado mesmo que "funcione" — ele é espelho e
+  pode divergir.
+- **Parte de processo vira contato.** Não criar cadastro paralelo de pessoa: a parte
+  entra em `contacts` e `process_parties.contact_id` aponta pra ela.
+- **Contato é do lead e das partes, não do caso direto.** O caso herda pelo lead.
+
+🚫 Recusar:
+- "Conta os processos do caso por `lead_id`." → NÃO. Agrega por `case_id`.
+- "Cria o processo já vinculando no lead, o caso a gente cria depois." → NÃO. Cria o caso primeiro.
+- "Cadastra a parte do processo como pessoa nova numa tabela à parte." → NÃO. Vira contato.
+- "Esse lead em aberto já pode ter grupo com nome de caso." → NÃO. Nome de caso é pós-fechamento.
+
+Aderência medida em 03/08/2026 (a regra é o dever-ser; os dados ainda não cumprem):
+- **823 de 1.685 casos vivos sem grupo WhatsApp** por nenhum dos dois caminhos (nem
+  `lead_whatsapp_groups`, nem `leads.whatsapp_group_id`) — ~49%.
+- **94 processos vivos sem `case_id`** (criados entre 05 e 15/07/2026; 91 deles em leads
+  que sequer têm caso) e **4 com `case_id` de outro lead**.
+- **71 partes, 100% com `contact_id`** — esse elo está íntegro.
 
 ### Funil de Vendas ≠ POP
 

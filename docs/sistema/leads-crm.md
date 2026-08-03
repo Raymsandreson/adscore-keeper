@@ -4,6 +4,33 @@ Documentação funcional das telas de leads, acolhimento, contatos, casos, funis
 
 ---
 
+## Cadeia de vinculação (vale para todas as telas deste módulo)
+
+```
+Anúncio
+  └── Lead ................... pode ou não ter grupo WhatsApp
+        ├── Contatos ......... as pessoas por trás do lead
+        └── Caso ............. SEMPRE tem grupo WhatsApp
+              └── Processo ... nunca pende do lead, só do caso
+                    └── Partes → viram Contatos
+```
+
+| Elo | Vínculo (Supabase Externo) |
+|---|---|
+| Anúncio → Lead | `leads.campaign_id`, `adset_id`, `ad_name`, `ad_account_id`, `facebook_lead_id`, `source` / `action_source` |
+| Lead → Grupo WhatsApp | `lead_whatsapp_groups` (`lead_id`, `group_jid`); `leads.whatsapp_group_id` é espelho |
+| Lead → Contatos | `contact_leads` |
+| Lead → Caso | `legal_cases.lead_id` — 1 lead → no máximo 1 caso |
+| Caso → Processos | `lead_processes.case_id` — **fonte de verdade**; `lead_processes.lead_id` é só espelho |
+| Processo → Partes | `process_parties.process_id` |
+| Partes → Contatos | `process_parties.contact_id` |
+
+Regras que caem em bug quando ignoradas: **lead pode não ter grupo, caso sempre tem** (ao fechar, o grupo é renomeado pro nome do caso); **processo pende do caso, nunca do lead** — contagem de "processos do caso" agrega por `case_id`; **parte de processo vira contato**, sem cadastro paralelo de pessoa. Regra completa e casos de recusa na skill `.agents/skills/lead-vs-case-identity/SKILL.md`.
+
+Aderência dos dados em 03/08/2026 (a cadeia é o dever-ser; o banco ainda não cumpre): 823 de 1.685 casos vivos sem grupo WhatsApp por nenhum caminho; 94 processos vivos sem `case_id` e 4 com `case_id` de outro lead; 71 partes, todas com `contact_id`.
+
+---
+
 ## Leads (Kanban) — `/leads`
 
 **Propósito**: board Kanban principal de gestão de leads por funil — arrasta cards entre etapas, abre a ficha completa do lead e dispara os efeitos de fechamento (vira cliente, cria caso jurídico automaticamente).
