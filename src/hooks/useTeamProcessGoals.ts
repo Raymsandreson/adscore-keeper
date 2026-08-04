@@ -1,14 +1,21 @@
 // =============================================================================
-// Metas processuais por time (tabelas team_process_goals / team_workflow_boards
-// no Supabase EXTERNO). O realizado vem da RPC team_process_goals_progress.
+// Metas processuais de TIME e de PESSOA (tabela team_process_goals no Supabase
+// EXTERNO; team_workflow_boards é só o fallback POP → time). O realizado vem da
+// RPC process_goals_progress.
 //
 // Semântica: alvo ABSOLUTO por marco — "hoje temos N processos nesse marco,
 // queremos chegar a M". baseline_processes guarda o N do momento do cadastro;
 // realizado_processos é o acumulado atual; realizado_no_periodo é o ganho
 // dentro do período (ritmo).
 //
-// Atribuição de processo → time: responsável processual do lead; se ele não
-// estiver em nenhum time, cai no POP do processo mapeado em team_workflow_boards.
+// O dono da meta é um só (CHECK team_process_goals_um_dono no banco): ou um
+// time, ou uma pessoa. A atribuição do processo muda junto:
+//   - time   → responsável processual do lead que esteja em team_members; sem
+//              isso, o POP do processo mapeado em team_workflow_boards;
+//   - pessoa → lead_processes.responsible_user_id, senão o responsável
+//              processual do lead.
+// Os 883 processos sem dono individual (medido em 04/08/2026) só aparecem em
+// meta de time.
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
@@ -29,12 +36,31 @@ const ext = db as unknown as {
 };
 
 export type GoalPeriodType = 'monthly' | 'quarterly' | 'custom';
+export type OwnerKind = 'team' | 'user';
+
+/** Dono de uma meta — time ou pessoa, nunca os dois. */
+export interface GoalOwner {
+  kind: OwnerKind;
+  id: string;
+}
+
+/** Argumentos de dono das RPCs: exatamente um preenchido. */
+function ownerArgs(owner: GoalOwner) {
+  return {
+    p_team_id: owner.kind === 'team' ? owner.id : null,
+    p_user_id: owner.kind === 'user' ? owner.id : null,
+  };
+}
 
 /** Linha da RPC de progresso: meta + realizado apurado. */
 export interface TeamProcessGoalProgress {
   goal_id: string;
-  team_id: string;
+  /** Diz qual dos dois ids abaixo vale. */
+  owner_kind: OwnerKind;
+  team_id: string | null;
   team_name: string | null;
+  user_id: string | null;
+  user_name: string | null;
   name: string | null;
   period_type: GoalPeriodType;
   period_start: string;
@@ -45,12 +71,13 @@ export interface TeamProcessGoalProgress {
   target_flow_avg_pct: number | null;
   /** Quantos já estavam no marco quando a meta foi criada. */
   baseline_processes: number | null;
-  /** Acumulado de hoje: processos do time que já registraram o marco. */
+  /** Acumulado de hoje: processos do dono que já registraram o marco. */
   realizado_processos: number | null;
   /** Os que registraram o marco dentro do período da meta. */
   realizado_no_periodo: number | null;
   /** Média simples do % de passos do POP concluídos — foto do agora. */
   fluxo_medio_pct: number | null;
+  /** Processos do dono — nome herdado de quando só existia meta de time. */
   processos_no_time: number | null;
   processos_com_fluxo: number | null;
   processos_com_marco: number | null;
@@ -61,7 +88,7 @@ export interface MarcoBaseline {
   marco_tipo: MarcoTipo;
   /** Processos que já passaram pelo marco alguma vez ("Até hoje"). */
   acumulado: number;
-  /** Processos em que esse é o marco mais recente ("Atualmente"). */
+  /** Processos em que esse é o marco mais avançado ("Atualmente"). */
   atual: number;
 }
 
@@ -84,6 +111,14 @@ export interface TeamLite {
   color: string | null;
 }
 
+/** Pessoa que pode ter meta individual: tem ao menos um processo vivo atribuído. */
+export interface ProcessOwner {
+  user_id: string;
+  full_name: string;
+  processos: number;
+  processos_com_marco: number;
+}
+
 export interface WorkflowBoardLite {
   id: string;
   name: string;
@@ -101,8 +136,9 @@ export interface MarcoTargetInput {
 }
 
 export interface GoalSetInput {
-  team_id: string;
-  team_name: string | null;
+  owner: GoalOwner;
+  /** Retrato do nome do dono no momento do cadastro (fallback de exibição). */
+  owner_name: string | null;
   name: string | null;
   period_type: GoalPeriodType;
   period_start: string;
@@ -115,6 +151,7 @@ export interface GoalSetInput {
 export function useTeamProcessGoals() {
   const [goals, setGoals] = useState<TeamProcessGoalProgress[]>([]);
   const [teams, setTeams] = useState<TeamLite[]>([]);
+  const [owners, setOwners] = useState<ProcessOwner[]>([]);
   const [boards, setBoards] = useState<WorkflowBoardLite[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,9 +163,10 @@ export function useTeamProcessGoals() {
       // RLS do Externo exige sessão pronta — sem isso volta lista vazia em silêncio.
       await ensureExternalSession();
 
-      const [progressRes, teamsRes, boardsRes, mapRes, procRes] = await Promise.all([
-        ext.rpc<TeamProcessGoalProgress[]>('team_process_goals_progress'),
+      const [progressRes, teamsRes, ownersRes, boardsRes, mapRes, procRes] = await Promise.all([
+        ext.rpc<TeamProcessGoalProgress[]>('process_goals_progress'),
         db.from('teams').select('id, name, color').order('name'),
+        ext.rpc<ProcessOwner[]>('process_owners'),
         db.from('kanban_boards').select('id, name').eq('board_type', 'workflow').order('name'),
         ext.from('team_workflow_boards').select('team_id, board_id'),
         db.from('lead_processes').select('workflow_id').is('deleted_at', null),
@@ -137,6 +175,9 @@ export function useTeamProcessGoals() {
       if (progressRes.error) throw new Error(progressRes.error.message);
       setGoals(progressRes.data || []);
       setTeams(((teamsRes.data as TeamLite[]) || []));
+
+      if (ownersRes.error) throw new Error(ownersRes.error.message);
+      setOwners(ownersRes.data || []);
 
       const boardTeam = new Map<string, string>(
         ((mapRes.data as { team_id: string; board_id: string }[]) || [])
@@ -154,7 +195,7 @@ export function useTeamProcessGoals() {
         process_count: counts.get(b.id) || 0,
       })));
     } catch (e) {
-      console.error('Erro ao carregar metas processuais do time:', e);
+      console.error('Erro ao carregar metas processuais:', e);
       setError(e instanceof Error ? e.message : 'Erro ao carregar metas');
     } finally {
       setLoading(false);
@@ -163,12 +204,12 @@ export function useTeamProcessGoals() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  /** Quantos processos do time já estão em cada marco — alimenta o formulário. */
-  const fetchMarcoBaseline = useCallback(async (teamId: string): Promise<MarcoBaseline[]> => {
+  /** Quantos processos do dono já estão em cada marco — alimenta o formulário. */
+  const fetchMarcoBaseline = useCallback(async (owner: GoalOwner): Promise<MarcoBaseline[]> => {
     await ensureExternalSession();
     const { data, error: err } = await ext.rpc<MarcoBaseline[]>(
-      'team_process_marco_baseline',
-      { p_team_id: teamId },
+      'process_marco_baseline',
+      ownerArgs(owner),
     );
     if (err) throw new Error(err.message);
     return data || [];
@@ -176,41 +217,47 @@ export function useTeamProcessGoals() {
 
   /** Processos por trás de um número da tabela de marcos (drill-down). */
   const fetchMarcoProcessos = useCallback(async (
-    teamId: string,
+    owner: GoalOwner,
     marco: string,
     modo: 'acumulado' | 'atual',
   ): Promise<MarcoProcesso[]> => {
     await ensureExternalSession();
     const { data, error: err } = await ext.rpc<MarcoProcesso[]>(
-      'team_process_marco_processos',
-      { p_team_id: teamId, p_marco: marco, p_modo: modo },
+      'process_marco_processos',
+      { ...ownerArgs(owner), p_marco: marco, p_modo: modo },
     );
     if (err) throw new Error(err.message);
     return data || [];
   }, []);
 
   /**
-   * Salva o conjunto de alvos de um time/período de uma vez: uma linha por marco
+   * Salva o conjunto de alvos de um dono/período de uma vez: uma linha por marco
    * com alvo preenchido, mais a linha de fluxo médio (marco_tipo null).
    * Marco que ficou sem alvo tem a linha arquivada.
    */
   const saveGoalSet = useCallback(async (input: GoalSetInput) => {
     await ensureExternalSession();
 
+    const isTeam = input.owner.kind === 'team';
+    // Coluna do dono: o CHECK do banco exige que a outra fique null.
+    const ownerColumn = isTeam ? 'team_id' : 'user_id';
+
     const base = {
-      team_id: input.team_id,
-      team_name: input.team_name,
+      team_id: isTeam ? input.owner.id : null,
+      team_name: isTeam ? input.owner_name : null,
+      user_id: isTeam ? null : input.owner.id,
+      user_name: isTeam ? null : input.owner_name,
       name: input.name,
       period_type: input.period_type,
       period_start: input.period_start,
       period_end: input.period_end,
     };
 
-    // Linhas ativas já existentes para este time/período — para atualizar ou arquivar.
+    // Linhas ativas já existentes para este dono/período — para atualizar ou arquivar.
     const { data: existing, error: exErr } = await ext
       .from('team_process_goals')
       .select('id, marco_tipo')
-      .eq('team_id', input.team_id)
+      .eq(ownerColumn, input.owner.id)
       .eq('period_start', input.period_start)
       .eq('period_end', input.period_end)
       .eq('is_active', true);
@@ -277,13 +324,13 @@ export function useTeamProcessGoals() {
     await fetchAll();
   }, [fetchAll]);
 
-  /** Arquiva todas as linhas de um time/período (o card inteiro). */
-  const deleteGoalSet = useCallback(async (teamId: string, start: string, end: string) => {
+  /** Arquiva todas as linhas de um dono/período (o card inteiro). */
+  const deleteGoalSet = useCallback(async (owner: GoalOwner, start: string, end: string) => {
     await ensureExternalSession();
     const { error: err } = await ext
       .from('team_process_goals')
       .update({ is_active: false })
-      .eq('team_id', teamId)
+      .eq(owner.kind === 'team' ? 'team_id' : 'user_id', owner.id)
       .eq('period_start', start)
       .eq('period_end', end)
       .eq('is_active', true);
@@ -306,7 +353,7 @@ export function useTeamProcessGoals() {
   }, [fetchAll]);
 
   return {
-    goals, teams, boards, loading, error,
+    goals, teams, owners, boards, loading, error,
     fetchMarcoBaseline, fetchMarcoProcessos, saveGoalSet, deleteGoal, deleteGoalSet, setBoardTeam,
     refetch: fetchAll,
   };

@@ -1,11 +1,15 @@
 // =============================================================================
-// Metas processuais por time: cadastro (todos os marcos de uma vez, com o número
-// de hoje ao lado) e painel realizado × meta.
+// Metas processuais de time OU de pessoa: cadastro (todos os marcos de uma vez,
+// com o número de hoje ao lado) e painel realizado × meta.
 //
-// Semântica: alvo ABSOLUTO. O formulário traz quantos processos do time já estão
-// em cada marco (RPC team_process_marco_baseline) e o usuário informa até quanto
-// quer chegar. A barra mede o acumulado de hoje contra o alvo; o ganho dentro do
+// Semântica: alvo ABSOLUTO. O formulário traz quantos processos do dono já estão
+// em cada marco (RPC process_marco_baseline) e o usuário informa até quanto quer
+// chegar. A barra mede o acumulado de hoje contra o alvo; o ganho dentro do
 // período aparece como ritmo.
+//
+// Time e pessoa não medem o mesmo universo: a meta de time inclui processos sem
+// responsável (via POP), a individual não; a individual inclui quem não está em
+// nenhum time, a de time não. Somar as duas famílias não faz sentido.
 //
 // O % médio de fluxo do POP é foto do estado atual — lead_checklist_instances
 // não guarda data por item, então não dá pra recortar pelo período.
@@ -27,13 +31,14 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Plus, Trash2, Pencil, Loader2, Target, ChevronDown, AlertTriangle, Workflow, CalendarIcon } from 'lucide-react';
+import { Plus, Trash2, Pencil, Loader2, Target, ChevronDown, AlertTriangle, Workflow, CalendarIcon, Users, User } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   useTeamProcessGoals, TeamProcessGoalProgress, GoalPeriodType, MarcoBaseline,
+  GoalOwner, OwnerKind,
 } from '@/hooks/useTeamProcessGoals';
 import type { MarcoTipo } from '@/hooks/useProcessMovements';
 import { TeamMarcoProcessosSheet, MarcoDrill } from './TeamMarcoProcessosSheet';
@@ -172,11 +177,12 @@ function GoalBar({ label, done, target, baseline, ganho, suffix = '' }: {
   );
 }
 
-/** Metas de um time num período — todas as linhas de marco viram um card só. */
+/** Metas de um dono num período — todas as linhas de marco viram um card só. */
 interface GoalGroup {
   key: string;
-  team_id: string;
-  team_name: string | null;
+  owner: GoalOwner;
+  /** Nome do dono para exibição: o time ou a pessoa. */
+  owner_name: string | null;
   name: string | null;
   period_type: GoalPeriodType;
   period_start: string;
@@ -186,16 +192,24 @@ interface GoalGroup {
   stats: TeamProcessGoalProgress;
 }
 
+/** Dono da linha vinda da RPC — owner_kind diz qual dos dois ids vale. */
+function rowOwner(r: TeamProcessGoalProgress): GoalOwner {
+  return r.owner_kind === 'user'
+    ? { kind: 'user', id: r.user_id ?? '' }
+    : { kind: 'team', id: r.team_id ?? '' };
+}
+
 function groupGoals(rows: TeamProcessGoalProgress[]): GoalGroup[] {
   const map = new Map<string, GoalGroup>();
   rows.forEach(r => {
-    const key = `${r.team_id}|${r.period_start}|${r.period_end}`;
+    const owner = rowOwner(r);
+    const key = `${owner.kind}|${owner.id}|${r.period_start}|${r.period_end}`;
     let g = map.get(key);
     if (!g) {
       g = {
         key,
-        team_id: r.team_id,
-        team_name: r.team_name,
+        owner,
+        owner_name: owner.kind === 'user' ? r.user_name : r.team_name,
         name: r.name,
         period_type: r.period_type,
         period_start: r.period_start,
@@ -219,7 +233,9 @@ function groupGoals(rows: TeamProcessGoalProgress[]): GoalGroup[] {
 }
 
 interface FormState {
-  team_id: string;
+  owner_kind: OwnerKind;
+  /** id do time ou da pessoa, conforme owner_kind. Vazio = ainda não escolhido. */
+  owner_id: string;
   name: string;
   period_type: GoalPeriodType;
   period_start: string;
@@ -229,17 +245,19 @@ interface FormState {
   target_flow_avg_pct: string;
 }
 
-function emptyForm(): FormState {
+function emptyForm(kind: OwnerKind = 'user'): FormState {
   const { start, end } = periodRange('monthly');
   return {
-    team_id: '', name: '', period_type: 'monthly',
+    owner_kind: kind, owner_id: '', name: '', period_type: 'monthly',
     period_start: start, period_end: end, targets: {}, target_flow_avg_pct: '',
   };
 }
 
+const OWNER_LABEL: Record<OwnerKind, string> = { team: 'Time', user: 'Pessoa' };
+
 export function TeamProcessGoals() {
   const {
-    goals, teams, boards, loading, error,
+    goals, teams, owners, boards, loading, error,
     fetchMarcoBaseline, fetchMarcoProcessos, saveGoalSet, deleteGoalSet, setBoardTeam,
   } = useTeamProcessGoals();
   const [drill, setDrill] = useState<MarcoDrill | null>(null);
@@ -260,18 +278,29 @@ export function TeamProcessGoals() {
     return m;
   }, [baseline]);
 
-  const totalNoTime = useMemo(
+  const totalNoDono = useMemo(
     () => baseline.reduce((acc, b) => Math.max(acc, b.acumulado), 0),
     [baseline],
   );
 
-  const loadBaseline = useCallback(async (teamId: string) => {
-    if (!teamId) { setBaseline([]); return; }
+  /** Dono escolhido no formulário — null enquanto não escolheu. */
+  const formOwner = useMemo<GoalOwner | null>(
+    () => (form.owner_id ? { kind: form.owner_kind, id: form.owner_id } : null),
+    [form.owner_kind, form.owner_id],
+  );
+
+  const ownerName = useCallback((kind: OwnerKind, id: string): string | null => (
+    kind === 'team'
+      ? teams.find(t => t.id === id)?.name ?? null
+      : owners.find(o => o.user_id === id)?.full_name ?? null
+  ), [teams, owners]);
+
+  const loadBaseline = useCallback(async (owner: GoalOwner) => {
     setBaselineLoading(true);
     try {
-      setBaseline(await fetchMarcoBaseline(teamId));
+      setBaseline(await fetchMarcoBaseline(owner));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao carregar o retrato do time');
+      toast.error(e instanceof Error ? e.message : 'Erro ao carregar o retrato do dono da meta');
       setBaseline([]);
     } finally {
       setBaselineLoading(false);
@@ -279,8 +308,9 @@ export function TeamProcessGoals() {
   }, [fetchMarcoBaseline]);
 
   useEffect(() => {
-    if (dialogOpen && form.team_id) loadBaseline(form.team_id);
-  }, [dialogOpen, form.team_id, loadBaseline]);
+    if (dialogOpen && formOwner) loadBaseline(formOwner);
+    if (!formOwner) setBaseline([]);
+  }, [dialogOpen, formOwner, loadBaseline]);
 
   const openNew = () => { setForm(emptyForm()); setBaseline([]); setDialogOpen(true); };
 
@@ -290,7 +320,8 @@ export function TeamProcessGoals() {
       if (m.marco_tipo && m.target_processes != null) targets[m.marco_tipo] = String(m.target_processes);
     });
     setForm({
-      team_id: g.team_id,
+      owner_kind: g.owner.kind,
+      owner_id: g.owner.id,
       name: g.name || '',
       period_type: g.period_type,
       period_start: g.period_start,
@@ -310,7 +341,10 @@ export function TeamProcessGoals() {
   };
 
   const handleSave = async () => {
-    if (!form.team_id) { toast.error('Escolha o time'); return; }
+    if (!formOwner) {
+      toast.error(form.owner_kind === 'team' ? 'Escolha o time' : 'Escolha a pessoa');
+      return;
+    }
     if (form.period_end < form.period_start) { toast.error('Fim do período é anterior ao início'); return; }
 
     const marcos = MARCO_ORDER
@@ -328,7 +362,7 @@ export function TeamProcessGoals() {
     const abaixo = marcos.find(m => m.target_processes < m.baseline_processes);
     if (abaixo) {
       toast.error(
-        `${MARCO_LABEL[abaixo.marco_tipo]}: alvo (${abaixo.target_processes}) é menor que os ${abaixo.baseline_processes} que o time já tem`,
+        `${MARCO_LABEL[abaixo.marco_tipo]}: alvo (${abaixo.target_processes}) é menor que os ${abaixo.baseline_processes} já alcançados`,
       );
       return;
     }
@@ -343,8 +377,8 @@ export function TeamProcessGoals() {
     setSaving(true);
     try {
       await saveGoalSet({
-        team_id: form.team_id,
-        team_name: teams.find(t => t.id === form.team_id)?.name || null,
+        owner: formOwner,
+        owner_name: ownerName(formOwner.kind, formOwner.id),
         name: form.name.trim() || null,
         period_type: form.period_type,
         period_start: form.period_start,
@@ -364,7 +398,7 @@ export function TeamProcessGoals() {
   const confirmDelete = async () => {
     if (!toDelete) return;
     try {
-      await deleteGoalSet(toDelete.team_id, toDelete.period_start, toDelete.period_end);
+      await deleteGoalSet(toDelete.owner, toDelete.period_start, toDelete.period_end);
       toast.success('Metas arquivadas');
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao arquivar');
@@ -399,7 +433,7 @@ export function TeamProcessGoals() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Target className="h-5 w-5" />
-          <h2 className="text-lg font-semibold">Metas Processuais por Time</h2>
+          <h2 className="text-lg font-semibold">Metas Processuais</h2>
         </div>
         <Button size="sm" className="gap-1" onClick={openNew}>
           <Plus className="h-4 w-4" />
@@ -421,9 +455,9 @@ export function TeamProcessGoals() {
           <CardContent className="flex items-start gap-2 p-4 text-xs leading-relaxed">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
             <span>
-              Há meta de marco em time cujos processos ainda não têm marco registrado.
-              Marcos entram pelo sync de movimentações do Escavador — até ele cobrir o
-              processo, o realizado fica em zero mesmo com trabalho feito.
+              Há meta de marco cujos processos ainda não têm marco registrado. Marcos
+              entram pelo sync de movimentações do Escavador — até ele cobrir o processo,
+              o realizado fica em zero mesmo com trabalho feito.
             </span>
           </CardContent>
         </Card>
@@ -442,8 +476,11 @@ export function TeamProcessGoals() {
               <CardHeader className="px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 space-y-1">
-                    <CardTitle className="break-words text-sm font-semibold">
-                      {g.team_name || 'Time removido'}
+                    <CardTitle className="flex items-center gap-1.5 break-words text-sm font-semibold">
+                      {g.owner.kind === 'user'
+                        ? <User className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        : <Users className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
+                      {g.owner_name || (g.owner.kind === 'user' ? 'Pessoa removida' : 'Time removido')}
                     </CardTitle>
                     <div className="flex flex-wrap items-center gap-1.5">
                       {g.name && <span className="break-words text-xs text-muted-foreground">{g.name}</span>}
@@ -483,7 +520,8 @@ export function TeamProcessGoals() {
                   />
                 )}
                 <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  {g.stats.processos_no_time ?? 0} processos atribuídos ao time ·{' '}
+                  {g.stats.processos_no_time ?? 0} processos{' '}
+                  {g.owner.kind === 'user' ? 'sob responsabilidade' : 'atribuídos ao time'} ·{' '}
                   {g.stats.processos_com_fluxo ?? 0} com passos de POP ·{' '}
                   {g.stats.processos_com_marco ?? 0} com algum marco registrado
                 </p>
@@ -540,18 +578,49 @@ export function TeamProcessGoals() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-2xl">
           <DialogHeader className="border-b px-6 py-4">
-            <DialogTitle>Metas processuais do time</DialogTitle>
+            <DialogTitle>Metas processuais</DialogTitle>
           </DialogHeader>
 
           <ScrollArea className="max-h-[calc(90vh-9rem)]">
             <div className="space-y-4 px-6 py-4">
+              {/* Trocar de tipo zera o dono: os universos de processo são diferentes,
+                  e o baseline carregado não vale para o outro recorte. */}
+              <div className="space-y-1">
+                <Label>Meta de</Label>
+                <div className="flex gap-2">
+                  {(['user', 'team'] as OwnerKind[]).map(k => (
+                    <Button
+                      key={k}
+                      type="button"
+                      size="sm"
+                      variant={form.owner_kind === k ? 'default' : 'outline'}
+                      className="flex-1 gap-1.5"
+                      onClick={() => setForm(f => (
+                        f.owner_kind === k ? f : { ...f, owner_kind: k, owner_id: '' }
+                      ))}
+                    >
+                      {k === 'user' ? <User className="h-3.5 w-3.5" /> : <Users className="h-3.5 w-3.5" />}
+                      {OWNER_LABEL[k]}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label>Time *</Label>
-                  <Select value={form.team_id} onValueChange={v => setForm(f => ({ ...f, team_id: v }))}>
-                    <SelectTrigger><SelectValue placeholder="Escolha o time" /></SelectTrigger>
+                  <Label>{OWNER_LABEL[form.owner_kind]} *</Label>
+                  <Select value={form.owner_id} onValueChange={v => setForm(f => ({ ...f, owner_id: v }))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder={form.owner_kind === 'team' ? 'Escolha o time' : 'Escolha a pessoa'} />
+                    </SelectTrigger>
                     <SelectContent>
-                      {teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)}
+                      {form.owner_kind === 'team'
+                        ? teams.map(t => <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>)
+                        : owners.map(o => (
+                          <SelectItem key={o.user_id} value={o.user_id}>
+                            {o.full_name} · {o.processos} proc. ({o.processos_com_marco} c/ marco)
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
@@ -564,6 +633,12 @@ export function TeamProcessGoals() {
                   />
                 </div>
               </div>
+
+              <p className="text-[11px] leading-relaxed text-muted-foreground">
+                {form.owner_kind === 'user'
+                  ? 'Processo entra pela responsabilidade: o responsável do próprio processo e, na falta dele, o responsável processual do lead. Processo sem responsável não entra em meta individual.'
+                  : 'Processo entra pelo responsável processual do lead que esteja no time; sem isso, pelo time dono do POP. Só a meta de time alcança processos sem responsável.'}
+              </p>
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="space-y-1">
@@ -594,16 +669,17 @@ export function TeamProcessGoals() {
                   <Label>Marcos processuais</Label>
                   {baselineLoading
                     ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    : form.team_id && (
+                    : formOwner && (
                       <span className="text-[11px] text-muted-foreground">
-                        {totalNoTime} processos do time já têm marco
+                        {totalNoDono} processos já têm marco
                       </span>
                     )}
                 </div>
 
-                {!form.team_id ? (
+                {!formOwner ? (
                   <p className="rounded-md bg-muted/40 px-3 py-4 text-center text-xs text-muted-foreground">
-                    Escolha o time para ver quantos processos já estão em cada marco.
+                    Escolha {form.owner_kind === 'team' ? 'o time' : 'a pessoa'} para ver quantos
+                    processos já estão em cada marco.
                   </p>
                 ) : (
                   <div className="overflow-hidden rounded-md border">
@@ -625,16 +701,16 @@ export function TeamProcessGoals() {
                           <span className="truncate text-sm">{MARCO_LABEL[m]}</span>
                           <CountButton
                             value={acumulado}
-                            onClick={() => setDrill({
-                              teamId: form.team_id, marco: m, marcoLabel: MARCO_LABEL[m],
+                            onClick={() => formOwner && setDrill({
+                              owner: formOwner, marco: m, marcoLabel: MARCO_LABEL[m],
                               modo: 'acumulado', esperado: acumulado,
                             })}
                           />
                           <CountButton
                             value={atual}
                             muted
-                            onClick={() => setDrill({
-                              teamId: form.team_id, marco: m, marcoLabel: MARCO_LABEL[m],
+                            onClick={() => formOwner && setDrill({
+                              owner: formOwner, marco: m, marcoLabel: MARCO_LABEL[m],
                               modo: 'atual', esperado: atual,
                             })}
                           />
@@ -670,8 +746,9 @@ export function TeamProcessGoals() {
                   placeholder="Ex: 60"
                 />
                 <p className="text-[11px] leading-relaxed text-muted-foreground">
-                  Média do percentual de passos do POP concluídos nos processos do time —
-                  leitura do estado atual, não do período.
+                  Média do percentual de passos do POP concluídos nos processos{' '}
+                  {form.owner_kind === 'user' ? 'da pessoa' : 'do time'} — leitura do estado
+                  atual, não do período.
                 </p>
               </div>
             </div>
@@ -698,7 +775,7 @@ export function TeamProcessGoals() {
           <AlertDialogHeader>
             <AlertDialogTitle>Arquivar as metas deste período?</AlertDialogTitle>
             <AlertDialogDescription>
-              Todos os marcos de {toDelete?.team_name || 'time removido'} em{' '}
+              Todos os marcos de {toDelete?.owner_name || 'dono removido'} em{' '}
               {toDelete && formatPeriod(toDelete.period_start, toDelete.period_end)} saem do
               painel. Os registros ficam preservados no histórico.
             </AlertDialogDescription>

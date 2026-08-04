@@ -12,14 +12,15 @@ import { Loader2, ChevronRight } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import type { MarcoProcesso } from '@/hooks/useTeamProcessGoals';
+import type { MarcoProcesso, GoalOwner } from '@/hooks/useTeamProcessGoals';
 import type { MarcoTipo } from '@/hooks/useProcessMovements';
 
 // Mesmo padrão do StageFunnelChart: a ficha do processo é pesada, entra sob demanda.
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 export interface MarcoDrill {
-  teamId: string;
+  /** Dono da meta: time ou pessoa — define o universo de processos listados. */
+  owner: GoalOwner;
   marco: MarcoTipo;
   marcoLabel: string;
   modo: 'acumulado' | 'atual';
@@ -30,7 +31,7 @@ export function TeamMarcoProcessosSheet({ drill, onClose, fetchMarcoProcessos }:
   drill: MarcoDrill | null;
   onClose: () => void;
   /** Vem do useTeamProcessGoals do pai — instanciar o hook aqui refaria todo o fetch. */
-  fetchMarcoProcessos: (teamId: string, marco: string, modo: 'acumulado' | 'atual') => Promise<MarcoProcesso[]>;
+  fetchMarcoProcessos: (owner: GoalOwner, marco: string, modo: 'acumulado' | 'atual') => Promise<MarcoProcesso[]>;
 }) {
   const [rows, setRows] = useState<MarcoProcesso[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,7 +43,7 @@ export function TeamMarcoProcessosSheet({ drill, onClose, fetchMarcoProcessos }:
     if (!drill) { setRows([]); return; }
     let cancelado = false;
     setLoading(true);
-    fetchMarcoProcessos(drill.teamId, drill.marco, drill.modo)
+    fetchMarcoProcessos(drill.owner, drill.marco, drill.modo)
       .then(data => { if (!cancelado) setRows(data); })
       .catch(e => {
         if (!cancelado) toast.error(e instanceof Error ? e.message : 'Erro ao listar processos');

@@ -1,7 +1,8 @@
 # Marcos processuais — regras vigentes e pontos a decidir
 
 Documento de revisão. Retrato do banco em **30/07/2026** (Externo `kmedldlepwiityjsdahz`).
-Alimenta a linha do trem da ficha do processo, o "status atual" e as Metas Processuais por Time.
+Alimenta a linha do trem da ficha do processo, o "status atual" e as Metas Processuais (por time
+**ou por pessoa**, desde 04/08/2026 — ver `docs/sistema/comunicacao-gestao.md`).
 
 ---
 

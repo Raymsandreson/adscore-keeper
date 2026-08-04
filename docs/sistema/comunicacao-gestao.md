@@ -88,18 +88,22 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 
 ## Metas Processuais (Equipe → aba "Metas Processuais")
 
-**Propósito**: meta de time sobre a carteira de processos — a quantos processos o time quer chegar em cada marco processual, e/ou qual o percentual médio de fluxo (POP) concluído.
+**Propósito**: meta sobre a carteira de processos — a quantos processos se quer chegar em cada marco processual, e/ou qual o percentual médio de fluxo (POP) concluído. Desde 04/08/2026 a meta é de **um time OU de uma pessoa** (o banco impede as duas coisas: CHECK `team_process_goals_um_dono`).
 
-- "Nova meta" — time, nome, período (Mensal/Trimestral/Personalizado, com calendário nas datas) e a **tabela dos 10 marcos de uma vez**: cada linha traz "Até hoje" (processos que já passaram pelo marco), "Atualmente" (processos em que esse é o marco mais recente) e o campo "Meta". Marco sem meta preenchida não é acompanhado.
-- Clicar em qualquer número de "Até hoje" ou "Atualmente" abre o painel lateral com **os processos por trás daquele número** — CNJ, cliente, responsável e data do marco; clique na linha vai para a ficha do caso (`/cases/{case_id}`). Vem da RPC `team_process_marco_processos` (`p_modo` = `acumulado` ou `atual`).
-- O alvo é **absoluto**: "hoje temos 42 na conciliação, queremos chegar a 60". O número de hoje é carregado automaticamente ao escolher o time e gravado como ponto de partida da barra. Alvo menor que o número atual é recusado — não existe processo saindo de um marco.
-- Card por time/período — uma barra por marco (acumulado × alvo, com "Início", "No período: +N" e "Faltam N") e a barra de "Fluxo médio concluído (hoje)". Rodapé mostra processos do time, quantos têm passos de POP e quantos têm marco.
-- "POPs por time" (bloco recolhível) — mapeia cada POP a um time. Serve de fallback: processo sem responsável processual em time entra pelo POP.
-- Lixeira arquiva as metas daquele time/período (`is_active = false`); os registros ficam no histórico.
+- "Nova meta" — alternador **Pessoa | Time**, dono, nome, período (Mensal/Trimestral/Personalizado, com calendário nas datas) e a **tabela dos 10 marcos de uma vez**: cada linha traz "Até hoje" (processos que já passaram pelo marco), "Atualmente" (processos em que esse é o marco mais avançado) e o campo "Meta". Marco sem meta preenchida não é acompanhado. Trocar Pessoa↔Time zera o dono escolhido — os dois recortes medem universos diferentes.
+- No modo Pessoa o seletor lista só quem tem processo vivo atribuído (RPC `process_owners`), com a contagem de processos e de quantos já têm marco ao lado.
+- Clicar em qualquer número de "Até hoje" ou "Atualmente" abre o painel lateral com **os processos por trás daquele número** — CNJ, cliente, responsável e data do marco; clique na linha abre a ficha do processo. Vem da RPC `process_marco_processos` (`p_modo` = `acumulado` ou `atual`).
+- O alvo é **absoluto**: "hoje temos 42 na conciliação, queremos chegar a 60". O número de hoje é carregado automaticamente ao escolher o dono e gravado como ponto de partida da barra. Alvo menor que o número atual é recusado — não existe processo saindo de um marco.
+- Card por dono/período (ícone de pessoa ou de time no título) — uma barra por marco (acumulado × alvo, com "Início", "No período: +N" e "Faltam N") e a barra de "Fluxo médio concluído (hoje)". Rodapé mostra os processos do dono, quantos têm passos de POP e quantos têm marco.
+- "POPs por time" (bloco recolhível) — mapeia cada POP a um time. Serve de fallback **só para meta de time**: processo sem responsável processual em time entra pelo POP.
+- Lixeira arquiva as metas daquele dono/período (`is_active = false`); os registros ficam no histórico.
 
-**Como o número sai** (RPCs `team_process_goals_progress` e `team_process_marco_baseline`, Externo):
-- Processo → time (view `vw_team_process_assignment`): `leads.processual_responsible_id` presente em `team_members`; se não, o POP do processo (`lead_processes.workflow_id`) mapeado em `team_workflow_boards`.
-- `realizado_processos`: processos distintos do time com linha em `process_movements` do marco alvo, **sem recorte de data** (acumulado).
+**Como o número sai** (RPCs `process_goals_progress` e `process_marco_baseline`, Externo — as antigas `team_process_*` continuam existindo como wrappers):
+- Atribuição do processo, view única `vw_process_assignment`:
+  - **time** → `leads.processual_responsible_id` presente em `team_members`; se não, o POP do processo (`lead_processes.workflow_id`) mapeado em `team_workflow_boards`;
+  - **pessoa** → `lead_processes.responsible_user_id` e, na falta dele, `leads.processual_responsible_id`.
+- Os dois universos **não são somáveis**. Medido em 04/08/2026, sobre 1.723 processos vivos: 827 têm time, 840 têm dono individual, 342 têm algum marco. Processo sem responsável (883) só aparece em meta de time; responsável fora de qualquer time (182 processos) só aparece em meta individual.
+- `realizado_processos`: processos distintos do dono com linha em `process_movements` do marco alvo, **sem recorte de data** (acumulado).
 - `realizado_no_periodo`: os que registraram o marco dentro do período — é o ritmo, não a barra.
 - Fluxo médio: média simples, por processo, do % de itens marcados nas `lead_checklist_instances` do POP. **É foto do estado atual** — o checklist não guarda data por item, então esse número não é recortado pelo período.
 
