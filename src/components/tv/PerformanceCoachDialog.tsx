@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Send, Sparkles, Flag, Loader2, MessageCircleQuestion } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { DetailCriterio } from './RankDetailSheet';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -12,6 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 
 interface CoachRow {
   nome: string;
+  resultado?: number;
+  fases?: number;
+  objetivos?: number;
   passos: number;
   concluidas: number;
   atrasadas: number;
@@ -40,6 +44,26 @@ function Delta({ antes, agora, menorMelhor = false }: { antes: number; agora: nu
   return <span className={melhorou ? 'text-emerald-400' : 'text-rose-400'}>{agora > antes ? '▲' : '▼'}</span>;
 }
 
+// Número de um critério no cabeçalho do coach — clicável quando há onDetail.
+function CoachStat({ n, label, cor, onClick }: { n: number; label: string; cor: string; onClick?: () => void }) {
+  return (
+    <span className="text-xs">
+      <b
+        className={cn(
+          'text-sm font-black tabular-nums',
+          cor,
+          onClick && 'cursor-pointer rounded px-0.5 transition hover:bg-white/10 hover:ring-1 hover:ring-white/25',
+        )}
+        title={onClick ? `Ver o que entrou em ${label}` : undefined}
+        onClick={onClick}
+      >
+        {n}
+      </b>{' '}
+      <span className="text-[10px] font-bold uppercase tracking-wider text-white/40">{label}</span>
+    </span>
+  );
+}
+
 interface Props {
   row: CoachRow;
   rank: number;
@@ -47,6 +71,8 @@ interface Props {
   teamId: string | null;
   grupo: string | null;
   periodLabel: string;
+  /** Clique num número do cabeçalho → detalhe daquele critério. */
+  onDetail?: (criterio: DetailCriterio, count: number) => void;
   onClose: () => void;
 }
 
@@ -74,7 +100,7 @@ interface SendResponse {
   error?: string;
 }
 
-export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo, periodLabel, onClose }: Props) {
+export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo, periodLabel, onDetail, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [asking, setAsking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -239,9 +265,17 @@ export default function PerformanceCoachDialog({ row, rank, since, teamId, grupo
           <div className="min-w-0 flex-1">
             <div className="font-black leading-tight truncate">{row.nome}</div>
             <div className="text-xs text-white/50">
-              {meta ? `${meta.position}º de ${meta.total} na corrida` : `${rank}º no ranking`} · {row.passos} passos ·{' '}
-              <span className="text-emerald-400">{row.concluidas} concl.</span> ·{' '}
-              <span className="text-rose-400">{row.atrasadas} atras.</span>
+              {meta ? `${meta.position}º de ${meta.total} na corrida` : `${rank}º no ranking`}
+            </div>
+            {/* Cada número abre o detalhe do critério (o que entrou nele). */}
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+              <CoachStat n={row.resultado ?? 0} label="status" cor="text-yellow-300" onClick={onDetail && (() => onDetail('status', row.resultado ?? 0))} />
+              <CoachStat n={row.fases ?? 0} label="fases" cor="text-amber-300" onClick={onDetail && (() => onDetail('fases', row.fases ?? 0))} />
+              <CoachStat n={row.objetivos ?? 0} label="obj" cor="text-lime-400" onClick={onDetail && (() => onDetail('objetivos', row.objetivos ?? 0))} />
+              <CoachStat n={row.passos} label="passos" cor="text-sky-400" onClick={onDetail && (() => onDetail('passos', row.passos))} />
+              <CoachStat n={row.concluidas} label="concl" cor="text-emerald-400" onClick={onDetail && (() => onDetail('concluidas', row.concluidas))} />
+              <CoachStat n={row.atrasadas} label="atr" cor="text-rose-400" onClick={onDetail && (() => onDetail('atrasadas', row.atrasadas))} />
+              {onDetail && <span className="text-[10px] text-white/30">clique num número pra ver o que entrou nele</span>}
             </div>
           </div>
           <button onClick={onClose} className="rounded-full p-2 text-white/60 hover:bg-white/10 hover:text-white transition" title="Fechar">

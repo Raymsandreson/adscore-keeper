@@ -5225,16 +5225,20 @@ const ActivitiesPage = () => {
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
 
+                // Passo marcado daqui nasce DENTRO desta atividade — o id vai
+                // junto no log (metadata.activity_id) pro detalhe do telão.
+                const funnelActivityId = sheetMode === 'edit' ? selectedActivity?.id ?? null : null;
+
                 // POP escolhido na própria atividade tem prioridade — mesma regra
                 // do activeStepBoardId (contexto de passo/modelos).
                 if (formWorkflowId) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={funnelActivityId} />;
                 }
                 // Se há processo vinculado: só mostra se o processo tem fluxo próprio.
                 // Sem fluxo no processo = sem barra (não cai no funil do lead).
                 if (formProcessId) {
                   if (processWorkflowId) {
-                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} activityId={funnelActivityId} />;
                   }
                   return (
                     <p className="text-[10px] text-muted-foreground mt-1.5 italic">
@@ -5244,7 +5248,7 @@ const ActivitiesPage = () => {
                 }
                 // Sem processo vinculado: usa o funil do lead (apenas se ainda em andamento).
                 if (!isLeadClosed && leadPreview?.board_id) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={funnelActivityId} />;
                 }
                 return null;
               })()}

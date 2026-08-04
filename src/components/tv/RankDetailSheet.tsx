@@ -20,11 +20,26 @@ interface DetailItem {
   titulo: string | null;
   lead_nome?: string | null;
   lead_id?: string | null;
-  /** POP / fase / nº do processo — de onde veio o item. */
-  contexto?: string | null;
+  /** Onde o item mora — o RPC devolve o que consegue afirmar de cada um. */
+  objetivo?: string | null;
+  fase?: string | null;
+  pop?: string | null;
+  processo?: string | null;
+  /** Passo: atividade de onde a marcação saiu (metadata.activity_id). */
+  atividade?: string | null;
   activity_id?: string;
   deadline?: string;
   dias_atraso?: number;
+}
+
+// Rótulo + valor num chip só, pra não virar sopa de texto solto.
+function Chip({ label, valor }: { label: string; valor: string }) {
+  return (
+    <span className="inline-flex max-w-full items-baseline gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px]">
+      <span className="shrink-0 uppercase tracking-wider text-white/30">{label}</span>
+      <span className="min-w-0 truncate text-white/70">{valor}</span>
+    </span>
+  );
 }
 
 const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: typeof ListChecks }> = {
@@ -122,9 +137,29 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                   </div>
                   {it.activity_id && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
                 </div>
+                {/* Onde esse item mora: cliente · processo · objetivo · fase · POP */}
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {it.lead_nome && <Chip label="cliente" valor={it.lead_nome} />}
+                  {it.processo && <Chip label="processo" valor={it.processo} />}
+                  {it.objetivo && <Chip label="objetivo" valor={it.objetivo} />}
+                  {it.fase && <Chip label="fase" valor={it.fase} />}
+                  {it.pop && <Chip label="POP" valor={it.pop} />}
+                </div>
+
+                {/* Atividade de onde a marcação saiu (só existe em passo marcado
+                    a partir de 04/08 — antes disso o log não guardava). */}
+                {it.tipo === 'passo' && (
+                  <div className="mt-1.5 flex items-start gap-1.5 text-xs">
+                    <span className="shrink-0 text-white/35">na atividade:</span>
+                    {it.atividade ? (
+                      <span className="min-w-0 flex-1 font-semibold text-sky-300">{it.atividade}</span>
+                    ) : (
+                      <span className="text-white/30 italic">marcado fora de uma atividade (ou antes de 04/08)</span>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-white/50">
-                  {it.lead_nome && <span className="truncate max-w-[14rem]">{it.lead_nome}</span>}
-                  {it.contexto && <span className="truncate max-w-[12rem] text-white/35">{it.contexto}</span>}
                   {it.tipo === 'atrasada' ? (
                     <>
                       {it.deadline && <span>prazo {format(new Date(`${it.deadline}T00:00:00`), 'dd/MM/yyyy', { locale: ptBR })}</span>}

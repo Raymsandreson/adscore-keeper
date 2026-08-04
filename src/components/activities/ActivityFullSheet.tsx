@@ -74,6 +74,8 @@ export interface ActivityDraft {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  /** Observadores pré-definidos (UUIDs do Cloud, como no seletor de assessor). */
+  observers?: { user_id: string; full_name: string }[];
   /** Marca como atividade de gestão — dispensa vínculo com lead/caso/processo. */
   is_management?: boolean;
 }
@@ -451,7 +453,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormRespostaJuizo(draftRichText(d.resposta_juizo));
     setFormNotes(draftRichText(d.notes));
     setFormCoAssignees([]); setLoadedHadCoAssignees(false);
-    setFormObservers([]); setLoadedHadObservers(false);
+    setFormObservers(d.observers || []); setLoadedHadObservers(false);
     initialResponsiblesRef.current = [];
     setFormCampaignId('');
     setFormFeedback('');
@@ -1187,11 +1189,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead */}
           {formLeadId && (() => {
             if (formWorkflowId) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} />;
             }
             if (formProcessId) {
               if (linkedProcess?.workflow_id) {
-                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} />;
+                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} />;
               }
               return (
                 <p className="text-[10px] text-muted-foreground italic">
@@ -1200,7 +1202,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               );
             }
             if (leadPreview?.lead_status !== 'closed' && leadPreview?.board_id) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={activityId} />;
             }
             return null;
           })()}

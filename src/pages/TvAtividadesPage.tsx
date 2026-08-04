@@ -1192,6 +1192,7 @@ export default function TvAtividadesPage() {
           teamId={teamId && teamId !== GRUPO_GERENCIAL ? teamId : null}
           grupo={teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null}
           periodLabel={period === 'hoje' ? 'hoje' : period === 'mes' ? 'mês' : 'semana'}
+          onDetail={(criterio, count) => setDetail({ nome: coach.row.nome, criterio, count })}
           onClose={() => setCoach(null)}
         />
       )}
