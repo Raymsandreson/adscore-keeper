@@ -67,6 +67,36 @@ function safeFilter(s: string) {
   return s.replace(/[,()%]/g, ' ');
 }
 
+/**
+ * Monta o payload do update do caso, decidindo se `lead_id` entra.
+ *
+ * Regra que não pode regredir: `lead_id` só é enviado quando aponta para um
+ * lead de verdade e diferente do atual. Mandar NULL é o que o trigger
+ * `trg_legal_cases_no_unlink` recusa no banco — e o que gera caso órfão,
+ * invisível para a equipe. Vazio na tela significa "mantém o lead atual",
+ * nunca "desvincula".
+ */
+export function buildCaseUpdatePayload(fields: {
+  caseNumber: string;
+  title: string;
+  description: string;
+  notes: string;
+  editLeadId: string | null;
+  currentLeadId: string | null;
+}) {
+  const leadChanged = !!fields.editLeadId && fields.editLeadId !== (fields.currentLeadId ?? null);
+  return {
+    leadChanged,
+    payload: {
+      case_number: fields.caseNumber.trim(),
+      title: fields.title.trim(),
+      description: fields.description || null,
+      notes: fields.notes || null,
+      ...(leadChanged ? { lead_id: fields.editLeadId } : {}),
+    },
+  };
+}
+
 const statusLabels: Record<string, string> = {
   aberto: 'Aberto',
   em_andamento: 'Em Andamento',
@@ -453,6 +483,14 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
   const [editNotes, setEditNotes] = useState(legalCase.notes || '');
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
+  // Vínculo de lead editável: antes o único jeito de consertar um caso criado
+  // sem lead (ou com o lead errado) era apagar e recriar o caso inteiro.
+  const [editLeadId, setEditLeadId] = useState<string | null>(legalCase.lead_id ?? null);
+  const [editLeadInfo, setEditLeadInfo] = useState<any>(null);
+  const [leadSearch, setLeadSearch] = useState('');
+  const [leadResults, setLeadResults] = useState<any[]>([]);
+  const [searchingLead, setSearchingLead] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const PREDEFINED_PROCESSES = [
     'Indenização', 'Relatório de Acidente', 'TRCT + Verbas', 'Seguro de Vida',
@@ -470,6 +508,46 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       return next;
     });
   };
+
+  const openEditDialog = () => {
+    setEditCaseNumber(legalCase.case_number || '');
+    setEditTitle(legalCase.title || '');
+    setEditDescription(legalCase.description || '');
+    setEditNotes(legalCase.notes || '');
+    setEditLeadId(legalCase.lead_id ?? null);
+    setEditLeadInfo(leadInfo);
+    setLeadSearch('');
+    setLeadResults([]);
+    setShowEditDialog(true);
+  };
+
+  // Busca de lead dentro do dialog de edição (mesmo padrão de filtro do
+  // buscador da página: `safeFilter` neutraliza `,()%`, que quebram o `or=`).
+  useEffect(() => {
+    if (!showEditDialog) return;
+    const term = safeFilter(leadSearch.trim());
+    if (term.length < 2) { setLeadResults([]); setSearchingLead(false); return; }
+    setSearchingLead(true);
+    const timer = setTimeout(async () => {
+      try {
+        const { data, error } = await externalSupabase
+          .from('leads')
+          .select('id, lead_name, lead_phone, status, became_client_date')
+          .is('deleted_at', null)
+          .or(`lead_name.ilike.%${term}%,lead_phone.ilike.%${term}%`)
+          .order('created_at', { ascending: false })
+          .limit(8);
+        if (error) throw error;
+        setLeadResults(data || []);
+      } catch (err) {
+        console.error('[CasesPage] lead search failed', err);
+        setLeadResults([]);
+      } finally {
+        setSearchingLead(false);
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [leadSearch, showEditDialog]);
 
   const loadDetails = useCallback(() => {
     if (!expanded) return;
@@ -614,6 +692,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   };
 
   const handleEdit = async () => {
+    setSavingEdit(true);
     try {
       const trimmedNumber = editCaseNumber.trim();
       if (!trimmedNumber) {
@@ -633,15 +712,50 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           return;
         }
       }
-      const { error } = await externalSupabase.from('legal_cases').update({
-        case_number: trimmedNumber,
-        title: editTitle.trim(),
-        description: editDescription || null,
-        notes: editNotes || null,
-      }).eq('id', legalCase.id);
+      const { leadChanged, payload } = buildCaseUpdatePayload({
+        caseNumber: trimmedNumber,
+        title: editTitle,
+        description: editDescription,
+        notes: editNotes,
+        editLeadId,
+        currentLeadId: legalCase.lead_id ?? null,
+      });
+      const { error } = await externalSupabase.from('legal_cases').update(payload).eq('id', legalCase.id);
       if (error) throw error;
+
+      // Adota os filhos órfãos do caso. Sem isso, atividades e processos
+      // criados enquanto o caso estava sem lead continuariam com lead_id NULL
+      // e fora da linha do tempo do cliente. Só os NULL são tocados: filho que
+      // já aponta para outro lead fica como está.
+      if (leadChanged) {
+        try {
+          const [actRes, procRes] = await Promise.all([
+            externalSupabase.from('lead_activities')
+              .update({ lead_id: editLeadId } as any)
+              .eq('case_id', legalCase.id).is('lead_id', null).select('id'),
+            externalSupabase.from('lead_processes')
+              .update({ lead_id: editLeadId } as any)
+              .eq('case_id', legalCase.id).is('lead_id', null).select('id'),
+          ]);
+          const adopted = (actRes.data?.length || 0) + (procRes.data?.length || 0);
+          if (actRes.error || procRes.error) {
+            console.error('[CasesPage] backfill lead_id failed', { act: actRes.error, proc: procRes.error });
+            toast.error('Lead vinculado ao caso, mas atividades/processos antigos não foram atualizados');
+          } else if (adopted > 0) {
+            toast.success(`${actRes.data?.length || 0} atividade(s) e ${procRes.data?.length || 0} processo(s) vinculados ao lead`);
+          }
+        } catch (bfErr) {
+          console.error('[CasesPage] backfill lead_id threw', bfErr);
+          toast.error('Lead vinculado ao caso, mas atividades/processos antigos não foram atualizados');
+        }
+      }
+
+      // Lead efetivo do save: o recém-escolhido tem precedência sobre a prop,
+      // que só é atualizada depois do onCaseUpdated. Sem isso, vincular o lead
+      // e marcar processos no mesmo save pulava a criação em silêncio.
+      const effectiveLeadId = editLeadId ?? legalCase.lead_id ?? null;
       // Auto-create selected processes
-      if (selectedProcesses.size > 0 && legalCase.lead_id) {
+      if (selectedProcesses.size > 0 && effectiveLeadId) {
         const { data: { user } } = await supabase.auth.getUser();
         const extCreatedByForProcess = await remapToExternal(user?.id);
 
@@ -694,7 +808,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             // vinha undefined e a atividade nascia sem process_id, órfã e sem
             // ninguém saber. Agora estoura e cai no catch abaixo, que avisa.
             const { data: savedProcess, error: procErr } = await externalSupabase.from('lead_processes').insert({
-              lead_id: legalCase.lead_id,
+              lead_id: effectiveLeadId,
               case_id: legalCase.id,
               process_type: 'administrativo',
               title,
@@ -727,7 +841,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             try {
               const extCreatedBy = extCreatedByForProcess;
               const result = await createOrAttachAndamentoActivity({
-                leadId: legalCase.lead_id,
+                leadId: effectiveLeadId,
                 caseId: legalCase.id,
                 caseTitle: editTitle || legalCase.title,
                 processId: savedProcess?.id || null,
@@ -761,8 +875,11 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       // Reload processes immediately so they appear in the UI
       loadDetails();
       onCaseUpdated();
-    } catch {
-      toast.error('Erro ao atualizar caso');
+    } catch (err: any) {
+      console.error('[CasesPage] handleEdit failed', err);
+      toast.error(`Erro ao atualizar caso: ${err?.message || err?.code || 'erro'}`);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -859,13 +976,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
               {/* Case actions */}
               <div className="flex items-center gap-1 flex-wrap">
-                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
-                  setEditCaseNumber(legalCase.case_number || '');
-                  setEditTitle(legalCase.title || '');
-                  setEditDescription(legalCase.description || '');
-                  setEditNotes(legalCase.notes || '');
-                  setShowEditDialog(true);
-                }}>
+                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={openEditDialog}>
                   <Edit3 className="h-3 w-3 mr-1" /> Editar
                 </Button>
                 {legalCase.status !== 'encerrado' && (
@@ -887,6 +998,22 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   <Trash2 className="h-3 w-3 mr-1" /> Excluir
                 </Button>
               </div>
+
+              {/* Caso sem lead: dá o caminho de conserto na própria tela, em vez
+                  de obrigar a apagar o caso e recriar com o lead certo. */}
+              {!legalCase.lead_id && (
+                <div className="border border-dashed border-amber-400/60 rounded-lg p-3 flex items-center gap-2 bg-amber-50/50 dark:bg-amber-950/20">
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-xs font-semibold text-amber-700 dark:text-amber-400">Sem lead vinculado</h4>
+                    <p className="text-[10px] text-muted-foreground">
+                      Vincule o cliente para o caso aparecer na linha do tempo dele.
+                    </p>
+                  </div>
+                  <Button variant="outline" size="sm" className="h-7 text-xs shrink-0" onClick={openEditDialog}>
+                    <ExternalLink className="h-3 w-3 mr-1" /> Vincular lead
+                  </Button>
+                </div>
+              )}
 
               {/* Lead vinculado - clicável */}
               {leadInfo && (
@@ -1170,6 +1297,80 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
             </div>
             <div>
+              <Label>Lead vinculado</Label>
+              {editLeadId ? (
+                <div className="border rounded-md p-2 flex items-center gap-2 bg-muted/30 mt-1">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {editLeadInfo?.lead_name || (editLeadId === legalCase.lead_id ? (leadInfo?.lead_name || 'Lead atual') : 'Lead selecionado')}
+                    </p>
+                    {editLeadInfo?.lead_phone && (
+                      <p className="text-[10px] text-muted-foreground">{editLeadInfo.lead_phone}</p>
+                    )}
+                    {editLeadId !== (legalCase.lead_id ?? null) && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-500">Será salvo ao clicar em Salvar</p>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs shrink-0"
+                    onClick={() => { setEditLeadId(null); setEditLeadInfo(null); setLeadSearch(''); }}
+                  >
+                    Trocar
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2 mt-1">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      value={leadSearch}
+                      onChange={e => setLeadSearch(e.target.value)}
+                      placeholder="Buscar lead por nome ou telefone..."
+                      className="pl-8 h-9"
+                    />
+                  </div>
+                  {/* Só some da tela quando um lead novo é escolhido: o banco
+                      recusa desvincular (trigger anti-órfão), então não existe
+                      opção de "deixar sem lead" aqui. */}
+                  {legalCase.lead_id && (
+                    <p className="text-[10px] text-muted-foreground">
+                      O caso continua no lead atual até você escolher outro.
+                    </p>
+                  )}
+                  {searchingLead && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Buscando...
+                    </div>
+                  )}
+                  {!searchingLead && leadSearch.trim().length >= 2 && leadResults.length === 0 && (
+                    <p className="text-xs text-muted-foreground py-2">Nenhum lead encontrado</p>
+                  )}
+                  {leadResults.length > 0 && (
+                    <ScrollArea className="h-[160px]">
+                      <div className="space-y-1.5 pr-2">
+                        {leadResults.map(lead => (
+                          <button
+                            key={lead.id}
+                            type="button"
+                            className="w-full text-left border rounded-md p-2 hover:bg-accent/50 transition-colors"
+                            onClick={() => { setEditLeadId(lead.id); setEditLeadInfo(lead); setLeadResults([]); setLeadSearch(''); }}
+                          >
+                            <p className="text-sm font-medium truncate">{lead.lead_name || 'Sem nome'}</p>
+                            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                              {lead.lead_phone && <span>{lead.lead_phone}</span>}
+                              {lead.status && <Badge variant="secondary" className="text-[9px]">{lead.status}</Badge>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </ScrollArea>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
               <Label>Descrição</Label>
               <Textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} rows={3} />
             </div>
@@ -1197,7 +1398,9 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancelar</Button>
-            <Button onClick={handleEdit} disabled={!editTitle.trim()}>Salvar</Button>
+            <Button onClick={handleEdit} disabled={!editTitle.trim() || savingEdit}>
+              {savingEdit && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}Salvar
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
