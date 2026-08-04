@@ -15,6 +15,7 @@ import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
 import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
 import { uploadImageThumb } from '../lib/imageThumb';
+import { notifyNewWhatsAppMessage } from '../lib/whatsapp-push';
 
 // ============================================================
 // Proactive first message — disparado quando o agente é ativado
@@ -2080,6 +2081,24 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName);
+
+    // ========== PUSH DE MENSAGEM NOVA ==========
+    // Fire-and-forget, só inbound (outbound é a própria casa respondendo).
+    // Quem decide destinatário, agrupamento e duplicata é o módulo; aqui não se
+    // espera nem se propaga erro — a mensagem já está gravada.
+    if (direction === 'inbound') {
+      void notifyNewWhatsAppMessage({
+        phone,
+        instanceName,
+        contactName,
+        messageText,
+        messageType,
+        externalMessageId,
+        messageId: message.id,
+        isGroup,
+        leadId,
+      });
+    }
 
     // ========== AUTO-ACTIVATE DEFAULT AGENT ==========
     // Se a instância tem default_agent_id e ainda não há agente ativado para essa conversa,
