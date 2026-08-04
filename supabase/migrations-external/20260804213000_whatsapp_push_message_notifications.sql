@@ -251,3 +251,15 @@ $$;
 
 revoke all on function public.wa_push_cleanup() from public, anon, authenticated;
 grant execute on function public.wa_push_cleanup() to service_role;
+
+-- Agenda a faxina para as 4h de Brasília (07:00 UTC). Idempotente: remove o job
+-- antigo antes de recriar, então rodar a migration duas vezes não duplica.
+do $cron$
+begin
+  perform cron.unschedule('wa-push-cleanup');
+exception
+  when others then null;  -- job ainda não existe
+end
+$cron$;
+
+select cron.schedule('wa-push-cleanup', '0 7 * * *', $job$select public.wa_push_cleanup()$job$);
