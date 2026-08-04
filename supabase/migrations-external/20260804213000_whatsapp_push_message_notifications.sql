@@ -1,18 +1,24 @@
 -- Push de mensagem nova do WhatsApp (notificação nativa no celular).
 --
 -- Escopo do destinatário (decidido com o Raym em 04/08/2026):
---   1) DONO da instância que recebeu a mensagem  → whatsapp_instances.owner_user_id
---   2) RESPONSÁVEL do processo, quando a mensagem vem de um grupo vinculado a um
---      lead  → lead_whatsapp_groups.group_jid → leads.processual_responsible_id
---              (+ lead_processes.responsible_user_id do mesmo lead)
+--   1) conversa PRIVADA → DONO da instância que recebeu a mensagem
+--      (whatsapp_instances.owner_user_id)
+--   2) GRUPO → só quem RESPONDE por aquele cliente:
+--      lead_whatsapp_groups.group_jid → lead, e daí
+--        leads.processual_responsible_id
+--        lead_processes.responsible_user_id
+--        leads.acolhedor (texto) via wa_resolve_acolhedor
+--      O dono da instância NÃO recebe o que passa nos grupos dele: grupo é 94%
+--      do volume (2.343 de 2.481 mensagens/dia na instância "Raym").
 --
 -- Quem envia é a função Railway `whatsapp-push` (service role), chamada em
 -- fire-and-forget pelo whatsapp-webhook logo depois de gravar a mensagem.
 --
 -- Duas armadilhas que este schema resolve (medidas na base real, 04/08/2026):
---   * VOLUME: 2.500 mensagens inbound/24h só na instância "Raym". Um push por
---     mensagem faria a pessoa desligar tudo. Daí a janela de agrupamento por
---     conversa (whatsapp_push_throttle).
+--   * VOLUME: 2.481 mensagens inbound/24h só na instância "Raym" — 2.343 delas
+--     de grupo. Um push por mensagem faria a pessoa desligar tudo. Daí a janela
+--     de agrupamento por conversa (whatsapp_push_throttle), somada ao recorte
+--     de destinatário acima.
 --   * DUPLICATA DE GRUPO: a mesma mensagem de grupo é gravada uma vez por
 --     instância da casa que participa do grupo (o mesmo "Ok" virou 4 linhas).
 --     O external_message_id vem prefixado pelo telefone da instância
@@ -62,6 +68,66 @@ update public.whatsapp_instances i
    and i.owner_phone is not null
    and length(public.wa_norm_phone_br(i.owner_phone)) >= 10
    and public.wa_norm_phone_br(p.phone) = public.wa_norm_phone_br(i.owner_phone);
+
+-- ---------------------------------------------------------------------------
+-- 1b) Acolhedor do lead → user_id
+-- ---------------------------------------------------------------------------
+-- leads.acolhedor é texto livre: às vezes o nome completo ("Mateus Santos
+-- Saraiva"), às vezes só o apelido ("Mateus", "Israel", "Karolyne"), e às vezes
+-- nem pessoa é ("Atendimento Previdenciário", um e-mail). A convenção que o
+-- sistema já usa é casar com profiles.full_name (useMonitorFilters.ts).
+--
+-- Medido nos 888 grupos que têm acolhedor preenchido:
+--   465 casam pelo nome completo
+--  +119 casam pelo primeiro nome, e nenhum primeiro nome é ambíguo
+--   ---
+--   584 resolvem; o resto simplesmente não notifica ninguém.
+--
+-- O primeiro nome só vale quando UM único perfil responde por ele. Notificar a
+-- pessoa errada sobre conversa de cliente é pior do que não notificar.
+create or replace function public.wa_resolve_acolhedor(p_name text)
+returns uuid
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+declare
+  v_id  uuid;
+  v_n   integer;
+  v_key text := lower(btrim(coalesce(p_name, '')));
+begin
+  if v_key = '' then
+    return null;
+  end if;
+
+  select p.user_id into v_id
+    from public.profiles p
+   where lower(btrim(p.full_name)) = v_key
+   limit 1;
+  if v_id is not null then
+    return v_id;
+  end if;
+
+  select count(distinct p.user_id) into v_n
+    from public.profiles p
+   where lower(split_part(btrim(p.full_name), ' ', 1)) = v_key;
+
+  if v_n <> 1 then
+    return null;
+  end if;
+
+  select p.user_id into v_id
+    from public.profiles p
+   where lower(split_part(btrim(p.full_name), ' ', 1)) = v_key
+   limit 1;
+
+  return v_id;
+end;
+$$;
+
+revoke all on function public.wa_resolve_acolhedor(text) from public, anon, authenticated;
+grant execute on function public.wa_resolve_acolhedor(text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2) Preferências por pessoa

@@ -121,9 +121,16 @@ function previewBody(text: string | null | undefined, type: string | null | unde
 }
 
 /**
- * Responsáveis pelo processo do grupo.
- * grupo → lead_whatsapp_groups.group_jid → lead → responsável processual do lead
- * e responsável de cada processo do lead.
+ * Quem responde por um grupo: responsável do processo OU acolhedor do lead.
+ *
+ * grupo → lead_whatsapp_groups.group_jid → lead, e daí:
+ *   - leads.processual_responsible_id  (responsável processual)
+ *   - lead_processes.responsible_user_id  (responsável de cada processo)
+ *   - leads.acolhedor (texto) resolvido por wa_resolve_acolhedor
+ *
+ * O dono da instância NÃO entra aqui de propósito: grupo é 94% do volume
+ * (2.343 de 2.481 mensagens/dia na instância "Raym"), então notificar o dono de
+ * tudo que passa nos grupos dele é exatamente o que faz a pessoa desligar.
  */
 async function resolveGroupResponsibles(groupDigits: string, leadIdHint?: string | null): Promise<string[]> {
   const out = new Set<string>();
@@ -153,15 +160,26 @@ async function resolveGroupResponsibles(groupDigits: string, leadIdHint?: string
     if (!leadId) return [];
 
     const [leadRes, procRes] = await Promise.all([
-      supabase.from('leads').select('processual_responsible_id').eq('id', leadId).maybeSingle(),
+      supabase.from('leads').select('processual_responsible_id, acolhedor').eq('id', leadId).maybeSingle(),
       supabase.from('lead_processes').select('responsible_user_id').eq('lead_id', leadId).is('deleted_at', null),
     ]);
 
-    const leadResp = (leadRes.data as { processual_responsible_id?: string } | null)?.processual_responsible_id;
-    if (leadResp) out.add(leadResp);
+    const lead = leadRes.data as { processual_responsible_id?: string | null; acolhedor?: string | null } | null;
+    if (lead?.processual_responsible_id) out.add(lead.processual_responsible_id);
     (procRes.data || []).forEach((p: { responsible_user_id?: string | null }) => {
       if (p.responsible_user_id) out.add(p.responsible_user_id);
     });
+
+    // Acolhedor é texto livre no lead; a resolução para user_id (nome completo,
+    // ou primeiro nome quando não é ambíguo) vive no Postgres.
+    if (lead?.acolhedor && lead.acolhedor.trim()) {
+      const { data: acolhedorId, error } = await supabase.rpc('wa_resolve_acolhedor', { p_name: lead.acolhedor });
+      if (error) {
+        console.error('[wa-push] wa_resolve_acolhedor falhou:', error.message);
+      } else if (acolhedorId) {
+        out.add(acolhedorId as unknown as string);
+      }
+    }
   } catch (e) {
     console.error('[wa-push] falha ao resolver responsáveis do grupo:', e);
   }
@@ -219,19 +237,27 @@ export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Prom
     if (!convDigits) return;
 
     // ---- Destinatários ------------------------------------------------------
+    // Regra (definida com o Raym em 04/08/2026):
+    //   conversa PRIVADA → dono da instância;
+    //   GRUPO            → responsável do processo ou acolhedor do lead, e só.
+    // O dono não recebe o que passa nos grupos: grupo é ~94% do volume.
     const ownerIds = new Set<string>();
     const groupIds = new Set<string>();
 
-    const { data: inst } = await supabase
-      .from('whatsapp_instances')
-      .select('owner_user_id')
-      .eq('instance_name', input.instanceName)
-      .maybeSingle();
-    const ownerId = (inst as { owner_user_id?: string | null } | null)?.owner_user_id ?? null;
-    if (ownerId) ownerIds.add(ownerId);
+    // JID de grupo é gravado só em dígitos (18, começando em 1203) — a flag do
+    // webhook é a fonte primária, o formato é a rede de segurança.
+    const isGroupMsg = input.isGroup || convDigits.startsWith('1203') || convDigits.length >= 17;
 
-    if (input.isGroup) {
+    if (isGroupMsg) {
       (await resolveGroupResponsibles(convDigits, input.leadId)).forEach((id) => groupIds.add(id));
+    } else {
+      const { data: inst } = await supabase
+        .from('whatsapp_instances')
+        .select('owner_user_id')
+        .eq('instance_name', input.instanceName)
+        .maybeSingle();
+      const ownerId = (inst as { owner_user_id?: string | null } | null)?.owner_user_id ?? null;
+      if (ownerId) ownerIds.add(ownerId);
     }
 
     const allIds = Array.from(new Set([...ownerIds, ...groupIds]));

@@ -17,8 +17,8 @@ import { Loader2, MessageSquare, Save, Moon, Users, Smartphone, Info } from 'luc
  * vira notificação nativa no aparelho, com link direto pra conversa no WhatsJUD.
  *
  * Escopo de quem recebe é fixo por regra de negócio, não é escolha da tela:
- *   - a instância da qual a pessoa é dona;
- *   - os grupos de processo dos quais ela é responsável.
+ *   - conversa PRIVADA → dono da instância que recebeu;
+ *   - GRUPO → só quem é responsável pelo processo ou acolhedor do lead.
  * A tela só liga/desliga cada um desses canais e ajusta volume e horário.
  */
 
@@ -164,11 +164,11 @@ export function WhatsAppPushSettings() {
           <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
             <div className="min-w-0">
               <Label className="text-sm font-medium flex items-center gap-1.5">
-                <Smartphone className="h-3.5 w-3.5" /> Minha instância
+                <Smartphone className="h-3.5 w-3.5" /> Conversas privadas da minha instância
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
                 {scopeSummary
-                  ? <>Mensagens que chegam em <b className="text-foreground">{scopeSummary}</b>.</>
+                  ? <>Mensagens diretas (não de grupo) que chegam em <b className="text-foreground">{scopeSummary}</b>.</>
                   : 'Você ainda não consta como dono de nenhuma instância — peça à diretoria para definir isso em Instâncias.'}
               </p>
             </div>
@@ -181,10 +181,11 @@ export function WhatsAppPushSettings() {
           <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
             <div className="min-w-0">
               <Label className="text-sm font-medium flex items-center gap-1.5">
-                <Users className="h-3.5 w-3.5" /> Grupos dos meus processos
+                <Users className="h-3.5 w-3.5" /> Meus grupos de cliente
               </Label>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Grupos de clientes cujo processo tem você como responsável.
+                Só os grupos em que você é responsável pelo processo ou acolhedor do lead.
+                Grupo em que você só participa não notifica.
               </p>
             </div>
             <Switch
