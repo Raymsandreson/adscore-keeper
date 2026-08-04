@@ -5,10 +5,12 @@ import { HelpCircle, Lightbulb, X, ChevronLeft, ChevronRight } from "lucide-reac
 import { Button } from "@/components/ui/button";
 import { findGuideForPath } from "@/config/featureGuides";
 import { useAuthContext } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { externalSupabase, ensureExternalSession } from "@/integrations/supabase/external-client";
 import { cn } from "@/lib/utils";
 
 const STORAGE_KEY = "feature_guides_dismissed_v1";
+/** Chave especial: "Não exibir mais" vale pra todos os tours, não só o da tela atual */
+const ALL = "*";
 
 // Cache em memória: garante que "Não exibir mais" valha na sessão atual mesmo
 // quando o localStorage falha (preview/iframe do Lovable com storage de terceiros
@@ -33,6 +35,12 @@ function saveDismissed(map: Record<string, boolean>) {
   } catch {
     // storage indisponível (iframe/preview, modo privado): fica só em memória
   }
+}
+
+/** Dispensado se o usuário desligou todos os tours ou este em específico */
+function isDismissed(guideId: string): boolean {
+  const map = readDismissed();
+  return !!map[ALL] || !!map[guideId];
 }
 
 interface TourStep {
@@ -106,7 +114,8 @@ function findTargetForLabel(label: string, selector?: string): HTMLElement | nul
  * Tour guiado das funcionalidades da seção atual: um balão por botão, com
  * Anterior/Próximo, destacando o elemento real na tela (spotlight). Abre
  * sozinho ao entrar numa seção com guia cadastrado (src/config/featureGuides.ts)
- * até o usuário clicar em "Não exibir mais". O "?" flutuante reabre o tour.
+ * até o usuário clicar em "Não exibir mais" — que desliga a abertura automática
+ * de todos os tours, não só o da tela. O "?" flutuante reabre o tour sob demanda.
  */
 export function FeatureGuidePopup() {
   const { pathname } = useLocation();
@@ -118,6 +127,9 @@ export function FeatureGuidePopup() {
   // true quando o destaque caiu num botão "revelador" (o recurso fica dentro dele)
   const [viaReveal, setViaReveal] = useState(false);
   const targetRef = useRef<HTMLElement | null>(null);
+  // Guia da tela atual pro sync assíncrono não fechar/deixar aberto o tour errado
+  const guideIdRef = useRef<string | undefined>(guide?.id);
+  guideIdRef.current = guide?.id;
 
   const steps: TourStep[] = guide
     ? [
@@ -137,37 +149,42 @@ export function FeatureGuidePopup() {
 
   useEffect(() => {
     if (!guide) return;
-    if (readDismissed()[guide.id]) return;
+    if (isDismissed(guide.id)) return;
     setStepIndex(0);
     setOpen(true);
     // Reabre só quando muda de seção (guide.id), não a cada re-render
   }, [guide?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sincroniza as dispensas persistidas no Cloud com o cache local ao logar.
-  // Cobre troca de dispositivo / cache limpo: se o servidor já registrou a
-  // dispensa, o tour não reabre mesmo que o localStorage não soubesse. Degrada
-  // em silêncio se a tabela ainda não existir (segue no localStorage/cache).
+  // Sincroniza as dispensas persistidas no servidor com o cache local ao logar.
+  // Cobre troca de dispositivo / cache limpo / storage bloqueado no preview: se
+  // o servidor já registrou a dispensa, o tour não reabre mesmo que o
+  // localStorage não soubesse. Degrada em silêncio se a consulta falhar.
   useEffect(() => {
     const uid = user?.id;
     if (!uid) return;
     let cancelled = false;
-    // Cast: a tabela é nova e ainda não está nos tipos gerados (types.ts).
-    (supabase as any)
-      .from("feature_guide_dismissals")
-      .select("guide_id")
-      .then(({ data, error }: { data: Array<{ guide_id: string }> | null; error: unknown }) => {
-        if (cancelled || error || !data) return;
-        const map = readDismissed();
-        let changed = false;
-        for (const row of data) {
-          if (row?.guide_id && !map[row.guide_id]) {
-            map[row.guide_id] = true;
-            changed = true;
-          }
+    (async () => {
+      // RLS do Externo exige sessão (anônima) pronta, senão volta 0 linhas calado.
+      await ensureExternalSession();
+      // Cast: a tabela é nova e ainda não está nos tipos gerados (types.ts).
+      const { data, error } = await (externalSupabase as any)
+        .from("feature_guide_dismissals")
+        .select("guide_id")
+        .eq("user_id", uid); // policy é aberta a authenticated: filtrar aqui
+      if (cancelled || error || !data) return;
+      const map = readDismissed();
+      let changed = false;
+      for (const row of data as Array<{ guide_id: string }>) {
+        if (row?.guide_id && !map[row.guide_id]) {
+          map[row.guide_id] = true;
+          changed = true;
         }
-        if (changed) saveDismissed(map);
-        if (guide && map[guide.id]) setOpen(false);
-      });
+      }
+      if (changed) saveDismissed(map);
+      if (guideIdRef.current && isDismissed(guideIdRef.current)) setOpen(false);
+    })().catch(() => {
+      // sem sessão externa / offline: segue no localStorage
+    });
     return () => {
       cancelled = true;
     };
@@ -232,23 +249,32 @@ export function FeatureGuidePopup() {
 
   if (!guide) return null;
 
+  /** "Não exibir mais" = nenhum tour abre sozinho de novo (o "?" ainda reabre sob demanda) */
   const dismissForever = () => {
     const map = readDismissed();
+    map[ALL] = true;
     map[guide.id] = true;
     saveDismissed(map);
     setOpen(false);
-    // Persiste no Cloud pra sobreviver a cache limpo / outro dispositivo.
-    // Fire-and-forget: se falhar (offline, tabela ausente), o local já garante
-    // a dispensa nesta sessão. Cast porque a tabela ainda não está nos tipos.
+    // Persiste no servidor pra sobreviver a cache limpo / outro dispositivo.
+    // Fire-and-forget: se falhar (offline), o local já garante a dispensa nesta
+    // sessão. Cast porque a tabela ainda não está nos tipos gerados.
     const uid = user?.id;
-    if (uid) {
-      (supabase as any)
-        .from("feature_guide_dismissals")
-        .upsert({ user_id: uid, guide_id: guide.id }, { onConflict: "user_id,guide_id" })
-        .then(({ error }: { error: unknown }) => {
-          if (error) console.warn("[FeatureGuide] persistir dispensa falhou:", error);
-        });
-    }
+    if (!uid) return;
+    ensureExternalSession()
+      .then(() =>
+        (externalSupabase as any)
+          .from("feature_guide_dismissals")
+          // ignoreDuplicates: vira ON CONFLICT DO NOTHING — não depende de UPDATE
+          .upsert([{ user_id: uid, guide_id: ALL }, { user_id: uid, guide_id: guide.id }], {
+            onConflict: "user_id,guide_id",
+            ignoreDuplicates: true,
+          })
+      )
+      .then((res: { error?: unknown } | void) => {
+        if (res && res.error) console.warn("[FeatureGuide] persistir dispensa falhou:", res.error);
+      })
+      .catch((e: unknown) => console.warn("[FeatureGuide] persistir dispensa falhou:", e));
   };
 
   const step = steps[stepIndex];
