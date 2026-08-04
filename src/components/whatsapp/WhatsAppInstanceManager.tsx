@@ -25,6 +25,8 @@ interface Instance {
   base_url: string | null;
   owner_phone: string | null;
   owner_name: string | null;
+  /** Dono no sistema — quem recebe o push de mensagem nova desta instância. */
+  owner_user_id?: string | null;
   is_active: boolean | null;
   is_paused: boolean;
   receive_leads: boolean | null;
@@ -48,6 +50,13 @@ interface VoiceOption {
   type: 'preset' | 'custom';
 }
 
+/** Candidato a dono de instância: quem já tem acesso a alguma instância. */
+interface MemberOption {
+  user_id: string;
+  full_name: string | null;
+  email: string | null;
+}
+
 interface FormData {
   instance_name: string;
   instance_token: string;
@@ -66,6 +75,7 @@ const emptyForm: FormData = {
 
 export function WhatsAppInstanceManager() {
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [members, setMembers] = useState<MemberOption[]>([]);
   const [agents, setAgents] = useState<AgentOption[]>([]);
   const [voices, setVoices] = useState<VoiceOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -189,6 +199,34 @@ export function WhatsAppInstanceManager() {
   }, []);
 
   useEffect(() => { fetchInstances(); }, [fetchInstances]);
+
+  // Candidatos a dono da instância. Os perfis moram no Cloud (o Externo só tem
+  // 34 dos 56 que têm acesso), então cruzamos: acesso vem do Externo, nome vem
+  // do Cloud. Sem o cruzamento a lista viraria a base inteira de profiles.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        await ensureExternalSession().catch(() => {});
+        const { data: access } = await ext.from('whatsapp_instance_users').select('user_id');
+        const ids = Array.from(
+          new Set(((access || []) as Array<{ user_id: string | null }>).map(a => a.user_id).filter(Boolean))
+        ) as string[];
+        if (ids.length === 0 || cancelled) return;
+
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', ids)
+          .order('full_name');
+        if (cancelled) return;
+        setMembers(((profs || []) as MemberOption[]).filter(p => p.user_id));
+      } catch (e) {
+        console.error('[instances] falha ao carregar candidatos a dono:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const openCreate = () => {
     setEditingId(null);
@@ -444,6 +482,45 @@ export function WhatsAppInstanceManager() {
                       </div>
                     )}
                     {/* Voice moved to team member profile */}
+                    {/* Dono no sistema — define quem recebe o push de mensagem nova
+                        desta instância. Diferente de "Telefone do Dono", que é só
+                        rótulo e não casa com o perfil em 15 das 26 instâncias. */}
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-muted-foreground">👤 Dono no sistema:</span>
+                      <Select
+                        value={(inst as any).owner_user_id || 'none'}
+                        onValueChange={async (value) => {
+                          const next = value === 'none' ? null : value;
+                          const previous = (inst as any).owner_user_id ?? null;
+                          setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, owner_user_id: next } as any : i));
+                          const { error } = await ext
+                            .from('whatsapp_instances')
+                            .update({ owner_user_id: next } as any)
+                            .eq('id', inst.id);
+                          if (error) {
+                            toast.error('Erro ao definir o dono');
+                            setInstances(prev => prev.map(i => i.id === inst.id ? { ...i, owner_user_id: previous } as any : i));
+                          } else {
+                            toast.success(next ? 'Dono definido' : 'Dono removido');
+                          }
+                        }}
+                      >
+                        <SelectTrigger className="h-7 text-xs w-48">
+                          <SelectValue placeholder="Ninguém" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Ninguém</SelectItem>
+                          {members.map(m => (
+                            <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || m.email || m.user_id}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!(inst as any).owner_user_id && (
+                        <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-400/50">
+                          sem push de mensagem
+                        </Badge>
+                      )}
+                    </div>
                     {/* Notify on disconnect toggle */}
                     <div className="mt-2 flex items-center gap-2">
                       <span className="text-xs text-muted-foreground">🔔 Alertar ao desconectar:</span>
