@@ -23,7 +23,11 @@ const _originalFetch = globalThis.fetch;
 globalThis.fetch = async function retryingFetch(input: any, init?: any): Promise<Response> {
   const url = typeof input === "string" ? input : (input as Request).url;
   const isGateway = typeof url === "string" && url.startsWith("https://connector-gateway.lovable.dev/google_drive/");
-  const maxAttempts = isGateway ? 4 : 1;
+  const maxAttempts = isGateway ? 3 : 1;
+  // Nenhuma chamada externa pode pendurar a function até o IDLE_TIMEOUT (150s).
+  // Se quem chamou não passou signal, colocamos um despertador de 40s.
+  if (init && !init.signal) init = { ...init, signal: AbortSignal.timeout(40_000) };
+  else if (!init) init = { signal: AbortSignal.timeout(40_000) };
   let lastRes: Response | null = null;
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
