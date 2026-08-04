@@ -41,10 +41,20 @@ function phoneMatches(actual: string, expected: string): boolean {
 }
 
 function extractParticipantPhones(rawParticipants: any[]): string[] {
+  // UazAPI devolve participantes como LID (ex: JID "82214297542836@lid") com o
+  // telefone real em PhoneNumber ("5586...@s.whatsapp.net"). Dígitos de LID não
+  // são telefone — comparar com eles cega a verificação de membros.
+  const isLid = (v: unknown) => typeof v === 'string' && v.endsWith('@lid')
   return (rawParticipants || [])
-    .map((participant: any) => normalizePhone(
-      participant?.id || participant?.jid || participant?.participant || participant?.phone || participant?.user || participant
-    ))
+    .map((participant: any) => {
+      const candidates = [
+        participant?.PhoneNumber, participant?.phone,
+        participant?.JID, participant?.jid, participant?.id,
+        participant?.participant, participant?.user, participant,
+      ]
+      const usable = candidates.find((c) => c && typeof c === 'string' && !isLid(c))
+      return normalizePhone(usable)
+    })
     .filter(Boolean)
 }
 
@@ -1466,6 +1476,8 @@ Deno.serve(async (req) => {
     // STEP 3: Verify & re-add missing participants
     let participantsCount = participantsToCreate.length
     let verificationWarning: string | null = null
+    // Faltantes confirmados após re-add (vazio quando a verificação não foi conclusiva)
+    let missingAfterVerify: string[] = []
 
     diagnostics.push(await runStep('verify_participants', async () => {
       let groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
@@ -1490,6 +1502,16 @@ Deno.serve(async (req) => {
         // Re-verify
         await sleep(2000)
         groupInfo = await fetchGroupInfo(baseUrl, creatorInstance.instance_token, groupId)
+      }
+
+      if (groupInfo) {
+        const finalPhones = extractParticipantPhones(groupInfo.participants || [])
+        missingAfterVerify = participantsToCreate.filter(
+          (p) => !finalPhones.some((ap) => phoneMatches(ap, p))
+        )
+        if (missingAfterVerify.length > 0) {
+          console.warn(`[verify] ${missingAfterVerify.length} participants still missing after re-add:`, missingAfterVerify)
+        }
       }
 
       const matchedParticipants = countMatchedParticipants(groupInfo?.participants || [], participantsToCreate)
@@ -1529,6 +1551,46 @@ Deno.serve(async (req) => {
         }
       } else {
         console.warn('[invite] Failed to get invite code:', inviteRes.status, await inviteRes.text())
+      }
+    }))
+
+    // STEP 4.5: Convite privado pra equipe que não pôde ser adicionada
+    // (privacidade "só contatos podem adicionar" etc.). Nunca o cliente — ele
+    // recebe o link no STEP 6. Só roda com verificação conclusiva do STEP 3.
+    let invitedViaLink: string[] = []
+    diagnostics.push(await runStep('invite_missing_team', async () => {
+      if (!groupInviteLink || missingAfterVerify.length === 0) return
+      const clientPhone = normalizePhone(contact_phone || phone)
+      const teamMissing = missingAfterVerify
+        .filter((p) => p && !phoneMatches(p, clientPhone))
+        .slice(0, 6)
+      if (teamMissing.length === 0) return
+
+      const inviteMessage = `⚠️ Não consegui te adicionar automaticamente ao grupo *${groupName}*.\n\nEntre pelo link:\n${groupInviteLink}`
+      for (const teamPhone of teamMissing) {
+        try {
+          const sendRes = await fetch(`${baseUrl}/send/text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'token': creatorInstance.instance_token },
+            body: JSON.stringify({ number: teamPhone, text: inviteMessage }),
+          })
+          if (sendRes.ok) {
+            invitedViaLink.push(teamPhone)
+            console.log(`[invite-team] Invite link sent to missing participant ${teamPhone}`)
+            await supabase.from('whatsapp_messages').insert({
+              instance_name: creatorInstance.instance_name,
+              phone: teamPhone,
+              message_text: inviteMessage,
+              message_type: 'text',
+              direction: 'outbound',
+              lead_id: leadData?.id || null,
+            } as any)
+          } else {
+            console.warn(`[invite-team] Failed to send invite to ${teamPhone}:`, sendRes.status)
+          }
+        } catch (e) {
+          console.warn(`[invite-team] Error sending invite to ${teamPhone}:`, e)
+        }
       }
     }))
 
@@ -1667,7 +1729,6 @@ Deno.serve(async (req) => {
           message_text: linkMessage,
           message_type: 'text',
           direction: 'outbound',
-          sender_name: 'Sistema',
           lead_id: leadData?.id || null,
           contact_id: leadData?.contact_id || null,
         } as any)
@@ -1835,7 +1896,6 @@ Deno.serve(async (req) => {
           message_text: summaryMessage,
           message_type: 'text',
           direction: 'outbound',
-          sender_name: 'Sistema',
           lead_id: leadData?.id || null,
         } as any)
       } else {
@@ -1944,6 +2004,8 @@ Deno.serve(async (req) => {
       group_name: groupName,
       group_link: groupInviteLink || undefined,
       participants_count: participantsCount,
+      missing_participants: missingAfterVerify.length > 0 ? missingAfterVerify : undefined,
+      invited_via_link: invitedViaLink.length > 0 ? invitedViaLink : undefined,
       warning: verificationWarning || undefined,
       steps_total: diagnostics.length,
       steps_failed: failedSteps.length,
