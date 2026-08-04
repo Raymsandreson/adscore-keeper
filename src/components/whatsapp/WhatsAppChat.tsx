@@ -25,6 +25,7 @@ import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
+import { quoteInTeamChat, formatQuotedMessages } from '@/lib/teamChatQuoteEvents';
 import { MediaLightbox } from './MediaLightbox';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -544,6 +545,41 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
     };
   };
+  /** Manda mensagem(ns) do cliente para o chat interno como citação. */
+  const commentInTeamChat = useCallback((msgs: any[]) => {
+    const quote = formatQuotedMessages(
+      msgs
+        .filter((m: any) => m && m.message_text)
+        .map((m: any) => {
+          let when = '';
+          try { when = format(new Date(m.created_at), 'dd/MM HH:mm', { locale: ptBR }); } catch { /* sem data */ }
+          return {
+            who: m.direction === 'outbound' ? 'Nós' : (conversation.contact_name || 'Cliente'),
+            when,
+            text: m.message_text as string,
+          };
+        })
+    );
+    if (!quote) {
+      toast.error('Essa mensagem não tem texto para comentar.');
+      return;
+    }
+    setTeamChatOpen(true);
+    try { localStorage.setItem('wa-conversation-team-chat', '1'); } catch { /* ok */ }
+    quoteInTeamChat({ entityType: 'whatsapp', entityId: conversation.phone, text: quote });
+  }, [conversation.phone, conversation.contact_name]);
+
+  const handleCommentSelectionInTeamChat = () => {
+    const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
+    const picked = textSelectionOrder.map(id => msgMap.get(id)).filter(Boolean);
+    if (picked.length === 0) {
+      toast.error('Selecione ao menos uma mensagem com texto.');
+      return;
+    }
+    commentInTeamChat(picked);
+    exitTextSelection();
+  };
+
   const handleCreateActivityFromSelection = () => {
     if (!onCreateActivity || textSelectionOrder.length === 0) return;
     const prefill = buildTextSelectionPrefill();
@@ -3188,6 +3224,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           <Button size="sm" variant="outline" onClick={exitTextSelection}>Cancelar</Button>
           <Button
             size="sm"
+            variant="outline"
+            disabled={selectedTextMsgIds.size === 0}
+            onClick={handleCommentSelectionInTeamChat}
+            className="gap-1"
+            title="Levar as mensagens marcadas para o chat interno da equipe"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Comentar com a equipe
+          </Button>
+          <Button
+            size="sm"
             disabled={selectedTextMsgIds.size === 0 || !onCreateActivity}
             onClick={handleCreateActivityFromSelection}
             className="gap-1"
@@ -3958,7 +4004,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     )}>
                       <button
                         type="button"
-                        title={selectedTextMsgIds.has(msg.id) ? `Posição #${getTextSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para criar atividade'}
+                        title={selectedTextMsgIds.has(msg.id) ? `Posição #${getTextSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar mensagem (criar atividade ou comentar com a equipe)'}
                         onClick={(e) => {
                           e.stopPropagation();
                           setTextSelectionMode(true);
@@ -4007,6 +4053,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           )}
                         >
                           <Sparkles className="h-3 w-3" /> Responder c/ IA
+                        </button>
+                      )}
+                      {!textSelectionMode && (
+                        <button
+                          type="button"
+                          title="Comentar esta mensagem no chat interno da equipe"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            commentInTeamChat([msg]);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                            msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                          )}
+                        >
+                          <MessageSquare className="h-3 w-3" /> Comentar
                         </button>
                       )}
                       {onCreateActivity && !textSelectionMode && (

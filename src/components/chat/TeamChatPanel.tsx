@@ -13,6 +13,7 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
+import { consumePendingTeamChatQuote, subscribeToTeamChatQuote } from '@/lib/teamChatQuoteEvents';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface TeamChatPanelProps {
@@ -53,6 +54,19 @@ function playUrgentBeep() {
   } catch {
     /* silêncio se o navegador bloquear áudio */
   }
+}
+
+/** Separa o bloco citado ("> …") do texto que a pessoa escreveu. */
+function splitQuotedLines(content: string) {
+  const lines = (content || '').split('\n');
+  const quotedLines: string[] = [];
+  const bodyLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('>')) quotedLines.push(line.replace(/^>\s?/, ''));
+    else bodyLines.push(line);
+  }
+  if (quotedLines.length === 0) return { quoted: '', body: content };
+  return { quoted: quotedLines.join('\n').trim(), body: bodyLines.join('\n').trim() };
 }
 
 function formatDuration(seconds?: number | null) {
@@ -121,6 +135,30 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       }
     }
   }, [messages, loading, user?.id]);
+
+  /** Cola no rascunho a mensagem que veio de fora (ex.: bolha do WhatsApp). */
+  const appendQuote = useCallback((quote: string) => {
+    if (!quote.trim()) return;
+    setInputText(prev => {
+      const next = prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${quote}\n` : `${quote}\n`;
+      sessionStorage.setItem(draftKey, next);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [draftKey]);
+
+  // A citação pode chegar antes do painel montar (o clique é que abre o painel),
+  // por isso o intent pendente é consumido no primeiro render.
+  useEffect(() => {
+    const pendingQuote = consumePendingTeamChatQuote(entityType, entityId);
+    if (pendingQuote) appendQuote(pendingQuote.text);
+    return subscribeToTeamChatQuote(entityType, entityId, intent => appendQuote(intent.text));
+  }, [entityType, entityId, appendQuote]);
 
   const filteredMembers = useMemo(() => {
     if (!mentionFilter) return members.filter(m => m.user_id !== user?.id);
@@ -541,11 +579,30 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                   )}
                   {hasAttachment(msg.message_type) ? (
                     renderAttachment(msg, isMe)
-                  ) : (
-                    <p className="whitespace-pre-wrap break-words text-[13px]">
-                      {renderContent(msg.content, isMe)}
-                    </p>
-                  )}
+                  ) : (() => {
+                    // Linhas iniciadas por ">" são mensagem citada — vão para um
+                    // bloco próprio, como no WhatsApp, para não virar texto solto.
+                    const { quoted, body } = splitQuotedLines(msg.content);
+                    return (
+                      <>
+                        {quoted && (
+                          <div className={cn(
+                            'mb-1 border-l-2 pl-2 py-0.5 rounded-r text-[11px] whitespace-pre-wrap break-words',
+                            isMe
+                              ? 'border-primary-foreground/50 bg-primary-foreground/10 text-primary-foreground/85'
+                              : 'border-primary/50 bg-background/60 text-muted-foreground'
+                          )}>
+                            {quoted}
+                          </div>
+                        )}
+                        {body && (
+                          <p className="whitespace-pre-wrap break-words text-[13px]">
+                            {renderContent(body, isMe)}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                   <div className={cn('text-[9px] mt-0.5', isMe ? 'text-primary-foreground/60 text-right' : 'text-muted-foreground')}>
                     {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
                   </div>
