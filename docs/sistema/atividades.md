@@ -63,6 +63,17 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
 
+### Trabalho sem atividade aberta — guarda-chuvas do dia
+
+Sem atividade vinculada, todo segundo cai na linha de gap e conta como **ocioso** (regra do `ActivityTimerContext`). Duas frentes de trabalho não têm atividade própria e ganham uma **atividade guarda-chuva por dia** — interna (`is_management`), atribuída a quem executou, uma linha reaproveitada o dia todo:
+
+| Guarda-chuva | O que liga o cronômetro | Onde |
+|---|---|---|
+| `Atendimento WhatsApp — DD/MM/AAAA` | cada mensagem enviada a cliente | `useWhatsAppTimeTracker` (chat do WhatsApp) |
+| `Controle Financeiro — DD/MM/AAAA` | cada registro gravado: categorizar transação (pendentes, banco, cartão, investimentos, empréstimos) e salvar lançamento financeiro — na página Financeiro ou na aba Financeiro da ficha do lead | `useFinanceTimeTracker` (`trackFinanceEntry`, gatilhos em `useExpenseCategories.setTransactionOverride`, `FinancialEntryForm` e `LeadFinancialsTab`) |
+
+Regras iguais nas duas: atividade específica aberta (um caso) tem prioridade e não é interrompida; pausa/almoço é respeitada; **5 min sem nenhuma ação da frente → o watchdog pausa a guarda-chuva e a pessoa volta a ocioso**, mesmo que continue mexendo no sistema. Os dois watchdogs ficam montados no `ActivityTimerOverlay`. Excluir lançamento não conta como registro.
+
 ### Painel "Time agora" (`TeamTimersPanel`)
 
 Abre pelo badge do cronômetro; agrupa por time (Gestão no topo) e atualiza a cada 20s lendo `activity_time_entries` do dia (`work_date`). Filtros por status:
