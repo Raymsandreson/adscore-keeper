@@ -71,9 +71,9 @@ export function useTeamMembers() {
     if (membersCache) return;
     if (!membersPromise) {
       // profiles continua no Cloud
-      membersPromise = supabase
+      membersPromise = Promise.resolve(supabase
         .from('profiles')
-        .select('user_id, full_name, email')
+        .select('user_id, full_name, email'))
         .then(({ data }) => {
           membersCache = data || [];
           return membersCache;

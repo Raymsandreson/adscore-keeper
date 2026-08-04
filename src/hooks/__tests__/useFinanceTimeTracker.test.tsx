@@ -9,7 +9,7 @@ import { renderHook } from '@testing-library/react';
 
 const startTimer = vi.fn(async () => {});
 const stopTimerFor = vi.fn(async () => {});
-const createActivity = vi.fn(async () => ({ id: 'nova-guarda-chuva' }));
+const createActivity = vi.fn(async (..._args: any[]) => ({ id: 'nova-guarda-chuva' }));
 
 // Cronômetro atual — cada teste ajusta antes de renderizar o bridge.
 let currentTimer: { kind: string; activityId: string | null; activityTitle: string } | null = null;

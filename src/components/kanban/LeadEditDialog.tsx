@@ -429,7 +429,7 @@ export function LeadEditDialog({
   // Externo antes de preencher o formulário.
   const [hydratedLead, setHydratedLead] = useState<Lead | null>(null);
   const [hydrationTick, setHydrationTick] = useState(0);
-  const isThinLead = !!lead && !('board_id' in (lead as Record<string, unknown>));
+  const isThinLead = !!lead && !('board_id' in (lead as unknown as Record<string, unknown>));
   const hydrating = isThinLead && (!hydratedLead || hydratedLead.id !== lead?.id);
   const currentLead = (hydratedLead && lead && hydratedLead.id === lead.id) ? hydratedLead : lead;
 
