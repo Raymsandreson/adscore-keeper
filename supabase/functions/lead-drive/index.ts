@@ -1349,4 +1349,32 @@ Cruze todos os documentos acima e devolva o valor consolidado de cada campo, cit
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }
+}
+
+// Teto global: o runtime derruba a requisição com 504 aos 150s (IDLE_TIMEOUT).
+// Aqui a gente devolve uma resposta útil aos 120s em vez de deixar estourar.
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  let timer: number | undefined;
+  const deadline = new Promise<Response>((resolve) => {
+    timer = setTimeout(() => {
+      console.error("[lead-drive] soft deadline 120s atingido — devolvendo timeout controlado");
+      resolve(new Response(
+        JSON.stringify({
+          success: false,
+          ok: false,
+          error: "timeout: a operação passou de 120s (arquivo muito grande ou Google Drive lento). Tente novamente ou use um arquivo menor.",
+          code: "SOFT_TIMEOUT",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      ));
+    }, 120_000);
+  });
+
+  try {
+    return await Promise.race([handleRequest(req), deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 });
