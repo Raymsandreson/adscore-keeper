@@ -2176,14 +2176,19 @@ export function ContactsListPage() {
                   window.addEventListener('mousemove', onMove);
                   window.addEventListener('mouseup', onUp);
                 };
-                const ResizeHandle = ({ col }: { col: string }) => (
+                // ATENÇÃO: estes são helpers que retornam JSX e são CHAMADOS como
+                // função (headerCell({...})), não instanciados como <HeaderCell />.
+                // Como estão definidos dentro do render, usá-los como componente
+                // cria um tipo novo a cada render, o React remonta a subárvore e o
+                // <Input> do filtro perde o foco a cada tecla digitada.
+                const resizeHandle = (col: string) => (
                   <span
                     onMouseDown={(e) => startResize(col, e)}
                     className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize hover:bg-primary/40 active:bg-primary/60"
                     aria-label={`Redimensionar ${col}`}
                   />
                 );
-                const HeaderCell = ({ col, label, title, align }: { col: string; label: string; title?: string; align?: 'left'|'center' }) => (
+                const headerCell = ({ col, label, title, align }: { col: string; label: string; title?: string; align?: 'left'|'center' }) => (
                   <div className="relative pr-2" style={{ textAlign: align || 'left' }}>
                     <div className="text-[11px] font-medium text-muted-foreground truncate" title={title || label}>{label}</div>
                     {auditColFilter[col] !== undefined && (
@@ -2194,7 +2199,7 @@ export function ContactsListPage() {
                         className="h-6 text-[11px] mt-1 px-1.5"
                       />
                     )}
-                    <ResizeHandle col={col} />
+                    {resizeHandle(col)}
                   </div>
                 );
 
@@ -2234,12 +2239,12 @@ export function ContactsListPage() {
                     </div>
                     <div className="grid gap-2 px-3 py-2 border-b items-start" style={{ gridTemplateColumns: gridTemplate }}>
                       <div className="relative"><span></span></div>
-                      <HeaderCell col="leadN" label="Nº lead" title="Sequência do lead (LEAD-N(PFX))" />
-                      <HeaderCell col="caseN" label="Nº caso" title="Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis." />
-                      <HeaderCell col="groupName" label="Nome do grupo" />
-                      <HeaderCell col="leadName" label="Nome do lead" align="center" />
-                      <HeaderCell col="createdAt" label="Criado em" title="Data e hora de criação do grupo no WhatsApp" />
-                      <HeaderCell col="createdBy" label="Criado por" title="Telefone/instância de quem criou o grupo" />
+                      {headerCell({ col: 'leadN', label: 'Nº lead', title: 'Sequência do lead (LEAD-N(PFX))' })}
+                      {headerCell({ col: 'caseN', label: 'Nº caso', title: 'Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis.' })}
+                      {headerCell({ col: 'groupName', label: 'Nome do grupo' })}
+                      {headerCell({ col: 'leadName', label: 'Nome do lead', align: 'center' })}
+                      {headerCell({ col: 'createdAt', label: 'Criado em', title: 'Data e hora de criação do grupo no WhatsApp' })}
+                      {headerCell({ col: 'createdBy', label: 'Criado por', title: 'Telefone/instância de quem criou o grupo' })}
                       <div className="relative"><span></span></div>
                     </div>
                     {cappedAfterCols.map(group => {
