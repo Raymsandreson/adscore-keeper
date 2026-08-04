@@ -1,7 +1,8 @@
 // "Modo Corrida" do telão /tv/atividades — o ranking vira uma pista de corrida
-// cartoon. Cada assessor é um piloto numa raia; a posição do carro na pista é
-// proporcional aos PASSOS (líder mais perto da 🏁). Clicar no carro abre o
-// seletor de modelo/cor (salvo no banco por nome); clicar no nome abre a análise.
+// cartoon. Cada assessor é um piloto numa raia; a posição do carro na pista
+// segue a POSIÇÃO NO RANKING (1º colado na 🏁, último na largada). Clicar no
+// carro abre o seletor de modelo/cor (salvo no banco por nome); clicar no nome
+// abre a análise.
 //
 // Layout à prova de sobreposição: coluna fixa à esquerda (medalha + nome +
 // números, sempre 100% visível) e a raia à direita onde SÓ o carro anda.
@@ -20,6 +21,7 @@ export interface RaceRow {
   passos: number;
   concluidas: number;
   atrasadas: number;
+  doc_itens?: number;
   ativo_seg: number;
   ocioso_seg: number;
   chat_resp_seg: number | null;
@@ -51,6 +53,59 @@ const SCOPE_LABEL: Record<string, string> = {
   mes: 'por mês',
 };
 
+// Faixa útil da raia, em % da largura (o carro é posicionado pelo `left`).
+const START = 2;   // largada
+const FLOOR = 12;  // último colocado que já pontuou
+const FINISH = 80; // 1º do ranking, colado na bandeira
+
+// Pontuou = tem qualquer entrega no período. `atrasadas` não conta (é critério
+// negativo) e tempo de cronômetro também não — senão quem só ficou logado
+// largaria na frente de quem não abriu o sistema.
+function pontuou(r: RaceRow) {
+  return (r.resultado || 0) > 0 || (r.fases || 0) > 0 || (r.objetivos || 0) > 0
+    || (r.passos || 0) > 0 || (r.doc_itens || 0) > 0 || (r.concluidas || 0) > 0;
+}
+
+// Assinatura dos critérios do ranking (mesma lista do ORDER BY da RPC
+// tv_atividades_ranking). Serve só pra detectar empate REAL: dois pilotos com
+// todos os critérios iguais dividem a mesma marca na pista, em vez de um
+// aparecer na frente do outro por causa do desempate alfabético.
+function tieKey(r: RaceRow) {
+  return [
+    r.resultado, r.fases, r.objetivos, r.passos, r.doc_itens ?? 0,
+    r.concluidas, r.atrasadas, r.ativo_seg, r.ocioso_seg,
+    r.chat_resp_seg ?? -1,
+  ].join('|');
+}
+
+/**
+ * Posição de cada carro na pista (% do `left`), derivada da POSIÇÃO NO RANKING.
+ * O array chega ordenado pela RPC tv_atividades_ranking (resultado > fases >
+ * objetivos > passos > itens do checklist > concluídas > atrasadas > tempo
+ * ativo > ocioso > resposta no chat), então basta usar o índice: 1º colado na
+ * bandeira, último dos que pontuaram no piso. Antes o carro andava só por
+ * PASSOS e o 1º do ranking podia aparecer atrás do 4º na pista. Derivando do
+ * índice, qualquer mudança futura de critério na RPC aparece na corrida
+ * sozinha — sem replicar a regra de ordenação aqui.
+ */
+export function computeTrackPositions(ranking: RaceRow[]): number[] {
+  // Quem ainda não pontuou nada no período fica na largada (não "andou"), em
+  // vez de ganhar meio caminho de graça só por existir na lista. Como esses
+  // ficam sempre no fim do ranking, a escada continua íntegra.
+  const scored = ranking.filter(pontuou).length;
+  const last = Math.max(scored - 1, 1); // divisor da faixa dos que pontuaram
+  let slot = 0;      // posição efetiva; empate real herda a do anterior
+  let prev = FINISH; // trava de monotonicidade: ninguém passa quem está acima
+  return ranking.map((r, i) => {
+    if (i > 0 && tieKey(r) !== tieKey(ranking[i - 1])) slot = i;
+    const p = !pontuou(r) || slot >= scored
+      ? START
+      : Math.max(START, FINISH - (slot / last) * (FINISH - FLOOR));
+    prev = Math.min(prev, p);
+    return prev;
+  });
+}
+
 export default function WackyRaceTrack({
   ranking,
   cars,
@@ -70,17 +125,13 @@ export default function WackyRaceTrack({
   // Piloto sendo editado (nome) → abre o seletor de carro.
   const [picking, setPicking] = useState<RaceRow | null>(null);
 
-  // Líder do momento — fallback quando ainda não há recorde (meta 0), pra pista
-  // não ficar com todos empilhados na bandeira.
-  const maxP = useMemo(
-    () => Math.max(1, ...ranking.map(r => r.passos)),
-    [ranking],
-  );
-  // Linha de chegada = a META (recorde do período a bater). Sem recorde ainda
-  // (ex.: 1ª semana/mês) cai no líder atual. Progresso ∝ passos/chegada, travado
-  // na bandeira; quem iguala/supera o recorde ganha o troféu 🏆.
+  // A pista segue o RANKING, não uma métrica isolada (ver computeTrackPositions).
+  const trackPos = useMemo(() => computeTrackPositions(ranking), [ranking]);
+
+  // Recorde do período (linha de chegada simbólica): quem iguala/supera ganha o
+  // troféu 🏆 ao lado do nome. É um selo à parte — não mexe na posição do carro.
   const hasMeta = typeof meta === 'number' && meta > 0;
-  const finish = hasMeta ? (meta as number) : maxP;
+  const finish = hasMeta ? (meta as number) : 0;
   const scopeLabel = SCOPE_LABEL[periodo] ?? 'por dia';
 
   const carOf = (nome: string): CarChoice => {
@@ -96,21 +147,22 @@ export default function WackyRaceTrack({
       {/* Faixa "largada → chegada" */}
       <div className="mb-2 flex items-center justify-between px-1 text-[10px] md:text-xs font-black uppercase tracking-widest text-white/40">
         <span>🚦 Largada</span>
-        {hasMeta ? (
-          <span className="text-amber-300">
-            🏁 Meta: recorde {scopeLabel} — <b className="tabular-nums">{finish}</b> passos
-          </span>
-        ) : (
-          <span className="text-amber-300">🏁 Chegada = líder (sem recorde ainda)</span>
-        )}
+        <span className="text-amber-300">
+          🏁 Chegada = 1º do ranking
+          {hasMeta && (
+            <span className="ml-2 text-white/35">
+              · recorde {scopeLabel}: <b className="tabular-nums">{finish}</b> passos
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="space-y-1.5 md:space-y-2">
         {ranking.map((r, i) => {
           const car = carOf(r.nome);
           const model = CAR_BY_ID[car.car_id] ?? CAR_MODELS[0];
-          // Progresso ∝ passos/chegada, travado na bandeira (não passa dela).
-          const prog = 2 + Math.min(r.passos / finish, 1) * 78;
+          // Posição na pista = posição no ranking (empate divide a mesma marca).
+          const prog = trackPos[i];
           // Igualou/superou o recorde do período → bateu a meta.
           const bateu = hasMeta && r.passos >= finish;
           const CarSvg = model.Car;
@@ -188,7 +240,8 @@ export default function WackyRaceTrack({
       </div>
 
       <p className="mt-3 text-center text-[10px] md:text-xs text-white/40">
-        🏎️ Clique no <b className="text-white/60">carro</b> pra escolher o seu modelo e cor ·
+        🏁 A posição na pista segue o <b className="text-white/60">ranking</b> (1º na frente) ·
+        clique no <b className="text-white/60">carro</b> pra escolher modelo e cor ·
         clique no <b className="text-white/60">nome</b> pra analisar &amp; mandar mensagem
       </p>
 

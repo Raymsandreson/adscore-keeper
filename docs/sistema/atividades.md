@@ -144,6 +144,11 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 - Seletor de time, período "Hoje"/"Semana"/"Mês", "Atualizar", "Modo TV" (tela cheia).
 - Clique num assessor — abre o coach de desempenho ("Analisar & mandar mensagem").
 
+**Modo Corrida — posição do carro = posição no ranking** (desde 04/08/2026) — a pista lê o **índice** da lista que a RPC devolve (a mesma ordenação de 10 critérios acima), não uma métrica isolada. Antes o carro andava por `passos/recorde`, então o 1º do ranking (3 status, 0 passos) aparecia parado na largada enquanto a 4ª colocada (47 passos) liderava a pista. Como a posição vem do índice, mudar a ordenação na RPC muda a corrida sozinho — nada de replicar critério no front (`computeTrackPositions`, `WackyRaceTrack.tsx`).
+- Quem **não pontuou** nada no período (status/fases/objetivos/passos/checklist/concluídas todos zerados) fica na **largada** — tempo logado não anda o carro. Empate real (todos os critérios iguais) divide a mesma marca na pista.
+- O **recorde** do período (`meta.passos`) deixou de ser a linha de chegada e virou selo: o troféu 🏆 ao lado do nome de quem iguala/supera. A chegada agora é a liderança do ranking.
+- Regressão coberta em `src/components/tv/__tests__/WackyRaceTrack.position.test.ts`.
+
 **Coluna "STATUS ESPERADO"** (1º critério) — conta no **grão de processo**, por **responsável**, no **mês em que o resultado aconteceu** (`resultado_atingido_data`), não quando foi cadastrado:
 - Time de execução (POP): processos cujo status atingido (`lead_processes.resultado_atingido_id`, `status='confirmado'`) está entre os esperados do POP (`settings.resultado_esperado_ids` — pode ser mais de um).
 - Time comercial (funil): resultado do lead no funil de vendas (como antes).
