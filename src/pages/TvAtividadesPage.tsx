@@ -1121,6 +1121,7 @@ export default function TvAtividadesPage() {
               cars={cars}
               onSaveCar={saveCar}
               onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, ...(row as RaceRow) } as RankRow, rank })}
+              onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
               meta={data?.meta?.passos}
               periodo={period}
             />
@@ -1257,9 +1258,9 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
           <span className="ml-1 text-[10px] md:text-xs font-bold uppercase tracking-widest text-white/50">passos</span>
         </div>
         <div className="mt-1.5 flex flex-wrap items-baseline justify-center gap-x-3 gap-y-1">
-          <PodiumStat text={row.resultado ?? 0} label="status" color="text-yellow-300" />
-          <PodiumStat text={row.fases ?? 0} label="fases" color="text-amber-300" />
-          <PodiumStat text={row.objetivos ?? 0} label="objetivos" color="text-lime-400" />
+          <PodiumStat text={row.resultado ?? 0} label="status" color="text-yellow-300" onClick={() => onDetail(row, 'status', row.resultado ?? 0)} />
+          <PodiumStat text={row.fases ?? 0} label="fases" color="text-amber-300" onClick={() => onDetail(row, 'fases', row.fases ?? 0)} />
+          <PodiumStat text={row.objetivos ?? 0} label="objetivos" color="text-lime-400" onClick={() => onDetail(row, 'objetivos', row.objetivos ?? 0)} />
           <PodiumStat text={row.doc_itens ?? 0} label="checklist" color="text-fuchsia-400" />
           <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail(row, 'concluidas', row.concluidas)} />
           <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" onClick={() => onDetail(row, 'atrasadas', row.atrasadas)} />
@@ -1301,9 +1302,9 @@ function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow
         {row.nome}
         {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
       </div>
-      <Stat value={row.resultado ?? 0} label="status" color="text-yellow-300" />
-      <Stat value={row.fases ?? 0} label="fases" color="text-amber-300" />
-      <Stat value={row.objetivos ?? 0} label="obj" color="text-lime-400" />
+      <Stat value={row.resultado ?? 0} label="status" color="text-yellow-300" onClick={() => onDetail('status', row.resultado ?? 0)} />
+      <Stat value={row.fases ?? 0} label="fases" color="text-amber-300" onClick={() => onDetail('fases', row.fases ?? 0)} />
+      <Stat value={row.objetivos ?? 0} label="obj" color="text-lime-400" onClick={() => onDetail('objetivos', row.objetivos ?? 0)} />
       <Stat value={row.passos} label="passos" color="text-sky-400" onClick={() => onDetail('passos', row.passos)} />
       <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail('concluidas', row.concluidas)} />

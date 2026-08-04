@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink } from 'lucide-react';
+import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink, Target, Flag, Goal } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -7,28 +7,42 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { cn } from '@/lib/utils';
 
 // Painel lateral do telão /tv/atividades: ao clicar num chip de critério
-// (passos / concluídas / atrasadas) de uma pessoa, lista o que compôs aquele
-// número. Fonte: RPC tv_ranking_detalhe no Externo, que replica exatamente os
-// filtros do tv_atividades_ranking — a soma aqui bate com o número do telão.
+// (status / fases / objetivos / passos / concluídas / atrasadas) de uma pessoa,
+// lista o que compôs aquele número. Fonte: RPC tv_ranking_detalhe no Externo,
+// que replica exatamente os filtros do tv_atividades_ranking — a soma aqui bate
+// com o número do telão.
 
-export type DetailCriterio = 'passos' | 'concluidas' | 'atrasadas';
+export type DetailCriterio = 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas';
 
 interface DetailItem {
-  tipo: 'passo' | 'concluida' | 'atrasada';
+  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada';
   quando?: string;
   titulo: string | null;
   lead_nome?: string | null;
   lead_id?: string | null;
+  /** POP / fase / nº do processo — de onde veio o item. */
+  contexto?: string | null;
   activity_id?: string;
   deadline?: string;
   dias_atraso?: number;
 }
 
 const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: typeof ListChecks }> = {
+  status: { titulo: 'Status esperado', cor: 'text-yellow-300', Icon: Target },
+  fases: { titulo: 'Fases', cor: 'text-amber-300', Icon: Flag },
+  objetivos: { titulo: 'Objetivos', cor: 'text-lime-400', Icon: Goal },
   passos: { titulo: 'Passos', cor: 'text-sky-400', Icon: ListChecks },
   concluidas: { titulo: 'Concluídas', cor: 'text-emerald-400', Icon: CheckCircle2 },
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
 };
+
+// Alguns critérios do ranking não usam o período aberto no telão — deixar
+// explícito no cabeçalho pra ninguém achar que o número está errado.
+function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
+  if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
+  if (criterio === 'status') return 'mês corrente (o ranking conta o mês, não o período)';
+  return periodLabel;
+}
 
 interface Props {
   nome: string;
@@ -78,10 +92,7 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
             <span className="text-lg font-bold">{cfg.titulo}</span>
           </SheetTitle>
           <div className="text-left text-sm text-white/60">
-            {nome}
-            {criterio === 'atrasadas'
-              ? ' · backlog total (não filtra por período)'
-              : ` · ${periodLabel}`}
+            {nome} · {escopoLabel(criterio, periodLabel)}
           </div>
         </SheetHeader>
 
@@ -113,6 +124,7 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-white/50">
                   {it.lead_nome && <span className="truncate max-w-[14rem]">{it.lead_nome}</span>}
+                  {it.contexto && <span className="truncate max-w-[12rem] text-white/35">{it.contexto}</span>}
                   {it.tipo === 'atrasada' ? (
                     <>
                       {it.deadline && <span>prazo {format(new Date(`${it.deadline}T00:00:00`), 'dd/MM/yyyy', { locale: ptBR })}</span>}
