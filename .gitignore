@@ -39,3 +39,11 @@ supabase/.temp/
 
 # Pacote de depósito INPI (guardar fora do repo)
 inpi-deposito-*.zip
+
+# Ferramentas e artefatos de deploy ad-hoc na raiz (uso único, ficam só no disco).
+# Os _backup_* são snapshots de versões já deployadas — envelhecem rápido e não
+# valem versionamento: a fonte da verdade de uma edge é o código em
+# supabase/functions/ + a versão ativa no Supabase.
+_apply_*.mjs
+_deploy_*.mjs
+_backup_*
