@@ -2577,8 +2577,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   return (
     <div className="flex h-full min-w-0">
     <div className="flex flex-col h-full flex-1 min-w-0">
-      {/* Chat Header */}
-      <div className="flex items-center gap-2 md:gap-3 p-3 border-b bg-card shrink-0">
+      {/* Chat Header — os botões de ação quebram para a linha de baixo quando a
+          largura aperta (ex.: chat interno aberto). Nada pode cobrir o nome. */}
+      <div className="flex flex-wrap items-start gap-2 md:gap-3 p-3 border-b bg-card shrink-0">
         {onBack && (
           <Button variant="ghost" size="icon" className="md:hidden h-8 w-8 shrink-0" onClick={onBack}>
             <ArrowLeft className="h-4 w-4" />
@@ -2587,8 +2588,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
           <User className="h-5 w-5 text-green-600" />
         </div>
-        <div className="flex-1 min-w-0">
-          <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
+        <div className="flex-1 min-w-0 basis-[220px]">
+          <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm max-w-full" as="p" truncate>
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
@@ -2660,7 +2661,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1 shrink-0 ml-auto">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
           {isMuted && (
             <Badge variant="outline" className="text-[9px] gap-1 text-destructive border-destructive/30 px-1.5 py-0 cursor-pointer" onClick={() => handleToggleMute(null)}>

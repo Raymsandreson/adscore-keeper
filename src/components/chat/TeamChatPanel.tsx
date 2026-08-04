@@ -155,6 +155,34 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     setMentionStartIndex(-1);
   };
 
+  /** Todos os membros menos eu — quem "@todos" alcança. */
+  const everyoneElseIds = useMemo(
+    () => members.filter(m => m.user_id !== user?.id).map(m => m.user_id),
+    [members, user?.id]
+  );
+
+  /** A opção "@todos" só aparece quando o que foi digitado depois do @ combina. */
+  const showEveryoneOption = useMemo(() => {
+    if (everyoneElseIds.length === 0) return false;
+    const f = mentionFilter.toLowerCase();
+    return f === '' || 'todos'.startsWith(f) || 'equipe'.startsWith(f) || 'all'.startsWith(f);
+  }, [mentionFilter, everyoneElseIds.length]);
+
+  const insertEveryoneMention = () => {
+    const before = inputText.slice(0, mentionStartIndex);
+    const after = inputText.slice(inputRef.current?.selectionStart || inputText.length);
+    setInputText(`${before}@todos ${after}`);
+    setShowMentionList(false);
+    setMentionFilter('');
+    setMentionStartIndex(-1);
+    setSelectedMentions(prev => Array.from(new Set([...prev, ...everyoneElseIds])));
+    // Numa conversa de WhatsApp a menção libera acesso — avisar antes de enviar.
+    if (onMentionUsers) {
+      toast.warning(`@todos avisa ${everyoneElseIds.length} pessoas e libera o acesso desta conversa a elas.`);
+    }
+    inputRef.current?.focus();
+  };
+
   const insertMention = (member: TeamMember) => {
     const name = member.full_name || member.email || 'usuário';
     const before = inputText.slice(0, mentionStartIndex);
@@ -171,6 +199,14 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
   const collectMentionedIds = useCallback((text: string) => {
     const mentionedIds = [...selectedMentions];
+    // "@todos" digitado na mão também vale, sem precisar escolher na lista.
+    if (/@(todos|todas|equipe|all)\b/i.test(text)) {
+      for (const member of members) {
+        if (member.user_id !== user?.id && !mentionedIds.includes(member.user_id)) {
+          mentionedIds.push(member.user_id);
+        }
+      }
+    }
     for (const member of members) {
       if (mentionedIds.includes(member.user_id)) continue;
       const name = member.full_name || member.email;
@@ -179,7 +215,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       }
     }
     return mentionedIds;
-  }, [members, selectedMentions]);
+  }, [members, selectedMentions, user?.id]);
 
   const handleSend = async () => {
     const text = inputText.trim();
@@ -521,8 +557,22 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       </div>
 
       {/* Mention dropdown (membros) */}
-      {showMentionList && filteredMembers.length > 0 && (
-        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-32 overflow-y-auto">
+      {showMentionList && (filteredMembers.length > 0 || showEveryoneOption) && (
+        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-40 overflow-y-auto">
+          {showEveryoneOption && (
+            <button
+              onClick={insertEveryoneMention}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent/50 transition-colors text-left border-b"
+            >
+              <Users className="h-3.5 w-3.5 text-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs font-medium truncate">@todos</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Avisa a equipe inteira ({everyoneElseIds.length} {everyoneElseIds.length === 1 ? 'pessoa' : 'pessoas'})
+                </div>
+              </div>
+            </button>
+          )}
           {filteredMembers.slice(0, 6).map(member => (
             <button
               key={member.user_id}
