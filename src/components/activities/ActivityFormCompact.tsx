@@ -42,6 +42,7 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { ensureRemapCache, remapToExternalSync } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useLeads } from '@/hooks/useLeads';
 import { useLegalCases } from '@/hooks/useLegalCases';
@@ -465,18 +466,48 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
     const assessorIds = [...new Set([formAssignedTo, ...(formCoAssignees || []).map(c => c.user_id)].filter(Boolean))] as string[];
     if (assessorIds.length === 0) { toast.error('Sem assessor responsável'); return; }
 
-    // Perfis de todos em uma query só (evita N+1)
-    const { data: profiles } = await supabase
-      .from('profiles')
-      .select('user_id, phone, default_instance_id, full_name')
-      .in('user_id', assessorIds);
-    const profileByUser = new Map((profiles || []).map((p: any) => [p.user_id, p]));
+    // Perfis de todos em uma query só (evita N+1), nos dois bancos. O EXTERNO é a
+    // fonte da verdade (é lá que o ProfilePage salva phone/default_instance_id);
+    // o Cloud entra só pra preencher o que faltar, porque parte da equipe teve o
+    // default gravado lá pelo inbox/painel da equipe. Antes lia só o Cloud, onde
+    // o campo fica NULL pra quem configurou pelo próprio perfil — o gate
+    // `hasWhatsApp` abaixo pulava o assessor em SILÊNCIO (varredura do incidente
+    // de roteamento de instância, 04/08/2026).
+    await ensureRemapCache();
+    const extIdByAssessor = new Map(assessorIds.map(id => [id, remapToExternalSync(id) || id]));
+    const [cloudRes, extRes] = await Promise.all([
+      supabase
+        .from('profiles')
+        .select('user_id, phone, default_instance_id, full_name')
+        .in('user_id', assessorIds),
+      externalSupabase
+        .from('profiles')
+        .select('user_id, phone, default_instance_id, full_name')
+        .in('user_id', [...extIdByAssessor.values()]),
+    ]);
+    const cloudByUser = new Map((cloudRes.data || []).map((p: any) => [p.user_id, p]));
+    const extByUser = new Map((extRes.data || []).map((p: any) => [p.user_id, p]));
+    const profileByUser = new Map(assessorIds.map((id) => {
+      const ext: any = extByUser.get(extIdByAssessor.get(id) as string);
+      const cloud: any = cloudByUser.get(id);
+      return [id, {
+        full_name: ext?.full_name || cloud?.full_name || null,
+        phone: ext?.phone || cloud?.phone || null,
+        default_instance_id: ext?.default_instance_id || cloud?.default_instance_id || null,
+      }];
+    }));
 
     const waSent: string[] = [];
+    const waSkipped: string[] = [];
     for (const assessorId of assessorIds) {
       const profile = profileByUser.get(assessorId);
       const hasWhatsApp = !!profile?.phone && !!profile?.default_instance_id;
-      if (!hasWhatsApp) continue;
+      if (!hasWhatsApp) {
+        // Sem telefone ou sem instância padrão em NENHUM dos dois bancos: avisa
+        // em vez de sumir com o destinatário, que era o comportamento anterior.
+        waSkipped.push(profile?.full_name || 'assessor sem nome');
+        continue;
+      }
       const phone = (profile.phone as string).replace(/\D/g, '');
       const instId = selectedInstanceId || (profile.default_instance_id as string);
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
@@ -496,6 +527,12 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
       }
     }
     if (waSent.length > 0) toast.success(`WhatsApp enviado para ${waSent.join(', ')}!`);
+    if (waSkipped.length > 0) {
+      toast.warning(`Sem WhatsApp configurado: ${waSkipped.join(', ')}`, {
+        description: 'Falta telefone ou instância padrão no perfil — a mensagem NÃO foi enviada a esses assessores.',
+        duration: 8000,
+      });
+    }
   };
 
   // Abre o preview com a mensagem montada e destinos padrão.
