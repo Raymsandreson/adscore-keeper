@@ -27,6 +27,11 @@ export interface RaceRow {
   ocioso_seg: number;
   chat_resp_seg: number | null;
   aprov_pct: number | null;
+  /** Média das estrelas RECEBIDAS no período (null = ninguém avaliou ainda). */
+  media_estrelas?: number | string | null;
+  notas_n?: number;
+  /** Feedbacks que a pessoa deveria avaliar e não avaliou (backlog total). */
+  fb_pendentes?: number;
   home_office?: boolean;
 }
 export interface CarChoice { car_id: string; color: string }
@@ -36,6 +41,12 @@ export function nameKey(nome: string) {
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
+
+// Média de estrelas → rótulo curto pt-BR ("3,3"); sem nota no período = traço.
+export function estrelaLabel(v: number | string | null | undefined) {
+  const n = v == null ? NaN : Number(v);
+  return Number.isFinite(n) ? n.toFixed(1).replace('.', ',') : '—';
+}
 
 // Tempo do cronômetro (segundos) → rótulo curto; 0/sem uso = traço.
 function fmtTempo(s: number | null | undefined) {
@@ -74,7 +85,9 @@ function pontuou(r: RaceRow) {
 function tieKey(r: RaceRow) {
   return [
     r.resultado, r.fases, r.objetivos, r.passos, r.doc_itens ?? 0,
-    r.concluidas, r.atrasadas, r.ativo_seg, r.ocioso_seg,
+    r.concluidas, r.atrasadas,
+    r.media_estrelas ?? -1, r.fb_pendentes ?? 0,
+    r.ativo_seg, r.ocioso_seg,
     r.chat_resp_seg ?? -1,
   ].join('|');
 }
@@ -82,8 +95,9 @@ function tieKey(r: RaceRow) {
 /**
  * Posição de cada carro na pista (% do `left`), derivada da POSIÇÃO NO RANKING.
  * O array chega ordenado pela RPC tv_atividades_ranking (resultado > fases >
- * objetivos > passos > itens do checklist > concluídas > atrasadas > tempo
- * ativo > ocioso > resposta no chat), então basta usar o índice: 1º colado na
+ * objetivos > passos > itens do checklist > concluídas > atrasadas > média de
+ * estrelas > feedbacks sem avaliar > tempo ativo > ocioso > resposta no chat),
+ * então basta usar o índice: 1º colado na
  * bandeira, último dos que pontuaram no piso. Antes o carro andava só por
  * PASSOS e o 1º do ranking podia aparecer atrás do 4º na pista. Derivando do
  * índice, qualquer mudança futura de critério na RPC aparece na corrida
@@ -121,7 +135,8 @@ export default function WackyRaceTrack({
   onSaveCar: (nome: string, car_id: string, color: string) => void;
   onAnalyze: (row: RaceRow, rank: number) => void;
   // Clique num número da linha → lista do que compôs aquele número.
-  onDetail?: (row: RaceRow, criterio: DetailCriterio, count: number) => void;
+  // count é string quando o chip não é contagem (⭐ mostra a média formatada).
+  onDetail?: (row: RaceRow, criterio: DetailCriterio, count: number | string) => void;
   // Meta = RECORDE individual de passos do período/time (linha de chegada).
   meta?: number;
   periodo?: 'hoje' | 'semana' | 'mes';
@@ -207,6 +222,19 @@ export default function WackyRaceTrack({
                     <RaceStat n={r.passos} label="passos" cor="text-sky-400" onClick={onDetail && (() => onDetail(r, 'passos', r.passos))} />
                     <RaceStat n={r.concluidas} label="concl" cor="text-emerald-400" onClick={onDetail && (() => onDetail(r, 'concluidas', r.concluidas))} />
                     <RaceStat n={r.atrasadas} label="atr" cor="text-rose-400" onClick={onDetail && (() => onDetail(r, 'atrasadas', r.atrasadas))} />
+                    {/* Qualidade do retorno (nota recebida) e dívida de avaliação (a dar). */}
+                    <RaceStat
+                      n={estrelaLabel(r.media_estrelas)}
+                      label="⭐"
+                      cor="text-amber-400"
+                      onClick={onDetail && (() => onDetail(r, 'estrelas', estrelaLabel(r.media_estrelas)))}
+                    />
+                    <RaceStat
+                      n={r.fb_pendentes ?? 0}
+                      label="s/ avaliar"
+                      cor="text-pink-400"
+                      onClick={onDetail && (() => onDetail(r, 'fb_pendentes', r.fb_pendentes ?? 0))}
+                    />
                   </span>
                   {/* Horas do cronômetro — linha discreta, não compete com os números principais. */}
                   <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-[10px] md:text-xs font-bold tabular-nums text-white/40">
@@ -275,7 +303,7 @@ export default function WackyRaceTrack({
 // suba pra coluna (que abre a análise do assessor).
 function RaceStat({
   n, label, cor, onClick,
-}: { n: number; label: string; cor: string; onClick?: () => void }) {
+}: { n: number | string; label: string; cor: string; onClick?: () => void }) {
   return (
     <span>
       <b

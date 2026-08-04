@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink, Target, Flag, Goal } from 'lucide-react';
+import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink, Target, Flag, Goal, Star, Inbox } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -12,10 +12,12 @@ import { cn } from '@/lib/utils';
 // que replica exatamente os filtros do tv_atividades_ranking — a soma aqui bate
 // com o número do telão.
 
-export type DetailCriterio = 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas';
+export type DetailCriterio =
+  | 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas'
+  | 'estrelas' | 'fb_pendentes';
 
 interface DetailItem {
-  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada';
+  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente';
   quando?: string;
   titulo: string | null;
   lead_nome?: string | null;
@@ -33,6 +35,15 @@ interface DetailItem {
   process_id?: string | null;
   deadline?: string;
   dias_atraso?: number;
+  /** Estrela: nota recebida, com quem deu e por quê. */
+  nota?: number | null;
+  desfecho?: string | null;
+  avaliador?: string | null;
+  justificativa?: string | null;
+  /** Feedback pendente: de quem é o retorno parado esperando avaliação. */
+  responsavel?: string | null;
+  retorno?: string | null;
+  dias_parado?: number;
 }
 
 // Linha "de onde veio a marcação". A regra é a do Raym (04/08/2026): marcou
@@ -105,26 +116,33 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
   passos: { titulo: 'Passos', cor: 'text-sky-400', Icon: ListChecks },
   concluidas: { titulo: 'Concluídas', cor: 'text-emerald-400', Icon: CheckCircle2 },
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
+  estrelas: { titulo: 'Média das avaliações', cor: 'text-amber-400', Icon: Star },
+  fb_pendentes: { titulo: 'Feedbacks sem avaliar', cor: 'text-pink-400', Icon: Inbox },
 };
 
-// "Atrasadas" é o único critério que não usa o período aberto no telão — é
+// "Atrasadas" e "feedbacks sem avaliar" não usam o período aberto no telão — são
 // backlog total, igual ao ranking. Deixar explícito pra ninguém achar que o
 // número está errado. (Status passou a respeitar o período em 04/08/2026.)
 function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
   if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
+  if (criterio === 'fb_pendentes') return 'esperando a avaliação dela · backlog total';
+  if (criterio === 'estrelas') return `notas recebidas · ${periodLabel}`;
   return periodLabel;
 }
 
 interface Props {
   nome: string;
   criterio: DetailCriterio;
-  count: number;
+  /** Contagem do chip; string quando o número não é contagem (⭐ = média). */
+  count: number | string;
   since: string; // ISO — mesmo p_since passado ao ranking
   periodLabel: string; // "hoje" | "semana" | "mês"
+  /** Abre a ficha do processo em aba lateral, sem sair do telão. */
+  onAbrirProcesso?: (processId: string) => void;
   onClose: () => void;
 }
 
-export default function RankDetailSheet({ nome, criterio, count, since, periodLabel, onClose }: Props) {
+export default function RankDetailSheet({ nome, criterio, count, since, periodLabel, onAbrirProcesso, onClose }: Props) {
   const [items, setItems] = useState<DetailItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cfg = CRITERIO_CFG[criterio];
@@ -152,9 +170,13 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
   const openActivity = (id?: string) => {
     if (id) window.open(`/atv/${id.slice(0, 8)}`, '_blank', 'noopener');
   };
-  // Deep-link da ficha do processo (ProcessesPage lê ?openProcess=<id>).
+  // Ficha do processo em aba lateral, por cima do detalhe — sem tirar ninguém
+  // do telão. Sem o callback (uso fora do telão), cai no deep-link da
+  // ProcessesPage, que lê ?openProcess=<id>.
   const openProcesso = (id?: string | null) => {
-    if (id) window.open(`/processes?openProcess=${id}`, '_blank', 'noopener');
+    if (!id) return;
+    if (onAbrirProcesso) onAbrirProcesso(id);
+    else window.open(`/processes?openProcess=${id}`, '_blank', 'noopener');
   };
 
   return (
@@ -179,7 +201,9 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
               <Loader2 className="h-5 w-5 animate-spin" /> Carregando…
             </div>
           ) : items.length === 0 ? (
-            <div className="py-10 text-center text-white/50">Nada no período.</div>
+            <div className="py-10 text-center text-white/50">
+              {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏' : 'Nada no período.'}
+            </div>
           ) : (
             items.map((it, i) => (
               <div
@@ -223,6 +247,54 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                     guardava a origem). */}
                 {(it.tipo === 'passo' || it.tipo === 'objetivo' || it.tipo === 'fase') && (
                   <Origem it={it} onAtividade={openActivity} onProcesso={openProcesso} />
+                )}
+
+                {/* Nota recebida: estrelas + quem avaliou + o porquê. */}
+                {it.tipo === 'estrela' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <Star
+                            key={n}
+                            className={cn('h-3.5 w-3.5', (it.nota || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-white/20')}
+                          />
+                        ))}
+                      </span>
+                      {it.desfecho && (
+                        <span className={cn(
+                          'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                          it.desfecho === 'satisfeito' ? 'bg-emerald-400/15 text-emerald-300'
+                            : it.desfecho === 'incompleto' ? 'bg-amber-400/15 text-amber-300'
+                            : 'bg-rose-400/15 text-rose-300',
+                        )}>
+                          {it.desfecho}
+                        </span>
+                      )}
+                      {it.avaliador && <span className="text-xs text-white/40">por {it.avaliador}</span>}
+                    </div>
+                    {it.justificativa && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60">{it.justificativa}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Feedback parado esperando a avaliação dela: de quem é o
+                    retorno, há quantos dias e o que foi escrito. */}
+                {it.tipo === 'fb_pendente' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="text-white/40">retorno de <b className="text-white/70">{it.responsavel || '—'}</b></span>
+                      {typeof it.dias_parado === 'number' && it.dias_parado > 0 && (
+                        <span className="font-bold text-pink-400">
+                          parado há {it.dias_parado} {it.dias_parado === 1 ? 'dia' : 'dias'}
+                        </span>
+                      )}
+                    </div>
+                    {it.retorno && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-4">{it.retorno}</p>
+                    )}
+                  </div>
                 )}
 
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-white/50">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -9,8 +9,12 @@ import { cn } from '@/lib/utils';
 import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetailSheet';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
-import WackyRaceTrack, { nameKey, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
+import WackyRaceTrack, { nameKey, estrelaLabel, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
 import TvProtocolosPanel from '@/components/tv/TvProtocolosPanel';
+// Ficha completa do processo, aberta por cima do detalhe. Lazy porque é o
+// ProcessDetailSheet inteiro — não pode entrar no bundle que a TV carrega só
+// pra mostrar ranking.
+const ProcessQuickSheet = lazy(() => import('@/components/tv/ProcessQuickSheet'));
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
 import { useRaceMusic } from '@/hooks/useRaceMusic';
 import {
@@ -27,8 +31,9 @@ import {
 
 // /tv/atividades — Telão do "Ranking de Atividades" do time.
 // Dados AO VIVO do Supabase Externo via RPC `tv_atividades_ranking`, que já
-// aplica a regra de ordenação: 1º PASSOS → 2º ITENS DO CHECKLIST → 3º CONCLUÍDAS
-// → 4º menos ATRASADAS → 5º mais TEMPO ATIVO → 6º menos OCIOSO → 7º RESPOSTA NO CHAT.
+// aplica a regra de ordenação: STATUS ESPERADO → FASES → OBJETIVOS → PASSOS →
+// ITENS DO CHECKLIST → CONCLUÍDAS → menos ATRASADAS → maior MÉDIA DE ESTRELAS →
+// menos FEEDBACKS SEM AVALIAR → mais TEMPO ATIVO → menos OCIOSO → RESPOSTA NO CHAT.
 // Feito para rodar num telão em fullscreen; auto-atualiza sozinho.
 
 type Period = 'hoje' | 'semana' | 'mes';
@@ -43,6 +48,11 @@ interface RankRow {
   concluidas: number;
   atrasadas: number;
   aprov_pct: number | null;
+  /** Média das estrelas RECEBIDAS no período (null = sem avaliação no período). */
+  media_estrelas: number | string | null;
+  notas_n: number;
+  /** Feedbacks que ela deveria avaliar e não avaliou (backlog total). */
+  fb_pendentes: number;
   chat_resp_seg: number | null;
   ativo_seg: number;
   ocioso_seg: number;
@@ -146,7 +156,9 @@ export default function TvAtividadesPage() {
   // Coach de desempenho: clicar num assessor abre o painel de análise + mensagem.
   const [coach, setCoach] = useState<{ row: RankRow; rank: number } | null>(null);
   // Detalhe de um critério (clique no chip passos/concl/atr de uma pessoa).
-  const [detail, setDetail] = useState<{ nome: string; criterio: DetailCriterio; count: number } | null>(null);
+  const [detail, setDetail] = useState<{ nome: string; criterio: DetailCriterio; count: number | string } | null>(null);
+  // Processo aberto por cima do detalhe (ficha completa, sem sair do telão).
+  const [processoAberto, setProcessoAberto] = useState<string | null>(null);
   // "Mensagem pra todos": dispara a coach personalizada de cada um do ranking.
   const [broadcast, setBroadcast] = useState(false);
   // Modo Corrida: o ranking vira pista estilo cartoon. Escolha de carro por nome.
@@ -897,11 +909,15 @@ export default function TvAtividadesPage() {
           <span className="text-white/30">·</span>
           <span>7º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>8º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>8º <span className="text-amber-400">Melhor Avaliação ⭐</span></span>
           <span className="text-white/30">·</span>
-          <span>9º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>9º <span className="text-pink-400">Menos Feedbacks sem Avaliar</span></span>
           <span className="text-white/30">·</span>
-          <span>10º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>10º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span className="text-white/30">·</span>
+          <span>11º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span className="text-white/30">·</span>
+          <span>12º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
@@ -1120,7 +1136,7 @@ export default function TvAtividadesPage() {
               ranking={ranking}
               cars={cars}
               onSaveCar={saveCar}
-              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, ...(row as RaceRow) } as RankRow, rank })}
+              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, ...(row as RaceRow) } as RankRow, rank })}
               onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
               meta={data?.meta?.passos}
               periodo={period}
@@ -1180,8 +1196,16 @@ export default function TvAtividadesPage() {
           count={detail.count}
           since={periodSince(period).toISOString()}
           periodLabel={period === 'hoje' ? 'hoje' : period === 'mes' ? 'mês' : 'semana'}
+          onAbrirProcesso={id => setProcessoAberto(id)}
           onClose={() => setDetail(null)}
         />
+      )}
+
+      {/* Ficha completa do processo por cima do detalhe — fechar volta pra lista. */}
+      {processoAberto && (
+        <Suspense fallback={null}>
+          <ProcessQuickSheet processId={processoAberto} onClose={() => setProcessoAberto(null)} />
+        </Suspense>
       )}
 
       {coach && (
@@ -1201,7 +1225,7 @@ export default function TvAtividadesPage() {
 }
 
 /* ---------- Pódio ---------- */
-type OnDetail = (row: RankRow, criterio: DetailCriterio, count: number) => void;
+type OnDetail = (row: RankRow, criterio: DetailCriterio, count: number | string) => void;
 
 function Podium({ podium, onSelect, onDetail }: { podium: RankRow[]; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail }) {
   // Ordem visual: 2º (esq) · 1º (centro) · 3º (dir).
@@ -1265,6 +1289,18 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
           <PodiumStat text={row.doc_itens ?? 0} label="checklist" color="text-fuchsia-400" />
           <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail(row, 'concluidas', row.concluidas)} />
           <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" onClick={() => onDetail(row, 'atrasadas', row.atrasadas)} />
+          <PodiumStat
+            text={estrelaLabel(row.media_estrelas)}
+            label="⭐"
+            color="text-amber-400"
+            onClick={() => onDetail(row, 'estrelas', estrelaLabel(row.media_estrelas))}
+          />
+          <PodiumStat
+            text={row.fb_pendentes ?? 0}
+            label="s/ avaliar"
+            color="text-pink-400"
+            onClick={() => onDetail(row, 'fb_pendentes', row.fb_pendentes ?? 0)}
+          />
           <PodiumStat text={aprovLabel(row.aprov_pct)} label="aprov" color="text-amber-400" />
           <PodiumStat text={tempoLabel(row.ativo_seg)} label="ativo" color="text-teal-400" />
           <PodiumStat text={tempoLabel(row.ocioso_seg)} label="ocioso" color="text-orange-400" />
@@ -1284,7 +1320,7 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
 }
 
 /* ---------- Linha da lista ---------- */
-function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow; onSelect: () => void; onDetail: (criterio: DetailCriterio, count: number) => void }) {
+function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow; onSelect: () => void; onDetail: (criterio: DetailCriterio, count: number | string) => void }) {
   return (
     <div
       className="relative group flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3 cursor-pointer transition hover:bg-white/[0.08]"
@@ -1310,6 +1346,18 @@ function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow
       <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail('concluidas', row.concluidas)} />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" onClick={() => onDetail('atrasadas', row.atrasadas)} />
+      <Stat
+        value={estrelaLabel(row.media_estrelas)}
+        label="⭐"
+        color="text-amber-400"
+        onClick={() => onDetail('estrelas', estrelaLabel(row.media_estrelas))}
+      />
+      <Stat
+        value={row.fb_pendentes ?? 0}
+        label="s/ aval"
+        color="text-pink-400"
+        onClick={() => onDetail('fb_pendentes', row.fb_pendentes ?? 0)}
+      />
       <div className="w-14 md:w-20 text-right">
         <span className="text-base md:text-xl font-black tabular-nums text-teal-400">{tempoLabel(row.ativo_seg)}</span>
         <span className="ml-1 text-[9px] md:text-[10px] font-bold uppercase tracking-wider text-white/40">ativo</span>
@@ -1329,7 +1377,7 @@ function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow
   );
 }
 
-function Stat({ value, label, color, onClick }: { value: number; label: string; color: string; onClick?: () => void }) {
+function Stat({ value, label, color, onClick }: { value: number | string; label: string; color: string; onClick?: () => void }) {
   return (
     <div className="w-12 md:w-20 text-right">
       <span
@@ -1456,7 +1504,7 @@ function Footer({ resumo, participantes, ranking }: { resumo: Resumo | null; par
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. {participantes} no ranking.</span>
+          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total. {participantes} no ranking.</span>
         </p>
       </div>
       </div>
