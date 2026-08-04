@@ -203,7 +203,7 @@ export interface Lead {
   campaign_id: string | null;
   campaign_name: string | null;
   /** campaigns.id do CRM — vínculo do lead com a campanha (métricas de ROI/CAC). */
-  crm_campaign_id: string | null;
+  crm_campaign_id?: string | null;
   adset_id: string | null;
   adset_name: string | null;
   creative_id: string | null;
