@@ -50,12 +50,11 @@ function Origem({
   const naAtividade = it.origem === 'atividade' && it.atividade && it.activity_id;
   const noProcesso = it.origem === 'processo' && it.processo && it.process_id;
 
+  // Sem origem no log: não dá pra afirmar de onde saiu. Nada de datar o aviso —
+  // o registro de origem entra em vigor no deploy, não numa data do calendário,
+  // e passo marcado pelo funil/WhatsApp nunca vai ter origem.
   if (!naAtividade && !noProcesso) {
-    return (
-      <div className="mt-1.5 text-xs text-white/30 italic">
-        origem não registrada (marcação anterior a 04/08 ou fora de atividade/processo)
-      </div>
-    );
+    return <div className="mt-1.5 text-xs italic text-white/25">origem não registrada</div>;
   }
   return (
     <div className="mt-1.5 flex items-start gap-1.5 text-xs">
@@ -81,11 +80,20 @@ function Origem({
 }
 
 // Rótulo + valor num chip só, pra não virar sopa de texto solto.
-function Chip({ label, valor }: { label: string; valor: string }) {
+function Chip({ label, valor, onClick }: { label: string; valor: string; onClick?: () => void }) {
   return (
-    <span className="inline-flex max-w-full items-baseline gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px]">
+    <span
+      className={cn(
+        'inline-flex max-w-full items-baseline gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px]',
+        onClick && 'cursor-pointer transition hover:bg-white/[0.12]',
+      )}
+      onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
+      title={onClick ? 'Abrir o processo em nova aba' : undefined}
+    >
       <span className="shrink-0 uppercase tracking-wider text-white/30">{label}</span>
-      <span className="min-w-0 truncate text-white/70">{valor}</span>
+      <span className={cn('min-w-0 truncate', onClick ? 'text-sky-300 underline decoration-sky-300/30 underline-offset-2' : 'text-white/70')}>
+        {valor}
+      </span>
     </span>
   );
 }
@@ -193,8 +201,16 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {it.lead_nome && <Chip label="cliente" valor={it.lead_nome} />}
                   {/* Com origem no processo o chip sairia repetido — o número
-                      já aparece na linha de origem, ali como atalho. */}
-                  {it.processo && it.origem !== 'processo' && <Chip label="processo" valor={it.processo} />}
+                      já aparece na linha de origem, ali como atalho. Fora isso,
+                      o chip abre o processo quando o vínculo é certo (o POP do
+                      checklist é o do processo). */}
+                  {it.processo && it.origem !== 'processo' && (
+                    <Chip
+                      label="processo"
+                      valor={it.processo}
+                      onClick={it.process_id ? () => openProcesso(it.process_id) : undefined}
+                    />
+                  )}
                   {it.objetivo && <Chip label="objetivo" valor={it.objetivo} />}
                   {it.fase && <Chip label="fase" valor={it.fase} />}
                   {it.pop && <Chip label="POP" valor={it.pop} />}
