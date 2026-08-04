@@ -678,8 +678,13 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                       <div className={cn('text-xs font-medium truncate', !mentionable && 'text-muted-foreground')}>
                         {owner.name}{isMe && ' (você)'}
                       </div>
-                      {!mentionable && !isMe && (
-                        <div className="text-[10px] text-muted-foreground truncate">sem usuário no sistema</div>
+                      {/* Qual processo essa pessoa responde — o caso pode ter vários. */}
+                      {(owner.detail || (!mentionable && !isMe)) && (
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {[owner.detail, !mentionable && !isMe ? 'sem usuário no sistema' : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
                       )}
                     </div>
                     <span className="flex items-center gap-1 shrink-0">

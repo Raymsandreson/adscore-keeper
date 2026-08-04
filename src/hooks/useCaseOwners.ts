@@ -5,14 +5,18 @@
 // sem a pessoa precisar abrir a ficha do lead/processo pra descobrir.
 //
 // Fonte da verdade (Externo):
-//  - responsável processual: leads.processual_responsible_id (UUID do EXTERNO,
-//    remapeado pra Cloud porque o chat menciona por user_id do Cloud)
+//  - responsável DO PROCESSO: lead_processes.responsible_user_id (UUID do
+//    EXTERNO, remapeado pra Cloud porque o chat menciona por user_id do Cloud).
+//    Cada processo do caso pode ter o seu — por isso o item traz o processo ao
+//    lado do nome. Só ~10% dos processos têm esse campo preenchido hoje; quem
+//    está sem cai no responsável processual do lead
+//    (leads.processual_responsible_id), marcado como herdado do caso.
 //  - acolhedor: leads.acolhedor — TEXTO livre ("Israel", "Edilan da silva
 //    santos", às vezes o próprio e-mail). Por isso o casamento com o perfil é
 //    tolerante e, quando ambíguo, o nome é mostrado sem virar menção.
 //
-// Processo/caso/atividade/conversa herdam do lead (não têm responsável próprio
-// preenchido — responsible_user_id/assigned_to estão vazios na base).
+// No chat do processo aparece só o responsável dele; no chat do lead/caso/
+// conversa do WhatsApp aparecem os responsáveis de todos os processos do caso.
 // =============================================================================
 import { useEffect, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
@@ -33,21 +37,36 @@ export interface CaseOwner {
   /** Cloud user_id — null quando o nome não casou com nenhum perfil (só informativo). */
   userId: string | null;
   name: string;
+  /** De quais processos essa pessoa responde ("Seguro de vida judicial", "3 processos"). */
+  detail?: string | null;
 }
 
-interface RawOwners {
+interface ProcessOwner {
+  processId: string;
+  processLabel: string;
+  /** UUID do Externo do responsável — do processo ou herdado do lead. */
+  responsibleExtId: string | null;
+  /** true quando o processo não tem responsável próprio e usou o do lead. */
+  inherited: boolean;
+}
+
+export interface RawOwners {
   leadId: string | null;
   leadName: string | null;
-  responsibleCloudId: string | null;
-  responsibleName: string | null;
+  /** Responsável processual do lead (fallback e rótulo "do caso"). */
+  leadResponsibleExtId: string | null;
+  processes: ProcessOwner[];
+  /** ext_uuid → nome, para todos os responsáveis envolvidos. */
+  namesByExtId: Record<string, string>;
   acolhedorText: string | null;
 }
 
 const EMPTY_RAW: RawOwners = {
   leadId: null,
   leadName: null,
-  responsibleCloudId: null,
-  responsibleName: null,
+  leadResponsibleExtId: null,
+  processes: [],
+  namesByExtId: {},
   acolhedorText: null,
 };
 
@@ -118,8 +137,17 @@ export function matchPersonByName(
   return null;
 }
 
-/** Descobre o lead por trás da entidade do chat. */
-async function resolveLeadId(entityType: string, entityId: string): Promise<string | null> {
+/**
+ * Descobre o lead por trás da entidade do chat e, quando a entidade já é de um
+ * processo específico (o próprio processo, ou a atividade de um), qual processo
+ * interessa — aí só o responsável dele aparece.
+ */
+async function resolveContext(
+  entityType: string,
+  entityId: string,
+): Promise<{ leadId: string | null; processId: string | null }> {
+  const lead = (leadId: string | null) => ({ leadId, processId: null });
+
   const one = async (table: string, column: string, value: string) => {
     const { data } = await (db as any)
       .from(table)
@@ -134,15 +162,24 @@ async function resolveLeadId(entityType: string, entityId: string): Promise<stri
     // WorkflowProgressPage abre o chat do POP com o id do próprio lead.
     case 'lead':
     case 'workflow':
-      return entityId;
+      return lead(entityId);
     case 'process':
-      return one('lead_processes', 'id', entityId);
+      return { leadId: await one('lead_processes', 'id', entityId), processId: entityId };
     case 'case':
-      return one('legal_cases', 'id', entityId);
-    case 'activity':
-      return one('lead_activities', 'id', entityId);
+      return lead(await one('legal_cases', 'id', entityId));
+    case 'activity': {
+      const { data } = await (db as any)
+        .from('lead_activities')
+        .select('lead_id, process_id')
+        .eq('id', entityId)
+        .maybeSingle();
+      return {
+        leadId: (data?.lead_id as string | undefined) || null,
+        processId: (data?.process_id as string | undefined) || null,
+      };
+    }
     case 'contact':
-      return one('contact_leads', 'contact_id', entityId);
+      return lead(await one('contact_leads', 'contact_id', entityId));
     case 'whatsapp': {
       if (isWhatsAppGroupId(entityId)) {
         // group_jid ora é bare, ora tem @g.us — tentar as duas formas.
@@ -154,7 +191,7 @@ async function resolveLeadId(entityType: string, entityId: string): Promise<stri
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        if (link?.lead_id) return link.lead_id as string;
+        if (link?.lead_id) return lead(link.lead_id as string);
 
         const { data: byField } = await (db as any)
           .from('leads')
@@ -163,10 +200,10 @@ async function resolveLeadId(entityType: string, entityId: string): Promise<stri
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle();
-        return (byField?.id as string | undefined) || null;
+        return lead((byField?.id as string | undefined) || null);
       }
       const phone = normalizeWhatsAppConversationPhone(entityId).replace(/\D/g, '');
-      if (phone.length < 8) return null;
+      if (phone.length < 8) return lead(null);
       const last8 = phone.slice(-8);
       const { data: byPhone } = await (db as any)
         .from('leads')
@@ -175,53 +212,147 @@ async function resolveLeadId(entityType: string, entityId: string): Promise<stri
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      return (byPhone?.id as string | undefined) || null;
+      return lead((byPhone?.id as string | undefined) || null);
     }
     default:
-      return null;
+      return lead(null);
   }
+}
+
+/** Rótulo curto do processo: título limpo, senão o número, senão o tipo. */
+function processLabelOf(p: { title?: string | null; process_number?: string | null; process_type?: string | null }): string {
+  const title = (p.title || '').replace(/^[\s-–—]+/, '').trim();
+  if (title) return title;
+  if (p.process_number) return p.process_number;
+  return p.process_type === 'administrativo' ? 'Processo administrativo' : 'Processo';
 }
 
 async function fetchOwners(entityType: string, entityId: string): Promise<RawOwners> {
   await ensureExternalSession();
-  const leadId = await resolveLeadId(entityType, entityId);
+  const { leadId, processId } = await resolveContext(entityType, entityId);
   if (!leadId) return EMPTY_RAW;
 
-  const { data: lead } = await (db as any)
-    .from('leads')
-    .select('id, lead_name, processual_responsible_id, acolhedor')
-    .eq('id', leadId)
-    .maybeSingle();
+  const [{ data: lead }, { data: procs }] = await Promise.all([
+    (db as any)
+      .from('leads')
+      .select('id, lead_name, processual_responsible_id, acolhedor')
+      .eq('id', leadId)
+      .maybeSingle(),
+    (db as any)
+      .from('lead_processes')
+      .select('id, title, process_number, process_type, responsible_user_id, created_at')
+      .eq('lead_id', leadId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: true })
+      .limit(30),
+  ]);
   if (!lead) return EMPTY_RAW;
 
-  let responsibleCloudId: string | null = null;
-  let responsibleName: string | null = null;
+  const leadResponsibleExtId = (lead.processual_responsible_id as string | null) || null;
 
-  if (lead.processual_responsible_id) {
+  // Chat de um processo específico (ou da atividade dele): só aquele processo.
+  const rows = ((procs || []) as any[]).filter(p => !processId || p.id === processId);
+
+  const processes: ProcessOwner[] = rows.map(p => ({
+    processId: p.id as string,
+    processLabel: processLabelOf(p),
+    responsibleExtId: (p.responsible_user_id as string | null) || leadResponsibleExtId,
+    inherited: !p.responsible_user_id && !!leadResponsibleExtId,
+  })).filter(p => !!p.responsibleExtId);
+
+  const extIds = Array.from(new Set([
+    ...processes.map(p => p.responsibleExtId as string),
+    ...(leadResponsibleExtId ? [leadResponsibleExtId] : []),
+  ]));
+
+  const namesByExtId: Record<string, string> = {};
+  if (extIds.length > 0) {
     await ensureRemapCache();
-    responsibleCloudId = remapToCloudSync(lead.processual_responsible_id);
-    const { data: prof } = await (db as any)
+    const { data: profs } = await (db as any)
       .from('profiles')
-      .select('full_name, email')
-      .eq('user_id', lead.processual_responsible_id)
-      .maybeSingle();
-    responsibleName = prof?.full_name || prof?.email || null;
+      .select('user_id, full_name, email')
+      .in('user_id', extIds);
+    for (const p of ((profs || []) as any[])) {
+      namesByExtId[p.user_id] = p.full_name || p.email || '';
+    }
   }
 
   return {
     leadId,
     leadName: lead.lead_name || null,
-    responsibleCloudId,
-    responsibleName,
+    leadResponsibleExtId,
+    processes,
+    namesByExtId,
     acolhedorText: lead.acolhedor || null,
   };
 }
 
 /**
- * Responsável processual e acolhedor do caso por trás do chat, já resolvidos
- * para user_id do Cloud (o mesmo usado nas menções). Retorna na ordem
- * responsável → acolhedor; quando são a mesma pessoa, vem um item só com os
- * dois papéis.
+ * Monta a lista exibida: um item por responsável (com os processos dele ao
+ * lado) e o acolhedor por último. Pura, para poder ser testada sem banco.
+ */
+export function buildCaseOwners(raw: RawOwners, people: CaseOwnerPerson[]): CaseOwner[] {
+  const owners: CaseOwner[] = [];
+
+  // Quando o caso inteiro é da mesma pessoa, vira um item só — repetir três
+  // vezes o mesmo nome não ajuda ninguém.
+  const byExtId = new Map<string, ProcessOwner[]>();
+  for (const p of raw.processes) {
+    const ext = p.responsibleExtId as string;
+    const list = byExtId.get(ext);
+    if (list) list.push(p); else byExtId.set(ext, [p]);
+  }
+
+  // Caso sem nenhum processo cadastrado: mostra o responsável processual do lead.
+  if (byExtId.size === 0 && raw.leadResponsibleExtId) {
+    byExtId.set(raw.leadResponsibleExtId, []);
+  }
+
+  for (const [extId, procs] of byExtId) {
+    const cloudId = remapToCloudSync(extId);
+    const fromList = cloudId ? people.find(p => p.user_id === cloudId) : null;
+    const name = fromList?.full_name || raw.namesByExtId[extId] || fromList?.email || null;
+    if (!name) continue;
+
+    const allInherited = procs.length > 0 && procs.every(p => p.inherited);
+    const detail =
+      procs.length === 0
+        ? 'responsável do caso'
+        : procs.length === 1
+          ? `${procs[0].processLabel}${procs[0].inherited ? ' · herdado do caso' : ''}`
+          : `${procs.length} processos${allInherited ? ' · herdado do caso' : ''}`;
+
+    owners.push({
+      roles: ['responsavel'],
+      // Sem perfil correspondente no Cloud a menção não notificaria ninguém.
+      userId: fromList ? fromList.user_id : null,
+      name,
+      detail,
+    });
+  }
+
+  if (raw.acolhedorText) {
+    const hit = matchPersonByName(raw.acolhedorText, people);
+    const userId = hit?.user_id || null;
+    const already = userId ? owners.find(o => o.userId === userId) : null;
+    if (already) {
+      already.roles = [...already.roles, 'acolhedor'];
+    } else {
+      owners.push({
+        roles: ['acolhedor'],
+        userId,
+        name: hit?.full_name || hit?.email || raw.acolhedorText,
+      });
+    }
+  }
+
+  return owners;
+}
+
+/**
+ * Responsável de cada processo do caso + acolhedor, já resolvidos para user_id
+ * do Cloud (o mesmo usado nas menções). Ordem: responsáveis → acolhedor; quando
+ * são a mesma pessoa, vem um item só com os dois papéis.
  */
 export function useCaseOwners(entityType: string, entityId: string, people: CaseOwnerPerson[]) {
   const key = `${entityType}:${entityId}`;
@@ -255,37 +386,7 @@ export function useCaseOwners(entityType: string, entityId: string, people: Case
     return () => { alive = false; };
   }, [key, entityType, entityId]);
 
-  const owners: CaseOwner[] = [];
-
-  if (raw.responsibleCloudId || raw.responsibleName) {
-    const fromList = raw.responsibleCloudId
-      ? people.find(p => p.user_id === raw.responsibleCloudId)
-      : null;
-    const name = fromList?.full_name || raw.responsibleName || fromList?.email || null;
-    if (name) {
-      owners.push({
-        roles: ['responsavel'],
-        // Sem perfil correspondente no Cloud a menção não notificaria ninguém.
-        userId: fromList ? fromList.user_id : null,
-        name,
-      });
-    }
-  }
-
-  if (raw.acolhedorText) {
-    const hit = matchPersonByName(raw.acolhedorText, people);
-    const userId = hit?.user_id || null;
-    const already = userId ? owners.find(o => o.userId === userId) : null;
-    if (already) {
-      already.roles = ['responsavel', 'acolhedor'];
-    } else {
-      owners.push({
-        roles: ['acolhedor'],
-        userId,
-        name: hit?.full_name || hit?.email || raw.acolhedorText,
-      });
-    }
-  }
+  const owners = buildCaseOwners(raw, people);
 
   return { owners, leadId: raw.leadId, leadName: raw.leadName };
 }
