@@ -86,6 +86,15 @@ Dialog com resumo do quadro por período (Hoje / Ontem / 7 dias / 30 dias), copi
 - Aba Atividades: filtros por Status (inclui "⚠ Atrasadas") e por Processo.
 - Editar Caso: checkboxes de processos pré-definidos (Indenização, TRCT + Verbas, Benefício INSS etc.) — criam os processos e atribuem responsáveis automaticamente.
 
+### Vincular ou trocar o lead do caso — ago/2026
+
+O dialog "Editar Caso" tem o campo **Lead vinculado**: busca por nome ou telefone e vincula. Caso sem lead mostra o aviso "Sem lead vinculado" com atalho **Vincular lead** direto pro dialog. Antes disso, caso criado sem lead (ou com o lead errado) só tinha conserto apagando e recriando o caso inteiro.
+
+Duas regras que valem entender:
+
+- **Não existe "remover lead".** O trigger `trg_legal_cases_no_unlink` no Externo recusa `lead_id → NULL`, porque caso órfão some das listas da equipe. Campo vazio na tela significa "mantém o lead atual"; trocar de lead X para Y é livre. A regra vive em `buildCaseUpdatePayload` (`src/pages/CasesPage.tsx`), coberta por `CasesPage.lead-link.test.ts`.
+- **Vincular adota os filhos órfãos**: `lead_activities` e `lead_processes` do caso que estavam com `lead_id` NULL passam pro lead escolhido — senão continuariam fora da linha do tempo do cliente. Filho que já aponta pra outro lead não é tocado.
+
 **Fluxo recomendado**: filtrar por Núcleo/Status → expandir o caso → regularizar processos citados sem cadastro com "Cadastrar todos" → acompanhar prazos na aba Atividades com o filtro "Atrasadas".
 
 ---
