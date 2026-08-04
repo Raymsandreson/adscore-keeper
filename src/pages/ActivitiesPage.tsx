@@ -16,7 +16,9 @@ import { ActivityFormCompact, SendToGroupSection } from '@/components/activities
 import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
-import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
+import { AIFieldMergeDialog } from '@/components/activities/AIFieldMergeDialog';
+import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
@@ -2584,6 +2586,90 @@ const ActivitiesPage = () => {
     }
   }, [sheetMode, suggestActivityType]);
 
+  // ── Resposta da IA (áudio da ligação / documento anexado) → formulário ─────
+  // As duas funções declaram os 6 campos de detalhe como `required` no schema: a
+  // IA devolve todos em toda chamada, mesmo sem o áudio/documento falar deles.
+  // Aplicar tudo direto reescrevia o texto do usuário sem avisar (e trocava o
+  // assunto com base no conteúdo). Campo vazio a IA preenche à vontade; campo
+  // preenchido passa pelo diálogo de revisão.
+  const [aiConflicts, setAiConflicts] = useState<AIFieldConflict[]>([]);
+  const [aiMergeOpen, setAiMergeOpen] = useState(false);
+  const [aiMergeOrigin, setAiMergeOrigin] = useState<'áudio' | 'documento'>('áudio');
+
+  const applyAIFieldValues = (f: Partial<Record<AIReviewedField, string>>) => {
+    if (f.title !== undefined && f.title) setFormTitle(f.title);
+    if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+    if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+    if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+    if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+    if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+    if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+  };
+
+  const handleAIFields = (f: ActivityCallFields, origin: 'áudio' | 'documento') => {
+    const { autoApply, conflicts } = splitAIFields(f, {
+      title: formTitle,
+      what_was_done: stripHtmlToText(formWhatWasDone),
+      current_status: stripHtmlToText(formCurrentStatus),
+      next_steps: stripHtmlToText(formNextSteps),
+      solicitacao: stripHtmlToText(formSolicitacao),
+      resposta_juizo: stripHtmlToText(formRespostaJuizo),
+      notes: stripHtmlToText(formNotes),
+    });
+
+    applyAIFieldValues(autoApply);
+
+    // Metadados objetivos seguem aplicados direto — ficam visíveis no formulário.
+    if (autoApply.deadline && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.deadline)) handleDeadlineChange(autoApply.deadline);
+    if (autoApply.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.notification_date)) setFormNotificationDate(autoApply.notification_date);
+    if (autoApply.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(autoApply.priority)) setFormPriority(autoApply.priority);
+    if (autoApply.status && ['pendente', 'em_andamento', 'concluida'].includes(autoApply.status)) setFormStatus(autoApply.status);
+    if (autoApply.activity_type) {
+      const t = routineActivityTypes.find((x) => x.value === autoApply.activity_type);
+      if (t && t.value !== formType) {
+        setFormType(t.value);
+        setTypeMismatch(null);
+        toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+      }
+    }
+
+    // Assessores designados: o 1º vira o principal, os demais co-assessores.
+    const spokenNames = (autoApply.assessor_names && autoApply.assessor_names.length > 0)
+      ? autoApply.assessor_names
+      : (autoApply.assessor_name ? [autoApply.assessor_name] : []);
+    if (spokenNames.length > 0) {
+      const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
+      const matched: { user_id: string; full_name: string }[] = [];
+      const notFound: string[] = [];
+      for (const name of spokenNames) {
+        const spoken = norm(name);
+        const member = teamMembers.find((m) => {
+          const full = norm(m.full_name || '');
+          return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+        });
+        if (member && !matched.some((x) => x.user_id === member.user_id)) {
+          matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+        } else if (!member) {
+          notFound.push(name);
+        }
+      }
+      if (matched.length > 0) {
+        setFormAssignedTo(matched[0].user_id);
+        setFormAssignedToName(matched[0].full_name);
+        setFormCoAssignees(matched.slice(1));
+      }
+      if (notFound.length > 0) {
+        toast.error(`Assessor(es) citado(s) no ${origin} não encontrado(s) na equipe: ${notFound.join(', ')}.`);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      setAiConflicts(conflicts);
+      setAiMergeOrigin(origin);
+      setAiMergeOpen(true);
+    }
+  };
+
   // Verifica se o tipo escolhido bate com o contexto (assunto + campos). Se a IA
   // sugerir um tipo diferente do atual, mostra um alerta com botão de aplicar —
   // nunca troca sozinho (diferente do auto-sugerir do modo criar).
@@ -4816,59 +4902,7 @@ const ActivitiesPage = () => {
                             })(),
                           } : undefined,
                         }}
-                        onFields={(f) => {
-                          // Campos de texto: '' significa "o áudio mandou apagar" — limpa o campo.
-                          if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                          if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                          if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                          if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                          if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                          if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                          // Metadados ditados no áudio (prazo, prioridade, situação, assessor, título).
-                          if (f.title) setFormTitle(f.title);
-                          if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                          if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                          if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                          if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                          // Tipo mais adequado ao conteúdo, sugerido pela IA entre os tipos válidos do seletor.
-                          if (f.activity_type) {
-                            const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                            if (t && t.value !== formType) {
-                              setFormType(t.value);
-                              setTypeMismatch(null);
-                              toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                            }
-                          }
-                          // Assessores ditados no áudio: o primeiro vira o principal, os demais co-assessores.
-                          const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                            ? f.assessor_names
-                            : (f.assessor_name ? [f.assessor_name] : []);
-                          if (spokenNames.length > 0) {
-                            const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-                            const matched: { user_id: string; full_name: string }[] = [];
-                            const notFound: string[] = [];
-                            for (const name of spokenNames) {
-                              const spoken = norm(name);
-                              const member = teamMembers.find((m) => {
-                                const full = norm(m.full_name || '');
-                                return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                              });
-                              if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                                matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                              } else if (!member) {
-                                notFound.push(name);
-                              }
-                            }
-                            if (matched.length > 0) {
-                              setFormAssignedTo(matched[0].user_id);
-                              setFormAssignedToName(matched[0].full_name);
-                              setFormCoAssignees(matched.slice(1));
-                            }
-                            if (notFound.length > 0) {
-                              toast.error(`Assessor(es) citado(s) no áudio não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                            }
-                          }
-                        }}
+                        onFields={(f) => handleAIFields(f, 'áudio')}
                       />
                   <ActivityDocumentUpload
                         triggerClassName="sr-only"
@@ -4910,58 +4944,7 @@ const ActivitiesPage = () => {
                             })(),
                           } : undefined,
                         }}
-                        onFields={(f) => {
-                          // Campos de texto (documento nunca manda apagar, mas mantém o mesmo shape do áudio).
-                          if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                          if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                          if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                          if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                          if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                          if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                          // Metadados extraídos do documento (prazo, notificação, prioridade, situação, título).
-                          if (f.title) setFormTitle(f.title);
-                          if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                          if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                          if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                          if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                          if (f.activity_type) {
-                            const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                            if (t && t.value !== formType) {
-                              setFormType(t.value);
-                              setTypeMismatch(null);
-                              toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                            }
-                          }
-                          // Assessores designados no documento: 1º vira o principal, os demais co-assessores.
-                          const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                            ? f.assessor_names
-                            : (f.assessor_name ? [f.assessor_name] : []);
-                          if (spokenNames.length > 0) {
-                            const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-                            const matched: { user_id: string; full_name: string }[] = [];
-                            const notFound: string[] = [];
-                            for (const name of spokenNames) {
-                              const spoken = norm(name);
-                              const member = teamMembers.find((m) => {
-                                const full = norm(m.full_name || '');
-                                return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                              });
-                              if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                                matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                              } else if (!member) {
-                                notFound.push(name);
-                              }
-                            }
-                            if (matched.length > 0) {
-                              setFormAssignedTo(matched[0].user_id);
-                              setFormAssignedToName(matched[0].full_name);
-                              setFormCoAssignees(matched.slice(1));
-                            }
-                            if (notFound.length > 0) {
-                              toast.error(`Assessor(es) citado(s) no documento não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                            }
-                          }
-                        }}
+                        onFields={(f) => handleAIFields(f, 'documento')}
                       />
 
                   <ActivityNextStepsAgent
@@ -5848,6 +5831,14 @@ const ActivitiesPage = () => {
           `}</style>
         </div>
       )}
+
+      <AIFieldMergeDialog
+        open={aiMergeOpen}
+        onOpenChange={setAiMergeOpen}
+        origin={aiMergeOrigin}
+        conflicts={aiConflicts}
+        onApply={applyAIFieldValues}
+      />
     </div>
   );
 };

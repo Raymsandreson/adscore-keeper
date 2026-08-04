@@ -13,13 +13,15 @@ import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { displayProcessLabel } from '@/lib/processLabel';
-import { ActivityCallRecorder } from '@/components/activities/ActivityCallRecorder';
+import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
+import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
+import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
@@ -112,6 +114,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   // ---- Form state (mesmo conjunto do formulário completo) ----
   const [formTitle, setFormTitle] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
+  const [aiConflicts, setAiConflicts] = useState<AIFieldConflict[]>([]);
+  const [aiMergeOpen, setAiMergeOpen] = useState(false);
+  const [aiMergeOrigin, setAiMergeOrigin] = useState<AIFieldOrigin>('áudio');
+
   const [formType, setFormType] = useState('');
   const [formStatus, setFormStatus] = useState('pendente');
   const [formPriority, setFormPriority] = useState('normal');
@@ -707,8 +713,23 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       });
       toast.dismiss(loadingId);
       if (data?.success && data.title) {
-        setFormTitle(data.title);
-        toast.success('Assunto renomeado. Revise e salve.');
+        // Com assunto já escrito, a sugestão passa pelo diálogo: o botão fica ao
+        // lado do "Preencher com" e um clique sem querer trocava o título do
+        // usuário por um gerado a partir do conteúdo, calado.
+        if (formTitle.trim() && data.title.trim() !== formTitle.trim()) {
+          setAiConflicts([{
+            key: 'title',
+            label: AI_FIELD_LABELS.title,
+            current: formTitle.trim(),
+            incoming: data.title.trim(),
+            defaultChecked: false,
+          }]);
+          setAiMergeOrigin('renomear');
+          setAiMergeOpen(true);
+        } else {
+          setFormTitle(data.title);
+          toast.success('Assunto renomeado. Revise e salve.');
+        }
       } else {
         toast.error(data?.error || 'Não foi possível gerar o assunto — preencha o próximo passo/contexto.');
       }
@@ -718,6 +739,84 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       toast.error('Erro ao renomear com IA.');
     } finally {
       setRenamingTitle(false);
+    }
+  };
+
+  // ── Resposta da IA (áudio da ligação / documento anexado) → formulário ─────
+  // As duas funções declaram os 6 campos de detalhe como `required` no schema:
+  // a IA devolve todos em toda chamada, mesmo sem o áudio/documento falar deles.
+  // Aplicar tudo direto reescrevia o texto do usuário sem avisar. Agora campo
+  // vazio a IA preenche à vontade e campo preenchido passa pelo diálogo.
+  const applyAIFieldValues = (f: Partial<Record<AIReviewedField, string>>) => {
+    if (f.title !== undefined && f.title) setFormTitle(f.title);
+    if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+    if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+    if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+    if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+    if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+    if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+  };
+
+  const handleAIFields = (f: ActivityCallFields, origin: 'áudio' | 'documento') => {
+    const { autoApply, conflicts } = splitAIFields(f, {
+      title: formTitle,
+      what_was_done: stripHtmlToText(formWhatWasDone),
+      current_status: stripHtmlToText(formCurrentStatus),
+      next_steps: stripHtmlToText(formNextSteps),
+      solicitacao: stripHtmlToText(formSolicitacao),
+      resposta_juizo: stripHtmlToText(formRespostaJuizo),
+      notes: stripHtmlToText(formNotes),
+    });
+
+    applyAIFieldValues(autoApply);
+
+    // Metadados objetivos seguem aplicados direto — ficam visíveis no formulário.
+    if (autoApply.deadline && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.deadline)) handleDeadlineChange(autoApply.deadline);
+    if (autoApply.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.notification_date)) setFormNotificationDate(autoApply.notification_date);
+    if (autoApply.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(autoApply.priority)) setFormPriority(autoApply.priority);
+    if (autoApply.status && ['pendente', 'em_andamento', 'concluida'].includes(autoApply.status)) setFormStatus(autoApply.status);
+    if (autoApply.activity_type) {
+      const t = routineActivityTypes.find((x) => x.value === autoApply.activity_type);
+      if (t && t.value !== formType) {
+        setFormType(t.value);
+        toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+      }
+    }
+
+    // Assessores designados: o 1º vira o principal, os demais co-assessores.
+    const spokenNames = (autoApply.assessor_names && autoApply.assessor_names.length > 0)
+      ? autoApply.assessor_names
+      : (autoApply.assessor_name ? [autoApply.assessor_name] : []);
+    if (spokenNames.length > 0) {
+      const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
+      const matched: { user_id: string; full_name: string }[] = [];
+      const notFound: string[] = [];
+      for (const name of spokenNames) {
+        const spoken = norm(name);
+        const member = teamMembers.find((m) => {
+          const full = norm(m.full_name || '');
+          return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+        });
+        if (member && !matched.some((x) => x.user_id === member.user_id)) {
+          matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+        } else if (!member) {
+          notFound.push(name);
+        }
+      }
+      if (matched.length > 0) {
+        setFormAssignedTo(matched[0].user_id);
+        setFormAssignedToName(matched[0].full_name);
+        setFormCoAssignees(matched.slice(1));
+      }
+      if (notFound.length > 0) {
+        toast.error(`Assessor(es) citado(s) no ${origin} não encontrado(s) na equipe: ${notFound.join(', ')}.`);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      setAiConflicts(conflicts);
+      setAiMergeOrigin(origin);
+      setAiMergeOpen(true);
     }
   };
 
@@ -903,57 +1002,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                     })(),
                   } : undefined,
                 }}
-                onFields={(f) => {
-                  // Campos de texto: '' significa "o áudio mandou apagar" — limpa o campo.
-                  if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                  if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                  if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                  if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                  if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                  if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                  // Metadados ditados no áudio (prazo, prioridade, situação, título, tipo).
-                  if (f.title) setFormTitle(f.title);
-                  if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                  if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                  if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                  if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                  if (f.activity_type) {
-                    const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                    if (t && t.value !== formType) {
-                      setFormType(t.value);
-                      toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                    }
-                  }
-                  // Assessores ditados no áudio: o primeiro vira o principal, os demais co-assessores.
-                  const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                    ? f.assessor_names
-                    : (f.assessor_name ? [f.assessor_name] : []);
-                  if (spokenNames.length > 0) {
-                    const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
-                    const matched: { user_id: string; full_name: string }[] = [];
-                    const notFound: string[] = [];
-                    for (const name of spokenNames) {
-                      const spoken = norm(name);
-                      const member = teamMembers.find((m) => {
-                        const full = norm(m.full_name || '');
-                        return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                      });
-                      if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                        matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                      } else if (!member) {
-                        notFound.push(name);
-                      }
-                    }
-                    if (matched.length > 0) {
-                      setFormAssignedTo(matched[0].user_id);
-                      setFormAssignedToName(matched[0].full_name);
-                      setFormCoAssignees(matched.slice(1));
-                    }
-                    if (notFound.length > 0) {
-                      toast.error(`Assessor(es) citado(s) no áudio não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                    }
-                  }
-                }}
+                onFields={(f) => handleAIFields(f, 'áudio')}
               />
               <ActivityDocumentUpload
                 triggerClassName="sr-only"
@@ -995,57 +1044,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                     })(),
                   } : undefined,
                 }}
-                onFields={(f) => {
-                  // Campos de texto (documento nunca manda apagar, mas mantém o mesmo shape do áudio).
-                  if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                  if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                  if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                  if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                  if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                  if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                  // Metadados extraídos do documento (prazo, notificação, prioridade, situação, título).
-                  if (f.title) setFormTitle(f.title);
-                  if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                  if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                  if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                  if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                  if (f.activity_type) {
-                    const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                    if (t && t.value !== formType) {
-                      setFormType(t.value);
-                      toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                    }
-                  }
-                  // Assessores designados no documento: 1º vira o principal, os demais co-assessores.
-                  const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                    ? f.assessor_names
-                    : (f.assessor_name ? [f.assessor_name] : []);
-                  if (spokenNames.length > 0) {
-                    const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
-                    const matched: { user_id: string; full_name: string }[] = [];
-                    const notFound: string[] = [];
-                    for (const name of spokenNames) {
-                      const spoken = norm(name);
-                      const member = teamMembers.find((m) => {
-                        const full = norm(m.full_name || '');
-                        return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                      });
-                      if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                        matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                      } else if (!member) {
-                        notFound.push(name);
-                      }
-                    }
-                    if (matched.length > 0) {
-                      setFormAssignedTo(matched[0].user_id);
-                      setFormAssignedToName(matched[0].full_name);
-                      setFormCoAssignees(matched.slice(1));
-                    }
-                    if (notFound.length > 0) {
-                      toast.error(`Assessor(es) citado(s) no documento não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                    }
-                  }
-                }}
+                onFields={(f) => handleAIFields(f, 'documento')}
               />
 
               {!isCreate && (
@@ -1289,6 +1288,14 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           </div>
         </div>
       </SheetContent>
+
+      <AIFieldMergeDialog
+        open={aiMergeOpen}
+        onOpenChange={setAiMergeOpen}
+        origin={aiMergeOrigin}
+        conflicts={aiConflicts}
+        onApply={applyAIFieldValues}
+      />
     </Sheet>
   );
 }
