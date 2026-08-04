@@ -1569,7 +1569,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
           {form.workflow_id && process?.lead_id && (
             <div className="pt-1">
-              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} />
+              {/* Passo marcado daqui nasce no PROCESSO (não numa atividade) —
+                  o id vai no log pro detalhe do telão apontar o processo. */}
+              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} processId={process.id} />
             </div>
           )}
           {form.workflow_id && !process?.lead_id && (
