@@ -676,10 +676,18 @@ export function ContactDetailSheet({
               { key: 'activities', label: 'Atividades' },
               { key: 'ai_chat', label: 'IA' },
             ] as any;
+            // Acima de 5 abas os rótulos não cabem em colunas iguais (o sheet tem no
+            // máximo ~512px e no celular ~360px), então a lista vira rolável na horizontal.
+            const scrollable = visible.length > 5;
             return (
-              <TabsList className="grid w-full" style={{ gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }}>
+              <TabsList
+                className={scrollable
+                  ? 'flex w-full justify-start flex-nowrap gap-1 overflow-x-auto scrollbar-hide snap-x'
+                  : 'grid w-full'}
+                style={scrollable ? undefined : { gridTemplateColumns: `repeat(${visible.length}, minmax(0, 1fr))` }}
+              >
                 {visible.map((t: any) => (
-                  <TabsTrigger key={t.key} value={t.key} className="text-xs px-1">
+                  <TabsTrigger key={t.key} value={t.key} className="text-xs px-2 shrink-0 snap-start">
                     {tabIcons[t.key] || <Tag className="h-3 w-3 mr-1" />}
                     {t.label}
                   </TabsTrigger>
