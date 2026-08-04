@@ -7,6 +7,7 @@
 
 import { createMunicipalityIndex, type MunicipalityIndex, type MunicipalityRow } from './municipalities';
 import { buildCapitalReferences } from './capitals';
+import type { UfShapes } from './shapes';
 import type { ReferencePoint } from './types';
 
 export type {
@@ -34,7 +35,15 @@ export {
   type MunicipalityRow,
 } from './municipalities';
 export { CAPITAL_IBGE_CODES, buildCapitalReferences, capitalKey } from './capitals';
-export { resolveLeadLocation, type LocatableLead } from './resolveLeadLocation';
+export { resolveLeadLocation, type LocatableLead, type ResolveOptions } from './resolveLeadLocation';
+export {
+  clearShapeCache,
+  projectUfs,
+  projectUfsCached,
+  type ProjectedShapes,
+  type UfShape,
+  type UfShapes,
+} from './shapes';
 export { nearestReference, nearestReferenceInUf, rankReferences } from './nearestReference';
 export { computeFraming, type FramingOptions } from './framingMode';
 
@@ -72,4 +81,32 @@ export function loadMunicipalityIndex(): Promise<MunicipalityIndex> {
 /** As 27 capitais, prontas para `computeFraming`. */
 export async function loadCapitalReferences(): Promise<ReferencePoint[]> {
   return buildCapitalReferences(await loadMunicipalityIndex());
+}
+
+let cachedShapes: UfShapes | null = null;
+let pendingShapes: Promise<UfShapes> | null = null;
+
+/**
+ * Carrega a silhueta das 27 UFs (85 KB), uma vez por sessão.
+ *
+ * Gerado por `scripts/build-geo-malhas.mjs`. Vem embarcado, e não do IBGE em
+ * runtime, porque o kanban desenha uma silhueta por card: buscar por card seriam
+ * 100+ requests a cada rolagem.
+ */
+export function loadUfShapes(): Promise<UfShapes> {
+  if (cachedShapes) return Promise.resolve(cachedShapes);
+
+  if (!pendingShapes) {
+    pendingShapes = import('./data/uf-malhas.json')
+      .then((module) => {
+        cachedShapes = ((module as { default?: unknown }).default ?? module) as UfShapes;
+        return cachedShapes;
+      })
+      .catch((error) => {
+        pendingShapes = null;
+        throw error;
+      });
+  }
+
+  return pendingShapes;
 }

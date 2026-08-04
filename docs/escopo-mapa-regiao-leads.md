@@ -1,6 +1,6 @@
 # Escopo — Mapa de região do lead e distância até a base mais próxima
 
-**Status**: **Fase 1 entregue** em 04/08/2026 (`src/lib/geo/`, 67 testes). Fases 2 a 4 pendentes. Levantamento feito em 04/08/2026 contra o Supabase Externo `kmedldlepwiityjsdahz`.
+**Status**: **Fases 1 e 2 entregues** em 04/08/2026 (`src/lib/geo/` + miniatura no kanban e na lista, 95 testes). Fases 3 e 4 pendentes. Levantamento feito em 04/08/2026 contra o Supabase Externo `kmedldlepwiityjsdahz`.
 
 **Resumo em uma frase**: dado um lead com cidade/UF (ex.: Piauí), exibir a silhueta do estado com o município destacado, calcular a distância até a capital ou base mais próxima e enquadrar a pré-visualização em **um** estado quando a capital mais próxima é a do próprio estado, ou em **dois** quando a mais próxima é de outro estado.
 
@@ -282,7 +282,7 @@ O cache por município (§4.3) é o que segura o custo: sem ele, 16k leads × cl
 | Fase | Entrega | Depende de |
 |---|---|---|
 | **1 ✅** | `src/lib/geo/`: `resolveLeadLocation`, `haversineKm`, `nearestReference`, `computeFraming`, `capitals.ts`, apelidos e normalização de UF. Lib pura, sem UI, 67 testes | — |
-| **2** | Asset `uf-min.json` (131 KB) + componente `<RegionThumb>` (SVG) + toggle `regionMap` no card | Fase 1 |
+| **2 ✅** | Asset `uf-malhas.json` (85 KB) + `<LeadRegionThumb>` e `<LeadDistanceSuffix>` (SVG) no card do kanban e na lista | Fase 1 |
 | **3** | Painel na aba "Local" com Leaflet, camadas, top-3 e enquadramento de 1 ou 2 estados | Fase 1 |
 | **4** | Migration `geo_reference_points` + `geo_route_cache` com RLS; tela de cadastro de bases; botão "Calcular rota real" via proxy | Fase 3 |
 
@@ -316,6 +316,28 @@ Fases 2 e 3 são paralelas depois da 1. A Fase 1 sozinha já é útil: entrega o
 No recorte comparável ao SQL do §2.5 (leads com coordenada **e** UF): 2.966 / 313 / 92, contra 2.951 / 327 / 93 medidos direto no banco. As diferenças são os leads entre 5 e 20 km do centro da capital, que a regra do código IBGE classifica melhor.
 
 Avisos emitidos na base real: 189 `unknown_city`, 55 `city_visit_divergence`, 49 `ambiguous_city`, 37 `uf_mismatch`, 3 `municipality_without_center`.
+
+### 9.2 O que a Fase 2 entregou (04/08/2026)
+
+| Arquivo | Papel |
+|---|---|
+| `scripts/build-geo-malhas.mjs` | Baixa a silhueta das 27 UFs do IBGE (qualidade mínima) |
+| `src/lib/geo/data/uf-malhas.json` | 85 KB — só anéis externos, 3 casas decimais (~110 m) |
+| `src/lib/geo/shapes.ts` | `projectUfs` (equirretangular corrigida pelo cosseno da latitude) e `projectUfsCached` |
+| `src/lib/geo/describeFraming.ts` | Rótulo curto do badge e texto explicativo do tooltip |
+| `src/hooks/useGeoIndex.ts` | Carrega os dois assets uma vez por sessão, compartilhado por todos os cards |
+| `src/hooks/useLeadFraming.ts` | Resolve localização + enquadramento, memoizado por lead |
+| `src/components/leads/LeadRegionThumb.tsx` | `<LeadRegionThumb>` (silhueta) e `<LeadDistanceSuffix>` (distância) |
+
+**Onde aparece**: `DynamicKanbanBoard.tsx:1109` (silhueta de 24 px no lugar do pino, com a distância ao fim da linha) e `LeadListView.tsx` (coluna "Local", 20 px). A resolução usa `prefer: 'visit'` no kanban, porque o texto ao lado já mostrava `visit_city || city` — sem isso, o desenho apontaria uma cidade e o texto outra nos 55 leads divergentes.
+
+**Decisões da fase**:
+
+- **Sempre visível, sem toggle.** O `CardFieldsConfig` previsto no §5.1 não serviria: `LeadManager.tsx` e `LeadsPipeline.tsx` (e com eles `useCardFieldsSettings` e `CardFieldsSettings`) **não são importados em lugar nenhum** — são código morto. O card real é o do `DynamicKanbanBoard`, que não tem infraestrutura de configuração de campos.
+- **Fallback para o pino.** Enquanto os assets carregam, e para lead sem cidade reconhecida, o componente devolve o `<MapPin>` de antes. O card nunca perde altura nem pisca.
+- **Sem Leaflet e sem tile.** SVG puro a partir do asset embarcado. O board renderiza 100+ cards; qualquer coisa que fizesse requisição por card inviabilizaria a rolagem.
+
+**Custo no bundle** (medido no `npm run build`): o principal continua em **3.285,42 kB**, exatamente como antes. Os dados viraram chunks sob demanda — `municipios` 262 kB (96 kB gzip) e `uf-malhas` 87 kB (27 kB gzip) —, baixados uma vez por sessão, só por quem abre uma tela com mapa.
 
 **Item avulso** (fora das fases, 1 linha): trocar `lead_city,lead_state` por `city,state` em `LeadsMapPage.tsx:74` ressuscita a página `/mapa-leads`. Você não a incluiu no escopo; fica registrado porque hoje ela está quebrada em silêncio e a doc afirma que funciona.
 

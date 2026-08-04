@@ -41,10 +41,25 @@ const isUsableCoord = (lat?: number | null, lng?: number | null): boolean =>
  * Nunca inventa posição: quando o dado é ambíguo ou inconsistente, devolve o
  * aviso correspondente e deixa a decisão para quem edita o cadastro.
  */
+export interface ResolveOptions {
+  /**
+   * Qual endereço manda quando o lead tem os dois preenchidos.
+   *
+   * `'city'` (padrão) é o endereço do cadastro, em 6.095 leads. `'visit'` é o
+   * local da visita/acidente, em 847 — e é o que o card do kanban já exibe
+   * (`DynamicKanbanBoard.tsx:1102`). Quem desenha ao lado daquele texto passa
+   * `'visit'`, senão o card mostra uma cidade escrita e outra no mapa. São 55
+   * leads em que os dois campos divergem.
+   */
+  prefer?: 'city' | 'visit';
+}
+
 export function resolveLeadLocation(
   lead: LocatableLead,
   index: MunicipalityIndex,
+  options: ResolveOptions = {},
 ): LeadLocation {
+  const preferVisit = options.prefer === 'visit';
   const warnings: LocationWarning[] = [];
 
   // O cadastro tem 58 leads com city e visit_city diferentes. A resolução segue
@@ -56,7 +71,7 @@ export function resolveLeadLocation(
     warnings.push({ type: 'city_visit_divergence', city, visitCity });
   }
 
-  const usesVisit = !city && !!visitCity;
+  const usesVisit = preferVisit ? !!visitCity : !city && !!visitCity;
   const rawCity = usesVisit ? visitCity : city;
   const rawUf = usesVisit ? lead.visit_state : lead.state;
   const source = usesVisit ? 'visit_city' : 'city';
