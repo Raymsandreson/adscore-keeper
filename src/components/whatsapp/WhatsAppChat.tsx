@@ -2460,19 +2460,32 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     if (!selectedLeadId) return;
     
     // Caso a conversa seja um GRUPO e nenhum participante específico foi escolhido,
-    // vincular APENAS o GRUPO ao lead (lead_whatsapp_groups).
-    // NÃO chamar onLinkToLead pois ele vincularia o JID do grupo como se fosse contato individual.
+    // vincular o GRUPO ao lead (lead_whatsapp_groups) E marcar a conversa com o lead.
+    // O JID gravado precisa ser o canônico (`...@g.us`): `conversation.phone` é a
+    // versão só-dígitos usada para agrupar a conversa e não bate com o que as
+    // demais telas leem (leads.whatsapp_group_id, whatsapp_groups_index).
     if (isGroup && !selectedParticipantPhone) {
-      const groupJid = conversation.phone;
+      const canonicalJid = (rawChatId && rawChatId.includes('@g.us'))
+        ? rawChatId
+        : (conversationChatId && conversationChatId.includes('@g.us'))
+          ? conversationChatId
+          : null;
+      const groupJid = canonicalJid || conversation.phone;
+      // Variantes para dedup: linhas antigas podem ter sido gravadas sem o sufixo.
+      const jidVariants = Array.from(new Set([
+        groupJid,
+        conversation.phone,
+        groupJid.replace(/@g\.us$/, '').replace(/\D/g, ''),
+      ].filter(Boolean)));
       const groupName = conversation.contact_name || null;
       const leadName = leads.find(l => l.id === selectedLeadId)?.lead_name || null;
       try {
-        const { data: existingGroup } = await externalSupabase
+        const { data: existingGroups } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('id')
+          .select('id, group_jid')
           .eq('lead_id', selectedLeadId)
-          .eq('group_jid', groupJid)
-          .maybeSingle();
+          .in('group_jid', jidVariants);
+        const existingGroup = (existingGroups || [])[0] as { id: string; group_jid: string | null } | undefined;
         if (!existingGroup) {
           const { error: insertErr } = await externalSupabase.from('lead_whatsapp_groups').insert({
             lead_id: selectedLeadId,
@@ -2486,13 +2499,40 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             source: 'WhatsAppChat.handleLinkLead',
           });
         } else {
+          // Já existe: se a linha antiga guardou o JID sem sufixo e agora temos o
+          // canônico, corrige em vez de duplicar.
+          if (canonicalJid && existingGroup.group_jid !== canonicalJid) {
+            await externalSupabase.from('lead_whatsapp_groups')
+              .update({ group_jid: canonicalJid, group_name: groupName } as any)
+              .eq('id', existingGroup.id);
+          }
           await logGroupAudit({
             action: 'link', group_jid: groupJid, group_name: groupName,
             lead_id: selectedLeadId, lead_name: leadName, result: 'duplicate_skipped',
             source: 'WhatsAppChat.handleLinkLead',
           });
         }
-        toast.success('Grupo WhatsApp vinculado ao lead');
+
+        // Espelha no lead o grupo "oficial" quando ainda não houver nenhum —
+        // é esse campo que ActivitiesPage/monitor usam para falar no grupo.
+        if (canonicalJid) {
+          const { data: leadRow } = await externalSupabase
+            .from('leads')
+            .select('whatsapp_group_id')
+            .eq('id', selectedLeadId)
+            .maybeSingle();
+          if (leadRow && !(leadRow as any).whatsapp_group_id) {
+            await externalSupabase.from('leads')
+              .update({ whatsapp_group_id: canonicalJid } as any)
+              .eq('id', selectedLeadId);
+          }
+        }
+
+        // Marca a conversa (mensagens + estado da inbox) com o lead. Sem isto o
+        // vínculo existia só no banco e a UI continuava mostrando "sem lead" —
+        // era a sensação de "cliquei em vincular e não vinculou".
+        onLinkToLead(conversation.phone, selectedLeadId, conversation.instance_name);
+
         setShowLinkDialog(false);
         setSelectedLeadId('');
       } catch (e: any) {
