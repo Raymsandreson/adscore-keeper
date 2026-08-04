@@ -10,7 +10,10 @@
 // o bot inteiro por instabilidade de rede). Se a etiqueta sumir → bloqueia.
 
 import { supabase } from './supabase';
+import { fetchChatDetailsRaw, normalizeChatDetails } from './uazapi-chat-details';
 
+// Timeout curto de propósito: isto roda no caminho do envio da mensagem, e a
+// política é fail-open — esperar 10s pela UazAPI atrasaria toda resposta do bot.
 const UAZ_TIMEOUT_MS = 4000;
 
 interface VerifyResult {
@@ -18,32 +21,16 @@ interface VerifyResult {
   reason: string;
 }
 
+/** Etiquetas do chat, já sem o prefixo "instancia:". null = UazAPI indisponível. */
 async function fetchChatLabels(baseUrl: string, token: string, number: string): Promise<string[] | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), UAZ_TIMEOUT_MS);
   try {
-    const r = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/details`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', token },
-      body: JSON.stringify({ number, preview: false }),
-      signal: controller.signal,
+    const raw = await fetchChatDetailsRaw(baseUrl, token, number, {
+      preview: false,
+      timeoutMs: UAZ_TIMEOUT_MS,
     });
-    if (!r.ok) return null;
-    const data: any = await r.json().catch(() => null);
-    const chat = data?.chat || data || {};
-    const waLabel = chat?.wa_label ?? chat?.wa_labels ?? data?.wa_label ?? data?.wa_labels;
-    if (!Array.isArray(waLabel)) return [];
-    const ids: string[] = [];
-    for (const raw of waLabel) {
-      if (typeof raw !== 'string') continue;
-      const id = raw.includes(':') ? raw.split(':').pop() : raw;
-      if (id) ids.push(String(id).trim());
-    }
-    return ids;
+    return normalizeChatDetails(raw).wa_labels;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 

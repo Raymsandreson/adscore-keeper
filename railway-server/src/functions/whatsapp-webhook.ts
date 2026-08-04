@@ -15,6 +15,41 @@ import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
 import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
 import { uploadImageThumb } from '../lib/imageThumb';
+import {
+  applyDetailsToContact,
+  getChatDetails,
+  pickBestName,
+} from '../lib/uazapi-chat-details';
+
+// ============================================================
+// Throttle em memória do refresh de contato via /chat/details
+// ============================================================
+// Sem isto, uma conversa ativa faria uma leitura no banco por mensagem só para
+// descobrir que o cache ainda está fresco. A 1.000 msg/min isso é 1.000 selects
+// desperdiçados. O Railway roda um processo longo, então o Map sobrevive entre
+// requisições; perdê-lo num restart não custa nada — no pior caso o primeiro
+// refresh depois do restart consulta o banco uma vez a mais.
+const CONTACT_REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const CONTACT_REFRESH_MAX_ENTRIES = 20000; // teto de memória (~1MB)
+const lastContactRefresh = new Map<string, number>();
+
+function shouldRefreshContact(phone: string): boolean {
+  const now = Date.now();
+  const last = lastContactRefresh.get(phone);
+  if (last && now - last < CONTACT_REFRESH_INTERVAL_MS) return false;
+
+  // Poda a metade mais antiga de uma vez em vez de uma entrada por inserção:
+  // evita que o Map fique colado no teto fazendo varredura a cada mensagem.
+  if (lastContactRefresh.size >= CONTACT_REFRESH_MAX_ENTRIES) {
+    const sorted = [...lastContactRefresh.entries()].sort((a, b) => a[1] - b[1]);
+    for (const [key] of sorted.slice(0, Math.floor(sorted.length / 2))) {
+      lastContactRefresh.delete(key);
+    }
+  }
+
+  lastContactRefresh.set(phone, now);
+  return true;
+}
 
 // ============================================================
 // Proactive first message — disparado quando o agente é ativado
@@ -1400,12 +1435,15 @@ export const handler: RequestHandler = async (req, res) => {
                 try {
                   const { data: contacts } = await supabase
                     .from('contacts')
-                    .select('full_name, push_name, updated_at')
+                    // `push_name` não existe em `contacts` — pedir a coluna
+                    // fazia o PostgREST derrubar a query inteira, então este
+                    // fallback nunca devolvia nada e caía sempre no /chat/details.
+                    .select('full_name, updated_at')
                     .like('phone', `%${last8}`)
                     .order('updated_at', { ascending: false })
                     .limit(5);
                   for (const c of (contacts as any[] | null) || []) {
-                    leadName = cleanName(c?.full_name) || cleanName(c?.push_name);
+                    leadName = cleanName(c?.full_name);
                     if (leadName) break;
                   }
                 } catch {}
@@ -1426,41 +1464,17 @@ export const handler: RequestHandler = async (req, res) => {
                   } catch {}
                 }
                 if (!leadName) {
-                  // Fallback final: consulta UazAPI /chat/details pra puxar nome direto do WhatsApp
+                  // Fallback final: /chat/details puxa o nome direto do WhatsApp.
+                  // Via getChatDetails (e não fetch solto) porque assim a
+                  // resposta também alimenta whatsapp_chat_details_cache — o
+                  // mesmo dado serve o modal de membros e a ficha do contato
+                  // sem uma segunda chamada à UazAPI.
                   try {
-                    const { data: inst } = await supabase
-                      .from('whatsapp_instances')
-                      .select('instance_token, base_url')
-                      .ilike('instance_name', webhookInstanceName)
-                      .limit(1)
-                      .maybeSingle();
-                    const token = (inst as any)?.instance_token;
-                    const baseUrl = (inst as any)?.base_url || 'https://abraci.uazapi.com';
-                    if (token) {
-                      const ctrl = new AbortController();
-                      const timer = setTimeout(() => ctrl.abort(), 5000);
-                      try {
-                        const r = await fetch(`${String(baseUrl).replace(/\/$/, '')}/chat/details`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json', token },
-                          body: JSON.stringify({ number: phoneDigits, preview: false }),
-                          signal: ctrl.signal,
-                        });
-                        if (r.ok) {
-                          const data: any = await r.json().catch(() => null);
-                          const chat = data?.chat || data || {};
-                          leadName =
-                            cleanName(chat?.wa_contactName) ||
-                            cleanName(chat?.wa_name) ||
-                            cleanName(chat?.name) ||
-                            cleanName(chat?.lead_name) ||
-                            cleanName(chat?.pushName) ||
-                            cleanName(chat?.wa_chatName);
-                        }
-                      } finally {
-                        clearTimeout(timer);
-                      }
-                    }
+                    const { details } = await getChatDetails({
+                      phone: phoneDigits,
+                      instanceName: webhookInstanceName,
+                    });
+                    if (details) leadName = cleanName(pickBestName(details));
                   } catch (e: any) {
                     console.warn('[label-trigger][stage] UazAPI /chat/details falhou:', e?.message);
                   }
@@ -2080,6 +2094,28 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName);
+
+    // ========== REFRESH DE CONTATO (/chat/details) ==========
+    // É isto que mantém contato "sempre atualizado" sem varrer os ~31k da base:
+    // quem conversa é quem é renovado. Mensagem que chega de um contato com
+    // cache vencido dispara um refresh e aplica nome/foto/CPF em `contacts`.
+    //
+    // Deliberadamente fire-and-forget e depois do INSERT: a mensagem já está
+    // salva, então nem uma falha nem a latência da UazAPI podem afetar o
+    // webhook. `void` + catch garantem que uma rejeição não vire
+    // unhandledRejection e derrube o processo.
+    if (direction === 'inbound' && instanceName && phone && !isGroup) {
+      if (shouldRefreshContact(phone)) {
+        void (async () => {
+          try {
+            const { details, from_cache } = await getChatDetails({ phone, instanceName });
+            if (details && !from_cache) await applyDetailsToContact(phone, details);
+          } catch (e: any) {
+            console.warn('[chat-details] refresh em background falhou:', e?.message);
+          }
+        })();
+      }
+    }
 
     // ========== AUTO-ACTIVATE DEFAULT AGENT ==========
     // Se a instância tem default_agent_id e ainda não há agente ativado para essa conversa,

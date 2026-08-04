@@ -14,6 +14,12 @@
 // ============================================================
 import type { RequestHandler } from 'express';
 import { supabase as ext } from '../lib/supabase';
+import {
+  fetchDetailsAcrossInstances,
+  mapWithConcurrency,
+  pickBestName,
+  toCacheRow,
+} from '../lib/uazapi-chat-details';
 
 const DEFAULT_BASE = 'https://abraci.uazapi.com';
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h — vale para roster e chat/details
@@ -193,59 +199,11 @@ async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any, g
   return { participants: [] as any[], name: null as string | null, used_instance: null, tried };
 }
 
-// `Promise<any>` explícito: com a lib do Node (sem DOM), `res.json()` devolve
-// `unknown`, e qualquer acesso a campo depois vira erro de compilação.
-async function fetchChatDetails(baseUrl: string, token: string, number: string): Promise<any> {
-  const res = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/details`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', token },
-    body: JSON.stringify({ number, preview: true }),
-  });
-  if (!res.ok) return null;
-  return await res.json().catch(() => null);
-}
-
-function parseCommonGroups(s: unknown): Array<{ name: string; jid: string }> {
-  if (!s || typeof s !== 'string') return [];
-  const out: Array<{ name: string; jid: string }> = [];
-  const re = /([^,(]+)\(([^)]+)\)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(s)) !== null) out.push({ name: m[1].trim(), jid: m[2].trim() });
-  return out;
-}
-
-function pickName(d: any): string | null {
-  return d?.lead_fullName || d?.lead_name || d?.wa_contactName || d?.wa_name || d?.name || null;
-}
-
-async function fetchDetailsAcrossInstances(instances: any[], preferred: string, number: string) {
-  const ordered = [
-    ...instances.filter((i) => String(i.instance_name || '').toLowerCase() === preferred.toLowerCase()),
-    ...instances.filter((i) => String(i.instance_name || '').toLowerCase() !== preferred.toLowerCase()),
-  ].filter((i) => i?.instance_token);
-
-  for (const inst of ordered) {
-    const details = await fetchChatDetails(inst.base_url || DEFAULT_BASE, inst.instance_token, number);
-    if (details && (pickName(details) || details?.image || details?.imagePreview || details?.lead_email || details?.common_groups)) {
-      return { details, source_instance: inst.instance_name };
-    }
-  }
-  return null;
-}
-
-async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (t: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let i = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    for (;;) {
-      const idx = i++;
-      if (idx >= items.length) return;
-      try { out[idx] = await fn(items[idx]); } catch { out[idx] = null as any; }
-    }
-  });
-  await Promise.all(workers);
-  return out;
-}
+// O fetch/parse/cache do /chat/details vive em lib/uazapi-chat-details.ts.
+// Este arquivo tinha a própria cópia, e ela carregava dois bugs: lia
+// `common_groups` (o campo real é `wa_common_groups`) e gravava
+// `lead_field12..16` em colunas que não existiam, o que derrubava o upsert
+// inteiro e deixava o cache sem escrever desde maio.
 
 // Mapa LID → { phone, name } montado a partir das mensagens do próprio grupo.
 // A UazAPI manda `sender_lid` junto de `sender_pn` e `senderName`, então o
@@ -415,33 +373,20 @@ export const handler: RequestHandler = async (req, res) => {
 
     const fetchTargets = refresh ? withPhone : withPhone.filter((p) => !cachedDetails[p.phone]);
     const newDetails = await mapWithConcurrency(fetchTargets, CONCURRENCY, async (p) => {
-      const found = await fetchDetailsAcrossInstances(instances, instRow.instance_name, p.phone);
-      const d = found?.details;
-      if (!d) return null;
+      const found = await fetchDetailsAcrossInstances(instances, instRow.instance_name, p.phone, {
+        preview: true, // listagem: imagem menor basta e economiza banda
+      });
+      if (!found) return null;
+      // `display_name` do roster é o fallback: o /group/info às vezes traz um
+      // nome que o /chat/details não tem.
       const row = {
-        instance_name: instRow.instance_name,
-        phone: p.phone,
-        name: pickName(d) || p.display_name || null,
-        image: d?.image || d?.imagePreview || null,
+        ...toCacheRow(instRow.instance_name, p.phone, found.details, found.source_instance),
+        name: pickBestName(found.details) || p.display_name || null,
         is_group: false,
-        lead_email: d?.lead_email || null,
-        lead_personalid: d?.lead_personalid || null,
-        lead_name: d?.lead_name || null,
-        lead_full_name: d?.lead_fullName || null,
-        lead_status: d?.lead_status || null,
-        lead_tags: Array.isArray(d?.lead_tags) ? d.lead_tags : null,
-        lead_notes: d?.lead_notes || null,
-        // Mapping fixo: 12=CPF, 13=RG, 14=Endereço, 15=Bairro, 16=CEP
-        lead_field12: d?.lead_field12 || null,
-        lead_field13: d?.lead_field13 || null,
-        lead_field14: d?.lead_field14 || null,
-        lead_field15: d?.lead_field15 || null,
-        lead_field16: d?.lead_field16 || null,
-        common_groups: parseCommonGroups(d?.common_groups),
-        raw: { ...d, __source_instance: found?.source_instance || instRow.instance_name },
-        fetched_at: new Date().toISOString(),
       };
-      const { error } = await ext.from('whatsapp_chat_details_cache').upsert(row, { onConflict: 'instance_name,phone' });
+      const { error } = await ext
+        .from('whatsapp_chat_details_cache')
+        .upsert(row as any, { onConflict: 'instance_name,phone' });
       if (error) console.warn('[get-group-participants] chat_details upsert failed:', error.message);
       return row;
     });

@@ -58,6 +58,7 @@ import { handler as gmailProcessualSync } from './functions/gmail-processual-syn
 
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
+import { handler as syncChatDetails } from './functions/sync-chat-details';
 import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-55';
 import { handler as transcribeActivityCall } from './functions/transcribe-activity-call';
 import { handler as transcribeTeamAudio } from './functions/transcribe-team-audio';
@@ -126,6 +127,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
 
   'get-whatsapp-group-info': getWhatsappGroupInfo,
   'scan-duplicate-contacts': scanDuplicateContacts,
+  'sync-chat-details': syncChatDetails,
   'recover-leads-phone-55': recoverLeadsPhone55,
   'transcribe-activity-call': transcribeActivityCall,
   'transcribe-team-audio': transcribeTeamAudio,
@@ -418,6 +420,44 @@ async function runInssReport() {
   }
 }
 setInterval(runInssReport, 10 * 60 * 1000);
+
+// ============================================================
+// CRON: renova contatos vencidos no cache do /chat/details.
+//
+// O caminho principal de atualização é o webhook: quem manda mensagem tem os
+// dados renovados na hora. Este cron é só a cauda — contato que não conversa
+// há tempos e por isso nunca seria tocado.
+//
+// Lote pequeno de propósito. Cada telefone é uma chamada à UazAPI e a base tem
+// ~31 mil contatos; varrer tudo de uma vez seriam 31 mil chamadas. A 50 por
+// hora o cache gira devagar e sem pico de custo, que é exatamente o que se quer
+// de uma rede de segurança.
+// ============================================================
+const CHAT_DETAILS_SWEEP_INTERVAL_MS = 60 * 60 * 1000;
+const CHAT_DETAILS_SWEEP_LIMIT = Number(process.env.CHAT_DETAILS_SWEEP_LIMIT || 50);
+
+async function runChatDetailsSweep() {
+  if (CHAT_DETAILS_SWEEP_LIMIT <= 0) return; // desligável por env sem redeploy
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/sync-chat-details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      body: JSON.stringify({ mode: 'stale', limit: CHAT_DETAILS_SWEEP_LIMIT }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.scanned > 0) {
+      console.log(
+        `[cron:sync-chat-details] scanned=${json.scanned} refreshed=${json.refreshed} ` +
+        `failed=${json.failed} contacts_updated=${json.contacts_updated}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:sync-chat-details] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// 5 min após o start: dá tempo do servidor subir sem competir com o boot.
+setTimeout(runChatDetailsSweep, 5 * 60 * 1000);
+setInterval(runChatDetailsSweep, CHAT_DETAILS_SWEEP_INTERVAL_MS);
 
 // ============================================================
 // CRON: sincroniza a caixa do INSS a cada INSS_SYNC_INTERVAL_MIN

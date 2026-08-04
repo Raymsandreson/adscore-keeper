@@ -42,6 +42,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
   'scan-duplicate-contacts': 'railway',
+  'sync-chat-details': 'railway', // /chat/details da UazAPI: nome, foto, CPF/RG e grupos em comum
   'recover-leads-phone-55': 'railway',
   'transcribe-activity-call': 'railway',
   'transcribe-team-audio': 'railway',

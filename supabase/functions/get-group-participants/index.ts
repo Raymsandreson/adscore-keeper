@@ -151,7 +151,9 @@ async function fetchChatDetailsAcrossInstances(instances: any[], preferredName: 
 
   for (const inst of ordered) {
     const details = await fetchChatDetails(inst.base_url, inst.instance_token, number);
-    if (details && (pickName(details) || details?.image || details?.imagePreview || details?.lead_email || details?.common_groups)) {
+    // `common_groups` aqui também estava errado (é `wa_common_groups`) — como
+    // era o último termo de um `||`, o efeito era só perder um sinal de "achou".
+    if (details && (pickName(details) || details?.image || details?.imagePreview || details?.lead_email || details?.wa_common_groups)) {
       return { details, source_instance: inst.instance_name };
     }
   }
@@ -318,7 +320,9 @@ Deno.serve(async (req) => {
         lead_field14: d?.lead_field14 || null, // Endereço (rua + número)
         lead_field15: d?.lead_field15 || null, // Bairro
         lead_field16: d?.lead_field16 || null, // CEP
-        common_groups: parseCommonGroups(d?.common_groups),
+        // O campo no payload é `wa_common_groups`, não `common_groups`: ler o
+        // nome errado devolvia undefined e gravava [] em todo participante.
+        common_groups: parseCommonGroups(d?.wa_common_groups ?? d?.common_groups),
         raw: { ...d, __source_instance: found?.source_instance || instRow.instance_name },
         fetched_at: new Date().toISOString(),
       };
