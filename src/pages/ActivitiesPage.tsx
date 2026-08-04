@@ -19,6 +19,8 @@ import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
@@ -1723,16 +1725,33 @@ const ActivitiesPage = () => {
 
   const sendGroupNotification = async (options: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     try {
-      // Get user's instance
-      const { data: { user: authUser } } = await supabase.auth.getUser();
+      // Instância remetente: grupo NUNCA usa o default pessoal — a mensagem é da
+      // firma, não do usuário logado. Incidente 04/08/2026 (FAMÍLIA 250): o texto
+      // saiu por "Atendimento Processual" (default legado gravado no Cloud, campo
+      // que o ProfilePage nem escreve mais) enquanto o áudio do MESMO envio saiu
+      // por "Atendimento Previdenciário", que já usava o helper. Mesmo critério do
+      // sendVoiceToWa, pra texto e áudio saírem sempre pela mesma instância.
       let instanceId: string | undefined;
-      if (authUser) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', authUser.id)
-          .maybeSingle();
-        instanceId = (profile as any)?.default_instance_id || undefined;
+      let instanceName: string | undefined;
+      if (isWhatsAppGroupId(options.groupJid)) {
+        instanceName = await resolveGroupSenderInstanceName(options.groupJid);
+      } else {
+        // Alvo pessoa (não ocorre pelo dialog, que só oferece grupos): default do
+        // perfil no EXTERNO, fonte da verdade. O homônimo no Cloud é legado.
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const extUserId = await remapToExternal(authUser?.id || null);
+          if (extUserId) {
+            const { data: profile } = await externalSupabase
+              .from('profiles')
+              .select('default_instance_id')
+              .eq('user_id', extUserId)
+              .maybeSingle();
+            instanceId = (profile as any)?.default_instance_id || undefined;
+          }
+        } catch (e) {
+          console.warn('[sendGroupNotification] falha lendo profile:', e);
+        }
       }
 
       // Send text message
@@ -1743,6 +1762,7 @@ const ActivitiesPage = () => {
         lead_id: formLeadId || null,
       };
       if (instanceId) sendBody.instance_id = instanceId;
+      if (instanceName) sendBody.instance_name = instanceName;
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
       if (error || !data?.success) {
@@ -1766,6 +1786,7 @@ const ActivitiesPage = () => {
               media_type: 'audio/mpeg',
               lead_id: formLeadId || null,
               ...(instanceId ? { instance_id: instanceId } : {}),
+              ...(instanceName ? { instance_name: instanceName } : {}),
             },
           });
           toast.success('Áudio enviado ao grupo!');
