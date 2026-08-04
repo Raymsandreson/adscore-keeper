@@ -11,6 +11,7 @@ import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/u
 import { supabase } from '@/integrations/supabase/client';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { invalidateGroupLeadCache } from '@/integrations/supabase/group-lead-links';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -113,6 +114,7 @@ export function ContactsListPage() {
     if (!ok) return;
     try {
       await externalSupabase.from('lead_whatsapp_groups').delete().eq('group_jid', jid);
+      invalidateGroupLeadCache(jid);
       await externalSupabase.from('whatsapp_groups_cache').delete().eq('group_jid', jid);
       setGroups(prev => prev.filter(g => g.group_jid !== jid));
       toast.success('Grupo removido da lista');
@@ -2957,6 +2959,8 @@ export function ContactsListPage() {
                               group_name: linkDialog.groupName,
                             } as any);
                           if (error) throw error;
+                          // Sidebar do WhatsApp resolve o lead do grupo por esta tabela
+                          invalidateGroupLeadCache(linkDialog.groupJid);
                           toast.success('Lead vinculado ao grupo!');
                           // Atualiza a linha localmente
                           setGroups((prev) => prev.map((g) => g.group_jid === linkDialog.groupJid

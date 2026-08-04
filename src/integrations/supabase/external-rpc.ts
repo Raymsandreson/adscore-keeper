@@ -1,5 +1,6 @@
 import { externalSupabase } from './external-client';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { attachGroupLeadIds } from './group-lead-links';
 
 export interface ConversationSummary {
   phone: string;
@@ -117,7 +118,9 @@ export async function getConversationSummaries(
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
       return tb - ta;
     });
-    return merged;
+    // Grupo vinculado só em lead_whatsapp_groups (aba Contatos) não tem
+    // conversations.lead_id — resolve aqui pra sidebar mostrar o mesmo lead.
+    return attachGroupLeadIds(merged);
   })();
 
   inFlightSummaries.set(dedupeKey, { p: run, at: Date.now() });
@@ -228,7 +231,7 @@ export async function getOlderConversationSummaries(
     console.warn('[getOlderConversationSummaries] failed:', error.message);
     return [];
   }
-  return ((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical));
+  return attachGroupLeadIds(((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical)));
 }
 
 /**
@@ -257,7 +260,7 @@ export async function searchConversationSummaries(
     console.warn('[searchConversationSummaries] failed:', error.message);
     return [];
   }
-  return ((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical));
+  return attachGroupLeadIds(((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical)));
 }
 
 /**

@@ -40,6 +40,7 @@ import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { invalidateGroupLeadCache } from '@/integrations/supabase/group-lead-links';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
@@ -2512,6 +2513,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             source: 'WhatsAppChat.handleLinkLead',
           });
         }
+
+        // Sidebar resolve grupo→lead por lead_whatsapp_groups: derruba o cache.
+        invalidateGroupLeadCache(groupJid);
 
         // Espelha no lead o grupo "oficial" quando ainda não houver nenhum —
         // é esse campo que ActivitiesPage/monitor usam para falar no grupo.

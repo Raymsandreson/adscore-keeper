@@ -615,7 +615,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // no polling de 15s). Hash leve por chave + última msg + contador de unread.
       const prevHash = (conversationsRef as any)._listHash || '';
       const nextHash = mergedConvList
-        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}|${(c.label_ids || []).join(',')}`)
+        .map((c) => `${getConversationKey(c.phone, c.instance_name)}|${c.last_message_at}|${c.unread_count}|${c.last_message ?? ''}|${(c.label_ids || []).join(',')}|${c.lead_id ?? ''}`)
         .join('§');
       if (nextHash !== prevHash) {
         (conversationsRef as any)._listHash = nextHash;
