@@ -138,6 +138,12 @@ interface ActivityTimerCtx {
   breakOverdue: boolean;
   /** Expediente (ponto): null = carregando; false = fora do expediente (nada conta). */
   onShift: boolean | null;
+  /**
+   * Já bateu a saída HOJE (turno do dia com `ended_at` preenchido). Serve para o
+   * porteiro (ShiftGate) liberar a consulta depois do expediente encerrado —
+   * quem encerrou o dia não é bloqueado, só não tem nada cronometrado.
+   */
+  shiftEndedToday: boolean;
   startShift: () => Promise<void>;
   endShift: () => Promise<void>;
   formatHMS: (totalSeconds: number) => string;
@@ -260,6 +266,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   // suspensão real não dispara 'freeze'.
   const frozeAtRef = useRef<number | null>(null);
   const [onShift, setOnShift] = useState<boolean | null>(null);
+  const [shiftEndedToday, setShiftEndedToday] = useState(false);
   const [awayPrompt, setAwayPrompt] = useState(false);
   const [breakOverdue, setBreakOverdue] = useState(false);
   const breakOverNotifiedRef = useRef<boolean>(false);
@@ -1018,6 +1025,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     if (error || !data) { console.warn('[activity-timer] ponto falhou:', error); return; }
     shiftIdRef.current = (data as { id: string }).id;
     setOnShift(true);
+    setShiftEndedToday(false);
     toast.success('Expediente iniciado. Bom trabalho!');
     await startGap();
   }, [getUser, startGap]);
@@ -1035,6 +1043,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     }
     shiftIdRef.current = null;
     setOnShift(false);
+    setShiftEndedToday(true);
     toast.success('Expediente encerrado. Até logo!');
   }, [rememberLast, flush, sync]);
 
@@ -1050,16 +1059,20 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (!u) { setOnShift(false); return; }
       const startOfDay = new Date();
       startOfDay.setHours(0, 0, 0, 0);
+      // Último turno de HOJE: se ainda está aberto, o expediente está em curso;
+      // se já tem saída batida, o dia foi encerrado (libera consulta no gate).
       try {
-        const { data } = await dbAny.from('work_shifts').select('id')
-          .eq('user_id', u.userId).is('ended_at', null)
+        const { data } = await dbAny.from('work_shifts').select('id, ended_at')
+          .eq('user_id', u.userId)
           .gte('started_at', startOfDay.toISOString())
           .order('started_at', { ascending: false }).limit(1).maybeSingle();
-        if (data) {
-          shiftIdRef.current = (data as { id: string }).id;
+        const shift = data as { id: string; ended_at: string | null } | null;
+        if (shift && !shift.ended_at) {
+          shiftIdRef.current = shift.id;
           setOnShift(true);
         } else {
           setOnShift(false);
+          setShiftEndedToday(!!shift);
         }
       } catch { setOnShift(false); }
 
@@ -1155,7 +1168,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
     startBreak, endBreak, extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
-    onShift, startShift, endShift, formatHMS,
+    onShift, shiftEndedToday, startShift, endShift, formatHMS,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

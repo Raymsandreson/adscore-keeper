@@ -13,9 +13,16 @@ const TYPE_LABELS: Record<string, string> = {
   mention: '@ Você foi mencionado',
   incompleto: '⚠️ Feedback marcado como incompleto',
   praise: '🌟 Seu trabalho foi elogiado',
+  avaliacao: '✅ Sua atividade foi avaliada',
+  insatisfeito: '🔄 Pedido de melhoria na atividade',
   cobranca: '⏰ Cobrança de atividade atrasada',
   abertura: '👀 Atividade aberta pelo responsável',
 };
+
+// Tipos que não podem se perder se o membro estiver offline na hora do INSERT:
+// cobrança e o retorno da avaliação. Ao logar, os pendentes aparecem em fila.
+const CATCH_UP_TYPES = ['cobranca', 'incompleto', 'praise', 'avaliacao', 'insatisfeito'];
+const CATCH_UP_DIAS = 7;
 
 /**
  * Popups em tempo real das atividades internas: atribuição, feedback do
@@ -78,6 +85,11 @@ export function ActivityNotificationsListener() {
         toast.warning(heading, opts);
         // Cobrança exibida = vista pelo responsável; registra o "visto" para o observador.
         markSeen(n.id);
+      } else if (n.type === 'incompleto' || n.type === 'insatisfeito') {
+        // Avaliação que pede ação do responsável — fica mais tempo na tela.
+        toast.warning(heading, { ...opts, duration: 30000 });
+      } else if (n.type === 'praise') {
+        toast.success(heading, opts);
       } else {
         toast(heading, opts);
       }
@@ -90,20 +102,26 @@ export function ActivityNotificationsListener() {
         const extId = await remapToExternal(user.id);
         if (!extId || cancelled) return;
 
-        // Cobranças pendentes (ainda não vistas): aparecem assim que o responsável
-        // loga/abre o app, mesmo que estivesse offline quando foram enviadas.
+        // Cobranças e avaliações pendentes (ainda não vistas): aparecem assim que o
+        // responsável loga/abre o app, mesmo que estivesse offline quando chegaram.
         try {
+          const desde = new Date(Date.now() - CATCH_UP_DIAS * 86400_000).toISOString();
           const { data: pend } = await (externalSupabase as any)
             .from('activity_notifications')
             .select('id, activity_id, type, title, body, actor_name')
             .eq('recipient_id', extId)
-            .eq('type', 'cobranca')
+            .in('type', CATCH_UP_TYPES)
             .is('read_at', null)
+            .gte('created_at', desde)
             .order('created_at', { ascending: true })
             .limit(10);
-          if (!cancelled) (pend || []).forEach((n: Notif) => render(n));
+          if (!cancelled) (pend || []).forEach((n: Notif) => {
+            render(n);
+            // Exibida = vista; sem isso o mesmo popup voltaria a cada recarga.
+            markSeen(n.id);
+          });
         } catch (e) {
-          console.warn('[ActivityNotificationsListener] cobranças pendentes falhou:', e);
+          console.warn('[ActivityNotificationsListener] pendentes falhou:', e);
         }
 
         channel = externalSupabase

@@ -17,6 +17,9 @@ import { useTeamLeadership } from '@/hooks/useTeamLeadership';
  * Quem NÃO é bloqueado:
  * - visitante sem sessão (senão a própria tela de login ficaria travada);
  * - diretoria (org_directors, via useTeamLeadership);
+ * - quem JÁ ENCERROU o expediente hoje (saída batida) — depois do expediente a
+ *   pessoa pode voltar só para consultar; nada é cronometrado e o cronômetro
+ *   flutuante segue oferecendo "Iniciar expediente" se ela for retomar;
  * - telão /tv/atividades e páginas públicas (booking, revisar, avaliar…) —
  *   ficam fora do SidebarLayout, onde este componente é montado;
  * - as rotas de SHIFT_FREE_PATHS (ver abaixo).
@@ -38,7 +41,7 @@ const SHIFT_FREE_PATHS = ['/gerar-procuracao'];
 
 export function ShiftGate() {
   const { user, loading: authLoading } = useAuthContext();
-  const { onShift, startShift } = useActivityTimer();
+  const { onShift, shiftEndedToday, startShift } = useActivityTimer();
   const { isDirector, loading: leadershipLoading } = useTeamLeadership();
   const { pathname } = useLocation();
   const [starting, setStarting] = useState(false);
@@ -48,7 +51,8 @@ export function ShiftGate() {
   );
 
   const blocked =
-    !!user && !authLoading && !leadershipLoading && !isDirector && onShift === false && !shiftFree;
+    !!user && !authLoading && !leadershipLoading && !isDirector &&
+    onShift === false && !shiftEndedToday && !shiftFree;
 
   // Trava o scroll do documento enquanto a tela está bloqueada.
   useEffect(() => {

@@ -441,16 +441,28 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         .eq('id', row.id);
       if (error) throw error;
 
+      // Toda avaliação avisa o responsável — sem exceção de nota ou resultado.
+      const nota = `${rating}⭐`;
+      const porque = d.justification.trim().slice(0, 300);
       if (outcome === 'incompleto') {
-        await notify(row, 'incompleto', '⚠️ Feedback incompleto', `Falta detalhar: ${d.justification.trim().slice(0, 300) || 'complete o retorno.'}`);
+        await notify(row, 'incompleto', '⚠️ Feedback incompleto', `Falta detalhar: ${porque || 'complete o retorno.'}`);
         toast.success('Marcado como incompleto — o responsável foi avisado para completar.');
       } else if (outcome === 'satisfeito') {
         if (rating >= 4) {
-          await notify(row, 'praise', '🌟 Seu trabalho foi elogiado', d.justification.trim() ? `${rating}⭐ — ${d.justification.trim().slice(0, 300)}` : `${rating}⭐ pelo retorno.`);
+          await notify(row, 'praise', '🌟 Seu trabalho foi elogiado', porque ? `${nota} — ${porque}` : `${nota} pelo retorno.`);
+        } else {
+          await notify(row, 'avaliacao', '✅ Sua atividade foi avaliada', `${nota} · satisfeito${porque ? ` — ${porque}` : ''}`);
         }
         toast.success('Avaliado como satisfeito!');
       } else {
-        // insatisfeito → abre nova atividade de melhoria (com o elogio embutido).
+        // insatisfeito → o responsável recebe o sanduíche (elogio + o que melhorar)
+        // e o avaliador abre a nova atividade de melhoria.
+        await notify(
+          row,
+          'insatisfeito',
+          '🔄 Pedido de melhoria na atividade',
+          [d.praise.trim() ? `✅ Ficou bom: ${d.praise.trim().slice(0, 200)}` : '', `${nota} · o que melhorar: ${porque || 'ver a atividade'}`].filter(Boolean).join('\n')
+        );
         onCreateFollowUp({ source: row, praise: d.praise.trim(), reason: d.justification.trim() });
         toast.info('Abrindo nova atividade de melhoria…');
       }

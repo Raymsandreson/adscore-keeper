@@ -52,10 +52,22 @@ interface SheetContentProps
     VariantProps<typeof sheetVariants> {}
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, children, ...props }, ref) => (
+  ({ side = "right", className, children, onInteractOutside, ...props }, ref) => (
     <SheetPortal>
       <SheetOverlay />
-      <SheetPrimitive.Content ref={ref} className={cn(sheetVariants({ side }), "overflow-y-auto", className)} {...props}>
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), "overflow-y-auto", className)}
+        onInteractOutside={(e) => {
+          // Clicar num popup de notificação (toast) não fecha o painel aberto.
+          if ((e.target as HTMLElement | null)?.closest?.("[data-sonner-toaster]")) {
+            e.preventDefault();
+            return;
+          }
+          onInteractOutside?.(e);
+        }}
+        {...props}
+      >
         {children}
         <SheetPrimitive.Close
           className="absolute right-2 top-2 md:right-4 md:top-4 inline-flex h-10 w-10 md:h-8 md:w-8 items-center justify-center rounded-full bg-background/80 md:bg-transparent border md:border-0 shadow-sm md:shadow-none opacity-90 hover:opacity-100 ring-offset-background transition-opacity data-[state=open]:bg-secondary focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none z-20 active:scale-95"

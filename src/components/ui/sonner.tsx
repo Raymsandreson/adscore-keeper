@@ -14,8 +14,11 @@ const Toaster = ({ ...props }: ToasterProps) => {
       visibleToasts={9}
       toastOptions={{
         classNames: {
+          // pointer-events-auto: com Sheet/Dialog aberto o Radix põe
+          // pointer-events:none no body e o toast herdava — ficava visível e
+          // não clicável (ex.: popup de feedback sobre o painel de Feedbacks).
           toast:
-            "group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg group-[.toaster]:z-[121]",
+            "group toast pointer-events-auto group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg group-[.toaster]:z-[121]",
           description: "group-[.toast]:text-muted-foreground",
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
