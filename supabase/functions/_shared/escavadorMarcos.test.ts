@@ -102,3 +102,42 @@ Deno.test("indeferimento: decisão de tutela indeferida NÃO vira pagamento", ()
   const pagamentos = out.filter((m) => m.tipo_movimentacao === "pagamento");
   assertEquals(pagamentos.length, 0);
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Escala de marco_ordem: a MESMA das 10 estações (processStations.ts)
+// ────────────────────────────────────────────────────────────────────────────
+
+Deno.test("escala: marco_ordem usa a régua de 10 estações, não uma escala própria de 7", () => {
+  const casos: Array<[string, string, number]> = [
+    ["Distribuição", "Distribuído por sorteio", 1],
+    ["Sentença", "Julgo procedente o pedido", 5],
+    ["Acordo", "Homologação de acordo entre as partes", 6],
+    ["Acórdão", "Acórdão. Negaram provimento ao recurso ordinário", 7],
+    ["Trânsito em julgado", "Certidão de trânsito em julgado", 9],
+    ["Alvará", "Expedido alvará de levantamento", 10],
+  ];
+  for (const [titulo, conteudo, ordem] of casos) {
+    const out = extractMarcos([{ id: 1, data: "2026-01-10", titulo, conteudo }]);
+    assertEquals(out.length, 1, `esperava 1 marco para "${titulo}"`);
+    assertEquals(out[0].marco_ordem, ordem, `ordem errada para "${titulo}"`);
+  }
+});
+
+Deno.test("escala: sentença (5) supera audiência de instrução (4) das estações", () => {
+  // Regressão: com a escala antiga sentenca_1grau valia 2 e empatava com
+  // audiencia_conciliacao (2); acordao_2grau valia 4 e empatava com
+  // audiencia_instrucao (4). O "status atual" (maior marco_ordem) escolhia a
+  // audiência e o processo aparecia atrás do estágio real.
+  const ORDEM_ESTACOES = { audiencia_conciliacao: 2, pericia: 3, audiencia_instrucao: 4 };
+  const out = extractMarcos([
+    { id: 1, data: "2026-02-01", titulo: "Sentença", conteudo: "Julgo procedente o pedido" },
+    { id: 2, data: "2026-03-01", titulo: "Acórdão", conteudo: "Acórdão. Deram provimento à apelação" },
+  ]);
+  for (const m of out) {
+    assertEquals(
+      m.marco_ordem > ORDEM_ESTACOES.audiencia_instrucao,
+      true,
+      `${m.tipo_movimentacao} (${m.marco_ordem}) deveria superar audiencia_instrucao (4)`,
+    );
+  }
+});

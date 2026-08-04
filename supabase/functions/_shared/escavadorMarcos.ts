@@ -44,15 +44,27 @@ export interface MarcoExtraido {
   conteudo_hash: string;
 }
 
-// Ordem canônica no ciclo de vida — usada pra ordenar a timeline quando datas empatam.
+// Ordem canônica no ciclo de vida — usada pra ordenar a timeline quando datas empatam
+// e para eleger o marco ATUAL (maior ordem) na view lead_process_current_status e nas
+// RPCs de metas.
+//
+// A escala é a de 10 ESTAÇÕES (mesma de src/lib/processStations.ts e da CHECK constraint
+// de process_movements), com os buracos das 3 estações que este parser não emite —
+// audiencia_conciliacao (2), pericia (3) e audiencia_instrucao (4) vêm do detector de
+// compromissos, gravadas por sync-process-compromissos.
+//
+// Até 03/08/2026 este mapa usava uma escala própria de 7 (sentenca=2, acordo=3,
+// acordao_2grau=4…), que COLIDIA com a das estações na mesma coluna: uma audiência de
+// instrução (4) empatava com acórdão de 2º grau (4) e mascarava o marco de decisão no
+// "status atual". Afetava 4 processos quando detectado.
 const MARCO_ORDEM: Record<MarcoTipo, number> = {
   peticao_inicial: 1,
-  sentenca_1grau: 2,
-  acordo: 3,
-  acordao_2grau: 4,
-  acordao_superior: 5,
-  transito_julgado: 6,
-  pagamento: 7,
+  sentenca_1grau: 5,
+  acordo: 6,
+  acordao_2grau: 7,
+  acordao_superior: 8,
+  transito_julgado: 9,
+  pagamento: 10,
 };
 
 // Palavras-chave já NORMALIZADAS (sem acento, minúsculas).
