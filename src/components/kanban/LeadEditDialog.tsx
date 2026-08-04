@@ -12,6 +12,8 @@ const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedConta
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
 const EntityAIChat = lazy(() => import('@/components/activities/EntityAIChat').then(m => ({ default: m.EntityAIChat })));
+// Lazy porque carrega o Leaflet: só quem abre a aba "Local" paga por ele.
+const LeadLocationPanel = lazy(() => import('@/components/leads/LeadLocationPanel').then(m => ({ default: m.LeadLocationPanel })));
 import {
   Dialog,
   DialogContent,
@@ -3402,6 +3404,21 @@ ${scrapeData.content || ''}
             {/* Location Tab */}
             <TabsContent value="location" className="space-y-4 mt-0">
               {activeTab === 'location' && (<>
+              {/* Reage aos campos sendo editados, não ao que está salvo: mudou a
+                  cidade da visita, o mapa acompanha antes mesmo de salvar. */}
+              <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                <LeadLocationPanel
+                  lead={{
+                    city: lead?.city,
+                    state: lead?.state,
+                    visit_city: visitCity,
+                    visit_state: visitState,
+                    lead_lat: lead?.lead_lat,
+                    lead_lng: lead?.lead_lng,
+                  }}
+                />
+              </Suspense>
+
               <div className="grid grid-cols-2 gap-4">
                 {isFieldVisible('visit_cep') && (<div>
                   <Label className="flex items-center gap-2">

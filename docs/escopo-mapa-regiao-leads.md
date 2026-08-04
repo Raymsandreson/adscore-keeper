@@ -1,6 +1,6 @@
 # Escopo — Mapa de região do lead e distância até a base mais próxima
 
-**Status**: **Fases 1 e 2 entregues** em 04/08/2026 (`src/lib/geo/` + miniatura no kanban e na lista, 95 testes). Fases 3 e 4 pendentes. Levantamento feito em 04/08/2026 contra o Supabase Externo `kmedldlepwiityjsdahz`.
+**Status**: **Fases 1, 2 e 3 entregues** em 04/08/2026 (lib + miniatura no kanban/lista + painel na aba "Local", 118 testes). Fase 4 pendente. Levantamento feito em 04/08/2026 contra o Supabase Externo `kmedldlepwiityjsdahz`.
 
 **Resumo em uma frase**: dado um lead com cidade/UF (ex.: Piauí), exibir a silhueta do estado com o município destacado, calcular a distância até a capital ou base mais próxima e enquadrar a pré-visualização em **um** estado quando a capital mais próxima é a do próprio estado, ou em **dois** quando a mais próxima é de outro estado.
 
@@ -283,7 +283,7 @@ O cache por município (§4.3) é o que segura o custo: sem ele, 16k leads × cl
 |---|---|---|
 | **1 ✅** | `src/lib/geo/`: `resolveLeadLocation`, `haversineKm`, `nearestReference`, `computeFraming`, `capitals.ts`, apelidos e normalização de UF. Lib pura, sem UI, 67 testes | — |
 | **2 ✅** | Asset `uf-malhas.json` (85 KB) + `<LeadRegionThumb>` e `<LeadDistanceSuffix>` (SVG) no card do kanban e na lista | Fase 1 |
-| **3** | Painel na aba "Local" com Leaflet, camadas, top-3 e enquadramento de 1 ou 2 estados | Fase 1 |
+| **3 ✅** | Painel na aba "Local" com Leaflet, camadas, top-3 e enquadramento de 1 ou 2 estados | Fase 1 |
 | **4** | Migration `geo_reference_points` + `geo_route_cache` com RLS; tela de cadastro de bases; botão "Calcular rota real" via proxy | Fase 3 |
 
 Fases 2 e 3 são paralelas depois da 1. A Fase 1 sozinha já é útil: entrega o número da distância sem nenhum mapa.
@@ -338,6 +338,28 @@ Avisos emitidos na base real: 189 `unknown_city`, 55 `city_visit_divergence`, 49
 - **Sem Leaflet e sem tile.** SVG puro a partir do asset embarcado. O board renderiza 100+ cards; qualquer coisa que fizesse requisição por card inviabilizaria a rolagem.
 
 **Custo no bundle** (medido no `npm run build`): o principal continua em **3.285,42 kB**, exatamente como antes. Os dados viraram chunks sob demanda — `municipios` 262 kB (96 kB gzip) e `uf-malhas` 87 kB (27 kB gzip) —, baixados uma vez por sessão, só por quem abre uma tela com mapa.
+
+### 9.3 O que a Fase 3 entregou (04/08/2026)
+
+| Arquivo | Papel |
+|---|---|
+| `src/lib/geo/ibgeMalhas.ts` | Busca a malha do município no IBGE sob demanda (memória + `sessionStorage`), e converte contornos para GeoJSON |
+| `src/components/leads/LeadLocationPanel.tsx` | O painel: mapa Leaflet, camadas, top-3, selo de origem da posição e avisos de cadastro |
+| `LeadEditDialog.tsx` | Painel no topo da aba "Local", carregado por `lazy` |
+
+**Camadas do mapa**: estado do lead sólido; estado vizinho tracejado e apagado (só em `TWO_STATES`); município preenchido na cor primária; marcador do lead com rótulo fixo; marcador da referência com tooltip; linha tracejada entre os dois. Enquadramento por `fitBounds` sobre os estados desenhados.
+
+**Malha do município é buscada, não embarcada**: são 5.571 contornos e o painel usa um por vez — embarcar custaria alguns MB para quase nunca serem usados. Cache em `sessionStorage` e deduplicação de requisições paralelas. Município sem malha (o IBGE devolve HTTP 500) degrada para o estado sozinho, sem erro na tela.
+
+**Reage à edição**: o painel recebe `visitCity`/`visitState` do formulário, não o valor salvo — trocar a cidade da visita move o mapa antes de salvar. Usa `prefer: 'visit'`, coerente com a aba.
+
+**Decisões da fase**:
+
+- **`scrollWheelZoom` desligado.** Dentro de um dialog que rola, capturar a roda faria o usuário dar zoom ao tentar rolar a ficha.
+- **Avisos sem redundância.** Em `STATE_ONLY` o parágrafo principal já nomeia a cidade não reconhecida, então o aviso equivalente é omitido — apareceu ao ver "Botafogo" duas vezes na mesma tela.
+- **`lead_lat`/`lead_lng` entraram no tipo `Lead`** (`useLeads.ts`, opcionais): as colunas existem no banco e faltavam no tipo, o que obrigaria a `as any` no dialog.
+
+**Custo no bundle**: `leaflet` 153,68 kB (44,84 kB gzip) + CSS 15 kB e o painel 8,38 kB viram chunks próprios, baixados só ao abrir a aba "Local". O bundle principal subiu 0,58 kB (o `lazy` e o JSX).
 
 **Item avulso** (fora das fases, 1 linha): trocar `lead_city,lead_state` por `city,state` em `LeadsMapPage.tsx:74` ressuscita a página `/mapa-leads`. Você não a incluiu no escopo; fica registrado porque hoje ela está quebrada em silêncio e a doc afirma que funciona.
 

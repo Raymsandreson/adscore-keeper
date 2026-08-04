@@ -234,6 +234,9 @@ export interface Lead {
   city: string | null;
   state: string | null;
   neighborhood: string | null;
+  /** Geocodificação do município (backfill-lead-geocode). Opcional: nem toda query as seleciona. */
+  lead_lat?: number | null;
+  lead_lng?: number | null;
   // Follow-up tracking fields
   followup_count: number | null;
   last_followup_at: string | null;
