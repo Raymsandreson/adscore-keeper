@@ -1649,8 +1649,18 @@ const ActivitiesPage = () => {
         }
       }
 
-      // Create the next activity with the captured form data
-      const nextCreated = await createActivity(nextData);
+      // Create the next activity with the captured form data.
+      // A atual JÁ foi concluída acima: se o insert falhar, a cadeia para. O
+      // createActivity devolve null em silêncio (dedup em voo, prazo em
+      // ausência registrada, índice único de pendente duplicada) e lança em
+      // erro de banco — nos dois casos o fluxo seguia até o toast "próxima
+      // criada", que mentia. Captura aqui e trata logo abaixo.
+      let nextCreated: Awaited<ReturnType<typeof createActivity>> = null;
+      try {
+        nextCreated = await createActivity(nextData);
+      } catch (e) {
+        console.error('[completeAndNext] criação da próxima falhou', e);
+      }
 
       // BUGFIX: replicar os MESMOS anexos na nova atividade, para que apareçam
       // tanto na atividade concluída quanto na nova criada.
@@ -1683,6 +1693,16 @@ const ActivitiesPage = () => {
 
       if (notifyOptions) {
         await sendGroupNotification(notifyOptions);
+      }
+
+      // Sem a próxima, a atividade fica concluída e órfã — avisa em vez de
+      // anunciar sucesso, e mantém a ficha aberta para refazer na hora.
+      if (!nextCreated) {
+        toast.error('Atividade concluída, mas a PRÓXIMA não foi criada. Confira o aviso acima e crie a próxima manualmente.', {
+          duration: 12000,
+        });
+        fetchActivities(getFilterParams());
+        return;
       }
 
       toast.success('Atividade concluída e próxima criada!');
