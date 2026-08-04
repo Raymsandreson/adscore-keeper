@@ -14,8 +14,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
-import { db, authClient } from '@/integrations/supabase';
+import { db } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/functionRouter';
+import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useProcessUpdates, type UpdateCategoria, type ProcessUpdate } from '@/hooks/useProcessUpdates';
@@ -158,7 +159,7 @@ function UpdateRow({
 export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
   const { updates, loading, unreadCount, readIds, markRead, markAllRead } = useProcessUpdates();
   const { createActivity } = useLeadActivities();
-  const { user, profile } = useAuthContext();
+  const { profile } = useAuthContext();
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState<UpdateCategoria | 'todas'>('todas');
   const [periodo, setPeriodo] = useState<Periodo>('30d');
@@ -259,16 +260,11 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     setEnvioPendente(null);
     setSendingId(pending.update.id);
     try {
-      let instanceId: string | undefined;
-      if (user?.id) {
-        const { data: cloudProfile } = await authClient
-          .from('profiles')
-          .select('default_instance_id')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        instanceId = (cloudProfile as any)?.default_instance_id || undefined;
-      }
+      // O alvo aqui é SEMPRE grupo (prepareSendGroup exige whatsapp_group_id), e
+      // grupo nunca sai pelo default pessoal do usuário logado: a mensagem é da
+      // firma. O default_instance_id do Cloud, que este trecho lia, é legado —
+      // o ProfilePage só escreve no Externo. Incidente 04/08/2026 (FAMÍLIA 250).
+      const instanceName = await resolveGroupSenderInstanceName(pending.groupJid);
 
       const sendBody: Record<string, unknown> = {
         phone: pending.groupJid,
@@ -276,7 +272,7 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
         message: pending.message,
         lead_id: pending.update.lead_id,
       };
-      if (instanceId) sendBody.instance_id = instanceId;
+      if (instanceName) sendBody.instance_name = instanceName;
 
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
       if (error || !data?.success) {
