@@ -146,15 +146,27 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                   {it.pop && <Chip label="POP" valor={it.pop} />}
                 </div>
 
-                {/* Atividade de onde a marcação saiu (só existe em passo marcado
-                    a partir de 04/08 — antes disso o log não guardava). */}
-                {it.tipo === 'passo' && (
+                {/* Atividade de onde a marcação saiu — no passo, e no objetivo/
+                    fase é a atividade do último passo, que fechou o conjunto.
+                    Só existe a partir de 04/08 (antes o log não guardava). */}
+                {(it.tipo === 'passo' || it.tipo === 'objetivo' || it.tipo === 'fase') && (
                   <div className="mt-1.5 flex items-start gap-1.5 text-xs">
-                    <span className="shrink-0 text-white/35">na atividade:</span>
-                    {it.atividade ? (
-                      <span className="min-w-0 flex-1 font-semibold text-sky-300">{it.atividade}</span>
+                    <span className="shrink-0 text-white/35">
+                      {it.tipo === 'passo' ? 'marcado na atividade:' : 'fechou na atividade:'}
+                    </span>
+                    {it.atividade && it.activity_id ? (
+                      <button
+                        className="group/atv inline-flex min-w-0 flex-1 items-start gap-1 text-left font-semibold text-sky-300 hover:text-sky-200"
+                        onClick={e => { e.stopPropagation(); openActivity(it.activity_id); }}
+                        title="Abrir a atividade em nova aba"
+                      >
+                        <span className="min-w-0 underline decoration-sky-300/40 underline-offset-2 group-hover/atv:decoration-sky-200">
+                          {it.atividade}
+                        </span>
+                        <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
+                      </button>
                     ) : (
-                      <span className="text-white/30 italic">marcado fora de uma atividade (ou antes de 04/08)</span>
+                      <span className="text-white/30 italic">fora de uma atividade (ou antes de 04/08)</span>
                     )}
                   </div>
                 )}
