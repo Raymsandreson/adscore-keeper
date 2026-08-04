@@ -5,7 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
 import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
-import { Send, Loader2, AtSign, Users, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
+import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
 import { consumePendingTeamChatQuote, subscribeToTeamChatQuote } from '@/lib/teamChatQuoteEvents';
+import { useCaseOwners, CaseOwner } from '@/hooks/useCaseOwners';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface TeamChatPanelProps {
@@ -160,14 +161,29 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     return subscribeToTeamChatQuote(entityType, entityId, intent => appendQuote(intent.text));
   }, [entityType, entityId, appendQuote]);
 
-  const filteredMembers = useMemo(() => {
-    if (!mentionFilter) return members.filter(m => m.user_id !== user?.id);
+  // Quem cuida do caso por trás deste chat (responsável processual + acolhedor).
+  const { owners } = useCaseOwners(entityType, entityId, members);
+
+  /** Os donos do caso que combinam com o que já foi digitado depois do @. */
+  const filteredOwners = useMemo(() => {
+    if (!mentionFilter) return owners;
     const lower = mentionFilter.toLowerCase();
-    return members.filter(m =>
-      m.user_id !== user?.id &&
-      (m.full_name?.toLowerCase().includes(lower) || m.email?.toLowerCase().includes(lower))
+    return owners.filter(o => o.name.toLowerCase().includes(lower));
+  }, [owners, mentionFilter]);
+
+  const ownerIds = useMemo(
+    () => new Set(filteredOwners.map(o => o.userId).filter(Boolean) as string[]),
+    [filteredOwners]
+  );
+
+  const filteredMembers = useMemo(() => {
+    const base = members.filter(m => m.user_id !== user?.id && !ownerIds.has(m.user_id));
+    if (!mentionFilter) return base;
+    const lower = mentionFilter.toLowerCase();
+    return base.filter(m =>
+      m.full_name?.toLowerCase().includes(lower) || m.email?.toLowerCase().includes(lower)
     );
-  }, [members, mentionFilter, user?.id]);
+  }, [members, mentionFilter, user?.id, ownerIds]);
 
   const handleInputChange = (value: string) => {
     setInputText(value);
@@ -221,6 +237,12 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     inputRef.current?.focus();
   };
 
+  /** Rótulo do papel exibido ao lado do nome no topo da lista de @. */
+  const ROLE_LABEL: Record<string, string> = {
+    responsavel: 'Responsável',
+    acolhedor: 'Acolhedor',
+  };
+
   const insertMention = (member: TeamMember) => {
     const name = member.full_name || member.email || 'usuário';
     const before = inputText.slice(0, mentionStartIndex);
@@ -233,6 +255,12 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       setSelectedMentions(prev => [...prev, member.user_id]);
     }
     inputRef.current?.focus();
+  };
+
+  const insertOwnerMention = (owner: CaseOwner) => {
+    if (!owner.userId) return;
+    const member = members.find(m => m.user_id === owner.userId);
+    insertMention(member || { user_id: owner.userId, full_name: owner.name, email: null });
   };
 
   const collectMentionedIds = useCallback((text: string) => {
@@ -614,8 +642,66 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       </div>
 
       {/* Mention dropdown (membros) */}
-      {showMentionList && (filteredMembers.length > 0 || showEveryoneOption) && (
-        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-40 overflow-y-auto">
+      {showMentionList && (filteredMembers.length > 0 || showEveryoneOption || filteredOwners.length > 0) && (
+        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-56 overflow-y-auto">
+          {/* Quem cuida do caso vem primeiro e rotulado — sem precisar abrir a ficha. */}
+          {filteredOwners.length > 0 && (
+            <div className="border-b bg-muted/40">
+              <div className="px-3 pt-1.5 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                Quem cuida deste caso
+              </div>
+              {filteredOwners.map(owner => {
+                const isMe = !!owner.userId && owner.userId === user?.id;
+                const mentionable = !!owner.userId && !isMe;
+                return (
+                  <button
+                    key={`owner-${owner.userId || owner.name}`}
+                    type="button"
+                    disabled={!mentionable}
+                    onClick={() => insertOwnerMention(owner)}
+                    title={
+                      mentionable
+                        ? `Marcar ${owner.name}`
+                        : isMe
+                          ? 'É você — não precisa se marcar'
+                          : `${owner.name} não tem usuário no sistema para ser marcado`
+                    }
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors',
+                      mentionable ? 'hover:bg-accent/50' : 'cursor-default'
+                    )}
+                  >
+                    {mentionable
+                      ? <AtSign className="h-3.5 w-3.5 text-primary shrink-0" />
+                      : <UserRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    <div className="min-w-0 flex-1">
+                      <div className={cn('text-xs font-medium truncate', !mentionable && 'text-muted-foreground')}>
+                        {owner.name}{isMe && ' (você)'}
+                      </div>
+                      {!mentionable && !isMe && (
+                        <div className="text-[10px] text-muted-foreground truncate">sem usuário no sistema</div>
+                      )}
+                    </div>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {owner.roles.map(role => (
+                        <span
+                          key={role}
+                          className={cn(
+                            'rounded px-1.5 py-0.5 text-[9px] font-medium leading-none whitespace-nowrap',
+                            role === 'responsavel'
+                              ? 'bg-primary/15 text-primary'
+                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                          )}
+                        >
+                          {ROLE_LABEL[role]}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {showEveryoneOption && (
             <button
               onClick={insertEveryoneMention}
