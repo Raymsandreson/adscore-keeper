@@ -4,7 +4,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
 import { Send, Loader2, AtSign, Users, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
@@ -85,7 +85,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -552,7 +552,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             <button onClick={stopRecording} className="font-medium underline">Parar e enviar</button>
           </div>
         )}
-        <div className="relative px-3 py-2 flex items-center gap-1.5">
+        <div className="relative px-3 py-2 flex items-end gap-1.5">
           {/* Picker de menção de entidade (abre acima do input) */}
           <TeamChatEntityMention
             open={showEntityMention}
@@ -611,13 +611,13 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
 
-          <Input
+          <AutoResizeTextarea
             ref={inputRef}
             value={inputText}
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={urgent ? 'Mensagem URGENTE… use @nome' : 'Mensagem... use @nome para mencionar'}
-            className={cn('flex-1 text-sm h-9', urgent && 'ring-1 ring-destructive/50')}
+            className={cn('flex-1 min-h-[36px] py-2 text-sm', urgent && 'ring-1 ring-destructive/50')}
           />
           <Button
             size="icon"

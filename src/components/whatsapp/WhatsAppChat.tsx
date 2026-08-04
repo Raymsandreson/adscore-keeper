@@ -197,6 +197,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setTeamChatOpen(prev => {
       const next = !prev;
       try { localStorage.setItem('wa-conversation-team-chat', next ? '1' : '0'); } catch { /* ok */ }
+      // Ao fechar, dizer onde reabrir — o botão fica no topo da conversa.
+      if (!next) toast('Chat interno fechado — reabra no botão "Equipe", no topo da conversa.');
       return next;
     });
   }, []);
@@ -2906,15 +2908,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             leadId={conversation.lead_id}
             instanceName={conversation.instance_name}
           />
-          <Button
-            variant={teamChatOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={toggleTeamChat}
-            title="Chat interno da equipe sobre esta conversa"
-          >
-            <Users className="h-4 w-4" />
-          </Button>
+          {/* Chat interno da equipe: fica com rótulo visível porque o header já
+              tem outro botão de ícone "Users" (membros do grupo) — sem o texto
+              ninguém achava onde reabrir depois de fechar o painel. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={teamChatOpen ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-8 gap-1.5 px-2 shrink-0 text-primary"
+                onClick={toggleTeamChat}
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="text-xs font-medium">Equipe</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {teamChatOpen ? 'Fechar o chat interno da equipe' : 'Abrir o chat interno da equipe sobre esta conversa'}
+            </TooltipContent>
+          </Tooltip>
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           <WhatsAppMediaGallery
             messages={conversation.messages}
