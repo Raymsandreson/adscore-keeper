@@ -194,14 +194,17 @@ const stateToRegion: Record<string, string> = {
 function buildCaseDetails(src: {
   case_type?: string | null; accident_date?: string | null;
   contractor_company?: string | null; main_company?: string | null; sector?: string | null;
+  news_link?: string | null; news_links?: string[] | null;
 }): { label: string; value: string }[] {
   const br = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10).split('-').reverse().join('/') : (d || ''));
+  const links = Array.from(new Set([...(src.news_links || []), src.news_link || ''].filter(Boolean))) as string[];
   return [
     { label: 'Tipo de caso', value: src.case_type || '' },
     { label: 'Data do acidente', value: br(src.accident_date) },
     { label: 'Empresa contratante', value: src.contractor_company || '' },
     { label: 'Empresa principal', value: src.main_company || '' },
     { label: 'Setor', value: src.sector || '' },
+    { label: links.length > 1 ? 'Notícias do caso' : 'Notícia do caso', value: links.join(' · ') },
   ].filter(d => d.value);
 }
 
@@ -623,6 +626,7 @@ export function LeadEditDialog({
         address: leadAny.visit_address || '',
         region: leadAny.visit_region || stateToRegion[state] || '',
         details: buildCaseDetails(leadAny),
+        newsUrl: (leadAny.news_links || [])[0] || leadAny.news_link || '',
       });
     }
 
@@ -3490,7 +3494,9 @@ ${scrapeData.content || ''}
                         details: buildCaseDetails({
                           case_type: caseType, accident_date: accidentDate,
                           contractor_company: contractorCompany, main_company: mainCompany, sector,
+                          news_link: newsLink, news_links: newsLinks,
                         }),
+                        newsUrl: newsLinks[0] || newsLink || '',
                       });
                     }}
                     disabled={!visitState || loadingCities}

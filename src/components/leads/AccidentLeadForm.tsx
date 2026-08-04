@@ -73,7 +73,9 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
             { label: 'Empresa contratante', value: formData.contractor_company || '' },
             { label: 'Empresa principal', value: formData.main_company || '' },
             { label: 'Setor', value: formData.sector || '' },
+            { label: 'Notícia do caso', value: formData.news_link || '' },
           ].filter(d => d.value),
+          newsUrl: formData.news_link || '',
         });
       }
     }
