@@ -21,6 +21,7 @@ import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
+import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
 import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
@@ -148,6 +149,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
   const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
+  // Responsáveis (Cloud UUID) da atividade como ela foi carregada — base para saber
+  // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
+  const initialResponsiblesRef = useRef<string[]>([]);
   const [formCampaignId, setFormCampaignId] = useState('');
   const [formFeedback, setFormFeedback] = useState('');
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
@@ -181,6 +185,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
+  const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
 
   // Board dos "Modelos do passo"/checklist: POP escolhido na atividade tem
   // prioridade (mesma regra do activeStepBoardId da ActivitiesPage); senão
@@ -340,7 +345,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     // meeting_at é timestamptz; datetime-local espera YYYY-MM-DDTHH:mm
     setFormMeetingAt((((act as any).meeting_at as string | null) || '').slice(0, 16));
     setFormCallbackAt((act as any).callback_at ? format(parseISO((act as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
-    setFormAssignedTo(((await remapToCloud(act.assigned_to)) as string) || '');
+    const assignedCloud = ((await remapToCloud(act.assigned_to)) as string) || '';
+    setFormAssignedTo(assignedCloud);
     setFormAssignedToName(act.assigned_to_name || '');
     setFormMatrixQuadrant(act.matrix_quadrant || '');
     const lid = act.lead_id || leadId || '';
@@ -370,16 +376,17 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     const extIds = (act.assigned_to_ids as string[] | null) || [];
     const extNames = ((act as any).assigned_to_names as string[] | null) || [];
     if (extIds.length > 1) {
-      const primaryCloud = ((await remapToCloud(act.assigned_to)) as string) || '';
       const cloudIds = await Promise.all(extIds.map((id) => remapToCloud(id)));
       const co = cloudIds
         .map((cid, i) => ({ user_id: (cid as string) || '', full_name: extNames[i] || '' }))
-        .filter((c) => c.user_id && c.user_id !== primaryCloud);
+        .filter((c) => c.user_id && c.user_id !== assignedCloud);
       setFormCoAssignees(co);
       setLoadedHadCoAssignees(true);
+      initialResponsiblesRef.current = [assignedCloud, ...co.map(c => c.user_id)].filter(Boolean);
     } else {
       setFormCoAssignees([]);
       setLoadedHadCoAssignees(false);
+      initialResponsiblesRef.current = [assignedCloud].filter(Boolean);
     }
     const obsExt = ((act as any).observer_ids as string[] | null) || [];
     const obsNames = ((act as any).observer_names as string[] | null) || [];
@@ -445,6 +452,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormNotes(draftRichText(d.notes));
     setFormCoAssignees([]); setLoadedHadCoAssignees(false);
     setFormObservers([]); setLoadedHadObservers(false);
+    initialResponsiblesRef.current = [];
     setFormCampaignId('');
     setFormFeedback('');
     setFormRescheduledTo('');
@@ -588,7 +596,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setAvailableContacts(data || []);
   };
 
-  const buildPayload = () => ({
+  // `extraObserver` entra quando o usuário aceita continuar acompanhando a
+  // atividade que acabou de passar para outra pessoa.
+  const buildPayload = (extraObserver?: { user_id: string; full_name: string } | null) => ({
     title: formTitle,
     description: null as string | null,
     what_was_done: formWhatWasDone || null,
@@ -637,10 +647,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       assigned_to_ids: [formAssignedTo, ...formCoAssignees.map(c => c.user_id)].filter(Boolean),
       assigned_to_names: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean),
     }),
-    ...(formObservers.length === 0 && !loadedHadObservers ? {} : {
-      observer_ids: formObservers.map(o => o.user_id),
-      observer_names: formObservers.map(o => o.full_name),
-    }),
+    ...(() => {
+      const list = extraObserver && !formObservers.some(o => o.user_id === extraObserver.user_id)
+        ? [...formObservers, extraObserver]
+        : formObservers;
+      if (list.length === 0 && !loadedHadObservers) return {};
+      return {
+        observer_ids: list.map(o => o.user_id),
+        observer_names: list.map(o => o.full_name),
+      };
+    })(),
   });
 
   // Gera o assunto por IA a partir dos campos de detalhe (paridade com a
@@ -868,8 +884,24 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
 
     if (!activityId) return;
+
+    // Passei a atividade que era minha para outra pessoa? Ofereço ficar como
+    // observador — é o que mantém ela no meu funil de Feedback e me avisa do retorno.
+    let extraObserver: { user_id: string; full_name: string } | null = null;
+    if (shouldAskKeepAsObserver({
+      myUserId: user?.id,
+      previousResponsibles: initialResponsiblesRef.current,
+      formAssignedTo, formCoAssignees, formObservers,
+    })) {
+      const keep = await askKeepAsObserver(formAssignedToName);
+      if (keep) {
+        const myName = teamMembers.find(m => m.user_id === user!.id)?.full_name || '';
+        extraObserver = { user_id: user!.id, full_name: myName };
+      }
+    }
+
     setSaving(true);
-    await updateActivity(activityId, buildPayload() as Partial<LeadActivity>);
+    await updateActivity(activityId, buildPayload(extraObserver) as Partial<LeadActivity>);
     setSaving(false);
     onUpdated?.();
     handleClose();
@@ -1296,6 +1328,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         conflicts={aiConflicts}
         onApply={applyAIFieldValues}
       />
+      {keepAsObserverDialog}
     </Sheet>
   );
 }

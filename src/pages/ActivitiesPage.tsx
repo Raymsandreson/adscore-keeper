@@ -18,6 +18,7 @@ import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { AIFieldMergeDialog } from '@/components/activities/AIFieldMergeDialog';
+import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
 import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
@@ -317,6 +318,10 @@ const ActivitiesPage = () => {
   // O criador entra como observador natural na criação. Cloud UUIDs.
   const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
+  // Responsáveis (Cloud UUID) da atividade como ela foi carregada — base para saber
+  // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
+  const initialResponsiblesRef = useRef<string[]>([]);
+  const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
   // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
   const [formFeedback, setFormFeedback] = useState('');
   // Próxima atividade sugerida pela IA na "Revisar com IA" (popup de confirmação).
@@ -1226,9 +1231,10 @@ const ActivitiesPage = () => {
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
+    const assignedCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
+    setFormAssignedTo(assignedCloud);
     setFormAssignedToName(activity.assigned_to_name || '');
-    await hydrateCoAssignees(activity);
+    await hydrateCoAssignees(activity, assignedCloud);
     setFormDeadline(activity.deadline || '');
     // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
@@ -1403,6 +1409,22 @@ const ActivitiesPage = () => {
       toast.error('Falha ao salvar anexos. A atividade não foi salva.');
       return;
     }
+
+    // Passei a atividade que era minha para outra pessoa? Ofereço ficar como
+    // observador — é o que mantém ela no meu funil de Feedback e me avisa do retorno.
+    let extraObserver: { user_id: string; full_name: string } | null = null;
+    if (shouldAskKeepAsObserver({
+      myUserId: user?.id,
+      previousResponsibles: initialResponsiblesRef.current,
+      formAssignedTo, formCoAssignees, formObservers,
+    })) {
+      const keep = await askKeepAsObserver(formAssignedToName);
+      if (keep) {
+        const myName = teamMembers.find(m => m.user_id === user!.id)?.full_name || profile?.full_name || '';
+        extraObserver = { user_id: user!.id, full_name: myName };
+      }
+    }
+
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
@@ -1447,7 +1469,7 @@ const ActivitiesPage = () => {
       // Reunião: grava/limpa o horário conforme o tipo (detecção por rótulo, key custom_ no Externo).
       meeting_at: isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
       ...buildAssigneesPayload(),
-      ...buildObserversPayload(),
+      ...buildObserversPayload(extraObserver),
     } as any);
 
     // Feedback/situação mudou? Avisa os observadores (popup em tempo real).
@@ -1873,9 +1895,10 @@ const ActivitiesPage = () => {
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
+    const assignedCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
+    setFormAssignedTo(assignedCloud);
     setFormAssignedToName(activity.assigned_to_name || '');
-    await hydrateCoAssignees(activity);
+    await hydrateCoAssignees(activity, assignedCloud);
     setFormDeadline(activity.deadline || '');
     // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
@@ -2118,20 +2141,22 @@ const ActivitiesPage = () => {
   };
 
   // Carrega os co-assessores e observadores da atividade (arrays do Externo → Cloud UUIDs).
-  const hydrateCoAssignees = async (activity: any) => {
+  const hydrateCoAssignees = async (activity: any, assignedCloud?: string) => {
     const extIds = (activity.assigned_to_ids as string[] | null) || [];
     const names = (activity.assigned_to_names as string[] | null) || [];
+    const primaryCloud = assignedCloud ?? (((await remapToCloud(activity.assigned_to)) as string) || '');
     if (extIds.length > 1) {
-      const primaryCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
       const cloudIds = await Promise.all(extIds.map((id) => remapToCloud(id)));
       const co = cloudIds
         .map((cid, i) => ({ user_id: (cid as string) || '', full_name: names[i] || '' }))
         .filter((c) => c.user_id && c.user_id !== primaryCloud);
       setFormCoAssignees(co);
       setLoadedHadCoAssignees(true);
+      initialResponsiblesRef.current = [primaryCloud, ...co.map(c => c.user_id)].filter(Boolean);
     } else {
       setFormCoAssignees([]);
       setLoadedHadCoAssignees(false);
+      initialResponsiblesRef.current = [primaryCloud].filter(Boolean);
     }
 
     const obsExt = (activity.observer_ids as string[] | null) || [];
@@ -2205,11 +2230,16 @@ const ActivitiesPage = () => {
   };
 
   // Observadores no payload (mesma regra: só quando há, ou quando havia — pra limpar).
-  const buildObserversPayload = () => {
-    if (formObservers.length === 0 && !loadedHadObservers) return {};
+  // `extraObserver` entra quando o usuário aceita continuar acompanhando a atividade
+  // que acabou de passar para outra pessoa.
+  const buildObserversPayload = (extraObserver?: { user_id: string; full_name: string } | null) => {
+    const list = extraObserver && !formObservers.some(o => o.user_id === extraObserver.user_id)
+      ? [...formObservers, extraObserver]
+      : formObservers;
+    if (list.length === 0 && !loadedHadObservers) return {};
     return {
-      observer_ids: formObservers.map(o => o.user_id),
-      observer_names: formObservers.map(o => o.full_name),
+      observer_ids: list.map(o => o.user_id),
+      observer_names: list.map(o => o.full_name),
     };
   };
 
@@ -5839,6 +5869,7 @@ const ActivitiesPage = () => {
         conflicts={aiConflicts}
         onApply={applyAIFieldValues}
       />
+      {keepAsObserverDialog}
     </div>
   );
 };
