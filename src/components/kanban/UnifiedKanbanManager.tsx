@@ -577,6 +577,13 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       return;
     }
 
+    // CEP da visita: obrigatório quando há cidade da visita — é o que o Marketing
+    // usa para segmentar anúncio de captação de parceiros naquela região.
+    if (newLeadFormData.visit_city && (newLeadFormData.visit_cep || '').replace(/\D/g, '').length !== 8) {
+      toast.error('Informe o CEP da visita (8 dígitos) — obrigatório quando a cidade da visita está preenchida.');
+      return;
+    }
+
     const targetBoardId = selectedBoardForNewLead || selectedBoardId;
     if (!targetBoardId) {
       toast.error('Selecione um funil');

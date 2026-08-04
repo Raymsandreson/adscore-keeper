@@ -187,6 +187,24 @@ const stateToRegion: Record<string, string> = {
   'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
 };
 
+/**
+ * Resumo do caso que vai junto na tarefa de Marketing (popup de cidade sem
+ * contatos). Só contexto de negócio — nada de dado sensível do cliente.
+ */
+function buildCaseDetails(src: {
+  case_type?: string | null; accident_date?: string | null;
+  contractor_company?: string | null; main_company?: string | null; sector?: string | null;
+}): { label: string; value: string }[] {
+  const br = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10).split('-').reverse().join('/') : (d || ''));
+  return [
+    { label: 'Tipo de caso', value: src.case_type || '' },
+    { label: 'Data do acidente', value: br(src.accident_date) },
+    { label: 'Empresa contratante', value: src.contractor_company || '' },
+    { label: 'Empresa principal', value: src.main_company || '' },
+    { label: 'Setor', value: src.sector || '' },
+  ].filter(d => d.value);
+}
+
 const caseTypes = [
   'Queda de Altura',
   'Soterramento',
@@ -598,7 +616,14 @@ export function LeadEditDialog({
     // Ao abrir o lead para editar, sugere contatos nossos na mesma cidade (se houver cidade+estado)
     const openCity = leadAny.visit_city || '';
     if (openCity && state) {
-      setCitySuggest({ city: openCity, state });
+      setCitySuggest({
+        city: openCity,
+        state,
+        cep: leadAny.visit_cep || '',
+        address: leadAny.visit_address || '',
+        region: leadAny.visit_region || stateToRegion[state] || '',
+        details: buildCaseDetails(leadAny),
+      });
     }
 
     // Companies fields
@@ -1436,6 +1461,14 @@ ${scrapeData.content || ''}
 
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
+      return;
+    }
+
+    // CEP da visita: obrigatório quando há cidade da visita — é o que o Marketing
+    // usa para segmentar anúncio de captação de parceiros naquela região.
+    if (visitCity && isFieldVisible('visit_cep') && visitCep.replace(/\D/g, '').length !== 8) {
+      toast.error('Informe o CEP da visita (8 dígitos) — obrigatório quando a cidade da visita está preenchida.');
+      setActiveTab('location');
       return;
     }
 
@@ -3405,7 +3438,7 @@ ${scrapeData.content || ''}
               <div className="grid grid-cols-2 gap-4">
                 {isFieldVisible('visit_cep') && (<div>
                   <Label className="flex items-center gap-2">
-                    CEP da Visita
+                    CEP da Visita {visitCity && <span className="text-destructive">*</span>}
                     {loadingCep && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                   </Label>
                   <Input
@@ -3448,7 +3481,17 @@ ${scrapeData.content || ''}
                     value={safeSelectValue(visitCity)}
                     onValueChange={(value) => {
                       setVisitCity(value);
-                      if (value && visitState) setCitySuggest({ city: value, state: visitState });
+                      if (value && visitState) setCitySuggest({
+                        city: value,
+                        state: visitState,
+                        cep: visitCep,
+                        address: visitAddress,
+                        region: visitRegion || stateToRegion[visitState] || '',
+                        details: buildCaseDetails({
+                          case_type: caseType, accident_date: accidentDate,
+                          contractor_company: contractorCompany, main_company: mainCompany, sector,
+                        }),
+                      });
                     }}
                     disabled={!visitState || loadingCities}
                   >
@@ -3840,6 +3883,7 @@ ${scrapeData.content || ''}
           onClose={() => setCitySuggest(null)}
           leadId={lead?.id}
           leadName={lead?.lead_name}
+          onCepChange={setVisitCep}
         />
 
         <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
