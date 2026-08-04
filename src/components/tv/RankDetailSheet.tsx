@@ -51,11 +51,11 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
 };
 
-// Alguns critérios do ranking não usam o período aberto no telão — deixar
-// explícito no cabeçalho pra ninguém achar que o número está errado.
+// "Atrasadas" é o único critério que não usa o período aberto no telão — é
+// backlog total, igual ao ranking. Deixar explícito pra ninguém achar que o
+// número está errado. (Status passou a respeitar o período em 04/08/2026.)
 function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
   if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
-  if (criterio === 'status') return 'mês corrente (o ranking conta o mês, não o período)';
   return periodLabel;
 }
 
