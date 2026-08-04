@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useLocation } from 'react-router-dom';
 import { AlarmClock, ArrowLeftRight, CheckCircle2, Coffee, Hourglass, ListChecks, LogOut, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
@@ -17,19 +18,37 @@ import { useTeamLeadership } from '@/hooks/useTeamLeadership';
  * - visitante sem sessão (senão a própria tela de login ficaria travada);
  * - diretoria (org_directors, via useTeamLeadership);
  * - telão /tv/atividades e páginas públicas (booking, revisar, avaliar…) —
- *   ficam fora do SidebarLayout, onde este componente é montado.
+ *   ficam fora do SidebarLayout, onde este componente é montado;
+ * - as rotas de SHIFT_FREE_PATHS (ver abaixo).
  *
  * Enquanto o ponto ou a liderança ainda estão carregando, nada é bloqueado —
  * evita um flash de tela cheia em quem tem passe livre.
  */
+
+/**
+ * Rotas liberadas mesmo sem ponto batido.
+ *
+ * Procuração é trabalho pontual e fora de hora: o operador recebe o link
+ * `/gerar-procuracao?phone=…` (disparado pela etiqueta, ver
+ * railway-server/src/functions/prepare-label-document-trigger.ts) e precisa
+ * mandar o documento pra assinatura na hora, sem abrir expediente só pra isso.
+ * O gate continua valendo pro resto do sistema — sair desta rota trava de novo.
+ */
+const SHIFT_FREE_PATHS = ['/gerar-procuracao'];
+
 export function ShiftGate() {
   const { user, loading: authLoading } = useAuthContext();
   const { onShift, startShift } = useActivityTimer();
   const { isDirector, loading: leadershipLoading } = useTeamLeadership();
+  const { pathname } = useLocation();
   const [starting, setStarting] = useState(false);
 
+  const shiftFree = SHIFT_FREE_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+
   const blocked =
-    !!user && !authLoading && !leadershipLoading && !isDirector && onShift === false;
+    !!user && !authLoading && !leadershipLoading && !isDirector && onShift === false && !shiftFree;
 
   // Trava o scroll do documento enquanto a tela está bloqueada.
   useEffect(() => {
