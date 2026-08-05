@@ -2778,6 +2778,12 @@ const ActivitiesPage = () => {
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext,
+      // Sessão em curso ainda não foi persistida — conta ao vivo, igual ao badge da ficha.
+      timeSpentSeconds: Math.max(
+        runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+          ? runningTimer.activeSeconds : 0,
+        activityTotalSecs,
+      ),
     }, audience);
 
   // Active step context — process workflow > lead's funnel board.

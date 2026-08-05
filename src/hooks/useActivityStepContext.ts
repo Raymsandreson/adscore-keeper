@@ -10,6 +10,31 @@ import {
   serializeMessageTemplates,
 } from './useChecklists';
 
+/**
+ * Nome da fase quando o `stage_id` da instância não existe mais no board (fase
+ * renomeada/removida — 77% das instâncias do POP-BPC e 65% das do Acidente de
+ * Trabalho estão nessa situação, medido em ago/2026). O id gerado pelo builder
+ * carrega o rótulo original: "captação_e_triagem_1776178507796_awyv".
+ * Só converte quando o id TEM esse formato; ids legados curtos ("done", "dm",
+ * "whatsapp") viram null — melhor sem a linha do que "Etapa: Done" pro cliente.
+ */
+export function phaseLabelFromStageId(stageId: string | null | undefined): string | null {
+  if (!stageId) return null;
+  const m = /^(.+?)_\d{10,}(?:_[a-z0-9]{2,6})?$/i.exec(String(stageId));
+  if (!m) return null;
+  const raw = m[1].replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!raw) return null;
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+/** Linha de `lead_checklist_instances` como o hook a consulta. */
+interface InstanceRow {
+  id: string;
+  items: ChecklistItem[] | null;
+  checklist_template_id: string;
+  stage_id: string;
+}
+
 export interface StepOption {
   stepId: string;
   stepLabel: string;
@@ -42,6 +67,9 @@ export function useActivityStepContext(
   boardId: string | null | undefined,
 ) {
   const [allSteps, setAllSteps] = useState<StepOption[]>([]);
+  // Board de onde os passos realmente vieram (pode ser o funil do lead, quando o
+  // POP pedido não tem checklist). saveStepFieldTemplates precisa deste, não do pedido.
+  const [resolvedBoardId, setResolvedBoardId] = useState<string | null>(null);
   const [defaultStepId, setDefaultStepId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -52,6 +80,7 @@ export function useActivityStepContext(
   useEffect(() => {
     if (!leadId || !boardId) {
       setAllSteps([]);
+      setResolvedBoardId(null);
       setDefaultStepId(null);
       setSelectedStepId(null);
       return;
@@ -61,26 +90,52 @@ export function useActivityStepContext(
       setLoading(true);
       try {
         // Carrega o board (para nomes de fases) e todas as instâncias do lead nesse board
-        const [boardRes, instancesRes, leadRes] = await Promise.all([
-          externalSupabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+        const loadInstances = (bid: string) =>
           supabase
             .from('lead_checklist_instances')
             .select('items, checklist_template_id, stage_id, id')
             .eq('lead_id', leadId)
-            .eq('board_id', boardId)
-            .order('created_at', { ascending: true }),
-          externalSupabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
+            .eq('board_id', bid)
+            .order('created_at', { ascending: true });
+
+        const [boardRes, instancesRes, leadRes] = await Promise.all([
+          externalSupabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+          loadInstances(boardId),
+          externalSupabase.from('leads').select('status, board_id').eq('id', leadId).maybeSingle(),
         ]);
 
-        const stages = ((boardRes.data as any)?.stages || []) as Array<{ id: string; name: string }>;
+        const leadRow = leadRes.data as { status: string | null; board_id: string | null } | null;
+        const currentStageId = leadRow?.status || null;
+        const leadBoardId = leadRow?.board_id || null;
+
+        // Fallback de board: o POP escolhido na atividade (ou o do processo) pode
+        // não ter checklist para este lead — o checklist vive no FUNIL dele. Sem
+        // isso o contexto vinha vazio e a mensagem saía sem fase/objetivo/passo/%.
+        // Só cai para o funil do PRÓPRIO lead (nunca para um board qualquer).
+        let effectiveBoardId = boardId;
+        let instances = (instancesRes.data || []) as InstanceRow[];
+        if (instances.length === 0 && leadBoardId && leadBoardId !== boardId) {
+          const fallbackRes = await loadInstances(leadBoardId);
+          const fallbackInstances = (fallbackRes.data || []) as InstanceRow[];
+          if (fallbackInstances.length > 0) {
+            effectiveBoardId = leadBoardId;
+            instances = fallbackInstances;
+          }
+        }
+
+        // Nomes das fases vêm do board de onde as instâncias realmente saíram.
+        const stagesRes = effectiveBoardId === boardId
+          ? boardRes
+          : await externalSupabase.from('kanban_boards').select('stages').eq('id', effectiveBoardId).maybeSingle();
+        const stagesRow = stagesRes.data as { stages: Array<{ id: string; name: string }> | null } | null;
+        const stages = stagesRow?.stages || [];
         const stageNameById: Record<string, string> = {};
         stages.forEach(s => { stageNameById[s.id] = s.name; });
-        const currentStageId = (leadRes.data as any)?.status || null;
 
-        const instances = (instancesRes.data || []) as any[];
         if (instances.length === 0) {
           if (!cancelled) {
             setAllSteps([]);
+            setResolvedBoardId(null);
             setDefaultStepId(null);
           }
           return;
@@ -88,13 +143,14 @@ export function useActivityStepContext(
 
         // Resolve nomes dos templates (objetivos)
         const templateIds = [...new Set(instances.map(i => i.checklist_template_id).filter(Boolean))];
-        let templateNames: Record<string, string> = {};
+        const templateNames: Record<string, string> = {};
         if (templateIds.length > 0) {
           const { data: tpls } = await supabase
             .from('checklist_templates')
             .select('id, name')
             .in('id', templateIds);
-          (tpls || []).forEach((t: any) => { templateNames[t.id] = t.name; });
+          ((tpls || []) as Array<{ id: string; name: string }>)
+            .forEach(t => { templateNames[t.id] = t.name; });
         }
 
         // Achata todos os passos
@@ -106,7 +162,7 @@ export function useActivityStepContext(
               stepId: it.id,
               stepLabel: it.label,
               phaseId: inst.stage_id,
-              phaseLabel: stageNameById[inst.stage_id] || null,
+              phaseLabel: stageNameById[inst.stage_id] || phaseLabelFromStageId(inst.stage_id),
               objectiveLabel: templateNames[inst.checklist_template_id] || null,
               templateId: inst.checklist_template_id,
               instanceId: inst.id,
@@ -125,12 +181,14 @@ export function useActivityStepContext(
 
         if (!cancelled) {
           setAllSteps(steps);
+          setResolvedBoardId(effectiveBoardId);
           setDefaultStepId(defId);
         }
       } catch (err) {
         console.warn('[useActivityStepContext]', err);
         if (!cancelled) {
           setAllSteps([]);
+          setResolvedBoardId(null);
           setDefaultStepId(null);
         }
       } finally {
@@ -191,11 +249,11 @@ export function useActivityStepContext(
       totalCount: allSteps.length,
       completedCount: allSteps.filter(s => s.checked).length,
       templateId: activeStep.templateId,
-      boardId: boardId || null,
+      boardId: resolvedBoardId || boardId || null,
       stageId: activeStep.phaseId,
       allSteps,
     };
-  }, [activeStep, activeDetails, allSteps, boardId]);
+  }, [activeStep, activeDetails, allSteps, boardId, resolvedBoardId]);
 
   /**
    * Persiste as variações de um campo do passo ATIVO no template e na instância.

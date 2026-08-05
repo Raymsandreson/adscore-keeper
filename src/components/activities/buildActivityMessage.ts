@@ -49,6 +49,21 @@ export interface ActivityMessageContext {
   resolveUserName: (userId: string | null) => string | null;
   /** Template salvo pro board/fluxo (hook useActivityMessageTemplates). */
   getTemplateForContext: (boardId?: string) => string | undefined;
+  /**
+   * Tempo total cronometrado na atv (soma de active_seconds de todas as sessões,
+   * hook useActivityTimeTotal). 0/undefined = não mostra a linha.
+   */
+  timeSpentSeconds?: number;
+}
+
+/** "1h 23min" / "45min" / "" quando não há tempo cronometrado. */
+export function formatTempoDedicado(totalSeconds?: number | null): string {
+  const s = Math.floor(totalSeconds || 0);
+  if (s < 60) return '';
+  const h = Math.floor(s / 3600);
+  const m = Math.round((s % 3600) / 60);
+  if (h > 0) return m > 0 ? `${h}h ${m}min` : `${h}h`;
+  return `${m}min`;
 }
 
 export function extractClientFirstName(raw: string): string {
@@ -122,7 +137,7 @@ export function buildActivityMessage(
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
     fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
-    currentUserId, resolveUserName, getTemplateForContext,
+    currentUserId, resolveUserName, getTemplateForContext, timeSpentSeconds,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
     const joinNames = (names: string[]) =>
@@ -146,8 +161,11 @@ export function buildActivityMessage(
     const createdAtFmt = selectedActivity ? format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm") : format(new Date(), "dd/MM/yyyy 'às' HH:mm");
     const updatedByName = selectedActivity ? resolveUserName((selectedActivity as any).updated_by) : null;
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
-    // Tempo dedicado NÃO vai mais em nenhuma mensagem (copiada ou enviada) —
-    // decisão jul/2026. O tempo continua visível no editor (badge da ficha).
+    // Tempo dedicado à atv (soma de todas as sessões do cronômetro). Voltou às
+    // mensagens em ago/2026 a pedido do usuário — a decisão de jul/2026 tinha
+    // tirado de todas. Sem tempo cronometrado (< 1min) a linha some.
+    const tempoDedicado = formatTempoDedicado(timeSpentSeconds);
+    const tempoLine = tempoDedicado ? `*⏱️ Tempo dedicado a esta atividade:* ${tempoDedicado}` : '';
     const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
     const buildReturnDateLine = (responsavelDr: string) => {
@@ -276,6 +294,7 @@ export function buildActivityMessage(
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
         progressDetail,
+        tempoLine,
         authoriaLine,
         activityLink,
         signature,
@@ -308,9 +327,7 @@ export function buildActivityMessage(
         criado_por: createdByName || '—',
         criado_em: createdAtFmt,
         atualizado_info: updatedInfo,
-        // Mantido vazio (não removido) pra templates salvos com {{tempo_dedicado}}
-        // renderizarem sem a linha em vez de cair no avaliador de expressão.
-        tempo_dedicado: '',
+        tempo_dedicado: tempoLine,
         link_atividade: activityLink,
         what_was_done: valueMap.what_was_done || '—',
         current_status: valueMap.current_status || '—',
@@ -323,6 +340,10 @@ export function buildActivityMessage(
         objetivo: wfObjective || '—',
         passo_atual: wfStep || '—',
         workflow_info: workflowInfo,
+        // {{progresso}} existia na auto-injeção mas não como variável — template
+        // salvo que a usasse caía no avaliador de expressão e vinha vazio.
+        progresso: progressInfo,
+        progresso_detalhado: progressDetail,
       };
 
       // Replace simple {{var}} first
@@ -380,6 +401,17 @@ export function buildActivityMessage(
         result = lines.join('\n');
       }
 
+      // Tempo dedicado: auto-injeta logo após o progresso quando o template não
+      // referencia {{tempo_dedicado}} e há tempo cronometrado.
+      if (tempoLine && !template.includes('tempo_dedicado') && !result.includes('Tempo dedicado')) {
+        const lines = result.split('\n');
+        const anchor = lines.findIndex(line =>
+          line.includes('Progresso do caso') || line.includes('*Passo atual:*') || line.includes('Referente ao processo'));
+        const at = anchor >= 0 ? anchor + 1 : (() => { for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1; return 0; })();
+        lines.splice(at, 0, '', tempoLine);
+        result = lines.join('\n');
+      }
+
       // Link da atividade: auto-injeta antes de "Estamos à disposição" quando a
       // atividade já existe e o template não referencia {{link_atividade}}.
       if (activityLink && !template.includes('link_atividade') && !result.includes('openActivity=')) {
@@ -432,6 +464,7 @@ export function buildActivityMessage(
     const linkLineFb = activityLink ? `\n\n${activityLink}` : '';
     const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
     const progressLineFb = progressInfo ? `\n\n${progressInfo}` : '';
+    const tempoLineFb = tempoLine ? `\n\n${tempoLine}` : '';
     const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}${tempoLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
 }

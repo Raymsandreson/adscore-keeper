@@ -31,6 +31,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
+import { useActivityTimeTotal } from '@/hooks/useActivityTimeTotal';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
@@ -195,6 +196,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
   const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
   const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
+  // Tempo dedicado à atv — vai na mensagem (cliente e assessor).
+  const activityTotalSecs = useActivityTimeTotal(activityId);
 
   // Herda o POP do processo vinculado quando a atividade não tem um próprio
   // (paridade com a ActivitiesPage). Sem isso o campo ficava vazio e vermelho
@@ -938,6 +941,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext,
+      // Sessão em curso ainda não foi persistida — conta ao vivo, igual ao badge.
+      timeSpentSeconds: Math.max(
+        runningTimer?.kind === 'activity' && runningTimer.activityId === activityId ? runningTimer.activeSeconds : 0,
+        activityTotalSecs,
+      ),
     }, audience);
 
   return (
