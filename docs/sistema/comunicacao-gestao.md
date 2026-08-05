@@ -18,11 +18,22 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 ### Painel da conversa
 - "Abrir WhatsApp", abrir ficha do lead, "Mudar etiqueta no WhatsApp e etapa no Kanban", ficha do contato, "Ligar via CallFace".
 - Menu de criação: "Vincular Lead", "Criar Lead + Contato", "Criar Caso Jurídico", "Atualizar com IA" (extrai e preenche campos a partir da conversa).
-- Por mensagem: "Copiar texto", "Sugerir resposta a esta mensagem com IA", "Criar atividade a partir desta mensagem".
+- Por mensagem: "Copiar texto", "Sugerir resposta a esta mensagem com IA", "Comentar" (leva a mensagem citada para o chat interno da equipe), "Criar atividade a partir desta mensagem".
 - Mídia: baixar e "Salvar na pasta do lead no Google Drive" (com classificação por IA).
 - Criação de caso pelo WhatsApp: "Preencher com IA a partir da conversa" → "Criar Caso" (cria lead fechado + contato + caso + processos detectados + atividades).
 
-**Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento.
+### Chat interno da equipe dentro da conversa (botão "Equipe")
+- Botão **"Equipe"** no topo da conversa abre/fecha o chat interno sobre aquele cliente — coluna própria no desktop, painel deslizante em tela estreita. O cliente não vê nada do que é escrito ali. O estado (aberto/fechado) fica salvo por navegador; ao fechar, um aviso lembra que a reabertura é nesse mesmo botão.
+- `@` no campo lista os membros e traz **"@todos"** no topo (avisa a equipe inteira). Escrever `@todos`, `@equipe` ou `@todas` na mão tem o mesmo efeito.
+- **Quem cuida do caso vem primeiro no `@`**: acima da equipe aparece o bloco "Quem cuida deste caso" com os **responsáveis** e o **acolhedor**, cada um com o selo do papel ao lado do nome — dá pra acionar a pessoa certa sem abrir a ficha.
+  - **O responsável é do processo**, não do caso: cada processo pode ter o seu (`lead_processes.responsible_user_id`). No chat do lead/caso/conversa aparece **um item por responsável, com o processo dele embaixo do nome** ("Seguro de vida judicial"); quando todos os processos são da mesma pessoa vira um item só ("3 processos"). No chat de um processo (ou da atividade dele) aparece só o responsável daquele processo.
+  - Processo **sem responsável próprio** usa o responsável processual do lead (`leads.processual_responsible_id`) e o item mostra "herdado do caso". Hoje só 172 de 1.727 processos têm responsável próprio preenchido.
+  - **Acolhedor** vem de `leads.acolhedor`, que é texto livre; quando é apelido genérico ("Atendimento Previdenciário") ou não casa com um usuário, o nome aparece rotulado mas sem virar menção.
+  - Vale em todo chat interno com caso por trás: ficha do lead, do processo, do caso, da atividade e a conversa/grupo do WhatsApp (o grupo é ligado ao lead por `lead_whatsapp_groups`).
+- **Quem é marcado com `@` ganha acesso a esta conversa do WhatsApp** e é notificado — inclusive quando a instância não é dele. Com "@todos" isso vale para todo mundo, e o sistema avisa quantas pessoas serão liberadas antes do envio. O acesso é revogável no diálogo de compartilhamento.
+- **Comentar mensagem do cliente**: "Comentar" numa bolha (ou o checkbox de seleção → "Comentar com a equipe", para várias de uma vez) cola as mensagens citadas no rascunho do chat interno, com autor e hora. Transcrição de áudio entra como texto; citação acima de 400 caracteres é cortada com "…". Na mensagem enviada, o trecho citado aparece em bloco separado com barra lateral.
+
+**Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal.
 
 ---
 

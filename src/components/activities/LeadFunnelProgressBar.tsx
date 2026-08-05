@@ -121,9 +121,22 @@ interface ChecklistInstance {
 interface LeadFunnelProgressBarProps {
   leadId: string;
   boardId: string | null;
+  /**
+   * Atividade de onde a barra está sendo usada. Vai junto no log do passo
+   * (log_checklist_step → metadata.activity_id) pra o detalhe do telão dizer
+   * EM QUAL atividade o passo foi marcado. Null quando a barra abre fora de
+   * uma atividade (ficha do processo, por ex.).
+   */
+  activityId?: string | null;
+  /**
+   * Processo de onde a barra está sendo usada (ficha do processo). Mesma ideia
+   * do activityId: registra a ORIGEM da marcação. Só é considerado quando não
+   * há atividade — dentro da atividade, quem manda é ela.
+   */
+  processId?: string | null;
 }
 
-export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBarProps) {
+export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, processId = null }: LeadFunnelProgressBarProps) {
   const { user } = useAuthContext();
   const [stages, setStages] = useState<Stage[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
@@ -494,6 +507,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         p_instance_id: instance.id,
         p_item_label: toggledItem.label,
         p_retroactive: retroactive,
+        p_activity_id: activityId,
+        p_process_id: processId,
       }).then((res: { error?: { message?: string } | null }) => {
         if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
       });
@@ -574,6 +589,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
           p_instance_id: instance.id,
           p_item_label: it.label,
           p_retroactive: retroactive,
+          p_activity_id: activityId,
+          p_process_id: processId,
         }).then((res: { error?: { message?: string } | null }) => {
           if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
         });
@@ -805,6 +822,8 @@ export function LeadFunnelProgressBar({ leadId, boardId }: LeadFunnelProgressBar
         p_instance_id: instance.id,
         p_item_label: `${item.label} — ${answer.label}`,
         p_retroactive: retroactive,
+        p_activity_id: activityId,
+        p_process_id: processId,
       }).then(res => {
         if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
       });

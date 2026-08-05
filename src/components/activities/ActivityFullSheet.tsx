@@ -13,13 +13,16 @@ import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { displayProcessLabel } from '@/lib/processLabel';
-import { ActivityCallRecorder } from '@/components/activities/ActivityCallRecorder';
+import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
+import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
+import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
+import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
@@ -71,6 +74,8 @@ export interface ActivityDraft {
   solicitacao?: string;
   resposta_juizo?: string;
   notes?: string;
+  /** Observadores pré-definidos (UUIDs do Cloud, como no seletor de assessor). */
+  observers?: { user_id: string; full_name: string }[];
   /** Marca como atividade de gestão — dispensa vínculo com lead/caso/processo. */
   is_management?: boolean;
 }
@@ -112,6 +117,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   // ---- Form state (mesmo conjunto do formulário completo) ----
   const [formTitle, setFormTitle] = useState('');
   const [renamingTitle, setRenamingTitle] = useState(false);
+  const [aiConflicts, setAiConflicts] = useState<AIFieldConflict[]>([]);
+  const [aiMergeOpen, setAiMergeOpen] = useState(false);
+  const [aiMergeOrigin, setAiMergeOrigin] = useState<AIFieldOrigin>('áudio');
+
   const [formType, setFormType] = useState('');
   const [formStatus, setFormStatus] = useState('pendente');
   const [formPriority, setFormPriority] = useState('normal');
@@ -142,6 +151,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
   const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
+  // Responsáveis (Cloud UUID) da atividade como ela foi carregada — base para saber
+  // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
+  const initialResponsiblesRef = useRef<string[]>([]);
   const [formCampaignId, setFormCampaignId] = useState('');
   const [formFeedback, setFormFeedback] = useState('');
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
@@ -175,6 +187,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
+  const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
 
   // Board dos "Modelos do passo"/checklist: POP escolhido na atividade tem
   // prioridade (mesma regra do activeStepBoardId da ActivitiesPage); senão
@@ -334,7 +347,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     // meeting_at é timestamptz; datetime-local espera YYYY-MM-DDTHH:mm
     setFormMeetingAt((((act as any).meeting_at as string | null) || '').slice(0, 16));
     setFormCallbackAt((act as any).callback_at ? format(parseISO((act as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
-    setFormAssignedTo(((await remapToCloud(act.assigned_to)) as string) || '');
+    const assignedCloud = ((await remapToCloud(act.assigned_to)) as string) || '';
+    setFormAssignedTo(assignedCloud);
     setFormAssignedToName(act.assigned_to_name || '');
     setFormMatrixQuadrant(act.matrix_quadrant || '');
     const lid = act.lead_id || leadId || '';
@@ -364,16 +378,17 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     const extIds = (act.assigned_to_ids as string[] | null) || [];
     const extNames = ((act as any).assigned_to_names as string[] | null) || [];
     if (extIds.length > 1) {
-      const primaryCloud = ((await remapToCloud(act.assigned_to)) as string) || '';
       const cloudIds = await Promise.all(extIds.map((id) => remapToCloud(id)));
       const co = cloudIds
         .map((cid, i) => ({ user_id: (cid as string) || '', full_name: extNames[i] || '' }))
-        .filter((c) => c.user_id && c.user_id !== primaryCloud);
+        .filter((c) => c.user_id && c.user_id !== assignedCloud);
       setFormCoAssignees(co);
       setLoadedHadCoAssignees(true);
+      initialResponsiblesRef.current = [assignedCloud, ...co.map(c => c.user_id)].filter(Boolean);
     } else {
       setFormCoAssignees([]);
       setLoadedHadCoAssignees(false);
+      initialResponsiblesRef.current = [assignedCloud].filter(Boolean);
     }
     const obsExt = ((act as any).observer_ids as string[] | null) || [];
     const obsNames = ((act as any).observer_names as string[] | null) || [];
@@ -438,7 +453,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormRespostaJuizo(draftRichText(d.resposta_juizo));
     setFormNotes(draftRichText(d.notes));
     setFormCoAssignees([]); setLoadedHadCoAssignees(false);
-    setFormObservers([]); setLoadedHadObservers(false);
+    setFormObservers(d.observers || []); setLoadedHadObservers(false);
+    initialResponsiblesRef.current = [];
     setFormCampaignId('');
     setFormFeedback('');
     setFormRescheduledTo('');
@@ -582,7 +598,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setAvailableContacts(data || []);
   };
 
-  const buildPayload = () => ({
+  // `extraObserver` entra quando o usuário aceita continuar acompanhando a
+  // atividade que acabou de passar para outra pessoa.
+  const buildPayload = (extraObserver?: { user_id: string; full_name: string } | null) => ({
     title: formTitle,
     description: null as string | null,
     what_was_done: formWhatWasDone || null,
@@ -631,10 +649,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       assigned_to_ids: [formAssignedTo, ...formCoAssignees.map(c => c.user_id)].filter(Boolean),
       assigned_to_names: [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean),
     }),
-    ...(formObservers.length === 0 && !loadedHadObservers ? {} : {
-      observer_ids: formObservers.map(o => o.user_id),
-      observer_names: formObservers.map(o => o.full_name),
-    }),
+    ...(() => {
+      const list = extraObserver && !formObservers.some(o => o.user_id === extraObserver.user_id)
+        ? [...formObservers, extraObserver]
+        : formObservers;
+      if (list.length === 0 && !loadedHadObservers) return {};
+      return {
+        observer_ids: list.map(o => o.user_id),
+        observer_names: list.map(o => o.full_name),
+      };
+    })(),
   });
 
   // Gera o assunto por IA a partir dos campos de detalhe (paridade com a
@@ -707,8 +731,23 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       });
       toast.dismiss(loadingId);
       if (data?.success && data.title) {
-        setFormTitle(data.title);
-        toast.success('Assunto renomeado. Revise e salve.');
+        // Com assunto já escrito, a sugestão passa pelo diálogo: o botão fica ao
+        // lado do "Preencher com" e um clique sem querer trocava o título do
+        // usuário por um gerado a partir do conteúdo, calado.
+        if (formTitle.trim() && data.title.trim() !== formTitle.trim()) {
+          setAiConflicts([{
+            key: 'title',
+            label: AI_FIELD_LABELS.title,
+            current: formTitle.trim(),
+            incoming: data.title.trim(),
+            defaultChecked: false,
+          }]);
+          setAiMergeOrigin('renomear');
+          setAiMergeOpen(true);
+        } else {
+          setFormTitle(data.title);
+          toast.success('Assunto renomeado. Revise e salve.');
+        }
       } else {
         toast.error(data?.error || 'Não foi possível gerar o assunto — preencha o próximo passo/contexto.');
       }
@@ -718,6 +757,84 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       toast.error('Erro ao renomear com IA.');
     } finally {
       setRenamingTitle(false);
+    }
+  };
+
+  // ── Resposta da IA (áudio da ligação / documento anexado) → formulário ─────
+  // As duas funções declaram os 6 campos de detalhe como `required` no schema:
+  // a IA devolve todos em toda chamada, mesmo sem o áudio/documento falar deles.
+  // Aplicar tudo direto reescrevia o texto do usuário sem avisar. Agora campo
+  // vazio a IA preenche à vontade e campo preenchido passa pelo diálogo.
+  const applyAIFieldValues = (f: Partial<Record<AIReviewedField, string>>) => {
+    if (f.title !== undefined && f.title) setFormTitle(f.title);
+    if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+    if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+    if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+    if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+    if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+    if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+  };
+
+  const handleAIFields = (f: ActivityCallFields, origin: 'áudio' | 'documento') => {
+    const { autoApply, conflicts } = splitAIFields(f, {
+      title: formTitle,
+      what_was_done: stripHtmlToText(formWhatWasDone),
+      current_status: stripHtmlToText(formCurrentStatus),
+      next_steps: stripHtmlToText(formNextSteps),
+      solicitacao: stripHtmlToText(formSolicitacao),
+      resposta_juizo: stripHtmlToText(formRespostaJuizo),
+      notes: stripHtmlToText(formNotes),
+    });
+
+    applyAIFieldValues(autoApply);
+
+    // Metadados objetivos seguem aplicados direto — ficam visíveis no formulário.
+    if (autoApply.deadline && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.deadline)) handleDeadlineChange(autoApply.deadline);
+    if (autoApply.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.notification_date)) setFormNotificationDate(autoApply.notification_date);
+    if (autoApply.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(autoApply.priority)) setFormPriority(autoApply.priority);
+    if (autoApply.status && ['pendente', 'em_andamento', 'concluida'].includes(autoApply.status)) setFormStatus(autoApply.status);
+    if (autoApply.activity_type) {
+      const t = routineActivityTypes.find((x) => x.value === autoApply.activity_type);
+      if (t && t.value !== formType) {
+        setFormType(t.value);
+        toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+      }
+    }
+
+    // Assessores designados: o 1º vira o principal, os demais co-assessores.
+    const spokenNames = (autoApply.assessor_names && autoApply.assessor_names.length > 0)
+      ? autoApply.assessor_names
+      : (autoApply.assessor_name ? [autoApply.assessor_name] : []);
+    if (spokenNames.length > 0) {
+      const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
+      const matched: { user_id: string; full_name: string }[] = [];
+      const notFound: string[] = [];
+      for (const name of spokenNames) {
+        const spoken = norm(name);
+        const member = teamMembers.find((m) => {
+          const full = norm(m.full_name || '');
+          return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+        });
+        if (member && !matched.some((x) => x.user_id === member.user_id)) {
+          matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+        } else if (!member) {
+          notFound.push(name);
+        }
+      }
+      if (matched.length > 0) {
+        setFormAssignedTo(matched[0].user_id);
+        setFormAssignedToName(matched[0].full_name);
+        setFormCoAssignees(matched.slice(1));
+      }
+      if (notFound.length > 0) {
+        toast.error(`Assessor(es) citado(s) no ${origin} não encontrado(s) na equipe: ${notFound.join(', ')}.`);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      setAiConflicts(conflicts);
+      setAiMergeOrigin(origin);
+      setAiMergeOpen(true);
     }
   };
 
@@ -769,8 +886,24 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
 
     if (!activityId) return;
+
+    // Passei a atividade que era minha para outra pessoa? Ofereço ficar como
+    // observador — é o que mantém ela no meu funil de Feedback e me avisa do retorno.
+    let extraObserver: { user_id: string; full_name: string } | null = null;
+    if (shouldAskKeepAsObserver({
+      myUserId: user?.id,
+      previousResponsibles: initialResponsiblesRef.current,
+      formAssignedTo, formCoAssignees, formObservers,
+    })) {
+      const keep = await askKeepAsObserver(formAssignedToName);
+      if (keep) {
+        const myName = teamMembers.find(m => m.user_id === user!.id)?.full_name || '';
+        extraObserver = { user_id: user!.id, full_name: myName };
+      }
+    }
+
     setSaving(true);
-    await updateActivity(activityId, buildPayload() as Partial<LeadActivity>);
+    await updateActivity(activityId, buildPayload(extraObserver) as Partial<LeadActivity>);
     setSaving(false);
     onUpdated?.();
     handleClose();
@@ -903,57 +1036,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                     })(),
                   } : undefined,
                 }}
-                onFields={(f) => {
-                  // Campos de texto: '' significa "o áudio mandou apagar" — limpa o campo.
-                  if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                  if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                  if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                  if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                  if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                  if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                  // Metadados ditados no áudio (prazo, prioridade, situação, título, tipo).
-                  if (f.title) setFormTitle(f.title);
-                  if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                  if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                  if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                  if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                  if (f.activity_type) {
-                    const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                    if (t && t.value !== formType) {
-                      setFormType(t.value);
-                      toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                    }
-                  }
-                  // Assessores ditados no áudio: o primeiro vira o principal, os demais co-assessores.
-                  const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                    ? f.assessor_names
-                    : (f.assessor_name ? [f.assessor_name] : []);
-                  if (spokenNames.length > 0) {
-                    const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
-                    const matched: { user_id: string; full_name: string }[] = [];
-                    const notFound: string[] = [];
-                    for (const name of spokenNames) {
-                      const spoken = norm(name);
-                      const member = teamMembers.find((m) => {
-                        const full = norm(m.full_name || '');
-                        return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                      });
-                      if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                        matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                      } else if (!member) {
-                        notFound.push(name);
-                      }
-                    }
-                    if (matched.length > 0) {
-                      setFormAssignedTo(matched[0].user_id);
-                      setFormAssignedToName(matched[0].full_name);
-                      setFormCoAssignees(matched.slice(1));
-                    }
-                    if (notFound.length > 0) {
-                      toast.error(`Assessor(es) citado(s) no áudio não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                    }
-                  }
-                }}
+                onFields={(f) => handleAIFields(f, 'áudio')}
               />
               <ActivityDocumentUpload
                 triggerClassName="sr-only"
@@ -995,57 +1078,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                     })(),
                   } : undefined,
                 }}
-                onFields={(f) => {
-                  // Campos de texto (documento nunca manda apagar, mas mantém o mesmo shape do áudio).
-                  if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                  if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                  if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                  if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                  if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                  if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                  // Metadados extraídos do documento (prazo, notificação, prioridade, situação, título).
-                  if (f.title) setFormTitle(f.title);
-                  if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                  if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                  if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                  if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                  if (f.activity_type) {
-                    const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                    if (t && t.value !== formType) {
-                      setFormType(t.value);
-                      toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                    }
-                  }
-                  // Assessores designados no documento: 1º vira o principal, os demais co-assessores.
-                  const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                    ? f.assessor_names
-                    : (f.assessor_name ? [f.assessor_name] : []);
-                  if (spokenNames.length > 0) {
-                    const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
-                    const matched: { user_id: string; full_name: string }[] = [];
-                    const notFound: string[] = [];
-                    for (const name of spokenNames) {
-                      const spoken = norm(name);
-                      const member = teamMembers.find((m) => {
-                        const full = norm(m.full_name || '');
-                        return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                      });
-                      if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                        matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                      } else if (!member) {
-                        notFound.push(name);
-                      }
-                    }
-                    if (matched.length > 0) {
-                      setFormAssignedTo(matched[0].user_id);
-                      setFormAssignedToName(matched[0].full_name);
-                      setFormCoAssignees(matched.slice(1));
-                    }
-                    if (notFound.length > 0) {
-                      toast.error(`Assessor(es) citado(s) no documento não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                    }
-                  }
-                }}
+                onFields={(f) => handleAIFields(f, 'documento')}
               />
 
               {!isCreate && (
@@ -1156,11 +1189,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead */}
           {formLeadId && (() => {
             if (formWorkflowId) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} />;
             }
             if (formProcessId) {
               if (linkedProcess?.workflow_id) {
-                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} />;
+                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} />;
               }
               return (
                 <p className="text-[10px] text-muted-foreground italic">
@@ -1169,7 +1202,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               );
             }
             if (leadPreview?.lead_status !== 'closed' && leadPreview?.board_id) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={activityId} />;
             }
             return null;
           })()}
@@ -1289,6 +1322,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           </div>
         </div>
       </SheetContent>
+
+      <AIFieldMergeDialog
+        open={aiMergeOpen}
+        onOpenChange={setAiMergeOpen}
+        origin={aiMergeOrigin}
+        conflicts={aiConflicts}
+        onApply={applyAIFieldValues}
+      />
+      {keepAsObserverDialog}
     </Sheet>
   );
 }

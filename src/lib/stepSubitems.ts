@@ -42,6 +42,8 @@ export interface SubItemLike {
 }
 
 export interface StepLike {
+  id?: string;
+  label?: string;
   answers?: { label?: string }[];
   docChecklist?: SubItemLike[] | null;
 }

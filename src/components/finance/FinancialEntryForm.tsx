@@ -13,6 +13,7 @@ import { useBeneficiaries } from '@/hooks/useBeneficiaries';
 import { useFinancialEntries, FinancialEntry } from '@/hooks/useFinancialEntries';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
+import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
 import { Save, Upload, X, Plus } from 'lucide-react';
 import { format } from 'date-fns';
@@ -158,6 +159,9 @@ export function FinancialEntryForm({ open, onOpenChange, editEntry, onSaved, def
       if (invoiceFile) {
         await uploadInvoice(invoiceFile, entryId);
       }
+
+      // Lançamento gravado → conta o tempo no cronômetro (guarda-chuva do dia).
+      void trackFinanceEntry();
 
       onOpenChange(false);
       onSaved?.();

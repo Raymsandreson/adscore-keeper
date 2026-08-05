@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 
 export interface ExpenseCategory {
   id: string;
@@ -359,6 +360,9 @@ export function useExpenseCategories() {
 
       if (error) throw error;
       toast.success('Transação categorizada');
+      // Categorizar é registro de controle financeiro: conta o tempo na
+      // guarda-chuva do dia em vez de deixar a pessoa como ociosa.
+      void trackFinanceEntry();
       await fetchOverrides();
     } catch (err: any) {
       console.error('Error setting override:', err);

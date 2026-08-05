@@ -16,7 +16,10 @@ import { ActivityFormCompact, SendToGroupSection } from '@/components/activities
 import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
-import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText } from '@/components/activities/ActivityCallRecorder';
+import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
+import { AIFieldMergeDialog } from '@/components/activities/AIFieldMergeDialog';
+import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
+import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
@@ -315,6 +318,10 @@ const ActivitiesPage = () => {
   // O criador entra como observador natural na criação. Cloud UUIDs.
   const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
+  // Responsáveis (Cloud UUID) da atividade como ela foi carregada — base para saber
+  // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
+  const initialResponsiblesRef = useRef<string[]>([]);
+  const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
   // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
   const [formFeedback, setFormFeedback] = useState('');
   // Próxima atividade sugerida pela IA na "Revisar com IA" (popup de confirmação).
@@ -1224,9 +1231,10 @@ const ActivitiesPage = () => {
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
+    const assignedCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
+    setFormAssignedTo(assignedCloud);
     setFormAssignedToName(activity.assigned_to_name || '');
-    await hydrateCoAssignees(activity);
+    await hydrateCoAssignees(activity, assignedCloud);
     setFormDeadline(activity.deadline || '');
     // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
@@ -1401,6 +1409,22 @@ const ActivitiesPage = () => {
       toast.error('Falha ao salvar anexos. A atividade não foi salva.');
       return;
     }
+
+    // Passei a atividade que era minha para outra pessoa? Ofereço ficar como
+    // observador — é o que mantém ela no meu funil de Feedback e me avisa do retorno.
+    let extraObserver: { user_id: string; full_name: string } | null = null;
+    if (shouldAskKeepAsObserver({
+      myUserId: user?.id,
+      previousResponsibles: initialResponsiblesRef.current,
+      formAssignedTo, formCoAssignees, formObservers,
+    })) {
+      const keep = await askKeepAsObserver(formAssignedToName);
+      if (keep) {
+        const myName = teamMembers.find(m => m.user_id === user!.id)?.full_name || profile?.full_name || '';
+        extraObserver = { user_id: user!.id, full_name: myName };
+      }
+    }
+
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
@@ -1445,7 +1469,7 @@ const ActivitiesPage = () => {
       // Reunião: grava/limpa o horário conforme o tipo (detecção por rótulo, key custom_ no Externo).
       meeting_at: isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
       ...buildAssigneesPayload(),
-      ...buildObserversPayload(),
+      ...buildObserversPayload(extraObserver),
     } as any);
 
     // Feedback/situação mudou? Avisa os observadores (popup em tempo real).
@@ -1871,9 +1895,10 @@ const ActivitiesPage = () => {
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
     setFormLeadName(activity.lead_name || '');
-    setFormAssignedTo(((await remapToCloud(activity.assigned_to)) as string) || '');
+    const assignedCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
+    setFormAssignedTo(assignedCloud);
     setFormAssignedToName(activity.assigned_to_name || '');
-    await hydrateCoAssignees(activity);
+    await hydrateCoAssignees(activity, assignedCloud);
     setFormDeadline(activity.deadline || '');
     // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
@@ -2116,20 +2141,22 @@ const ActivitiesPage = () => {
   };
 
   // Carrega os co-assessores e observadores da atividade (arrays do Externo → Cloud UUIDs).
-  const hydrateCoAssignees = async (activity: any) => {
+  const hydrateCoAssignees = async (activity: any, assignedCloud?: string) => {
     const extIds = (activity.assigned_to_ids as string[] | null) || [];
     const names = (activity.assigned_to_names as string[] | null) || [];
+    const primaryCloud = assignedCloud ?? (((await remapToCloud(activity.assigned_to)) as string) || '');
     if (extIds.length > 1) {
-      const primaryCloud = ((await remapToCloud(activity.assigned_to)) as string) || '';
       const cloudIds = await Promise.all(extIds.map((id) => remapToCloud(id)));
       const co = cloudIds
         .map((cid, i) => ({ user_id: (cid as string) || '', full_name: names[i] || '' }))
         .filter((c) => c.user_id && c.user_id !== primaryCloud);
       setFormCoAssignees(co);
       setLoadedHadCoAssignees(true);
+      initialResponsiblesRef.current = [primaryCloud, ...co.map(c => c.user_id)].filter(Boolean);
     } else {
       setFormCoAssignees([]);
       setLoadedHadCoAssignees(false);
+      initialResponsiblesRef.current = [primaryCloud].filter(Boolean);
     }
 
     const obsExt = (activity.observer_ids as string[] | null) || [];
@@ -2203,11 +2230,16 @@ const ActivitiesPage = () => {
   };
 
   // Observadores no payload (mesma regra: só quando há, ou quando havia — pra limpar).
-  const buildObserversPayload = () => {
-    if (formObservers.length === 0 && !loadedHadObservers) return {};
+  // `extraObserver` entra quando o usuário aceita continuar acompanhando a atividade
+  // que acabou de passar para outra pessoa.
+  const buildObserversPayload = (extraObserver?: { user_id: string; full_name: string } | null) => {
+    const list = extraObserver && !formObservers.some(o => o.user_id === extraObserver.user_id)
+      ? [...formObservers, extraObserver]
+      : formObservers;
+    if (list.length === 0 && !loadedHadObservers) return {};
     return {
-      observer_ids: formObservers.map(o => o.user_id),
-      observer_names: formObservers.map(o => o.full_name),
+      observer_ids: list.map(o => o.user_id),
+      observer_names: list.map(o => o.full_name),
     };
   };
 
@@ -2583,6 +2615,90 @@ const ActivitiesPage = () => {
       aiSuggestTimer.current = setTimeout(() => suggestActivityType(value), 800);
     }
   }, [sheetMode, suggestActivityType]);
+
+  // ── Resposta da IA (áudio da ligação / documento anexado) → formulário ─────
+  // As duas funções declaram os 6 campos de detalhe como `required` no schema: a
+  // IA devolve todos em toda chamada, mesmo sem o áudio/documento falar deles.
+  // Aplicar tudo direto reescrevia o texto do usuário sem avisar (e trocava o
+  // assunto com base no conteúdo). Campo vazio a IA preenche à vontade; campo
+  // preenchido passa pelo diálogo de revisão.
+  const [aiConflicts, setAiConflicts] = useState<AIFieldConflict[]>([]);
+  const [aiMergeOpen, setAiMergeOpen] = useState(false);
+  const [aiMergeOrigin, setAiMergeOrigin] = useState<'áudio' | 'documento'>('áudio');
+
+  const applyAIFieldValues = (f: Partial<Record<AIReviewedField, string>>) => {
+    if (f.title !== undefined && f.title) setFormTitle(f.title);
+    if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
+    if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
+    if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
+    if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
+    if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
+    if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
+  };
+
+  const handleAIFields = (f: ActivityCallFields, origin: 'áudio' | 'documento') => {
+    const { autoApply, conflicts } = splitAIFields(f, {
+      title: formTitle,
+      what_was_done: stripHtmlToText(formWhatWasDone),
+      current_status: stripHtmlToText(formCurrentStatus),
+      next_steps: stripHtmlToText(formNextSteps),
+      solicitacao: stripHtmlToText(formSolicitacao),
+      resposta_juizo: stripHtmlToText(formRespostaJuizo),
+      notes: stripHtmlToText(formNotes),
+    });
+
+    applyAIFieldValues(autoApply);
+
+    // Metadados objetivos seguem aplicados direto — ficam visíveis no formulário.
+    if (autoApply.deadline && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.deadline)) handleDeadlineChange(autoApply.deadline);
+    if (autoApply.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(autoApply.notification_date)) setFormNotificationDate(autoApply.notification_date);
+    if (autoApply.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(autoApply.priority)) setFormPriority(autoApply.priority);
+    if (autoApply.status && ['pendente', 'em_andamento', 'concluida'].includes(autoApply.status)) setFormStatus(autoApply.status);
+    if (autoApply.activity_type) {
+      const t = routineActivityTypes.find((x) => x.value === autoApply.activity_type);
+      if (t && t.value !== formType) {
+        setFormType(t.value);
+        setTypeMismatch(null);
+        toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
+      }
+    }
+
+    // Assessores designados: o 1º vira o principal, os demais co-assessores.
+    const spokenNames = (autoApply.assessor_names && autoApply.assessor_names.length > 0)
+      ? autoApply.assessor_names
+      : (autoApply.assessor_name ? [autoApply.assessor_name] : []);
+    if (spokenNames.length > 0) {
+      const norm = (s: string) => s.normalize('NFD').replace(new RegExp('[\\u0300-\\u036f]', 'g'), '').toLowerCase().trim();
+      const matched: { user_id: string; full_name: string }[] = [];
+      const notFound: string[] = [];
+      for (const name of spokenNames) {
+        const spoken = norm(name);
+        const member = teamMembers.find((m) => {
+          const full = norm(m.full_name || '');
+          return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
+        });
+        if (member && !matched.some((x) => x.user_id === member.user_id)) {
+          matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
+        } else if (!member) {
+          notFound.push(name);
+        }
+      }
+      if (matched.length > 0) {
+        setFormAssignedTo(matched[0].user_id);
+        setFormAssignedToName(matched[0].full_name);
+        setFormCoAssignees(matched.slice(1));
+      }
+      if (notFound.length > 0) {
+        toast.error(`Assessor(es) citado(s) no ${origin} não encontrado(s) na equipe: ${notFound.join(', ')}.`);
+      }
+    }
+
+    if (conflicts.length > 0) {
+      setAiConflicts(conflicts);
+      setAiMergeOrigin(origin);
+      setAiMergeOpen(true);
+    }
+  };
 
   // Verifica se o tipo escolhido bate com o contexto (assunto + campos). Se a IA
   // sugerir um tipo diferente do atual, mostra um alerta com botão de aplicar —
@@ -4816,59 +4932,7 @@ const ActivitiesPage = () => {
                             })(),
                           } : undefined,
                         }}
-                        onFields={(f) => {
-                          // Campos de texto: '' significa "o áudio mandou apagar" — limpa o campo.
-                          if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                          if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                          if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                          if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                          if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                          if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                          // Metadados ditados no áudio (prazo, prioridade, situação, assessor, título).
-                          if (f.title) setFormTitle(f.title);
-                          if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                          if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                          if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                          if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                          // Tipo mais adequado ao conteúdo, sugerido pela IA entre os tipos válidos do seletor.
-                          if (f.activity_type) {
-                            const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                            if (t && t.value !== formType) {
-                              setFormType(t.value);
-                              setTypeMismatch(null);
-                              toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                            }
-                          }
-                          // Assessores ditados no áudio: o primeiro vira o principal, os demais co-assessores.
-                          const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                            ? f.assessor_names
-                            : (f.assessor_name ? [f.assessor_name] : []);
-                          if (spokenNames.length > 0) {
-                            const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-                            const matched: { user_id: string; full_name: string }[] = [];
-                            const notFound: string[] = [];
-                            for (const name of spokenNames) {
-                              const spoken = norm(name);
-                              const member = teamMembers.find((m) => {
-                                const full = norm(m.full_name || '');
-                                return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                              });
-                              if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                                matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                              } else if (!member) {
-                                notFound.push(name);
-                              }
-                            }
-                            if (matched.length > 0) {
-                              setFormAssignedTo(matched[0].user_id);
-                              setFormAssignedToName(matched[0].full_name);
-                              setFormCoAssignees(matched.slice(1));
-                            }
-                            if (notFound.length > 0) {
-                              toast.error(`Assessor(es) citado(s) no áudio não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                            }
-                          }
-                        }}
+                        onFields={(f) => handleAIFields(f, 'áudio')}
                       />
                   <ActivityDocumentUpload
                         triggerClassName="sr-only"
@@ -4910,58 +4974,7 @@ const ActivitiesPage = () => {
                             })(),
                           } : undefined,
                         }}
-                        onFields={(f) => {
-                          // Campos de texto (documento nunca manda apagar, mas mantém o mesmo shape do áudio).
-                          if (f.what_was_done !== undefined) setFormWhatWasDone(f.what_was_done ? callFieldTextToHtml(f.what_was_done) : '');
-                          if (f.current_status !== undefined) setFormCurrentStatus(f.current_status ? callFieldTextToHtml(f.current_status) : '');
-                          if (f.next_steps !== undefined) setFormNextSteps(f.next_steps ? callFieldTextToHtml(f.next_steps) : '');
-                          if (f.solicitacao !== undefined) setFormSolicitacao(f.solicitacao ? callFieldTextToHtml(f.solicitacao) : '');
-                          if (f.resposta_juizo !== undefined) setFormRespostaJuizo(f.resposta_juizo ? callFieldTextToHtml(f.resposta_juizo) : '');
-                          if (f.notes !== undefined) setFormNotes(f.notes ? callFieldTextToHtml(f.notes) : '');
-                          // Metadados extraídos do documento (prazo, notificação, prioridade, situação, título).
-                          if (f.title) setFormTitle(f.title);
-                          if (f.deadline && /^\d{4}-\d{2}-\d{2}$/.test(f.deadline)) handleDeadlineChange(f.deadline);
-                          if (f.notification_date && /^\d{4}-\d{2}-\d{2}$/.test(f.notification_date)) setFormNotificationDate(f.notification_date);
-                          if (f.priority && ['baixa', 'normal', 'alta', 'urgente'].includes(f.priority)) setFormPriority(f.priority);
-                          if (f.status && ['pendente', 'em_andamento', 'concluida'].includes(f.status)) setFormStatus(f.status);
-                          if (f.activity_type) {
-                            const t = routineActivityTypes.find((x) => x.value === f.activity_type);
-                            if (t && t.value !== formType) {
-                              setFormType(t.value);
-                              setTypeMismatch(null);
-                              toast.info(`Tipo ajustado pela IA para ${t.label}.`, { duration: 2500 });
-                            }
-                          }
-                          // Assessores designados no documento: 1º vira o principal, os demais co-assessores.
-                          const spokenNames = (f.assessor_names && f.assessor_names.length > 0)
-                            ? f.assessor_names
-                            : (f.assessor_name ? [f.assessor_name] : []);
-                          if (spokenNames.length > 0) {
-                            const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
-                            const matched: { user_id: string; full_name: string }[] = [];
-                            const notFound: string[] = [];
-                            for (const name of spokenNames) {
-                              const spoken = norm(name);
-                              const member = teamMembers.find((m) => {
-                                const full = norm(m.full_name || '');
-                                return full && (full.includes(spoken) || spoken.includes(full) || full.split(' ')[0] === spoken.split(' ')[0]);
-                              });
-                              if (member && !matched.some((x) => x.user_id === member.user_id)) {
-                                matched.push({ user_id: member.user_id, full_name: member.full_name || '' });
-                              } else if (!member) {
-                                notFound.push(name);
-                              }
-                            }
-                            if (matched.length > 0) {
-                              setFormAssignedTo(matched[0].user_id);
-                              setFormAssignedToName(matched[0].full_name);
-                              setFormCoAssignees(matched.slice(1));
-                            }
-                            if (notFound.length > 0) {
-                              toast.error(`Assessor(es) citado(s) no documento não encontrado(s) na equipe: ${notFound.join(', ')}.`);
-                            }
-                          }
-                        }}
+                        onFields={(f) => handleAIFields(f, 'documento')}
                       />
 
                   <ActivityNextStepsAgent
@@ -5212,16 +5225,20 @@ const ActivitiesPage = () => {
                 const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
                 const processWorkflowId = linkedProcess?.workflow_id;
 
+                // Passo marcado daqui nasce DENTRO desta atividade — o id vai
+                // junto no log (metadata.activity_id) pro detalhe do telão.
+                const funnelActivityId = sheetMode === 'edit' ? selectedActivity?.id ?? null : null;
+
                 // POP escolhido na própria atividade tem prioridade — mesma regra
                 // do activeStepBoardId (contexto de passo/modelos).
                 if (formWorkflowId) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={funnelActivityId} />;
                 }
                 // Se há processo vinculado: só mostra se o processo tem fluxo próprio.
                 // Sem fluxo no processo = sem barra (não cai no funil do lead).
                 if (formProcessId) {
                   if (processWorkflowId) {
-                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} />;
+                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} activityId={funnelActivityId} />;
                   }
                   return (
                     <p className="text-[10px] text-muted-foreground mt-1.5 italic">
@@ -5231,7 +5248,7 @@ const ActivitiesPage = () => {
                 }
                 // Sem processo vinculado: usa o funil do lead (apenas se ainda em andamento).
                 if (!isLeadClosed && leadPreview?.board_id) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={funnelActivityId} />;
                 }
                 return null;
               })()}
@@ -5848,6 +5865,15 @@ const ActivitiesPage = () => {
           `}</style>
         </div>
       )}
+
+      <AIFieldMergeDialog
+        open={aiMergeOpen}
+        onOpenChange={setAiMergeOpen}
+        origin={aiMergeOrigin}
+        conflicts={aiConflicts}
+        onApply={applyAIFieldValues}
+      />
+      {keepAsObserverDialog}
     </div>
   );
 };

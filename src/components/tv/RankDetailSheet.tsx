@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink } from 'lucide-react';
+import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink, Target, Flag, Goal, Star, Inbox } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -7,39 +7,142 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { cn } from '@/lib/utils';
 
 // Painel lateral do telão /tv/atividades: ao clicar num chip de critério
-// (passos / concluídas / atrasadas) de uma pessoa, lista o que compôs aquele
-// número. Fonte: RPC tv_ranking_detalhe no Externo, que replica exatamente os
-// filtros do tv_atividades_ranking — a soma aqui bate com o número do telão.
+// (status / fases / objetivos / passos / concluídas / atrasadas) de uma pessoa,
+// lista o que compôs aquele número. Fonte: RPC tv_ranking_detalhe no Externo,
+// que replica exatamente os filtros do tv_atividades_ranking — a soma aqui bate
+// com o número do telão.
 
-export type DetailCriterio = 'passos' | 'concluidas' | 'atrasadas';
+export type DetailCriterio =
+  | 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas'
+  | 'estrelas' | 'fb_pendentes';
 
 interface DetailItem {
-  tipo: 'passo' | 'concluida' | 'atrasada';
+  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente';
   quando?: string;
   titulo: string | null;
   lead_nome?: string | null;
   lead_id?: string | null;
+  /** Onde o item mora — o RPC devolve o que consegue afirmar de cada um. */
+  objetivo?: string | null;
+  fase?: string | null;
+  pop?: string | null;
+  processo?: string | null;
+  /** De onde a marcação saiu — gravado no log a partir de 04/08/2026. */
+  origem?: 'atividade' | 'processo' | null;
+  /** Passo: atividade de onde a marcação saiu (metadata.activity_id). */
+  atividade?: string | null;
   activity_id?: string;
+  process_id?: string | null;
   deadline?: string;
   dias_atraso?: number;
+  /** Estrela: nota recebida, com quem deu e por quê. */
+  nota?: number | null;
+  desfecho?: string | null;
+  avaliador?: string | null;
+  justificativa?: string | null;
+  /** Feedback pendente: de quem é o retorno parado esperando avaliação. */
+  responsavel?: string | null;
+  retorno?: string | null;
+  dias_parado?: number;
+}
+
+// Linha "de onde veio a marcação". A regra é a do Raym (04/08/2026): marcou
+// dentro da atividade → atalho da atividade; marcou dentro da ficha do processo
+// → atalho do processo. Sem origem gravada (funil, WhatsApp, ou passo anterior
+// a 04/08) a linha diz isso em vez de inventar um vínculo.
+function Origem({
+  it, onAtividade, onProcesso,
+}: {
+  it: DetailItem;
+  onAtividade: (id?: string) => void;
+  onProcesso: (id?: string | null) => void;
+}) {
+  const verbo = it.tipo === 'passo' ? 'marcado' : 'fechou';
+  const naAtividade = it.origem === 'atividade' && it.atividade && it.activity_id;
+  const noProcesso = it.origem === 'processo' && it.processo && it.process_id;
+
+  // Sem origem no log: não dá pra afirmar de onde saiu. Nada de datar o aviso —
+  // o registro de origem entra em vigor no deploy, não numa data do calendário,
+  // e passo marcado pelo funil/WhatsApp nunca vai ter origem.
+  if (!naAtividade && !noProcesso) {
+    return <div className="mt-1.5 text-xs italic text-white/25">origem não registrada</div>;
+  }
+  return (
+    <div className="mt-1.5 flex items-start gap-1.5 text-xs">
+      <span className="shrink-0 text-white/35">
+        {verbo} {naAtividade ? 'na atividade:' : 'no processo:'}
+      </span>
+      <button
+        className="group/o inline-flex min-w-0 flex-1 items-start gap-1 text-left font-semibold text-sky-300 hover:text-sky-200"
+        onClick={e => {
+          e.stopPropagation();
+          if (naAtividade) onAtividade(it.activity_id);
+          else onProcesso(it.process_id);
+        }}
+        title={naAtividade ? 'Abrir a atividade em nova aba' : 'Abrir o processo em nova aba'}
+      >
+        <span className="min-w-0 underline decoration-sky-300/40 underline-offset-2 group-hover/o:decoration-sky-200">
+          {naAtividade ? it.atividade : it.processo}
+        </span>
+        <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
+      </button>
+    </div>
+  );
+}
+
+// Rótulo + valor num chip só, pra não virar sopa de texto solto.
+function Chip({ label, valor, onClick }: { label: string; valor: string; onClick?: () => void }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex max-w-full items-baseline gap-1 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px]',
+        onClick && 'cursor-pointer transition hover:bg-white/[0.12]',
+      )}
+      onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
+      title={onClick ? 'Abrir o processo em nova aba' : undefined}
+    >
+      <span className="shrink-0 uppercase tracking-wider text-white/30">{label}</span>
+      <span className={cn('min-w-0 truncate', onClick ? 'text-sky-300 underline decoration-sky-300/30 underline-offset-2' : 'text-white/70')}>
+        {valor}
+      </span>
+    </span>
+  );
 }
 
 const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: typeof ListChecks }> = {
+  status: { titulo: 'Status esperado', cor: 'text-yellow-300', Icon: Target },
+  fases: { titulo: 'Fases', cor: 'text-amber-300', Icon: Flag },
+  objetivos: { titulo: 'Objetivos', cor: 'text-lime-400', Icon: Goal },
   passos: { titulo: 'Passos', cor: 'text-sky-400', Icon: ListChecks },
   concluidas: { titulo: 'Concluídas', cor: 'text-emerald-400', Icon: CheckCircle2 },
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
+  estrelas: { titulo: 'Média das avaliações', cor: 'text-amber-400', Icon: Star },
+  fb_pendentes: { titulo: 'Feedbacks sem avaliar', cor: 'text-pink-400', Icon: Inbox },
 };
+
+// "Atrasadas" e "feedbacks sem avaliar" não usam o período aberto no telão — são
+// backlog total, igual ao ranking. Deixar explícito pra ninguém achar que o
+// número está errado. (Status passou a respeitar o período em 04/08/2026.)
+function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
+  if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
+  if (criterio === 'fb_pendentes') return 'esperando a avaliação dela · backlog total';
+  if (criterio === 'estrelas') return `notas recebidas · ${periodLabel}`;
+  return periodLabel;
+}
 
 interface Props {
   nome: string;
   criterio: DetailCriterio;
-  count: number;
+  /** Contagem do chip; string quando o número não é contagem (⭐ = média). */
+  count: number | string;
   since: string; // ISO — mesmo p_since passado ao ranking
   periodLabel: string; // "hoje" | "semana" | "mês"
+  /** Abre a ficha do processo em aba lateral, sem sair do telão. */
+  onAbrirProcesso?: (processId: string) => void;
   onClose: () => void;
 }
 
-export default function RankDetailSheet({ nome, criterio, count, since, periodLabel, onClose }: Props) {
+export default function RankDetailSheet({ nome, criterio, count, since, periodLabel, onAbrirProcesso, onClose }: Props) {
   const [items, setItems] = useState<DetailItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cfg = CRITERIO_CFG[criterio];
@@ -67,6 +170,14 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
   const openActivity = (id?: string) => {
     if (id) window.open(`/atv/${id.slice(0, 8)}`, '_blank', 'noopener');
   };
+  // Ficha do processo em aba lateral, por cima do detalhe — sem tirar ninguém
+  // do telão. Sem o callback (uso fora do telão), cai no deep-link da
+  // ProcessesPage, que lê ?openProcess=<id>.
+  const openProcesso = (id?: string | null) => {
+    if (!id) return;
+    if (onAbrirProcesso) onAbrirProcesso(id);
+    else window.open(`/processes?openProcess=${id}`, '_blank', 'noopener');
+  };
 
   return (
     <Sheet open onOpenChange={open => { if (!open) onClose(); }}>
@@ -78,10 +189,7 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
             <span className="text-lg font-bold">{cfg.titulo}</span>
           </SheetTitle>
           <div className="text-left text-sm text-white/60">
-            {nome}
-            {criterio === 'atrasadas'
-              ? ' · backlog total (não filtra por período)'
-              : ` · ${periodLabel}`}
+            {nome} · {escopoLabel(criterio, periodLabel)}
           </div>
         </SheetHeader>
 
@@ -93,7 +201,9 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
               <Loader2 className="h-5 w-5 animate-spin" /> Carregando…
             </div>
           ) : items.length === 0 ? (
-            <div className="py-10 text-center text-white/50">Nada no período.</div>
+            <div className="py-10 text-center text-white/50">
+              {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏' : 'Nada no período.'}
+            </div>
           ) : (
             items.map((it, i) => (
               <div
@@ -111,8 +221,83 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                   </div>
                   {it.activity_id && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
                 </div>
+                {/* Onde esse item mora: cliente · processo · objetivo · fase · POP */}
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {it.lead_nome && <Chip label="cliente" valor={it.lead_nome} />}
+                  {/* Com origem no processo o chip sairia repetido — o número
+                      já aparece na linha de origem, ali como atalho. Fora isso,
+                      o chip abre o processo quando o vínculo é certo (o POP do
+                      checklist é o do processo). */}
+                  {it.processo && it.origem !== 'processo' && (
+                    <Chip
+                      label="processo"
+                      valor={it.processo}
+                      onClick={it.process_id ? () => openProcesso(it.process_id) : undefined}
+                    />
+                  )}
+                  {it.objetivo && <Chip label="objetivo" valor={it.objetivo} />}
+                  {it.fase && <Chip label="fase" valor={it.fase} />}
+                  {it.pop && <Chip label="POP" valor={it.pop} />}
+                </div>
+
+                {/* De onde a marcação saiu: dentro da atividade → atalho da
+                    atividade; dentro da ficha do processo → atalho do processo.
+                    No objetivo/fase é a origem do último passo, que fechou o
+                    conjunto. Só existe a partir de 04/08 (antes o log não
+                    guardava a origem). */}
+                {(it.tipo === 'passo' || it.tipo === 'objetivo' || it.tipo === 'fase') && (
+                  <Origem it={it} onAtividade={openActivity} onProcesso={openProcesso} />
+                )}
+
+                {/* Nota recebida: estrelas + quem avaliou + o porquê. */}
+                {it.tipo === 'estrela' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex items-center gap-0.5">
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <Star
+                            key={n}
+                            className={cn('h-3.5 w-3.5', (it.nota || 0) >= n ? 'fill-amber-400 text-amber-400' : 'text-white/20')}
+                          />
+                        ))}
+                      </span>
+                      {it.desfecho && (
+                        <span className={cn(
+                          'rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider',
+                          it.desfecho === 'satisfeito' ? 'bg-emerald-400/15 text-emerald-300'
+                            : it.desfecho === 'incompleto' ? 'bg-amber-400/15 text-amber-300'
+                            : 'bg-rose-400/15 text-rose-300',
+                        )}>
+                          {it.desfecho}
+                        </span>
+                      )}
+                      {it.avaliador && <span className="text-xs text-white/40">por {it.avaliador}</span>}
+                    </div>
+                    {it.justificativa && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60">{it.justificativa}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Feedback parado esperando a avaliação dela: de quem é o
+                    retorno, há quantos dias e o que foi escrito. */}
+                {it.tipo === 'fb_pendente' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="text-white/40">retorno de <b className="text-white/70">{it.responsavel || '—'}</b></span>
+                      {typeof it.dias_parado === 'number' && it.dias_parado > 0 && (
+                        <span className="font-bold text-pink-400">
+                          parado há {it.dias_parado} {it.dias_parado === 1 ? 'dia' : 'dias'}
+                        </span>
+                      )}
+                    </div>
+                    {it.retorno && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-4">{it.retorno}</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-white/50">
-                  {it.lead_nome && <span className="truncate max-w-[14rem]">{it.lead_nome}</span>}
                   {it.tipo === 'atrasada' ? (
                     <>
                       {it.deadline && <span>prazo {format(new Date(`${it.deadline}T00:00:00`), 'dd/MM/yyyy', { locale: ptBR })}</span>}

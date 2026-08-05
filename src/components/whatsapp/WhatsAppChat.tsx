@@ -25,6 +25,7 @@ import { SessionFieldEditor } from './SessionFieldEditor';
 import { GroupMembersDialog } from './GroupMembersDialog';
 import { WhatsAppConversationShareDialog } from './WhatsAppConversationShareDialog';
 import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
+import { quoteInTeamChat, formatQuotedMessages } from '@/lib/teamChatQuoteEvents';
 import { MediaLightbox } from './MediaLightbox';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
@@ -39,6 +40,7 @@ import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { invalidateGroupLeadCache } from '@/integrations/supabase/group-lead-links';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { getMyAllowedInstanceIds } from '@/integrations/supabase/permissions';
@@ -197,6 +199,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setTeamChatOpen(prev => {
       const next = !prev;
       try { localStorage.setItem('wa-conversation-team-chat', next ? '1' : '0'); } catch { /* ok */ }
+      // Ao fechar, dizer onde reabrir — o botão fica no topo da conversa.
+      if (!next) toast('Chat interno fechado — reabra no botão "Equipe", no topo da conversa.');
       return next;
     });
   }, []);
@@ -542,6 +546,41 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
     };
   };
+  /** Manda mensagem(ns) do cliente para o chat interno como citação. */
+  const commentInTeamChat = useCallback((msgs: any[]) => {
+    const quote = formatQuotedMessages(
+      msgs
+        .filter((m: any) => m && m.message_text)
+        .map((m: any) => {
+          let when = '';
+          try { when = format(new Date(m.created_at), 'dd/MM HH:mm', { locale: ptBR }); } catch { /* sem data */ }
+          return {
+            who: m.direction === 'outbound' ? 'Nós' : (conversation.contact_name || 'Cliente'),
+            when,
+            text: m.message_text as string,
+          };
+        })
+    );
+    if (!quote) {
+      toast.error('Essa mensagem não tem texto para comentar.');
+      return;
+    }
+    setTeamChatOpen(true);
+    try { localStorage.setItem('wa-conversation-team-chat', '1'); } catch { /* ok */ }
+    quoteInTeamChat({ entityType: 'whatsapp', entityId: conversation.phone, text: quote });
+  }, [conversation.phone, conversation.contact_name]);
+
+  const handleCommentSelectionInTeamChat = () => {
+    const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
+    const picked = textSelectionOrder.map(id => msgMap.get(id)).filter(Boolean);
+    if (picked.length === 0) {
+      toast.error('Selecione ao menos uma mensagem com texto.');
+      return;
+    }
+    commentInTeamChat(picked);
+    exitTextSelection();
+  };
+
   const handleCreateActivityFromSelection = () => {
     if (!onCreateActivity || textSelectionOrder.length === 0) return;
     const prefill = buildTextSelectionPrefill();
@@ -2422,19 +2461,32 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     if (!selectedLeadId) return;
     
     // Caso a conversa seja um GRUPO e nenhum participante específico foi escolhido,
-    // vincular APENAS o GRUPO ao lead (lead_whatsapp_groups).
-    // NÃO chamar onLinkToLead pois ele vincularia o JID do grupo como se fosse contato individual.
+    // vincular o GRUPO ao lead (lead_whatsapp_groups) E marcar a conversa com o lead.
+    // O JID gravado precisa ser o canônico (`...@g.us`): `conversation.phone` é a
+    // versão só-dígitos usada para agrupar a conversa e não bate com o que as
+    // demais telas leem (leads.whatsapp_group_id, whatsapp_groups_index).
     if (isGroup && !selectedParticipantPhone) {
-      const groupJid = conversation.phone;
+      const canonicalJid = (rawChatId && rawChatId.includes('@g.us'))
+        ? rawChatId
+        : (conversationChatId && conversationChatId.includes('@g.us'))
+          ? conversationChatId
+          : null;
+      const groupJid = canonicalJid || conversation.phone;
+      // Variantes para dedup: linhas antigas podem ter sido gravadas sem o sufixo.
+      const jidVariants = Array.from(new Set([
+        groupJid,
+        conversation.phone,
+        groupJid.replace(/@g\.us$/, '').replace(/\D/g, ''),
+      ].filter(Boolean)));
       const groupName = conversation.contact_name || null;
       const leadName = leads.find(l => l.id === selectedLeadId)?.lead_name || null;
       try {
-        const { data: existingGroup } = await externalSupabase
+        const { data: existingGroups } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('id')
+          .select('id, group_jid')
           .eq('lead_id', selectedLeadId)
-          .eq('group_jid', groupJid)
-          .maybeSingle();
+          .in('group_jid', jidVariants);
+        const existingGroup = (existingGroups || [])[0] as { id: string; group_jid: string | null } | undefined;
         if (!existingGroup) {
           const { error: insertErr } = await externalSupabase.from('lead_whatsapp_groups').insert({
             lead_id: selectedLeadId,
@@ -2448,13 +2500,43 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             source: 'WhatsAppChat.handleLinkLead',
           });
         } else {
+          // Já existe: se a linha antiga guardou o JID sem sufixo e agora temos o
+          // canônico, corrige em vez de duplicar.
+          if (canonicalJid && existingGroup.group_jid !== canonicalJid) {
+            await externalSupabase.from('lead_whatsapp_groups')
+              .update({ group_jid: canonicalJid, group_name: groupName } as any)
+              .eq('id', existingGroup.id);
+          }
           await logGroupAudit({
             action: 'link', group_jid: groupJid, group_name: groupName,
             lead_id: selectedLeadId, lead_name: leadName, result: 'duplicate_skipped',
             source: 'WhatsAppChat.handleLinkLead',
           });
         }
-        toast.success('Grupo WhatsApp vinculado ao lead');
+
+        // Sidebar resolve grupo→lead por lead_whatsapp_groups: derruba o cache.
+        invalidateGroupLeadCache(groupJid);
+
+        // Espelha no lead o grupo "oficial" quando ainda não houver nenhum —
+        // é esse campo que ActivitiesPage/monitor usam para falar no grupo.
+        if (canonicalJid) {
+          const { data: leadRow } = await externalSupabase
+            .from('leads')
+            .select('whatsapp_group_id')
+            .eq('id', selectedLeadId)
+            .maybeSingle();
+          if (leadRow && !(leadRow as any).whatsapp_group_id) {
+            await externalSupabase.from('leads')
+              .update({ whatsapp_group_id: canonicalJid } as any)
+              .eq('id', selectedLeadId);
+          }
+        }
+
+        // Marca a conversa (mensagens + estado da inbox) com o lead. Sem isto o
+        // vínculo existia só no banco e a UI continuava mostrando "sem lead" —
+        // era a sensação de "cliquei em vincular e não vinculou".
+        onLinkToLead(conversation.phone, selectedLeadId, conversation.instance_name);
+
         setShowLinkDialog(false);
         setSelectedLeadId('');
       } catch (e: any) {
@@ -2575,8 +2657,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   return (
     <div className="flex h-full min-w-0">
     <div className="flex flex-col h-full flex-1 min-w-0">
-      {/* Chat Header */}
-      <div className="flex items-center gap-2 md:gap-3 p-3 border-b bg-card shrink-0">
+      {/* Chat Header — os botões de ação quebram para a linha de baixo quando a
+          largura aperta (ex.: chat interno aberto). Nada pode cobrir o nome. */}
+      <div className="flex flex-wrap items-start gap-2 md:gap-3 p-3 border-b bg-card shrink-0">
         {onBack && (
           <Button variant="ghost" size="icon" className="md:hidden h-8 w-8 shrink-0" onClick={onBack}>
             <ArrowLeft className="h-4 w-4" />
@@ -2585,8 +2668,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
           <User className="h-5 w-5 text-green-600" />
         </div>
-        <div className="flex-1 min-w-0">
-          <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm truncate" as="p">
+        <div className="flex-1 min-w-0 basis-[220px]">
+          <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm max-w-full" as="p" truncate>
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
@@ -2658,7 +2741,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </div>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1 shrink-0 ml-auto">
           {isPrivate && <Lock className="h-4 w-4 text-amber-500" />}
           {isMuted && (
             <Badge variant="outline" className="text-[9px] gap-1 text-destructive border-destructive/30 px-1.5 py-0 cursor-pointer" onClick={() => handleToggleMute(null)}>
@@ -2906,15 +2989,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             leadId={conversation.lead_id}
             instanceName={conversation.instance_name}
           />
-          <Button
-            variant={teamChatOpen ? 'secondary' : 'ghost'}
-            size="icon"
-            className="h-8 w-8"
-            onClick={toggleTeamChat}
-            title="Chat interno da equipe sobre esta conversa"
-          >
-            <Users className="h-4 w-4" />
-          </Button>
+          {/* Chat interno da equipe: fica com rótulo visível porque o header já
+              tem outro botão de ícone "Users" (membros do grupo) — sem o texto
+              ninguém achava onde reabrir depois de fechar o painel. */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={teamChatOpen ? 'secondary' : 'outline'}
+                size="sm"
+                className="h-8 gap-1.5 px-2 shrink-0 text-primary"
+                onClick={toggleTeamChat}
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="text-xs font-medium">Equipe</span>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {teamChatOpen ? 'Fechar o chat interno da equipe' : 'Abrir o chat interno da equipe sobre esta conversa'}
+            </TooltipContent>
+          </Tooltip>
           <WhatsAppConversationShareDialog phone={conversation.phone} instanceName={conversation.instance_name} />
           <WhatsAppMediaGallery
             messages={conversation.messages}
@@ -3173,6 +3266,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
           <span className="text-sm font-medium">{selectedTextMsgIds.size} mensagem(ns)</span>
           <Button size="sm" variant="outline" onClick={exitTextSelection}>Cancelar</Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={selectedTextMsgIds.size === 0}
+            onClick={handleCommentSelectionInTeamChat}
+            className="gap-1"
+            title="Levar as mensagens marcadas para o chat interno da equipe"
+          >
+            <MessageSquare className="h-3.5 w-3.5" /> Comentar com a equipe
+          </Button>
           <Button
             size="sm"
             disabled={selectedTextMsgIds.size === 0 || !onCreateActivity}
@@ -3945,7 +4048,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     )}>
                       <button
                         type="button"
-                        title={selectedTextMsgIds.has(msg.id) ? `Posição #${getTextSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para criar atividade'}
+                        title={selectedTextMsgIds.has(msg.id) ? `Posição #${getTextSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar mensagem (criar atividade ou comentar com a equipe)'}
                         onClick={(e) => {
                           e.stopPropagation();
                           setTextSelectionMode(true);
@@ -3994,6 +4097,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           )}
                         >
                           <Sparkles className="h-3 w-3" /> Responder c/ IA
+                        </button>
+                      )}
+                      {!textSelectionMode && (
+                        <button
+                          type="button"
+                          title="Comentar esta mensagem no chat interno da equipe"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            commentInTeamChat([msg]);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                            msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                          )}
+                        >
+                          <MessageSquare className="h-3 w-3" /> Comentar
                         </button>
                       )}
                       {onCreateActivity && !textSelectionMode && (

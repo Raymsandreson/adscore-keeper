@@ -12,6 +12,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -123,7 +124,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messageInputRef = useRef<HTMLInputElement>(null);
+  const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -1481,7 +1482,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               </Button>
             </div>
           ) : (
-            <div className="px-2 py-2 flex items-center gap-1">
+            <div className="px-2 py-2 flex items-end gap-1">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1559,14 +1560,14 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                     ))}
                   </div>
                 )}
-                <Input
+                <AutoResizeTextarea
                   ref={messageInputRef}
                   value={messageText}
                   onChange={(e) => handleMessageChange(e.target.value)}
                   onKeyDown={handleKeyDown}
                   onPaste={handlePaste}
                   placeholder="Digite sua mensagem... use @ para mencionar"
-                  className="text-sm h-8 w-full"
+                  className="w-full min-h-[32px] py-1.5 text-sm"
                 />
               </div>
 

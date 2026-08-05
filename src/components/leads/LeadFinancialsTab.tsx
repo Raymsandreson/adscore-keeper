@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
 import { Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -103,6 +104,9 @@ export function LeadFinancialsTab({ leadId, caseId }: LeadFinancialsTabProps) {
         const { data: { user } } = await supabase.auth.getUser();
         await supabase.from('lead_financials' as any).insert({ ...payload, created_by: user?.id });
       }
+
+      // Lançamento gravado → conta o tempo no cronômetro (guarda-chuva do dia).
+      void trackFinanceEntry();
 
       toast.success(editingEntry ? 'Registro atualizado' : 'Registro adicionado');
       setDialogOpen(false);

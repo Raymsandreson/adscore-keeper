@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useActivityTimer, formatHMS, BREAK_LABELS, QUICK_PAUSES, type BreakType } from '@/contexts/ActivityTimerContext';
 import { useWhatsAppUmbrellaWatchdog } from '@/hooks/useWhatsAppTimeTracker';
+import { useFinanceUmbrellaWatchdog } from '@/hooks/useFinanceTimeTracker';
 
 // Registro rápido por voz ("o que estou fazendo") — carregado sob demanda.
 const QuickVoiceActivityDialog = lazy(() =>
@@ -398,6 +399,9 @@ export function ActivityTimerOverlay() {
   // Pausa a guarda-chuva "Atendimento WhatsApp" após 5 min sem enviar mensagem
   // (mesmo com o usuário mexendo no sistema) — volta ao estado ocioso.
   useWhatsAppUmbrellaWatchdog();
+  // Mesma coisa para "Controle Financeiro": mantém o bridge do tracker vivo e
+  // pausa a guarda-chuva após 5 min sem nenhum registro no financeiro.
+  useFinanceUmbrellaWatchdog();
 
   const over = current?.kind === 'activity' && current.estimateMinutes
     ? current.activeSeconds - current.estimateMinutes * 60

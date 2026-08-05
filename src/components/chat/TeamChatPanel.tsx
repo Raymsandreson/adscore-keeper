@@ -4,8 +4,8 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Send, Loader2, AtSign, Users, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
+import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
+import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -13,6 +13,8 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
+import { consumePendingTeamChatQuote, subscribeToTeamChatQuote } from '@/lib/teamChatQuoteEvents';
+import { useCaseOwners, CaseOwner } from '@/hooks/useCaseOwners';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 
 interface TeamChatPanelProps {
@@ -55,6 +57,19 @@ function playUrgentBeep() {
   }
 }
 
+/** Separa o bloco citado ("> …") do texto que a pessoa escreveu. */
+function splitQuotedLines(content: string) {
+  const lines = (content || '').split('\n');
+  const quotedLines: string[] = [];
+  const bodyLines: string[] = [];
+  for (const line of lines) {
+    if (line.startsWith('>')) quotedLines.push(line.replace(/^>\s?/, ''));
+    else bodyLines.push(line);
+  }
+  if (quotedLines.length === 0) return { quoted: '', body: content };
+  return { quoted: quotedLines.join('\n').trim(), body: bodyLines.join('\n').trim() };
+}
+
 function formatDuration(seconds?: number | null) {
   const s = Math.max(0, Math.floor(seconds || 0));
   const m = Math.floor(s / 60);
@@ -85,7 +100,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -122,14 +137,53 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     }
   }, [messages, loading, user?.id]);
 
-  const filteredMembers = useMemo(() => {
-    if (!mentionFilter) return members.filter(m => m.user_id !== user?.id);
+  /** Cola no rascunho a mensagem que veio de fora (ex.: bolha do WhatsApp). */
+  const appendQuote = useCallback((quote: string) => {
+    if (!quote.trim()) return;
+    setInputText(prev => {
+      const next = prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${quote}\n` : `${quote}\n`;
+      sessionStorage.setItem(draftKey, next);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  }, [draftKey]);
+
+  // A citação pode chegar antes do painel montar (o clique é que abre o painel),
+  // por isso o intent pendente é consumido no primeiro render.
+  useEffect(() => {
+    const pendingQuote = consumePendingTeamChatQuote(entityType, entityId);
+    if (pendingQuote) appendQuote(pendingQuote.text);
+    return subscribeToTeamChatQuote(entityType, entityId, intent => appendQuote(intent.text));
+  }, [entityType, entityId, appendQuote]);
+
+  // Quem cuida do caso por trás deste chat (responsável processual + acolhedor).
+  const { owners } = useCaseOwners(entityType, entityId, members);
+
+  /** Os donos do caso que combinam com o que já foi digitado depois do @. */
+  const filteredOwners = useMemo(() => {
+    if (!mentionFilter) return owners;
     const lower = mentionFilter.toLowerCase();
-    return members.filter(m =>
-      m.user_id !== user?.id &&
-      (m.full_name?.toLowerCase().includes(lower) || m.email?.toLowerCase().includes(lower))
+    return owners.filter(o => o.name.toLowerCase().includes(lower));
+  }, [owners, mentionFilter]);
+
+  const ownerIds = useMemo(
+    () => new Set(filteredOwners.map(o => o.userId).filter(Boolean) as string[]),
+    [filteredOwners]
+  );
+
+  const filteredMembers = useMemo(() => {
+    const base = members.filter(m => m.user_id !== user?.id && !ownerIds.has(m.user_id));
+    if (!mentionFilter) return base;
+    const lower = mentionFilter.toLowerCase();
+    return base.filter(m =>
+      m.full_name?.toLowerCase().includes(lower) || m.email?.toLowerCase().includes(lower)
     );
-  }, [members, mentionFilter, user?.id]);
+  }, [members, mentionFilter, user?.id, ownerIds]);
 
   const handleInputChange = (value: string) => {
     setInputText(value);
@@ -155,6 +209,40 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     setMentionStartIndex(-1);
   };
 
+  /** Todos os membros menos eu — quem "@todos" alcança. */
+  const everyoneElseIds = useMemo(
+    () => members.filter(m => m.user_id !== user?.id).map(m => m.user_id),
+    [members, user?.id]
+  );
+
+  /** A opção "@todos" só aparece quando o que foi digitado depois do @ combina. */
+  const showEveryoneOption = useMemo(() => {
+    if (everyoneElseIds.length === 0) return false;
+    const f = mentionFilter.toLowerCase();
+    return f === '' || 'todos'.startsWith(f) || 'equipe'.startsWith(f) || 'all'.startsWith(f);
+  }, [mentionFilter, everyoneElseIds.length]);
+
+  const insertEveryoneMention = () => {
+    const before = inputText.slice(0, mentionStartIndex);
+    const after = inputText.slice(inputRef.current?.selectionStart || inputText.length);
+    setInputText(`${before}@todos ${after}`);
+    setShowMentionList(false);
+    setMentionFilter('');
+    setMentionStartIndex(-1);
+    setSelectedMentions(prev => Array.from(new Set([...prev, ...everyoneElseIds])));
+    // Numa conversa de WhatsApp a menção libera acesso — avisar antes de enviar.
+    if (onMentionUsers) {
+      toast.warning(`@todos avisa ${everyoneElseIds.length} pessoas e libera o acesso desta conversa a elas.`);
+    }
+    inputRef.current?.focus();
+  };
+
+  /** Rótulo do papel exibido ao lado do nome no topo da lista de @. */
+  const ROLE_LABEL: Record<string, string> = {
+    responsavel: 'Responsável',
+    acolhedor: 'Acolhedor',
+  };
+
   const insertMention = (member: TeamMember) => {
     const name = member.full_name || member.email || 'usuário';
     const before = inputText.slice(0, mentionStartIndex);
@@ -169,8 +257,22 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     inputRef.current?.focus();
   };
 
+  const insertOwnerMention = (owner: CaseOwner) => {
+    if (!owner.userId) return;
+    const member = members.find(m => m.user_id === owner.userId);
+    insertMention(member || { user_id: owner.userId, full_name: owner.name, email: null });
+  };
+
   const collectMentionedIds = useCallback((text: string) => {
     const mentionedIds = [...selectedMentions];
+    // "@todos" digitado na mão também vale, sem precisar escolher na lista.
+    if (/@(todos|todas|equipe|all)\b/i.test(text)) {
+      for (const member of members) {
+        if (member.user_id !== user?.id && !mentionedIds.includes(member.user_id)) {
+          mentionedIds.push(member.user_id);
+        }
+      }
+    }
     for (const member of members) {
       if (mentionedIds.includes(member.user_id)) continue;
       const name = member.full_name || member.email;
@@ -179,7 +281,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       }
     }
     return mentionedIds;
-  }, [members, selectedMentions]);
+  }, [members, selectedMentions, user?.id]);
 
   const handleSend = async () => {
     const text = inputText.trim();
@@ -505,11 +607,30 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                   )}
                   {hasAttachment(msg.message_type) ? (
                     renderAttachment(msg, isMe)
-                  ) : (
-                    <p className="whitespace-pre-wrap break-words text-[13px]">
-                      {renderContent(msg.content, isMe)}
-                    </p>
-                  )}
+                  ) : (() => {
+                    // Linhas iniciadas por ">" são mensagem citada — vão para um
+                    // bloco próprio, como no WhatsApp, para não virar texto solto.
+                    const { quoted, body } = splitQuotedLines(msg.content);
+                    return (
+                      <>
+                        {quoted && (
+                          <div className={cn(
+                            'mb-1 border-l-2 pl-2 py-0.5 rounded-r text-[11px] whitespace-pre-wrap break-words',
+                            isMe
+                              ? 'border-primary-foreground/50 bg-primary-foreground/10 text-primary-foreground/85'
+                              : 'border-primary/50 bg-background/60 text-muted-foreground'
+                          )}>
+                            {quoted}
+                          </div>
+                        )}
+                        {body && (
+                          <p className="whitespace-pre-wrap break-words text-[13px]">
+                            {renderContent(body, isMe)}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                   <div className={cn('text-[9px] mt-0.5', isMe ? 'text-primary-foreground/60 text-right' : 'text-muted-foreground')}>
                     {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
                   </div>
@@ -521,8 +642,85 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       </div>
 
       {/* Mention dropdown (membros) */}
-      {showMentionList && filteredMembers.length > 0 && (
-        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-32 overflow-y-auto">
+      {showMentionList && (filteredMembers.length > 0 || showEveryoneOption || filteredOwners.length > 0) && (
+        <div className="mx-3 mb-1 border rounded-lg bg-card shadow-lg max-h-56 overflow-y-auto">
+          {/* Quem cuida do caso vem primeiro e rotulado — sem precisar abrir a ficha. */}
+          {filteredOwners.length > 0 && (
+            <div className="border-b bg-muted/40">
+              <div className="px-3 pt-1.5 pb-0.5 text-[9px] font-medium uppercase tracking-wide text-muted-foreground">
+                Quem cuida deste caso
+              </div>
+              {filteredOwners.map(owner => {
+                const isMe = !!owner.userId && owner.userId === user?.id;
+                const mentionable = !!owner.userId && !isMe;
+                return (
+                  <button
+                    key={`owner-${owner.userId || owner.name}`}
+                    type="button"
+                    disabled={!mentionable}
+                    onClick={() => insertOwnerMention(owner)}
+                    title={
+                      mentionable
+                        ? `Marcar ${owner.name}`
+                        : isMe
+                          ? 'É você — não precisa se marcar'
+                          : `${owner.name} não tem usuário no sistema para ser marcado`
+                    }
+                    className={cn(
+                      'w-full flex items-center gap-2 px-3 py-1.5 text-sm text-left transition-colors',
+                      mentionable ? 'hover:bg-accent/50' : 'cursor-default'
+                    )}
+                  >
+                    {mentionable
+                      ? <AtSign className="h-3.5 w-3.5 text-primary shrink-0" />
+                      : <UserRound className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    <div className="min-w-0 flex-1">
+                      <div className={cn('text-xs font-medium truncate', !mentionable && 'text-muted-foreground')}>
+                        {owner.name}{isMe && ' (você)'}
+                      </div>
+                      {/* Qual processo essa pessoa responde — o caso pode ter vários. */}
+                      {(owner.detail || (!mentionable && !isMe)) && (
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {[owner.detail, !mentionable && !isMe ? 'sem usuário no sistema' : null]
+                            .filter(Boolean)
+                            .join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                    <span className="flex items-center gap-1 shrink-0">
+                      {owner.roles.map(role => (
+                        <span
+                          key={role}
+                          className={cn(
+                            'rounded px-1.5 py-0.5 text-[9px] font-medium leading-none whitespace-nowrap',
+                            role === 'responsavel'
+                              ? 'bg-primary/15 text-primary'
+                              : 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
+                          )}
+                        >
+                          {ROLE_LABEL[role]}
+                        </span>
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {showEveryoneOption && (
+            <button
+              onClick={insertEveryoneMention}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent/50 transition-colors text-left border-b"
+            >
+              <Users className="h-3.5 w-3.5 text-primary shrink-0" />
+              <div className="min-w-0">
+                <div className="text-xs font-medium truncate">@todos</div>
+                <div className="text-[10px] text-muted-foreground truncate">
+                  Avisa a equipe inteira ({everyoneElseIds.length} {everyoneElseIds.length === 1 ? 'pessoa' : 'pessoas'})
+                </div>
+              </div>
+            </button>
+          )}
           {filteredMembers.slice(0, 6).map(member => (
             <button
               key={member.user_id}
@@ -552,7 +750,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             <button onClick={stopRecording} className="font-medium underline">Parar e enviar</button>
           </div>
         )}
-        <div className="relative px-3 py-2 flex items-center gap-1.5">
+        <div className="relative px-3 py-2 flex items-end gap-1.5">
           {/* Picker de menção de entidade (abre acima do input) */}
           <TeamChatEntityMention
             open={showEntityMention}
@@ -611,13 +809,13 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
 
-          <Input
+          <AutoResizeTextarea
             ref={inputRef}
             value={inputText}
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={urgent ? 'Mensagem URGENTE… use @nome' : 'Mensagem... use @nome para mencionar'}
-            className={cn('flex-1 text-sm h-9', urgent && 'ring-1 ring-destructive/50')}
+            className={cn('flex-1 min-h-[36px] py-2 text-sm', urgent && 'ring-1 ring-destructive/50')}
           />
           <Button
             size="icon"

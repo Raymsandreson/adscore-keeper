@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import {
   CAR_MODELS, CAR_COLORS, CAR_BY_ID, RACE_CSS, autoCarFor, DEFAULT_COLOR,
 } from './raceCars';
+import type { DetailCriterio } from './RankDetailSheet';
 
 export interface RaceRow {
   nome: string;
@@ -26,6 +27,11 @@ export interface RaceRow {
   ocioso_seg: number;
   chat_resp_seg: number | null;
   aprov_pct: number | null;
+  /** Média das estrelas RECEBIDAS no período (null = ninguém avaliou ainda). */
+  media_estrelas?: number | string | null;
+  notas_n?: number;
+  /** Feedbacks que a pessoa deveria avaliar e não avaliou (backlog total). */
+  fb_pendentes?: number;
   home_office?: boolean;
 }
 export interface CarChoice { car_id: string; color: string }
@@ -35,6 +41,12 @@ export function nameKey(nome: string) {
 }
 
 const MEDALS = ['🥇', '🥈', '🥉'];
+
+// Média de estrelas → rótulo curto pt-BR ("3,3"); sem nota no período = traço.
+export function estrelaLabel(v: number | string | null | undefined) {
+  const n = v == null ? NaN : Number(v);
+  return Number.isFinite(n) ? n.toFixed(1).replace('.', ',') : '—';
+}
 
 // Tempo do cronômetro (segundos) → rótulo curto; 0/sem uso = traço.
 function fmtTempo(s: number | null | undefined) {
@@ -73,7 +85,9 @@ function pontuou(r: RaceRow) {
 function tieKey(r: RaceRow) {
   return [
     r.resultado, r.fases, r.objetivos, r.passos, r.doc_itens ?? 0,
-    r.concluidas, r.atrasadas, r.ativo_seg, r.ocioso_seg,
+    r.concluidas, r.atrasadas,
+    r.media_estrelas ?? -1, r.fb_pendentes ?? 0,
+    r.ativo_seg, r.ocioso_seg,
     r.chat_resp_seg ?? -1,
   ].join('|');
 }
@@ -81,8 +95,9 @@ function tieKey(r: RaceRow) {
 /**
  * Posição de cada carro na pista (% do `left`), derivada da POSIÇÃO NO RANKING.
  * O array chega ordenado pela RPC tv_atividades_ranking (resultado > fases >
- * objetivos > passos > itens do checklist > concluídas > atrasadas > tempo
- * ativo > ocioso > resposta no chat), então basta usar o índice: 1º colado na
+ * objetivos > passos > itens do checklist > concluídas > atrasadas > média de
+ * estrelas > feedbacks sem avaliar > tempo ativo > ocioso > resposta no chat),
+ * então basta usar o índice: 1º colado na
  * bandeira, último dos que pontuaram no piso. Antes o carro andava só por
  * PASSOS e o 1º do ranking podia aparecer atrás do 4º na pista. Derivando do
  * índice, qualquer mudança futura de critério na RPC aparece na corrida
@@ -111,6 +126,7 @@ export default function WackyRaceTrack({
   cars,
   onSaveCar,
   onAnalyze,
+  onDetail,
   meta,
   periodo = 'hoje',
 }: {
@@ -118,6 +134,9 @@ export default function WackyRaceTrack({
   cars: Record<string, CarChoice>;
   onSaveCar: (nome: string, car_id: string, color: string) => void;
   onAnalyze: (row: RaceRow, rank: number) => void;
+  // Clique num número da linha → lista do que compôs aquele número.
+  // count é string quando o chip não é contagem (⭐ mostra a média formatada).
+  onDetail?: (row: RaceRow, criterio: DetailCriterio, count: number | string) => void;
   // Meta = RECORDE individual de passos do período/time (linha de chegada).
   meta?: number;
   periodo?: 'hoje' | 'semana' | 'mes';
@@ -175,10 +194,15 @@ export default function WackyRaceTrack({
               )}
             >
               {/* ----- Coluna fixa: medalha + nome + números (sempre visível) ----- */}
-              <button
+              {/* div (e não button) porque cada número dentro é clicável por si
+                  — botão dentro de botão é HTML inválido. */}
+              <div
+                role="button"
+                tabIndex={0}
                 onClick={() => onAnalyze(r, i + 1)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onAnalyze(r, i + 1); } }}
                 title={`Analisar desempenho de ${r.nome}`}
-                className="group flex w-[46%] md:w-[36%] shrink-0 items-center gap-2 text-left"
+                className="group flex w-[46%] md:w-[36%] shrink-0 cursor-pointer items-center gap-2 text-left"
               >
                 <span className="w-7 shrink-0 text-center text-lg md:text-2xl font-black tabular-nums">
                   {MEDALS[i] ?? <span className="text-white/40 text-sm md:text-lg">{i + 1}º</span>}
@@ -192,12 +216,25 @@ export default function WackyRaceTrack({
                     )}
                   </span>
                   <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-sm md:text-xl lg:text-2xl font-black tabular-nums text-white/80">
-                    <span><b className="text-yellow-300">{r.resultado ?? 0}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">status</span></span>
-                    <span><b className="text-amber-300">{r.fases ?? 0}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">fases</span></span>
-                    <span><b className="text-lime-400">{r.objetivos ?? 0}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">obj</span></span>
-                    <span><b className="text-sky-400">{r.passos}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">passos</span></span>
-                    <span><b className="text-emerald-400">{r.concluidas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">concl</span></span>
-                    <span><b className="text-rose-400">{r.atrasadas}</b> <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">atr</span></span>
+                    <RaceStat n={r.resultado ?? 0} label="status" cor="text-yellow-300" onClick={onDetail && (() => onDetail(r, 'status', r.resultado ?? 0))} />
+                    <RaceStat n={r.fases ?? 0} label="fases" cor="text-amber-300" onClick={onDetail && (() => onDetail(r, 'fases', r.fases ?? 0))} />
+                    <RaceStat n={r.objetivos ?? 0} label="obj" cor="text-lime-400" onClick={onDetail && (() => onDetail(r, 'objetivos', r.objetivos ?? 0))} />
+                    <RaceStat n={r.passos} label="passos" cor="text-sky-400" onClick={onDetail && (() => onDetail(r, 'passos', r.passos))} />
+                    <RaceStat n={r.concluidas} label="concl" cor="text-emerald-400" onClick={onDetail && (() => onDetail(r, 'concluidas', r.concluidas))} />
+                    <RaceStat n={r.atrasadas} label="atr" cor="text-rose-400" onClick={onDetail && (() => onDetail(r, 'atrasadas', r.atrasadas))} />
+                    {/* Qualidade do retorno (nota recebida) e dívida de avaliação (a dar). */}
+                    <RaceStat
+                      n={estrelaLabel(r.media_estrelas)}
+                      label="⭐"
+                      cor="text-amber-400"
+                      onClick={onDetail && (() => onDetail(r, 'estrelas', estrelaLabel(r.media_estrelas)))}
+                    />
+                    <RaceStat
+                      n={r.fb_pendentes ?? 0}
+                      label="s/ avaliar"
+                      cor="text-pink-400"
+                      onClick={onDetail && (() => onDetail(r, 'fb_pendentes', r.fb_pendentes ?? 0))}
+                    />
                   </span>
                   {/* Horas do cronômetro — linha discreta, não compete com os números principais. */}
                   <span className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0 text-[10px] md:text-xs font-bold tabular-nums text-white/40">
@@ -205,7 +242,7 @@ export default function WackyRaceTrack({
                     <span>💤 <b className="text-orange-400">{fmtTempo(r.ocioso_seg)}</b> <span className="uppercase tracking-wider text-white/35">ocioso</span></span>
                   </span>
                 </span>
-              </button>
+              </div>
 
               {/* ----- Raia: só o carro anda aqui ----- */}
               <div className="relative flex-1 self-center h-12 md:h-16">
@@ -242,7 +279,8 @@ export default function WackyRaceTrack({
       <p className="mt-3 text-center text-[10px] md:text-xs text-white/40">
         🏁 A posição na pista segue o <b className="text-white/60">ranking</b> (1º na frente) ·
         clique no <b className="text-white/60">carro</b> pra escolher modelo e cor ·
-        clique no <b className="text-white/60">nome</b> pra analisar &amp; mandar mensagem
+        clique no <b className="text-white/60">nome</b> pra analisar &amp; mandar mensagem ·
+        clique num <b className="text-white/60">número</b> pra ver o que entrou nele
       </p>
 
       {picking && (
@@ -257,6 +295,29 @@ export default function WackyRaceTrack({
         />
       )}
     </div>
+  );
+}
+
+/* ---------- Número de um critério na linha do piloto ---------- */
+// Clicar abre o detalhe daquele critério; o stopPropagation evita que o clique
+// suba pra coluna (que abre a análise do assessor).
+function RaceStat({
+  n, label, cor, onClick,
+}: { n: number | string; label: string; cor: string; onClick?: () => void }) {
+  return (
+    <span>
+      <b
+        className={cn(
+          cor,
+          onClick && 'cursor-pointer rounded px-0.5 transition hover:bg-white/10 hover:ring-1 hover:ring-white/25',
+        )}
+        title={onClick ? `Ver o que entrou em ${label}` : undefined}
+        onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
+      >
+        {n}
+      </b>{' '}
+      <span className="text-[0.65em] font-bold uppercase tracking-wider text-white/45">{label}</span>
+    </span>
   );
 }
 

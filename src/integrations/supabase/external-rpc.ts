@@ -1,5 +1,6 @@
 import { externalSupabase } from './external-client';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { attachGroupLeadIds } from './group-lead-links';
 
 export interface ConversationSummary {
   phone: string;
@@ -117,7 +118,9 @@ export async function getConversationSummaries(
       const tb = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
       return tb - ta;
     });
-    return merged;
+    // Grupo vinculado só em lead_whatsapp_groups (aba Contatos) não tem
+    // conversations.lead_id — resolve aqui pra sidebar mostrar o mesmo lead.
+    return attachGroupLeadIds(merged);
   })();
 
   inFlightSummaries.set(dedupeKey, { p: run, at: Date.now() });
@@ -228,7 +231,7 @@ export async function getOlderConversationSummaries(
     console.warn('[getOlderConversationSummaries] failed:', error.message);
     return [];
   }
-  return ((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical));
+  return attachGroupLeadIds(((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical)));
 }
 
 /**
@@ -257,7 +260,7 @@ export async function searchConversationSummaries(
     console.warn('[searchConversationSummaries] failed:', error.message);
     return [];
   }
-  return ((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical));
+  return attachGroupLeadIds(((data || []) as any[]).map(r => mapConversationRow(r, variantToCanonical)));
 }
 
 /**
@@ -389,6 +392,13 @@ export async function linkConversationContactToLead(
 
   if (msgError) throw msgError;
   let contactId = msg?.contact_id || null;
+  if (!contactId && isWhatsAppGroupId(phone)) {
+    // Conversa de grupo não vira "contato": o phone aqui é o JID do grupo, não o
+    // número de uma pessoa. Checagem ANTES da busca por telefone — o fallback por
+    // últimos 8 dígitos casaria um contato qualquer cujo número termine igual.
+    await linkMessagesToLead(phone, instanceName, leadId);
+    return null;
+  }
   if (!contactId) {
     const normalizedPhone = (msg?.phone || phone || '').replace(/\D/g, '');
     const last8 = normalizedPhone.slice(-8);
@@ -403,12 +413,6 @@ export async function linkConversationContactToLead(
     if (existingContact?.id) {
       contactId = existingContact.id;
       await linkMessagesToContact(phone, instanceName, contactId);
-    } else if (isWhatsAppGroupId(phone)) {
-      // Conversa de grupo não vira "contato": o phone aqui é o JID do grupo, não
-      // o número de uma pessoa. Vincula as mensagens ao lead e não cria contato.
-      // (Contato do cliente entra pelo ClosedCaseContactDialog / participantes.)
-      await linkMessagesToLead(phone, instanceName, leadId);
-      return null;
     } else {
       const { data: createdContact, error: createContactError } = await (externalSupabase as any)
         .from('contacts')

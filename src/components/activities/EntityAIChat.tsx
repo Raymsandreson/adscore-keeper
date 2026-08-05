@@ -5,7 +5,7 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useExternalUserId } from '@/hooks/useExternalUserId';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Send, Mic, MicOff, Paperclip, Sparkles, Loader2, X, Check,
@@ -672,16 +672,16 @@ export function EntityAIChat({
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-1">
+          <div className="flex items-end gap-1">
             <Button size="icon" variant="ghost" className="h-9 w-9 shrink-0" onClick={() => fileInputRef.current?.click()} disabled={sending}>
               <Paperclip className="h-4 w-4" />
             </Button>
-            <Input
+            <AutoResizeTextarea
               value={inputText}
               onChange={e => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Digite ou grave áudio..."
-              className="h-9 text-sm"
+              className="min-h-[36px] py-2 text-sm"
               disabled={sending || aiResponding}
             />
             {inputText.trim() ? (

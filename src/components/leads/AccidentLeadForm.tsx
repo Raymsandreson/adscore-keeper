@@ -60,7 +60,23 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
       const newCity = data.visit_city;
       const newState = data.visit_state ?? formData.visit_state;
       if (newCity && newState && newCity !== formData.visit_city) {
-        setCitySuggest({ city: newCity, state: newState });
+        const brDate = (d?: string) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10).split('-').reverse().join('/') : (d || ''));
+        setCitySuggest({
+          city: newCity,
+          state: newState,
+          cep: formData.visit_cep || '',
+          address: formData.visit_address || '',
+          region: formData.visit_region || stateToRegion[newState] || '',
+          details: [
+            { label: 'Tipo de caso', value: formData.case_type || '' },
+            { label: 'Data do acidente', value: brDate(formData.accident_date) },
+            { label: 'Empresa contratante', value: formData.contractor_company || '' },
+            { label: 'Empresa principal', value: formData.main_company || '' },
+            { label: 'Setor', value: formData.sector || '' },
+            { label: 'Notícia do caso', value: formData.news_link || '' },
+          ].filter(d => d.value),
+          newsUrl: formData.news_link || '',
+        });
       }
     }
     onChange(data);
@@ -351,7 +367,11 @@ export function AccidentLeadForm({ formData, onChange, onOpenExtractor, teamMemb
         </DialogContent>
       </Dialog>
 
-      <CityContactsSuggestionDialog trigger={citySuggest} onClose={() => setCitySuggest(null)} />
+      <CityContactsSuggestionDialog
+        trigger={citySuggest}
+        onClose={() => setCitySuggest(null)}
+        onCepChange={(cep) => onChange({ visit_cep: cep })}
+      />
     </div>
   );
 }

@@ -23,7 +23,11 @@ const _originalFetch = globalThis.fetch;
 globalThis.fetch = async function retryingFetch(input: any, init?: any): Promise<Response> {
   const url = typeof input === "string" ? input : (input as Request).url;
   const isGateway = typeof url === "string" && url.startsWith("https://connector-gateway.lovable.dev/google_drive/");
-  const maxAttempts = isGateway ? 4 : 1;
+  const maxAttempts = isGateway ? 3 : 1;
+  // Nenhuma chamada externa pode pendurar a function até o IDLE_TIMEOUT (150s).
+  // Se quem chamou não passou signal, colocamos um despertador de 40s.
+  if (init && !init.signal) init = { ...init, signal: AbortSignal.timeout(40_000) };
+  else if (!init) init = { signal: AbortSignal.timeout(40_000) };
   let lastRes: Response | null = null;
   let lastErr: unknown = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -335,8 +339,9 @@ async function getOrCreateSubfolder(parentFolderId: string, name: string): Promi
   return created.id;
 }
 
-Deno.serve(async (req) => {
+async function handleRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
 
   try {
     if (!Deno.env.get("LOVABLE_API_KEY")) throw new Error("LOVABLE_API_KEY missing");
@@ -1343,5 +1348,33 @@ Cruze todos os documentos acima e devolva o valor consolidado de cada campo, cit
       JSON.stringify({ success: false, error: e instanceof Error ? e.message : String(e) }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
+  }
+}
+
+// Teto global: o runtime derruba a requisição com 504 aos 150s (IDLE_TIMEOUT).
+// Aqui a gente devolve uma resposta útil aos 120s em vez de deixar estourar.
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  let timer: number | undefined;
+  const deadline = new Promise<Response>((resolve) => {
+    timer = setTimeout(() => {
+      console.error("[lead-drive] soft deadline 120s atingido — devolvendo timeout controlado");
+      resolve(new Response(
+        JSON.stringify({
+          success: false,
+          ok: false,
+          error: "timeout: a operação passou de 120s (arquivo muito grande ou Google Drive lento). Tente novamente ou use um arquivo menor.",
+          code: "SOFT_TIMEOUT",
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      ));
+    }, 120_000);
+  });
+
+  try {
+    return await Promise.race([handleRequest(req), deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
 });

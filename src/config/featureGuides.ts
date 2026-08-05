@@ -1,6 +1,7 @@
 // Guias de funcionalidades por seção do sistema.
-// Cada guia é exibido automaticamente quando o usuário entra na seção,
-// até ele clicar em "Não exibir mais" (persistido por seção no localStorage).
+// Cada guia é exibido automaticamente quando o usuário entra na seção, até ele
+// clicar em "Não exibir mais" — que desliga a abertura automática de todos os
+// tours (persistido em feature_guide_dismissals no Externo + localStorage).
 // O conteúdo descreve os botões reais da tela — ao mudar uma tela, atualizar o guia junto.
 // Documentação completa por módulo: docs/sistema/
 
