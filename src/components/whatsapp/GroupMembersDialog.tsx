@@ -10,6 +10,7 @@ import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronD
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -553,7 +554,13 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
       } else {
         const { data: newContact, error } = await externalSupabase
           .from('contacts')
-          .insert({ full_name: participant.name, phone: normalizedPhone })
+          .insert({
+            full_name: participant.name,
+            phone: normalizedPhone,
+            created_by: await remapToExternal((await supabase.auth.getUser()).data.user?.id),
+            action_source: 'whatsapp_group',
+            action_source_detail: 'Participantes do grupo',
+          })
           .select()
           .single();
         if (error) throw error;

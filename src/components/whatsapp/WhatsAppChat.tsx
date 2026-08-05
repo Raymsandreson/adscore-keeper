@@ -40,6 +40,7 @@ import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { invalidateGroupLeadCache } from '@/integrations/supabase/group-lead-links';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -2572,12 +2573,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         
         if (!contactId) {
           const { data: { user } } = await supabase.auth.getUser();
-          const { data: newContact } = await supabase
+          // Contatos vivem no Externo e created_by aponta para o auth de lá:
+          // sem `db` + remap o insert é bloqueado pelo db-routing guard.
+          const { data: newContact } = await db
             .from('contacts')
             .insert({
               full_name: participantName !== selectedParticipantPhone ? participantName : `Contato ${normalizedPhone}`,
               phone: normalizedPhone,
-              created_by: user?.id || null,
+              created_by: await remapToExternal(user?.id),
             })
             .select('id')
             .single();
@@ -3730,11 +3733,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       ? sender.name
                       : `Contato ${normalizedPhone}`;
 
+                    const { data: { user: creator } } = await supabase.auth.getUser();
                     const { data: newContact, error } = await db
                       .from('contacts')
                       .insert({
                         full_name: contactName,
                         phone: normalizedPhone,
+                        created_by: await remapToExternal(creator?.id),
+                        action_source: 'whatsapp',
+                        action_source_detail: 'Participante de grupo',
                       })
                       .select('id')
                       .single();
