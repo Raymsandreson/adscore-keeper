@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Handshake, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -125,24 +125,6 @@ function PauseChooser({
         )}
       </div>
     </div>
-  );
-}
-
-/**
- * Botão de reunião no badge: um clique entra na pausa 'reuniao', sem abrir menu
- * nem pedir previsão — mesmo atalho que o garfo/faca dá pro menu de pausas.
- */
-function MeetingButton({ className, onStart }: { className?: string; onStart: (t: BreakType, note?: string, eta?: number) => void }) {
-  return (
-    <button
-      type="button"
-      onPointerDown={(e) => e.stopPropagation()}
-      onClick={(e) => { e.stopPropagation(); onStart('reuniao'); }}
-      className={className}
-      title="Entrando em reunião (pausa justificada — não conta como ocioso)"
-    >
-      <Handshake className="h-3.5 w-3.5" />
-    </button>
   );
 }
 
@@ -617,7 +599,6 @@ export function ActivityTimerOverlay() {
             <Pause className="h-3.5 w-3.5" />
           </button>
           <BreakMenu className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onStart={startBreak} onEndShift={endShift} />
-          <MeetingButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onStart={startBreak} />
           <VoiceActivityButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onClick={() => setVoiceOpen(true)} />
           <TeamPanelButton className="rounded-full p-1 hover:bg-accent hover:text-foreground text-muted-foreground" onOpenActivity={setTeamViewActivityId} />
           <button
@@ -697,7 +678,6 @@ export function ActivityTimerOverlay() {
             </button>
           )}
           <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} onEndShift={endShift} />
-          <MeetingButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} />
           <VoiceActivityButton
             className="ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
             onClick={() => setVoiceOpen(true)}
