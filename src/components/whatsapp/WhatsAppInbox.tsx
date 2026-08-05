@@ -22,6 +22,7 @@ import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
 
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
+import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { BulkLeadCreationDialog } from './BulkLeadCreationDialog';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
@@ -569,6 +570,8 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   // Activity sheet state
   const [showActivitySheet, setShowActivitySheet] = useState(false);
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string; dictationText?: string }>({});
+  // Mensagens que originaram a atividade em rascunho — viram vínculo quando ela é criada.
+  const [activityOriginMsgIds, setActivityOriginMsgIds] = useState<string[]>([]);
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [aiPreview, setAiPreview] = useState<{
@@ -1398,13 +1401,30 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     }
   };
 
-  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string) => {
+  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => {
     setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
+    setActivityOriginMsgIds(originMessageIds || []);
     setShowActivitySheet(true);
   };
 
-  const handleActivityCreated = async (title: string, type: string, leadName?: string) => {
+  const handleActivityCreated = async (title: string, type: string, leadName?: string, activityId?: string) => {
     if (!selectedConversation) return;
+
+    // Registra de quais mensagens a atividade nasceu: a bolha ganha o selo
+    // "Virou atividade" e o atalho pra abrir a ficha no painel lateral.
+    if (activityId && activityOriginMsgIds.length > 0) {
+      const { data: { user: linkUser } } = await supabase.auth.getUser();
+      await linkWhatsAppMessagesToActivity({
+        messageIds: activityOriginMsgIds,
+        phone: selectedConversation.phone,
+        instanceName: selectedConversation.instance_name || null,
+        activityId,
+        activityTitle: title,
+        createdBy: linkUser?.id || null,
+      });
+    }
+    setActivityOriginMsgIds([]);
+
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     const { data: profile } = currentUser ? await supabase.from('profiles').select('full_name').eq('user_id', currentUser.id).single() : { data: null };
     const senderName = profile?.full_name || 'Sistema';
@@ -2179,7 +2199,12 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       {/* Activity Creation Sheet */}
       <WhatsAppActivitySheet
         open={showActivitySheet}
-        onOpenChange={setShowActivitySheet}
+        onOpenChange={(o) => {
+          setShowActivitySheet(o);
+          // Fechar sem criar descarta a origem — senão a próxima atividade
+          // herdaria as mensagens desta.
+          if (!o) setActivityOriginMsgIds([]);
+        }}
         defaultLeadId={activityDefaults.leadId}
         defaultLeadName={activityDefaults.leadName}
         defaultContactId={activityDefaults.contactId}

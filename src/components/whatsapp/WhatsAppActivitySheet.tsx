@@ -37,7 +37,8 @@ interface WhatsAppActivitySheetProps {
   defaultContactId?: string;
   defaultContactName?: string;
   defaultDictationText?: string;
-  onActivityCreated?: (title: string, type: string, leadName?: string) => void;
+  /** `activityId`: id da atividade recém-criada (usado pra vincular às mensagens de origem). */
+  onActivityCreated?: (title: string, type: string, leadName?: string, activityId?: string) => void;
 }
 
 interface LeadOption {
@@ -350,7 +351,7 @@ export function WhatsAppActivitySheet({
     }
     setSaving(true);
     try {
-      await createActivity({
+      const created = await createActivity({
         title: formTitle,
         activity_type: formType,
         status: formStatus,
@@ -371,7 +372,7 @@ export function WhatsAppActivitySheet({
         notes: formNotes || null,
         is_system: formIsSystem,
       });
-      onActivityCreated?.(formTitle, formType, formLeadName || undefined);
+      onActivityCreated?.(formTitle, formType, formLeadName || undefined, (created as { id?: string } | null)?.id);
       onOpenChange(false);
     } catch {
       // error handled in hook
