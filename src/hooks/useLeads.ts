@@ -65,6 +65,11 @@ const LEAD_INDEX_COLUMNS = [
   'status', 'lead_status', 'source',
   'created_at', 'updated_at',
   'acolhedor', 'case_number', 'victim_name', 'case_type',
+  // O card mostra empresa e cidade da visita. Sem estas quatro, os campos vêm
+  // sempre undefined e o bloco some da tela sem erro nenhum — foi o que
+  // aconteceu entre 24/06 e 05/08/2026 com a empresa.
+  'contractor_company', 'main_company',
+  'visit_city', 'visit_state',
   'city', 'state', 'product_service_id',
   'ad_spend_at_conversion', 'conversion_value',
   'lead_status_reason', 'lead_status_changed_at',

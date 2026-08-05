@@ -35,6 +35,13 @@ export {
   type MunicipalityRow,
 } from './municipalities';
 export { CAPITAL_IBGE_CODES, buildCapitalReferences, capitalKey } from './capitals';
+export {
+  partnerKey,
+  resolvePartnerReferences,
+  type PartnerContactRow,
+  type PartnerReference,
+  type PartnerResolution,
+} from './partners';
 export { resolveLeadLocation, type LocatableLead, type ResolveOptions } from './resolveLeadLocation';
 export {
   clearShapeCache,
