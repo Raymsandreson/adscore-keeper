@@ -4,10 +4,11 @@
 //
 // mode 'dry_run' (padrão) — NÃO escreve nada. Devolve a matriz
 //        "tipo atual → tipo da IA" com contagem e amostras, pra revisão humana.
-// mode 'apply'            — exige confirm:"RECLASSIFICAR". Só aplica troca de
-//        um marco por OUTRO marco. Marco que a IA diz não existir ('nenhum')
-//        é apenas REPORTADO: process_movements é append-only e não há coluna de
-//        descarte hoje — remover exige decisão + migration, não pode sair daqui.
+// mode 'apply'            — exige confirm:"RECLASSIFICAR". Faz duas coisas:
+//        troca de marco (tipo_movimentacao) e descarte (descartado_em) quando a
+//        IA diz que a linha não é marco nenhum. NADA é apagado: o descarte é a
+//        coluna descartado_em, e a linha some das leituras via a view
+//        process_movements_validos. Reverter = voltar a coluna pra NULL.
 //
 // Cada linha alterada carimba metadata com procedência (classificador, modelo,
 // tipo anterior, confiança, motivo), porque hoje metadata está 100% nulo nas
@@ -107,6 +108,9 @@ Deno.serve(async (req: Request) => {
       .from('process_movements')
       .select('id, process_id, tipo_movimentacao, escavador_movimentacao_id, descricao, metadata')
       .eq('fonte', 'escavador')
+      // Linha já descartada não volta pra fila: reclassificar o que a IA mesma
+      // tirou gastaria token e reabriria decisão já tomada.
+      .is('descartado_em', null)
       .order('created_at', { ascending: true })
       .range(offset, offset + limit - 1);
     if (corpo.tipo) q = q.eq('tipo_movimentacao', corpo.tipo);
@@ -160,6 +164,7 @@ Deno.serve(async (req: Request) => {
     const matriz = new Map<string, number>();
     const amostras: Array<Record<string, unknown>> = [];
     const paraTrocar: Array<{ linha: LinhaMarco; ia: MarcoIAResultado }> = [];
+    const paraDescartar: Array<{ linha: LinhaMarco; ia: MarcoIAResultado }> = [];
     let concordam = 0;
     let semResposta = 0;
     let viraNenhum = 0;
@@ -175,22 +180,48 @@ Deno.serve(async (req: Request) => {
 
       if (amostras.length < 40) {
         amostras.push({
+          movement_id: linha.id,
           atual: linha.tipo_movimentacao,
           ia: ia.tipo,
           confianca: ia.confianca,
           motivo: ia.motivo,
-          trecho: (linha.descricao || '').slice(0, 100),
+          trecho: (linha.descricao || '').slice(0, 400),
         });
       }
 
-      if (ia.tipo === 'nenhum') { viraNenhum++; continue; }
+      if (ia.tipo === 'nenhum') { viraNenhum++; paraDescartar.push({ linha, ia }); continue; }
       paraTrocar.push({ linha, ia });
     }
 
     let atualizadas = 0;
+    let descartadas = 0;
     const erros: string[] = [];
 
     if (mode === 'apply') {
+      const agora = new Date().toISOString();
+      for (const { linha, ia } of paraDescartar) {
+        // Já descartada numa rodada anterior: não sobrescreve a marca original.
+        const { error: dErr } = await supabase
+          .from('process_movements')
+          .update({
+            descartado_em: agora,
+            descartado_motivo: `IA: ${ia.motivo}`.slice(0, 300),
+            metadata: {
+              ...(linha.metadata ?? {}),
+              classificador: 'ia',
+              modelo: corpo.model || 'google/gemini-2.5-flash',
+              tipo_anterior: linha.tipo_movimentacao,
+              confianca: ia.confianca,
+              motivo: ia.motivo,
+              descartado_em: agora,
+            },
+          })
+          .eq('id', linha.id)
+          .is('descartado_em', null);
+        if (dErr) { erros.push(`descarte ${linha.id}: ${dErr.message}`); continue; }
+        descartadas++;
+      }
+
       for (const { linha, ia } of paraTrocar) {
         // marco_ordem NÃO é setado aqui de propósito: o trigger
         // trg_process_movements_marco_ordem dispara em UPDATE OF
@@ -226,7 +257,7 @@ Deno.serve(async (req: Request) => {
       divergem: porRef.size - concordam - semResposta,
       vira_nenhum: viraNenhum,
       atualizadas,
-      nao_aplicado_vira_nenhum: mode === 'apply' ? viraNenhum : 0,
+      descartadas,
       matriz: [...matriz.entries()]
         .map(([k, n]) => ({ transicao: k, n }))
         .sort((a, b) => b.n - a.n),
