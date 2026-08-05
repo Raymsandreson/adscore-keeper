@@ -1,6 +1,6 @@
 # Escopo — Mapa de região do lead e distância até a base mais próxima
 
-**Status**: **Fases 1, 2 e 3 entregues** em 04/08/2026 (lib + miniatura no kanban/lista + painel na aba "Local", 118 testes). Fase 4 pendente. Levantamento feito em 04/08/2026 contra o Supabase Externo `kmedldlepwiityjsdahz`.
+**Status**: **Fases 1, 2, 3 e 3.1 entregues** (lib + miniatura no kanban/lista + painel na aba "Local" + camada de parceiros, 150 testes). Fase 4 pendente. Levantamento feito em 04/08/2026 e 05/08/2026 contra o Supabase Externo `kmedldlepwiityjsdahz`.
 
 **Resumo em uma frase**: dado um lead com cidade/UF (ex.: Piauí), exibir a silhueta do estado com o município destacado, calcular a distância até a capital ou base mais próxima e enquadrar a pré-visualização em **um** estado quando a capital mais próxima é a do próprio estado, ou em **dois** quando a mais próxima é de outro estado.
 
@@ -235,6 +235,7 @@ Entra em `LeadEditDialog.tsx:3403`, acima dos campos de CEP/estado/cidade da vis
 - **Top 3 alvos** em lista, com distância — assim o usuário vê o segundo colocado e o critério não parece mágico.
 - Botão **"Calcular rota real"**: chama o proxy, grava em `geo_route_cache`, exibe `km por estrada · tempo estimado`. Se já houver cache para o par, mostra direto com a data do cálculo, sem botão.
 - Quando a resolução é `inferida` ou há conflito UF×cidade: aviso explícito e link para corrigir o cadastro (§6.4).
+- **Parceiros** (§9.4): marcadores verdes para quem está a até 300 km, linha tracejada até o mais próximo e lista com nome, cidade/UF e distância. Sem ninguém no raio, uma linha de texto diz qual é o mais próximo e a quantos km.
 
 ---
 
@@ -284,6 +285,7 @@ O cache por município (§4.3) é o que segura o custo: sem ele, 16k leads × cl
 | **1 ✅** | `src/lib/geo/`: `resolveLeadLocation`, `haversineKm`, `nearestReference`, `computeFraming`, `capitals.ts`, apelidos e normalização de UF. Lib pura, sem UI, 67 testes | — |
 | **2 ✅** | Asset `uf-malhas.json` (85 KB) + `<LeadRegionThumb>` e `<LeadDistanceSuffix>` (SVG) no card do kanban e na lista | Fase 1 |
 | **3 ✅** | Painel na aba "Local" com Leaflet, camadas, top-3 e enquadramento de 1 ou 2 estados | Fase 1 |
+| **3.1 ✅** | Camada de parceiros no painel: marcadores, linha até o mais próximo e lista com distância. Correção da empresa sumida no card | Fase 3 |
 | **4** | Migration `geo_reference_points` + `geo_route_cache` com RLS; tela de cadastro de bases; botão "Calcular rota real" via proxy | Fase 3 |
 
 Fases 2 e 3 são paralelas depois da 1. A Fase 1 sozinha já é útil: entrega o número da distância sem nenhum mapa.
@@ -363,6 +365,27 @@ Avisos emitidos na base real: 189 `unknown_city`, 55 `city_visit_divergence`, 49
 
 **Item avulso** (fora das fases, 1 linha): trocar `lead_city,lead_state` por `city,state` em `LeadsMapPage.tsx:74` ressuscita a página `/mapa-leads`. Você não a incluiu no escopo; fica registrado porque hoje ela está quebrada em silêncio e a doc afirma que funciona.
 
+### 9.4 O que a Fase 3.1 entregou (05/08/2026)
+
+| Arquivo | Papel |
+|---|---|
+| `src/lib/geo/partners.ts` | Converte contatos `partner` em pontos de referência, casando cidade/UF com o município do IBGE. Puro, sem I/O |
+| `src/hooks/usePartnerReferences.ts` | Busca os parceiros no Externo uma vez por sessão (cache de módulo) e devolve já posicionados |
+| `LeadLocationPanel.tsx` | Marcadores verdes, linha até o parceiro mais próximo e a lista "Parceiros na região" |
+| `useLeads.ts` | `LEAD_INDEX_COLUMNS` volta a trazer empresa e cidade da visita |
+
+**De onde sai a posição do parceiro**: `contacts` não tem coordenada — só cidade e UF em texto livre. A posição vem do centroide do município, o mesmo caminho já usado para lead sem geocodificação. Dos 19 contatos classificados como `partner`, 18 casam direto; o 19º está cadastrado como "Porto Velho/MT" e entra por `uf_mismatch` de candidato único (Porto Velho só existe em RO), marcado na lista como "UF do cadastro diverge". Nenhum fica de fora.
+
+**Parceiro não decide o enquadramento.** A regra de um ou dois estados continua sendo das capitais e bases: se parceiro entrasse em `computeFraming`, um parceiro vizinho passaria a escolher qual estado o mapa desenha. A camada é sobreposta. O que ele pode fazer é esticar a moldura: parceiro dentro do raio entra no `fitBounds`, então um parceiro num terceiro estado aparece sem que esse estado seja desenhado.
+
+**Raio de 300 km.** Aferido em 05/08/2026 sobre os 5.756 leads localizáveis: 11,6% têm parceiro a até 30 km, 29,8% a até 100 km, 56,6% a até 400 km e 43,4% não têm nenhum a menos de 400 km. 300 km é o corte que ainda significa "dá para acionar". Fora do raio o painel não desenha marcador, mas diz em texto qual é o mais próximo e a que distância — quem está sozinho na região precisa saber disso.
+
+**Sem cidade do lead** (`STATE_ONLY`), não há distância a calcular; o painel lista quem temos no estado, sem número inventado.
+
+**Regressão corrigida junto — empresa sumida do card.** O card do kanban desenha empresa desde 24/04/2026 (`cff5d9f38`), mas em 24/06/2026 o kanban passou a carregar leads com `detailLevel: 'index'` (`7bedffbfe`) e `LEAD_INDEX_COLUMNS` não incluía `main_company`/`contractor_company`. Os campos vinham `undefined`, `getCompanyName()` devolvia `null` e o bloco sumia da tela sem erro nenhum — seis semanas assim. `visit_city`/`visit_state` estavam no mesmo buraco: o card caía em `city`/`state` calado, e são 342 leads onde os dois divergem. As quatro colunas voltaram ao `SELECT` do modo `index`; custo medido, ~92 B por lead.
+
+**Custo no bundle**: zero no principal. O painel foi de 8,38 kB para 12,18 kB, e continua em chunk `lazy` — confirmei que a string "Parceiros na região" só existe no chunk do painel, não no `index`.
+
 ---
 
 ## 10. Testes
@@ -373,6 +396,8 @@ Vitest já está configurado (`vitest.config.ts`, script `npm test`).
 - `framingMode`: os quatro modos, usando os casos reais do §2.5 (Santana do Araguaia→Palmas deve dar DOIS_ESTADOS; Teresina→Teresina deve dar NA_CAPITAL).
 - `haversine`: aferir contra distâncias conhecidas com tolerância de 1%.
 - Snapshot do `<RegionThumb>` para PI em ambos os modos.
+- `resolvePartnerReferences`: cidade certa, UF divergente de candidato único, cidade ambígua sem UF, bairro, contato sem nome.
+- Camada de parceiros no painel: marcador + linha dentro do raio, texto do mais próximo fora do raio, lista por UF sem cidade do lead, contagem dos que ficaram fora.
 
 **Baseline antes de mexer** (Regra 4): `npm test` e `npm run lint` limpos; a aba "Local" abre e salva `visit_*` normalmente.
 

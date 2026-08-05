@@ -55,7 +55,7 @@ export interface TimerActivityRef {
  */
 export type TimerCommand = 'pause' | 'end_shift';
 
-export type BreakType = 'almoco' | 'intervalo' | 'compensacao' | 'cafe' | 'lanche' | 'descanso';
+export type BreakType = 'almoco' | 'intervalo' | 'compensacao' | 'cafe' | 'lanche' | 'descanso' | 'reuniao';
 export const BREAK_LABELS: Record<BreakType, string> = {
   almoco: 'Almoço',
   intervalo: 'Intervalo',
@@ -63,6 +63,7 @@ export const BREAK_LABELS: Record<BreakType, string> = {
   cafe: 'Café',
   lanche: 'Lanche',
   descanso: 'Descanso',
+  reuniao: 'Reunião',
 };
 /** Pausas rápidas: opções de previsão de retorno (min). Mais que isso → Intervalo. */
 export const QUICK_PAUSES: { type: BreakType; emoji: string; etas: number[] }[] = [

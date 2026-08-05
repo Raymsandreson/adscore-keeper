@@ -1,9 +1,16 @@
 import type { ReactNode } from 'react';
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import municipios from '@/lib/geo/data/municipios.json';
 import ufShapes from '@/lib/geo/data/uf-malhas.json';
-import { buildCapitalReferences, createMunicipalityIndex, type MunicipalityRow } from '@/lib/geo';
+import {
+  buildCapitalReferences,
+  createMunicipalityIndex,
+  resolvePartnerReferences,
+  type MunicipalityRow,
+  type PartnerContactRow,
+  type PartnerResolution,
+} from '@/lib/geo';
 import type { GeoIndex } from '@/hooks/useGeoIndex';
 
 const index = createMunicipalityIndex(municipios as MunicipalityRow[]);
@@ -15,6 +22,20 @@ const geo: GeoIndex = {
 
 const loaded = vi.hoisted(() => ({ value: null as GeoIndex | null }));
 vi.mock('@/hooks/useGeoIndex', () => ({ useGeoIndex: () => loaded.value }));
+
+// O hook real consulta o Supabase Externo. Aqui interessa o que o painel faz
+// com a lista já resolvida, não como ela é buscada.
+const partners = vi.hoisted(() => ({
+  value: { references: [], unresolved: 0 } as PartnerResolution,
+}));
+vi.mock('@/hooks/usePartnerReferences', () => ({ usePartnerReferences: () => partners.value }));
+
+const NO_PARTNERS: PartnerResolution = { references: [], unresolved: 0 };
+
+/** Monta parceiros pelo mesmo caminho da produção: cidade/UF → centroide. */
+function partnersAt(rows: PartnerContactRow[], unresolved = 0): PartnerResolution {
+  return { ...resolvePartnerReferences(index, rows), unresolved };
+}
 
 // O Leaflet precisa de layout real, que o jsdom não tem. Aqui interessa a lógica
 // de camadas — quais polígonos e marcadores o painel decide desenhar.
@@ -43,6 +64,10 @@ vi.mock('@/lib/geo/ibgeMalhas', async () => {
 import { LeadLocationPanel } from '../LeadLocationPanel';
 
 describe('LeadLocationPanel', () => {
+  beforeEach(() => {
+    partners.value = NO_PARTNERS;
+  });
+
   it('avisa que está carregando antes dos dados chegarem', () => {
     loaded.value = null;
     render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
@@ -149,5 +174,95 @@ describe('LeadLocationPanel', () => {
     loaded.value = geo;
     render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
     expect(screen.getByText(/Distâncias em linha reta/)).toBeTruthy();
+  });
+
+  describe('parceiros', () => {
+    it('marca no mapa e lista o parceiro da região com a distância', () => {
+      loaded.value = geo;
+      partners.value = partnersAt([
+        { id: 'p1', full_name: 'Dra. Marina', city: 'Teresina', state: 'PI' },
+      ]);
+
+      render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
+
+      expect(screen.getByText(/Parceiros na região \(até 300 km\)/)).toBeTruthy();
+      // Duas vezes de propósito: no tooltip do marcador e na lista abaixo do mapa.
+      expect(screen.getAllByText(/Dra\. Marina/)).toHaveLength(2);
+      // Lead + capital + parceiro.
+      expect(screen.getAllByTestId('marker')).toHaveLength(3);
+      // Linha até a capital + linha até o parceiro.
+      expect(screen.getAllByTestId('polyline')).toHaveLength(2);
+    });
+
+    it('ordena por distância e destaca o mais próximo', () => {
+      loaded.value = geo;
+      partners.value = partnersAt([
+        { id: 'longe', full_name: 'Parceiro Longe', city: 'Timon', state: 'MA' },
+        { id: 'perto', full_name: 'Parceiro Perto', city: 'Teresina', state: 'PI' },
+      ]);
+
+      render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
+
+      const nomes = screen.getAllByText(/Parceiro (Perto|Longe)/).map((n) => n.textContent);
+      expect(nomes[0]).toContain('Parceiro Perto');
+    });
+
+    it('quando não há ninguém no raio, diz qual é o mais próximo e a que distância', () => {
+      loaded.value = geo;
+      partners.value = partnersAt([
+        { id: 'p1', full_name: 'Dr. Sérgio', city: 'Sorocaba', state: 'SP' },
+      ]);
+
+      render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
+
+      expect(screen.getByText(/Nenhum parceiro num raio de 300 km/)).toBeTruthy();
+      expect(screen.getByText(/Dr\. Sérgio/)).toBeTruthy();
+      expect(screen.getByText(/Sorocaba\/SP/)).toBeTruthy();
+      // Fora do raio não vira marcador nem linha: só lead + capital.
+      expect(screen.getAllByTestId('marker')).toHaveLength(2);
+      expect(screen.getAllByTestId('polyline')).toHaveLength(1);
+    });
+
+    it('sem parceiro cadastrado, a seção não aparece', () => {
+      loaded.value = geo;
+      render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
+
+      expect(screen.queryByText(/Parceiros/)).toBeNull();
+    });
+
+    it('sem cidade do lead, lista quem temos no estado em vez de inventar distância', () => {
+      loaded.value = geo;
+      partners.value = partnersAt([
+        { id: 'p1', full_name: 'Dra. Ana', city: 'Niterói', state: 'RJ' },
+      ]);
+
+      render(<LeadLocationPanel lead={{ city: 'Botafogo', state: 'RJ' }} />);
+
+      expect(screen.getByText(/Em Rio de Janeiro temos Dra\. Ana \(Niterói\)/)).toBeTruthy();
+      expect(screen.queryByTestId('polyline')).toBeNull();
+    });
+
+    it('conta os parceiros que o cadastro deixou fora do mapa', () => {
+      loaded.value = geo;
+      partners.value = partnersAt(
+        [{ id: 'p1', full_name: 'Dra. Marina', city: 'Teresina', state: 'PI' }],
+        2,
+      );
+
+      render(<LeadLocationPanel lead={{ city: 'Picos', state: 'PI' }} />);
+
+      expect(screen.getByText(/2 parceiros ficaram fora do mapa/)).toBeTruthy();
+    });
+
+    it('avisa quando a UF do parceiro diverge do município', () => {
+      loaded.value = geo;
+      partners.value = partnersAt([
+        { id: 'p1', full_name: 'Dr. Caio', city: 'Porto Velho', state: 'MT' },
+      ]);
+
+      render(<LeadLocationPanel lead={{ city: 'Ariquemes', state: 'RO' }} />);
+
+      expect(screen.getByText(/UF do cadastro diverge/)).toBeTruthy();
+    });
   });
 });

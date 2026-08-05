@@ -2,15 +2,36 @@ import { useEffect, useMemo, useState } from 'react';
 import { GeoJSON, MapContainer, Polyline, TileLayer, CircleMarker, Tooltip, useMap } from 'react-leaflet';
 import type { LatLngBoundsExpression } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { AlertTriangle, Info, MapPinned } from 'lucide-react';
-import type { LocatableLead, UfShape } from '@/lib/geo';
+import { AlertTriangle, Handshake, Info, MapPinned } from 'lucide-react';
+import type { LocatableLead, PartnerReference, UfShape } from '@/lib/geo';
 import { formatKm } from '@/lib/geo/describeFraming';
 import { fetchMunicipalityShape, shapesToGeoJson, ufsToGeoJson } from '@/lib/geo/ibgeMalhas';
-import { UF_NAMES } from '@/lib/geo';
+import { haversineKm, UF_NAMES } from '@/lib/geo';
 import type { LocationConfidence, LocationWarning } from '@/lib/geo';
 import { useGeoIndex } from '@/hooks/useGeoIndex';
 import { useLeadFraming } from '@/hooks/useLeadFraming';
+import { usePartnerReferences } from '@/hooks/usePartnerReferences';
 import { Badge } from '@/components/ui/badge';
+
+/**
+ * Raio em que um parceiro conta como "na região" do lead.
+ *
+ * Aferido em 05/08/2026 sobre os 5.756 leads localizáveis: 29,8% têm parceiro a
+ * até 100 km e 43,4% não têm nenhum a menos de 400 km. 300 km é o corte que
+ * ainda significa "dá para acionar" sem encher o mapa de marcador irrelevante.
+ */
+const NEARBY_PARTNER_KM = 300;
+
+/** Teto de marcadores de parceiro — acima disso o mapa vira sopa de pontos. */
+const MAX_PARTNER_MARKERS = 6;
+
+/** Verde do parceiro: precisa se distinguir do lead (primária) e da capital (cinza). */
+const PARTNER_COLOR = '#059669';
+
+interface PartnerDistance {
+  partner: PartnerReference;
+  km: number;
+}
 
 const CONFIDENCE_LABEL: Record<LocationConfidence, string> = {
   coordinate: 'Coordenada do lead',
@@ -64,6 +85,7 @@ interface LeadLocationPanelProps {
 export function LeadLocationPanel({ lead, prefer = 'visit' }: LeadLocationPanelProps) {
   const geo = useGeoIndex();
   const resolved = useLeadFraming(lead, prefer);
+  const partners = usePartnerReferences();
   const [municipalityShape, setMunicipalityShape] = useState<UfShape | null>(null);
 
   const ibgeCode = resolved?.location.municipality?.ibgeCode ?? null;
@@ -85,26 +107,70 @@ export function LeadLocationPanel({ lead, prefer = 'visit' }: LeadLocationPanelP
     };
   }, [ibgeCode]);
 
+  /**
+   * Parceiros ordenados por distância até o lead.
+   *
+   * Ficam fora de `computeFraming` de propósito: a regra de um ou dois estados é
+   * das capitais e bases. Parceiro é camada por cima do enquadramento — se
+   * entrasse no cálculo, um parceiro vizinho passaria a decidir qual estado o
+   * mapa desenha.
+   */
+  const partnerView = useMemo(() => {
+    const empty = { nearby: [] as PartnerDistance[], nearest: null as PartnerDistance | null, inState: [] as PartnerReference[] };
+    if (!resolved) return empty;
+
+    const { location } = resolved;
+
+    if (!location.point) {
+      // Sem ponto (só a UF é conhecida) não há distância a calcular, mas ainda
+      // é útil saber quem temos no estado.
+      return {
+        ...empty,
+        inState: location.uf ? partners.references.filter((partner) => partner.uf === location.uf) : [],
+      };
+    }
+
+    const point = location.point;
+    const ranked = partners.references
+      .map((partner) => ({ partner, km: haversineKm(point, partner.point) }))
+      .sort((a, b) => a.km - b.km);
+
+    return {
+      nearby: ranked.filter((entry) => entry.km <= NEARBY_PARTNER_KM).slice(0, MAX_PARTNER_MARKERS),
+      nearest: ranked[0] ?? null,
+      inState: [] as PartnerReference[],
+    };
+  }, [resolved, partners]);
+
   const layers = useMemo(() => {
     if (!geo || !resolved) return null;
 
     const { framing, location } = resolved;
     const leadUf = framing.ufs[0];
 
+    const bounds = framing.ufs
+      .filter((uf) => geo.shapes[uf])
+      .reduce<[number, number][]>((acc, uf) => {
+        const [minLng, minLat, maxLng, maxLat] = geo.shapes[uf].bbox;
+        acc.push([minLat, minLng], [maxLat, maxLng]);
+        return acc;
+      }, []);
+
+    // Parceiro perto pode estar num terceiro estado, fora do enquadramento. O
+    // desenho continua sendo de um ou dois estados — só a moldura estica o
+    // bastante para o marcador não ficar escondido fora da tela.
+    for (const entry of partnerView.nearby) {
+      bounds.push([entry.partner.point.lat, entry.partner.point.lng]);
+    }
+
     return {
       leadStates: ufsToGeoJson([leadUf], geo.shapes),
       neighborStates: framing.ufs.length > 1 ? ufsToGeoJson(framing.ufs.slice(1), geo.shapes) : null,
-      bounds: framing.ufs
-        .filter((uf) => geo.shapes[uf])
-        .reduce<[number, number][]>((acc, uf) => {
-          const [minLng, minLat, maxLng, maxLat] = geo.shapes[uf].bbox;
-          acc.push([minLat, minLng], [maxLat, maxLng]);
-          return acc;
-        }, []),
+      bounds,
       leadPoint: location.point,
       target: framing.mode === 'TWO_STATES' || framing.mode === 'ONE_STATE' ? framing.target : null,
     };
-  }, [geo, resolved]);
+  }, [geo, resolved, partnerView]);
 
   if (!resolved || !layers) {
     return (
@@ -201,6 +267,32 @@ export function LeadLocationPanel({ lead, prefer = 'visit' }: LeadLocationPanelP
             </CircleMarker>
           )}
 
+          {/* Ligação até o parceiro mais próximo — é a distância que decide se dá
+              para acionar alguém na região. Só a do primeiro: uma linha por
+              parceiro viraria teia. */}
+          {layers.leadPoint && partnerView.nearby[0] && (
+            <Polyline
+              positions={[
+                [layers.leadPoint.lat, layers.leadPoint.lng],
+                [partnerView.nearby[0].partner.point.lat, partnerView.nearby[0].partner.point.lng],
+              ]}
+              pathOptions={{ color: PARTNER_COLOR, weight: 2, dashArray: '2 4', opacity: 0.9 }}
+            />
+          )}
+
+          {partnerView.nearby.map((entry) => (
+            <CircleMarker
+              key={entry.partner.key}
+              center={[entry.partner.point.lat, entry.partner.point.lng]}
+              radius={6}
+              pathOptions={{ color: '#fff', fillColor: PARTNER_COLOR, fillOpacity: 1, weight: 2 }}
+            >
+              <Tooltip>
+                {entry.partner.name} — {entry.partner.city}/{entry.partner.uf}, {formatKm(entry.km)}
+              </Tooltip>
+            </CircleMarker>
+          ))}
+
           {layers.leadPoint && (
             <CircleMarker
               center={[layers.leadPoint.lat, layers.leadPoint.lng]}
@@ -234,6 +326,55 @@ export function LeadLocationPanel({ lead, prefer = 'visit' }: LeadLocationPanelP
           {framing.tie && (
             <p className="text-[11px] text-muted-foreground">
               As duas primeiras estão praticamente à mesma distância.
+            </p>
+          )}
+        </div>
+      )}
+
+      {(partnerView.nearby.length > 0 || partnerView.nearest || partnerView.inState.length > 0) && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+            <Handshake className="h-3.5 w-3.5" style={{ color: PARTNER_COLOR }} />
+            {partnerView.nearby.length > 0
+              ? `Parceiros na região (até ${NEARBY_PARTNER_KM} km)`
+              : 'Parceiros'}
+          </div>
+
+          {partnerView.nearby.length > 0 ? (
+            <ol className="space-y-0.5 text-xs text-muted-foreground">
+              {partnerView.nearby.map((entry, position) => (
+                <li key={entry.partner.key} className="flex items-center justify-between gap-2">
+                  <span className="truncate">
+                    <span className={position === 0 ? 'font-medium text-foreground' : undefined}>
+                      {entry.partner.name}
+                    </span>
+                    {' — '}
+                    {entry.partner.city}/{entry.partner.uf}
+                    {entry.partner.ufMismatch && ' (UF do cadastro diverge)'}
+                  </span>
+                  <span className="tabular-nums flex-shrink-0">{formatKm(entry.km)}</span>
+                </li>
+              ))}
+            </ol>
+          ) : partnerView.nearest ? (
+            <p className="text-xs text-muted-foreground">
+              Nenhum parceiro num raio de {NEARBY_PARTNER_KM} km. O mais próximo é{' '}
+              <span className="text-foreground">{partnerView.nearest.partner.name}</span>, em{' '}
+              {partnerView.nearest.partner.city}/{partnerView.nearest.partner.uf} —{' '}
+              {formatKm(partnerView.nearest.km)}.
+            </p>
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              Sem cidade do lead não dá para medir distância. Em {UF_NAMES[partnerView.inState[0].uf]} temos{' '}
+              {partnerView.inState.map((partner) => `${partner.name} (${partner.city})`).join(', ')}.
+            </p>
+          )}
+
+          {partners.unresolved > 0 && (
+            <p className="text-[11px] text-muted-foreground">
+              {partners.unresolved === 1
+                ? '1 parceiro ficou fora do mapa: cidade não reconhecida no cadastro.'
+                : `${partners.unresolved} parceiros ficaram fora do mapa: cidade não reconhecida no cadastro.`}
             </p>
           )}
         </div>
