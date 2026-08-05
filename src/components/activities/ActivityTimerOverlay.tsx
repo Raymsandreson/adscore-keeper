@@ -57,9 +57,6 @@ function SwitchActivityButton({ className, onClick }: { className?: string; onCl
   );
 }
 
-/** Durações previstas oferecidas na reunião (min). Sem escolha = sem apito. */
-const REUNIAO_ETAS = [30, 60, 90];
-
 /** Escolha de pausa: rápidas (café/lanche/descanso com previsão) + longas (reunião/almoço/intervalo). */
 function PauseChooser({
   onStart, onEndShift, onDone,
@@ -68,43 +65,26 @@ function PauseChooser({
   onEndShift?: () => void;
   onDone: () => void;
 }) {
-  const [mode, setMode] = useState<'menu' | 'intervalo' | 'compensacao' | 'reuniao'>('menu');
+  const [mode, setMode] = useState<'menu' | 'intervalo' | 'compensacao'>('menu');
   const [note, setNote] = useState('');
-  /** Duração prevista — só a reunião usa (sem previsão = sem apito, igual almoço). */
-  const [eta, setEta] = useState<number | null>(null);
-  const start = (t: BreakType, n?: string, e?: number) => { onStart(t, n, e); onDone(); };
+  const start = (t: BreakType, n?: string, eta?: number) => { onStart(t, n, eta); onDone(); };
 
   if (mode !== 'menu') {
     return (
       <div className="space-y-2">
         <div className="text-xs font-medium">
-          {mode === 'intervalo' ? 'Justificativa do intervalo *'
-            : mode === 'reuniao' ? 'Reunião — com quem / assunto (opcional)'
-            : 'Acordo de compensação (opcional)'}
+          {mode === 'intervalo' ? 'Justificativa do intervalo *' : 'Acordo de compensação (opcional)'}
         </div>
         <Input
           autoFocus value={note} onChange={(e) => setNote(e.target.value)}
-          placeholder={mode === 'intervalo' ? 'Ex.: médico, resolver algo pessoal…'
-            : mode === 'reuniao' ? 'Ex.: alinhamento do time, reunião com cliente…'
-            : 'Ex.: compensando hora extra de 15/07'}
+          placeholder={mode === 'intervalo' ? 'Ex.: médico, resolver algo pessoal…' : 'Ex.: compensando hora extra de 15/07'}
           className="h-8 text-xs"
         />
-        {mode === 'reuniao' && (
-          <div className="flex items-center gap-1">
-            <span className="text-[10px] text-muted-foreground mr-0.5">Duração prevista:</span>
-            {REUNIAO_ETAS.map((m) => (
-              <button key={m} type="button" onClick={() => setEta(eta === m ? null : m)}
-                className={`px-2 py-0.5 rounded text-xs border tabular-nums hover:bg-accent ${eta === m ? 'bg-primary text-primary-foreground border-primary' : ''}`}>
-                {m}m
-              </button>
-            ))}
-          </div>
-        )}
         <div className="flex justify-end gap-1.5">
           <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setMode('menu')}>Voltar</Button>
           <Button size="sm" className="h-7 text-xs" disabled={mode === 'intervalo' && !note.trim()}
-            onClick={() => start(mode, note.trim() || undefined, mode === 'reuniao' && eta ? eta : undefined)}>
-            {mode === 'reuniao' ? 'Iniciar reunião' : 'Iniciar pausa'}
+            onClick={() => start(mode, note.trim() || undefined)}>
+            Iniciar pausa
           </Button>
         </div>
       </div>
@@ -129,8 +109,8 @@ function PauseChooser({
       ))}
       <div className="text-[10px] text-muted-foreground pt-0.5">Vai demorar mais? Use Reunião, Intervalo ou Almoço.</div>
       <div className="border-t pt-1.5 space-y-1">
-        <button type="button" onClick={() => setMode('reuniao')}
-          className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🤝 Reunião</button>
+        <button type="button" onClick={() => start('reuniao')}
+          className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🤝 Entrando em reunião</button>
         <button type="button" onClick={() => start('almoco')}
           className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🍽️ Saída para almoço</button>
         <button type="button" onClick={() => setMode('intervalo')}

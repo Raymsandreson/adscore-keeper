@@ -57,7 +57,7 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 - "Iniciar expediente" — bate o ponto; nada conta sem expediente aberto.
 - Badge da atividade: tempo + título, "Previsão de tempo" (chips 15–120 min), "Pausar e salvar", menu de Pausa, microfone **"O que faço?"** (registra por voz o que está fazendo — cria atividade e liga o cronômetro), "Time agora" (painel dos cronômetros do time), minimizar.
-- Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Reunião" (com quem/assunto opcional + duração prevista 30/60/90 min), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
+- Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Entrando em reunião" (um clique, igual ao almoço), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
 - Prompts automáticos: "Ainda está nessa atividade?", "Você saiu da atividade", "Você está ocioso / vai se ausentar?", "Sua pausa passou do previsto" (+5/+10 min, virar intervalo, "Voltei ao trabalho"), 🚨 "Chamado da gestão".
 - "Qual atividade você está fazendo agora?" — troca a atividade em execução.
 
