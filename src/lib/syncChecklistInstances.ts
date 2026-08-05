@@ -57,6 +57,12 @@ export interface SyncItem {
   selectedAnswerId?: string;
   docChecklist?: SyncDocItem[];
   /**
+   * Sub-itens que o passo marcou em cascata ao ser concluído (estado do lead,
+   * igual a `checked`). Fica fora das comparações com o template — ver
+   * configOf.
+   */
+  autoCheckedDocIds?: string[];
+  /**
    * Registro do que foi feito antes de o POP mudar: guarda o id do passo
    * ATUAL que substituiu este. Persiste no banco — é o que mantém o
    * histórico colado ao passo certo e impede que ele seja confundido com
@@ -85,7 +91,18 @@ function stableStringify(value: unknown): string {
 
 /** Projeção do passo sem estado do lead — usada só para detectar mudança de conteúdo. */
 function configOf(item: SyncItem): string {
-  const { checked: _c, selectedAnswerId: _s, popChange: _p, popNewLabel: _n, docChecklist, ...rest } = item;
+  const {
+    checked: _c,
+    selectedAnswerId: _s,
+    popChange: _p,
+    popNewLabel: _n,
+    // Estado do lead, não conteúdo do POP: quais sub-itens o passo marcou em
+    // cascata. Fora da comparação, senão todo passo concluído assim apareceria
+    // como "alterado no POP" no load seguinte.
+    autoCheckedDocIds: _a,
+    docChecklist,
+    ...rest
+  } = item;
   const docs = (docChecklist || []).map(d => {
     const { checked: _dc, selectedAnswerId: _ds, notApplicable: _dn, popChange: _dp, ...docRest } = d;
     return docRest;

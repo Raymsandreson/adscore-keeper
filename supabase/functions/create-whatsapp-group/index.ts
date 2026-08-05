@@ -302,9 +302,40 @@ async function getMaxSequenceFromLeads(supabase: any, prefix: string): Promise<n
 }
 
 /**
+ * Max real do prefixo lendo whatsapp_groups_index (contact_name). É a ÚNICA
+ * fonte que enxerga rename manual de grupo no mesmo minuto: o snapshot uazapi
+ * só roda 1x/dia (04:00 UTC) e lead_whatsapp_groups/leads só têm o que esta
+ * própria edge gravou. Sem isso, o piso passa o dia cego aos números que a
+ * equipe carimba na mão e a sequência reemite número já usado (ex: 04/08/2026,
+ * PREV1953 criado com "Lead 1953" já existindo desde as 17:22).
+ */
+async function getMaxSequenceFromGroupsIndex(supabase: any, prefix: string): Promise<number> {
+  const p = cleanSequencePrefix(prefix)
+  if (!p) return 0
+  let max = 0
+  // Teto alto: a tabela tem 1 linha por instância por grupo (~12k linhas casando
+  // '%PREV%' em ago/2026), então o loop precisa de folga pra não parar no meio.
+  for (let from = 0; from < 40000; from += 1000) {
+    const { data, error } = await supabase
+      .from('whatsapp_groups_index')
+      .select('contact_name')
+      .ilike('contact_name', `%${p}%`)
+      .range(from, from + 999)
+    if (error) break
+    for (const row of (data || [])) {
+      const seq = extractGroupSequence(row.contact_name, p)
+      if (seq && seq > max) max = seq
+    }
+    if (!data || data.length < 1000) break
+  }
+  return max
+}
+
+/**
  * Piso da sequência medido no mundo real, somando TODOS os prefixos informados
  * (ex: ['Lead','PREV'] — numeração previdenciária única escrita de dois jeitos):
- * maior número visto em snapshot uazapi + lead_whatsapp_groups + leads.
+ * maior número visto em snapshot uazapi + lead_whatsapp_groups + leads +
+ * whatsapp_groups_index (renomes manuais em tempo real).
  */
 async function computeMeasuredSequenceFloor(supabase: any, prefixes: string[]): Promise<number> {
   let floor = 0
@@ -313,7 +344,9 @@ async function computeMeasuredSequenceFloor(supabase: any, prefixes: string[]): 
     const snapNext = (await getNextGroupSequenceFromSnapshot(supabase, prefix)) || 0
     const lwgMax = await getMaxSequenceFromLeadGroups(supabase, prefix)
     const leadsMax = await getMaxSequenceFromLeads(supabase, prefix)
-    floor = Math.max(floor, snapNext > 0 ? snapNext - 1 : 0, lwgMax, leadsMax)
+    const indexMax = await getMaxSequenceFromGroupsIndex(supabase, prefix)
+    floor = Math.max(floor, snapNext > 0 ? snapNext - 1 : 0, lwgMax, leadsMax, indexMax)
+    console.log(`[create-group] floor prefix="${prefix}" snap=${snapNext} lwg=${lwgMax} leads=${leadsMax} index=${indexMax} -> ${floor}`)
   }
   return floor
 }

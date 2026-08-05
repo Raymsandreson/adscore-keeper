@@ -72,6 +72,7 @@ import { StageLabelSetupPanel } from './StageLabelSetupPanel';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tag } from 'lucide-react';
 import { SheetVirtualLeadsSection } from './SheetVirtualLeads';
+import { LeadDistanceSuffix, LeadRegionThumb } from '@/components/leads/LeadRegionThumb';
 import type { BpcFormLead } from '@/hooks/useBpcFormLeads';
 
 
@@ -1102,7 +1103,10 @@ export function DynamicKanbanBoard({
                                     )}
                                     {((lead as any).visit_city || (lead as any).city || (lead as any).visit_state || (lead as any).state) && (
                                       <div className="flex items-center gap-1 text-xs text-muted-foreground" onClick={e => e.stopPropagation()} draggable={false} onDragStart={e => e.preventDefault()}>
-                                        <MapPin className="h-3 w-3 flex-shrink-0" />
+                                        {/* Silhueta do estado no lugar do pino genérico. Enquanto os
+                                            dados geográficos carregam, ou quando a cidade não é
+                                            reconhecida, o componente cai sozinho no pino de antes. */}
+                                        <LeadRegionThumb lead={lead} size={24} prefer="visit" />
                                         <CopyableText
                                           copyValue={[(lead as any).visit_city || (lead as any).city, (lead as any).visit_state || (lead as any).state].filter(Boolean).join('/')}
                                           label="Localização"
@@ -1110,6 +1114,7 @@ export function DynamicKanbanBoard({
                                         >
                                           {[(lead as any).visit_city || (lead as any).city, (lead as any).visit_state || (lead as any).state].filter(Boolean).join('/')}
                                         </CopyableText>
+                                        <LeadDistanceSuffix lead={lead} prefer="visit" />
                                       </div>
                                     )}
                                   </div>

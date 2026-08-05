@@ -94,6 +94,8 @@ interface ActivityFullSheetProps {
   draft?: ActivityDraft | null;
   /** Chamado após criar com sucesso no modo 'create' — recebe a atividade criada (id, título…). */
   onCreated?: (created?: LeadActivity | null) => void;
+  /** Lado da tela em que o painel abre. 'left' serve para empilhar ao lado de um sheet já aberto à direita. */
+  side?: 'left' | 'right';
 }
 
 type CaseRow = { id: string; case_number: string; title: string };
@@ -108,7 +110,7 @@ type ProcessRow = {
  * `ActivityFormCompact` da ActivitiesPage (formulário único do sistema).
  * Substitui o antigo ActivityEditSheet reduzido dentro das abas de Lead/Caso.
  */
-export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated }: ActivityFullSheetProps) {
+export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated, side = 'right' }: ActivityFullSheetProps) {
   const isCreate = mode === 'create';
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -942,7 +944,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
-      <SheetContent className="w-full sm:max-w-2xl flex flex-col p-0">
+      <SheetContent side={side} className="w-full sm:max-w-2xl flex flex-col p-0">
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-start justify-between gap-2">
             <SheetTitle
