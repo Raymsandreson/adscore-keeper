@@ -130,7 +130,7 @@ const POP_STEPS: { icon: typeof Play; title: string; detail: string }[] = [
     icon: Coffee,
     title: 'Registre as pausas',
     detail:
-      'Café, lanche, almoço, intervalo ou compensação — todas pelo menu de pausa do cronômetro. Pausa registrada não vira ociosidade.',
+      'Café, lanche, reunião, almoço, intervalo ou compensação — todas pelo menu de pausa do cronômetro. Pausa registrada não vira ociosidade.',
   },
   {
     icon: CheckCircle2,
