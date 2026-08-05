@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
 
 interface ProfileInfo {
   user_id: string;
@@ -32,6 +33,20 @@ export function useProfileNames() {
       data?.forEach(profile => {
         newProfiles[profile.user_id] = profile;
       });
+
+      // Fallback no Externo: colunas de usuário gravadas em tabelas do Externo
+      // (created_by, assigned_to, ...) guardam o ext_uuid, que não existe no
+      // profiles do Cloud. Sem isso, metade da equipe fica sem nome.
+      const missing = newIds.filter(id => !newProfiles[id]);
+      if (missing.length > 0) {
+        const { data: extData } = await (externalSupabase as any)
+          .from('profiles')
+          .select('user_id, full_name, email')
+          .in('user_id', missing);
+        (extData as ProfileInfo[] | null)?.forEach(profile => {
+          newProfiles[profile.user_id] = profile;
+        });
+      }
 
       setProfiles(prev => ({ ...prev, ...newProfiles }));
     } catch (error) {

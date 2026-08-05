@@ -79,7 +79,7 @@ import type { Lead } from '@/hooks/useLeads';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { ContactGroupsList } from './ContactGroupsList';
-import { Settings2, ListTodo } from 'lucide-react';
+import { Settings2, ListTodo, UserPlus } from 'lucide-react';
 import { ContactActivities } from './ContactActivities';
 import { ContactFieldsUnifiedEditor } from './ContactFieldsUnifiedEditor';
 import { ContactCustomFieldsInline } from './ContactCustomFieldsInline';
@@ -122,6 +122,25 @@ async function fetchAddressFromCep(cep: string): Promise<{
     console.error('Error fetching address from CEP:', error);
     return null;
   }
+}
+
+// Origem do cadastro quando não há usuário em created_by (webhook, sync de
+// grupo etc.). Ver `action_source` / `action_source_detail` em contacts.
+const CONTACT_SOURCE_LABELS: Record<string, string> = {
+  system: 'Registro automático',
+  manual: 'Cadastro manual',
+  whatsapp: 'WhatsApp',
+  whatsapp_group: 'Sincronização de grupo',
+  group_creation: 'Criação de grupo',
+  group_import: 'Importação de grupo',
+  instagram: 'Instagram',
+};
+
+function describeContactSource(source?: string | null, detail?: string | null): string | null {
+  if (!source && !detail) return null;
+  const base = source ? (CONTACT_SOURCE_LABELS[source] || source) : null;
+  if (base && detail) return `${base} · ${detail}`;
+  return detail || base;
 }
 
 export function ContactDetailSheet({
@@ -697,17 +716,21 @@ export function ContactDetailSheet({
                   <Badge variant="outline" className="gap-1">
                     <Calendar className="h-3 w-3" />
                     Criado: {format(new Date(contact.created_at), "dd/MM/yyyy", { locale: ptBR })}
-                    {(() => {
-                      const creatorName = getDisplayName((contact as any).created_by);
-                      return creatorName ? (
-                        <span className="ml-1 flex items-center gap-0.5">
-                          <User className="h-3 w-3" />
-                          {creatorName}
-                        </span>
-                      ) : null;
-                    })()}
                   </Badge>
                 )}
+                {(() => {
+                  const contactAny = contact as any;
+                  const creatorName = getDisplayName(contactAny.created_by);
+                  const sourceLabel = describeContactSource(contactAny.action_source, contactAny.action_source_detail);
+                  const who = creatorName || sourceLabel;
+                  if (!who) return null;
+                  return (
+                    <Badge variant="outline" className="gap-1 max-w-full" title={`Cadastrado por: ${who}`}>
+                      <UserPlus className="h-3 w-3 shrink-0" />
+                      <span className="truncate">Cadastrado por: {who}</span>
+                    </Badge>
+                  );
+                })()}
                 {contact.updated_at && !isNaN(new Date(contact.updated_at).getTime()) && (
                   <Badge variant="outline" className="gap-1">
                     <History className="h-3 w-3" />
