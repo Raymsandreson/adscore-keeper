@@ -161,8 +161,14 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 **Checklist do passo é condição, não pontuação** (desde 31/07/2026) — o passo **não fecha** enquanto sobrar item do seu checklist em aberto. Não existe critério novo no telão: requisito/pergunta/verificação continuam somando em ITENS DO CHECKLIST, e o que mudou é que o **PASSO** (e, por consequência, objetivo e fase) só conta com o procedimento conferido. Motivo: 1.690 dos 2.506 passos com sub-item (67%) estavam sendo concluídos sem nenhum item conferido.
 - Regra única em `src/lib/stepSubitems.ts`, aplicada nos quatro caminhos de marcação (ficha da atividade, visão de fluxo, board do caso e `useChecklists`). "Marcar todos os passos" pula o passo travado e avisa quantos ficaram de fora.
 - **"Não se aplica"** (`notApplicable` no sub-item): escape para o item que não cabe naquele caso — destrava o passo sem afirmar que foi feito e **não** entra no ranking. Clicar de novo desfaz.
-- **Não existe mais "Marcar todos" de sub-item**: era o atalho que anulava a leitura item a item.
+- **Não existe botão "Marcar todos" de sub-item**: era o atalho que anulava a leitura item a item.
 - Fora da conta de pendência: o **espelho de resposta** (item cujo rótulo repete uma resposta do passo — quem o marca é a resposta escolhida; ver `src/lib/popAnswerMirror.ts`).
+
+**Cascata ao concluir o passo** (desde 05/08/2026, só no painel do POP dentro da atividade — `LeadFunnelProgressBar`) — marcar a bolinha do passo marca junto os sub-itens que ainda estão em aberto, em vez de recusar a marcação. Ficam de fora: **"não se aplica"** (já resolvido — dizer que foi feito seria mentira), **espelho de resposta** e **item-pergunta** (a resposta escolhida é que define fase e status; com pergunta em aberto o passo **continua travado** e o selo do bloco segue "trava o passo").
+- Os ids marcados assim ficam em `autoCheckedDocIds` no passo: **desmarcar o passo desfaz exatamente esses** e preserva o que foi conferido item a item antes.
+- **Não entra no ranking**: só o passo é logado (`log_checklist_step`); os sub-itens da cascata não geram `log_checklist_doc_item`. Um clique não vale como N conferências — é o que a medição de 31/07/2026 protege.
+- `configOf()` em `syncChecklistInstances.ts` ignora `autoCheckedDocIds`: sem isso, todo passo concluído por cascata voltaria selado como "alterado no POP" no load seguinte.
+- **Não mudou**: `/workflow-progress` (`WorkflowProgressView`) segue travando o passo, e "Marcar todos" do objetivo segue pulando passo com sub-item em aberto.
 
 ---
 
