@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -30,6 +30,9 @@ import { MediaLightbox } from './MediaLightbox';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
+import { ClientCommitmentsBar } from './ClientCommitmentsBar';
+import { ClientCommitmentsPanel, type CommitmentDraft } from './ClientCommitmentsPanel';
+import { useClientCommitments } from '@/hooks/useClientCommitments';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -149,6 +152,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
+  // Pendências do cliente (o que ELE ficou de fazer) — ver useClientCommitments
+  const [showCommitments, setShowCommitments] = useState(false);
+  const [commitmentDraft, setCommitmentDraft] = useState<CommitmentDraft | null>(null);
+  const commitments = useClientCommitments({
+    leadId: conversation.lead_id,
+    phone: conversation.phone,
+    instanceName: conversation.instance_name,
+    contactId: conversation.contact_id,
+  });
   const [leadPanelWidth, setLeadPanelWidth] = useState(480);
   const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
@@ -3110,6 +3122,35 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         />
       )}
 
+      {/* Pendências do cliente — o que ele ficou de fazer (avaliar no Google,
+          gravar depoimento, mandar documento). Combinado por áudio no WhatsApp
+          e que antes não tinha registro nenhum. */}
+      <ClientCommitmentsBar
+        open={commitments.open}
+        overdue={commitments.overdue}
+        doneCount={commitments.done.length}
+        onOpenPanel={() => { setCommitmentDraft(null); setShowCommitments(true); }}
+        onNew={() => { setCommitmentDraft(null); setShowCommitments(true); }}
+      />
+
+      <ClientCommitmentsPanel
+        openState={showCommitments}
+        onOpenChange={(v) => { setShowCommitments(v); if (!v) setCommitmentDraft(null); }}
+        clientName={conversation.contact_name || conversation.phone}
+        open={commitments.open}
+        done={commitments.done}
+        loading={commitments.loading}
+        draft={commitmentDraft}
+        onDraftConsumed={() => setCommitmentDraft(null)}
+        onCreate={commitments.create}
+        onDone={commitments.markDone}
+        onGiveUp={commitments.markGivenUp}
+        onReopen={commitments.reopen}
+        onRemind={commitments.registerReminder}
+        onRemove={commitments.remove}
+        onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
+      />
+
       {/* AI Extraction Progress Banner */}
       {extractingData && extractionStep && (
         <div className="flex items-center gap-2 px-3 py-2 bg-primary/10 border-b text-sm shrink-0">
@@ -4137,8 +4178,46 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           <CalendarPlus className="h-3 w-3" /> Criar atividade
                         </button>
                       )}
+                      {!textSelectionMode && (
+                        <button
+                          type="button"
+                          title="O cliente ficou de fazer algo nesta mensagem — registrar como pendência dele"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCommitmentDraft({
+                              sourceMessageId: String(msg.id),
+                              sourceMessageText: (msg.message_text || '').slice(0, 400) || null,
+                            });
+                            setShowCommitments(true);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                            msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                          )}
+                        >
+                          <ClipboardCheck className="h-3 w-3" /> Pendência
+                        </button>
+                      )}
                     </div>
                   </>
+                )}
+                {/* Selo: esta mensagem já virou pendência do cliente */}
+                {commitments.byMessageId[String(msg.id)] && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setCommitmentDraft(null); setShowCommitments(true); }}
+                    className={cn(
+                      "mb-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors",
+                      commitments.byMessageId[String(msg.id)].status === 'feito'
+                        ? "border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        : "border-amber-300 text-amber-800 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-300"
+                    )}
+                    title="Clique para abrir as pendências do cliente"
+                  >
+                    <ClipboardCheck className="h-3 w-3" />
+                    {commitments.byMessageId[String(msg.id)].status === 'feito' ? 'Pendência resolvida: ' : 'Virou pendência: '}
+                    {commitments.byMessageId[String(msg.id)].title}
+                  </button>
                 )}
                 {isMissingMedia(msg) && (
                   <div className="mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed bg-muted/40">
