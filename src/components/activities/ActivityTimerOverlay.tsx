@@ -243,11 +243,23 @@ const EDGE_GUTTER = 8;
  */
 function contentLeftEdge(): number {
   if (typeof document === 'undefined') return EDGE_GUTTER;
+  let edge = EDGE_GUTTER;
   const el = document.querySelector('[data-sidebar="sidebar"]:not([data-mobile])');
-  if (!el) return EDGE_GUTTER;
-  const r = el.getBoundingClientRect();
-  // Offcanvas/escondido: o menu sai da tela (right <= 0) e não atrapalha.
-  return r.width > 0 && r.right > 0 ? Math.round(r.right) + EDGE_GUTTER : EDGE_GUTTER;
+  if (el) {
+    const r = el.getBoundingClientRect();
+    // Offcanvas/escondido: o menu sai da tela (right <= 0) e não atrapalha.
+    if (r.width > 0 && r.right > 0) edge = Math.round(r.right) + EDGE_GUTTER;
+  }
+  // Sheet/diálogo ANCORADO na borda esquerda (ex.: a atividade aberta ao lado do
+  // Relatório de Atividades) é parede como o menu: a aba mora depois dele, senão
+  // cai por cima do conteúdo e dos botões do cabeçalho (fechar, Tela cheia).
+  // Só conta o que encosta na borda (left <= 1): diálogo centralizado não empurra
+  // a aba pro meio da tela. (skill: ui-sem-sobreposicao)
+  for (const d of document.querySelectorAll('[role="dialog"][data-state="open"]')) {
+    const r = d.getBoundingClientRect();
+    if (r.width > 0 && r.left <= 1 && r.right > edge) edge = Math.round(r.right) + EDGE_GUTTER;
+  }
+  return edge;
 }
 
 /**
