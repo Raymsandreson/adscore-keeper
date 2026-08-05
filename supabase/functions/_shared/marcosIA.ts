@@ -86,7 +86,7 @@ const MAX_CHARS = 3000;
 const SYSTEM = `Você classifica movimentações processuais brasileiras em MARCOS do ciclo de vida do processo.
 
 Os marcos possíveis (use exatamente estes rótulos):
-- peticao_inicial: o ajuizamento/distribuição ORIGINAL da ação.
+- peticao_inicial: o ajuizamento/distribuição ORIGINAL da ação. Conta a primeira distribuição, a autuação, a certidão de distribuição e o "Distribuído por sorteio" de ABERTURA do processo.
 - audiencia_conciliacao: audiência de conciliação designada ou realizada.
 - pericia: perícia designada, realizada, ou laudo pericial juntado.
 - audiencia_instrucao: audiência de instrução (ou "una") designada ou realizada.
@@ -99,13 +99,20 @@ Os marcos possíveis (use exatamente estes rótulos):
 - nenhum: qualquer outra coisa.
 
 REGRA CENTRAL — só é marco o ATO DECISÓRIO DO JUÍZO ou o FATO CONSUMADO.
+
+EXCEÇÃO ÚNICA E IMPORTANTE: peticao_inicial. O ajuizamento é ato da parte e sua
+distribuição é expediente de cartório, e mesmo assim É MARCO — é a estação 1 da régua,
+o nascimento do processo. Não descarte o ajuizamento por ser "ato da parte" ou
+"expediente de cartório". A regra central vale para as estações 2 a 10.
+
 Não são marcos:
-1. ATOS DAS PARTES: petição, recurso interposto (apelação, recurso ordinário, RE, REsp), contrarrazões, embargos, impugnação, manifestação, pedido. Interpor recurso NÃO é ter acórdão. Pedir alvará NÃO é receber.
-2. EXPEDIENTES DE CARTÓRIO: certidão de publicação, disponibilização no Diário da Justiça, intimação, remessa, conclusão, recebimento, juntada, decurso de prazo, autuação, alteração de classe, redistribuição, expedição de mandado.
+1. ATOS DAS PARTES depois do ajuizamento: recurso interposto (apelação, recurso ordinário, RE, REsp), contrarrazões, embargos, impugnação, manifestação, pedido, juntada de petição avulsa. Interpor recurso NÃO é ter acórdão. Pedir alvará NÃO é receber.
+2. EXPEDIENTES DE CARTÓRIO: certidão de publicação, disponibilização no Diário da Justiça, intimação, remessa, conclusão, decurso de prazo, alteração de classe, expedição de mandado, inclusão em pauta de julgamento. (A autuação e a certidão de distribuição do ajuizamento ficam de fora desta lista — ver a exceção acima.)
 3. MENÇÕES NO CORPO: sentença que diz "após o trânsito em julgado, arquive-se" NÃO é trânsito em julgado. Condenação "ao pagamento de" NÃO é pagamento.
 
 Armadilhas conhecidas nesta base:
-- "Redistribuição" e "Distribuído por sorteio" quando o processo SOBE ao tribunal são remessa ao relator, não ajuizamento → nenhum.
+- "Distribuído por sorteio" é AJUIZAMENTO quando abre o processo, e é apenas remessa ao relator quando o processo JÁ SUBIU ao tribunal (o texto cita relator, câmara, turma, desembargador ou o recurso em julgamento). Só nesse segundo caso → nenhum. Na dúvida entre os dois, prefira peticao_inicial: existe uma guarda posterior que descarta ajuizamento com data posterior a um marco mais avançado.
+- Acórdão que ANULA sentença, converte em diligência ou extingue o recurso É acórdão do tribunal → acordao_2grau. Não exija mérito.
 - "Cumprimento de sentença" / "Execução" é fase posterior, NÃO é sentenca_1grau.
 - "Levantamento da suspensão"/"dessobrestamento" é retomada do processo, não levantamento de dinheiro → nenhum.
 - "Audiência de Conciliação", "Audiência Una", "Certidão de audiência realizada" são audiências, NÃO acordo. Só marque acordo se houver acordo HOMOLOGADO.
