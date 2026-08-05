@@ -31,6 +31,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
+import type { FlowBoardCandidate } from '@/hooks/useActivityStepContext';
 import { useActivityTimeTotal } from '@/hooks/useActivityTimeTotal';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
@@ -190,12 +191,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
   const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
 
-  // Board dos "Modelos do passo"/checklist: POP escolhido na atividade tem
-  // prioridade (mesma regra do activeStepBoardId da ActivitiesPage); senão
-  // workflow do processo; senão funil do lead
+  // Board dos "Modelos do passo"/checklist e do progresso na mensagem — mesma
+  // cadeia da ActivitiesPage (regra do usuário, ago/2026): POP do PROCESSO
+  // vinculado > POP próprio da atv > funil de vendas do lead.
   const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-  const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
-  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
+  const stepBoardCandidates = useMemo<FlowBoardCandidate[]>(() => [
+    { boardId: linkedProcess?.workflow_id, source: 'processo' },
+    { boardId: formWorkflowId, source: 'atv' },
+    { boardId: leadPreview?.board_id, source: 'funil' },
+  ], [linkedProcess?.workflow_id, formWorkflowId, leadPreview?.board_id]);
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardCandidates);
   // Tempo dedicado à atv — vai na mensagem (cliente e assessor).
   const activityTotalSecs = useActivityTimeTotal(activityId);
 

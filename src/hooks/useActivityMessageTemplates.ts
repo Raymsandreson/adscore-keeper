@@ -49,6 +49,8 @@ export const TEMPLATE_VARIABLES = [
   { var: '{{workflow_info}}', label: 'Bloco pronto: Etapa + Objetivo + Passo atual' },
   { var: '{{progresso}}', label: '% do fluxo já cumprido (linha única)' },
   { var: '{{progresso_detalhado}}', label: '% do fluxo + quebra por fase/objetivo/passo' },
+  { var: '{{atv_referencia}}', label: 'Linha "Atividade de referência do POP" (só sem processo vinculado)' },
+  { var: '{{atv_numero}}', label: 'Nº curto da atividade (8 primeiros do UUID)' },
   { var: '{{link_atividade}}', label: 'Link da atividade' },
   { var: '{{what_was_done}}', label: 'O que foi feito' },
   { var: '{{current_status}}', label: 'Como está' },

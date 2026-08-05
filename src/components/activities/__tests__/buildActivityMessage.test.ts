@@ -42,14 +42,14 @@ function makeCtx(over: Record<string, unknown> = {}): ActivityMessageContext {
     formCaseTitle: '', formProcessId: '', formProcessTitle: '',
     fieldSettings: [{ field_key: 'what_was_done', label: 'O que foi feito', include_in_message: true }],
     selectedActivity: {
-      id: 'abc-123', created_by: 'u1',
+      id: '3f7a1c9d-2b4e-4f61-9a20-77c0d1e5b842', created_by: 'u1',
       created_at: '2026-08-01T10:00:00Z', updated_at: '2026-08-01T10:00:00Z',
     },
     caseProcesses: [],
     stepContext: {
       stageId: 'p1', templateId: 't1', stepId: 's2',
       stepLabel: 'Protocolar', phaseLabel: 'Fase Inicial', objectiveLabel: 'Ajuizamento',
-      allSteps: steps,
+      source: 'processo', allSteps: steps,
     },
     leadPreview: { board_id: 'b1' },
     systemOabs: [],
@@ -102,6 +102,42 @@ describe('buildActivityMessage — fluxo, progresso e tempo', () => {
     expect(msg).not.toContain('Progresso do caso');
     expect(msg).not.toContain('*Etapa:*');
     expect(msg).toContain('*Assunto da atividade:* PROTOCOLO DA INICIAL');
+  });
+});
+
+describe('nº da atv de referência (POP sem processo)', () => {
+  const popSemProcesso = {
+    stepContext: {
+      stageId: 'p1', templateId: 't1', stepId: 's2',
+      stepLabel: 'Protocolar', phaseLabel: 'Fase Inicial', objectiveLabel: 'Ajuizamento',
+      source: 'atv', allSteps: steps,
+    },
+    formProcessId: '',
+  };
+
+  it('atv com POP próprio e SEM processo vira a referência do acompanhamento', () => {
+    const msg = buildActivityMessage(makeCtx(popSemProcesso), 'client');
+    // nº = 8 primeiros hex do UUID, mesmo código do link curto /atv/:code
+    expect(msg).toContain('*🔖 Atividade de referência do POP:* nº 3f7a1c9d');
+    expect(msg).toContain('Progresso do caso: 33% concluído');
+  });
+
+  it('atv vinculada a processo NÃO mostra o nº de referência', () => {
+    const msg = buildActivityMessage(makeCtx({ formProcessId: 'proc-1' }), 'client');
+    expect(msg).not.toContain('Atividade de referência');
+  });
+
+  it('fluxo vindo do funil não mostra o nº de referência', () => {
+    const msg = buildActivityMessage(
+      makeCtx({ ...popSemProcesso, stepContext: { ...popSemProcesso.stepContext, source: 'funil' } }),
+      'client',
+    );
+    expect(msg).not.toContain('Atividade de referência');
+  });
+
+  it('mensagem ao assessor também leva o nº de referência', () => {
+    const msg = buildActivityMessage(makeCtx(popSemProcesso), 'assessor');
+    expect(msg).toContain('Atividade de referência do POP');
   });
 });
 

@@ -17,6 +17,8 @@ type StepContextLike = {
   stepLabel?: string | null;
   phaseLabel?: string | null;
   objectiveLabel?: string | null;
+  /** De onde o fluxo veio: POP do processo, POP da própria atv ou funil do lead. */
+  source?: 'processo' | 'atv' | 'funil' | null;
   allSteps?: { stepId: string; phaseId: string; templateId: string; stepLabel: string; checked: boolean }[];
 } | null | undefined;
 
@@ -269,6 +271,15 @@ export function buildActivityMessage(
     const progressInfo = progress.headline;      // usado nas mensagens do cliente
     const progressDetail = progress.full;        // usado na mensagem ao assessor
 
+    // Atv com POP próprio e SEM processo vinculado: ela é a referência de
+    // acompanhamento do passo a passo do POP, então o nº dela vai na mensagem
+    // (mesmo código do link curto /atv/:code — 8 primeiros hex do UUID).
+    const isPopReferenceActivity = stepContext?.source === 'atv' && !formProcessId;
+    const atvRefNumber = selectedActivity ? String(selectedActivity.id).slice(0, 8) : '';
+    const referenceInfo = isPopReferenceActivity && atvRefNumber && progressInfo
+      ? `*🔖 Atividade de referência do POP:* nº ${atvRefNumber}`
+      : '';
+
     // Mensagem endereçada ao(s) ASSESSOR(es) responsável(is) — não usa template de cliente.
     if (audience === 'assessor') {
       const allAssessorNames = [formAssignedToName, ...formCoAssignees.map(c => c.full_name)].filter(Boolean);
@@ -294,6 +305,7 @@ export function buildActivityMessage(
         [prazoLine, notifLine].filter(Boolean).join('\n'),
         workflowInfo,
         progressDetail,
+        referenceInfo,
         tempoLine,
         authoriaLine,
         activityLink,
@@ -344,6 +356,8 @@ export function buildActivityMessage(
         // salvo que a usasse caía no avaliador de expressão e vinha vazio.
         progresso: progressInfo,
         progresso_detalhado: progressDetail,
+        atv_referencia: referenceInfo,
+        atv_numero: atvRefNumber,
       };
 
       // Replace simple {{var}} first
@@ -399,6 +413,16 @@ export function buildActivityMessage(
         const at = anchor >= 0 ? anchor + 1 : (() => { for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1; return 0; })();
         lines.splice(at, 0, '', progressInfo);
         result = lines.join('\n');
+      }
+
+      // Nº da atv de referência: auto-injeta logo após o progresso.
+      if (referenceInfo && !template.includes('atv_referencia') && !result.includes('Atividade de referência')) {
+        const lines = result.split('\n');
+        const anchor = lines.findIndex(line => line.includes('Progresso do caso'));
+        if (anchor >= 0) {
+          lines.splice(anchor + 1, 0, referenceInfo);
+          result = lines.join('\n');
+        }
       }
 
       // Tempo dedicado: auto-injeta logo após o progresso quando o template não
@@ -464,7 +488,8 @@ export function buildActivityMessage(
     const linkLineFb = activityLink ? `\n\n${activityLink}` : '';
     const workflowLineFb = workflowInfo ? `\n\n${workflowInfo}` : '';
     const progressLineFb = progressInfo ? `\n\n${progressInfo}` : '';
+    const referenceLineFb = referenceInfo ? `\n${referenceInfo}` : '';
     const tempoLineFb = tempoLine ? `\n\n${tempoLine}` : '';
     const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}${tempoLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}${referenceLineFb}${tempoLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
 }

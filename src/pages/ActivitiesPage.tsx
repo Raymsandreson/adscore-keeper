@@ -10,6 +10,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
+import type { FlowBoardCandidate } from '@/hooks/useActivityStepContext';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
@@ -2786,19 +2787,20 @@ const ActivitiesPage = () => {
       ),
     }, audience);
 
-  // Active step context — process workflow > lead's funnel board.
-  // Note: also resolves for closed leads (CASO mode) so templates of the
-  // checkpoint step where the case was created keep working.
-  const activeStepBoardId = (() => {
-    // 1) Fluxo escolhido explicitamente na atividade tem prioridade — inclusive
-    //    para atividades internas/gerenciamento que o usuário plugou num board.
-    if (formWorkflowId) return formWorkflowId;
+  // Cadeia do fluxo (regra do usuário, ago/2026): POP do PROCESSO vinculado >
+  // POP próprio da atv (aí a atv é a referência do acompanhamento) > funil de
+  // vendas do lead. Vence o primeiro que tiver checklist do lead.
+  // Também resolve para leads fechados (modo CASO), preservando os modelos do
+  // passo do checkpoint em que o caso nasceu.
+  const activeStepBoardCandidates = useMemo<FlowBoardCandidate[]>(() => {
     const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-    if (linkedProcess?.workflow_id) return linkedProcess.workflow_id;
-    if (leadPreview?.board_id) return leadPreview.board_id;
-    return null;
-  })();
-  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardId);
+    return [
+      { boardId: linkedProcess?.workflow_id, source: 'processo' },
+      { boardId: formWorkflowId, source: 'atv' },
+      { boardId: leadPreview?.board_id, source: 'funil' },
+    ];
+  }, [formProcessId, caseProcesses, formWorkflowId, leadPreview?.board_id]);
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardCandidates);
 
   const activityFormContent = (
     <ActivityFormCompact

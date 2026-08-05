@@ -46,6 +46,19 @@ export interface StepOption {
   checked: boolean;
 }
 
+/**
+ * De onde o fluxo (fase/objetivo/passo/%) foi resolvido. Regra do usuário
+ * (ago/2026): atv com processo → POP do processo; atv sem processo mas com POP
+ * próprio → esse POP, e a atv vira a REFERÊNCIA do acompanhamento (o nº dela
+ * entra na mensagem); sem nenhum dos dois → funil de vendas do lead.
+ */
+export type FlowSource = 'processo' | 'atv' | 'funil';
+
+export interface FlowBoardCandidate {
+  boardId: string | null | undefined;
+  source: FlowSource;
+}
+
 export interface ActivityStepContext {
   stepId: string;
   stepLabel: string;
@@ -58,18 +71,34 @@ export interface ActivityStepContext {
   templateId: string | null;
   boardId: string | null;
   stageId: string | null;
+  /** Qual candidato venceu a cadeia — vira o rótulo/nº de referência na mensagem. */
+  source: FlowSource | null;
   // Lista completa de passos do lead nesse board (para troca de passo)
   allSteps: StepOption[];
 }
 
+/**
+ * `boards` aceita um id só (compatibilidade) ou a CADEIA ordenada de candidatos.
+ * Com a cadeia, o primeiro candidato que tiver checklist do lead vence — é assim
+ * que a atv linkada a processo mostra o POP do processo, e a atv solta cai pro
+ * funil em vez de ficar sem fluxo nenhum na mensagem.
+ */
 export function useActivityStepContext(
   leadId: string | null | undefined,
-  boardId: string | null | undefined,
+  boards: string | null | undefined | FlowBoardCandidate[],
 ) {
+  const candidates: FlowBoardCandidate[] = Array.isArray(boards)
+    ? boards.filter(c => !!c.boardId)
+    : (boards ? [{ boardId: boards, source: 'atv' as FlowSource }] : []);
+  // Chave estável: o array é recriado a cada render e não serve de dependência.
+  const candidatesKey = candidates.map(c => `${c.source}:${c.boardId}`).join('|');
+  const primaryBoardId = candidates[0]?.boardId || null;
+
   const [allSteps, setAllSteps] = useState<StepOption[]>([]);
-  // Board de onde os passos realmente vieram (pode ser o funil do lead, quando o
-  // POP pedido não tem checklist). saveStepFieldTemplates precisa deste, não do pedido.
+  // Board de onde os passos realmente vieram (pode não ser o primeiro candidato).
+  // saveStepFieldTemplates precisa deste, não do pedido.
   const [resolvedBoardId, setResolvedBoardId] = useState<string | null>(null);
+  const [resolvedSource, setResolvedSource] = useState<FlowSource | null>(null);
   const [defaultStepId, setDefaultStepId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -78,9 +107,10 @@ export function useActivityStepContext(
   const reload = useCallback(() => setReloadTick(t => t + 1), []);
 
   useEffect(() => {
-    if (!leadId || !boardId) {
+    if (!leadId || candidates.length === 0) {
       setAllSteps([]);
       setResolvedBoardId(null);
+      setResolvedSource(null);
       setDefaultStepId(null);
       setSelectedStepId(null);
       return;
@@ -98,48 +128,56 @@ export function useActivityStepContext(
             .eq('board_id', bid)
             .order('created_at', { ascending: true });
 
-        const [boardRes, instancesRes, leadRes] = await Promise.all([
-          externalSupabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
-          loadInstances(boardId),
+        const [firstRes, leadRes] = await Promise.all([
+          loadInstances(candidates[0].boardId as string),
           externalSupabase.from('leads').select('status, board_id').eq('id', leadId).maybeSingle(),
         ]);
 
         const leadRow = leadRes.data as { status: string | null; board_id: string | null } | null;
         const currentStageId = leadRow?.status || null;
-        const leadBoardId = leadRow?.board_id || null;
 
-        // Fallback de board: o POP escolhido na atividade (ou o do processo) pode
-        // não ter checklist para este lead — o checklist vive no FUNIL dele. Sem
-        // isso o contexto vinha vazio e a mensagem saía sem fase/objetivo/passo/%.
-        // Só cai para o funil do PRÓPRIO lead (nunca para um board qualquer).
-        let effectiveBoardId = boardId;
-        let instances = (instancesRes.data || []) as InstanceRow[];
-        if (instances.length === 0 && leadBoardId && leadBoardId !== boardId) {
-          const fallbackRes = await loadInstances(leadBoardId);
-          const fallbackInstances = (fallbackRes.data || []) as InstanceRow[];
-          if (fallbackInstances.length > 0) {
-            effectiveBoardId = leadBoardId;
-            instances = fallbackInstances;
+        // Cadeia: o primeiro candidato COM checklist vence. O funil do lead entra
+        // como último recurso mesmo quem chamou não o tendo passado (leadPreview
+        // pode não ter carregado) — sem isso a mensagem saía sem fluxo nenhum.
+        const chain: FlowBoardCandidate[] = [...candidates];
+        if (leadRow?.board_id && !chain.some(c => c.boardId === leadRow.board_id)) {
+          chain.push({ boardId: leadRow.board_id, source: 'funil' });
+        }
+
+        let effectiveBoardId: string | null = null;
+        let effectiveSource: FlowSource | null = null;
+        let instances: InstanceRow[] = [];
+        for (let i = 0; i < chain.length; i++) {
+          const cand = chain[i];
+          if (!cand.boardId) continue;
+          const rows = i === 0
+            ? ((firstRes.data || []) as InstanceRow[])
+            : ((await loadInstances(cand.boardId)).data || []) as InstanceRow[];
+          if (rows.length > 0) {
+            effectiveBoardId = cand.boardId;
+            effectiveSource = cand.source;
+            instances = rows;
+            break;
           }
         }
 
-        // Nomes das fases vêm do board de onde as instâncias realmente saíram.
-        const stagesRes = effectiveBoardId === boardId
-          ? boardRes
-          : await externalSupabase.from('kanban_boards').select('stages').eq('id', effectiveBoardId).maybeSingle();
-        const stagesRow = stagesRes.data as { stages: Array<{ id: string; name: string }> | null } | null;
-        const stages = stagesRow?.stages || [];
-        const stageNameById: Record<string, string> = {};
-        stages.forEach(s => { stageNameById[s.id] = s.name; });
-
-        if (instances.length === 0) {
+        if (instances.length === 0 || !effectiveBoardId) {
           if (!cancelled) {
             setAllSteps([]);
             setResolvedBoardId(null);
+            setResolvedSource(null);
             setDefaultStepId(null);
           }
           return;
         }
+
+        // Nomes das fases vêm do board de onde as instâncias realmente saíram.
+        const stagesRes = await externalSupabase
+          .from('kanban_boards').select('stages').eq('id', effectiveBoardId).maybeSingle();
+        const stagesRow = stagesRes.data as { stages: Array<{ id: string; name: string }> | null } | null;
+        const stages = stagesRow?.stages || [];
+        const stageNameById: Record<string, string> = {};
+        stages.forEach(s => { stageNameById[s.id] = s.name; });
 
         // Resolve nomes dos templates (objetivos)
         const templateIds = [...new Set(instances.map(i => i.checklist_template_id).filter(Boolean))];
@@ -182,6 +220,7 @@ export function useActivityStepContext(
         if (!cancelled) {
           setAllSteps(steps);
           setResolvedBoardId(effectiveBoardId);
+          setResolvedSource(effectiveSource);
           setDefaultStepId(defId);
         }
       } catch (err) {
@@ -189,6 +228,7 @@ export function useActivityStepContext(
         if (!cancelled) {
           setAllSteps([]);
           setResolvedBoardId(null);
+          setResolvedSource(null);
           setDefaultStepId(null);
         }
       } finally {
@@ -196,10 +236,11 @@ export function useActivityStepContext(
       }
     })();
     return () => { cancelled = true; };
-  }, [leadId, boardId, reloadTick]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- candidatesKey serializa `candidates`
+  }, [leadId, candidatesKey, reloadTick]);
 
-  // Reset seleção manual ao trocar de lead/board
-  useEffect(() => { setSelectedStepId(null); }, [leadId, boardId]);
+  // Reset seleção manual ao trocar de lead/cadeia de boards
+  useEffect(() => { setSelectedStepId(null); }, [leadId, candidatesKey]);
 
   // Resolve passo ativo — manual ou default
   const activeStep = useMemo<StepOption | null>(() => {
@@ -249,11 +290,12 @@ export function useActivityStepContext(
       totalCount: allSteps.length,
       completedCount: allSteps.filter(s => s.checked).length,
       templateId: activeStep.templateId,
-      boardId: resolvedBoardId || boardId || null,
+      boardId: resolvedBoardId || primaryBoardId,
       stageId: activeStep.phaseId,
+      source: resolvedSource,
       allSteps,
     };
-  }, [activeStep, activeDetails, allSteps, boardId, resolvedBoardId]);
+  }, [activeStep, activeDetails, allSteps, primaryBoardId, resolvedBoardId, resolvedSource]);
 
   /**
    * Persiste as variações de um campo do passo ATIVO no template e na instância.
