@@ -176,6 +176,37 @@ describe('syncInstanceItems', () => {
     expect(JSON.stringify(stripDisplayFields(r.items))).toBe(json);
   });
 
+  // Cascata do painel do POP na atividade (05/08/2026): concluir o passo marca
+  // os sub-itens pendentes e guarda quais foram em `autoCheckedDocIds`. Esse
+  // campo é estado do LEAD — se entrasse na comparação com o template, todo
+  // passo concluído assim voltaria selado como "alterado no POP" (ou pior,
+  // reaberto) no load seguinte.
+  describe('autoCheckedDocIds (cascata do passo)', () => {
+    const concluidoPorCascata: SyncItem = {
+      ...passoNoPop,
+      checked: true,
+      autoCheckedDocIds: ['chk_resultado'],
+      docChecklist: [{ ...passoNoPop.docChecklist![0], checked: true }],
+    };
+
+    it('não marca o passo como alterado nem o reabre', () => {
+      const r = syncInstanceItems([passoNoPop], [concluidoPorCascata]);
+
+      expect(r.items).toHaveLength(1);
+      expect(r.items[0].checked).toBe(true);
+      expect(r.items[0].popChange).toBeUndefined();
+      expect(r.items[0].supersededBy).toBeUndefined();
+      expect(r.changed).toBe(false);
+    });
+
+    it('sobrevive ao sync para o desmarcar conseguir desfazer a cascata', () => {
+      const r = syncInstanceItems([passoNoPop], [concluidoPorCascata]);
+
+      expect(r.items[0].autoCheckedDocIds).toEqual(['chk_resultado']);
+      expect(JSON.stringify(r.itemsToPersist)).toContain('autoCheckedDocIds');
+    });
+  });
+
   it('is_completed sai dos passos do POP de hoje', () => {
     const semMarcar = syncInstanceItems([passoNoPop], [{ id: '5ef2b06f', label: 'PEDIDO', checked: false }]);
     const igualAoPop = syncInstanceItems([passoNoPop], [{

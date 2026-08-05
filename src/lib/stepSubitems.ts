@@ -6,7 +6,15 @@
  * sub-itens, 1.690 (67%) foram concluídos sem NENHUM sub-item conferido. O POP
  * só vale se for lido; criar um critério novo no ranking premiaria o clique em
  * lote, não a leitura. Por isso a regra é: o passo não fecha enquanto sobrar
- * sub-item em aberto, e não existe "marcar todos" de sub-item.
+ * sub-item em aberto, e não existe botão "marcar todos" de sub-item.
+ *
+ * Mudança de 05/08/2026 (decisão do usuário), só no painel do POP dentro da
+ * atividade (src/components/activities/LeadFunnelProgressBar.tsx): concluir o
+ * PASSO marca os sub-itens pendentes em cascata, e desmarcá-lo desfaz
+ * exatamente esses. O que a regra protege continua de pé — a cascata não é
+ * logada no ranking (só o passo é), então um clique não vira N conferências, e
+ * item-pergunta segue travando o passo. A visão /workflow-progress
+ * (WorkflowProgressView) não tem cascata: lá o passo continua travado.
  *
  * Duas exceções ficam fora da conta de pendência:
  *   - ESPELHO de resposta: item que repete o texto de uma resposta do passo.
