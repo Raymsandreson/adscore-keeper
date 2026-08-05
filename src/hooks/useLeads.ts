@@ -651,36 +651,31 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
         lead_state: (newLead as any).lead_state,
       }).catch(e => console.warn('[GeoRule] Background error:', e));
 
-      // Auto-create WhatsApp group when acolhedor is assigned
+      // Auto-create WhatsApp group when acolhedor is assigned.
+      // Passa pelo functionRouter (alvo 'external'): o fetch direto pro projeto Cloud
+      // caía na cópia legada da função, que montava o nome com o template antigo
+      // ("PREV1954 Cidade - UF ( Bairro ) Acd- Acolhedor -") e numeração própria.
       if ((newLead as any).acolhedor && newLead.board_id) {
-        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-        if (projectId && anonKey) {
-          fetch(`https://${projectId}.supabase.co/functions/v1/create-whatsapp-group`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${anonKey}`,
-            },
-            body: JSON.stringify({
-              lead_id: newLead.id,
-              lead_name: newLead.lead_name,
-              board_id: newLead.board_id,
-              phone: newLead.lead_phone || null,
-              contact_phone: newLead.lead_phone || null,
-              creation_origin: 'acolhedor_assignment',
-            }),
-          }).then(async (res) => {
-            const data = await res.json();
-            if (data.success) {
-              toast.success('Grupo WhatsApp criado automaticamente');
-            } else if (data.queued) {
-              toast.info('Grupo na fila - será criado quando uma instância estiver online');
-            } else {
-              console.warn('[AutoGroup] Error:', data.error);
-            }
-          }).catch(e => console.warn('[AutoGroup] Background error:', e));
-        }
+        cloudFunctions.invoke<any>('create-whatsapp-group', {
+          body: {
+            lead_id: newLead.id,
+            lead_name: newLead.lead_name,
+            board_id: newLead.board_id,
+            phone: newLead.lead_phone || null,
+            contact_phone: newLead.lead_phone || null,
+            creation_origin: 'acolhedor_assignment',
+          },
+        }).then(({ data, error }) => {
+          if (error) {
+            console.warn('[AutoGroup] Error:', error);
+          } else if (data?.success) {
+            toast.success('Grupo WhatsApp criado automaticamente');
+          } else if (data?.queued) {
+            toast.info('Grupo na fila - será criado quando uma instância estiver online');
+          } else {
+            console.warn('[AutoGroup] Error:', data?.error);
+          }
+        }).catch(e => console.warn('[AutoGroup] Background error:', e));
       }
       // Tenta vincular processos INSS órfãos a este lead recém-criado (background)
       fireOrphanMatchForLead(newLead.id);
