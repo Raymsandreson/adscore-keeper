@@ -243,7 +243,17 @@ export function extractMarcos(
     });
   }
 
-  return dedupePeticaoInicial(descartaRedistribuicao(out));
+  return aplicaGuardas(out);
+}
+
+/**
+ * Guardas pós-classificação. Exportado porque a revisão por IA
+ * (_shared/marcosIA.ts) troca tipos DEPOIS do extractMarcos — uma movimentação
+ * que vira petição inicial pela IA precisa passar pelas mesmas guardas, senão
+ * a redistribuição volta a entrar como ajuizamento.
+ */
+export function aplicaGuardas(marcos: MarcoExtraido[]): MarcoExtraido[] {
+  return dedupePeticaoInicial(descartaRedistribuicao(marcos));
 }
 
 // "Distribuição" também acontece DEPOIS do ajuizamento: quando o processo sobe ao

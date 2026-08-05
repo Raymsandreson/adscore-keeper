@@ -15,12 +15,22 @@
 // `proximo_offset`. Quem chama é que decide continuar — evita estourar o tempo
 // da edge e dá ponto de parada se a cota do Escavador acabar.
 //
+// Desde 05/08/2026 o que o parser de palavra-chave classifica passa por REVISÃO
+// POR IA antes de entrar (usar_ia, ligada por padrão). Motivo: auditoria das 603
+// linhas classificáveis mostrou 51% erradas — o parser não distingue a decisão
+// do ato da parte que a provoca nem do expediente que a publica. E o problema é
+// corrente, não histórico: 595 dos 631 marcos nasceram nos últimos 30 dias.
+//
 // Inserção é idempotente: unique (process_id, tipo_movimentacao, conteudo_hash)
-// + ON CONFLICT DO NOTHING. Rodar duas vezes não duplica marco.
+// + ON CONFLICT DO NOTHING. Rodar duas vezes não duplica marco. Movimentação já
+// julgada antes (virou marco OU foi descartada) é pulada — senão o sync
+// recriaria o que a IA acabou de descartar.
 // NUNCA apaga nada — process_movements é append-only por design.
 // =============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { extractMarcos } from "../_shared/escavadorMarcos.ts";
+import { geminiChat } from "../_shared/gemini.ts";
+import { revisarMarcosComIA } from "../_shared/marcosIA.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -43,6 +53,9 @@ interface Corpo {
   /** Só no modo push: janela de e-mails a considerar (padrão 1 = hoje). */
   dias?: number;
   dry_run?: boolean;
+  /** Revisão por IA do que o parser de palavra-chave classificou. Padrão: ligada.
+   *  Desligar só pra comparar comportamentos — o parser sozinho errava 51% (05/08/2026). */
+  usar_ia?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -130,11 +143,15 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'ESCAVADOR_API_TOKEN ausente' }, 500);
     }
 
+    const usarIa = corpo.usar_ia !== false;
     let comMovimentacoes = 0;
     let marcosExtraidos = 0;
     let marcosInseridos = 0;
     let semMovimentacao = 0;
     let semCnj = 0;
+    let iaDescartou = 0;
+    let iaCorrigiu = 0;
+    let jaJulgados = 0;
     const erros: { process_number: string | null; erro: string }[] = [];
 
     for (const p of processos ?? []) {
@@ -177,7 +194,35 @@ Deno.serve(async (req: Request) => {
       if (!movs.length) { semMovimentacao++; continue; }
       comMovimentacoes++;
 
-      const marcos = extractMarcos(movs as never[], { numeroCnj: cnj ?? undefined });
+      let marcos = extractMarcos(movs as never[], { numeroCnj: cnj ?? undefined });
+
+      // Movimentação já julgada (virou marco OU foi descartada) não volta pra
+      // fila: sem isto, uma linha que a IA descartou seria recriada no próximo
+      // sync, e a correção não pararia em pé.
+      if (marcos.length) {
+        const { data: existentes } = await supabase
+          .from('process_movements')
+          .select('escavador_movimentacao_id')
+          .eq('process_id', p.id)
+          .not('escavador_movimentacao_id', 'is', null);
+        const vistos = new Set((existentes ?? []).map((e: { escavador_movimentacao_id: string }) => e.escavador_movimentacao_id));
+        const antes = marcos.length;
+        marcos = marcos.filter((m) => !m.escavador_movimentacao_id || !vistos.has(m.escavador_movimentacao_id));
+        jaJulgados += antes - marcos.length;
+      }
+
+      if (marcos.length && usarIa) {
+        try {
+          const rev = await revisarMarcosComIA(marcos, movs as never[], { chat: geminiChat as never });
+          marcos = rev.marcos;
+          iaDescartou += rev.descartados;
+          iaCorrigiu += rev.corrigidos;
+        } catch (e) {
+          // Falha de IA não pode derrubar o sync: fica o que o parser achou.
+          erros.push({ process_number: cnj, erro: `IA: ${e instanceof Error ? e.message : String(e)}` });
+        }
+      }
+
       marcosExtraidos += marcos.length;
       if (!marcos.length || dryRun) continue;
 
@@ -224,6 +269,10 @@ Deno.serve(async (req: Request) => {
       sem_cnj: semCnj,
       marcos_extraidos: marcosExtraidos,
       marcos_inseridos: marcosInseridos,
+      usar_ia: usarIa,
+      ia_descartou: iaDescartou,
+      ia_corrigiu: iaCorrigiu,
+      ja_julgados: jaJulgados,
       erros,
       proximo_offset: lidos === limit ? offset + limit : null,
     });

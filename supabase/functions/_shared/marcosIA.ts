@@ -27,7 +27,8 @@
 // tipo + confiança + motivo; quem chama compara com o determinístico e decide.
 // =============================================================================
 
-import type { EscavadorMovimentacao } from './escavadorMarcos.ts';
+import { aplicaGuardas } from './escavadorMarcos.ts';
+import type { EscavadorMovimentacao, MarcoExtraido } from './escavadorMarcos.ts';
 
 /** As 10 estações canônicas + 'nenhum'. Mesma escala de marco_ordem_canonica() no banco. */
 export type MarcoIATipo =
@@ -217,6 +218,78 @@ export async function classificarMarcosIA(
   }
 
   return out;
+}
+
+/**
+ * Revisa marcos recém-extraídos pelo parser de palavra-chave.
+ *
+ * Por que revisar em vez de classificar do zero: o parser já reduziu 6.380
+ * movimentações a algumas dezenas de candidatos. Rodar IA só nesses candidatos
+ * custa ~1% do que custaria varrer tudo, e o problema medido em 05/08/2026 é
+ * falso POSITIVO (marco que não devia existir), não falso negativo.
+ *
+ * Efeito: derruba o que a IA diz não ser marco, corrige o tipo do resto, e
+ * reaplica as guardas — uma movimentação que a IA promove a petição inicial
+ * tem que passar de novo pelo descarte de redistribuição.
+ *
+ * Se a IA não responder sobre um candidato, ele fica como o parser classificou.
+ * Degradar pro comportamento antigo é melhor que perder o marco.
+ */
+export async function revisarMarcosComIA(
+  marcos: MarcoExtraido[],
+  movimentacoes: EscavadorMovimentacao[],
+  opts: ClassificarOpts,
+): Promise<{ marcos: MarcoExtraido[]; revisados: number; descartados: number; corrigidos: number }> {
+  if (!marcos.length) return { marcos, revisados: 0, descartados: 0, corrigidos: 0 };
+
+  const porId = new Map<string, EscavadorMovimentacao>();
+  for (const m of movimentacoes ?? []) {
+    if (m?.id != null) porId.set(String(m.id), m);
+  }
+
+  const entradas: MovParaClassificar[] = [];
+  const marcoPorRef = new Map<string, MarcoExtraido>();
+  for (const mk of marcos) {
+    const mov = mk.escavador_movimentacao_id ? porId.get(mk.escavador_movimentacao_id) : undefined;
+    if (!mov) continue; // sem o texto cru não dá pra revisar: fica como está
+    const ref = mk.conteudo_hash;
+    entradas.push(movParaClassificar(ref, mov));
+    marcoPorRef.set(ref, mk);
+  }
+
+  const veredictos = await classificarMarcosIA(entradas, opts);
+
+  let descartados = 0;
+  let corrigidos = 0;
+  const mantidos: MarcoExtraido[] = [];
+
+  // A ordem é recarimbada em TODOS os marcos, não só nos corrigidos.
+  // escavadorMarcos.ts carrega uma segunda cópia da escala canônica, e foi a
+  // divergência entre duas cópias que produziu o bug de marco_ordem em
+  // b3a0bdf52. aplicaGuardas() lê marco_ordem pra decidir o que é redistribuição:
+  // se a cópia do parser drenar de novo, a guarda falha calada. Aqui a escala
+  // tem um dono só — MARCO_ORDEM_CANONICA, espelho de marco_ordem_canonica().
+  for (const mk of marcos) {
+    const v = veredictos.get(mk.conteudo_hash);
+    const tipo = (v && v.tipo !== 'nenhum' ? v.tipo : mk.tipo_movimentacao) as
+      Exclude<MarcoIATipo, 'nenhum'>;
+
+    if (v?.tipo === 'nenhum') { descartados++; continue; }
+    if (v && v.tipo !== mk.tipo_movimentacao) corrigidos++;
+
+    mantidos.push({
+      ...mk,
+      tipo_movimentacao: tipo as MarcoExtraido['tipo_movimentacao'],
+      marco_ordem: MARCO_ORDEM_CANONICA[tipo] ?? mk.marco_ordem,
+    });
+  }
+
+  return {
+    marcos: aplicaGuardas(mantidos),
+    revisados: veredictos.size,
+    descartados,
+    corrigidos,
+  };
 }
 
 /** Monta o item de entrada a partir da movimentação crua do Escavador. */
