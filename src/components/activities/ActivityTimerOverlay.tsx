@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed, Zap } from 'lucide-react';
+import { ArrowLeftRight, ChevronLeft, ChevronRight, Clock, Coffee, GripVertical, Hourglass, Mic, Minimize2, Pause, Play, Search, Timer as TimerIcon, Users, UtensilsCrossed } from 'lucide-react';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -387,10 +387,10 @@ function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
     <div className="flex items-center justify-center gap-2 text-[11px] leading-none border-b pb-1 mb-0.5">
       <span className="text-muted-foreground uppercase tracking-wide">Hoje</span>
       <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold tabular-nums" title="Tempo produtivo do dia">
-        <Zap className="h-3 w-3" aria-hidden />{formatHMS(active)}
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />{formatHMS(active)}
       </span>
       <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-bold tabular-nums" title="Tempo ocioso do dia">
-        <Coffee className="h-3 w-3" aria-hidden />{formatHMS(idle)}
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />{formatHMS(idle)}
       </span>
     </div>
   );
