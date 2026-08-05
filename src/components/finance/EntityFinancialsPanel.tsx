@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-// `lead_financials` é lida/gravada no client Cloud (não está em BUSINESS_TABLES),
-// exatamente como a aba Financeiro do lead sempre fez. `authClient` é o mesmo
-// client, pelo barrel oficial.
-import { authClient as supabase } from '@/integrations/supabase';
+// `lead_financials` é tabela de NEGÓCIO: vive no Supabase Externo, com FK para
+// leads/legal_cases/lead_processes/lead_activities de lá. A aba do lead usava o
+// client Cloud — errado, e por isso silenciosamente vazia. Aqui vai pelo `db`
+// (Externo), com `created_by` remapeado para o auth do Externo.
+import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -95,7 +97,8 @@ export function EntityFinancialsPanel({
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
-    let query = supabase
+    await ensureExternalSession().catch(() => {});
+    let query = db
       .from('lead_financials' as any)
       .select('*')
       .order('entry_date', { ascending: false });
@@ -172,12 +175,16 @@ export function EntityFinancialsPanel({
         notes: form.notes || null,
       };
 
+      await ensureExternalSession().catch(() => {});
+
       if (editingEntry) {
-        const { error } = await supabase.from('lead_financials' as any).update(payload).eq('id', editingEntry.id);
+        const { error } = await db.from('lead_financials' as any).update(payload).eq('id', editingEntry.id);
         if (error) throw error;
       } else {
-        const { data: { user } } = await supabase.auth.getUser();
-        const { error } = await supabase.from('lead_financials' as any).insert({ ...payload, created_by: user?.id });
+        // O usuário autentica no Cloud; `created_by` referencia o auth do Externo.
+        const { data: { user } } = await authClient.auth.getUser();
+        const createdBy = await remapToExternal(user?.id).catch(() => null);
+        const { error } = await db.from('lead_financials' as any).insert({ ...payload, created_by: createdBy });
         if (error) throw error;
       }
 
@@ -197,7 +204,8 @@ export function EntityFinancialsPanel({
   };
 
   const handleDelete = async (id: string) => {
-    const { error } = await supabase.from('lead_financials' as any).delete().eq('id', id);
+    await ensureExternalSession().catch(() => {});
+    const { error } = await db.from('lead_financials' as any).delete().eq('id', id);
     if (error) { toast.error('Erro ao remover: ' + error.message); return; }
     toast.success('Removido');
     fetchEntries();

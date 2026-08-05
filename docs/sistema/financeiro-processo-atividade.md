@@ -8,6 +8,8 @@ Onde se registra dinheiro (despesa/receita) ligado a um cliente. Rótulos entre 
 
 Só a aba **"$ Financeiro"** da ficha do lead (`Editar Lead`). Para lançar uma custa de um processo, ou uma despesa gerada por uma atividade (deslocamento, cópia, perícia), era preciso sair do lugar onde o trabalho estava sendo feito, abrir a ficha do lead e lançar lá — sem nenhum vínculo com o processo ou com a atividade que originou o gasto.
 
+E ela consultava o banco errado (Cloud em vez do Externo), então aparecia zerada mesmo quando havia lançamento. Ver "Banco — e uma correção de roteamento", abaixo.
+
 ## O que existe agora
 
 Três pontos de entrada, **a mesma tabela** (`lead_financials`) e o mesmo formulário:
@@ -43,7 +45,9 @@ O botão "Financeiro" da atividade só aparece em atividade **já criada** (em m
 - `src/components/activities/ActivityFullSheet.tsx` — botão "Financeiro" + dialog.
 - Todo lançamento gravado continua disparando `trackFinanceEntry()` (cronômetro / bloco "Controle Financeiro" do dia), igual à aba do lead.
 
-### Banco
+### Banco — e uma correção de roteamento
+
+`lead_financials` vive no Supabase **Externo** (`kmedldlepwiityjsdahz`), com FK para `leads` e `legal_cases` de lá. A aba Financeiro do lead consultava a tabela pelo client **Cloud** — banco errado. Por isso ela aparecia sempre zerada. Corrigido: o painel usa `db` (Externo), com `ensureExternalSession()` e `created_by` passado por `remapToExternal()` (o usuário autentica no Cloud, a FK aponta para o auth do Externo). `lead_financials` entrou em `BUSINESS_TABLES` (`src/integrations/supabase/db-routing.ts`) para o guarda pegar qualquer reincidência.
 
 Migration `20260805160000_lead_financials_processo_e_atividade.sql`:
 
@@ -51,12 +55,13 @@ Migration `20260805160000_lead_financials_processo_e_atividade.sql`:
 ALTER TABLE public.lead_financials
   ADD COLUMN IF NOT EXISTS process_id  uuid,
   ADD COLUMN IF NOT EXISTS activity_id uuid;
+-- + FK para lead_processes(id) e lead_activities(id), ambas ON DELETE SET NULL
+-- + índices parciais em process_id e activity_id (os filtros novos das abas)
 ```
-mais índices parciais em `process_id` e `activity_id` (são os filtros novos das abas).
 
-**As colunas não têm FK, de propósito.** `lead_processes` e `lead_activities` são tabelas de negócio e vivem no Supabase **Externo**; `lead_financials` é consultada pelo client **Cloud**. Uma FK apontando para a cópia-fantasma dessas tabelas no Cloud faria todo INSERT falhar por violação de FK — o sintoma que `src/integrations/supabase/db-routing.ts` documenta. A integridade do vínculo fica no app.
+`ON DELETE SET NULL` segue o que `case_id` já fazia: apagar processo ou atividade não pode apagar dinheiro já lançado — o valor foi gasto de qualquer jeito e continua valendo para o caso e para o lead.
 
-**Sem a migration aplicada, as abas de processo e atividade não funcionam** (o filtro por `process_id`/`activity_id` retorna erro). O painel agora mostra o erro do banco em toast em vez de engolir e exibir lista vazia — era assim que a aba do lead se comportava antes, e escondia falha de consulta.
+**Sem a migration aplicada, as abas de processo e atividade não funcionam** (o filtro por `process_id`/`activity_id` retorna erro). O painel agora mostra o erro do banco em toast em vez de engolir e exibir lista vazia — era assim que a aba do lead se comportava antes, e foi o que escondeu o roteamento errado por meses.
 
 Rollback (reversível em <1min, sem perda de dado pré-existente):
 
