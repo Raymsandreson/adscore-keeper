@@ -10,7 +10,6 @@ import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetailSheet';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, estrelaLabel, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
-import TvProtocolosPanel from '@/components/tv/TvProtocolosPanel';
 // Ficha completa do processo, aberta por cima do detalhe. Lazy porque é o
 // ProcessDetailSheet inteiro — não pode entrar no bundle que a TV carrega só
 // pra mostrar ranking.
@@ -78,11 +77,16 @@ const LIST_MAX = 7; // linhas abaixo do pódio (posições 4..10)
 // Valor sentinela no seletor de time: só gestores de time + diretoria
 // (team_managers + org_directors no Externo; a RPC resolve via p_grupo).
 const GRUPO_GERENCIAL = 'gerencial';
-// Segundo pseudo-item do rodízio (mesmo mecanismo do GRUPO_GERENCIAL): não é um
-// time, é uma vista inteira diferente — protocolos INSS do dia, sem ranking por
-// pessoa (ninguém registra quem protocolou). Reaproveita rodízio, seletor e
-// persistência na URL sem tocar no motor.
-const VISTA_PROTOCOLOS = 'protocolos';
+// A vista "Protocolos do Dia" saiu do rodízio em 05/08/2026 (o telão é sobre
+// marcos, não sobre volume de protocolo). Os mesmos números continuam na Visão
+// Geral e no Acompanhamento Processual, via ProtocolosDiaCard.
+// A TV fica dias no ar sem ninguém tocar na URL: se o telão estiver parado em
+// ?team=protocolos, esse valor cairia no p_team_id da RPC e quebraria o cast de
+// uuid, deixando a tela vazia pra sempre. Por isso o valor legado vira ''.
+const VISTA_PROTOCOLOS_LEGADO = 'protocolos';
+function sanitizeTeamParam(v: string | null) {
+  return !v || v === VISTA_PROTOCOLOS_LEGADO ? '' : v;
+}
 // Token na URL pro "Ranking Geral" (teamId '') na lista de itens fora do rodízio.
 function rotEnc(v: string) { return v === '' ? 'geral' : v; }
 function rotDec(t: string) { return t === 'geral' ? '' : t; }
@@ -146,7 +150,7 @@ export default function TvAtividadesPage() {
   const titulo = params.get('titulo') || 'Time Processual';
 
   const [period, setPeriod] = useState<Period>('hoje');
-  const [teamId, setTeamId] = useState<string>(params.get('team') || ''); // '' = todos os times
+  const [teamId, setTeamId] = useState<string>(sanitizeTeamParam(params.get('team'))); // '' = todos os times
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<Payload | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -256,31 +260,24 @@ export default function TvAtividadesPage() {
     setSearchParams(next, { replace: true });
   }, [params, setSearchParams]);
 
-  // Vista de protocolos: tela própria, não é ranking de assessor.
-  const vistaProtocolos = teamId === VISTA_PROTOCOLOS;
-
   const selectedTeamName = useMemo(
     () => teamId === GRUPO_GERENCIAL
       ? 'Gerencial e Diretoria'
-      : teamId === VISTA_PROTOCOLOS
-      ? 'Protocolos do Dia'
       : teams.find(t => t.id === teamId)?.name,
     [teams, teamId],
   );
   // Nome do que está na tela agora (todos = "Ranking Geral").
   const currentViewName = teamId === '' ? 'Ranking Geral' : (selectedTeamName || titulo);
 
-  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial →
-  // Protocolos.
+  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial.
   const rotatable = useMemo(
-    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL, VISTA_PROTOCOLOS],
+    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL],
     [teams],
   );
   // Nome legível de um item do rodízio.
   const rotItemName = useCallback(
     (v: string) => v === '' ? 'Ranking Geral'
       : v === GRUPO_GERENCIAL ? 'Gerencial e Diretoria'
-      : v === VISTA_PROTOCOLOS ? 'Protocolos do Dia'
       : (teams.find(t => t.id === v)?.name || v),
     [teams],
   );
@@ -345,9 +342,6 @@ export default function TvAtividadesPage() {
   }, [autoRotate, rotateMin, rotateCycle, teamId, onSelectTeam]);
 
   const load = useCallback(async () => {
-    // A vista de protocolos tem fonte própria (TvProtocolosPanel busca sozinho).
-    // Sem isto, o rodízio dispararia o ranking a cada 45s por nada.
-    if (vistaProtocolos) { setLoading(false); return; }
     setLoading(true);
     try {
       await ensureExternalSession();
@@ -366,7 +360,7 @@ export default function TvAtividadesPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, teamId, vistaProtocolos]);
+  }, [period, teamId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -952,7 +946,6 @@ export default function TvAtividadesPage() {
           >
             <option value="">Todos os times</option>
             <option value={GRUPO_GERENCIAL}>Gerencial e Diretoria</option>
-            <option value={VISTA_PROTOCOLOS}>Protocolos do Dia</option>
             {teams.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
@@ -1123,9 +1116,7 @@ export default function TvAtividadesPage() {
           </div>
         )}
 
-        {vistaProtocolos ? (
-          <TvProtocolosPanel />
-        ) : ranking.length === 0 && pit.length === 0 ? (
+        {ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
           </div>
