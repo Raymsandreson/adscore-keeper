@@ -58,6 +58,20 @@ export interface ActivityMessageContext {
   timeSpentSeconds?: number;
 }
 
+/**
+ * Barra de progresso em 10 blocos para WhatsApp. Emoji quadrado em vez de
+ * `█`/`░`: o WhatsApp não garante fonte monoespaçada e os blocos unicode saem
+ * desalinhados (ou sem glifo) em parte dos Androids; emoji renderiza igual em
+ * todo lugar. Arredonda pra cima a partir de 1% pra nunca mostrar barra vazia
+ * em fluxo já iniciado.
+ */
+export function progressBar(pct: number): string {
+  const CELLS = 10;
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  const filled = p === 0 ? 0 : Math.max(1, Math.round((p / 100) * CELLS));
+  return '🟩'.repeat(filled) + '⬜'.repeat(CELLS - filled);
+}
+
 /** "1h 23min" / "45min" / "" quando não há tempo cronometrado. */
 export function formatTempoDedicado(totalSeconds?: number | null): string {
   const s = Math.floor(totalSeconds || 0);
@@ -176,14 +190,19 @@ export function buildActivityMessage(
       return `*${subject} com mais informações no dia ${notifDate}, até o final do dia.*`;
     };
 
-    // Linked process info — "Referente ao processo n° "X" de "Y""
-    // Cai para formProcessTitle quando caseProcesses ainda não carregou (atividade sem case_id).
+    // Processo vinculado. O nº vem SEMPRE do dado vivo (`lead_processes` via
+    // caseProcesses); `formProcessTitle` é snapshot do momento da criação e em
+    // 47% das atividades com processo não tem número nenhum (medido 05/08/2026:
+    // 3.519 de 7.554 em 90 dias) — usar o snapshot como fonte do número fazia
+    // sair `n° "—"`. E 52% dos processos (901 de 1.728) não têm número
+    // cadastrado: aí a linha sai só com o título, sem o `n° "—"` que não
+    // informa nada e assusta o cliente.
     const linkedProcessForMsg = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-    const procNumberForMsg = linkedProcessForMsg?.process_number || '';
-    const procTitleForMsg = linkedProcessForMsg?.title || formProcessTitle || '';
-    const processInfo = (procNumberForMsg || procTitleForMsg)
-      ? `Referente ao processo n° "${procNumberForMsg || '—'}" de "${procTitleForMsg || '—'}"`
-      : '';
+    const procNumberForMsg = linkedProcessForMsg?.process_number?.trim() || '';
+    const procTitleForMsg = (linkedProcessForMsg?.title || formProcessTitle || '').trim();
+    const processInfo = procNumberForMsg
+      ? `*Processo n° ${procNumberForMsg}*${procTitleForMsg ? ` — ${procTitleForMsg}` : ''}`
+      : (procTitleForMsg ? `Referente ao processo "${procTitleForMsg}"` : '');
 
     const envolvidos = (linkedProcessForMsg?.envolvidos as any[]) || [];
     // Qual polo é o NOSSO cliente:
@@ -258,7 +277,16 @@ export function buildActivityMessage(
       const objSteps = phaseSteps.filter((s) => s.templateId === curObj);
       const objStepsDone = objSteps.filter((s) => s.checked).length;
 
-      const headline = `*📊 Progresso do caso: ${overallPct}% concluído*`;
+      // O rótulo segue a ORIGEM do fluxo (regra do usuário: "progresso do
+      // processo ou do lead"). "atendimento" no lugar de "lead" porque a
+      // mensagem do cliente não usa jargão interno.
+      const label = stepContext?.source === 'processo' ? 'Progresso do processo'
+        : stepContext?.source === 'atv' ? 'Progresso do POP'
+        : 'Progresso do atendimento';
+      const headline = [
+        `*📊 ${label}*`,
+        `${progressBar(overallPct)} ${overallPct}% concluído`,
+      ].join('\n');
       const full = [
         headline,
         `• Fases: ${pct(phasesDone, phaseIds.length)}% (${phasesDone}/${phaseIds.length})`,
@@ -303,8 +331,8 @@ export function buildActivityMessage(
         `*Assunto da atividade:* ${formTitle.toUpperCase()}`,
         fieldLines,
         [prazoLine, notifLine].filter(Boolean).join('\n'),
-        workflowInfo,
         progressDetail,
+        workflowInfo,
         referenceInfo,
         tempoLine,
         authoriaLine,
@@ -380,59 +408,70 @@ export function buildActivityMessage(
         }
       });
 
-      // Auto-inject processInfo if template doesn't reference it but a process is linked
-      if (processInfo && !template.includes('process_info') && !result.includes('Referente ao processo')) {
+      // Detectores das linhas já presentes no resultado. O texto do processo e
+      // do progresso é variável (com/sem nº, rótulo conforme a origem do
+      // fluxo), então a âncora é por padrão, não por string fixa.
+      const isProcLine = (l: string) => /^\*Processo n°|Referente ao processo/.test(l.trim());
+      const isProgressTitle = (l: string) => /Progresso do (processo|POP|atendimento|caso)/.test(l);
+      const isProgressBar = (l: string) => /[🟩⬜]{10}/.test(l);
+      const firstContentIdx = (lines: string[]) => {
+        for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1;
+        return 0;
+      };
+      /** Fim do bloco de progresso (a barra fica na linha seguinte ao título). */
+      const progressEndIdx = (lines: string[]) => {
+        const t = lines.findIndex(isProgressTitle);
+        if (t < 0) return -1;
+        return lines[t + 1] !== undefined && isProgressBar(lines[t + 1]) ? t + 1 : t;
+      };
+
+      // Processo: auto-injeta logo após a saudação.
+      if (processInfo && !template.includes('process_info') && !result.split('\n').some(isProcLine)) {
         const lines = result.split('\n');
-        // Insert after first non-empty line (greeting)
-        let insertAt = 0;
-        for (let i = 0; i < lines.length; i++) {
-          if (lines[i].trim()) { insertAt = i + 1; break; }
-        }
-        lines.splice(insertAt, 0, '', processInfo);
+        lines.splice(firstContentIdx(lines), 0, '', processInfo);
         result = lines.join('\n');
       }
 
-      // Workflow (fase/objetivo/passo atual — o passo logo após o último concluído):
-      // auto-injeta após o "Referente ao processo" quando o template não o referencia.
-      if (workflowInfo && !template.includes('workflow_info') && !result.includes('*Passo atual:*')) {
+      // Progresso (título + barra) vem primeiro: visão macro antes do detalhe.
+      if (progressInfo && !template.includes('progresso') && !result.split('\n').some(isProgressTitle)) {
         const lines = result.split('\n');
-        const afterProc = lines.findIndex(line => line.includes('Referente ao processo'));
-        const at = afterProc >= 0 ? afterProc + 1 : (() => {
-          for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1;
-          return 0;
-        })();
-        lines.splice(at, 0, '', workflowInfo);
-        result = lines.join('\n');
-      }
-
-      // Progresso (3 níveis): auto-injeta após o workflow/processo quando o
-      // template não referencia {{progresso}} e há checklist.
-      if (progressInfo && !template.includes('progresso') && !result.includes('Progresso do caso')) {
-        const lines = result.split('\n');
-        const anchor = lines.findIndex(line => line.includes('*Passo atual:*') || line.includes('Referente ao processo'));
-        const at = anchor >= 0 ? anchor + 1 : (() => { for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1; return 0; })();
+        const afterProc = lines.findIndex(isProcLine);
+        const at = afterProc >= 0 ? afterProc + 1 : firstContentIdx(lines);
         lines.splice(at, 0, '', progressInfo);
         result = lines.join('\n');
       }
 
-      // Nº da atv de referência: auto-injeta logo após o progresso.
+      // Fluxo (fase/objetivo/passo atual): detalha o que a barra resume, então
+      // entra depois dela — e depois do processo quando não há progresso.
+      if (workflowInfo && !template.includes('workflow_info') && !result.includes('*Passo atual:*')) {
+        const lines = result.split('\n');
+        const end = progressEndIdx(lines);
+        const at = end >= 0
+          ? end + 1
+          : (() => { const i = lines.findIndex(isProcLine); return i >= 0 ? i + 1 : firstContentIdx(lines); })();
+        lines.splice(at, 0, '', workflowInfo);
+        result = lines.join('\n');
+      }
+
+      // Nº da atv de referência: cola logo abaixo da barra de progresso.
       if (referenceInfo && !template.includes('atv_referencia') && !result.includes('Atividade de referência')) {
         const lines = result.split('\n');
-        const anchor = lines.findIndex(line => line.includes('Progresso do caso'));
-        if (anchor >= 0) {
-          lines.splice(anchor + 1, 0, referenceInfo);
+        const end = progressEndIdx(lines);
+        if (end >= 0) {
+          lines.splice(end + 1, 0, referenceInfo);
           result = lines.join('\n');
         }
       }
 
-      // Tempo dedicado: auto-injeta logo após o progresso quando o template não
-      // referencia {{tempo_dedicado}} e há tempo cronometrado.
+      // Tempo dedicado: depois do bloco de fluxo (ou do progresso/processo).
       if (tempoLine && !template.includes('tempo_dedicado') && !result.includes('Tempo dedicado')) {
         const lines = result.split('\n');
-        const anchor = lines.findIndex(line =>
-          line.includes('Progresso do caso') || line.includes('*Passo atual:*') || line.includes('Referente ao processo'));
-        const at = anchor >= 0 ? anchor + 1 : (() => { for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1; return 0; })();
-        lines.splice(at, 0, '', tempoLine);
+        const stepIdx = lines.findIndex(line => line.includes('*Passo atual:*'));
+        const end = progressEndIdx(lines);
+        const anchor = stepIdx >= 0 ? stepIdx + 1
+          : end >= 0 ? end + 1
+          : (() => { const i = lines.findIndex(isProcLine); return i >= 0 ? i + 1 : firstContentIdx(lines); })();
+        lines.splice(anchor, 0, '', tempoLine);
         result = lines.join('\n');
       }
 
@@ -491,5 +530,5 @@ export function buildActivityMessage(
     const referenceLineFb = referenceInfo ? `\n${referenceInfo}` : '';
     const tempoLineFb = tempoLine ? `\n\n${tempoLine}` : '';
     const signatureFb = createdByName ? `\n\nCom carinho,\n${createdByName} 💚` : '';
-    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${workflowLineFb}${progressLineFb}${referenceLineFb}${tempoLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
+    return `${greetingLine}${processInfo ? `\n\n${processInfo}` : ''}${progressLineFb}${referenceLineFb}${workflowLineFb}${tempoLineFb}\n\n*Assunto da atividade:* ${formTitle.toUpperCase()}\n\n${fieldLines}\n\n${buildReturnDateLine(responsavelDrFb)}\n${linkLineFb}\n\nEstamos à disposição para quaisquer dúvidas.\n\n🚀Avante!${signatureFb}\n\nTem alguma dúvida ou precisa de uma explicação mais detalhada? Digite 1 . Se tudo está claro, digite 2.`;
 }

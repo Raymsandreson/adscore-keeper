@@ -419,11 +419,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       loadContactsForLead(lid);
       loadLeadPreview(lid);
     }
+    // Processo vinculado: carrega pelo CASO quando há um, senão pelo próprio
+    // process_id. Sem esse segundo ramo a atv com processo e sem case_id (105
+    // em 90 dias) ficava sem o dado vivo e a mensagem caía no `process_title`
+    // congelado — que em 47% dos casos não tem o número.
+    const PROC_COLS = 'id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos';
     if (act.case_id) {
-      externalSupabase
-        .from('lead_processes')
-        .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
-        .eq('case_id', act.case_id)
+      externalSupabase.from('lead_processes').select(PROC_COLS).eq('case_id', act.case_id)
+        .then(({ data }) => setCaseProcesses((data as ProcessRow[]) || []));
+    } else if (act.process_id) {
+      externalSupabase.from('lead_processes').select(PROC_COLS).eq('id', act.process_id)
         .then(({ data }) => setCaseProcesses((data as ProcessRow[]) || []));
     }
   }, [activityId, leadId, leadName, loadContactsForLead, loadLeadPreview]);

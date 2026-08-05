@@ -1314,6 +1314,16 @@ const ActivitiesPage = () => {
       setLeadPreview(null);
     }
 
+    // Processo vinculado sem caso: carrega pelo próprio process_id, senão a
+    // mensagem cai no `process_title` congelado (sem número em 47% dos casos).
+    if (!(activity as any).case_id && (activity as any).process_id) {
+      promises.push(
+        Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao').eq('id', (activity as any).process_id)).then(({ data }) => {
+          setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos, data_ultima_movimentacao: p.data_ultima_movimentacao })));
+        })
+      );
+    }
+
     if ((activity as any).case_id) {
       promises.push(
         Promise.resolve(externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao').eq('case_id', (activity as any).case_id)).then(({ data }) => {
@@ -1922,6 +1932,11 @@ const ActivitiesPage = () => {
     setFormWorkflowId((activity as any).workflow_id || '');
     setFormCampaignId((activity as any).crm_campaign_id || '');
     setCaseProcesses([]);
+    if (!(activity as any).case_id && (activity as any).process_id) {
+      externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao').eq('id', (activity as any).process_id).then(({ data }) => {
+        setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos, data_ultima_movimentacao: p.data_ultima_movimentacao })));
+      });
+    }
     if ((activity as any).case_id) {
       externalSupabase.from('lead_processes').select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao').eq('case_id', (activity as any).case_id).then(({ data }) => {
         setCaseProcesses((data || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos, data_ultima_movimentacao: p.data_ultima_movimentacao })));

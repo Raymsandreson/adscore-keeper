@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildActivityMessage, formatTempoDedicado } from '../buildActivityMessage';
+import { buildActivityMessage, formatTempoDedicado, progressBar } from '../buildActivityMessage';
 import type { ActivityMessageContext } from '../buildActivityMessage';
 import { phaseLabelFromStageId } from '@/hooks/useActivityStepContext';
 
@@ -67,14 +67,16 @@ describe('buildActivityMessage — fluxo, progresso e tempo', () => {
     expect(msg).toContain('*Etapa:* Fase Inicial');
     expect(msg).toContain('*Objetivo:* Ajuizamento');
     expect(msg).toContain('*Passo atual:* Protocolar');
-    expect(msg).toContain('Progresso do caso: 33% concluído');
+    expect(msg).toContain('*📊 Progresso do processo*');
+    expect(msg).toContain('🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜ 33% concluído');
     expect(msg).toContain('*⏱️ Tempo dedicado a esta atividade:* 1h 24min');
   });
 
   it('mensagem ao ASSESSOR traz a quebra completa do progresso e o tempo', () => {
     const msg = buildActivityMessage(makeCtx(), 'assessor');
     expect(msg).toContain('*Passo atual:* Protocolar');
-    expect(msg).toContain('Progresso do caso: 33% concluído');
+    expect(msg).toContain('*📊 Progresso do processo*');
+    expect(msg).toContain('🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜ 33% concluído');
     expect(msg).toContain('• Fases: 0% (0/2)');
     expect(msg).toContain('• Passos (objetivo atual): 50% (1/2)');
     expect(msg).toContain('*⏱️ Tempo dedicado a esta atividade:* 1h 24min');
@@ -85,10 +87,11 @@ describe('buildActivityMessage — fluxo, progresso e tempo', () => {
       makeCtx({ getTemplateForContext: () => '*{{saudacao}}*\n\n{{progresso}}\n\n{{tempo_dedicado}}' }),
       'client',
     );
-    expect(msg).toContain('Progresso do caso: 33% concluído');
+    expect(msg).toContain('*📊 Progresso do processo*');
+    expect(msg).toContain('🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜ 33% concluído');
     expect(msg).toContain('1h 24min');
     // Não pode duplicar: a variável foi usada, a auto-injeção não entra.
-    expect(msg.match(/Progresso do caso/g)).toHaveLength(1);
+    expect(msg.match(/Progresso do/g)).toHaveLength(1);
     expect(msg.match(/Tempo dedicado/g)).toHaveLength(1);
   });
 
@@ -99,7 +102,7 @@ describe('buildActivityMessage — fluxo, progresso e tempo', () => {
 
   it('sem checklist (stepContext null) a mensagem sai sem fluxo, mas não quebra', () => {
     const msg = buildActivityMessage(makeCtx({ stepContext: null }), 'client');
-    expect(msg).not.toContain('Progresso do caso');
+    expect(msg).not.toContain('Progresso do');
     expect(msg).not.toContain('*Etapa:*');
     expect(msg).toContain('*Assunto da atividade:* PROTOCOLO DA INICIAL');
   });
@@ -119,7 +122,10 @@ describe('nº da atv de referência (POP sem processo)', () => {
     const msg = buildActivityMessage(makeCtx(popSemProcesso), 'client');
     // nº = 8 primeiros hex do UUID, mesmo código do link curto /atv/:code
     expect(msg).toContain('*🔖 Atividade de referência do POP:* nº 3f7a1c9d');
-    expect(msg).toContain('Progresso do caso: 33% concluído');
+    // rótulo segue a origem do fluxo
+    expect(msg).toContain('*📊 Progresso do POP*');
+    // e a referência cola logo abaixo da barra, não entre o título e ela
+    expect(msg).toMatch(/🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜ 33% concluído\n\*🔖 Atividade de referência/);
   });
 
   it('atv vinculada a processo NÃO mostra o nº de referência', () => {
@@ -138,6 +144,83 @@ describe('nº da atv de referência (POP sem processo)', () => {
   it('mensagem ao assessor também leva o nº de referência', () => {
     const msg = buildActivityMessage(makeCtx(popSemProcesso), 'assessor');
     expect(msg).toContain('Atividade de referência do POP');
+  });
+});
+
+describe('número do processo', () => {
+  const proc = {
+    formProcessId: 'p-1',
+    caseProcesses: [{ id: 'p-1', title: 'INDENIZAÇÃO', process_number: '0801234-56.2025.8.05.0001' }],
+  };
+
+  it('com número cadastrado, sai o nº vivo do processo', () => {
+    const msg = buildActivityMessage(makeCtx(proc), 'client');
+    expect(msg).toContain('*Processo n° 0801234-56.2025.8.05.0001* — INDENIZAÇÃO');
+  });
+
+  it('sem número cadastrado (52% da base), não sai `n° "—"`', () => {
+    const msg = buildActivityMessage(
+      makeCtx({ ...proc, caseProcesses: [{ id: 'p-1', title: 'INDENIZAÇÃO', process_number: null }] }),
+      'client',
+    );
+    expect(msg).toContain('Referente ao processo "INDENIZAÇÃO"');
+    expect(msg).not.toContain('—"');
+    expect(msg).not.toContain('n° "');
+  });
+
+  it('não duplica a linha do processo quando ela já veio do template', () => {
+    const msg = buildActivityMessage(
+      makeCtx({ ...proc, getTemplateForContext: () => '*{{saudacao}}*\n\n{{process_info}}\n\n{{campos_dinamicos}}' }),
+      'client',
+    );
+    expect(msg.match(/Processo n°/g)).toHaveLength(1);
+  });
+});
+
+describe('ordem do bloco de fluxo', () => {
+  const ordem = (msg: string) => [
+    msg.search(/\*Processo n°|Referente ao processo/),
+    msg.search(/📊 Progresso do/),
+    msg.search(/\*Etapa:\*/),
+    msg.search(/⏱️ Tempo dedicado/),
+  ];
+
+  it('processo → barra → etapa/objetivo/passo → tempo (com processo)', () => {
+    const msg = buildActivityMessage(makeCtx({
+      formProcessId: 'p-1',
+      caseProcesses: [{ id: 'p-1', title: 'INDENIZAÇÃO', process_number: '0801234-56.2025.8.05.0001' }],
+    }), 'client');
+    const [proc, prog, etapa, tempo] = ordem(msg);
+    expect(proc).toBeGreaterThanOrEqual(0);
+    expect(prog).toBeGreaterThan(proc);
+    expect(etapa).toBeGreaterThan(prog);
+    expect(tempo).toBeGreaterThan(etapa);
+  });
+
+  it('mesma ordem sem processo vinculado', () => {
+    const msg = buildActivityMessage(makeCtx(), 'client');
+    const [, prog, etapa, tempo] = ordem(msg);
+    expect(etapa).toBeGreaterThan(prog);
+    expect(tempo).toBeGreaterThan(etapa);
+  });
+
+  it('mensagem ao assessor segue a mesma ordem', () => {
+    const msg = buildActivityMessage(makeCtx(), 'assessor');
+    const [, prog, etapa] = ordem(msg);
+    expect(etapa).toBeGreaterThan(prog);
+  });
+});
+
+describe('progressBar', () => {
+  it('10 blocos, proporcional', () => {
+    expect(progressBar(0)).toBe('⬜⬜⬜⬜⬜⬜⬜⬜⬜⬜');
+    expect(progressBar(33)).toBe('🟩🟩🟩⬜⬜⬜⬜⬜⬜⬜');
+    expect(progressBar(100)).toBe('🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩');
+  });
+
+  it('fluxo iniciado nunca mostra barra vazia', () => {
+    expect(progressBar(1)).toBe('🟩⬜⬜⬜⬜⬜⬜⬜⬜⬜');
+    expect(progressBar(4)).toBe('🟩⬜⬜⬜⬜⬜⬜⬜⬜⬜');
   });
 });
 
