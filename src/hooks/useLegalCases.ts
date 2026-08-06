@@ -107,15 +107,27 @@ export function useLegalCases(leadId?: string) {
       
       let caseNumber = caseData.case_number?.trim();
       
-      // If user provided a case_number, check uniqueness
+      // If user provided a case_number, check uniqueness.
+      // `legal_cases` tem UNIQUE (case_number) SEM índice parcial: um caso
+      // soft-deletado continua retendo o número. Distinguimos os dois casos pra
+      // não repetir "já existe" numa tela onde o caso está invisível — foi o que
+      // travou o PREV 77 (o número morava num card duplicado, apagado depois).
       if (caseNumber) {
         const { data: existing } = await externalSupabase
           .from('legal_cases')
-          .select('id')
+          .select('id, deleted_at')
           .eq('case_number', caseNumber)
+          .order('deleted_at', { ascending: true, nullsFirst: true })
+          .limit(1)
           .maybeSingle();
         if (existing) {
-          toast.error(`Já existe um caso com o número "${caseNumber}"`);
+          if ((existing as any).deleted_at) {
+            toast.error(
+              `O número "${caseNumber}" está retido por um caso excluído. Restaure aquele caso ou use outro número.`,
+            );
+          } else {
+            toast.error(`Já existe um caso com o número "${caseNumber}"`);
+          }
           throw new Error('Número de caso duplicado');
         }
       } else {
@@ -157,7 +169,16 @@ export function useLegalCases(leadId?: string) {
         } as never)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
-      if (error) throw error;
+      if (error) {
+        // 23505 = UNIQUE (case_number). Chega aqui quando o número foi gerado
+        // pela RPC e colidiu, ou quando o dono do número é um caso excluído.
+        if ((error as any).code === '23505') {
+          toast.error(
+            `O número "${caseNumber}" já está em uso (pode ser por um caso excluído). Use outro número.`,
+          );
+        }
+        throw error;
+      }
 
       const enriched = {
         ...data,
