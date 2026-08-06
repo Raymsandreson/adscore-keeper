@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect, lazy, Suspense } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -58,6 +58,17 @@ import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
+import {
+  loadWhatsAppMessageActivities,
+  subscribeWhatsAppMessageActivityLinked,
+  type WhatsAppMessageActivityMap,
+} from '@/lib/whatsappMessageActivities';
+
+// Ficha completa da atividade (painel lateral) — lazy pra não pesar o chat,
+// igual ao chat interno da equipe.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -107,7 +118,8 @@ interface Props {
   onCreateCase?: () => void;
   extractingData?: boolean;
   extractionStep?: string;
-  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string) => void;
+  /** `originMessageIds`: mensagens que originaram a atividade — viram o selo "Virou atividade" na bolha. */
+  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
   onPrivacyChanged?: () => void;
@@ -507,6 +519,40 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBatchAnalysis(null);
   };
 
+  // ===== Vínculo mensagem -> atividade (selo na bolha + atalho pro painel lateral) =====
+  // Mesmo comportamento do chat interno da equipe.
+  const [msgActivities, setMsgActivities] = useState<WhatsAppMessageActivityMap>({});
+  // Atividade aberta pelo atalho da bolha (ficha completa, modo edição).
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const phone = conversation.phone;
+    if (!phone) { setMsgActivities({}); return; }
+    (async () => {
+      try {
+        const map = await loadWhatsAppMessageActivities(phone);
+        if (!cancelled) setMsgActivities(map);
+      } catch (e) {
+        // Chat funciona sem o vínculo — só perde o selo/atalho.
+        console.warn('[WhatsAppChat] vínculos mensagem→atividade indisponíveis:', e);
+        if (!cancelled) setMsgActivities({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.phone]);
+
+  // Atividade acabou de ser criada a partir de mensagens desta conversa:
+  // marca as bolhas na hora, sem recarregar a lista toda.
+  useEffect(() => subscribeWhatsAppMessageActivityLinked(({ phone, messageIds, activityId, activityTitle }) => {
+    if (phone !== conversation.phone) return;
+    setMsgActivities(prev => {
+      const next = { ...prev };
+      messageIds.forEach(id => { next[id] = { activity_id: activityId, activity_title: activityTitle }; });
+      return next;
+    });
+  }), [conversation.phone]);
+
   // ===== Seleção múltipla de mensagens de TEXTO para criar atividade =====
   const [textSelectionMode, setTextSelectionMode] = useState(false);
   const [textSelectionOrder, setTextSelectionOrder] = useState<string[]>([]);
@@ -607,6 +653,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.contact_id || undefined,
       conversation.contact_name || undefined,
       prefill,
+      [...textSelectionOrder],
     );
     exitTextSelection();
   };
@@ -4175,6 +4222,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                               conversation.contact_id || undefined,
                               conversation.contact_name || undefined,
                               msg.message_text || '',
+                              [msg.id],
                             );
                           }}
                           className={cn(
@@ -4246,6 +4294,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       Sincronizar
                     </Button>
                   </div>
+                )}
+                {msgActivities[msg.id] && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setOpenActivityId(msgActivities[msg.id].activity_id); }}
+                    className={cn(
+                      "w-full mt-1 flex items-center gap-1 px-1.5 py-1 rounded border text-[10px] font-medium text-left hover:opacity-80 transition-opacity",
+                      msg.direction === 'outbound'
+                        ? "border-green-100/40 bg-green-100/10 text-green-50"
+                        : "border-primary/40 bg-background/60 text-foreground"
+                    )}
+                    title="Abrir a atividade criada a partir desta mensagem"
+                  >
+                    <ClipboardList className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      Virou atividade{msgActivities[msg.id].activity_title ? `: ${msgActivities[msg.id].activity_title}` : ''}
+                    </span>
+                  </button>
                 )}
                 <p className={cn(
                   "text-[10px] mt-1",
@@ -4672,6 +4738,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           />
         </SheetContent>
       </Sheet>
+
+      {/* Atalho da bolha: abre a ficha da atividade que nasceu daquela mensagem
+          no painel lateral — igual ao chat interno da equipe. */}
+      {openActivityId && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={!!openActivityId}
+            activityId={openActivityId}
+            onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
