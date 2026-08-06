@@ -3159,6 +3159,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 isGroup={isGroup}
                 messageParticipants={groupParticipants}
                 onViewContact={onViewContact}
+                onOpenChat={onOpenChat}
               />
             </>
           )}
