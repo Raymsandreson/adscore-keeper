@@ -21,7 +21,7 @@ import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
   Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer, Forward, Phone,
-  MessageCircleReply,
+  MessageCircleReply, Copy,
 } from 'lucide-react';
 import { useCall } from '@/contexts/CallContext';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
@@ -41,6 +41,7 @@ import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { AITextActions } from '@/components/ui/AITextActions';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Sparkles } from 'lucide-react';
 import type { TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
@@ -123,6 +124,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [highlightMsgId, setHighlightMsgId] = useState<string | null>(null);
   const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
+  // Mensagem específica que a IA deve responder (botão da bolha).
+  const [aiTargetMessage, setAiTargetMessage] = useState<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -512,6 +515,26 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     if (m.message_type === 'image') return m.content && m.content !== '📷 Imagem' ? m.content : '📷 Imagem';
     if (m.message_type === 'file') return `📎 Arquivo: ${m.file_name || 'sem nome'}`;
     return m.content || '';
+  };
+
+  /** Copia o texto da bolha (áudio usa a transcrição). */
+  const copyMessageText = async (m: TeamMessage) => {
+    const text = m.message_type === 'audio' ? (m.transcription || '').trim() : (m.content || '').trim();
+    if (!text) { toast.error('Essa mensagem não tem texto para copiar.'); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Texto copiado');
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  };
+
+  /** Abre a sugestão da IA focada NESTA mensagem. */
+  const replyWithAI = (m: TeamMessage) => {
+    const text = m.message_type === 'audio' ? (m.transcription || '').trim() : (m.content || '').trim();
+    if (!text) { toast.error('Essa mensagem não tem texto para a IA responder.'); return; }
+    setAiTargetMessage(text);
+    setAiSuggestOpen(true);
   };
 
   const createActivityFromSelection = async () => {
@@ -1185,6 +1208,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       </button>
                       <button
                         type="button"
+                        onClick={() => copyMessageText(msg)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Copiar o texto da mensagem"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => replyWithAI(msg)}
+                        className="p-1 rounded hover:bg-accent text-primary"
+                        title="Sugerir resposta a esta mensagem com IA"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
                         className="p-1 rounded hover:bg-accent text-muted-foreground"
                         title="Encaminhar para outra pessoa ou grupo"
@@ -1294,6 +1333,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                       )}
                       <button
                         type="button"
+                        onClick={() => copyMessageText(msg)}
+                        className="p-1 rounded hover:bg-accent text-muted-foreground"
+                        title="Copiar o texto da mensagem"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => replyWithAI(msg)}
+                        className="p-1 rounded hover:bg-accent text-primary"
+                        title="Sugerir resposta a esta mensagem com IA"
+                      >
+                        <Sparkles className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
                         className="p-1 rounded hover:bg-accent text-muted-foreground"
                         title="Encaminhar para outra pessoa ou grupo"
@@ -1342,7 +1397,8 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
             mode="team"
             hideTrigger
             open={aiSuggestOpen}
-            onOpenChange={setAiSuggestOpen}
+            onOpenChange={(o) => { setAiSuggestOpen(o); if (!o) setAiTargetMessage(undefined); }}
+            targetMessage={aiTargetMessage}
             buildContext={buildReplyContext}
             getState={buildReplyState}
             onApply={(text) => {
@@ -1523,11 +1579,19 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                 <AlertTriangle className={cn('h-4 w-4', urgent && 'animate-pulse')} />
               </Button>
 
+              {/* Edição do texto com IA — mesmo menu do WhatsApp (tom, tradução,
+                  resumo, rascunho, prompt personalizado). */}
+              <AITextActions
+                value={messageText}
+                onChange={(v) => handleMessageChange(v)}
+                buttonClassName="h-8 w-8 shrink-0 flex items-center justify-center"
+              />
+
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 shrink-0"
-                onClick={() => setAiSuggestOpen(true)}
+                onClick={() => { setAiTargetMessage(undefined); setAiSuggestOpen(true); }}
                 title="Sugerir resposta com IA (baseada na conversa)"
               >
                 <Sparkles className="h-4 w-4 text-primary" />

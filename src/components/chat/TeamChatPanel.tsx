@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useTeamChat, useTeamMembers, TeamMember } from '@/hooks/useTeamChat';
+import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useTeamChat, useTeamMembers, TeamMember, TeamMessage } from '@/hooks/useTeamChat';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
 import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
-import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing } from 'lucide-react';
+import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing, Copy, Reply, ClipboardList, MessageSquarePlus } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -13,9 +14,19 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
-import { consumePendingTeamChatQuote, subscribeToTeamChatQuote } from '@/lib/teamChatQuoteEvents';
+import { consumePendingTeamChatQuote, subscribeToTeamChatQuote, formatQuotedMessages } from '@/lib/teamChatQuoteEvents';
 import { useCaseOwners, CaseOwner } from '@/hooks/useCaseOwners';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { AITextActions } from '@/components/ui/AITextActions';
+import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
+import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
+
+// Formulário completo de atividade — carregado só quando alguém cria a partir
+// de uma mensagem (o chat abre em toda ficha, não vale pesar o bundle).
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 
 interface TeamChatPanelProps {
   entityType: string;
@@ -98,6 +109,13 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null);
+  // IA: sugerir resposta (conversa inteira ou uma mensagem específica).
+  const [aiSuggestOpen, setAiSuggestOpen] = useState(false);
+  const [aiTargetMessage, setAiTargetMessage] = useState<string | undefined>(undefined);
+  // Atividade criada a partir de uma mensagem do chat.
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft | null>(null);
+  const [activitySheetOpen, setActivitySheetOpen] = useState(false);
+  const [creatingActivityFromMsgId, setCreatingActivityFromMsgId] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -448,6 +466,151 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     else navigate(`/leads?openContact=${id}`);
   }, [navigate]);
 
+  // ===== IA (mesmas ferramentas do WhatsApp, com persona de equipe) =====
+
+  /** Só texto entra na transcrição da IA — áudio/imagem/arquivo ficam de fora. */
+  const textMessagesForAI = useCallback(
+    () => (messages || []).filter(
+      m => m.content && String(m.content).trim() && (!m.message_type || m.message_type === 'text') && !m.deleted_at
+    ),
+    [messages]
+  );
+
+  /** Últimas falas em ordem cronológica. "Eu" = usuário atual. */
+  const buildReplyContext = useCallback(
+    () => textMessagesForAI()
+      .slice(-20)
+      .map(m => `${m.sender_id === user?.id ? 'Eu' : (m.sender_name || 'Colega')}: ${String(m.content).trim()}`)
+      .join('\n'),
+    [textMessagesForAI, user?.id]
+  );
+
+  /** Diz à IA se há resposta pendente e o que eu já falei (para não repetir). */
+  const buildReplyState = useCallback(() => {
+    const withText = textMessagesForAI();
+    const last = withText[withText.length - 1];
+    const lastMine = [...withText].reverse().find(m => m.sender_id === user?.id);
+    const lastOther = [...withText].reverse().find(m => m.sender_id !== user?.id);
+    return {
+      pending: !!last && last.sender_id !== user?.id,
+      lastOutboundText: lastMine ? String(lastMine.content).trim() : '',
+      lastClientText: lastOther ? String(lastOther.content).trim() : '',
+    };
+  }, [textMessagesForAI, user?.id]);
+
+  // ===== Ações a partir de uma mensagem (paridade com a bolha do WhatsApp) =====
+
+  /** Texto útil da bolha: sem o bloco citado, com a transcrição no caso do áudio. */
+  const msgPlainText = useCallback((msg: TeamMessage) => {
+    if (msg.message_type === 'audio') return msg.transcription?.trim() || '';
+    if (msg.message_type === 'image') return msg.content && msg.content !== '📷 Imagem' ? msg.content : '';
+    if (msg.message_type === 'file') return `📎 ${msg.file_name || 'Arquivo'}`;
+    return splitQuotedLines(msg.content || '').body || (msg.content || '');
+  }, []);
+
+  const copyMessage = useCallback(async (msg: TeamMessage) => {
+    const text = msgPlainText(msg);
+    if (!text.trim()) { toast.error('Essa mensagem não tem texto para copiar.'); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Texto copiado');
+    } catch {
+      toast.error('Não foi possível copiar');
+    }
+  }, [msgPlainText]);
+
+  /** Cita a mensagem no próprio rascunho — mesmo formato do "Comentar" do WhatsApp. */
+  const quoteMessage = useCallback((msg: TeamMessage) => {
+    const text = msgPlainText(msg);
+    if (!text.trim()) { toast.error('Essa mensagem não tem texto para citar.'); return; }
+    let when = '';
+    try { when = format(new Date(msg.created_at), 'dd/MM HH:mm', { locale: ptBR }); } catch { /* sem data */ }
+    const quote = formatQuotedMessages([{
+      who: msg.sender_id === user?.id ? 'Eu' : (msg.sender_name || 'Colega'),
+      when,
+      text,
+    }]);
+    appendQuote(quote);
+  }, [msgPlainText, user?.id, appendQuote]);
+
+  const replyWithAI = useCallback((msg: TeamMessage) => {
+    const text = msgPlainText(msg);
+    if (!text.trim()) { toast.error('Essa mensagem não tem texto para a IA responder.'); return; }
+    setAiTargetMessage(text);
+    setAiSuggestOpen(true);
+  }, [msgPlainText]);
+
+  // ---- Criar atividade a partir da mensagem (IA preenche, o usuário revisa) ----
+  const { types: activityTypes } = useActivityTypes();
+
+  const createActivityFromMessage = useCallback(async (msg: TeamMessage) => {
+    setCreatingActivityFromMsgId(msg.id);
+    try {
+      // A mensagem clicada é o foco; as anteriores entram só como contexto.
+      const idx = messages.findIndex(m => m.id === msg.id);
+      const slice = idx >= 0 ? messages.slice(Math.max(0, idx - 5), idx + 1) : [msg];
+      const transcript = slice
+        .map(m => {
+          const who = m.sender_id === user?.id ? 'Eu' : (m.sender_name || 'Colega');
+          return `${who}: ${msgPlainText(m) || '(sem texto)'}`;
+        })
+        .join('\n');
+
+      const memberNames = members.map(m => m.full_name).filter(Boolean) as string[];
+
+      // Tipos podem não ter carregado no clique (cache frio) — busca direto.
+      let typeOptions = activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label }));
+      if (typeOptions.length === 0) {
+        await ensureExternalSession();
+        const { data: tRows } = await externalSupabase
+          .from('activity_types')
+          .select('key, label, is_active')
+          .order('display_order', { ascending: true });
+        typeOptions = ((tRows as { key: string; label: string; is_active: boolean }[]) || [])
+          .filter(t => t.is_active)
+          .map(t => ({ key: t.key, label: t.label }));
+      }
+
+      const { data, error } = await cloudFunctions.invoke('chat-to-activity', {
+        body: { transcript, activity_types: typeOptions, member_names: memberNames },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar o rascunho da atividade');
+
+      const f = data.fields || {};
+      const assigneeMember = f.assignee_name
+        ? members.find(m => (m.full_name || '').trim().toLowerCase() === String(f.assignee_name).trim().toLowerCase())
+        : null;
+
+      // A atividade já nasce presa à ficha de onde o chat foi aberto.
+      const entityLink: Partial<ActivityDraft> =
+        entityType === 'lead' ? { lead_id: entityId, lead_name: entityName || f.lead_name || undefined }
+        : entityType === 'case' ? { case_id: entityId, case_title: entityName || undefined }
+        : entityType === 'process' ? { process_id: entityId, process_title: entityName || undefined }
+        : { lead_name: f.lead_name || undefined };
+
+      setActivityDraft({
+        title: f.title || '',
+        activity_type: f.activity_type || '',
+        priority: f.priority || 'normal',
+        deadline: f.deadline || undefined,
+        assigned_to: assigneeMember?.user_id || undefined,
+        assigned_to_name: assigneeMember?.full_name || undefined,
+        what_was_done: f.what_was_done || '',
+        current_status_notes: f.current_status || '',
+        next_steps: f.next_steps || '',
+        notes: [f.notes || '', `— Origem: chat interno da equipe —\n${transcript}`].filter(Boolean).join('\n\n'),
+        ...entityLink,
+      });
+      setActivitySheetOpen(true);
+    } catch (e: any) {
+      console.error('[TeamChatPanel] erro ao gerar atividade a partir da mensagem:', e);
+      toast.error(e?.message || 'Não foi possível gerar a atividade');
+    } finally {
+      setCreatingActivityFromMsgId(null);
+    }
+  }, [messages, members, user?.id, msgPlainText, activityTypes, entityType, entityId, entityName]);
+
   // Transforma URLs http(s) em links clicáveis dentro de um trecho de texto.
   const linkify = (text: string, keyBase: string) => {
     const urlRe = /(https?:\/\/[^\s]+)/g;
@@ -587,7 +750,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
               <div
                 key={msg.id}
                 ref={isHighlighted ? highlightRef : undefined}
-                className={cn('flex', isMe ? 'justify-end' : 'justify-start')}
+                className={cn('group flex', isMe ? 'justify-end' : 'justify-start')}
               >
                 <div className={cn(
                   'max-w-[80%] rounded-2xl px-3 py-2 text-sm',
@@ -631,6 +794,43 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                       </>
                     );
                   })()}
+                  {/* Ações a partir da mensagem — mesmas da bolha do WhatsApp.
+                      Ficam abaixo do conteúdo (nunca por cima do texto). */}
+                  {!msg.deleted_at && (
+                    <div className={cn(
+                      'flex flex-wrap items-center gap-0.5 mt-1 transition-opacity',
+                      'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                    )}>
+                      {[
+                        { key: 'copy', icon: Copy, label: 'Copiar', title: 'Copiar o texto da mensagem', run: () => copyMessage(msg) },
+                        { key: 'ai', icon: Sparkles, label: 'Responder c/ IA', title: 'Sugerir resposta a esta mensagem com IA', run: () => replyWithAI(msg) },
+                        { key: 'quote', icon: Reply, label: 'Citar', title: 'Responder citando esta mensagem', run: () => quoteMessage(msg) },
+                        {
+                          key: 'activity',
+                          icon: creatingActivityFromMsgId === msg.id ? Loader2 : ClipboardList,
+                          label: 'Criar atividade',
+                          title: 'Criar atividade a partir desta mensagem (a IA preenche, você revisa)',
+                          run: () => createActivityFromMessage(msg),
+                        },
+                      ].map(({ key, icon: Icon, label, title, run }) => (
+                        <button
+                          key={key}
+                          type="button"
+                          title={title}
+                          disabled={key === 'activity' && creatingActivityFromMsgId === msg.id}
+                          onClick={(e) => { e.stopPropagation(); run(); }}
+                          className={cn(
+                            'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors',
+                            'hover:bg-black/10 dark:hover:bg-white/10',
+                            isMe ? 'text-primary-foreground/80' : 'text-muted-foreground'
+                          )}
+                        >
+                          <Icon className={cn('h-3 w-3', key === 'activity' && creatingActivityFromMsgId === msg.id && 'animate-spin')} />
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className={cn('text-[9px] mt-0.5', isMe ? 'text-primary-foreground/60 text-right' : 'text-muted-foreground')}>
                     {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
                   </div>
@@ -808,6 +1008,21 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           >
             {isRecording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
           </Button>
+          {/* Edição do texto com IA — mesmo menu do WhatsApp (tom, tradução,
+              resumo, rascunho, prompt personalizado). */}
+          <AITextActions
+            value={inputText}
+            onChange={(v) => handleInputChange(v)}
+            buttonClassName="h-8 w-8 shrink-0 flex items-center justify-center"
+          />
+          <Button
+            type="button" size="icon" variant="ghost"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            title="Sugerir resposta com IA (baseada na conversa)"
+            onClick={() => { setAiTargetMessage(undefined); setAiSuggestOpen(true); }}
+          >
+            <MessageSquarePlus className="h-4 w-4 text-primary" />
+          </Button>
 
           <AutoResizeTextarea
             ref={inputRef}
@@ -827,6 +1042,38 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           </Button>
         </div>
       </div>
+
+      {/* Sugestão de resposta por IA — persona de equipe. Nada é enviado:
+          o texto cai no campo e a pessoa revisa. */}
+      <AISuggestReply
+        mode="team"
+        hideTrigger
+        open={aiSuggestOpen}
+        onOpenChange={(o) => { setAiSuggestOpen(o); if (!o) setAiTargetMessage(undefined); }}
+        targetMessage={aiTargetMessage}
+        buildContext={buildReplyContext}
+        getState={buildReplyState}
+        onApply={(text) => {
+          handleInputChange(text);
+          requestAnimationFrame(() => inputRef.current?.focus());
+        }}
+      />
+
+      {/* Formulário completo da atividade nascida de uma mensagem. Abre à
+          esquerda para não cobrir a ficha de onde o chat foi aberto. */}
+      {activityDraft && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={activitySheetOpen}
+            mode="create"
+            draft={activityDraft}
+            activityId={null}
+            side="left"
+            onOpenChange={(o) => { if (!o) { setActivitySheetOpen(false); setActivityDraft(null); } }}
+            onCreated={() => toast.success('Atividade criada a partir do chat!')}
+          />
+        </Suspense>
+      )}
 
       <MediaLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
