@@ -48,7 +48,15 @@ export function CallOverlay() {
   return (
     <>
       <audio ref={audioRef} autoPlay className="hidden" />
-      <div className="fixed bottom-4 right-4 z-[100] w-72 rounded-2xl border bg-card shadow-2xl p-4 animate-in slide-in-from-bottom-4">
+      {/* pointer-events-auto é obrigatório: Sheet/Dialog aberto põe pointer-events:none
+          no body e o card herda isso — os botões viram decoração (não dava pra desligar).
+          O stopPropagation impede que o clique aqui feche o Sheet que está por trás. */}
+      <div
+        className="fixed bottom-4 right-4 z-[200] w-72 rounded-2xl border bg-card shadow-2xl p-4 animate-in slide-in-from-bottom-4 pointer-events-auto"
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
         <div className="flex flex-col items-center text-center gap-3">
           <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             {isIncoming && <><PhoneIncoming className="h-3.5 w-3.5 text-primary" /> Ligação recebida</>}
