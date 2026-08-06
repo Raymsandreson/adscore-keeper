@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } fro
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer, ListChecks } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer, ListChecks, Briefcase } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetailSheet';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, estrelaLabel, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
+import TvCarteiraPanel from '@/components/tv/TvCarteiraPanel';
 // Ficha completa do processo, aberta por cima do detalhe. Lazy porque é o
 // ProcessDetailSheet inteiro — não pode entrar no bundle que a TV carrega só
 // pra mostrar ranking.
@@ -168,6 +169,10 @@ export default function TvAtividadesPage() {
   // Modo Corrida: o ranking vira pista estilo cartoon. Escolha de carro por nome.
   // É a visualização PADRÃO; só `?corrida=0` cai no pódio clássico.
   const [raceMode, setRaceMode] = useState(params.get('corrida') !== '0');
+  // Vista "Carteira": o mesmo período, mas esforço (atividades) ao lado de
+  // resultado (processos que andaram). Fora do rodízio automático — é vista de
+  // conversa de gestão, não de TV girando sozinha.
+  const [carteiraMode, setCarteiraMode] = useState(params.get('carteira') === '1');
   const [cars, setCars] = useState<Record<string, CarChoice>>({});
   // Ausências que cobrem HOJE (member_time_off): quem está de folga/férias sai
   // da corrida e vai pro "pit stop". Casamento com o ranking é por nome.
@@ -1032,6 +1037,17 @@ export default function TvAtividadesPage() {
             <Flag className="h-4 w-4" />
             {raceMode ? 'Ver pódio' : 'Modo Corrida'}
           </button>
+          <button
+            onClick={() => setCarteiraMode(v => !v)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full text-xs font-black px-3.5 py-1.5 transition',
+              carteiraMode ? 'bg-emerald-400 text-slate-900 hover:bg-emerald-300' : 'bg-white/10 text-white/70 hover:text-white',
+            )}
+            title="Atividade concluída ao lado de processo que andou"
+          >
+            <Briefcase className="h-4 w-4" />
+            {carteiraMode ? 'Voltar ao ranking' : 'Carteira'}
+          </button>
           {/* Música do telão: play/pausa + volume (aparece só tocando). */}
           <div className="flex items-center gap-1.5">
             <button
@@ -1116,7 +1132,11 @@ export default function TvAtividadesPage() {
           </div>
         )}
 
-        {ranking.length === 0 && pit.length === 0 ? (
+        {carteiraMode ? (
+          /* Esforço x resultado. Independe do ranking ter linhas: a carteira
+             vem de process_owners() e existe mesmo numa semana sem atividade. */
+          <TvCarteiraPanel rows={ranking} refreshMs={tv ? 60_000 : 0} />
+        ) : ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
           </div>
