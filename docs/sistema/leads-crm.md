@@ -143,6 +143,22 @@ Detalhes que valem entender:
 - Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (rodízio) e
   `caseAssignee.test.ts` (herança por trilha).
 
+#### Trocar o responsável arrasta as atividades
+
+Salvar "Editar Caso" com um responsável diferente chama a RPC
+`aplicar_responsavel_do_caso_nas_atividades(p_case_id)` (migration
+`20260806173000_rpc_aplicar_responsavel_do_caso.sql`), que repassa o novo dono para as
+atividades **vivas** do caso — cada uma pela trilha do seu processo. A interface avisa quantas
+mudaram; se a RPC falhar, avisa que o caso foi salvo mas as atividades não.
+
+- **Concluídas não são tocadas**, mesma razão do backfill.
+- **Só propaga se o valor mudou**: sem isso, todo "Salvar" reescreveria as atividades.
+- **A RPC pula colisões** do índice `lead_activities_dedup_pending_idx` e devolve a contagem
+  de puladas. Se essa lógica vivesse no JS, um 23505 derrubaria o salvamento do caso inteiro —
+  foi exatamente o que aconteceu na primeira tentativa do backfill.
+- Regra geral desta base: **toda reatribuição em massa precisa do desempate** (quem já está no
+  alvo fica com a vaga, empate pela mais antiga), senão estoura o índice único.
+
 #### Backfill retroativo — 06/08/2026
 
 `supabase/migrations/20260806160000_backfill_responsavel_prev.sql` aplicou a regra no passado:
