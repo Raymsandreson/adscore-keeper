@@ -5,6 +5,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
@@ -18,6 +24,11 @@ import { type ClientCommitment } from '@/hooks/useClientCommitments';
 import {
   buildReminderText, isCommitmentOpen, isCommitmentOverdue, isSameCommitmentTitle,
 } from '@/lib/clientCommitments';
+
+export interface TeamOption {
+  user_id: string;
+  full_name: string | null;
+}
 
 export interface CommitmentDraft {
   sourceMessageId?: string | null;
@@ -50,7 +61,14 @@ interface Props {
     sourceMessageId?: string | null;
     sourceMessageText?: string | null;
   }) => Promise<unknown>;
-  onDone: (id: string) => Promise<unknown>;
+  onDone: (id: string, resolver?: { userId?: string | null; name?: string | null }) => Promise<unknown>;
+  /** Equipe, para escolher quem resolveu. Sem lista, conclui direto. */
+  teamOptions?: TeamOption[];
+  /**
+   * Quem falou com o cliente por último nesta conversa (prefixo `*Nome:*`).
+   * Vira a opção pré-selecionada no "quem resolveu".
+   */
+  suggestedResolver?: TeamOption | null;
   onGiveUp: (id: string) => Promise<unknown>;
   /** "Não era pendência" — a IA errou. */
   onDismiss: (id: string) => Promise<unknown>;
@@ -68,7 +86,7 @@ interface Props {
 
 function ItemCard({
   item, clientName, onDone, onGiveUp, onDismiss, onReopen, onRemind, onRemove, onDraftMessage,
-  onCreateActivity,
+  onCreateActivity, onAskResolver,
 }: {
   item: ClientCommitment;
   clientName: string;
@@ -80,6 +98,8 @@ function ItemCard({
   onRemove: Props['onRemove'];
   onDraftMessage?: Props['onDraftMessage'];
   onCreateActivity?: Props['onCreateActivity'];
+  /** Sem lista de equipe o botão conclui direto; com lista, pergunta antes. */
+  onAskResolver?: (item: ClientCommitment) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const isOpen = isCommitmentOpen(item.status);
@@ -159,7 +179,9 @@ function ItemCard({
           <>
             <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
               disabled={busy}
-              onClick={() => run(() => onDone(item.id), 'Marcada como feita')}>
+              onClick={() => (onAskResolver
+                ? onAskResolver(item)
+                : run(() => onDone(item.id), 'Marcada como feita'))}>
               <Check className="h-3 w-3" /> Feito
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
@@ -214,7 +236,7 @@ export function ClientCommitmentsPanel({
   openState, onOpenChange, clientName, open, done, loading, analyzing, summary, analyzeError,
   draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
   onReopen, onRemind, onRemove, onDraftMessage, onCreateActivity,
-  alertEnabled, onAlertEnabledChange,
+  alertEnabled, onAlertEnabledChange, teamOptions, suggestedResolver,
 }: Props) {
   const [showManual, setShowManual] = useState(false);
   const [title, setTitle] = useState('');
@@ -224,6 +246,34 @@ export function ClientCommitmentsPanel({
   // Resolvidas começam abertas: o valor está justamente em ver o que o cliente
   // já entregou sem ter que caçar na conversa.
   const [showDone, setShowDone] = useState(true);
+  /** Pendência esperando a resposta de "quem resolveu". */
+  const [resolvendo, setResolvendo] = useState<ClientCommitment | null>(null);
+  const [resolverId, setResolverId] = useState<string>('');
+  const [salvandoResolver, setSalvandoResolver] = useState(false);
+
+  const temEquipe = Array.isArray(teamOptions) && teamOptions.length > 0;
+
+  const abrirResolver = (item: ClientCommitment) => {
+    // Pré-seleciona quem falou com o cliente por último; sem identificação,
+    // abre vazio e obriga a escolher — chutar aqui estraga o histórico.
+    setResolverId(suggestedResolver?.user_id || '');
+    setResolvendo(item);
+  };
+
+  const confirmarResolver = async () => {
+    if (!resolvendo || !resolverId) return;
+    const escolhido = (teamOptions || []).find((m) => m.user_id === resolverId);
+    setSalvandoResolver(true);
+    try {
+      await onDone(resolvendo.id, { userId: resolverId, name: escolhido?.full_name || null });
+      toast.success(`Resolvida por ${escolhido?.full_name || 'equipe'}`);
+      setResolvendo(null);
+    } catch {
+      toast.error('Não consegui salvar. Tente de novo.');
+    } finally {
+      setSalvandoResolver(false);
+    }
+  };
 
   // "Pendência" numa bolha: abre o registro manual já com a mensagem citada.
   useEffect(() => {
@@ -281,6 +331,7 @@ export function ClientCommitmentsPanel({
   };
 
   return (
+    <>
     <Sheet open={openState} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
         <SheetHeader className="p-4 pb-3">
@@ -342,6 +393,7 @@ export function ClientCommitmentsPanel({
                     onRemind={onRemind}
                     onRemove={onRemove}
                     onCreateActivity={onCreateActivity}
+                    onAskResolver={temEquipe ? abrirResolver : undefined}
                     onDraftMessage={(t) => { onDraftMessage?.(t); onOpenChange(false); }}
                   />
                 ))}
@@ -457,5 +509,50 @@ export function ClientCommitmentsPanel({
         </ScrollArea>
       </SheetContent>
     </Sheet>
+
+    {/* Quem resolveu — a instância é compartilhada, então quem clica nem sempre
+        é quem tratou o cliente. Vem pré-selecionado com quem falou por último
+        na conversa (prefixo "*Nome:*" da mensagem enviada). */}
+    <Dialog open={!!resolvendo} onOpenChange={(v) => { if (!v) setResolvendo(null); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="text-base">Quem resolveu?</DialogTitle>
+          <DialogDescription className="text-xs">
+            {resolvendo?.title}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2">
+          <Select value={resolverId} onValueChange={setResolverId}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Escolha quem tratou com o cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              {(teamOptions || []).map((m) => (
+                <SelectItem key={m.user_id} value={m.user_id} className="text-sm">
+                  {m.full_name || 'Sem nome'}
+                  {suggestedResolver?.user_id === m.user_id ? ' · falou por último' : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <p className="text-[11px] text-muted-foreground">
+            {suggestedResolver
+              ? `Sugerido pela conversa: ${suggestedResolver.full_name || '—'}.`
+              : 'Ninguém identificado nas mensagens desta conversa — escolha na lista.'}
+          </p>
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setResolvendo(null)}>Cancelar</Button>
+          <Button size="sm" disabled={!resolverId || salvandoResolver} onClick={confirmarResolver}>
+            {salvandoResolver ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Check className="h-3.5 w-3.5 mr-1" />}
+            Marcar como feita
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

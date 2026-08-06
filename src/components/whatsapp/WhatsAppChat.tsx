@@ -33,6 +33,7 @@ import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
 import { ClientCommitmentsPanel, type CommitmentDraft } from './ClientCommitmentsPanel';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -1012,6 +1013,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
+
+  /**
+   * Quem da equipe falou com o cliente por último nesta conversa. A instância é
+   * compartilhada (a de atendimento tem dezenas de donos), então a única pista
+   * de autoria é o prefixo "*Nome:*" que o envio identificado coloca no texto.
+   * Reusa a lista de `profiles` já carregada para o @menção — sem query nova.
+   */
+  const suggestedResolver = useMemo(() => {
+    const nome = lastSenderName(conversation.messages || []);
+    if (!nome) return null;
+    const membro = matchMemberByName(nome, teamMembers);
+    return membro ? { user_id: membro.user_id, full_name: membro.full_name } : null;
+  }, [conversation.messages, teamMembers]);
+
+  const commitmentTeamOptions = useMemo(
+    () => [...teamMembers].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')),
+    [teamMembers]
+  );
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   // Group @mention (WhatsApp native): picker over participants while composing
   const [groupMentionQuery, setGroupMentionQuery] = useState<string | null>(null); // null = picker closed
@@ -3285,6 +3304,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
         alertEnabled={commitmentAlertEnabled}
         onAlertEnabledChange={toggleCommitmentAlert}
+        teamOptions={commitmentTeamOptions}
+        suggestedResolver={suggestedResolver}
         onCreateActivity={onCreateActivity ? (item) => {
           // Reaproveita o mesmo formulário de "Criar atividade a partir desta
           // mensagem": a IA preenche o resto a partir deste texto.

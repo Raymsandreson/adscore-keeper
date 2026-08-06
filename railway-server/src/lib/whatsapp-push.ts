@@ -243,10 +243,12 @@ export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Prom
     if (!convDigits) return;
 
     // ---- Destinatários ------------------------------------------------------
-    // Regra (definida com o Raym em 04/08/2026):
-    //   conversa PRIVADA → dono da instância;
-    //   GRUPO            → responsável do processo ou acolhedor do lead, e só.
-    // O dono não recebe o que passa nos grupos: grupo é ~94% do volume.
+    // Regra, na ordem em que é aplicada:
+    //   0) DONO DA CONVERSA, se houver — vale para grupo e privada;
+    //   1) sem dono, conversa PRIVADA → dono da instância;
+    //   2) sem dono, GRUPO → responsável do processo ou acolhedor do lead.
+    // O dono da instância nunca recebe o que passa nos grupos dele: grupo é ~94%
+    // do volume, e notificar tudo é o que faz a pessoa desligar o push.
     const ownerIds = new Set<string>();
     const groupIds = new Set<string>();
 
@@ -254,7 +256,23 @@ export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Prom
     // webhook é a fonte primária, o formato é a rede de segurança.
     const isGroupMsg = input.isGroup || convDigits.startsWith('1203') || convDigits.length >= 17;
 
-    if (isGroupMsg) {
+    // Dono da conversa manda em tudo. É o único sinal que diz quem está de fato
+    // cuidando DESTE papo — o resto (responsável do processo, acolhedor, dono da
+    // instância) é atributo do cliente ou da linha telefônica. Vale para grupo e
+    // para privada, e é o que resolve instância compartilhada.
+    const { data: assignee } = await supabase
+      .from('whatsapp_cloud_assignees')
+      .select('assigned_user_id')
+      .eq('phone', input.phone)
+      .eq('instance_name', input.instanceName)
+      .maybeSingle();
+    const assignedId = (assignee as { assigned_user_id?: string | null } | null)?.assigned_user_id ?? null;
+
+    if (assignedId) {
+      // Entra pelos dois baldes: a pessoa recebe tanto se ligou "conversas
+      // privadas" quanto "meus grupos", conforme o tipo da mensagem.
+      (isGroupMsg ? groupIds : ownerIds).add(assignedId);
+    } else if (isGroupMsg) {
       (await resolveGroupResponsibles(convDigits, input.leadId)).forEach((id) => groupIds.add(id));
     } else {
       const { data: inst } = await supabase

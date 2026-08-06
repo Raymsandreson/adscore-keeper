@@ -5,6 +5,11 @@ import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from '
 import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
 import { estacoesDoProcesso } from '@/lib/processStations';
+import InssMarcosProcesso from '@/components/cases/InssMarcosProcesso';
+import { ehNumeroCnj } from '@/lib/inssRegua';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from '@/components/ui/dialog';
 
 /** Número CNJ compacto pro chip de origem: "3013153-02…8.06" */
 function shortCnj(numero: string | null): string {
@@ -97,10 +102,13 @@ function MarcosTrainLine({
   movements,
   currentProcessId,
   estacoesLista,
+  onEstacaoClick,
 }: {
   movements: ReturnType<typeof useProcessMovements>['movements'];
   currentProcessId?: string;
   estacoesLista: MarcoTipo[];
+  /** Abre o detalhe da estação. Só recebe estação já alcançada. */
+  onEstacaoClick?: (tipo: MarcoTipo) => void;
 }) {
   const estacoes = useMemo<Estacao[]>(() => {
     // Primeira data e valor de cada marco alcançado (+ processo de origem).
@@ -168,9 +176,23 @@ function MarcosTrainLine({
         const duracao = duracaoAposEstacao(i);
         // Trilho sólido = o trem já passou por este trecho (está antes da estação atual).
         const trechoPercorrido = idxAtual >= 0 && i < idxAtual;
+        // Só estação alcançada abre detalhe: futura e pulada não têm o que mostrar.
+        const clicavel = !!onEstacaoClick && (e.status === 'atual' || e.status === 'concluida');
         return (
           <div key={e.tipo}>
-            <div className="flex items-center gap-2.5">
+            <div
+              className={cn(
+                'flex items-center gap-2.5 rounded',
+                clicavel && 'cursor-pointer hover:bg-muted/70 -mx-1 px-1 py-0.5 transition-colors',
+              )}
+              onClick={clicavel ? () => onEstacaoClick!(e.tipo) : undefined}
+              role={clicavel ? 'button' : undefined}
+              tabIndex={clicavel ? 0 : undefined}
+              onKeyDown={clicavel ? (ev) => {
+                if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); onEstacaoClick!(e.tipo); }
+              } : undefined}
+              title={clicavel ? 'Ver o que foi publicado nesta estação' : undefined}
+            >
               {/* estação */}
               <div className="w-5 flex justify-center shrink-0">
                 {e.status === 'atual' ? (
@@ -259,6 +281,16 @@ export function ProcessMovementsTimeline({
   const [escopo, setEscopo] = useState<'processo' | 'caso'>('processo');
   const { movements, loading, refetch } = useProcessMovements(processId, { escopo, caseId });
   const [onlyCurrent, setOnlyCurrent] = useState(true);
+  /** Estação aberta no detalhe (null = diálogo fechado). */
+  const [estacaoDetalhe, setEstacaoDetalhe] = useState<MarcoTipo | null>(null);
+
+  // Publicações da estação aberta, da mais recente para a mais antiga.
+  const detalheMovs = useMemo(() => {
+    if (!estacaoDetalhe) return [];
+    return movements
+      .filter((m) => m.tipo_movimentacao === estacaoDetalhe)
+      .sort((a, b) => (b.data_movimentacao || '').localeCompare(a.data_movimentacao || ''));
+  }, [movements, estacaoDetalhe]);
 
   // Estações a exibir: ordem canônica com as intermediárias (conciliação/
   // perícia/instrução) entrando por evidência (marco existe) ou previsão (perfil).
@@ -299,6 +331,13 @@ export function ProcessMovementsTimeline({
     );
   }
 
+  // Processo ADMINISTRATIVO: o número não é CNJ, o Escavador não atende, e a
+  // régua é outra (2 etapas, ancorada no resultado). Dizer "os marcos vêm do
+  // Escavador" aqui seria mentira — nunca viriam. São 236 processos assim.
+  if (!ehNumeroCnj(processNumber) && processNumber) {
+    return <InssMarcosProcesso processNumber={processNumber} />;
+  }
+
   if (movements.length === 0) {
     return (
       <div className="text-center py-6 text-muted-foreground">
@@ -327,7 +366,81 @@ export function ProcessMovementsTimeline({
           </Button>
         </div>
       )}
-      <MarcosTrainLine movements={movements} currentProcessId={processId} estacoesLista={estacoesLista} />
+      <MarcosTrainLine
+        movements={movements}
+        currentProcessId={processId}
+        estacoesLista={estacoesLista}
+        onEstacaoClick={setEstacaoDetalhe}
+      />
+
+      {/* Detalhe da estação: o teor publicado que produziu o marco. Sem isto,
+          a régua diz "houve sentença" e não deixa ver o que a sentença disse. */}
+      <Dialog open={!!estacaoDetalhe} onOpenChange={(o) => !o && setEstacaoDetalhe(null)}>
+        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {estacaoDetalhe && (
+                <Badge className={MARCO_COLOR[estacaoDetalhe]}>{MARCO_LABEL[estacaoDetalhe]}</Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              {detalheMovs.length === 1
+                ? '1 publicação gerou este marco'
+                : `${detalheMovs.length} publicações neste marco`}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="overflow-y-auto space-y-3 pr-1">
+            {detalheMovs.map((m) => (
+              <div key={m.id} className="border rounded-lg p-3 space-y-1.5">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-sm font-medium">
+                    {m.data_movimentacao ? formatDate(m.data_movimentacao) : 'sem data'}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {formatValor(m.valor_indenizacao_fixado) && (
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                        {formatValor(m.valor_indenizacao_fixado)}
+                      </Badge>
+                    )}
+                    {m.numero_cnj && m.process_id !== processId && (
+                      <span className="text-[10px] font-mono text-muted-foreground">
+                        via {shortCnj(m.numero_cnj)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {m.descricao ? (
+                  <p className="text-xs whitespace-pre-wrap leading-relaxed text-muted-foreground">
+                    {m.descricao}
+                  </p>
+                ) : (
+                  <p className="text-xs italic text-muted-foreground">
+                    Sem teor salvo — o provedor não devolveu o conteúdo desta movimentação.
+                  </p>
+                )}
+
+                {m.link_decisao && (
+                  <a
+                    href={m.link_decisao}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" /> Abrir documento
+                  </a>
+                )}
+              </div>
+            ))}
+            {!detalheMovs.length && (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                Nenhuma publicação registrada nesta estação.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex items-center justify-between pt-1">
         <h4 className="text-xs font-semibold flex items-center gap-1.5">

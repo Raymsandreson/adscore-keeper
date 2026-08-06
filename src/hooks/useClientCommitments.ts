@@ -265,14 +265,21 @@ export function useClientCommitments({
     return data as ClientCommitment;
   }, []);
 
+  /**
+   * Conclui a pendência creditando QUEM resolveu — não necessariamente quem
+   * está clicando. A instância costuma ser compartilhada (a de atendimento tem
+   * 42 pessoas com acesso), então gravar sempre o usuário logado apagava a
+   * informação de quem realmente tratou o cliente.
+   */
   const markDone = useCallback(
-    async (id: string) => {
-      const extUserId = await remapToExternal(user?.id);
+    async (id: string, resolver?: { userId?: string | null; name?: string | null }) => {
+      const cloudId = resolver?.userId ?? user?.id;
+      const extUserId = await remapToExternal(cloudId);
       return patch(id, {
         status: 'feito',
         done_at: new Date().toISOString(),
         done_by: extUserId,
-        done_by_name: profile?.full_name || null,
+        done_by_name: resolver?.name || profile?.full_name || null,
       });
     },
     [patch, user?.id, profile?.full_name]

@@ -13,6 +13,7 @@ import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { ClientCommitmentsInbox } from '@/components/activities/ClientCommitmentsInbox';
 import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
@@ -446,6 +447,8 @@ const ActivitiesPage = () => {
   const [preencherOpen, setPreencherOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
   const [feedbackFunnelOpen, setFeedbackFunnelOpen] = useState(false);
+  /** Caixa de pendências do cliente (o que ELE ficou de fazer, todas as conversas). */
+  const [commitmentsInboxOpen, setCommitmentsInboxOpen] = useState(false);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [nextStepsOpen, setNextStepsOpen] = useState(false);
@@ -1414,6 +1417,16 @@ const ActivitiesPage = () => {
     setFeedbackFunnelOpen(true);
     const newParams = new URLSearchParams(searchParams);
     newParams.delete('feedbacks');
+    setSearchParams(newParams, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Mesmo esquema para a caixa de pendências do cliente (?pendencias=1).
+  useEffect(() => {
+    if (searchParams.get('pendencias') !== '1') return;
+    setCommitmentsInboxOpen(true);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('pendencias');
     setSearchParams(newParams, { replace: true });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
@@ -3379,6 +3392,18 @@ const ActivitiesPage = () => {
               }}
             >
               💬 Feedbacks
+            </a>
+          </Button>
+          <Button asChild variant="ghost" size="sm" className="h-8 text-primary-foreground hover:bg-primary-foreground/10 gap-1" title="Pendências dos clientes — o que eles ficaram de fazer, de todas as conversas">
+            <a
+              href="/?pendencias=1"
+              onClick={(e) => {
+                if (!isPlainLeftClick(e)) return;
+                e.preventDefault();
+                setCommitmentsInboxOpen(true);
+              }}
+            >
+              📌 Pendências
             </a>
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setCourtContactsOpen(true)} title="Varas e Tribunais — contatos">
@@ -5901,6 +5926,11 @@ const ActivitiesPage = () => {
         open={feedbackFunnelOpen}
         onOpenChange={setFeedbackFunnelOpen}
         onCreateFollowUp={openFollowUpFromFeedback}
+      />
+      <ClientCommitmentsInbox
+        open={commitmentsInboxOpen}
+        onOpenChange={setCommitmentsInboxOpen}
+        teamOptions={teamMembers}
       />
       <ActivityCreatedDialog
         open={createdDialog.open}
