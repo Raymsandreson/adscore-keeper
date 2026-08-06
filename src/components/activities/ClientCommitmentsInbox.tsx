@@ -25,6 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import {
   format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday, getDay,
 } from 'date-fns';
@@ -58,6 +59,11 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
   const [calMonth, setCalMonth] = useState(new Date());
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
 
+  /**
+   * Conversa aberta no painel de baixo (Drawer), sem sair da caixa: quem está
+   * limpando pendências não pode perder a lista a cada uma que abre.
+   */
+  const [conversaAberta, setConversaAberta] = useState<InboxCommitment | null>(null);
   const [resolvendo, setResolvendo] = useState<InboxCommitment | null>(null);
   const [resolverId, setResolverId] = useState('');
   const [salvando, setSalvando] = useState(false);
@@ -87,10 +93,30 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
     [filtradas, diaSelecionado]
   );
 
+  /**
+   * Abre a conversa no painel de baixo. A caixa sai da frente enquanto isso e
+   * volta sozinha ao fechar — empilhar o Drawer sobre o Sheet deixaria dois
+   * modais disputando foco e trava de rolagem.
+   */
   const abrirConversa = (item: InboxCommitment) => {
     if (!item.phone) return toast.error('Pendência sem telefone da conversa');
+    setConversaAberta(item);
     onOpenChange(false);
-    navigate(`/whatsapp?openChat=${encodeURIComponent(item.phone)}`);
+  };
+
+  const fecharConversa = () => {
+    setConversaAberta(null);
+    // Volta para a lista de onde a pessoa saiu. Reabrir já recarrega (o hook
+    // recarrega quando `enabled` volta a ser true), então a pendência
+    // resolvida dentro da conversa some sozinha.
+    onOpenChange(true);
+  };
+
+  /** Saída para a inbox completa, quando a pessoa quer o resto das ferramentas. */
+  const irParaWhatsApp = (phone: string) => {
+    setConversaAberta(null);
+    onOpenChange(false);
+    navigate(`/whatsapp?openChat=${encodeURIComponent(phone)}`);
   };
 
   const abrirResolver = (item: InboxCommitment) => {
@@ -295,6 +321,22 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
           </ScrollArea>
         </SheetContent>
       </Sheet>
+
+      {conversaAberta && (
+        <DashboardChatPreview
+          open={!!conversaAberta}
+          onOpenChange={(v) => { if (!v) fecharConversa(); }}
+          phone={conversaAberta.phone}
+          contactName={conversaAberta.lead_name}
+          instanceName={conversaAberta.instance_name}
+          hasLead={!!conversaAberta.lead_id}
+          hasContact={!!conversaAberta.contact_id}
+          wasResponded={false}
+          responseTimeMinutes={null}
+          onOpenChat={irParaWhatsApp}
+          onConversationUpdated={reload}
+        />
+      )}
 
       <Dialog open={!!resolvendo} onOpenChange={(v) => { if (!v) setResolvendo(null); }}>
         <DialogContent className="sm:max-w-md">
