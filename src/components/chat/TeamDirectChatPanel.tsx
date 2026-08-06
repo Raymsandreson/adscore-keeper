@@ -8,6 +8,7 @@ const ActivityFullSheet = lazy(() =>
   import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
 );
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -146,7 +147,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const mentionCandidates = (() => {
     if (mentionQuery === null) return [];
     const q = mentionQuery.toLowerCase().trim();
-    return profiles
+    return filterAssignableMembers(profiles)
       .filter(p => p.user_id !== user?.id && !inactiveIds.has(p.user_id))
       .filter(p => !q || (p.full_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
       .slice(0, 6);

@@ -28,6 +28,10 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   '16ba558c-1eb4-4128-b31c-9f0f2b804090', // Ana Lígia Santos Cavalcante
   'fc4288d3-9378-48d6-9333-cfdd03dbc626', // Daniel Vieira Oliveira
   '0015c413-e258-4fad-846c-b63e5b05c443', // Crisley Costa de Oliveira
+  // Não é funcionária. O nome quase idêntico ao da Keliane Sousa Amorim Araújo
+  // fazia a equipe atribuir atividade na pessoa errada — 20 atividades pararam
+  // aí, 2 delas com as DUAS como co-responsáveis. Removida em 06/08/2026.
+  'f0a5dad8-5c5e-44f2-82b9-d8b9f022bb0c', // KEILANE DE LIMA TEIXEIRA
 ]);
 
 export function filterAssignableMembers<T extends { user_id: string }>(members: T[]): T[] {
