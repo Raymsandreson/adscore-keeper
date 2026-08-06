@@ -143,6 +143,23 @@ Detalhes que valem entender:
 - Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (rodízio) e
   `caseAssignee.test.ts` (herança por trilha).
 
+#### Onde o responsável aparece em `/casos`
+
+- **Avatares no cabeçalho do card**, à esquerda do badge de status: até dois círculos com as
+  iniciais (cor determinística pelo nome) e tooltip dizendo qual é o administrativo e qual é o
+  judicial. Caso sem responsável não renderiza nada — funis que não usam o campo ficam iguais.
+- **Filtro "Responsável"** na barra, ao lado de Núcleo. Casa as **duas** colunas
+  (`assigned_to.eq.X,assigned_to_judicial.eq.X`), então um caso onde a Gisele é a judicial e o
+  José o administrativo aparece para os dois. Sem isso a Gisele filtraria pelo nome dela e não
+  acharia nenhum dos 38 casos judiciais. Aplicado nos três caminhos de busca da página
+  (direto, por nome do lead, por número/título do processo).
+- Resolução de uuid→pessoa em `src/hooks/useCaseAssignees.ts`: uma consulta para a lista
+  inteira, não uma por card. Os 7 assessores saem de `INSS_PREV_OPTIONS` via `remapToCloud`;
+  quem sobra cai num `profiles` do Externo por `user_id`.
+- **Não fica** no corpo expandido do card (quem expandiu está a um clique de "Editar Caso") nem
+  nas telas onde o caso é contexto e não assunto (ProcessesPage, ActivitiesPage, Acompanhamento
+  Processual, busca global) — lá o responsável relevante é o da própria linha.
+
 #### Trocar o responsável arrasta as atividades
 
 Salvar "Editar Caso" com um responsável diferente chama a RPC
