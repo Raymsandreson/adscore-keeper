@@ -32,6 +32,7 @@ export interface RaceRow {
   notas_n?: number;
   /** Feedbacks que a pessoa deveria avaliar e não avaliou (backlog total). */
   fb_pendentes?: number;
+  pend_cliente?: number;
   home_office?: boolean;
 }
 export interface CarChoice { car_id: string; color: string }

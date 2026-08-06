@@ -2,6 +2,9 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ListPagination from "@/components/processes/ListPagination";
 import { LeadEditDialog } from "@/components/kanban/LeadEditDialog";
 import InssAdminPushEmailView from "@/components/processes/InssAdminPushEmailView";
+import RegistrarProtocoloDialog, {
+  type RegistrarProtocoloAlvo,
+} from "@/components/processes/RegistrarProtocoloDialog";
 import { useLeads, type Lead } from "@/hooks/useLeads";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { db } from "@/integrations/supabase";
@@ -22,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Search, Mail, Link2, Unlink, ChevronDown, RefreshCw, AlertCircle, Clock,
-  Sparkles, User, DownloadCloud, Fingerprint, Users,
+  Sparkles, User, DownloadCloud, Fingerprint, Users, FileCheck, TriangleAlert,
 } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -45,6 +48,14 @@ interface InssProcess {
   resultado?: string | null;
   servico?: string | null;
   exigencia_since?: string | null;
+  /** Aviso de que a data informada por uma pessoa foi sobrescrita pelo e-mail
+   *  do INSS. Preenchido pelo trigger trg_inss_protocol_override. */
+  protocol_override?: {
+    data_anterior?: string;
+    data_nova?: string;
+    motivo?: string;
+    detectado_em?: string;
+  } | null;
 }
 
 // Marcos previdenciários na ordem da jornada do requerimento. O INSS não emite
@@ -383,6 +394,7 @@ export default function InssAdminProcessesTab() {
   );
 
   // Dialog state
+  const [protocoloAlvo, setProtocoloAlvo] = useState<RegistrarProtocoloAlvo | null>(null);
   const [caseSearch, setCaseSearch] = useState("");
   const [caseOptions, setCaseOptions] = useState<CaseOption[]>([]);
   const [suggestions, setSuggestions] = useState<CaseOption[]>([]);
@@ -1349,6 +1361,20 @@ export default function InssAdminProcessesTab() {
                         {p.protocol_date && (
                           <div>📅 Protocolo: {fmtDate(p.protocol_date)}</div>
                         )}
+                        {/* A data informada por uma pessoa foi trocada pela do
+                            e-mail do INSS. Mostrar as duas — quem registrou
+                            precisa saber que a sua não prevaleceu. */}
+                        {p.protocol_override && (
+                          <div className="flex items-start gap-1 text-amber-700 dark:text-amber-400">
+                            <TriangleAlert className="h-3 w-3 mt-0.5 shrink-0" />
+                            <span>
+                              Data corrigida pelo INSS:{" "}
+                              {fmtDate(p.protocol_override.data_anterior || "")} →{" "}
+                              {fmtDate(p.protocol_override.data_nova || "")}
+                              {p.protocol_override.motivo ? ` — ${p.protocol_override.motivo}` : ""}
+                            </span>
+                          </div>
+                        )}
                         {p.last_email_at && (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3 w-3" />
@@ -1378,6 +1404,20 @@ export default function InssAdminProcessesTab() {
                           Vincular
                         </Button>
                       )}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setProtocoloAlvo({
+                          id: p.id,
+                          requerimento_number: p.requerimento_number,
+                          nome_segurado: p.nome_segurado,
+                        })}
+                        className="gap-1 h-7"
+                        title="Registrar protocolo com a certidão"
+                      >
+                        <FileCheck className="h-3.5 w-3.5" />
+                        Protocolo
+                      </Button>
                       {hasMultiple && (
                         <CollapsibleTrigger asChild>
                           <Button size="sm" variant="ghost" className="h-7 gap-1">
@@ -1669,6 +1709,13 @@ export default function InssAdminProcessesTab() {
         </DialogContent>
       </Dialog>
 
+
+      {/* Registro do protocolo no ato, com a certidão como prova */}
+      <RegistrarProtocoloDialog
+        alvo={protocoloAlvo}
+        onClose={() => setProtocoloAlvo(null)}
+        onSaved={loadProcesses}
+      />
 
       {/* Painel lateral do lead vinculado */}
       {selectedLead && (

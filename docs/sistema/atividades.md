@@ -195,7 +195,7 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 **Propósito**: ranking ao vivo do time (auto-atualiza a cada 45s), feito pra rodar em TV/fullscreen.
 
-- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → 4º Passos → 5º Itens do Checklist → 6º Concluídas → 7º Menos Atrasadas → 8º Melhor Média de Estrelas ⭐ → 9º Menos Feedbacks sem Avaliar → 10º Mais Tempo Ativo → 11º Menos Ocioso → 12º Resposta no Chat.
+- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → 4º Passos → 5º Itens do Checklist → 6º Concluídas → 7º Menos Atrasadas → **8º Menos Pendências do Cliente em aberto** → 9º Melhor Média de Estrelas ⭐ → 10º Menos Feedbacks sem Avaliar → 11º Mais Tempo Ativo → 12º Menos Ocioso → 13º Resposta no Chat.
 - Seletor de time, período "Hoje"/"Semana"/"Mês", "Atualizar", "Modo TV" (tela cheia).
 - Clique num assessor — abre o coach de desempenho ("Analisar & mandar mensagem"). No cabeçalho do coach os seis números também são clicáveis e abrem o detalhe (abaixo).
 
@@ -215,6 +215,12 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 - Time comercial (funil): resultado do lead no funil de vendas (como antes).
 - Os dois somam por pessoa. Fonte: função `tv_atividades_ranking`. O status do processo é detectado das movimentações/e-mail — ver "Status do Processo" em `processual.md`. Grão (processo ≠ lead): `.agents/skills/lead-vs-case-identity`.
 - **Respeita o período desde 04/08/2026** (migration `20260804211000`). Até então era o único critério que ignorava o `p_since` e contava sempre o **mês corrente**: com o telão em "Hoje" um assessor liderava com 3 status batidos no dia anterior. Agora "Hoje" é hoje, igual aos outros. **Atrasadas é o único que segue fora do período** — é backlog total, e o painel de detalhe avisa isso no cabeçalho.
+
+**Coluna "cliente" — pendências do cliente entram no ranking** (desde 06/08/2026, migration `20260806190000`):
+- **cliente (8º critério)** = o que o **cliente** ficou de fazer e continua em aberto (`lead_client_commitments` com status `combinado`/`cobrado`) nos casos sob responsabilidade da pessoa. Menos é melhor, e é **backlog total** — sem filtro de período, igual a "atrasadas" e "s/ avaliar". Entra como desempate logo **depois de atrasadas**, que foi onde o Raym pediu.
+- **A quem a pendência é creditada** (cascata, o primeiro que existir): responsável do processo mais recente do lead (`lead_processes.responsible_user_id`) → responsável processual do lead (`leads.processual_responsible_id`) → último assessor que trabalhou o lead (`lead_activities.assigned_to`). **Pendência sem nenhum dos três não conta para ninguém.**
+- **Limite medido antes de aplicar (06/08/2026)**: das 179 pendências abertas, só **40 (22%)** chegam a ter dono por essa cascata — 7 pelo responsável processual, o resto pelo assessor da atividade. O critério é conservador por construção: só desempata onde o caso tem responsável definido, e passa a medir mais conforme o cadastro de responsável melhorar, sem precisar mexer na função.
+- O chip é **clicável** e abre o `RankDetailSheet` (`p_criterio = 'pend_cliente'`) com cliente, o que ficou de fazer, há quantos dias foi combinado, quantas cobranças e o trecho em que ele prometeu. Conferido em 06/08/2026: o painel da Maria Lydia trouxe 14 itens, o mesmo número do chip.
 
 **Colunas "⭐" e "s/ avaliar" — o feedback entra no ranking** (desde 05/08/2026, migration `20260805120000`):
 - **⭐ (8º critério)** = média das notas que a pessoa **recebeu como responsável** (`lead_activities.feedback_rating`), creditadas por `feedback_rated_at` **dentro do período** do telão — mesmo filtro que o `aprov_pct` já usava. Não é a nota que ela deu nos outros. Sem nota no período mostra "—" e o critério não desempata (`nulls last`), então ninguém é penalizado por ainda não ter sido avaliado.

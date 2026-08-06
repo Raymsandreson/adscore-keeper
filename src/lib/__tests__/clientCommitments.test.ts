@@ -4,6 +4,7 @@ import {
   isCommitmentOpen,
   isCommitmentOverdue,
   isCommitmentDismissed,
+  isSameCommitmentTitle,
   type ClientCommitment,
 } from '@/lib/clientCommitments';
 
@@ -86,5 +87,41 @@ describe('buildReminderText', () => {
     const txt = buildReminderText({ kind: '', title: 'Falar com o vizinho testemunha' }, 'Ana');
     expect(txt.length).toBeGreaterThan(20);
     expect(txt).toContain('Falar com o vizinho testemunha');
+  });
+});
+
+describe('isSameCommitmentTitle', () => {
+  it('mesma promessa com verbo trocado conta como repetida (caso real de produção)', () => {
+    expect(isSameCommitmentTitle(
+      'Fazer a visita do caso do Morumbi',
+      'Realizar a visita do caso do Morumbi'
+    )).toBe(true);
+    expect(isSameCommitmentTitle(
+      'Fazer ligação de vídeo durante a visita',
+      'Fazer uma ligação de vídeo durante a visita'
+    )).toBe(true);
+  });
+
+  it('acento e caixa não separam a mesma pendência', () => {
+    expect(isSameCommitmentTitle('Enviar o LAUDO médico', 'enviar o laudo medico')).toBe(true);
+  });
+
+  it('pendências diferentes no mesmo tema continuam separadas', () => {
+    expect(isSameCommitmentTitle(
+      'Fazer a visita do caso do Morumbi',
+      'Fazer a visita do caso de Itatiba'
+    )).toBe(false);
+    expect(isSameCommitmentTitle(
+      'Mandar a carteira de trabalho',
+      'Mandar o comprovante de residência'
+    )).toBe(false);
+  });
+
+  it('título só de palavras vazias não casa com nada — melhor duplicar que fundir errado', () => {
+    expect(isSameCommitmentTitle('fazer', 'realizar')).toBe(false);
+  });
+
+  it('título vazio nunca casa', () => {
+    expect(isSameCommitmentTitle('', 'Gravar o vídeo')).toBe(false);
   });
 });

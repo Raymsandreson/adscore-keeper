@@ -596,15 +596,25 @@ function getFileExtension(contentType: string, messageType: string): string {
     'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/amr': 'amr', 'audio/aac': 'aac',
     'audio/wav': 'wav', 'audio/webm': 'webm',
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+    'image/heic': 'heic', 'image/heif': 'heif',
     'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov',
     'application/pdf': 'pdf', 'application/zip': 'zip',
     'application/msword': 'doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
     'application/vnd.ms-excel': 'xls',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'text/csv': 'csv', 'text/tab-separated-values': 'tsv', 'text/plain': 'txt', 'text/html': 'html',
   };
   const ct = (contentType || '').split(';')[0].trim().toLowerCase();
   if (map[ct]) return map[ct];
+  // Mime conhecido mas fora do mapa: derivar do subtype. Chutar `.pdf` aqui gravava
+  // arquivo com nome .pdf e content-type de outra coisa, e o navegador baixava sozinho.
+  if (ct && ct !== 'application/octet-stream') {
+    const derived = (ct.split('/')[1] || '').split('.').pop()!.replace(/[^a-z0-9]/g, '');
+    if (derived && derived.length <= 8) return derived;
+  }
   if (messageType === 'audio') return 'ogg';
   if (messageType === 'image') return 'jpg';
   if (messageType === 'video') return 'mp4';

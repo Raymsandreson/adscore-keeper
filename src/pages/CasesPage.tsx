@@ -40,6 +40,8 @@ import {
 import { LegalCase } from '@/hooks/useLegalCases';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
+import { useCaseAssignees, type AssigneeInfo } from '@/hooks/useCaseAssignees';
+import { CaseAssigneeAvatars } from '@/components/cases/CaseAssigneeAvatars';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
 import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
@@ -116,6 +118,12 @@ const statusLabels: Record<string, string> = {
 
 export default function CasesPage() {
   const [cases, setCases] = useState<any[]>([]);
+  // Uma consulta só para toda a lista, em vez de uma por card.
+  const uuidsResponsaveis = useMemo(
+    () => cases.flatMap(c => [c.assigned_to, c.assigned_to_judicial]),
+    [cases],
+  );
+  const responsaveis = useCaseAssignees(uuidsResponsaveis);
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
@@ -126,6 +134,18 @@ export default function CasesPage() {
   const fetchSeqRef = useRef(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [nucleusFilter, setNucleusFilter] = useState('all');
+  // Cloud UUID do assessor, ou 'all'. Vira UUID do Externo na hora da query.
+  const [responsavelFilter, setResponsavelFilter] = useState('all');
+  const [responsavelExt, setResponsavelExt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const ext = responsavelFilter === 'all' ? null : await remapToExternal(responsavelFilter);
+      if (!cancelado) setResponsavelExt(ext);
+    })();
+    return () => { cancelado = true; };
+  }, [responsavelFilter]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { caseId: routeCaseId } = useParams<{ caseId?: string }>();
   const { nuclei } = useSpecializedNuclei();
@@ -188,6 +208,9 @@ export default function CasesPage() {
           .order('created_at', { ascending: false });
         if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (nucleusFilter !== 'all') q = q.eq('nucleus_id', nucleusFilter);
+        // As duas trilhas contam: um caso onde a Gisele é a judicial aparece
+        // tanto pra ela quanto pro responsável administrativo.
+        if (responsavelExt) q = q.or(`assigned_to.eq.${responsavelExt},assigned_to_judicial.eq.${responsavelExt}`);
         return q;
       };
 
@@ -239,6 +262,7 @@ export default function CasesPage() {
         // "Núcleo = X" selecionado trazia casos de outros núcleos.
         if (statusFilter !== 'all') leadQuery = leadQuery.eq('status', statusFilter);
         if (nucleusFilter !== 'all') leadQuery = leadQuery.eq('nucleus_id', nucleusFilter);
+        if (responsavelExt) leadQuery = leadQuery.or(`assigned_to.eq.${responsavelExt},assigned_to_judicial.eq.${responsavelExt}`);
         const { data: leadMatches, error: leadErr } = await leadQuery;
         if (leadErr) throw leadErr;
         if (seq !== fetchSeqRef.current) return;
@@ -263,6 +287,12 @@ export default function CasesPage() {
           .limit(500);
         if (statusFilter !== 'all') procQuery = procQuery.eq('legal_cases.status', statusFilter);
         if (nucleusFilter !== 'all') procQuery = procQuery.eq('legal_cases.nucleus_id', nucleusFilter);
+        if (responsavelExt) {
+          procQuery = procQuery.or(
+            `assigned_to.eq.${responsavelExt},assigned_to_judicial.eq.${responsavelExt}`,
+            { foreignTable: 'legal_cases' },
+          );
+        }
         // O erro era descartado: quando esta query falhava, buscar por número
         // CNJ simplesmente não achava nada e ninguém ficava sabendo.
         const { data: procMatches, error: procErr } = await procQuery;
@@ -302,7 +332,7 @@ export default function CasesPage() {
     } finally {
       if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, nucleusFilter]);
+  }, [debouncedSearch, statusFilter, nucleusFilter, responsavelExt]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -395,6 +425,19 @@ export default function CasesPage() {
               ))}
             </SelectContent>
           </Select>
+          {/* Casa as DUAS colunas: quem é judicial num caso e administrativo em
+              outro encontra os dois grupos no mesmo filtro. */}
+          <Select value={responsavelFilter} onValueChange={setResponsavelFilter}>
+            <SelectTrigger className="w-[170px] h-9">
+              <SelectValue placeholder="Responsável" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos responsáveis</SelectItem>
+              {INSS_PREV_OPTIONS.map(o => (
+                <SelectItem key={o.userId} value={o.userId}>{o.shortName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -419,6 +462,7 @@ export default function CasesPage() {
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
               onCaseUpdated={fetchCases}
               onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
+              responsaveis={responsaveis}
             />
         ))}
       </div>
@@ -472,8 +516,9 @@ export default function CasesPage() {
   );
 }
 
-function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: { 
+function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead, responsaveis }: {
   legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
+  responsaveis: Map<string, AssigneeInfo>;
 }) {
   const [processes, setProcesses] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
@@ -1046,9 +1091,15 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   )}
                 </div>
               </div>
-              <Badge variant="secondary" className={`text-xs shrink-0 ${statusColors[legalCase.status]}`}>
-                {statusLabels[legalCase.status]}
-              </Badge>
+              <div className="flex items-center gap-2 shrink-0">
+                <CaseAssigneeAvatars
+                  administrativo={responsaveis.get(legalCase.assigned_to)}
+                  judicial={responsaveis.get(legalCase.assigned_to_judicial)}
+                />
+                <Badge variant="secondary" className={`text-xs ${statusColors[legalCase.status]}`}>
+                  {statusLabels[legalCase.status]}
+                </Badge>
+              </div>
             </div>
           </CollapsibleTrigger>
 

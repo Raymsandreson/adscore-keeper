@@ -101,3 +101,54 @@ export function buildReminderText(
   }
   return `${hi}Passando pra lembrar de: ${item.title}. Consegue resolver essa semana?`;
 }
+
+/**
+ * Palavras que não distinguem uma pendência de outra.
+ *
+ * "Fazer a visita do caso do Morumbi" e "Realizar a visita do caso do Morumbi"
+ * são a MESMA promessa — a IA reescreve com outro verbo a cada leitura, e o
+ * dedup por título exato deixava as duas passarem (visto em produção em
+ * 06/08/2026, painel com seis pendências e duas repetidas).
+ *
+ * Espelhado em `railway-server/src/functions/detect-client-commitments.ts`,
+ * que aplica a mesma regra antes de gravar. Esta é a fonte da regra.
+ */
+const COMMITMENT_STOPWORDS = new Set([
+  'a', 'o', 'as', 'os', 'um', 'uma', 'de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas',
+  'para', 'pra', 'pro', 'por', 'com', 'ao', 'aos', 'e', 'que', 'se', 'ja', 'vai', 'ir',
+  'fazer', 'realizar', 'efetuar', 'providenciar', 'enviar', 'mandar', 'levar', 'dar',
+  'sobre', 'antes', 'depois', 'durante',
+]);
+
+/** Palavras que realmente identificam a pendência. */
+export function commitmentKeyTokens(title: string): Set<string> {
+  return new Set(
+    (title || '')
+      .toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !COMMITMENT_STOPWORDS.has(w))
+  );
+}
+
+/**
+ * Duas pendências são a mesma quando as palavras que importam coincidem em 70%
+ * ou mais (Jaccard). Acima disso é reescrita da mesma promessa; abaixo, são
+ * coisas diferentes ("visita do Morumbi" × "visita de Itatiba").
+ */
+export function isSameCommitmentTitle(a: string, b: string): boolean {
+  const na = (a || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  const nb = (b || '').toLowerCase().trim().replace(/\s+/g, ' ');
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+
+  const ta = commitmentKeyTokens(a);
+  const tb = commitmentKeyTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  const union = ta.size + tb.size - inter;
+  return union > 0 && inter / union >= 0.7;
+}

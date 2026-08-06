@@ -105,11 +105,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const sendSignal = useCallback((event: CallSignalEvent, payload: Partial<CallSignalPayload>) => {
     const ch = outChannelRef.current;
     if (!ch || !myId) return;
-    ch.send({
-      type: 'broadcast',
-      event,
-      payload: { from: myId, fromName: myNameRef.current, ...payload } as CallSignalPayload,
-    });
+    // Falha de canal nunca pode abortar quem chamou (hangup precisa sempre limpar).
+    try {
+      ch.send({
+        type: 'broadcast',
+        event,
+        payload: { from: myId, fromName: myNameRef.current, ...payload } as CallSignalPayload,
+      });
+    } catch (e) {
+      console.warn('[Call] sendSignal falhou:', event, e);
+    }
   }, [myId]);
 
   // ---- ciclo de vida da chamada ----

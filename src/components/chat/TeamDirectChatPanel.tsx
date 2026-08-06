@@ -1539,7 +1539,10 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               </Button>
             </div>
           ) : (
-            <div className="px-2 py-2 flex items-end gap-1">
+            <div className="px-2 py-2 space-y-1">
+              {/* Ferramentas acima do campo — numa coluna estreita elas
+                  espremiam o texto e a palavra quebrava letra a letra. */}
+              <div className="flex items-center gap-0.5 flex-wrap">
               <Button
                 variant="ghost"
                 size="icon"
@@ -1596,7 +1599,10 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               >
                 <Sparkles className="h-4 w-4 text-primary" />
               </Button>
+              </div>
 
+              {/* Linha do texto: campo com a largura toda + enviar/gravar. */}
+              <div className="flex items-end gap-1">
               <div className="relative flex-1 min-w-0">
                 {mentionQuery !== null && mentionCandidates.length > 0 && (
                   <div className="absolute bottom-full left-0 right-0 mb-1 bg-popover border rounded-md shadow-lg z-50 max-h-56 overflow-auto">
@@ -1657,6 +1663,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                   <Mic className="h-4 w-4" />
                 </Button>
               )}
+              </div>
             </div>
           )}
         </div>
