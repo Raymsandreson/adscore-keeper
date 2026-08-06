@@ -130,6 +130,49 @@ export async function fetchRequerimentos(): Promise<RequerimentoInss[]> {
   }));
 }
 
+/**
+ * CNJ: NNNNNNN-DD.AAAA.J.TR.OOOO. Processo ADMINISTRATIVO guarda número de
+ * requerimento em process_number e nunca terá marco do Escavador — a consulta
+ * volta 422 (206 chamadas desperdiçadas no backfill de 30/07/2026). É o que
+ * distingue "ainda não buscamos" de "não existe fonte para buscar".
+ */
+export function ehNumeroCnj(n: string | null | undefined): boolean {
+  return !!n && /^\d{7}-?\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/.test(n.trim());
+}
+
+/** Busca o requerimento administrativo por número. null = não capturado. */
+export async function fetchRequerimentoPorNumero(
+  numero: string,
+): Promise<RequerimentoInss | null> {
+  await ensureExternalSession();
+  const { data, error } = await (db as any)
+    .from("inss_requerimento_status")
+    .select(SELECT_COLS)
+    .eq("requerimento_number", numero.trim())
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const r: any = data;
+  return {
+    id: r.id,
+    requerimentoNumber: r.requerimento_number ?? "",
+    caseId: r.case_id ?? null,
+    leadId: r.lead_id ?? null,
+    beneficio: r.benefit_type ?? null,
+    servico: r.servico ?? null,
+    protocolDate: r.protocol_date ?? null,
+    marcoAtual: (r.marco_atual ?? "protocolado") as MarcoInss,
+    marcoOrdem: Number(r.marco_ordem ?? 1),
+    temDesfecho: !!r.tem_desfecho,
+    statusNormalizado: r.status_normalizado ?? null,
+    emExigencia: !!r.em_exigencia,
+    diasEmExigencia: r.dias_em_exigencia == null ? null : Number(r.dias_em_exigencia),
+    concluidaSemResultado: !!r.concluida_sem_resultado,
+    despacho: r.despacho ?? null,
+    ultimoEmail: r.last_email_at ?? null,
+  };
+}
+
 export interface UseReguaInssResult {
   data: RequerimentoInss[];
   resumo: ResumoInss;

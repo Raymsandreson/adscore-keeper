@@ -5,6 +5,8 @@ import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from '
 import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
 import { estacoesDoProcesso } from '@/lib/processStations';
+import InssMarcosProcesso from '@/components/cases/InssMarcosProcesso';
+import { ehNumeroCnj } from '@/lib/inssRegua';
 
 /** Número CNJ compacto pro chip de origem: "3013153-02…8.06" */
 function shortCnj(numero: string | null): string {
@@ -297,6 +299,13 @@ export function ProcessMovementsTimeline({
         Carregando marcos...
       </div>
     );
+  }
+
+  // Processo ADMINISTRATIVO: o número não é CNJ, o Escavador não atende, e a
+  // régua é outra (2 etapas, ancorada no resultado). Dizer "os marcos vêm do
+  // Escavador" aqui seria mentira — nunca viriam. São 236 processos assim.
+  if (!ehNumeroCnj(processNumber) && processNumber) {
+    return <InssMarcosProcesso processNumber={processNumber} />;
   }
 
   if (movements.length === 0) {
