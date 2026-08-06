@@ -21,12 +21,79 @@ export const CASO_PROCESS_ASSIGNMENTS: Record<string, { userId: string; userName
   'Organizar docs': { userId: '7f41a35e-7d98-4ade-8270-52d727433e6a', userName: 'Abderaman' },
 };
 
-// Opções dinâmicas usadas pelo Benefício INSS quando o caso é da família PREV.
-export const INSS_PREV_OPTIONS: Array<{ userId: string; userName: string }> = [
-  { userId: 'fdb5c9af-ec75-45c5-a6a3-a1b8a4dd84fe', userName: 'Maria Lydia' },
-  { userId: '3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8', userName: 'Thaíres' },
-  { userId: '1d6f6602-5274-427c-8b70-54b6e19dc524', userName: 'Vanessa' },
+export interface PrevAssignee {
+  /** Cloud UUID — passa por `remapToExternal` antes de gravar. */
+  userId: string;
+  /** Nome canônico gravado em `assigned_to_name` (mesmo full_name do profiles). */
+  userName: string;
+  /** Rótulo curto exibido no prompt de escolha. */
+  shortName: string;
+}
+
+/**
+ * Assessores que podem receber o Benefício INSS de um caso PREV.
+ * A ordem define a numeração do prompt — mudar aqui muda o que o usuário digita.
+ */
+export const INSS_PREV_OPTIONS: PrevAssignee[] = [
+  { userId: '04826c43-15e1-48b8-b54f-51d3fe532651', userName: 'Andressa Leão da Silva Duarte', shortName: 'Andressa' },
+  // Keliane Sousa Amorim Araújo — NÃO confundir com KEILANE DE LIMA TEIXEIRA
+  // (f0a5dad8…), que está na ASSIGNEE_BLOCKLIST e não é funcionária.
+  { userId: '5b5ac716-69de-4f4a-9370-0bc63816cda3', userName: 'Keliane Sousa Amorim Araújo', shortName: 'Keliane' },
+  { userId: 'e1849012-7d6b-49b9-a5e5-36a2332e6eb8', userName: 'Jose Francisco Campos de Oliveira', shortName: 'José' },
+  { userId: 'fdb5c9af-ec75-45c5-a6a3-a1b8a4dd84fe', userName: 'Maria Lydia Ribeiro', shortName: 'Maria Lydia' },
+  { userId: '1d6f6602-5274-427c-8b70-54b6e19dc524', userName: 'Vanessa Miranda Macêdo', shortName: 'Vanessa' },
+  { userId: '4dba2de0-5357-49ab-8bf9-4c248a1440de', userName: 'Gisele Borges dos Santos', shortName: 'Gisele' },
+  { userId: '461d55d7-7185-4b47-98fb-f4f1505cba1d', userName: 'ISABELA MARIA DE SOUSA ANDRADE', shortName: 'Isabela' },
 ];
+
+/**
+ * Rodízio do PREV **administrativo**, pelo último dígito do número do caso:
+ * 0-1 Andressa · 2-3 Keliane · 4-5 José · 6-7 Maria Lydia · 8-9 Vanessa.
+ * Valores são índices em `INSS_PREV_OPTIONS`.
+ */
+const PREV_ADMIN_BY_DIGIT = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4] as const;
+
+/** PREV **judicial**: final ímpar → Gisele, final par → Isabela. */
+const PREV_JUD_ODD = 5;
+const PREV_JUD_EVEN = 6;
+
+/**
+ * Extrai o número do PREV ("✅PREV 1984 - AMANDA…" → "1984"). O `case_number`
+ * tem prioridade sobre o título porque é ele que carrega o prefixo do funil de
+ * forma consistente; o título é renomeado à mão pela equipe.
+ */
+export function extractPrevNumber(
+  caseNumber?: string | null,
+  caseTitle?: string | null,
+): string | null {
+  for (const source of [caseNumber, caseTitle]) {
+    const m = String(source || '').match(/PREV[^0-9A-Za-z]{0,4}(\d{1,6})/i);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+/** `true` para 'judicial' (e variações de caixa); qualquer outra coisa é administrativo. */
+export function isJudicialProcess(processType?: string | null): boolean {
+  return String(processType || '').trim().toLowerCase().startsWith('jud');
+}
+
+/**
+ * Quem o prompt já deixa pré-selecionado. Retorna null quando não dá pra
+ * extrair o número do PREV — aí o usuário escolhe do zero, sem chute nosso.
+ */
+export function suggestPrevAssignee(
+  prevNumber: string | null,
+  judicial: boolean,
+): PrevAssignee | null {
+  if (!prevNumber) return null;
+  const lastDigit = Number(prevNumber.slice(-1));
+  if (Number.isNaN(lastDigit)) return null;
+  const idx = judicial
+    ? (lastDigit % 2 === 0 ? PREV_JUD_EVEN : PREV_JUD_ODD)
+    : PREV_ADMIN_BY_DIGIT[lastDigit];
+  return INSS_PREV_OPTIONS[idx] ?? null;
+}
 
 // Maria Clara (Cloud UUID) — atribuição padrão de INSS para títulos de CASO.
 export const INSS_CASO_DEFAULT = {
@@ -40,8 +107,9 @@ export const INSS_CASO_DEFAULT = {
  *
  * - Mapa fixo (Natasha, João Vitor, Wanessa, Abderaman) → vence sempre.
  * - "Benefício INSS" tem regra especial baseada no **título do caso**:
- *   - contém "PREV"  → abre um prompt nativo para escolher entre Maria Lydia,
- *     Thaíres ou Vanessa.
+ *   - contém "PREV"  → abre um prompt nativo com os 7 assessores, já
+ *     pré-selecionando um pelo último dígito do número do PREV (rodízio
+ *     administrativo) ou por par/ímpar quando o processo é judicial.
  *   - contém "CASO"  → Maria Clara.
  *   - nenhum dos dois → fallback no criador do caso.
  */
@@ -50,6 +118,7 @@ export async function resolveProcessAssignment(
   caseTitle: string | null | undefined,
   currentUserId: string | undefined,
   caseNumber?: string | null | undefined,
+  processType?: string | null | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
   const mapped = CASO_PROCESS_ASSIGNMENTS[processTitle];
   if (mapped) {
@@ -63,7 +132,10 @@ export async function resolveProcessAssignment(
     // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
     const haystack = `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase();
     if (haystack.includes('PREV')) {
-      const choice = await pickInssPrevAssignee();
+      const choice = pickInssPrevAssignee(
+        extractPrevNumber(caseNumber, caseTitle),
+        isJudicialProcess(processType),
+      );
       if (choice) {
         const ext = await remapToExternal(choice.userId);
         return { extAssignedTo: ext, assignedName: choice.userName };
@@ -102,6 +174,7 @@ export async function resolveAssignmentForCase(
   processTitle: string,
   caseId: string,
   currentUserId: string | undefined,
+  processType?: string | null | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
   let caseTitle: string | null = null;
   let caseNumber: string | null = null;
@@ -114,7 +187,7 @@ export async function resolveAssignmentForCase(
     caseTitle = (data as any)?.title || null;
     caseNumber = (data as any)?.case_number || null;
   } catch {}
-  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber);
+  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber, processType);
 }
 
 /**
@@ -122,15 +195,33 @@ export async function resolveAssignmentForCase(
  * Benefício INSS quando o caso é PREV. Retorna null se o usuário cancelar
  * ou digitar opção inválida.
  *
- * Optamos por prompt nativo para evitar refatorar 4 pontos de criação
+ * A lista traz todos os assessores; o rodízio só decide qual já vem digitado
+ * no campo — quem está criando o processo pode sobrescrever.
+ *
+ * Optamos por prompt nativo para evitar refatorar 5 pontos de criação
  * diferentes para gerenciar estado de modal.
  */
-function pickInssPrevAssignee(): { userId: string; userName: string } | null {
+function pickInssPrevAssignee(
+  prevNumber: string | null,
+  judicial: boolean,
+): PrevAssignee | null {
   if (typeof window === 'undefined') return null;
-  const lines = INSS_PREV_OPTIONS.map((o, i) => `${i + 1} - ${o.userName}`).join('\n');
+
+  const suggested = suggestPrevAssignee(prevNumber, judicial);
+  const suggestedIdx = suggested ? INSS_PREV_OPTIONS.indexOf(suggested) : -1;
+
+  const lines = INSS_PREV_OPTIONS
+    .map((o, i) => `${i + 1} - ${o.shortName}${i === suggestedIdx ? '   ← sugerido' : ''}`)
+    .join('\n');
+
+  const tipo = judicial ? 'judicial' : 'administrativo';
+  const header = prevNumber
+    ? `Benefício INSS — PREV ${prevNumber} (final ${prevNumber.slice(-1)}) · processo ${tipo}\nEscolha o responsável:`
+    : 'Benefício INSS (caso PREV) — escolha o responsável:';
+
   const answer = window.prompt(
-    `Benefício INSS (caso PREV) — escolha o responsável:\n\n${lines}\n\nDigite o número:`,
-    '1',
+    `${header}\n\n${lines}\n\nDigite o número:`,
+    suggestedIdx >= 0 ? String(suggestedIdx + 1) : '',
   );
   if (!answer) return null;
   const idx = parseInt(answer.trim(), 10) - 1;

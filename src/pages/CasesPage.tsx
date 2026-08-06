@@ -802,7 +802,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
             // Resolvido antes do insert para gravar o responsável no processo,
             // e não só na atividade "Dar andamento".
-            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
+            // Estes processos nascem sempre administrativos (insert logo abaixo).
+            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number, 'administrativo');
 
             // O erro do insert era descartado: quando ele falhava, savedProcess
             // vinha undefined e a atividade nascia sem process_id, órfã e sem
