@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail, AlertTriangle, Loader2 } from "lucide-react";
+import { Search, FileText, ExternalLink, Calendar, Building2, Briefcase, Trash2, Mail, AlertTriangle, Loader2, Route } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import ListPagination from "@/components/processes/ListPagination";
 import { format } from "date-fns";
@@ -26,6 +26,7 @@ const LIST_COLUMNS =
   "lead_id, valor_causa_formatado, created_at, legal_cases(case_number, title)";
 const ProcessDetailSheet = lazy(() => import("@/components/cases/ProcessDetailSheet"));
 const InssAdminProcessesTab = lazy(() => import("@/components/processes/InssAdminProcessesTab"));
+const InssReguaPanel = lazy(() => import("@/components/processes/InssReguaPanel"));
 const ProcessualEmailsTab = lazy(() => import("@/components/processes/ProcessualEmailsTab"));
 const StaleProcessesReport = lazy(() => import("@/components/processes/StaleProcessesReport"));
 
@@ -201,6 +202,9 @@ export default function ProcessesPage() {
           <TabsTrigger value="inss" className="gap-2">
             <Mail className="h-4 w-4" /> INSS Administrativo
           </TabsTrigger>
+          <TabsTrigger value="inss-regua" className="gap-2">
+            <Route className="h-4 w-4" /> Régua INSS
+          </TabsTrigger>
           <TabsTrigger value="processual" className="gap-2">
             <Mail className="h-4 w-4" /> Processual
           </TabsTrigger>
@@ -338,6 +342,12 @@ export default function ProcessesPage() {
         <TabsContent value="inss">
           <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
             <InssAdminProcessesTab />
+          </Suspense>
+        </TabsContent>
+
+        <TabsContent value="inss-regua">
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando...</div>}>
+            <InssReguaPanel />
           </Suspense>
         </TabsContent>
 
