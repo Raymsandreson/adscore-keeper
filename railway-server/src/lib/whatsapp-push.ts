@@ -160,19 +160,25 @@ async function resolveGroupResponsibles(groupDigits: string, leadIdHint?: string
     if (!leadId) return [];
 
     const [leadRes, procRes] = await Promise.all([
-      supabase.from('leads').select('processual_responsible_id, acolhedor').eq('id', leadId).maybeSingle(),
+      supabase.from('leads').select('processual_responsible_id, acolhedor, acolhedor_user_id').eq('id', leadId).maybeSingle(),
       supabase.from('lead_processes').select('responsible_user_id').eq('lead_id', leadId).is('deleted_at', null),
     ]);
 
-    const lead = leadRes.data as { processual_responsible_id?: string | null; acolhedor?: string | null } | null;
+    const lead = leadRes.data as {
+      processual_responsible_id?: string | null;
+      acolhedor?: string | null;
+      acolhedor_user_id?: string | null;
+    } | null;
     if (lead?.processual_responsible_id) out.add(lead.processual_responsible_id);
     (procRes.data || []).forEach((p: { responsible_user_id?: string | null }) => {
       if (p.responsible_user_id) out.add(p.responsible_user_id);
     });
 
-    // Acolhedor é texto livre no lead; a resolução para user_id (nome completo,
-    // ou primeiro nome quando não é ambíguo) vive no Postgres.
-    if (lead?.acolhedor && lead.acolhedor.trim()) {
+    // acolhedor_user_id é a fonte da verdade desde a padronização (96,5% dos
+    // leads). O texto só é consultado no que sobrou sem id.
+    if (lead?.acolhedor_user_id) {
+      out.add(lead.acolhedor_user_id);
+    } else if (lead?.acolhedor && lead.acolhedor.trim()) {
       const { data: acolhedorId, error } = await supabase.rpc('wa_resolve_acolhedor', { p_name: lead.acolhedor });
       if (error) {
         console.error('[wa-push] wa_resolve_acolhedor falhou:', error.message);
