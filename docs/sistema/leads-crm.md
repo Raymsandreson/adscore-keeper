@@ -19,7 +19,7 @@ Documentação funcional das telas de leads, acolhimento, contatos, casos, funis
 - Campo Acolhedor (Editar Lead e Adicionar Lead): combobox com busca por digitação e foto ao lado do nome. No board Trabalhista (Acidente de Trabalho) as opções são só os 6 acolhedores oficiais (lista canônica em `src/lib/trabalhistaAcolhedores.ts`); nos demais boards, lista completa de perfis. Leads antigos com acolhedor fora da lista mantêm o valor até alguém trocar. O dialog "Cadastrar Caso Viável" (Notícias) tem lista restrita própria por user_id, separada desta.
 - Corpo do card: telefone, empresa (`main_company` ou `contractor_company`), cidade/UF com a silhueta do estado e a distância até a referência mais próxima, e nome da vítima. **Os campos exibidos precisam estar em `LEAD_INDEX_COLUMNS` (`src/hooks/useLeads.ts`)** — o kanban carrega com `detailLevel: 'index'`, e campo fora da lista chega `undefined`, some da tela e não gera erro nenhum. Foi assim que a empresa ficou invisível entre 24/06 e 05/08/2026.
 - Ficha do lead (abas): Básico, Contatos, Atividades, Acidente, Local, Empresas, Jurídico, Documentos, Histórico, Casos (se fechado), Financeiro, Chat IA, Chat Equipe.
-- Aba "Local": mapa da região do lead (estado, ou dois quando a capital mais próxima é de outro), com o município destacado, a distância até a referência mais próxima e os **parceiros num raio de 300 km** — marcador verde, linha até o mais próximo e lista com a distância. Sem ninguém no raio, diz em texto qual é o mais próximo. Escopo e decisões em `docs/escopo-mapa-regiao-leads.md`.
+- Aba "Local": mapa da região do lead (estado, ou dois quando a capital mais próxima é de outro), com o município destacado, a distância até a referência mais próxima e os **parceiros num raio de 300 km** — marcador vermelho, linha até o mais próximo e lista com a distância. Sem ninguém no raio, diz em texto qual é o mais próximo. Escopo e decisões em `docs/escopo-mapa-regiao-leads.md`.
 
 ### Visualização em lista (toggle colunas | lista) — jul/2026
 
@@ -96,6 +96,86 @@ Duas regras que valem entender:
 
 - **Não existe "remover lead".** O trigger `trg_legal_cases_no_unlink` no Externo recusa `lead_id → NULL`, porque caso órfão some das listas da equipe. Campo vazio na tela significa "mantém o lead atual"; trocar de lead X para Y é livre. A regra vive em `buildCaseUpdatePayload` (`src/pages/CasesPage.tsx`), coberta por `CasesPage.lead-link.test.ts`.
 - **Vincular adota os filhos órfãos**: `lead_activities` e `lead_processes` do caso que estavam com `lead_id` NULL passam pro lead escolhido — senão continuariam fora da linha do tempo do cliente. Filho que já aponta pra outro lead não é tocado.
+
+### Responsáveis do caso PREV — ago/2026
+
+Um caso PREV pode ter frente **administrativa** e **judicial** ao mesmo tempo, então ele tem
+**dois responsáveis**, um por trilha, cada um na sua coluna de `legal_cases` (UUID do Externo):
+
+| Coluna | Trilha | Regra |
+|---|---|---|
+| `assigned_to` | administrativa | rodízio pelo **último dígito** do número do PREV |
+| `assigned_to_judicial` | judicial | **ímpar → Gisele**, **par → Isabela** |
+
+| Final do PREV | Administrativo |
+|---|---|
+| 0 e 1 | Andressa |
+| 2 e 3 | Keliane |
+| 4 e 5 | José |
+| 6 e 7 | Maria Lydia |
+| 8 e 9 | Vanessa |
+
+**As trilhas são independentes e nunca se sobrescrevem.** Cada processo e cada atividade herda
+do responsável da **sua própria** trilha (atividade sem `process_id` conta como administrativa).
+
+Onde a escolha aparece:
+
+1. **Na criação do caso** — número/título com `PREV` abre um `window.prompt` com os 7 assessores,
+   já preenchido com o sugerido pelo dígito. Define o responsável **administrativo**.
+2. **No 1º processo judicial do caso** — prompt sugerindo Gisele/Isabela. Define o responsável
+   **judicial** e não encosta no administrativo. Do 2º judicial em diante, herda calado.
+3. **Processo administrativo** — herda calado. Só pergunta se a trilha ainda não tem dono.
+4. **Editar Caso** — campos "Responsável administrativo" e "Responsável judicial" (só em PREV),
+   para consertar uma escolha errada sem depender de cadastrar processo.
+
+Detalhes que valem entender:
+
+- **O dono do caso vence o mapa fixo**: dentro de um caso PREV, até a atividade automática de
+  "Seguro de Vida", "Organizar docs" ou "Onboarding" fica com o assessor da trilha — o mapa
+  fixo (Natasha/Wanessa/João Vitor/Abderaman) só vale fora do PREV.
+- O número sai do `case_number` (`extractPrevNumber`), com o título do caso como segundo recurso —
+  o título é renomeado à mão pela equipe, o `case_number` não. Sem número legível, o prompt abre
+  sem pré-seleção em vez de chutar.
+- **Cancelar nunca apaga**: a trilha fica sem dono e o próximo processo dela pergunta de novo.
+- A **Keliane** da lista é a `Keliane Sousa Amorim Araújo`. `KEILANE DE LIMA TEIXEIRA` está na
+  `ASSIGNEE_BLOCKLIST` e um teste garante que ela não entre aqui.
+- Caso **CASO** (não PREV) continua indo direto pra Maria Clara, sem prompt.
+- Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (rodízio) e
+  `caseAssignee.test.ts` (herança por trilha).
+
+#### Trocar o responsável arrasta as atividades
+
+Salvar "Editar Caso" com um responsável diferente chama a RPC
+`aplicar_responsavel_do_caso_nas_atividades(p_case_id)` (migration
+`20260806173000_rpc_aplicar_responsavel_do_caso.sql`), que repassa o novo dono para as
+atividades **vivas** do caso — cada uma pela trilha do seu processo. A interface avisa quantas
+mudaram; se a RPC falhar, avisa que o caso foi salvo mas as atividades não.
+
+- **Concluídas não são tocadas**, mesma razão do backfill.
+- **Só propaga se o valor mudou**: sem isso, todo "Salvar" reescreveria as atividades.
+- **A RPC pula colisões** do índice `lead_activities_dedup_pending_idx` e devolve a contagem
+  de puladas. Se essa lógica vivesse no JS, um 23505 derrubaria o salvamento do caso inteiro —
+  foi exatamente o que aconteceu na primeira tentativa do backfill.
+- Regra geral desta base: **toda reatribuição em massa precisa do desempate** (quem já está no
+  alvo fica com a vaga, empate pela mais antiga), senão estoura o índice único.
+
+#### Backfill retroativo — 06/08/2026
+
+`supabase/migrations/20260806160000_backfill_responsavel_prev.sql` aplicou a regra no passado:
+
+- **900 casos** ganharam responsável administrativo; **72** (os que têm ao menos um
+  `lead_processes` judicial) ganharam também o judicial.
+- **430 atividades** pendentes/em andamento, cada uma pela trilha do seu processo.
+- **4.443 atividades concluídas ficaram intocadas de propósito**: `assigned_to` é o único
+  registro de quem executou o trabalho, e reescrevê-lo apagaria 3.737 autorias reais
+  (Martin Rafael, João Pedro, Maria Clara, Thaíres...).
+- **2 atividades foram puladas** por colidirem no índice único
+  `lead_activities_dedup_pending_idx` `(lead_id, lower(trim(title)), activity_type, assigned_to)
+  WHERE status='pendente'` — são duplicatas reais ("PROTOCOLAR PREV 1860" criada 2x com 2s de
+  diferença, e uma "Audiência de conciliação" repetida). **Reatribuição em massa sempre precisa
+  desse desempate**, senão estoura 23505 e a transação inteira volta.
+- Valores anteriores em `backfill_prev_responsavel_20260806` (RLS on, sem policy), com o
+  rollback pronto e comentado no fim da migration.
 
 **Fluxo recomendado**: filtrar por Núcleo/Status → expandir o caso → regularizar processos citados sem cadastro com "Cadastrar todos" → acompanhar prazos na aba Atividades com o filtro "Atrasadas".
 

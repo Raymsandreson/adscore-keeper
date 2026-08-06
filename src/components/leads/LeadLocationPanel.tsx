@@ -25,8 +25,12 @@ const NEARBY_PARTNER_KM = 300;
 /** Teto de marcadores de parceiro — acima disso o mapa vira sopa de pontos. */
 const MAX_PARTNER_MARKERS = 6;
 
-/** Verde do parceiro: precisa se distinguir do lead (primária) e da capital (cinza). */
-const PARTNER_COLOR = '#059669';
+/**
+ * Vermelho do parceiro. Era verde (`#059669`) até 06/08/2026, o que colidia com
+ * o marcador do lead: `--primary` é `hsl(153 100% 33%)`, verde também, e no mapa
+ * os dois viravam a mesma bolinha. Vermelho separa do lead e do cinza da capital.
+ */
+const PARTNER_COLOR = '#dc2626';
 
 interface PartnerDistance {
   partner: PartnerReference;

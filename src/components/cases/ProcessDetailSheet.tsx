@@ -36,6 +36,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 
 import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
+import { CourtContactsForProcess } from './CourtContactsForProcess';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -1121,6 +1122,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     <ExternalLink className="h-3 w-3" /> Abrir no tribunal
                   </a>
                 )}
+                <div className="mt-3 border-t pt-3">
+                  <CourtContactsForProcess processNumber={form.process_number} />
+                </div>
               </>
             )}
 

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/collapsible';
 import { useLegalCases, LegalCase } from '@/hooks/useLegalCases';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useProcessParties, partyRoleLabels, PartyRole } from '@/hooks/useProcessParties';
@@ -184,7 +185,8 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
         // Resolvido antes do insert para gravar o responsável no processo, e
         // não só na atividade "Dar andamento".
-        ({ extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber));
+        // Estes processos nascem sempre administrativos (insert logo abaixo).
+        ({ extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber, 'administrativo', caseId));
 
         const { data: savedProcess, error: procErr } = await externalSupabase.from('lead_processes').insert({
           lead_id: caseLeadId,
@@ -406,7 +408,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Nenhum</SelectItem>
-                  {profiles.map(p => (
+                  {filterAssignableMembers(profiles).map(p => (
                     <SelectItem key={p.user_id} value={p.full_name || p.email || p.user_id}>
                       {p.full_name || p.email}
                     </SelectItem>

@@ -32,11 +32,15 @@ import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
+import { loadActivityMessageOrigin, type ActivityMessageOrigin } from '@/lib/whatsappMessageActivities';
+import { useNavigate } from 'react-router-dom';
+import { MessageSquare } from 'lucide-react';
 
 /**
  * Tipos-base jurídicos (mesma seed da ActivitiesPage). Usados como fallback do
@@ -117,9 +121,21 @@ type ProcessRow = {
  */
 export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated, side = 'right', contentClassName }: ActivityFullSheetProps) {
   const isCreate = mode === 'create';
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+  // Caminho inverso do selo do WhatsApp: de qual mensagem esta atividade nasceu.
+  const [messageOrigin, setMessageOrigin] = useState<ActivityMessageOrigin | null>(null);
+  useEffect(() => {
+    if (!open || !activityId) { setMessageOrigin(null); return; }
+    let cancelled = false;
+    loadActivityMessageOrigin(activityId)
+      .then(origin => { if (!cancelled) setMessageOrigin(origin); })
+      // Ficha funciona sem isso — só perde o atalho pra conversa.
+      .catch(e => console.warn('[ActivityFullSheet] origem da atividade indisponível:', e));
+    return () => { cancelled = true; };
+  }, [open, activityId]);
 
   // ---- Form state (mesmo conjunto do formulário completo) ----
   const [formTitle, setFormTitle] = useState('');
@@ -239,7 +255,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
     return list;
   }, [assigneeRoutine, activityTypes, formIsSystem, formType]);
-  const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
+  // Só quem pode receber atividade. `profiles` cru continua sendo usado abaixo
+  // para resolver nome de quem já consta no histórico.
+  const teamMembers = filterAssignableMembers(profiles).map(p => ({ user_id: p.user_id, full_name: p.full_name }));
 
   // ---- Mensagem da atividade (Copiar / Enviar ao Grupo / Enviar ao Assessor / áudio) ----
   // Mesma função da ActivitiesPage: a ficha é a mesma em qualquer tela que a abra.
@@ -937,6 +955,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     if (activityId) window.open(`${window.location.origin}/?openActivity=${activityId}`, '_blank');
   };
 
+  /** Abre a conversa do WhatsApp na mensagem que gerou esta atividade. */
+  const handleOpenOriginMessage = () => {
+    if (!messageOrigin?.phone) return;
+    onOpenChange(false);
+    navigate(`/whatsapp?openChat=${encodeURIComponent(messageOrigin.phone)}&msg=${encodeURIComponent(messageOrigin.message_id)}`);
+  };
+
   /** Mensagem da atividade — idêntica à da tela de Atividades (função compartilhada). */
   const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
     buildActivityMessage({
@@ -1207,6 +1232,19 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               <Button variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
                 onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-contact'))}>
                 <UserPlus className="h-3 w-3" /> Vincular Contato
+              </Button>
+            )}
+            {/* Nasceu de uma mensagem do WhatsApp: atalho de volta pra conversa,
+                com a bolha de origem destacada. */}
+            {messageOrigin?.phone && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 px-2 text-[10px] gap-1 border-green-600/40 text-green-700 dark:text-green-400 hover:bg-green-600/10"
+                onClick={handleOpenOriginMessage}
+                title={`Abrir a conversa do WhatsApp na mensagem que gerou esta atividade${messageOrigin.total > 1 ? ` (${messageOrigin.total} mensagens de origem)` : ''}`}
+              >
+                <MessageSquare className="h-3 w-3" /> Ver mensagem de origem
               </Button>
             )}
           </div>
