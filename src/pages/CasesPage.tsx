@@ -511,6 +511,11 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [foraDaLista, setForaDaLista] = useState<Record<PrevTrilha, { userId: string; shortName: string } | null>>(
     { administrativo: null, judicial: null },
   );
+  // Valor lido do banco ao abrir o diálogo. Só propaga para as atividades se o
+  // usuário de fato mexeu — senão todo "Salvar" reescreveria as atividades.
+  const [assigneeInicial, setAssigneeInicial] = useState<Record<PrevTrilha, string>>(
+    { administrativo: SEM_RESPONSAVEL, judicial: SEM_RESPONSAVEL },
+  );
   const casoEhPrev = isPrevCase(legalCase.title, legalCase.case_number);
 
   useEffect(() => {
@@ -534,6 +539,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       setEditAssignee(lidos[0].value);
       setEditAssigneeJud(lidos[1].value);
       setForaDaLista({ administrativo: lidos[0].extra, judicial: lidos[1].extra });
+      setAssigneeInicial({ administrativo: lidos[0].value, judicial: lidos[1].value });
     })();
     return () => { cancelled = true; };
   }, [showEditDialog, casoEhPrev, legalCase.id]);
@@ -776,6 +782,31 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       }
       const { error } = await externalSupabase.from('legal_cases').update(payload).eq('id', legalCase.id);
       if (error) throw error;
+
+      // Trocar o responsável do caso arrasta as atividades VIVAS dele — cada uma
+      // pela trilha do seu processo. Sem isso a troca ficava só na linha do caso
+      // e as atividades existentes seguiam com o dono antigo.
+      // O trabalho é feito na RPC porque ela precisa pular colisões do índice
+      // lead_activities_dedup_pending_idx; em JS, um 23505 derrubaria o salvamento.
+      if (casoEhPrev && (editAssignee !== assigneeInicial.administrativo
+                      || editAssigneeJud !== assigneeInicial.judicial)) {
+        try {
+          const { data: prop, error: propErr } = await (externalSupabase as any)
+            .rpc('aplicar_responsavel_do_caso_nas_atividades', { p_case_id: legalCase.id });
+          if (propErr) throw propErr;
+          const linhas = (prop || []) as Array<{ trilha: string; atualizadas: number; puladas: number }>;
+          const movidas = linhas.reduce((s, l) => s + (l.atualizadas || 0), 0);
+          const puladas = linhas.reduce((s, l) => s + (l.puladas || 0), 0);
+          if (movidas > 0) toast.success(`${movidas} atividade(s) passaram para o novo responsável`);
+          if (puladas > 0) {
+            toast.warning(`${puladas} atividade(s) não mudaram: são duplicatas de outra pendente do mesmo lead`);
+          }
+        } catch (propError: any) {
+          // O caso já foi salvo; avisar em vez de fingir que deu tudo certo.
+          console.error('[CasesPage] propagacao de responsavel falhou', propError);
+          toast.error('Responsável do caso salvo, mas as atividades não foram atualizadas');
+        }
+      }
 
       // Adota os filhos órfãos do caso. Sem isso, atividades e processos
       // criados enquanto o caso estava sem lead continuariam com lead_id NULL
