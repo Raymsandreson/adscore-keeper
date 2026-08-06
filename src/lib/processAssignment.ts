@@ -57,11 +57,16 @@ const PREV_ADMIN_BY_DIGIT = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4] as const;
 const PREV_JUD_ODD = 5;
 const PREV_JUD_EVEN = 6;
 
-/** Quem já é da trilha judicial — um caso delas não reabre o prompt. */
-const PREV_JUD_USER_IDS: readonly string[] = [
-  INSS_PREV_OPTIONS[PREV_JUD_ODD].userId,
-  INSS_PREV_OPTIONS[PREV_JUD_EVEN].userId,
-];
+/**
+ * Um caso PREV pode ter as duas frentes ao mesmo tempo, e aí tem **dois
+ * responsáveis** — um por trilha, cada um na sua coluna de `legal_cases`.
+ */
+export type PrevTrilha = 'administrativo' | 'judicial';
+
+export const COLUNA_RESPONSAVEL: Record<PrevTrilha, string> = {
+  administrativo: 'assigned_to',
+  judicial: 'assigned_to_judicial',
+};
 
 /**
  * Extrai o número do PREV ("✅PREV 1984 - AMANDA…" → "1984"). O `case_number`
@@ -116,7 +121,7 @@ export function isPrevCase(
 }
 
 /**
- * Lê o responsável do caso (`legal_cases.assigned_to`, **UUID Externo**).
+ * Lê o responsável do caso na trilha pedida (**UUID Externo**).
  *
  * O nome sai do `INSS_PREV_OPTIONS` quando o uuid é de um dos 7 assessores
  * (fonte canônica do `assigned_to_name` das atividades); para qualquer outro
@@ -125,15 +130,17 @@ export function isPrevCase(
  */
 export async function getCaseAssignee(
   caseId: string | null | undefined,
+  trilha: PrevTrilha = 'administrativo',
 ): Promise<{ extUuid: string; name: string | null; option: PrevAssignee | null } | null> {
   if (!caseId) return null;
+  const coluna = COLUNA_RESPONSAVEL[trilha];
   try {
     const { data } = await externalSupabase
       .from('legal_cases')
-      .select('assigned_to')
+      .select(coluna)
       .eq('id', caseId)
       .maybeSingle();
-    const extUuid = (data as any)?.assigned_to as string | null;
+    const extUuid = (data as any)?.[coluna] as string | null;
     if (!extUuid) return null;
 
     const cloudUuid = await remapToCloud(extUuid);
@@ -151,16 +158,17 @@ export async function getCaseAssignee(
   }
 }
 
-/** Grava o responsável do caso. Silencioso em erro: nunca deve travar o cadastro. */
+/** Grava o responsável da trilha. Silencioso em erro: nunca deve travar o cadastro. */
 export async function setCaseAssignee(
   caseId: string | null | undefined,
   extUuid: string | null,
+  trilha: PrevTrilha = 'administrativo',
 ): Promise<void> {
   if (!caseId || !extUuid) return;
   try {
     await externalSupabase
       .from('legal_cases')
-      .update({ assigned_to: extUuid } as never)
+      .update({ [COLUNA_RESPONSAVEL[trilha]]: extUuid } as never)
       .eq('id', caseId);
   } catch (e: any) {
     console.warn('[setCaseAssignee] falhou:', e?.message);
@@ -198,14 +206,16 @@ export async function pickCaseAssigneeForNewCase(
  *
  * Ordem de precedência:
  *
- * 1. **Caso PREV** → o responsável mora no caso (`legal_cases.assigned_to`) e
- *    vence tudo, **inclusive o mapa fixo**: num caso PREV até a atividade
- *    automática de "Seguro de Vida" ou "Organizar docs" fica com o assessor do
- *    caso (decisão da firma, ago/2026 — o caso tem um dono só).
- *    Processo administrativo herda calado. Processo judicial reabre o prompt
- *    (Gisele/ímpar, Isabela/par) e a escolha **substitui** o dono do caso —
- *    exceto se o caso já for de Gisele ou Isabela, quando também herda calado
- *    (senão cadastrar 3 judiciais em sequência abriria 3 prompts).
+ * 1. **Caso PREV** → o responsável mora no caso e vence tudo, **inclusive o
+ *    mapa fixo**: num caso PREV até a atividade automática de "Seguro de Vida"
+ *    ou "Organizar docs" fica com o assessor do caso (decisão da firma,
+ *    ago/2026). São **duas trilhas independentes**, porque um caso pode ter as
+ *    duas frentes ao mesmo tempo:
+ *      - administrativa → `assigned_to`, rodízio pelo último dígito;
+ *      - judicial       → `assigned_to_judicial`, Gisele/ímpar ou Isabela/par.
+ *    O primeiro processo de cada trilha define o dono dela (prompt); daí em
+ *    diante todo processo daquela trilha herda calado. Uma trilha nunca
+ *    sobrescreve a outra.
  * 2. Fora do PREV, mapa fixo (Natasha, João Vitor, Wanessa, Abderaman).
  * 3. "Benefício INSS" em caso "CASO" → Maria Clara.
  * 4. Nada disso → fallback no criador.
@@ -223,29 +233,23 @@ export async function resolveProcessAssignment(
   // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
   if (isPrevCase(caseTitle, caseNumber)) {
     const judicial = isJudicialProcess(processType);
-    const current = await getCaseAssignee(caseId);
-    const jaNaTrilhaJudicial = !!current?.option && PREV_JUD_USER_IDS.includes(current.option.userId);
+    const trilha: PrevTrilha = judicial ? 'judicial' : 'administrativo';
 
-    // Herda calado: administrativo em caso com dono, ou judicial em caso que já
-    // é da Gisele/Isabela.
-    if (current && (!judicial || jaNaTrilhaJudicial)) {
-      return { extAssignedTo: current.extUuid, assignedName: current.name };
-    }
+    // A trilha já tem dono: herda calado. Nunca olha a outra trilha.
+    const current = await getCaseAssignee(caseId, trilha);
+    if (current) return { extAssignedTo: current.extUuid, assignedName: current.name };
 
-    // Judicial entrando num caso administrativo (ou caso legado ainda sem
-    // responsável): pergunta, e a escolha passa a ser o dono do caso.
+    // Primeiro processo desta trilha no caso: pergunta e fixa o dono dela.
     const choice = pickInssPrevAssignee(
       extractPrevNumber(caseNumber, caseTitle),
       judicial,
-      { kind: judicial ? 'judicial' : 'sem-responsavel', atual: current?.name || null },
+      { kind: judicial ? 'primeiro-judicial' : 'sem-responsavel' },
     );
     if (choice) {
       const ext = await remapToExternal(choice.userId);
-      if (ext !== current?.extUuid) await setCaseAssignee(caseId, ext);
+      await setCaseAssignee(caseId, ext, trilha);
       return { extAssignedTo: ext, assignedName: choice.userName };
     }
-    // Cancelou: mantém o responsável do caso se houver, senão cai no criador.
-    if (current) return { extAssignedTo: current.extUuid, assignedName: current.name };
     return fallbackNoCriador(currentUserId);
   }
 
@@ -311,9 +315,7 @@ export async function resolveAssignmentForCase(
 
 /** Em qual dos três momentos o prompt está sendo aberto. */
 interface PrevPromptContext {
-  kind: 'novo-caso' | 'judicial' | 'sem-responsavel';
-  /** Responsável atual do caso, exibido para o usuário saber o que vai trocar. */
-  atual?: string | null;
+  kind: 'novo-caso' | 'primeiro-judicial' | 'sem-responsavel';
 }
 
 /**
@@ -344,14 +346,13 @@ function pickInssPrevAssignee(
     ? `PREV ${prevNumber} (final ${prevNumber.slice(-1)})`
     : 'caso PREV';
   const titulo = {
-    'novo-caso': `Novo caso ${alvo}\nQuem é o responsável pelo caso?`,
-    'judicial': `Processo JUDICIAL no ${alvo}\nO responsável do caso passa a ser:`,
-    'sem-responsavel': `${alvo} ainda sem responsável\nQuem é o responsável pelo caso?`,
+    'novo-caso': `Novo caso ${alvo}\nQuem responde pela parte ADMINISTRATIVA?`,
+    'primeiro-judicial': `1º processo JUDICIAL do ${alvo}\nQuem responde pela parte JUDICIAL?\n(não muda o responsável administrativo)`,
+    'sem-responsavel': `${alvo} ainda sem responsável administrativo\nQuem responde por ele?`,
   }[ctx.kind];
-  const atual = ctx.atual ? `\nResponsável atual: ${ctx.atual}` : '';
 
   const answer = window.prompt(
-    `${titulo}${atual}\n\n${lines}\n\nDigite o número:`,
+    `${titulo}\n\n${lines}\n\nDigite o número:`,
     suggestedIdx >= 0 ? String(suggestedIdx + 1) : '',
   );
   if (!answer) return null;

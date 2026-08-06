@@ -12,24 +12,36 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { state, externalMock } = vi.hoisted(() => {
   const state = {
-    caseAssignee: null as string | null,
+    // Uma coluna por trilha, como em legal_cases.
+    caseAssignee: null as string | null,          // assigned_to (administrativo)
+    caseAssigneeJud: null as string | null,       // assigned_to_judicial
     profileName: null as string | null,
-    updates: [] as Array<{ id: string; assigned_to: string | null }>,
+    updates: [] as Array<{ id: string; coluna: string; valor: string | null }>,
   };
 
   const externalMock = {
     from(table: string) {
       if (table === 'legal_cases') {
         return {
-          select: () => ({
+          // O resolver pede exatamente a coluna da trilha; devolvemos só ela.
+          select: (coluna: string) => ({
             eq: () => ({
-              maybeSingle: async () => ({ data: { assigned_to: state.caseAssignee }, error: null }),
+              maybeSingle: async () => ({
+                data: {
+                  [coluna]: coluna === 'assigned_to_judicial'
+                    ? state.caseAssigneeJud
+                    : state.caseAssignee,
+                },
+                error: null,
+              }),
             }),
           }),
           update: (patch: any) => ({
             eq: async (_col: string, id: string) => {
-              state.updates.push({ id, assigned_to: patch.assigned_to });
-              state.caseAssignee = patch.assigned_to;
+              const coluna = Object.keys(patch)[0];
+              state.updates.push({ id, coluna, valor: patch[coluna] });
+              if (coluna === 'assigned_to_judicial') state.caseAssigneeJud = patch[coluna];
+              else state.caseAssignee = patch[coluna];
               return { error: null };
             },
           }),
@@ -84,6 +96,7 @@ const aceitaSugestao = vi.fn((_msg: string, def?: string) => def ?? '');
 
 beforeEach(() => {
   state.caseAssignee = null;
+  state.caseAssigneeJud = null;
   state.profileName = null;
   state.updates = [];
   aceitaSugestao.mockClear();
@@ -125,26 +138,29 @@ describe('processo administrativo em caso PREV', () => {
     expect(aceitaSugestao).not.toHaveBeenCalled();
   });
 
-  it('caso ainda sem responsável: pergunta uma vez e grava no caso', async () => {
+  it('trilha ainda sem responsável: pergunta uma vez e grava no caso', async () => {
     const r = await inssNoPrev1984('administrativo');
 
     expect(aceitaSugestao).toHaveBeenCalledTimes(1);
     // final 4 → rodízio administrativo cai no José
     expect(r.assignedName).toBe(JOSE.userName);
-    expect(state.updates).toEqual([{ id: 'case-1', assigned_to: `ext:${JOSE.userId}` }]);
+    expect(state.updates).toEqual([{ id: 'case-1', coluna: 'assigned_to', valor: `ext:${JOSE.userId}` }]);
   });
 });
 
 describe('processo judicial em caso PREV', () => {
-  it('pergunta e troca o responsável do caso (final par → Isabela)', async () => {
+  it('grava na coluna judicial e NÃO toca no responsável administrativo', async () => {
     state.caseAssignee = `ext:${JOSE.userId}`;
 
     const r = await inssNoPrev1984('judicial');
 
     expect(aceitaSugestao).toHaveBeenCalledTimes(1);
     expect(r.extAssignedTo).toBe(`ext:${ISABELA.userId}`);
-    expect(r.assignedName).toBe(ISABELA.userName);
-    expect(state.updates).toEqual([{ id: 'case-1', assigned_to: `ext:${ISABELA.userId}` }]);
+    expect(state.updates).toEqual([
+      { id: 'case-1', coluna: 'assigned_to_judicial', valor: `ext:${ISABELA.userId}` },
+    ]);
+    // o administrativo continua com o José — é isso que "2 responsáveis" significa
+    expect(state.caseAssignee).toBe(`ext:${JOSE.userId}`);
   });
 
   it('final ímpar sugere Gisele', async () => {
@@ -154,24 +170,36 @@ describe('processo judicial em caso PREV', () => {
     expect(r.assignedName).toBe(GISELE.userName);
   });
 
-  it('não regrava quando o escolhido já é o responsável do caso', async () => {
-    state.caseAssignee = `ext:${ISABELA.userId}`;
+  it('segundo processo judicial herda calado, sem reabrir o prompt', async () => {
+    state.caseAssigneeJud = `ext:${ISABELA.userId}`;
 
     const r = await inssNoPrev1984('judicial');
 
+    expect(aceitaSugestao).not.toHaveBeenCalled();
     expect(r.extAssignedTo).toBe(`ext:${ISABELA.userId}`);
     expect(state.updates).toHaveLength(0);
   });
 
-  it('cancelar preserva o responsável que o caso já tinha', async () => {
+  it('administrativo e judicial convivem sem se enxergar', async () => {
+    state.caseAssignee = `ext:${JOSE.userId}`;
+    state.caseAssigneeJud = `ext:${GISELE.userId}`;
+
+    const adm = await inssNoPrev1984('administrativo');
+    const jud = await inssNoPrev1984('judicial');
+
+    expect(adm.assignedName).toBe(JOSE.userName);
+    expect(jud.assignedName).toBe(GISELE.userName);
+    expect(aceitaSugestao).not.toHaveBeenCalled();
+  });
+
+  it('cancelar não escreve nada na trilha', async () => {
     state.caseAssignee = `ext:${JOSE.userId}`;
     aceitaSugestao.mockReturnValueOnce('' as any);
 
-    const r = await inssNoPrev1984('judicial');
+    await inssNoPrev1984('judicial');
 
-    expect(r.extAssignedTo).toBe(`ext:${JOSE.userId}`);
-    expect(r.assignedName).toBe(JOSE.userName);
     expect(state.updates).toHaveLength(0);
+    expect(state.caseAssigneeJud).toBeNull();
   });
 });
 
@@ -204,22 +232,6 @@ describe('precedência: o dono do caso PREV vence o mapa fixo', () => {
       'Benefício INSS', 'CASO 384 - Camila', 'cloud-user', 'CASO-0384', 'administrativo', 'case-2',
     );
     expect(r.assignedName).toBe('Maria Clara');
-  });
-});
-
-describe('judicial em caso que já é da trilha judicial', () => {
-  // Sem isso, cadastrar 3 processos judiciais em sequência abriria 3 prompts.
-  it.each([
-    ['Gisele', GISELE],
-    ['Isabela', ISABELA],
-  ])('caso da %s herda sem reabrir o prompt', async (_nome, pessoa: any) => {
-    state.caseAssignee = `ext:${pessoa.userId}`;
-
-    const r = await inssNoPrev1984('judicial');
-
-    expect(aceitaSugestao).not.toHaveBeenCalled();
-    expect(r.extAssignedTo).toBe(`ext:${pessoa.userId}`);
-    expect(state.updates).toHaveLength(0);
   });
 });
 
