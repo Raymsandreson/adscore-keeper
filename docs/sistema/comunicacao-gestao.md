@@ -120,6 +120,19 @@ Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): ante
 
 **Fluxo recomendado**: usar o filtro "Responder" pra zerar o que espera resposta sua; `@` pra acionar alguém, menção de entidade pra dar contexto de lead/caso. Combinação/pedido que virou tarefa: selecionar as mensagens e "Criar atividade" em vez de redigitar.
 
+### Ferramentas de IA e ações na mensagem — paridade com o WhatsApp (desde 06/08/2026)
+
+O que existia só na conversa do WhatsApp passou a existir **em todo chat interno**: o chat da equipe das fichas (lead, caso, processo, atividade, passo do POP e o painel "Equipe" da conversa) e o chat direto/grupo.
+
+- **Menu de IA no campo de texto** (`AITextActions`, ícone ✨ — o mesmo componente do WhatsApp, sem cópia): Resumir, Corrigir erros, Humanizar, Ajude-me a escrever, **Mudar tom** (Formal, Amigável, Engraçado, Cativante, Conciso, Empático), **Traduzir** (inglês, espanhol, português), **Rascunhar como** (e-mail, mensagem, relatório) e **Prompt personalizado**. Devolve opções num diálogo; a escolhida substitui o texto do campo. Roda em `ai-text-editor` (Cloud).
+- **Sugerir resposta pela conversa** (`AISuggestReply` com `mode="team"`): usa as últimas 20 falas de texto como contexto, com persona de colega (não de atendente). Quando a última mensagem é sua, em vez de inventar resposta ele lista as **pendências da conversa**.
+- **Ações na bolha** (aparecem ao passar o mouse, **abaixo** do conteúdo — nunca por cima): **Copiar**, **Responder c/ IA** (a sugestão foca naquela mensagem, via `targetMessage`), **Citar** (vira bloco `>` no rascunho, mesmo formato do "Comentar" do WhatsApp, com autor e hora) e **Criar atividade** (`chat-to-activity` preenche, `ActivityFullSheet` abre à esquerda para não cobrir a ficha). No chat direto entraram Copiar e Responder c/ IA; responder, encaminhar e criar atividade já existiam.
+- **A atividade nasce presa à ficha**: chat de lead → `lead_id`; de caso → `case_id`; de processo → `process_id`. A transcrição usada (a mensagem clicada + até 5 anteriores como contexto) fica nas observações sob "— Origem: chat interno da equipe —".
+- **Layout do rodapé**: as ferramentas ficam numa **barra acima do campo**, com quebra de linha; embaixo só o texto (largura inteira) e o enviar. Na primeira versão elas dividiam a linha com o campo e, numa ficha estreita, o placeholder quebrava letra a letra.
+- **O que NÃO foi replicado**: o botão "Pendência" do WhatsApp registra compromisso **do cliente** (`lead_client_commitments`) — no chat interno a pendência é a própria atividade, então não existe botão equivalente.
+- **Pendente**: selo "Virou atividade" na bolha **do chat de ficha**. O vínculo mora em `team_message_activities`, cuja FK aponta para `team_messages` (chat direto), enquanto o chat de ficha grava em `team_chat_messages` — marcar a bolha lá exige migration no Externo. No chat direto o selo já funciona.
+- Código: `src/components/chat/TeamChatPanel.tsx` e `TeamDirectChatPanel.tsx`; componentes de IA em `src/components/ui/AITextActions.tsx` e `AISuggestReply.tsx`; citação em `src/lib/teamChatQuoteEvents.ts` (`formatQuotedMessages`).
+
 ---
 
 ## Campanhas — `/campanhas`
