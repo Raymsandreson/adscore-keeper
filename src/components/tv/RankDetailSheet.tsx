@@ -14,10 +14,11 @@ import { cn } from '@/lib/utils';
 
 export type DetailCriterio =
   | 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas'
-  | 'estrelas' | 'fb_pendentes';
+  | 'estrelas' | 'fb_pendentes' | 'pend_cliente';
 
 interface DetailItem {
-  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente';
+  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente'
+    | 'pend_cliente';
   quando?: string;
   titulo: string | null;
   lead_nome?: string | null;
@@ -44,6 +45,11 @@ interface DetailItem {
   responsavel?: string | null;
   retorno?: string | null;
   dias_parado?: number;
+  /** Pendência do cliente: prazo combinado, quantas cobranças e a fala dele. */
+  prazo?: string | null;
+  cobrancas?: number;
+  origem_pendencia?: 'ia' | 'manual';
+  trecho?: string | null;
 }
 
 // Linha "de onde veio a marcação". A regra é a do Raym (04/08/2026): marcou
@@ -118,6 +124,7 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
   estrelas: { titulo: 'Média das avaliações', cor: 'text-amber-400', Icon: Star },
   fb_pendentes: { titulo: 'Feedbacks sem avaliar', cor: 'text-pink-400', Icon: Inbox },
+  pend_cliente: { titulo: 'Pendências do cliente em aberto', cor: 'text-cyan-400', Icon: Inbox },
 };
 
 // "Atrasadas" e "feedbacks sem avaliar" não usam o período aberto no telão — são
@@ -126,6 +133,7 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
 function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
   if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
   if (criterio === 'fb_pendentes') return 'esperando a avaliação dela · backlog total';
+  if (criterio === 'pend_cliente') return 'o cliente ficou de fazer e não fez · backlog total';
   if (criterio === 'estrelas') return `notas recebidas · ${periodLabel}`;
   return periodLabel;
 }
@@ -202,7 +210,9 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
             </div>
           ) : items.length === 0 ? (
             <div className="py-10 text-center text-white/50">
-              {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏' : 'Nada no período.'}
+              {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏'
+                : criterio === 'pend_cliente' ? 'Nenhuma pendência de cliente em aberto. 👏'
+                : 'Nada no período.'}
             </div>
           ) : (
             items.map((it, i) => (
@@ -293,6 +303,31 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                     </div>
                     {it.retorno && (
                       <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-4">{it.retorno}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Pendência do cliente: há quantos dias está parada, quantas
+                    vezes já foi cobrado e o que ele disse quando prometeu. */}
+                {it.tipo === 'pend_cliente' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {typeof it.dias_parado === 'number' && it.dias_parado > 0 && (
+                        <span className="font-bold text-cyan-400">
+                          combinado há {it.dias_parado} {it.dias_parado === 1 ? 'dia' : 'dias'}
+                        </span>
+                      )}
+                      {typeof it.cobrancas === 'number' && it.cobrancas > 0 && (
+                        <span className="text-white/40">cobrado {it.cobrancas}x</span>
+                      )}
+                      {it.prazo && (
+                        <span className="text-white/40">
+                          prazo {format(new Date(`${it.prazo}T00:00:00`), 'dd/MM/yyyy', { locale: ptBR })}
+                        </span>
+                      )}
+                    </div>
+                    {it.trecho && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-3">“{it.trecho}”</p>
                     )}
                   </div>
                 )}
