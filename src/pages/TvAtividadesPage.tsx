@@ -51,6 +51,8 @@ interface RankRow {
   aprov_pct: number | null;
   /** Média das estrelas RECEBIDAS no período (null = sem avaliação no período). */
   media_estrelas: number | string | null;
+  /** Média que PONTUA no ranking: só existe com >= 3 notas no período. */
+  qualidade?: number | string | null;
   notas_n: number;
   /** Feedbacks que ela deveria avaliar e não avaliou (backlog total). */
   fb_pendentes: number;
@@ -458,6 +460,20 @@ export default function TvAtividadesPage() {
       .map(r => ({ nome: r.nome, entry: offByKey.get(nameKey(r.nome))! })),
     [rawRanking, offByKey],
   );
+  // 🏅 Medalha de qualidade: melhor média do PERÍODO entre quem tem amostra
+  // (>= 3 notas, o mesmo piso que a RPC usa pra ordenar) e nota de "Bom" pra
+  // cima. Sem ninguém nessas condições, ninguém leva medalha — é assim que
+  // deve ser: prêmio de qualidade não se dá por 1 nota solta.
+  const medalhaQualidade = useMemo(() => {
+    const MIN_MEDIA = 4;
+    const candidatos = ranking
+      .map(r => ({ nome: r.nome, q: r.qualidade == null ? null : Number(r.qualidade), n: r.notas_n || 0 }))
+      .filter(c => c.q != null && c.q >= MIN_MEDIA) as { nome: string; q: number; n: number }[];
+    if (!candidatos.length) return null;
+    candidatos.sort((a, b) => b.q - a.q || b.n - a.n || a.nome.localeCompare(b.nome));
+    return candidatos[0].nome;
+  }, [ranking]);
+
   const podium = useMemo(() => ranking.slice(0, 3), [ranking]);
   const list = useMemo(() => ranking.slice(3, 3 + LIST_MAX), [ranking]);
   const resumo = data?.resumo ?? null;
@@ -905,23 +921,29 @@ export default function TvAtividadesPage() {
           <span className="text-white/30">·</span>
           <span>3º <span className="text-lime-400">Objetivos</span></span>
           <span className="text-white/30">·</span>
-          <span>4º <span className="text-sky-400">Passos</span></span>
+          {/* Qualidade entra ACIMA do volume, com piso de amostra: só pontua
+              quem tem 3+ notas no período; quem não tem fica neutro. */}
+          <span>4º <span className="text-amber-400">Qualidade ⭐ (3+ notas)</span></span>
           <span className="text-white/30">·</span>
-          <span>5º <span className="text-fuchsia-400">Itens do Checklist</span></span>
+          <span>5º <span className="text-sky-400">Passos</span></span>
           <span className="text-white/30">·</span>
-          <span>6º <span className="text-emerald-400">Concluídas</span></span>
+          <span>6º <span className="text-fuchsia-400">Itens do Checklist</span></span>
           <span className="text-white/30">·</span>
-          <span>7º <span className="text-rose-400">Menos Atrasadas</span></span>
+          <span>7º <span className="text-emerald-400">Concluídas</span></span>
           <span className="text-white/30">·</span>
-          <span>8º <span className="text-amber-400">Melhor Avaliação ⭐</span></span>
+          <span>8º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>9º <span className="text-pink-400">Menos Feedbacks sem Avaliar</span></span>
+          <span>9º <span className="text-cyan-400">Menos Pendências do Cliente</span></span>
           <span className="text-white/30">·</span>
-          <span>10º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>10º <span className="text-amber-300">Média ⭐ (desempate)</span></span>
           <span className="text-white/30">·</span>
-          <span>11º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>11º <span className="text-pink-400">Menos Feedbacks sem Avaliar</span></span>
           <span className="text-white/30">·</span>
-          <span>12º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>12º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span className="text-white/30">·</span>
+          <span>13º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span className="text-white/30">·</span>
+          <span>14º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
@@ -1162,6 +1184,7 @@ export default function TvAtividadesPage() {
                   onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
                   meta={data?.meta?.passos}
                   periodo={period}
+                  medalhaQualidade={medalhaQualidade}
                 />
 
                 {/* ===== Pit stop (de folga hoje) ===== */}
@@ -1177,6 +1200,7 @@ export default function TvAtividadesPage() {
                   podium={podium}
                   onSelect={(row, rank) => setCoach({ row, rank })}
                   onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
+                  medalhaQualidade={medalhaQualidade}
                 />
 
                 {/* ===== Lista 4..10 ===== */}
@@ -1188,6 +1212,7 @@ export default function TvAtividadesPage() {
                       row={r}
                       onSelect={() => setCoach({ row: r, rank: i + 4 })}
                       onDetail={(criterio, count) => setDetail({ nome: r.nome, criterio, count })}
+                      medalha={!!medalhaQualidade && r.nome === medalhaQualidade}
                     />
                   ))}
                 </div>
@@ -1259,21 +1284,21 @@ export default function TvAtividadesPage() {
 /* ---------- Pódio ---------- */
 type OnDetail = (row: RankRow, criterio: DetailCriterio, count: number | string) => void;
 
-function Podium({ podium, onSelect, onDetail }: { podium: RankRow[]; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail }) {
+function Podium({ podium, onSelect, onDetail, medalhaQualidade }: { podium: RankRow[]; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail; medalhaQualidade?: string | null }) {
   // Ordem visual: 2º (esq) · 1º (centro) · 3º (dir).
   const first = podium[0];
   const second = podium[1];
   const third = podium[2];
   return (
     <div className="mt-6 grid grid-cols-3 items-end gap-2 md:gap-4">
-      <PodiumSpot row={second} place={2} onSelect={onSelect} onDetail={onDetail} />
-      <PodiumSpot row={first} place={1} onSelect={onSelect} onDetail={onDetail} />
-      <PodiumSpot row={third} place={3} onSelect={onSelect} onDetail={onDetail} />
+      <PodiumSpot row={second} place={2} onSelect={onSelect} onDetail={onDetail} medalha={!!medalhaQualidade && second?.nome === medalhaQualidade} />
+      <PodiumSpot row={first} place={1} onSelect={onSelect} onDetail={onDetail} medalha={!!medalhaQualidade && first?.nome === medalhaQualidade} />
+      <PodiumSpot row={third} place={3} onSelect={onSelect} onDetail={onDetail} medalha={!!medalhaQualidade && third?.nome === medalhaQualidade} />
     </div>
   );
 }
 
-function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefined; place: 1 | 2 | 3; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail }) {
+function PodiumSpot({ row, place, onSelect, onDetail, medalha }: { row: RankRow | undefined; place: 1 | 2 | 3; onSelect: (row: RankRow, rank: number) => void; onDetail: OnDetail; medalha?: boolean }) {
   if (!row) return <div />;
   const cfg = {
     1: { ring: 'ring-amber-400', glow: 'shadow-[0_0_45px_-5px] shadow-amber-400/60', bar: 'from-amber-400 to-amber-600', size: 'h-24 w-24 md:h-32 md:w-32 text-3xl md:text-4xl', barH: 'h-24 md:h-32', badge: 'bg-amber-400 text-slate-900', num: 'text-amber-300' },
@@ -1303,6 +1328,9 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
         <div className="font-bold leading-tight text-sm md:text-lg line-clamp-2">
           {row.nome}
           {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
+          {medalha && (
+            <span className="ml-1" title={`Melhor avaliação do período (${row.media_estrelas} em ${row.notas_n} notas)`}>🏅</span>
+          )}
         </div>
         <div className={cn('mt-1 font-black leading-none', place === 1 ? 'text-4xl md:text-5xl' : 'text-3xl md:text-4xl', cfg.num)}>
           <span
@@ -1358,7 +1386,7 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
 }
 
 /* ---------- Linha da lista ---------- */
-function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow; onSelect: () => void; onDetail: (criterio: DetailCriterio, count: number | string) => void }) {
+function ListRow({ rank, row, onSelect, onDetail, medalha }: { rank: number; row: RankRow; onSelect: () => void; onDetail: (criterio: DetailCriterio, count: number | string) => void; medalha?: boolean }) {
   return (
     <div
       className="relative group flex items-center gap-3 rounded-xl bg-white/[0.04] border border-white/5 px-3 py-2.5 md:px-4 md:py-3 cursor-pointer transition hover:bg-white/[0.08]"
@@ -1376,6 +1404,9 @@ function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow
       <div className="min-w-0 flex-1 font-semibold text-sm md:text-lg truncate">
         {row.nome}
         {row.home_office && <span className="ml-1" title="Home office">🏠</span>}
+        {medalha && (
+          <span className="ml-1" title={`Melhor avaliação do período (${row.media_estrelas} em ${row.notas_n} notas)`}>🏅</span>
+        )}
       </div>
       <Stat value={row.resultado ?? 0} label="status" color="text-yellow-300" onClick={() => onDetail('status', row.resultado ?? 0)} />
       <Stat value={row.fases ?? 0} label="fases" color="text-amber-300" onClick={() => onDetail('fases', row.fases ?? 0)} />

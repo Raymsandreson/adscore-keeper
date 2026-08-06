@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink, Target, Flag, Goal, Star, Inbox } from 'lucide-react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { Loader2, ListChecks, CheckCircle2, AlarmClock, PanelRightOpen, Target, Flag, Goal, Star, Inbox } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cn } from '@/lib/utils';
+
+// A ficha da atividade abre num painel AO LADO — nunca redirect nem aba nova
+// (regra do produto; ver .agents/skills/ui-sem-redirecionar). Lazy porque é o
+// formulário completo de atividade.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then(m => ({ default: m.ActivityFullSheet })),
+);
+const ProcessQuickSheet = lazy(() => import('@/components/tv/ProcessQuickSheet'));
 
 // Painel lateral do telão /tv/atividades: ao clicar num chip de critério
 // (status / fases / objetivos / passos / concluídas / atrasadas) de uma pessoa,
@@ -85,12 +93,12 @@ function Origem({
           if (naAtividade) onAtividade(it.activity_id);
           else onProcesso(it.process_id);
         }}
-        title={naAtividade ? 'Abrir a atividade em nova aba' : 'Abrir o processo em nova aba'}
+        title={naAtividade ? 'Abrir a atividade aqui do lado' : 'Abrir o processo aqui do lado'}
       >
         <span className="min-w-0 underline decoration-sky-300/40 underline-offset-2 group-hover/o:decoration-sky-200">
           {naAtividade ? it.atividade : it.processo}
         </span>
-        <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
+        <PanelRightOpen className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
       </button>
     </div>
   );
@@ -105,7 +113,7 @@ function Chip({ label, valor, onClick }: { label: string; valor: string; onClick
         onClick && 'cursor-pointer transition hover:bg-white/[0.12]',
       )}
       onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
-      title={onClick ? 'Abrir o processo em nova aba' : undefined}
+      title={onClick ? 'Abrir o processo aqui do lado' : undefined}
     >
       <span className="shrink-0 uppercase tracking-wider text-white/30">{label}</span>
       <span className={cn('min-w-0 truncate', onClick ? 'text-sky-300 underline decoration-sky-300/30 underline-offset-2' : 'text-white/70')}>
@@ -153,6 +161,10 @@ interface Props {
 export default function RankDetailSheet({ nome, criterio, count, since, periodLabel, onAbrirProcesso, onClose }: Props) {
   const [items, setItems] = useState<DetailItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Atividade aberta ao lado, sem tirar ninguém desta lista.
+  const [atividadeAberta, setAtividadeAberta] = useState<string | null>(null);
+  // Processo aberto aqui mesmo quando quem usa o componente não trata (fora do telão).
+  const [processoLocal, setProcessoLocal] = useState<string | null>(null);
   const cfg = CRITERIO_CFG[criterio];
 
   useEffect(() => {
@@ -175,16 +187,18 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
     return () => { cancelled = true; };
   }, [nome, criterio, since]);
 
+  // Atividade abre em painel AO LADO (side="left"), nunca redirecionando nem em
+  // aba nova — regra do produto, ver .agents/skills/ui-sem-redirecionar.
   const openActivity = (id?: string) => {
-    if (id) window.open(`/atv/${id.slice(0, 8)}`, '_blank', 'noopener');
+    if (id) setAtividadeAberta(id);
   };
   // Ficha do processo em aba lateral, por cima do detalhe — sem tirar ninguém
-  // do telão. Sem o callback (uso fora do telão), cai no deep-link da
-  // ProcessesPage, que lê ?openProcess=<id>.
+  // do telão. Sem o callback (uso fora do telão), abre o ProcessQuickSheet aqui
+  // mesmo: redirecionar/abrir aba nova é proibido pela regra do produto.
   const openProcesso = (id?: string | null) => {
     if (!id) return;
     if (onAbrirProcesso) onAbrirProcesso(id);
-    else window.open(`/processes?openProcess=${id}`, '_blank', 'noopener');
+    else setProcessoLocal(id);
   };
 
   return (
@@ -223,13 +237,13 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                   it.activity_id && 'cursor-pointer transition hover:bg-white/[0.1]'
                 )}
                 onClick={() => openActivity(it.activity_id)}
-                title={it.activity_id ? 'Abrir atividade em nova aba' : undefined}
+                title={it.activity_id ? 'Abrir a atividade aqui do lado' : undefined}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1 text-sm font-semibold leading-snug">
                     {it.titulo || '(sem título)'}
                   </div>
-                  {it.activity_id && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
+                  {it.activity_id && <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
                 </div>
                 {/* Onde esse item mora: cliente · processo · objetivo · fase · POP */}
                 <div className="mt-1.5 flex flex-wrap gap-1">
@@ -349,6 +363,26 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
           )}
         </div>
       </SheetContent>
+
+      {/* Ficha da atividade AO LADO (esquerda), sem cobrir esta lista e sem
+          tirar ninguém da tela. */}
+      {atividadeAberta && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open
+            onOpenChange={o => { if (!o) setAtividadeAberta(null); }}
+            activityId={atividadeAberta}
+            side="left"
+          />
+        </Suspense>
+      )}
+
+      {/* Processo, quando quem chamou não trata (fora do telão). */}
+      {processoLocal && (
+        <Suspense fallback={null}>
+          <ProcessQuickSheet processId={processoLocal} onClose={() => setProcessoLocal(null)} />
+        </Suspense>
+      )}
     </Sheet>
   );
 }
