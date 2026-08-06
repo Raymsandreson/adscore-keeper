@@ -30,7 +30,7 @@
 import { aplicaGuardas } from './escavadorMarcos.ts';
 import type { EscavadorMovimentacao, MarcoExtraido } from './escavadorMarcos.ts';
 
-/** As 10 estações canônicas + 'nenhum'. Mesma escala de marco_ordem_canonica() no banco. */
+/** As 12 estações canônicas + 'nenhum'. Mesma escala de marco_ordem_canonica() no banco. */
 export type MarcoIATipo =
   | 'peticao_inicial'
   | 'audiencia_conciliacao'
@@ -41,11 +41,17 @@ export type MarcoIATipo =
   | 'acordao_2grau'
   | 'acordao_superior'
   | 'transito_julgado'
+  | 'cumprimento_sentenca'
+  | 'precatorio_rpv'
   | 'pagamento'
   | 'nenhum';
 
 /** Espelha public.marco_ordem_canonica(). O banco continua sendo a autoridade:
- *  o trigger trg_process_movements_marco_ordem recarimba em INSERT e UPDATE. */
+ *  o trigger trg_process_movements_marco_ordem recarimba em INSERT e UPDATE.
+ *
+ *  06/08/2026: de 10 para 12 estações. A fase de execução não existia na régua e
+ *  caía como sentenca_1grau, deixando 11 processos aparentemente parados na
+ *  sentença quando já estavam em cumprimento. pagamento saiu de 10 para 12. */
 export const MARCO_ORDEM_CANONICA: Record<Exclude<MarcoIATipo, 'nenhum'>, number> = {
   peticao_inicial: 1,
   audiencia_conciliacao: 2,
@@ -56,7 +62,9 @@ export const MARCO_ORDEM_CANONICA: Record<Exclude<MarcoIATipo, 'nenhum'>, number
   acordao_2grau: 7,
   acordao_superior: 8,
   transito_julgado: 9,
-  pagamento: 10,
+  cumprimento_sentenca: 10,
+  precatorio_rpv: 11,
+  pagamento: 12,
 };
 
 const TIPOS_VALIDOS = new Set<string>([...Object.keys(MARCO_ORDEM_CANONICA), 'nenhum']);
@@ -88,15 +96,17 @@ const SYSTEM = `Você classifica movimentações processuais brasileiras em MARC
 
 Os marcos possíveis (use exatamente estes rótulos):
 - peticao_inicial: o ajuizamento/distribuição ORIGINAL da ação. Conta a primeira distribuição, a autuação, a certidão de distribuição e o "Distribuído por sorteio" de ABERTURA do processo.
-- audiencia_conciliacao: audiência de conciliação designada ou realizada.
+- audiencia_conciliacao: audiência de conciliação designada ou realizada. Vale em QUALQUER ramo — inclusive a audiência de conciliação/mediação do art. 334 do CPC no rito cível, que é a regra e não a exceção.
 - pericia: perícia designada, realizada, ou laudo pericial juntado.
 - audiencia_instrucao: audiência de instrução (ou "una") designada ou realizada.
-- sentenca_1grau: SENTENÇA de mérito ou extintiva proferida em 1º grau.
-- acordo: acordo HOMOLOGADO pelo juízo (ou sentença que homologa acordo).
-- acordao_2grau: ACÓRDÃO PROFERIDO por tribunal de 2º grau (TRT, TJ, TRF).
-- acordao_superior: ACÓRDÃO PROFERIDO por tribunal superior (TST, STJ, STF).
+- sentenca_1grau: SENTENÇA de mérito ou extintiva proferida em 1º grau, na fase de conhecimento.
+- acordo: acordo HOMOLOGADO pelo juízo (ou sentença que homologa acordo). O pedido de homologação NÃO basta — sem homologação é ato da parte.
+- acordao_2grau: ACÓRDÃO PUBLICADO por tribunal de 2º grau (TRT, TJ, TRF). Basta a movimentação que registra que o acórdão saiu — acórdão proferido, publicado, ementa, ata de sessão de julgamento, inteiro teor.
+- acordao_superior: ACÓRDÃO PUBLICADO por tribunal superior (TST, STJ, STF), mesmo critério.
 - transito_julgado: trânsito em julgado certificado.
-- pagamento: quitação efetiva — alvará EXPEDIDO, RPV/precatório PAGO, levantamento de valores, comprovante de pagamento.
+- cumprimento_sentenca: início ou andamento da FASE DE EXECUÇÃO — cumprimento de sentença instaurado, execução iniciada, e as decisões dessa fase (impugnação ao cumprimento, embargos à execução, penhora, bloqueio de valores).
+- precatorio_rpv: precatório ou RPV EXPEDIDO/requisitado — a requisição saiu, mas o dinheiro ainda não foi pago.
+- pagamento: quitação efetiva — alvará EXPEDIDO, precatório/RPV PAGO, levantamento de valores concretizado, comprovante de pagamento.
 - nenhum: qualquer outra coisa.
 
 REGRA CENTRAL — só é marco o ATO DECISÓRIO DO JUÍZO ou o FATO CONSUMADO.
@@ -104,7 +114,7 @@ REGRA CENTRAL — só é marco o ATO DECISÓRIO DO JUÍZO ou o FATO CONSUMADO.
 EXCEÇÃO ÚNICA E IMPORTANTE: peticao_inicial. O ajuizamento é ato da parte e sua
 distribuição é expediente de cartório, e mesmo assim É MARCO — é a estação 1 da régua,
 o nascimento do processo. Não descarte o ajuizamento por ser "ato da parte" ou
-"expediente de cartório". A regra central vale para as estações 2 a 10.
+"expediente de cartório". A regra central vale para as estações 2 a 12.
 
 Não são marcos:
 1. ATOS DAS PARTES depois do ajuizamento: recurso interposto (apelação, recurso ordinário, RE, REsp), contrarrazões, embargos, impugnação, manifestação, pedido, juntada de petição avulsa. Interpor recurso NÃO é ter acórdão. Pedir alvará NÃO é receber.
@@ -114,7 +124,9 @@ Não são marcos:
 Armadilhas conhecidas nesta base:
 - "Distribuído por sorteio" é AJUIZAMENTO quando abre o processo, e é apenas remessa ao relator quando o processo JÁ SUBIU ao tribunal (o texto cita relator, câmara, turma, desembargador ou o recurso em julgamento). Só nesse segundo caso → nenhum. Na dúvida entre os dois, prefira peticao_inicial: existe uma guarda posterior que descarta ajuizamento com data posterior a um marco mais avançado.
 - Acórdão que ANULA sentença, converte em diligência ou extingue o recurso É acórdão do tribunal → acordao_2grau. Não exija mérito.
-- "Cumprimento de sentença" / "Execução" é fase posterior, NÃO é sentenca_1grau.
+- "INTIMAÇÃO DE ACÓRDÃO" e "certidão de publicação de acórdão" são expediente de cartório → nenhum. Elas costumam transcrever a ementa e o voto no corpo; isso NÃO as transforma no acórdão. O marco é a movimentação que registra que o acórdão saiu, não a que avisa as partes. Se a única notícia do acórdão for a intimação, prefira perder o marco a carimbar o expediente.
+- "Cumprimento de sentença" / "Execução" NÃO é sentenca_1grau: é cumprimento_sentenca. Decisão que julga impugnação ao cumprimento, embargos à execução, penhora ou bloqueio também é cumprimento_sentenca — são decisões DENTRO da fase de execução, e a régua registra a fase, não cada incidente.
+- Precatório/RPV EXPEDIDO é precatorio_rpv; só vira pagamento quando há notícia de que foi PAGO ou de levantamento efetivo. Requisição expedida não é dinheiro na mão.
 - "Levantamento da suspensão"/"dessobrestamento" é retomada do processo, não levantamento de dinheiro → nenhum.
 - "Audiência de Conciliação", "Audiência Una", "Certidão de audiência realizada" são audiências, NÃO acordo. Só marque acordo se houver acordo HOMOLOGADO.
 - Movimentação sigilosa/confidencial sem conteúdo → nenhum.

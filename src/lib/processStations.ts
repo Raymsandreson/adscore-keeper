@@ -24,15 +24,23 @@ export type EstacaoTipo =
   | 'acordao_2grau'
   | 'acordao_superior'
   | 'transito_julgado'
+  | 'cumprimento_sentenca'
+  | 'precatorio_rpv'
   | 'pagamento';
 
 const ORDEM_CANONICA: EstacaoTipo[] = [
   'peticao_inicial', 'audiencia_conciliacao', 'pericia', 'audiencia_instrucao',
   'sentenca_1grau', 'acordo', 'acordao_2grau', 'acordao_superior',
-  'transito_julgado', 'pagamento',
+  'transito_julgado', 'cumprimento_sentenca', 'precatorio_rpv', 'pagamento',
 ];
 
 const INTERMEDIARIAS: EstacaoTipo[] = ['audiencia_conciliacao', 'pericia', 'audiencia_instrucao'];
+
+// Execução (06/08/2026): entram na régua mas NÃO são previstas por regra — só
+// aparecem na linha do trem quando o marco existe de fato. Prever execução em
+// todo processo poluiria a linha de quem nunca vai executar (acordo, improcedência),
+// e a fase é eventual por natureza: depende de a parte não cumprir espontaneamente.
+const SO_POR_EVIDENCIA: EstacaoTipo[] = ['cumprimento_sentenca', 'precatorio_rpv'];
 
 function normalize(s: string | null | undefined): string {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
@@ -79,6 +87,13 @@ export function estacoesDoProcesso(opts: EstacoesOpts): EstacaoTipo[] {
     conciliacao = false;
     instrucao = pensaoMorte || rural;
     pericia = !(pensaoMorte || maternidade || rural);
+  } else {
+    // Cível e demais ramos: a audiência de conciliação/mediação do art. 334 do
+    // CPC é a REGRA, não a exceção — o juiz designa salvo desinteresse de ambas
+    // as partes ou impossibilidade de autocomposição. Até 06/08/2026 estes 19
+    // processos não previam nenhuma estação intermediária e a linha do trem
+    // pulava direto do ajuizamento para a sentença.
+    conciliacao = true;
   }
 
   // Override manual da perícia (quando definido, vence a regra automática).
@@ -92,6 +107,8 @@ export function estacoesDoProcesso(opts: EstacoesOpts): EstacaoTipo[] {
   };
 
   return ORDEM_CANONICA.filter((tipo) => {
+    // Execução nunca é prevista — só aparece se já aconteceu.
+    if (SO_POR_EVIDENCIA.includes(tipo)) return opts.tiposComMarco.has(tipo);
     if (!INTERMEDIARIAS.includes(tipo)) return true;
     // Evidência sempre vence: se o marco existe, a estação aparece.
     return opts.tiposComMarco.has(tipo) || previstas[tipo];

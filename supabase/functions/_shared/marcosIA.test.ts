@@ -199,3 +199,65 @@ Deno.test("revisao: guarda de redistribuicao roda DEPOIS da correcao da IA", asy
   assertEquals(r.marcos.length, 1);
   assertEquals(r.marcos[0].tipo_movimentacao, "acordao_2grau");
 });
+
+// -----------------------------------------------------------------------------
+// Régua de 12 estações (06/08/2026). O parser não emite cumprimento_sentenca nem
+// precatorio_rpv — não há keyword confiável. Quem os produz é a revisão por IA,
+// promovendo um candidato que nasceu como sentenca_1grau ou pagamento. Se a
+// escala do parser e a do classificador divergirem, esses dois testes quebram.
+// -----------------------------------------------------------------------------
+
+Deno.test("regua 12: execucao sai de sentenca_1grau (5) para cumprimento_sentenca (10)", async () => {
+  // O caso real: 39 movimentações em 11 processos estavam empilhadas como
+  // sentença, fazendo o processo parecer parado na estação 5 quando já corria
+  // a execução.
+  const marcos = [marco("h1", "sentenca_1grau", "m1", "2026-03-01")];
+  const movs = [{ id: "m1", conteudo: "decisao que acolhe impugnacao ao cumprimento de sentenca" }];
+  const fn = (() => Promise.resolve({ choices: [{ message: { content: JSON.stringify([
+    { ref: "h1", tipo: "cumprimento_sentenca", confianca: "alta", motivo: "fase de execucao" },
+  ]) } }] })) as never;
+
+  const r = await revisarMarcosComIA(marcos, movs as never[], { chat: fn });
+  assertEquals(r.descartados, 0);
+  assertEquals(r.corrigidos, 1);
+  assertEquals(r.marcos.length, 1);
+  assertEquals(r.marcos[0].tipo_movimentacao, "cumprimento_sentenca");
+  assertEquals(r.marcos[0].marco_ordem, 10);
+});
+
+Deno.test("regua 12: precatorio expedido (11) nao e pagamento (12)", async () => {
+  // KW.pagamento casa 'precatorio' e 'rpv', então o parser marca requisição
+  // expedida como pagamento. Requisição não é dinheiro na mão.
+  const marcos = [
+    marco("h1", "pagamento", "m1", "2026-04-01"),
+    marco("h2", "pagamento", "m2", "2026-07-01"),
+  ];
+  const movs = [
+    { id: "m1", conteudo: "expedido oficio requisitorio - precatorio" },
+    { id: "m2", conteudo: "alvara de levantamento expedido em favor da parte autora" },
+  ];
+  const fn = (() => Promise.resolve({ choices: [{ message: { content: JSON.stringify([
+    { ref: "h1", tipo: "precatorio_rpv", confianca: "alta", motivo: "requisicao expedida" },
+    { ref: "h2", tipo: "pagamento", confianca: "alta", motivo: "alvara expedido" },
+  ]) } }] })) as never;
+
+  const r = await revisarMarcosComIA(marcos, movs as never[], { chat: fn });
+  const porTipo = Object.fromEntries(r.marcos.map((m) => [m.tipo_movimentacao, m.marco_ordem]));
+  assertEquals(porTipo["precatorio_rpv"], 11);
+  assertEquals(porTipo["pagamento"], 12);
+});
+
+Deno.test("acordao: intimacao com ementa no corpo nao vira marco", async () => {
+  // Decisão jurídica de 06/08/2026: o marco é a movimentação que registra que o
+  // acórdão saiu, não a que avisa as partes — mesmo que a intimação transcreva
+  // a ementa e o voto.
+  const marcos = [marco("h1", "acordao_2grau", "m1", "2026-05-01")];
+  const movs = [{ id: "m1", conteudo: "INTIMACAO DE ACORDAO - Apelacao Civel - EMENTA: ... voto do relator" }];
+  const fn = (() => Promise.resolve({ choices: [{ message: { content: JSON.stringify([
+    { ref: "h1", tipo: "nenhum", confianca: "alta", motivo: "expediente de cartorio" },
+  ]) } }] })) as never;
+
+  const r = await revisarMarcosComIA(marcos, movs as never[], { chat: fn });
+  assertEquals(r.descartados, 1);
+  assertEquals(r.marcos.length, 0);
+});

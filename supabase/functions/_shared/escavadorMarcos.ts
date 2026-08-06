@@ -6,6 +6,12 @@
 // Marcos alvo (uma linha por marco na tabela process_movements):
 //   peticao_inicial, sentenca_1grau, acordo, acordao_2grau,
 //   acordao_superior, transito_julgado, pagamento
+//
+// cumprimento_sentenca (10) e precatorio_rpv (11) existem na escala mas NÃO são
+// emitidos aqui: não há keyword confiável pra eles. Quem os produz é a revisão por
+// IA (marcosIA.ts), promovendo um candidato que este parser gerou como
+// sentenca_1grau ou pagamento. Por isso a escala precisa conhecê-los mesmo sem
+// detectá-los — aplicaGuardas() lê marco_ordem e precisa da escala completa.
 // =============================================================================
 
 export type MarcoTipo =
@@ -15,6 +21,8 @@ export type MarcoTipo =
   | 'acordao_2grau'
   | 'acordao_superior'
   | 'transito_julgado'
+  | 'cumprimento_sentenca'
+  | 'precatorio_rpv'
   | 'pagamento';
 
 export interface EscavadorMovimentacao {
@@ -57,6 +65,11 @@ export interface MarcoExtraido {
 // acordao_2grau=4…), que COLIDIA com a das estações na mesma coluna: uma audiência de
 // instrução (4) empatava com acórdão de 2º grau (4) e mascarava o marco de decisão no
 // "status atual". Afetava 4 processos quando detectado.
+//
+// 06/08/2026 — a régua passou de 10 para 12 estações por decisão jurídica: a fase de
+// execução não tinha onde ser registrada e caía como sentenca_1grau (39 movimentações
+// em 11 processos apareciam paradas na sentença quando já estavam em cumprimento).
+// Entraram cumprimento_sentenca (10) e precatorio_rpv (11); pagamento foi de 10 pra 12.
 const MARCO_ORDEM: Record<MarcoTipo, number> = {
   peticao_inicial: 1,
   sentenca_1grau: 5,
@@ -64,7 +77,9 @@ const MARCO_ORDEM: Record<MarcoTipo, number> = {
   acordao_2grau: 7,
   acordao_superior: 8,
   transito_julgado: 9,
-  pagamento: 10,
+  cumprimento_sentenca: 10,
+  precatorio_rpv: 11,
+  pagamento: 12,
 };
 
 // Palavras-chave já NORMALIZADAS (sem acento, minúsculas).

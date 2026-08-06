@@ -35,11 +35,19 @@ const MARCO_LABEL: Record<MarcoTipo, string> = {
   acordao_2grau: 'Acórdão (2º Grau)',
   acordao_superior: 'Acórdão (Superior)',
   transito_julgado: 'Trânsito em Julgado',
+  cumprimento_sentenca: 'Cumprimento de Sentença',
+  precatorio_rpv: 'Precatório / RPV',
   pagamento: 'Pagamento',
 };
 
 // Só estes marcos caracterizam um RESULTADO (desfecho). Audiência/perícia/petição
 // são estações intermediárias — não viram resultado atingido.
+//
+// cumprimento_sentenca e precatorio_rpv (estações 10 e 11, criadas em 06/08/2026)
+// ficam DE FORA de propósito: são fase de execução, não desfecho. O desfecho de um
+// processo em execução continua sendo a sentença ou o acórdão que a gerou, e esse
+// resultado já está gravado. Incluí-los aqui faria a execução mascarar o resultado
+// real do caso.
 const MARCO_ORDEM_RESULTADO: Partial<Record<MarcoTipo, number>> = {
   sentenca_1grau: 2,
   acordo: 3,
