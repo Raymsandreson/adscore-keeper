@@ -634,6 +634,10 @@ export function DailyReportDialog({
       onOpenChange={(v) => { if (!v) setPreviewActivityId(null); }}
       activityId={previewActivityId}
       side="left"
+      // Estica até 2rem antes do relatório (sm:max-w-lg = 32rem à direita). A folga
+      // é onde a aba do cronômetro encosta, sem cobrir nenhum dos dois painéis.
+      // Só a partir de lg: abaixo disso não há espaço pros dois lado a lado.
+      contentClassName="lg:max-w-[calc(100vw-34rem)]"
       onUpdated={fetchReportData}
     />
     </>

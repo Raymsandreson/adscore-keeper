@@ -57,7 +57,7 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 - "Iniciar expediente" — bate o ponto; nada conta sem expediente aberto.
 - Badge da atividade: tempo + título, "Previsão de tempo" (chips 15–120 min), "Pausar e salvar", menu de Pausa, microfone **"O que faço?"** (registra por voz o que está fazendo — cria atividade e liga o cronômetro), "Time agora" (painel dos cronômetros do time), minimizar.
-- Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
+- Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Entrando em reunião" (um clique, igual ao almoço), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
 - Prompts automáticos: "Ainda está nessa atividade?", "Você saiu da atividade", "Você está ocioso / vai se ausentar?", "Sua pausa passou do previsto" (+5/+10 min, virar intervalo, "Voltei ao trabalho"), 🚨 "Chamado da gestão".
 - "Qual atividade você está fazendo agora?" — troca a atividade em execução.
 
@@ -82,14 +82,14 @@ Abre pelo badge do cronômetro; agrupa por time (Gestão no topo) e atualiza a c
 |---|---|
 | Fazendo | atividade em andamento (`status='running'` com `activity_id`, batimento < 2 min) |
 | Ocioso | cronômetro rodando sem atividade |
-| Intervalo | pausa justificada (`break_type`) — almoço, café, banheiro |
+| Intervalo | pausa justificada (`break_type`) — reunião, almoço, café, banheiro |
 | Não iniciou | não entrou no sistema hoje: zero produtivo **e** zero ocioso |
 
 Quem bateu o ponto e já encerrou **não** entra em "Não iniciou" — aparece como "Hoje: HH:MM:SS produtivo · fora do ar". Gestor/diretor ainda podem pausar ou encerrar o expediente do membro pelo menu `⋮`.
 
 **Quem não aparece** (em nenhum filtro, contagem ou no ranking do dia): desligados (`org_user_status.active = false`, 23 em 31/07/2026) e quem está de férias/folga/compensação cobrindo o dia (`member_time_off`). Única exceção: ausente que está com atividade em andamento continua visível, com selo "Férias"/"Folga" — é informação, não cobrança. Ambas as tabelas moram no Externo e são chaveadas pelo **Cloud user_id**. Folga só é filtrada se estiver cadastrada na aba Férias (Gestão de Equipe → `TimeOffManager`).
 
-**Intervalo esticado**: a linha fica vermelha, sobe no topo do grupo e o chip "Intervalo" ganha `⚠ n` quando a pausa passa da previsão que a pessoa deu (`estimated_minutes`) ou, sem previsão, do teto por tipo — almoço 90 min, intervalo 30, café/lanche/descanso 20. Compensação de horas nunca alerta (banco de horas é longo por definição). Na prática o teto é que vale: as pausas registradas hoje (31/07/2026) estavam todas sem previsão.
+**Intervalo esticado**: a linha fica vermelha, sobe no topo do grupo e o chip "Intervalo" ganha `⚠ n` quando a pausa passa da previsão que a pessoa deu (`estimated_minutes`) ou, sem previsão, do teto por tipo — reunião 120 min, almoço 90, intervalo 30, café/lanche/descanso 20. Compensação de horas nunca alerta (banco de horas é longo por definição). Na prática o teto é que vale: as pausas registradas hoje (31/07/2026) estavam todas sem previsão.
 
 **Sino de alerta** (`MemberAlertButton`) aparece em três situações — ocioso, intervalo e "não iniciou" — com frases prontas próprias de cada uma. Sai por dois canais:
 - `activity_timer_alerts` (Externo) → Realtime toca o prompt 🚨 na tela dele, se a aba estiver aberta; quem está fora vê ao entrar;
@@ -138,7 +138,7 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 ## Banco de Horas — `/banco-horas`
 
-**Propósito**: relatório de tempo cronometrado por membro e tipo de atividade, separando ativo, ocioso e pausas justificadas (almoço/intervalo/compensação não contam como ocioso).
+**Propósito**: relatório de tempo cronometrado por membro e tipo de atividade, separando ativo, ocioso e pausas justificadas (reunião/almoço/intervalo/compensação não contam como ocioso; cada tipo aparece como linha `Pausa · <tipo>`).
 
 - "Atualizar", "Exportar CSV".
 - Filtros: período "De"/"Até" + "Aplicar período"; multifiltros Time, Assessor, Tipo de atv; "Limpar".

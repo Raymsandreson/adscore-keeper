@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil } from 'lucide-react';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
@@ -96,6 +97,8 @@ interface ActivityFullSheetProps {
   onCreated?: (created?: LeadActivity | null) => void;
   /** Lado da tela em que o painel abre. 'left' serve para empilhar ao lado de um sheet já aberto à direita. */
   side?: 'left' | 'right';
+  /** Sobrescreve a largura do painel (ex.: esticar até a borda de um sheet vizinho). */
+  contentClassName?: string;
 }
 
 type CaseRow = { id: string; case_number: string; title: string };
@@ -110,7 +113,7 @@ type ProcessRow = {
  * `ActivityFormCompact` da ActivitiesPage (formulário único do sistema).
  * Substitui o antigo ActivityEditSheet reduzido dentro das abas de Lead/Caso.
  */
-export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated, side = 'right' }: ActivityFullSheetProps) {
+export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated, side = 'right', contentClassName }: ActivityFullSheetProps) {
   const isCreate = mode === 'create';
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -944,7 +947,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
-      <SheetContent side={side} className="w-full sm:max-w-2xl flex flex-col p-0">
+      <SheetContent side={side} className={cn('w-full sm:max-w-2xl flex flex-col p-0', contentClassName)}>
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-start justify-between gap-2">
             <SheetTitle

@@ -65,6 +65,7 @@ const BREAK_LIMIT_MIN: Record<BreakType, number | null> = {
   cafe: 20,
   lanche: 20,
   descanso: 20,
+  reuniao: 120,
   compensacao: null,
 };
 
@@ -528,7 +529,7 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
             { key: 'all' as const, label: 'Todos', title: 'Todo mundo', alert: 0 },
             { key: 'working' as const, label: `Fazendo${workingCount ? ` ${workingCount}` : ''}`, title: 'Com atividade em andamento', alert: 0 },
             { key: 'idle' as const, label: `Ocioso${idleCount ? ` ${idleCount}` : ''}`, title: 'Sem atividade, cronômetro rodando', alert: 0 },
-            { key: 'break' as const, label: `Intervalo${breakCount ? ` ${breakCount}` : ''}`, title: breakOverdueCount ? `${breakOverdueCount} passou do tempo previsto` : 'Em pausa justificada (almoço, café, banheiro…)', alert: breakOverdueCount },
+            { key: 'break' as const, label: `Intervalo${breakCount ? ` ${breakCount}` : ''}`, title: breakOverdueCount ? `${breakOverdueCount} passou do tempo previsto` : 'Em pausa justificada (reunião, almoço, café, banheiro…)', alert: breakOverdueCount },
             { key: 'not_started' as const, label: `Não iniciou${notStartedCount ? ` ${notStartedCount}` : ''}`, title: 'Não entrou no sistema / não bateu o ponto hoje', alert: 0 },
           ]).map(f => (
             <button

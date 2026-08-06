@@ -413,7 +413,7 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Totais", anchor: "Tempo ativo", description: "Tempo ativo, Trabalho avulso, Tempo ocioso, Atividades, Membros" },
       { label: "Exportar CSV", description: "baixa o detalhamento pro fechamento do banco de horas" },
     ],
-    tip: "Período do mês → filtrar o time → \"Exportar CSV\" pro fechamento. Pausas justificadas (almoço/intervalo) não contam como ocioso.",
+    tip: "Período do mês → filtrar o time → \"Exportar CSV\" pro fechamento. Pausas justificadas (reunião/almoço/intervalo) não contam como ocioso.",
   },
   {
     id: "leaderboard",
