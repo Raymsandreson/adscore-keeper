@@ -108,26 +108,20 @@ export function useLegalCases(leadId?: string) {
       let caseNumber = caseData.case_number?.trim();
       
       // If user provided a case_number, check uniqueness.
-      // `legal_cases` tem UNIQUE (case_number) SEM índice parcial: um caso
-      // soft-deletado continua retendo o número. Distinguimos os dois casos pra
-      // não repetir "já existe" numa tela onde o caso está invisível — foi o que
-      // travou o PREV 77 (o número morava num card duplicado, apagado depois).
+      // A unicidade vale só entre casos VIVOS — índice parcial
+      // legal_cases_case_number_active_uniq (migration 20260806145748). Excluir um
+      // caso devolve o número, então o check tem que ignorar os soft-deletados: era
+      // exatamente isso que travava o recadastro do PREV 77.
       if (caseNumber) {
         const { data: existing } = await externalSupabase
           .from('legal_cases')
-          .select('id, deleted_at')
+          .select('id')
           .eq('case_number', caseNumber)
-          .order('deleted_at', { ascending: true, nullsFirst: true })
+          .is('deleted_at', null)
           .limit(1)
           .maybeSingle();
         if (existing) {
-          if ((existing as any).deleted_at) {
-            toast.error(
-              `O número "${caseNumber}" está retido por um caso excluído. Restaure aquele caso ou use outro número.`,
-            );
-          } else {
-            toast.error(`Já existe um caso com o número "${caseNumber}"`);
-          }
+          toast.error(`Já existe um caso com o número "${caseNumber}"`);
           throw new Error('Número de caso duplicado');
         }
       } else {
@@ -170,12 +164,11 @@ export function useLegalCases(leadId?: string) {
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
       if (error) {
-        // 23505 = UNIQUE (case_number). Chega aqui quando o número foi gerado
-        // pela RPC e colidiu, ou quando o dono do número é um caso excluído.
+        // 23505 = legal_cases_case_number_active_uniq. Rede de segurança para a
+        // corrida entre o check acima e o insert, e para o número vindo da RPC
+        // generate_case_number (que não checa colisão).
         if ((error as any).code === '23505') {
-          toast.error(
-            `O número "${caseNumber}" já está em uso (pode ser por um caso excluído). Use outro número.`,
-          );
+          toast.error(`O número "${caseNumber}" já está em uso por outro caso. Use outro número.`);
         }
         throw error;
       }
