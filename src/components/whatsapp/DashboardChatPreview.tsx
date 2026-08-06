@@ -95,9 +95,11 @@ interface Props {
   onOpenChat?: (phone: string) => void;
   campaignBoardId?: string | null;
   campaignStageId?: string | null;
+  /** Mensagem a destacar ao abrir (ex.: a que gerou a atividade). */
+  highlightMessageId?: string | null;
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId, highlightMessageId }: Props) {
   const { user, profile } = useAuthContext();
   // Visão alternável: conversa principal (grupo) vs privado unificado — todas as conversas
   // individuais da equipe com o contato, sem filtrar instância.
@@ -178,6 +180,22 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [showZapSign, setShowZapSign] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
   const [selectedMsgId, setSelectedMsgId] = useState<string | null>(null);
+  // Mensagem apontada por quem abriu o painel (ex.: "ver a mensagem que gerou a
+  // atividade"): rola até ela e destaca por 2s assim que a lista carrega.
+  const [flashMsgId, setFlashMsgId] = useState<string | null>(null);
+  const flashedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open || !highlightMessageId) { flashedForRef.current = null; return; }
+    if (flashedForRef.current === highlightMessageId) return;
+    if (!messages.some(m => m.id === highlightMessageId)) return;
+    const el = document.querySelector(`[data-msg-id="${highlightMessageId}"]`) as HTMLElement | null;
+    if (!el) return;
+    flashedForRef.current = highlightMessageId;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    setFlashMsgId(highlightMessageId);
+    const t = setTimeout(() => setFlashMsgId(null), 2000);
+    return () => clearTimeout(t);
+  }, [open, highlightMessageId, messages]);
   const [replySuggestOpen, setReplySuggestOpen] = useState(false);
   const [replySuggestTarget, setReplySuggestTarget] = useState('');
   const [showActivitySheet, setShowActivitySheet] = useState(false);
@@ -1876,7 +1894,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   const msg = item.data as Message;
                   const isInbound = msg.direction === 'inbound';
                   return (
-                    <div key={msg.id}>
+                    <div key={msg.id} data-msg-id={msg.id}>
                       {showDateSep && (
                         <div className="flex justify-center my-2">
                           <span className="text-[10px] bg-muted px-2 py-0.5 rounded-full text-muted-foreground">{dateLabel}</span>
@@ -1889,7 +1907,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                             isInbound
                               ? "bg-muted text-foreground rounded-tl-none"
                               : "bg-primary text-primary-foreground rounded-tr-none",
-                            selectedMsgId === msg.id && "ring-2 ring-primary/50 opacity-80"
+                            selectedMsgId === msg.id && "ring-2 ring-primary/50 opacity-80",
+                            flashMsgId === msg.id && "ring-2 ring-yellow-400"
                           )}
                           onPointerDown={() => {
                             longPressTimer.current = setTimeout(() => {
