@@ -97,33 +97,50 @@ Duas regras que valem entender:
 - **Não existe "remover lead".** O trigger `trg_legal_cases_no_unlink` no Externo recusa `lead_id → NULL`, porque caso órfão some das listas da equipe. Campo vazio na tela significa "mantém o lead atual"; trocar de lead X para Y é livre. A regra vive em `buildCaseUpdatePayload` (`src/pages/CasesPage.tsx`), coberta por `CasesPage.lead-link.test.ts`.
 - **Vincular adota os filhos órfãos**: `lead_activities` e `lead_processes` do caso que estavam com `lead_id` NULL passam pro lead escolhido — senão continuariam fora da linha do tempo do cliente. Filho que já aponta pra outro lead não é tocado.
 
-### Responsável do "Benefício INSS" em caso PREV — ago/2026
+### Responsável do caso PREV — ago/2026
 
-Ao cadastrar o processo **Benefício INSS** num caso da família PREV, abre um `window.prompt`
-com os **7 assessores**, e o campo já vem preenchido com o sugerido pelo **último dígito do
-número do PREV** — quem está cadastrando pode sobrescrever digitando outro número.
+**Caso PREV tem um responsável só**, gravado em `legal_cases.assigned_to` (UUID do Externo).
+Processos e atividades do caso herdam dele; não se escolhe responsável processo a processo.
 
-| Processo | Final do PREV | Sugerido |
+Onde a escolha aparece:
+
+1. **Na criação do caso** — se o número/título tem `PREV`, abre um `window.prompt` com os
+   **7 assessores**, já preenchido com o sugerido pelo **último dígito do número do PREV**
+   (rodízio administrativo). Quem cadastra pode sobrescrever digitando outro número.
+2. **Ao cadastrar um processo JUDICIAL** no caso — o prompt reabre sugerindo Gisele/Isabela
+   e a escolha **substitui** o responsável do caso.
+3. **Processo administrativo** — herda calado, sem prompt. Só pergunta se o caso ainda não
+   tem responsável (casos criados antes de ago/2026), e aí grava a resposta no caso.
+4. **Editar Caso** — campo "Responsável do caso" (só aparece em PREV), para consertar uma
+   escolha errada sem depender de cadastrar processo.
+
+| Contexto | Final do PREV | Sugerido |
 |---|---|---|
-| Administrativo | 0 e 1 | Andressa |
-| Administrativo | 2 e 3 | Keliane |
-| Administrativo | 4 e 5 | José |
-| Administrativo | 6 e 7 | Maria Lydia |
-| Administrativo | 8 e 9 | Vanessa |
-| **Judicial** | ímpar | **Gisele** |
-| **Judicial** | par | **Isabela** |
+| Criação do caso / processo administrativo | 0 e 1 | Andressa |
+| Criação do caso / processo administrativo | 2 e 3 | Keliane |
+| Criação do caso / processo administrativo | 4 e 5 | José |
+| Criação do caso / processo administrativo | 6 e 7 | Maria Lydia |
+| Criação do caso / processo administrativo | 8 e 9 | Vanessa |
+| **Processo judicial** | ímpar | **Gisele** |
+| **Processo judicial** | par | **Isabela** |
 
 Detalhes que valem entender:
 
-- **Judicial vence o rodízio**: PREV 1984 dá José num processo administrativo e Isabela num judicial.
+- **Judicial vence o rodízio**: PREV 1984 sugere José na criação do caso e Isabela quando
+  entra um processo judicial.
 - O número sai do `case_number` (`extractPrevNumber`), com o título do caso como segundo recurso —
   o título é renomeado à mão pela equipe, o `case_number` não. Sem número legível, o prompt abre
   sem pré-seleção em vez de chutar.
+- **Cancelar nunca apaga**: na criação o caso nasce sem responsável (e o primeiro processo
+  pergunta); num caso que já tem dono, cancelar mantém quem estava lá.
 - A **Keliane** da lista é a `Keliane Sousa Amorim Araújo`. `KEILANE DE LIMA TEIXEIRA` está na
   `ASSIGNEE_BLOCKLIST` e um teste garante que ela não entre aqui.
 - Caso **CASO** (não PREV) continua indo direto pra Maria Clara, sem prompt.
-- Regra e faixas em `src/lib/processAssignment.ts`, cobertas por `src/lib/__tests__/prevAssignee.test.ts`.
-  Os 6 pontos de cadastro repassam o tipo do processo; quem só cria administrativo passa a constante.
+- **Não houve backfill**: os ~1.730 casos anteriores seguem com `assigned_to` nulo e só ganham
+  responsável quando alguém cadastrar um processo neles ou editar o caso.
+- Regra em `src/lib/processAssignment.ts` (`getCaseAssignee`/`setCaseAssignee`/
+  `pickCaseAssigneeForNewCase`), coberta por `src/lib/__tests__/prevAssignee.test.ts`
+  (rodízio) e `src/lib/__tests__/caseAssignee.test.ts` (herança e troca).
 
 **Fluxo recomendado**: filtrar por Núcleo/Status → expandir o caso → regularizar processos citados sem cadastro com "Cadastrar todos" → acompanhar prazos na aba Atividades com o filtro "Atrasadas".
 

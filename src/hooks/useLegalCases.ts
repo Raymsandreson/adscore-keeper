@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { pickCaseAssigneeForNewCase } from '@/lib/processAssignment';
 import { toast } from 'sonner';
 
 type ExternalLeadCaseData = {
@@ -142,6 +143,12 @@ export function useLegalCases(leadId?: string) {
       }
 
 
+      // Caso PREV tem um único responsável, escolhido aqui e gravado no caso.
+      // Os processos e atividades do caso herdam sem perguntar de novo — só
+      // processo judicial reabre a escolha (ver resolveProcessAssignment).
+      // Cancelar deixa assigned_to nulo: o primeiro processo volta a perguntar.
+      const prevAssignee = await pickCaseAssigneeForNewCase(caseNumber, caseData.title);
+
       const extCreatedByCase = await remapToExternal(user?.id);
       const { leadId: externalLeadId, leadData: externalLeadData } = await ensureExternalLeadForCase(
         caseData.lead_id,
@@ -160,6 +167,7 @@ export function useLegalCases(leadId?: string) {
           acolhedor: caseData.acolhedor || null,
           closed_at: caseData.closed_at || null,
           created_by: extCreatedByCase,
+          assigned_to: prevAssignee?.extAssignedTo || null,
         } as never)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();

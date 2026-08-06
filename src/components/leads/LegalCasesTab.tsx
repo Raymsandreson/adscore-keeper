@@ -186,7 +186,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
         // Resolvido antes do insert para gravar o responsável no processo, e
         // não só na atividade "Dar andamento".
         // Estes processos nascem sempre administrativos (insert logo abaixo).
-        ({ extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber, 'administrativo'));
+        ({ extAssignedTo, assignedName } = await resolveProcessAssignment(title, titulo, user?.id, caseNumber, 'administrativo', caseId));
 
         const { data: savedProcess, error: procErr } = await externalSupabase.from('lead_processes').insert({
           lead_id: caseLeadId,
