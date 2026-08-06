@@ -53,11 +53,15 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
   const navigate = useNavigate();
   const { items, loading, reload, markDone, dismiss, meExtId } = useClientCommitmentsInbox({ enabled: open });
 
-  const [view, setView] = useState<'lista' | 'calendario'>('lista');
+  // Calendário é o padrão: a pergunta que a equipe faz é "o que tem pra hoje",
+  // e o mês inteiro mostra de cara onde está a dívida acumulada.
+  const [view, setView] = useState<'lista' | 'calendario'>('calendario');
   const [escopo, setEscopo] = useState<'todas' | 'minhas' | 'sem_dono'>('todas');
   const [busca, setBusca] = useState('');
   const [calMonth, setCalMonth] = useState(new Date());
-  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
+  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(
+    () => new Date().toISOString().slice(0, 10)
+  );
 
   /**
    * Conversa aberta no painel de baixo (Drawer), sem sair da caixa: quem está

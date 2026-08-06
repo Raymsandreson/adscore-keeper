@@ -696,9 +696,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     if (!user?.id || !phone || !instanceName) return;
     try {
       await ensureExternalSession();
+      // Regra do uuid-remap: coluna de usuário no Externo guarda o id do
+      // Externo, não o do Cloud. São diferentes para 26 das 51 pessoas.
+      const extUserId = await remapToExternal(user.id);
+      if (!extUserId) return;
       const { error } = await (db as any)
         .from('whatsapp_cloud_assignees')
-        .insert({ phone, instance_name: instanceName, assigned_user_id: user.id });
+        .insert({ phone, instance_name: instanceName, assigned_user_id: extUserId });
       // 23505 = conversa já tem dono. É o caminho normal, não é erro.
       if (error && error.code !== '23505') {
         console.warn('[assignee] não consegui assumir a conversa:', error.code, error.message);
