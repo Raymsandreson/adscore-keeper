@@ -1,7 +1,12 @@
+-- ============================================================================
+-- RUN IN: Supabase EXTERNO (kmedldlepwiityjsdahz) — NÃO no Cloud
+-- ============================================================================
+-- JÁ APLICADA em 05/08/2026 via MCP. Mantida aqui como registro do schema.
+-- ============================================================================
 -- Despesa/receita lançada direto no PROCESSO ou dentro da ATIVIDADE.
 --
--- Banco: Supabase EXTERNO (kmedldlepwiityjsdahz) — é onde `lead_financials`
--- realmente vive, junto com leads/legal_cases/lead_processes/lead_activities.
+-- É no Externo que `lead_financials` vive, junto com
+-- leads/legal_cases/lead_processes/lead_activities.
 --
 -- Hoje `lead_financials` só tem `lead_id` + `case_id`, então o único lugar que
 -- registra dinheiro é a aba Financeiro da ficha do lead. Estas duas colunas
