@@ -45,6 +45,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
@@ -70,6 +71,7 @@ import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activitie
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
+import { useAcolhedores } from '@/hooks/useAcolhedores';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -448,6 +450,9 @@ const ActivitiesPage = () => {
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [nextStepsOpen, setNextStepsOpen] = useState(false);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
+  // Avatar do responsável no cabeçalho: foto quando existe (tabela acolhedores /
+  // assets locais), senão iniciais com cor determinística.
+  const { resolve: resolvePersonAvatar } = useAcolhedores();
   // Assignee's routine: when creating/editing for another user, load their routine
   const { configs: assigneeTimeBlockSettings } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
   // Blocks view: load the routine of the single selected assignee
@@ -4837,6 +4842,62 @@ const ActivitiesPage = () => {
                       </div>
                     )}
 
+                    {/* Situação + responsável: antes só apareciam ao rolar o formulário,
+                        então o cabeçalho não dizia em que pé estava nem de quem era. */}
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                      <span
+                        className={cn(
+                          'shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                          statusColors[formStatus] || 'bg-muted text-muted-foreground',
+                        )}
+                        title="Situação da atividade"
+                      >
+                        {STATUS_OPTIONS.find(s => s.value === formStatus)?.label || 'Pendente'}
+                      </span>
+                      {(() => {
+                        // Chip temporal só nos casos que pedem ação (atrasada/vence hoje);
+                        // nos demais seria repetir a situação ao lado.
+                        const ts = getTemporalStatus({ status: formStatus, deadline: formDeadline });
+                        if (ts !== 'atrasada' && ts !== 'hoje') return null;
+                        const ribbon = getTemporalRibbon({ status: formStatus, deadline: formDeadline });
+                        return (
+                          <span className={cn('shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full', ribbon.className)}>
+                            {ribbon.label}
+                          </span>
+                        );
+                      })()}
+                      {formAssignedToName ? (
+                        <span className="flex items-center gap-1.5 min-w-0" title={`Responsável: ${formAssignedToName}`}>
+                          {(() => {
+                            const av = resolvePersonAvatar(formAssignedToName);
+                            return (
+                              <Avatar className="h-5 w-5 shrink-0">
+                                {av?.fotoUrl && (
+                                  <AvatarImage src={av.fotoUrl} alt={formAssignedToName} className="object-cover" />
+                                )}
+                                <AvatarFallback
+                                  className="text-[9px] font-semibold text-white"
+                                  style={{ backgroundColor: av?.bgColor }}
+                                >
+                                  {av?.initials || '?'}
+                                </AvatarFallback>
+                              </Avatar>
+                            );
+                          })()}
+                          <span className="text-xs text-muted-foreground truncate">{formAssignedToName}</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/70">Sem responsável</span>
+                      )}
+                      {formCoAssignees.length > 0 && (
+                        <span
+                          className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+                          title={`Também responsáveis: ${formCoAssignees.map(c => c.full_name).join(', ')}`}
+                        >
+                          +{formCoAssignees.length}
+                        </span>
+                      )}
+                    </div>
 
                   </div>
                 </div>
