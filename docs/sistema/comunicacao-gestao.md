@@ -64,6 +64,17 @@ Barra logo abaixo do "Progresso" do POP, dentro da conversa: **o que o CLIENTE f
 - Código: função `railway-server/src/functions/detect-client-commitments.ts`; regras puras em `src/lib/clientCommitments.ts` (13 testes); dados em `src/hooks/useClientCommitments.ts`; UI em `ClientCommitmentsBar.tsx` / `ClientCommitmentsPanel.tsx`. Migrations `20260805140000`, `20260806120000` e `20260806140000`.
 - **Ainda não existe** (fase 2): pendência vencida virando atividade de cobrança do responsável, e varredura em segundo plano das conversas que ninguém abriu.
 
+#### Caixa de pendências — "📌 Pendências" (desde 06/08/2026)
+
+Botão no cabeçalho de **Atividades**, ao lado de "💬 Feedbacks", com deep-link `?pendencias=1`. Mesmo formato do funil de feedbacks, porque o problema é o mesmo: dívida espalhada que ninguém vê se não for procurar. **Tira a dependência de alguém lembrar de abrir a conversa.**
+
+- Duas visões: **Calendário** (padrão — mês com a contagem por dia, dia com pendência vencida em vermelho, hoje já vem selecionado) e **Lista** (agrupada por urgência: Vencidas, Hoje, Amanhã, Próximos 7 dias, Mais para frente, Sem data).
+- **Sem prazo marcado, a pendência entra pela data em que foi combinada** — a maioria das promessas de WhatsApp não tem data ("depois eu te mando"), e sem esse fallback a lista por data ficaria vazia.
+- Filtros: **Todas** / **Só as minhas** (sou responsável pelo caso) / **Sem responsável definido** (o balde que ninguém cobre hoje), mais busca por cliente ou pendência.
+- Por item: **Feito** (pergunta quem resolveu, pré-selecionando o responsável do caso — fora da conversa não dá para saber quem falou por último), **Abrir conversa** (abre a conversa no **painel de baixo** — com as mesmas peças da conversa completa: progresso do POP, barra "Cliente ficou de" com a lista de pendências e o chat interno da equipe —, sem sair da caixa — a lista sai da frente e volta sozinha ao fechar; empilhar o Drawer sobre o Sheet deixaria dois modais disputando foco e trava de rolagem. Dentro dele, "abrir no WhatsApp" leva à inbox completa quando for preciso o resto das ferramentas) e **Não era** nas detectadas pela IA.
+- Fonte: view `vw_client_commitments_owner` (Externo, `security_invoker`), que resolve o dono com a **mesma cascata do telão** — a regra deixou de ser duplicada dentro da função `tv_atividades_ranking`, que agora lê a view. Conferido na troca: números por pessoa idênticos.
+- Regras puras em `src/lib/clientCommitmentsInbox.ts` (11 testes); dados em `useClientCommitmentsInbox`; UI em `ClientCommitmentsInbox.tsx`. Migration `20260806220000`.
+
 **Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Promessa do cliente ("vou avaliar", "vou gravar o vídeo") a IA já registra sozinha na barra "Cliente ficou de" — o assessor só marca **Feito**, **Cobra** ou corrige com **"Não era"**.
 
 ---

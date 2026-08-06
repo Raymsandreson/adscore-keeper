@@ -11,6 +11,7 @@ import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetail
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, estrelaLabel, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
 import TvCarteiraPanel from '@/components/tv/TvCarteiraPanel';
+import TvAvaliacaoPanel from '@/components/tv/TvAvaliacaoPanel';
 // Ficha completa do processo, aberta por cima do detalhe. Lazy porque é o
 // ProcessDetailSheet inteiro — não pode entrar no bundle que a TV carrega só
 // pra mostrar ranking.
@@ -575,7 +576,7 @@ export default function TvAtividadesPage() {
     >
       {/* ===== Selo do recorde (destaque no canto superior direito, telas largas) ===== */}
       {record && record.value > 0 && (
-        <div className="pointer-events-none hidden 2xl:flex absolute top-6 right-6 z-20 w-[176px] flex-col items-center gap-0.5 rounded-3xl border-2 border-amber-300/60 bg-gradient-to-br from-amber-400/25 via-amber-500/10 to-orange-500/10 px-4 pt-6 pb-4 text-center shadow-[0_0_55px_-10px] shadow-amber-400/50 backdrop-blur-sm">
+        <div className="pointer-events-none hidden min-[1900px]:flex absolute top-6 right-6 z-20 w-[176px] flex-col items-center gap-0.5 rounded-3xl border-2 border-amber-300/60 bg-gradient-to-br from-amber-400/25 via-amber-500/10 to-orange-500/10 px-4 pt-6 pb-4 text-center shadow-[0_0_55px_-10px] shadow-amber-400/50 backdrop-blur-sm">
           <span className="absolute -top-5 text-4xl drop-shadow-lg">🏆</span>
           <span className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
             Recorde {recordeLabel[period]}
@@ -856,7 +857,9 @@ export default function TvAtividadesPage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-6xl px-5 py-5 md:px-8 md:py-7">
+      {/* max-w maior a partir do 2xl porque o ranking passou a dividir a tela com
+          o painel de avaliação; o selo do recorde só volta a caber em ≥1900px. */}
+      <div className="mx-auto max-w-6xl 2xl:max-w-[1400px] px-5 py-5 md:px-8 md:py-7">
         {/* ===== Cabeçalho ===== */}
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
@@ -923,7 +926,7 @@ export default function TvAtividadesPage() {
 
         {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
         {record && record.value > 0 && (
-          <div className="mt-3 flex justify-center 2xl:hidden">
+          <div className="mt-3 flex justify-center min-[1900px]:hidden">
             <div className="flex items-center gap-2 rounded-full border border-amber-400/40 bg-amber-400/10 px-4 py-1.5 text-xs md:text-sm">
               <span className="text-base md:text-lg">🏆</span>
               <span className="font-black uppercase tracking-wider text-amber-300">Recorde {recordeLabel[period]}</span>
@@ -1138,57 +1141,73 @@ export default function TvAtividadesPage() {
           /* Esforço x resultado. Independe do ranking ter linhas: a carteira
              vem de process_owners() e existe mesmo numa semana sem atividade. */
           <TvCarteiraPanel rows={ranking} refreshMs={tv ? 60_000 : 0} />
-        ) : ranking.length === 0 && pit.length === 0 ? (
-          <div className="py-24 text-center text-white/50 text-lg">
-            {loading ? 'Carregando…' : 'Sem atividades no período.'}
-          </div>
-        ) : raceMode ? (
-          <>
-            {/* ===== Pista de corrida (todos os pilotos) ===== */}
-            <WackyRaceTrack
-              ranking={ranking}
-              cars={cars}
-              onSaveCar={saveCar}
-              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, pend_cliente: 0, ...(row as RaceRow) } as RankRow, rank })}
-              onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
-              meta={data?.meta?.passos}
-              periodo={period}
-            />
-
-            {/* ===== Pit stop (de folga hoje) ===== */}
-            <PitStop pit={pit} />
-
-            {/* ===== Rodapé ===== */}
-            <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
-          </>
         ) : (
-          <>
-            {/* ===== Pódio ===== */}
-            <Podium
-              podium={podium}
-              onSelect={(row, rank) => setCoach({ row, rank })}
-              onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
-            />
-
-            {/* ===== Lista 4..10 ===== */}
-            <div className="mt-5 space-y-2">
-              {list.map((r, i) => (
-                <ListRow
-                  key={r.nome}
-                  rank={i + 4}
-                  row={r}
-                  onSelect={() => setCoach({ row: r, rank: i + 4 })}
-                  onDetail={(criterio, count) => setDetail({ nome: r.nome, criterio, count })}
+          /* Ranking de atividades e Top de Avaliação lado a lado, ambos do time
+             que o rodízio está mostrando. Abaixo de xl a avaliação empilha
+             embaixo — nunca por cima. */
+          <div className="mt-2 grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem] 2xl:grid-cols-[minmax(0,1fr)_22rem]">
+            <div className="min-w-0">
+            {ranking.length === 0 && pit.length === 0 ? (
+              <div className="py-24 text-center text-white/50 text-lg">
+                {loading ? 'Carregando…' : 'Sem atividades no período.'}
+              </div>
+            ) : raceMode ? (
+              <>
+                {/* ===== Pista de corrida (todos os pilotos) ===== */}
+                <WackyRaceTrack
+                  ranking={ranking}
+                  cars={cars}
+                  onSaveCar={saveCar}
+                  onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, pend_cliente: 0, ...(row as RaceRow) } as RankRow, rank })}
+                  onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
+                  meta={data?.meta?.passos}
+                  periodo={period}
                 />
-              ))}
+
+                {/* ===== Pit stop (de folga hoje) ===== */}
+                <PitStop pit={pit} />
+
+                {/* ===== Rodapé ===== */}
+                <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
+              </>
+            ) : (
+              <>
+                {/* ===== Pódio ===== */}
+                <Podium
+                  podium={podium}
+                  onSelect={(row, rank) => setCoach({ row, rank })}
+                  onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
+                />
+
+                {/* ===== Lista 4..10 ===== */}
+                <div className="mt-5 space-y-2">
+                  {list.map((r, i) => (
+                    <ListRow
+                      key={r.nome}
+                      rank={i + 4}
+                      row={r}
+                      onSelect={() => setCoach({ row: r, rank: i + 4 })}
+                      onDetail={(criterio, count) => setDetail({ nome: r.nome, criterio, count })}
+                    />
+                  ))}
+                </div>
+
+                {/* ===== Pit stop (de folga hoje) ===== */}
+                <PitStop pit={pit} />
+
+                {/* ===== Rodapé ===== */}
+                <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
+              </>
+            )}
             </div>
 
-            {/* ===== Pit stop (de folga hoje) ===== */}
-            <PitStop pit={pit} />
-
-            {/* ===== Rodapé ===== */}
-            <Footer resumo={resumo} participantes={ranking.length} ranking={ranking} />
-          </>
+            {/* ===== Top de Avaliação do mesmo time (janela de 30 dias) ===== */}
+            <TvAvaliacaoPanel
+              teamId={teamId && teamId !== GRUPO_GERENCIAL ? teamId : null}
+              grupo={teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null}
+              teamName={currentViewName}
+            />
+          </div>
         )}
       </div>
 
