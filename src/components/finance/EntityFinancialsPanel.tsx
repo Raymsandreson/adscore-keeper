@@ -47,12 +47,71 @@ export interface EntityFinancialEntry {
  */
 export type FinancialScope = 'lead' | 'case' | 'process' | 'activity';
 
+/**
+ * Destino possível de um lançamento feito de dentro da atividade. A atividade
+ * pode estar vinculada a processo, caso e lead ao mesmo tempo, e nem toda
+ * despesa é do processo — deslocamento para conversar com o cliente é do lead.
+ * Por isso o formulário pergunta em qual dos vínculos gravar, em vez de assumir.
+ */
+export interface FinancialLinkOption {
+  key: string;
+  label: string;
+  leadId?: string | null;
+  caseId?: string | null;
+  processId?: string | null;
+}
+
+/**
+ * Monta os destinos de uma atividade, do mais específico ao menos: processo,
+ * caso, lead. Só entram os que a atividade realmente tem vinculados.
+ * Compartilhado entre a ActivitiesPage e o ActivityFullSheet — são duas telas
+ * diferentes para a mesma atividade e precisam oferecer as mesmas opções.
+ */
+export function buildFinancialLinkOptions(input: {
+  processId?: string | null; processLabel?: string | null;
+  caseId?: string | null;    caseLabel?: string | null;
+  leadId?: string | null;    leadLabel?: string | null;
+}): FinancialLinkOption[] {
+  const out: FinancialLinkOption[] = [];
+  if (input.processId) {
+    out.push({
+      key: 'processo',
+      label: `Processo — ${input.processLabel || 'sem número'}`,
+      processId: input.processId,
+      caseId: input.caseId || null,
+      leadId: input.leadId || null,
+    });
+  }
+  if (input.caseId) {
+    out.push({
+      key: 'caso',
+      label: `Caso — ${input.caseLabel || 'sem título'}`,
+      caseId: input.caseId,
+      leadId: input.leadId || null,
+    });
+  }
+  if (input.leadId) {
+    out.push({
+      key: 'lead',
+      label: `Lead — ${input.leadLabel || 'sem nome'}`,
+      leadId: input.leadId,
+    });
+  }
+  return out;
+}
+
 interface EntityFinancialsPanelProps {
   scope: FinancialScope;
   leadId?: string | null;
   caseId?: string | null;
   processId?: string | null;
   activityId?: string | null;
+  /**
+   * Destinos oferecidos no formulário. Com 2+ opções vira um seletor
+   * obrigatório; com 1 o destino é usado direto. Vazio/ausente = usa os ids
+   * passados nas props (comportamento das abas de lead e processo).
+   */
+  linkOptions?: FinancialLinkOption[];
   /** Texto curto mostrado acima da lista, explicando a que o lançamento fica vinculado. */
   contextLabel?: string;
   /** Altura máxima da lista. Padrão 300px (igual à aba do lead). */
@@ -77,6 +136,7 @@ export function EntityFinancialsPanel({
   caseId,
   processId,
   activityId,
+  linkOptions,
   contextLabel,
   listMaxHeight = '300px',
 }: EntityFinancialsPanelProps) {
@@ -85,6 +145,7 @@ export function EntityFinancialsPanel({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<EntityFinancialEntry | null>(null);
   const [saving, setSaving] = useState(false);
+  const [targetKey, setTargetKey] = useState<string>('');
   const [form, setForm] = useState({
     entry_type: 'saida' as 'entrada' | 'saida',
     amount: '',
@@ -133,6 +194,23 @@ export function EntityFinancialsPanel({
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
+  /** Só entram destinos que de fato têm vínculo — atividade sem processo não oferece "Processo". */
+  const targets = useMemo(
+    () => (linkOptions || []).filter(o => o.leadId || o.caseId || o.processId),
+    [linkOptions],
+  );
+  const hasTargets = targets.length > 0;
+  const target = targets.find(t => t.key === targetKey) || null;
+
+  /** Destino que corresponde a um lançamento já gravado — do mais específico ao menos. */
+  const targetKeyOf = useCallback((entry: EntityFinancialEntry) => {
+    const match =
+      (entry.process_id && targets.find(t => t.processId === entry.process_id)) ||
+      (entry.case_id && targets.find(t => t.caseId === entry.case_id && !t.processId)) ||
+      (entry.lead_id && targets.find(t => t.leadId === entry.lead_id && !t.processId && !t.caseId));
+    return match ? match.key : (targets[0]?.key || '');
+  }, [targets]);
+
   const totals = useMemo(() => {
     const receitas = entries.filter(e => e.entry_type === 'entrada').reduce((s, e) => s + Number(e.amount), 0);
     const despesas = entries.filter(e => e.entry_type === 'saida').reduce((s, e) => s + Number(e.amount), 0);
@@ -156,15 +234,20 @@ export function EntityFinancialsPanel({
       toast.error('Informe o valor');
       return;
     }
+    if (hasTargets && !target) {
+      toast.error('Escolha onde registrar');
+      return;
+    }
 
     setSaving(true);
     try {
-      // Grava todos os vínculos disponíveis: é o que faz a despesa da atividade
-      // aparecer no processo, no caso e no lead.
+      // Com destino escolhido, gravam-se os vínculos DELE — uma despesa atribuída
+      // ao lead não deve aparecer no financeiro do processo. Sem destino (abas de
+      // lead e processo), valem os ids das props.
       const payload = {
-        lead_id: leadId || null,
-        case_id: caseId || null,
-        process_id: processId || null,
+        lead_id: (hasTargets ? target?.leadId : leadId) || null,
+        case_id: (hasTargets ? target?.caseId : caseId) || null,
+        process_id: (hasTargets ? target?.processId : processId) || null,
         activity_id: activityId || null,
         entry_type: form.entry_type,
         amount: parseFloat(form.amount),
@@ -213,6 +296,7 @@ export function EntityFinancialsPanel({
 
   const openEdit = (entry: EntityFinancialEntry) => {
     setEditingEntry(entry);
+    setTargetKey(targetKeyOf(entry));
     setForm({
       entry_type: entry.entry_type,
       amount: String(entry.amount),
@@ -259,7 +343,11 @@ export function EntityFinancialsPanel({
       </div>
 
       {/* Add Button */}
-      <Button size="sm" onClick={() => { resetForm(); setEditingEntry(null); setDialogOpen(true); }} className="w-full">
+      <Button
+        size="sm"
+        onClick={() => { resetForm(); setEditingEntry(null); setTargetKey(targets[0]?.key || ''); setDialogOpen(true); }}
+        className="w-full"
+      >
         <Plus className="h-4 w-4 mr-1" /> Novo Lançamento
       </Button>
 
@@ -308,6 +396,24 @@ export function EntityFinancialsPanel({
             <DialogTitle>{editingEntry ? 'Editar Lançamento' : 'Novo Lançamento'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
+            {/* Onde o lançamento fica pendurado. Com um vínculo só, não faz sentido
+                perguntar — mostra qual é e segue. */}
+            {hasTargets && (targets.length > 1 ? (
+              <div>
+                <Label className="text-xs">Registrar em *</Label>
+                <Select value={targetKey} onValueChange={setTargetKey}>
+                  <SelectTrigger><SelectValue placeholder="Escolha o processo ou lead..." /></SelectTrigger>
+                  <SelectContent>
+                    {targets.map(t => <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <p className="text-[11px] text-muted-foreground">
+                Registrando em: <span className="font-medium text-foreground">{targets[0].label}</span>
+              </p>
+            ))}
+
             <div className="flex gap-2">
               <Button
                 type="button"

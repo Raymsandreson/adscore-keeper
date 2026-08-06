@@ -50,8 +50,9 @@ import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
-  Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark,
+  Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark, DollarSign,
 } from 'lucide-react';
+import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
 import { WorkflowTimer } from '@/components/instagram/WorkflowTimer';
@@ -435,6 +436,7 @@ const ActivitiesPage = () => {
   const [notifDateCount, setNotifDateCount] = useState<number | null>(null);
   const [vincularOpen, setVincularOpen] = useState(false);
   const [preencherOpen, setPreencherOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
   const [feedbackFunnelOpen, setFeedbackFunnelOpen] = useState(false);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
@@ -2915,6 +2917,32 @@ const ActivitiesPage = () => {
         </Suspense>
       )}
 
+      {/* Financeiro da atividade — pergunta o destino entre os vínculos dela. */}
+      <Dialog open={financeOpen} onOpenChange={setFinanceOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base">Financeiro da atividade</DialogTitle>
+          </DialogHeader>
+          <EntityFinancialsPanel
+            scope="activity"
+            activityId={selectedActivity?.id}
+            linkOptions={buildFinancialLinkOptions({
+              processId: formProcessId,
+              processLabel: displayProcessLabel(
+                formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null,
+                formProcessTitle,
+              ),
+              caseId: formCaseId,
+              caseLabel: formCaseTitle,
+              leadId: formLeadId,
+              leadLabel: formLeadName,
+            })}
+            contextLabel="O lançamento fica pendurado no destino escolhido e aparece no financeiro dele."
+            listMaxHeight="260px"
+          />
+        </DialogContent>
+      </Dialog>
+
       {/* Preview de conversa do WhatsApp inline (mesmo componente do Monitor IA / Contatos) */}
       <DashboardChatPreview
         open={!!waChatPreview}
@@ -4884,6 +4912,22 @@ const ActivitiesPage = () => {
                       </div>
                     </PopoverContent>
                   </Popover>
+
+                  {/* Despesa/receita lançada de dentro da atividade. Pergunta em qual
+                      dos vínculos da própria atividade (processo, caso ou lead) o
+                      lançamento entra — nem toda despesa é do processo. */}
+                  {(formProcessId || formCaseId || formLeadId) && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setFinanceOpen(true)}
+                      title="Registrar despesa/receita desta atividade"
+                    >
+                      <DollarSign className="h-3 w-3" />
+                      Financeiro
+                    </Button>
+                  )}
 
                   {/* Painéis controlados pelo menu acima. Ficam FORA do popover, com
                       gatilho sr-only sempre montado, para o painel não perder a âncora

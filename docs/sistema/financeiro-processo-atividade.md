@@ -17,14 +17,28 @@ Três pontos de entrada, **a mesma tabela** (`lead_financials`) e o mesmo formul
 | Onde | Como abrir | O que grava |
 |---|---|---|
 | Ficha do lead | aba "$ Financeiro" | `lead_id` (+ `case_id` do caso vinculado) |
-| Processo | `ProcessDetailSheet` → aba "Financeiro" | `process_id`, `case_id`, `lead_id` |
-| Atividade | `ActivityFullSheet` → botão "Financeiro" no cabeçalho | `activity_id` + `process_id`/`case_id`/`lead_id` **herdados do vínculo da própria atividade** |
+| Processo | `ProcessDetailSheet` → aba "Financeiro" (entre "Marcos" e "Status") | `process_id`, `case_id`, `lead_id` |
+| Atividade | botão "Financeiro" no cabeçalho — na tela cheia (`ActivitiesPage`) e no sheet (`ActivityFullSheet`) | `activity_id` + os vínculos do **destino escolhido** |
+
+São duas telas diferentes para a mesma atividade e o botão existe nas duas, com o mesmo comportamento.
+
+### O destino é escolhido, não assumido
+
+Uma atividade pode estar vinculada a processo, caso e lead ao mesmo tempo — e nem toda despesa é do processo (deslocamento para conversar com o cliente é do lead). Por isso o formulário abre perguntando **"Registrar em"**, listando só os vínculos que aquela atividade tem, do mais específico ao menos:
+
+- **Processo — `<nº>`** → grava `process_id` + `case_id` + `lead_id`
+- **Caso — `<título>`** → grava `case_id` + `lead_id` (não entra no financeiro do processo)
+- **Lead — `<nome>`** → grava só `lead_id`
+
+Com um vínculo só, não pergunta: mostra "Registrando em: X" e segue. O botão nem aparece se a atividade não tiver nenhum vínculo.
+
+`activity_id` é gravado sempre, qualquer que seja o destino — é o que a aba Financeiro da própria atividade lista.
 
 ### A regra que faz tudo se encaixar
 
-O lançamento grava **todos os vínculos que a origem conhece**, não só o da tela onde foi criado. Consequência prática:
+O lançamento grava os vínculos do destino escolhido, não só o id da tela onde foi criado. Consequência prática:
 
-- Despesa lançada dentro de uma atividade vinculada ao processo X **aparece sozinha** na aba Financeiro do processo X, na do caso e na do lead. Não há rollup por consulta extra nem job de sincronização — é o mesmo registro, encontrado por filtros diferentes.
+- Despesa lançada numa atividade com destino "Processo X" **aparece sozinha** na aba Financeiro do processo X, na do caso e na do lead. Não há rollup por consulta extra nem job de sincronização — é o mesmo registro, encontrado por filtros diferentes.
 - Na lista do processo (ou do lead), o lançamento vindo de atividade é marcado com "• via atividade".
 
 ### O que cada aba lista
@@ -39,10 +53,10 @@ O botão "Financeiro" da atividade só aparece em atividade **já criada** (em m
 
 ## Implementação
 
-- `src/components/finance/EntityFinancialsPanel.tsx` — implementação única, parametrizada por `scope` (`lead` | `case` | `process` | `activity`).
+- `src/components/finance/EntityFinancialsPanel.tsx` — implementação única, parametrizada por `scope` (`lead` | `case` | `process` | `activity`). Exporta `buildFinancialLinkOptions()`, que monta os destinos da atividade.
 - `src/components/leads/LeadFinancialsTab.tsx` — wrapper fino, `scope="lead"`.
 - `src/components/cases/ProcessDetailSheet.tsx` — aba `financeiro`.
-- `src/components/activities/ActivityFullSheet.tsx` — botão "Financeiro" + dialog.
+- `src/pages/ActivitiesPage.tsx` e `src/components/activities/ActivityFullSheet.tsx` — botão "Financeiro" + dialog, ambos usando `buildFinancialLinkOptions()` para oferecer os mesmos destinos.
 - Todo lançamento gravado continua disparando `trackFinanceEntry()` (cronômetro / bloco "Controle Financeiro" do dia), igual à aba do lead.
 
 ### Banco — e uma correção de roteamento

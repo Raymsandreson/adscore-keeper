@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { EntityFinancialsPanel } from '@/components/finance/EntityFinancialsPanel';
+import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { displayProcessLabel } from '@/lib/processLabel';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
@@ -1356,16 +1356,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           <EntityFinancialsPanel
             scope="activity"
             activityId={activityId}
-            processId={formProcessId || null}
-            caseId={formCaseId || null}
-            leadId={formLeadId || null}
-            contextLabel={
-              formProcessId
-                ? `Vinculado ao processo ${displayProcessLabel(linkedProcess, formProcessTitle)} — aparece também na aba Financeiro do processo.`
-                : formCaseId
-                  ? 'Vinculado ao caso desta atividade. Vincule um processo para o lançamento aparecer também no financeiro do processo.'
-                  : 'Esta atividade não tem processo nem caso vinculado — o lançamento fica só nela (e no lead, se houver).'
-            }
+            linkOptions={buildFinancialLinkOptions({
+              processId: formProcessId,
+              processLabel: displayProcessLabel(linkedProcess, formProcessTitle),
+              caseId: formCaseId,
+              caseLabel: formCaseTitle,
+              leadId: formLeadId,
+              leadLabel: formLeadName,
+            })}
+            contextLabel="O lançamento fica pendurado no destino escolhido e aparece no financeiro dele."
             listMaxHeight="260px"
           />
         </DialogContent>
