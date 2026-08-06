@@ -230,21 +230,26 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                 : 'Nada no período.'}
             </div>
           ) : (
+            // O card NÃO é clicável: só o título abre a atividade. Quando o
+            // card inteiro tinha onClick, dar a nota no formulário de avaliar
+            // abria a ficha junto.
             items.map((it, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'rounded-lg border border-white/10 bg-white/[0.04] p-3',
-                  it.activity_id && 'cursor-pointer transition hover:bg-white/[0.1]'
-                )}
-                onClick={() => openActivity(it.activity_id)}
-                title={it.activity_id ? 'Abrir a atividade aqui do lado' : undefined}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0 flex-1 text-sm font-semibold leading-snug">
+              <div key={i} className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                <div
+                  className={cn(
+                    'flex items-start justify-between gap-2',
+                    it.activity_id && 'group/t cursor-pointer',
+                  )}
+                  onClick={it.activity_id ? () => openActivity(it.activity_id) : undefined}
+                  title={it.activity_id ? 'Abrir a atividade aqui do lado' : undefined}
+                >
+                  <div className={cn(
+                    'min-w-0 flex-1 text-sm font-semibold leading-snug',
+                    it.activity_id && 'group-hover/t:text-sky-300 group-hover/t:underline decoration-sky-300/40 underline-offset-2',
+                  )}>
                     {it.titulo || '(sem título)'}
                   </div>
-                  {it.activity_id && <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
+                  {it.activity_id && <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5 group-hover/t:text-sky-300" />}
                 </div>
                 {/* Onde esse item mora: cliente · processo · objetivo · fase · POP */}
                 <div className="mt-1.5 flex flex-wrap gap-1">

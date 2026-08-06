@@ -67,7 +67,12 @@ export default function FeedbackAvaliarInline({
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
+    // stopPropagation: este bloco costuma viver dentro de um card/linha que tem
+    // clique próprio. Dar nota não pode disparar a ação do card em volta.
+    <div
+      className="mt-2 rounded-lg border border-white/10 bg-white/[0.03] p-2.5"
+      onClick={e => e.stopPropagation()}
+    >
       <div className="flex items-center gap-2">
         <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-white/40">Avaliar</span>
         <span className="flex items-center gap-0.5">
