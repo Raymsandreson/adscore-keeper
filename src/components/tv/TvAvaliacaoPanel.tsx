@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { Star, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import AvaliacaoDetailSheet, { type OutcomeTipo } from '@/components/tv/AvaliacaoDetailSheet';
 
 // Painel "Top de Avaliação" do telão — mesma leitura do mural /destaques (média
 // das estrelas dos feedbacks já avaliados), só que filtrada pelo time que o
@@ -85,21 +86,32 @@ async function carregarEscopo(teamId: string | null, grupo: string | null): Prom
   return new Set<string>((data || []).map((r: { user_id: string }) => r.user_id).filter(Boolean));
 }
 
-/** Contador de um desfecho: número grande + rótulo curto, legível de longe. */
+/** Contador de um desfecho: número grande + rótulo curto, legível de longe.
+ *  Com valor, vira botão — abre a aba lateral com as avaliações daquele tipo. */
 function OutcomeStat({
-  n, label, icon, color, on,
+  n, label, icon, color, on, onClick,
 }: {
   n: number;
   label: string;
   icon: ReactNode;
   color: string;
   on: boolean;
+  onClick?: () => void;
 }) {
+  const clicavel = on && !!onClick;
   return (
-    <div className={cn(
-      'rounded-lg border px-1 py-1 text-center',
-      on ? 'border-white/15 bg-white/[0.06]' : 'border-white/5 bg-transparent',
-    )}>
+    <div
+      role={clicavel ? 'button' : undefined}
+      tabIndex={clicavel ? 0 : undefined}
+      onClick={clicavel ? onClick : undefined}
+      onKeyDown={clicavel ? e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick!(); } } : undefined}
+      title={clicavel ? `Ver as avaliações · ${label}` : undefined}
+      className={cn(
+        'rounded-lg border px-1 py-1 text-center transition',
+        on ? 'border-white/15 bg-white/[0.06]' : 'border-white/5 bg-transparent',
+        clicavel && 'cursor-pointer hover:border-white/40 hover:bg-white/[0.12]',
+      )}
+    >
       <div className={cn('text-2xl font-black leading-none tabular-nums', on ? color : 'text-white/20')}>
         {n}
       </div>
@@ -126,12 +138,18 @@ export default function TvAvaliacaoPanel({
   const [rows, setRows] = useState<EvalRow[]>([]);
   const [escopo, setEscopo] = useState<Set<string> | null>(null);
   const [loading, setLoading] = useState(true);
+  // Início da janela usada na última carga — a aba lateral recebe o mesmo valor
+  // pra listar exatamente as avaliações que somaram o número clicado.
+  const [desdeIso, setDesdeIso] = useState(() => new Date(Date.now() - JANELA_DIAS * 24 * 3600 * 1000).toISOString());
+  // Avaliações de um desfecho de uma pessoa, em aba lateral.
+  const [detalhe, setDetalhe] = useState<{ assignedTo: string; nome: string; tipo: OutcomeTipo; count: number } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       await ensureExternalSession();
       const desde = new Date(Date.now() - JANELA_DIAS * 24 * 3600 * 1000).toISOString();
+      setDesdeIso(desde);
       const [{ data, error }, membros] = await Promise.all([
         (externalSupabase as any)
           .from('lead_activities')
@@ -246,15 +264,38 @@ export default function TvAvaliacaoPanel({
               {/* Todos os desfechos recebidos, no mesmo tamanho de número da
                   corrida: dá pra ler de longe quem levou elogio e quem levou ❌. */}
               <div className="mt-2 grid grid-cols-4 gap-1">
-                <OutcomeStat n={r.elogios} label="Elogio" icon={<Sparkles className="h-3 w-3" />} color="text-yellow-300" on={r.elogios > 0} />
-                <OutcomeStat n={r.satisfeitos} label="Satisf" icon="✅" color="text-emerald-400" on={r.satisfeitos > 0} />
-                <OutcomeStat n={r.incompletos} label="Incompl" icon="⚠️" color="text-amber-400" on={r.incompletos > 0} />
-                <OutcomeStat n={r.insatisfeitos} label="Insat" icon="❌" color="text-rose-400" on={r.insatisfeitos > 0} />
+                <OutcomeStat
+                  n={r.elogios} label="Elogio" icon={<Sparkles className="h-3 w-3" />} color="text-yellow-300" on={r.elogios > 0}
+                  onClick={() => setDetalhe({ assignedTo: r.key, nome: r.nome, tipo: 'elogio', count: r.elogios })}
+                />
+                <OutcomeStat
+                  n={r.satisfeitos} label="Satisf" icon="✅" color="text-emerald-400" on={r.satisfeitos > 0}
+                  onClick={() => setDetalhe({ assignedTo: r.key, nome: r.nome, tipo: 'satisfeito', count: r.satisfeitos })}
+                />
+                <OutcomeStat
+                  n={r.incompletos} label="Incompl" icon="⚠️" color="text-amber-400" on={r.incompletos > 0}
+                  onClick={() => setDetalhe({ assignedTo: r.key, nome: r.nome, tipo: 'incompleto', count: r.incompletos })}
+                />
+                <OutcomeStat
+                  n={r.insatisfeitos} label="Insat" icon="❌" color="text-rose-400" on={r.insatisfeitos > 0}
+                  onClick={() => setDetalhe({ assignedTo: r.key, nome: r.nome, tipo: 'insatisfeito', count: r.insatisfeitos })}
+                />
               </div>
             </div>
           ))}
           <p className="pt-1 text-center text-[10px] text-white/30">Gente boa chama gente boa. 💚</p>
         </div>
+      )}
+
+      {detalhe && (
+        <AvaliacaoDetailSheet
+          assignedTo={detalhe.assignedTo}
+          nome={detalhe.nome}
+          tipo={detalhe.tipo}
+          count={detalhe.count}
+          desde={desdeIso}
+          onClose={() => setDetalhe(null)}
+        />
       )}
     </aside>
   );
