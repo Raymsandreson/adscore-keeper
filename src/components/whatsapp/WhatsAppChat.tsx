@@ -571,17 +571,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setTextSelectionMode(false);
     setTextSelectionOrder([]);
   };
+  /** Uma mensagem no formato que a IA da atividade lê: quem falou, quando, o quê. */
+  const formatMsgForActivity = (m: any): string => {
+    const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
+    let when = '';
+    try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch { /* data inválida: segue sem */ }
+    return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
+  };
+
   const buildTextSelectionPrefill = (): string => {
     const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
     return textSelectionOrder
       .map((id) => msgMap.get(id))
       .filter((m: any) => m && m.message_text)
-      .map((m: any) => {
-        const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
-        let when = '';
-        try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch {}
-        return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
-      })
+      .map(formatMsgForActivity)
       .join('\n');
   };
   // Contexto p/ sugestão de resposta da IA: últimas mensagens com texto, em ordem cronológica.
@@ -4269,7 +4272,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                               conversation.contact_name || conversation.phone,
                               conversation.contact_id || undefined,
                               conversation.contact_name || undefined,
-                              msg.message_text || '',
+                              formatMsgForActivity(msg),
                               [msg.id],
                             );
                           }}

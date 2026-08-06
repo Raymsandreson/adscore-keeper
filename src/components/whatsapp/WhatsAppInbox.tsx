@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useWhatsAppMessages, WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { usePageState } from '@/hooks/usePageState';
 import { useWhatsAppInstanceStatus } from '@/hooks/useWhatsAppInstanceStatus';
@@ -23,6 +23,17 @@ import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { useProfilesList } from '@/hooks/useProfilesList';
+import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
+import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
+import { format } from 'date-fns';
+
+// Formulário COMPLETO de atividade (o mesmo do chat interno) — lazy pra não
+// pesar a inbox.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 import { WhatsAppLeadsDashboard } from './WhatsAppLeadsDashboard';
 import { BulkLeadCreationDialog } from './BulkLeadCreationDialog';
 import { GoogleIntegrationPanel } from '@/components/GoogleIntegrationPanel';
@@ -578,6 +589,12 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const [activityDefaults, setActivityDefaults] = useState<{ leadId?: string; leadName?: string; contactId?: string; contactName?: string; dictationText?: string }>({});
   // Mensagens que originaram a atividade em rascunho — viram vínculo quando ela é criada.
   const [activityOriginMsgIds, setActivityOriginMsgIds] = useState<string[]>([]);
+  // Rascunho gerado pela IA + ficha completa (mesmo caminho do chat interno).
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft | null>(null);
+  const [activityFullOpen, setActivityFullOpen] = useState(false);
+  const [activityDraftLoading, setActivityDraftLoading] = useState(false);
+  const { types: activityTypes } = useActivityTypes();
+  const profiles = useProfilesList();
   const [showBoardPicker, setShowBoardPicker] = useState(false);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   const [aiPreview, setAiPreview] = useState<{
@@ -1407,10 +1424,94 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     }
   };
 
-  const handleCreateActivity = (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => {
-    setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
+  /**
+   * "Criar atividade" a partir de mensagem: mesma IA e mesmo formulário completo
+   * do chat interno da equipe (`chat-to-activity` → `ActivityFullSheet`), em vez
+   * do formulário reduzido — que só trazia o título e deixava tipo, "o que foi
+   * feito", "como está" e "próximo passo" vazios.
+   *
+   * Sem mensagem de origem (menu do topo da conversa) o caminho antigo continua.
+   */
+  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => {
     setActivityOriginMsgIds(originMessageIds || []);
-    setShowActivitySheet(true);
+
+    if (!prefillText || !(originMessageIds || []).length) {
+      setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
+      setShowActivitySheet(true);
+      return;
+    }
+
+    setActivityDraftLoading(true);
+    try {
+      // Tipos ainda não carregados no clique (cache frio) → busca direto; com
+      // lista vazia a IA é instruída a deixar o TIPO em branco.
+      let typeOptions = activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label }));
+      if (typeOptions.length === 0) {
+        const { data: tRows } = await externalSupabase
+          .from('activity_types')
+          .select('key, label, is_active')
+          .order('display_order', { ascending: true });
+        typeOptions = ((tRows as { key: string; label: string; is_active: boolean }[]) || [])
+          .filter(t => t.is_active)
+          .map(t => ({ key: t.key, label: t.label }));
+      }
+      const memberNames = profiles.map(p => p.full_name).filter(Boolean) as string[];
+
+      const { data, error } = await routedFunctions.invoke('chat-to-activity', {
+        body: { transcript: prefillText, activity_types: typeOptions, member_names: memberNames },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar o rascunho da atividade');
+
+      const f = data.fields || {};
+      // Assessor sugerido pela IA (nome exato) vence; sem sugestão, fica com
+      // quem está criando. Mesmo critério para o prazo: o citado na conversa
+      // vence, senão hoje.
+      const suggested = f.assignee_name
+        ? profiles.find(p => (p.full_name || '').trim().toLowerCase() === String(f.assignee_name).trim().toLowerCase())
+        : null;
+      const me = profiles.find(p => p.user_id === user?.id);
+      const assignee = suggested || me || null;
+
+      setActivityDraft({
+        title: f.title || '',
+        activity_type: f.activity_type || 'tarefa',
+        priority: f.priority || 'normal',
+        deadline: f.deadline || format(new Date(), 'yyyy-MM-dd'),
+        lead_id: leadId || undefined,
+        lead_name: leadName || f.lead_name || undefined,
+        assigned_to: assignee?.user_id || undefined,
+        assigned_to_name: assignee?.full_name || undefined,
+        what_was_done: f.what_was_done || '',
+        current_status_notes: f.current_status || '',
+        next_steps: f.next_steps || '',
+        notes: [f.notes || '', `— Origem: conversa do WhatsApp —\n${prefillText}`].filter(Boolean).join('\n\n'),
+      });
+      setActivityFullOpen(true);
+    } catch (e) {
+      console.error('[WhatsAppInbox] erro ao gerar atividade da conversa:', e);
+      toast.error((e as Error)?.message || 'Não foi possível gerar a atividade — abrindo o formulário em branco');
+      // Falhou a IA: não deixa o usuário na mão, cai no formulário de sempre.
+      setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
+      setShowActivitySheet(true);
+    } finally {
+      setActivityDraftLoading(false);
+    }
+  };
+
+  /** Grava o vínculo mensagem→atividade quando a ficha completa cria de fato. */
+  const handleFullActivityCreated = async (created?: { id?: string; title?: string } | null) => {
+    if (!created?.id || !selectedConversation) return;
+    await linkWhatsAppMessagesToActivity({
+      messageIds: activityOriginMsgIds,
+      phone: selectedConversation.phone,
+      instanceName: selectedConversation.instance_name || null,
+      activityId: created.id,
+      activityTitle: created.title || null,
+      createdBy: user?.id || null,
+    });
+    setActivityOriginMsgIds([]);
+    toast.success('Atividade criada a partir da conversa!');
   };
 
   const handleActivityCreated = async (title: string, type: string, leadName?: string, activityId?: string) => {
@@ -2210,6 +2311,33 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         messages={selectedConversation?.messages}
         onCaseCreated={() => { toast.success('Caso criado com sucesso!'); refetch(); }}
       />
+
+      {/* Rascunho da IA a partir das mensagens: formulário COMPLETO, igual ao
+          chat interno. O usuário revisa e cria de fato. */}
+      {activityDraft && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={activityFullOpen}
+            mode="create"
+            draft={activityDraft}
+            activityId={null}
+            onOpenChange={(o) => {
+              // Fechar sem criar descarta a origem — senão a próxima atividade
+              // herdaria as mensagens desta.
+              if (!o) { setActivityFullOpen(false); setActivityDraft(null); setActivityOriginMsgIds([]); }
+            }}
+            onCreated={handleFullActivityCreated}
+          />
+        </Suspense>
+      )}
+
+      {/* Enquanto a IA lê a conversa e monta o rascunho */}
+      {activityDraftLoading && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          <span className="text-sm">Lendo a conversa e montando a atividade...</span>
+        </div>
+      )}
 
       {/* Activity Creation Sheet */}
       <WhatsAppActivitySheet
