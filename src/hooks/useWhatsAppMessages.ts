@@ -677,6 +677,35 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     }
   }, [instances, selectedInstanceId, syncRecentMessages, hasLoaded]);
 
+  /**
+   * Quem responde primeiro assume a conversa.
+   *
+   * Antes disso o push de mensagem nova só sabia deduzir destinatário de
+   * atributos do cliente (responsável do processo, acolhedor) ou da linha (dono
+   * da instância) — nenhum dos dois diz quem está de fato cuidando do papo. Em
+   * instância compartilhada não havia resposta nenhuma.
+   *
+   * É `insert ... on conflict do nothing` de propósito: assume só se estiver sem
+   * dono. Quem já respondeu antes continua dono, e mandar uma mensagem numa
+   * conversa alheia não rouba ela. Passar adiante é ação explícita de handoff.
+   *
+   * Silencioso por natureza: falhar aqui não pode atrapalhar o envio, que já deu
+   * certo.
+   */
+  const claimConversation = useCallback(async (phone: string, instanceName: string | null) => {
+    if (!user?.id || !phone || !instanceName) return;
+    try {
+      await ensureExternalSession();
+      await (db as any)
+        .from('whatsapp_cloud_assignees')
+        .insert({ phone, instance_name: instanceName, assigned_user_id: user.id })
+        .select()
+        .maybeSingle();
+    } catch {
+      // Conversa já tem dono (conflito de PK) ou falha de rede — ignora.
+    }
+  }, [user?.id]);
+
   const sendMessage = async (
     phone: string,
     message: string,
@@ -843,6 +872,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       }
 
       console.log(`[sendMessage ${debugId}] SUCCESS`);
+      void claimConversation(conversationPhone, conversationInstanceName || targetInstanceName || null);
       return true;
     } catch (error: any) {
       console.error(`[sendMessage ${debugId}] EXCEPTION`, error);
