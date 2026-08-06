@@ -13,6 +13,7 @@ const ActivityFullSheet = lazy(() =>
   import('@/components/activities/ActivityFullSheet').then(m => ({ default: m.ActivityFullSheet })),
 );
 const ProcessQuickSheet = lazy(() => import('@/components/tv/ProcessQuickSheet'));
+import FeedbackAvaliarInline from '@/components/tv/FeedbackAvaliarInline';
 
 // Painel lateral do telão /tv/atividades: ao clicar num chip de critério
 // (status / fases / objetivos / passos / concluídas / atrasadas) de uma pessoa,
@@ -317,6 +318,13 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                     </div>
                     {it.retorno && (
                       <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-4">{it.retorno}</p>
+                    )}
+                    {/* Avaliar aqui mesmo — mesma regra do funil de Atividades
+                        (src/lib/feedbackEvaluation.ts), sem sair do telão. */}
+                    {it.activity_id && (
+                      <FeedbackAvaliarInline
+                        alvo={{ id: it.activity_id, assigned_to_name: it.responsavel ?? null, title: it.titulo }}
+                      />
                     )}
                   </div>
                 )}

@@ -15,6 +15,7 @@ import { format, parseISO, startOfDay, differenceInCalendarDays, startOfMonth, e
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
+import { validarAvaliacao, salvarAvaliacao, type FeedbackOutcome } from '@/lib/feedbackEvaluation';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
 export interface FeedbackRow {
@@ -349,26 +350,6 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     toast.info('🎙️ Ouvindo… dite sua justificativa', { duration: 2000 });
   };
 
-  // Notifica um destinatário (responsável) — reaproveita a tabela activity_notifications.
-  const notify = async (row: FeedbackRow, type: string, title: string, body: string) => {
-    if (!row.assigned_to || row.assigned_to === extId) return;
-    try {
-      const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user?.id || '').maybeSingle();
-      await externalSupabase.from('activity_notifications' as any).insert({
-        activity_id: row.id,
-        recipient_id: row.assigned_to,
-        recipient_name: row.assigned_to_name,
-        type,
-        title,
-        body,
-        actor_id: extId,
-        actor_name: (prof as any)?.full_name || null,
-      } as any);
-    } catch (e) {
-      console.warn('[FeedbackFunnel] notify falhou:', e);
-    }
-  };
-
   // Cobrança de atividade atrasada: o observador aperta e o responsável recebe um
   // popup (via activity_notifications → ActivityNotificationsListener) marcando a
   // atividade como importante ou urgente, com ação de abrir a atividade.
@@ -406,70 +387,35 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     }
   };
 
-  const evaluate = async (row: FeedbackRow, outcome: 'satisfeito' | 'incompleto' | 'insatisfeito') => {
+  // Validação + gravação + aviso vivem em src/lib/feedbackEvaluation.ts — a
+  // MESMA regra que o telão usa pra avaliar direto do painel "Feedbacks sem
+  // avaliar". Aqui fica só o que é desta tela: o rascunho, a lista e a
+  // atividade de melhoria do 'insatisfeito'.
+  const evaluate = async (row: FeedbackRow, outcome: FeedbackOutcome) => {
     const d = getDraft(row.id, row);
-    const rating = d.rating;
-    if (!rating) { toast.error('Dê uma nota em estrelas antes de avaliar.'); return; }
-    // Justificativa obrigatória no 5 (reconhecer) e no <=2 (construtivo).
-    if ((rating === 5 || rating <= 2) && !d.justification.trim()) {
-      toast.error(rating === 5
-        ? 'No 5 estrelas, registre o que motivou a nota máxima (reconhecimento).'
-        : 'Em nota baixa (≤2), registre o que faltou — de forma construtiva.');
-      return;
-    }
-    // Insatisfeito: sanduíche — exige registrar 1 coisa que ficou boa.
-    if (outcome === 'insatisfeito' && !d.praise.trim()) {
-      toast.error('Antes de pedir melhoria, registre 1 coisa que ficou boa (será enviada junto).');
-      return;
-    }
+    const erro = validarAvaliacao(d, outcome);
+    if (erro) { toast.error(erro); return; }
 
     setSavingId(row.id);
     try {
-      const { data: prof } = await supabase.from('profiles').select('full_name').eq('user_id', user?.id || '').maybeSingle();
-      const myName = (prof as any)?.full_name || null;
-      const { error } = await externalSupabase
-        .from('lead_activities')
-        .update({
-          feedback_rating: rating,
-          feedback_outcome: outcome,
-          feedback_rating_justification: d.justification.trim() || null,
-          feedback_praise: d.praise.trim() || null,
-          feedback_rated_by: extId,
-          feedback_rated_by_name: myName,
-          feedback_rated_at: new Date().toISOString(),
-        } as any)
-        .eq('id', row.id);
-      if (error) throw error;
+      const res = await salvarAvaliacao({
+        alvo: { id: row.id, assigned_to: row.assigned_to, assigned_to_name: row.assigned_to_name, title: row.title },
+        outcome,
+        draft: d,
+        extId,
+        cloudUserId: user?.id,
+      });
 
-      // Toda avaliação avisa o responsável — sem exceção de nota ou resultado.
-      const nota = `${rating}⭐`;
-      const porque = d.justification.trim().slice(0, 300);
-      if (outcome === 'incompleto') {
-        await notify(row, 'incompleto', '⚠️ Feedback incompleto', `Falta detalhar: ${porque || 'complete o retorno.'}`);
-        toast.success('Marcado como incompleto — o responsável foi avisado para completar.');
-      } else if (outcome === 'satisfeito') {
-        if (rating >= 4) {
-          await notify(row, 'praise', '🌟 Seu trabalho foi elogiado', porque ? `${nota} — ${porque}` : `${nota} pelo retorno.`);
-        } else {
-          await notify(row, 'avaliacao', '✅ Sua atividade foi avaliada', `${nota} · satisfeito${porque ? ` — ${porque}` : ''}`);
-        }
-        toast.success('Avaliado como satisfeito!');
-      } else {
-        // insatisfeito → o responsável recebe o sanduíche (elogio + o que melhorar)
-        // e o avaliador abre a nova atividade de melhoria.
-        await notify(
-          row,
-          'insatisfeito',
-          '🔄 Pedido de melhoria na atividade',
-          [d.praise.trim() ? `✅ Ficou bom: ${d.praise.trim().slice(0, 200)}` : '', `${nota} · o que melhorar: ${porque || 'ver a atividade'}`].filter(Boolean).join('\n')
-        );
+      if (res.pedeFollowUp) {
         onCreateFollowUp({ source: row, praise: d.praise.trim(), reason: d.justification.trim() });
         toast.info('Abrindo nova atividade de melhoria…');
+      } else {
+        toast.success(res.mensagem);
       }
 
       // Atualiza a lista localmente.
       setRows(prev => prev.map(r => r.id === row.id
-        ? { ...r, feedback_rating: rating, feedback_outcome: outcome, feedback_rated_by_name: myName, feedback_rated_at: new Date().toISOString() }
+        ? { ...r, feedback_rating: d.rating, feedback_outcome: outcome, feedback_rated_by_name: res.avaliadorNome, feedback_rated_at: res.ratedAt }
         : r));
       setDraft(prev => { const n = { ...prev }; delete n[row.id]; return n; });
     } catch (e: any) {
