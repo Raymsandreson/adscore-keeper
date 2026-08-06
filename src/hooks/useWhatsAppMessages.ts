@@ -696,13 +696,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     if (!user?.id || !phone || !instanceName) return;
     try {
       await ensureExternalSession();
-      await (db as any)
+      const { error } = await (db as any)
         .from('whatsapp_cloud_assignees')
-        .insert({ phone, instance_name: instanceName, assigned_user_id: user.id })
-        .select()
-        .maybeSingle();
-    } catch {
-      // Conversa já tem dono (conflito de PK) ou falha de rede — ignora.
+        .insert({ phone, instance_name: instanceName, assigned_user_id: user.id });
+      // 23505 = conversa já tem dono. É o caminho normal, não é erro.
+      if (error && error.code !== '23505') {
+        console.warn('[assignee] não consegui assumir a conversa:', error.code, error.message);
+      } else if (!error) {
+        console.log('[assignee] conversa assumida:', phone, '@', instanceName);
+      }
+    } catch (e) {
+      console.warn('[assignee] falha ao assumir a conversa:', e);
     }
   }, [user?.id]);
 
