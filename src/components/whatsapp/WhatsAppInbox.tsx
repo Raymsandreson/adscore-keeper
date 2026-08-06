@@ -439,6 +439,8 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [selectedPhone, setSelectedPhone] = usePageState<string | null>('wa_selected_phone', null);
+  // Mensagem a destacar no chat (deep link `?openChat=…&msg=…` vindo da atividade).
+  const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
 
   const handleOpenChatByPhone = useCallback(async (phone: string) => {
     if (!phone) return;
@@ -488,6 +490,10 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
     if (openChat) {
       handleOpenChatByPhone(openChat);
+      // `msg` vem da ficha da atividade ("ver a mensagem que gerou"): o chat
+      // rola até a bolha e a destaca.
+      const msg = searchParams.get('msg');
+      if (msg) { setHighlightMessageId(msg); searchParams.delete('msg'); }
       searchParams.delete('openChat');
       setSearchParams(searchParams, { replace: true });
     } else if (contactId) {
@@ -1412,9 +1418,10 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
     // Registra de quais mensagens a atividade nasceu: a bolha ganha o selo
     // "Virou atividade" e o atalho pra abrir a ficha no painel lateral.
+    let linkedToMessage = false;
     if (activityId && activityOriginMsgIds.length > 0) {
       const { data: { user: linkUser } } = await supabase.auth.getUser();
-      await linkWhatsAppMessagesToActivity({
+      linkedToMessage = await linkWhatsAppMessagesToActivity({
         messageIds: activityOriginMsgIds,
         phone: selectedConversation.phone,
         instanceName: selectedConversation.instance_name || null,
@@ -1424,6 +1431,12 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       });
     }
     setActivityOriginMsgIds([]);
+
+    // Com o selo na própria mensagem, a nota interna "Atividade criada" vira
+    // ruído — repetia a mesma informação logo abaixo da bolha. Ela continua
+    // sendo gravada quando a atividade nasce fora de uma mensagem (menu do topo)
+    // ou quando o vínculo falhou: aí é o único registro na conversa.
+    if (linkedToMessage) return;
 
     const { data: { user: currentUser } } = await supabase.auth.getUser();
     const { data: profile } = currentUser ? await supabase.from('profiles').select('full_name').eq('user_id', currentUser.id).single() : { data: null };
@@ -2004,6 +2017,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   onOpenChat={handleOpenChatByPhone}
                   onClearConversation={clearConversation}
                   onLoadOlderMessages={loadOlderConversationMessages}
+                  highlightMessageId={highlightMessageId}
                 />
               )}
             </div>
@@ -2086,6 +2100,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   onOpenChat={handleOpenChatByPhone}
                   onClearConversation={clearConversation}
                   onLoadOlderMessages={loadOlderConversationMessages}
+                  highlightMessageId={highlightMessageId}
                 />
               ) : (
                 <div className="flex-1 flex items-center justify-center bg-muted/20">

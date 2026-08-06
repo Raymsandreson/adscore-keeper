@@ -126,6 +126,8 @@ interface Props {
   onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
   /** Busca no servidor mensagens mais antigas que as já carregadas. Retorna quantas adicionou (0 = fim do histórico). */
   onLoadOlderMessages?: (phone: string, instanceName?: string | null) => Promise<number>;
+  /** Mensagem a destacar ao abrir (deep link vindo da ficha da atividade). */
+  highlightMessageId?: string | null;
 }
 
 function parseParticipants(raw: Array<Record<string, unknown>>) {
@@ -151,7 +153,7 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
   return { mapped, lidMap, phoneNameMap };
 }
 
-export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages }: Props) {
+export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages, highlightMessageId }: Props) {
   const { profile, user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
@@ -1012,6 +1014,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Deep link vindo da ficha da atividade ("ver a mensagem que gerou"): rola até
+  // a bolha e destaca por 2s. Depende de `messages` porque a conversa pode ainda
+  // estar carregando quando o link chega.
+  const [flashMsgId, setFlashMsgId] = useState<string | null>(null);
+  const flashedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlightMessageId) { flashedForRef.current = null; return; }
+    if (flashedForRef.current === highlightMessageId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flash = (targetId: string) => {
+      const el = document.querySelector(`[data-msg-id="${targetId}"]`) as HTMLElement | null;
+      if (!el) return false;
+      flashedForRef.current = highlightMessageId;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashMsgId(targetId);
+      timer = setTimeout(() => setFlashMsgId(null), 2000);
+      return true;
+    };
+
+    if (messages.some(m => m.id === highlightMessageId)) {
+      flash(highlightMessageId);
+      return () => { if (timer) clearTimeout(timer); };
+    }
+
+    // A mesma mensagem chega replicada em cada instância conectada ao grupo, com
+    // `id` e `external_message_id` próprios — o id do link pode ser o de uma
+    // instância que não é a aberta. Como todas as cópias ficam vinculadas à mesma
+    // atividade, a irmã visível é achada pelo próprio vínculo, sem consulta extra.
+    const targetActivity = msgActivities[highlightMessageId]?.activity_id;
+    if (targetActivity) {
+      const twin = messages.find(m => msgActivities[m.id]?.activity_id === targetActivity);
+      if (twin && !cancelled) flash(twin.id);
+    }
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [highlightMessageId, messages, msgActivities]);
 
   // Fetch leads already linked to this contact (to hide redundant "Vincular Lead" actions)
   useEffect(() => {
@@ -3733,7 +3774,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           // Regular message
           const msg = item.data;
           return (
-            <div key={msg.id}>
+            <div key={msg.id} data-msg-id={msg.id}>
               {dateSeparator}
               <div className={cn(
                 "flex group",
@@ -3749,7 +3790,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   "max-w-[70%] rounded-2xl px-4 py-2 text-sm relative",
                   msg.direction === 'outbound'
                     ? "bg-green-600 text-white rounded-br-sm"
-                    : "bg-card border rounded-bl-sm"
+                    : "bg-card border rounded-bl-sm",
+                  flashMsgId === msg.id && "ring-2 ring-yellow-400"
                 )}
               >
                 {/* Group sender name */}
