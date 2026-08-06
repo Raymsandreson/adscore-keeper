@@ -53,6 +53,8 @@ interface RankRow {
   notas_n: number;
   /** Feedbacks que ela deveria avaliar e não avaliou (backlog total). */
   fb_pendentes: number;
+  /** Pendências do cliente em aberto sob responsabilidade da pessoa (backlog total). */
+  pend_cliente: number;
   chat_resp_seg: number | null;
   ativo_seg: number;
   ocioso_seg: number;
@@ -1136,7 +1138,7 @@ export default function TvAtividadesPage() {
               ranking={ranking}
               cars={cars}
               onSaveCar={saveCar}
-              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, ...(row as RaceRow) } as RankRow, rank })}
+              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, pend_cliente: 0, ...(row as RaceRow) } as RankRow, rank })}
               onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
               meta={data?.meta?.passos}
               periodo={period}
@@ -1290,6 +1292,12 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
           <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail(row, 'concluidas', row.concluidas)} />
           <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" onClick={() => onDetail(row, 'atrasadas', row.atrasadas)} />
           <PodiumStat
+            text={row.pend_cliente ?? 0}
+            label="cliente"
+            color="text-cyan-400"
+            onClick={() => onDetail(row, 'pend_cliente', row.pend_cliente ?? 0)}
+          />
+          <PodiumStat
             text={estrelaLabel(row.media_estrelas)}
             label="⭐"
             color="text-amber-400"
@@ -1346,6 +1354,12 @@ function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow
       <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail('concluidas', row.concluidas)} />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" onClick={() => onDetail('atrasadas', row.atrasadas)} />
+      <Stat
+        value={row.pend_cliente ?? 0}
+        label="cliente"
+        color="text-cyan-400"
+        onClick={() => onDetail('pend_cliente', row.pend_cliente ?? 0)}
+      />
       <Stat
         value={estrelaLabel(row.media_estrelas)}
         label="⭐"
@@ -1504,7 +1518,7 @@ function Footer({ resumo, participantes, ranking }: { resumo: Resumo | null; par
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total. {participantes} no ranking.</span>
+          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, menos pendências do cliente em aberto, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total; <b className="text-white/80">cliente</b> = pendências que o cliente ficou de fazer e continuam em aberto nos casos sob responsabilidade dela (backlog total; pendência de caso sem responsável definido não conta para ninguém). {participantes} no ranking.</span>
         </p>
       </div>
       </div>
