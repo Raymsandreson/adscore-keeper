@@ -9,6 +9,7 @@
 | **db-tables-map** | Antes de criar tabela, coluna, hook, função ou feature que toca dados de negócio. | Anti-duplicação: obriga checar se já existe tabela/coluna/relação antes de propor `CREATE TABLE`. Contém hot-list de tabelas frequentemente reinventadas (ex: `whatsapp_groups_index`, `lead_whatsapp_groups`, `contact_leads`). |
 | **db-railway-routing** | Sempre que a tarefa envolver criar/alterar tabela, RLS, trigger, edge function, webhook, cron ou SQL. | Guarda de trânsito da arquitetura: dados de negócio → Supabase Externo, código HTTP → Railway, Cloud só para auth/metadata. Impede criação no lugar errado. |
 | **code-reusables-map** | Antes de criar edge function nova, hook, RPC, webhook, processador ou integração WhatsApp/ZapSign/Meta/IA. | Irmã da `db-tables-map` mas para CÓDIGO. Hot-list de funções/hooks que já resolvem problemas comuns (ex: `send-whatsapp`, `whatsapp-webhook`, família `suggest-*`, `useLeads`). Inclui script `find-function.sh` para varrer Railway + Supabase + hooks. |
+| **whatsjud-fluxo-vocabulario** | Sempre que a tarefa envolver `jm_*`, views `vw_jm_*`, régua de estágios, conciliação, FIDC, cessão ou relatórios de jurimetria/fluxo. | Fonte da verdade do vocabulário FIDC (v5): régua de 7 estágios, códigos TPU, taxonomia do livro-caixa por categoria, modelo de acordo cota×honorário, vigente×alvo, `deposito_judicial_situacao`. |
 
 ## Como usar
 
