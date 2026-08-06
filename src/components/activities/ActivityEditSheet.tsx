@@ -23,6 +23,7 @@ import { ptBR } from 'date-fns/locale';
 import { Save, Loader2, ChevronDown, CheckCircle2, Trash2, ExternalLink, X, Search } from 'lucide-react';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
@@ -362,7 +363,7 @@ export function ActivityEditSheet({ open, onOpenChange, activityId, onUpdated }:
                   }}>
                     <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                     <SelectContent>
-                      {profiles.map(p => (
+                      {filterAssignableMembers(profiles).map(p => (
                         <SelectItem key={p.user_id} value={p.user_id}>
                           {p.full_name || 'Sem nome'}
                         </SelectItem>

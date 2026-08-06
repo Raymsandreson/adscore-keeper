@@ -18,6 +18,7 @@ import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { cn } from '@/lib/utils';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
@@ -598,7 +599,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                 }}>
                   <SelectTrigger className="h-8 text-sm"><SelectValue placeholder="Selecione..." /></SelectTrigger>
                   <SelectContent>
-                    {profiles.map(p => (
+                    {filterAssignableMembers(profiles).map(p => (
                       <SelectItem key={p.user_id} value={p.user_id}>
                         {p.full_name || p.email || 'Sem nome'}
                       </SelectItem>
