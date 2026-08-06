@@ -56,6 +56,13 @@ interface Corpo {
   /** Revisão por IA do que o parser de palavra-chave classificou. Padrão: ligada.
    *  Desligar só pra comparar comportamentos — o parser sozinho errava 51% (05/08/2026). */
   usar_ia?: boolean;
+  /** Só processos que NUNCA foram consultados (data_ultima_verificacao null).
+   *  Sem isto o backfill varre por created_at e regasta cota em quem já está em
+   *  dia: medido em 06/08/2026, 406 dos 625 CNJ tinham sido verificados nos
+   *  últimos 7 dias, e só 214 nunca haviam sido buscados. O modo push só
+   *  consulta quem apareceu no e-mail do dia, então quem nunca teve publicação
+   *  nunca entra na fila — é circular, e este flag é a saída. */
+  apenas_nunca_buscados?: boolean;
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -133,6 +140,7 @@ Deno.serve(async (req: Request) => {
     if (corpo.workflow_id) query = query.eq('workflow_id', corpo.workflow_id);
     if (mode !== 'reextract') query = query.not('process_number', 'is', null);
     if (cnjsDoPush) query = query.in('process_number', cnjsDoPush);
+    if (corpo.apenas_nunca_buscados) query = query.is('data_ultima_verificacao', null);
 
     const { data: processos, error: qErr } = await query;
     if (qErr) throw qErr;
