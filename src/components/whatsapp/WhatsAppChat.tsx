@@ -4100,10 +4100,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
-                  const mt = (msg.media_type || '').toLowerCase();
+                  const mt = (msg.media_type || '').toLowerCase().split(';')[0].trim();
                   const urlLower = msg.media_url.toLowerCase();
-                  const isPdf = mt.includes('pdf') || /\.pdf($|\?)/i.test(urlLower);
-                  const isImage = mt.startsWith('image/') || /\.(jpe?g|png|webp|gif)($|\?)/i.test(urlLower);
+                  // A extensão da URL não prova nada: o webhook grava `.pdf` como fallback de
+                  // documento, então pptx/csv/tsv/heic chegam com nome `.pdf`. Só confiamos na
+                  // extensão quando o mime é genérico (ou ausente).
+                  const mtIsGeneric = !mt || mt === 'application/octet-stream';
+                  const isPdf = mt.includes('pdf') || (mtIsGeneric && /\.pdf($|\?)/i.test(urlLower));
+                  const isImage = mt.startsWith('image/') || (mtIsGeneric && /\.(jpe?g|png|webp|gif)($|\?)/i.test(urlLower));
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
                   const driveInfo = driveSavedById[msg.id] || (msg.metadata?.drive ? { link: msg.metadata.drive.web_view_link, name: msg.metadata.drive.file_name } : null);
                   return (
@@ -4121,8 +4125,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     >
                       {isPdf && (
                         <div className="rounded-lg overflow-hidden border bg-white">
+                          {/* Sem <iframe> de fallback: quando o arquivo não é PDF de verdade,
+                              o iframe navega para um recurso não-exibível e o Chrome baixa o
+                              arquivo sozinho a cada render da conversa. */}
                           <object data={msg.media_url} type="application/pdf" className="w-full h-[420px]">
-                            <iframe src={msg.media_url} className="w-full h-[420px]" title={fileName} />
+                            <div className="flex h-[420px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                              Não foi possível exibir a prévia — use o botão de download.
+                            </div>
                           </object>
                         </div>
                       )}
