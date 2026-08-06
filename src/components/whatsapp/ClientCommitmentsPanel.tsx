@@ -10,11 +10,14 @@ import { toast } from 'sonner';
 import {
   ClipboardCheck, Check, Bell, X, RotateCcw, Trash2, AlertTriangle, Loader2,
   MessageSquareQuote, Sparkles, RefreshCw, ThumbsDown, Plus, FileText, AlertCircle,
+  CalendarPlus,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { type ClientCommitment } from '@/hooks/useClientCommitments';
-import { buildReminderText, isCommitmentOpen, isCommitmentOverdue } from '@/lib/clientCommitments';
+import {
+  buildReminderText, isCommitmentOpen, isCommitmentOverdue, isSameCommitmentTitle,
+} from '@/lib/clientCommitments';
 
 export interface CommitmentDraft {
   sourceMessageId?: string | null;
@@ -56,10 +59,16 @@ interface Props {
   onRemove: (id: string) => Promise<unknown>;
   /** Escreve a cobrança no campo de mensagem da conversa (não envia). */
   onDraftMessage?: (text: string) => void;
+  /** Abre o formulário de atividade já preenchido a partir da pendência. */
+  onCreateActivity?: (item: ClientCommitment) => void;
+  /** Mostrar esta tela sozinha ao entrar numa conversa com pendência em aberto. */
+  alertEnabled?: boolean;
+  onAlertEnabledChange?: (v: boolean) => void;
 }
 
 function ItemCard({
   item, clientName, onDone, onGiveUp, onDismiss, onReopen, onRemind, onRemove, onDraftMessage,
+  onCreateActivity,
 }: {
   item: ClientCommitment;
   clientName: string;
@@ -70,6 +79,7 @@ function ItemCard({
   onRemind: Props['onRemind'];
   onRemove: Props['onRemove'];
   onDraftMessage?: Props['onDraftMessage'];
+  onCreateActivity?: Props['onCreateActivity'];
 }) {
   const [busy, setBusy] = useState(false);
   const isOpen = isCommitmentOpen(item.status);
@@ -161,6 +171,14 @@ function ItemCard({
               }}>
               <Bell className="h-3 w-3" /> Cobrar
             </Button>
+            {onCreateActivity && (
+              <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+                title="Abrir uma atividade do escritório para tratar desta pendência"
+                disabled={busy}
+                onClick={() => onCreateActivity(item)}>
+                <CalendarPlus className="h-3 w-3" /> Atividade
+              </Button>
+            )}
             <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
               disabled={busy}
               onClick={() => run(() => onGiveUp(item.id), 'Marcada como desistência')}>
@@ -195,7 +213,8 @@ function ItemCard({
 export function ClientCommitmentsPanel({
   openState, onOpenChange, clientName, open, done, loading, analyzing, summary, analyzeError,
   draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
-  onReopen, onRemind, onRemove, onDraftMessage,
+  onReopen, onRemind, onRemove, onDraftMessage, onCreateActivity,
+  alertEnabled, onAlertEnabledChange,
 }: Props) {
   const [showManual, setShowManual] = useState(false);
   const [title, setTitle] = useState('');
@@ -213,6 +232,13 @@ export function ClientCommitmentsPanel({
   }, [draft]);
 
   const canSave = title.trim().length >= 3 && !saving;
+
+  /** Registrar à mão o que a IA já achou vira pendência repetida na tela. */
+  const duplicataDe = useMemo(() => {
+    const t = title.trim();
+    if (t.length < 3) return null;
+    return [...open, ...done].find((i) => isSameCommitmentTitle(i.title, t)) || null;
+  }, [title, open, done]);
 
   const handleCreate = async () => {
     if (!canSave) return;
@@ -315,6 +341,7 @@ export function ClientCommitmentsPanel({
                     onReopen={onReopen}
                     onRemind={onRemind}
                     onRemove={onRemove}
+                    onCreateActivity={onCreateActivity}
                     onDraftMessage={(t) => { onDraftMessage?.(t); onOpenChange(false); }}
                   />
                 ))}
@@ -374,11 +401,30 @@ export function ClientCommitmentsPanel({
                   className="text-sm min-h-[52px]"
                 />
 
+                {duplicataDe && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 flex items-start gap-1">
+                    <AlertTriangle className="h-3 w-3 shrink-0 mt-px" />
+                    Já existe uma pendência parecida: “{duplicataDe.title}”.
+                  </p>
+                )}
+
                 <Button size="sm" className="w-full h-8 text-xs" disabled={!canSave} onClick={handleCreate}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
                   Registrar
                 </Button>
               </div>
+            )}
+
+            {onAlertEnabledChange && (
+              <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  className="h-3 w-3 accent-primary"
+                  checked={alertEnabled !== false}
+                  onChange={(e) => onAlertEnabledChange(e.target.checked)}
+                />
+                Avisar ao abrir uma conversa com pendência em aberto
+              </label>
             )}
 
             {/* Resolvidas */}
@@ -401,6 +447,7 @@ export function ClientCommitmentsPanel({
                     onReopen={onReopen}
                     onRemind={onRemind}
                     onRemove={onRemove}
+                    onCreateActivity={onCreateActivity}
                     onDraftMessage={onDraftMessage}
                   />
                 ))}

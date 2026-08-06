@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine, ShieldCheck, ShieldOff, UserMinus, Crown, Plus, X } from 'lucide-react';
+import { Users, User, UserPlus, Loader2, MapPin, Briefcase, Tag, Heart, ChevronDown, ChevronUp, Check, Phone, Search, ExternalLink, Link2, FileText, RefreshCw, Save, ArrowUpFromLine, ShieldCheck, ShieldOff, UserMinus, Crown, Plus, X, MessageSquare } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -56,9 +56,11 @@ interface Props {
   isGroup: boolean;
   messageParticipants: Array<{ phone: string; name: string }>;
   onViewContact?: (contactId: string) => void;
+  /** Abre a conversa individual do membro — o número do grupo não serve de atalho. */
+  onOpenChat?: (phone: string) => void;
 }
 
-export function GroupMembersDialog({ open, onOpenChange, conversationPhone, instanceName, leadId, isGroup, messageParticipants, onViewContact }: Props) {
+export function GroupMembersDialog({ open, onOpenChange, conversationPhone, instanceName, leadId, isGroup, messageParticipants, onViewContact, onOpenChat }: Props) {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const [loading, setLoading] = useState(false);
   const [participants, setParticipants] = useState<GroupParticipant[]>([]);
@@ -1193,6 +1195,25 @@ export function GroupMembersDialog({ open, onOpenChange, conversationPhone, inst
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>Abrir ficha do contato</TooltipContent>
+                        </Tooltip>
+                      )}
+                      {onOpenChat && p.phone && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenChat(p.phone);
+                                onOpenChange(false);
+                              }}
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 text-primary" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>Abrir a conversa individual deste membro</TooltipContent>
                         </Tooltip>
                       )}
                       {hasContact && !onViewContact && (

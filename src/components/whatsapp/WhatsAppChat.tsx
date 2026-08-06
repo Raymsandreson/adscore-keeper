@@ -170,6 +170,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Pendências do cliente (o que ELE ficou de fazer) — ver useClientCommitments
   const [showCommitments, setShowCommitments] = useState(false);
   const [commitmentDraft, setCommitmentDraft] = useState<CommitmentDraft | null>(null);
+  /** Conversas em que o aviso de pendências já apareceu nesta sessão. */
+  const commitmentAlertShown = useRef<Set<string>>(new Set());
+  /**
+   * Avisar ao abrir a conversa. Fica no navegador porque é preferência de quem
+   * atende: quem trabalha o dia todo na mesma conversa não quer o painel
+   * pulando toda hora.
+   */
+  const [commitmentAlertEnabled, setCommitmentAlertEnabled] = useState(() => {
+    try { return localStorage.getItem('wa-commitment-alert') !== 'off'; } catch { return true; }
+  });
+  const toggleCommitmentAlert = useCallback((v: boolean) => {
+    setCommitmentAlertEnabled(v);
+    try { localStorage.setItem('wa-commitment-alert', v ? 'on' : 'off'); } catch { /* modo anônimo */ }
+  }, []);
   const commitments = useClientCommitments({
     leadId: conversation.lead_id,
     phone: conversation.phone,
@@ -177,6 +191,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     contactId: conversation.contact_id,
     clientName: conversation.contact_name,
   });
+
+  /**
+   * Entrou na conversa e o cliente tem pendência em aberto: mostra a lista uma
+   * vez por conversa por sessão. É o lembrete que faltava — antes a barra ficava
+   * no topo e passava despercebida no meio do atendimento.
+   */
+  useEffect(() => {
+    if (!commitmentAlertEnabled) return;
+    if (commitments.loading || commitments.analyzing) return;
+    if (commitments.open.length === 0) return;
+    const key = `${conversation.phone}|${conversation.instance_name || ''}`;
+    if (commitmentAlertShown.current.has(key)) return;
+    commitmentAlertShown.current.add(key);
+    setCommitmentDraft(null);
+    setShowCommitments(true);
+  }, [
+    commitmentAlertEnabled, commitments.loading, commitments.analyzing,
+    commitments.open.length, conversation.phone, conversation.instance_name,
+  ]);
   const [leadPanelWidth, setLeadPanelWidth] = useState(480);
   const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
@@ -3203,6 +3236,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 isGroup={isGroup}
                 messageParticipants={groupParticipants}
                 onViewContact={onViewContact}
+                onOpenChat={onOpenChat}
               />
             </>
           )}
@@ -3249,6 +3283,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onRemind={commitments.registerReminder}
         onRemove={commitments.remove}
         onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
+        alertEnabled={commitmentAlertEnabled}
+        onAlertEnabledChange={toggleCommitmentAlert}
+        onCreateActivity={onCreateActivity ? (item) => {
+          // Reaproveita o mesmo formulário de "Criar atividade a partir desta
+          // mensagem": a IA preenche o resto a partir deste texto.
+          const trecho = item.source_message_text ? `\nO cliente disse: "${item.source_message_text}"` : '';
+          const prazo = item.due_date ? `\nPrazo combinado: ${item.due_date}.` : '';
+          onCreateActivity(
+            conversation.lead_id || '',
+            conversation.contact_name || conversation.phone,
+            conversation.contact_id || undefined,
+            conversation.contact_name || undefined,
+            `Pendência do cliente: ${item.title}.${trecho}${prazo}`,
+          );
+          setShowCommitments(false);
+        } : undefined}
       />
 
       {/* AI Extraction Progress Banner */}

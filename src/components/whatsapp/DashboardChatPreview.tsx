@@ -2182,6 +2182,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         leadId={linkedLead?.id || null}
         isGroup={true}
         messageParticipants={[]}
+        onOpenChat={onOpenChat ? (memberPhone) => { onOpenChange(false); onOpenChat(memberPhone); } : undefined}
       />
     )}
     <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
