@@ -29,6 +29,7 @@ export const BUSINESS_TABLES: readonly string[] = [
   'lead_sources',
   'lead_whatsapp_groups',
   'legal_cases',
+  'lead_financials',
   'case_process_tracking',
   'contacts',
   'contact_leads',
