@@ -173,6 +173,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     phone: conversation.phone,
     instanceName: conversation.instance_name,
     contactId: conversation.contact_id,
+    clientName: conversation.contact_name,
   });
   const [leadPanelWidth, setLeadPanelWidth] = useState(480);
   const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
@@ -3172,15 +3173,15 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         />
       )}
 
-      {/* Pendências do cliente — o que ele ficou de fazer (avaliar no Google,
-          gravar depoimento, mandar documento). Combinado por áudio no WhatsApp
-          e que antes não tinha registro nenhum. */}
+      {/* Pendências do cliente — o que ele ficou de fazer. Quem lê a conversa e
+          monta a lista é a IA (`detect-client-commitments`); o assessor só marca
+          feito, cobra ou corrige o que ela entendeu errado. */}
       <ClientCommitmentsBar
         open={commitments.open}
         overdue={commitments.overdue}
         doneCount={commitments.done.length}
+        analyzing={commitments.analyzing}
         onOpenPanel={() => { setCommitmentDraft(null); setShowCommitments(true); }}
-        onNew={() => { setCommitmentDraft(null); setShowCommitments(true); }}
       />
 
       <ClientCommitmentsPanel
@@ -3190,11 +3191,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         open={commitments.open}
         done={commitments.done}
         loading={commitments.loading}
+        analyzing={commitments.analyzing}
         draft={commitmentDraft}
         onDraftConsumed={() => setCommitmentDraft(null)}
+        onAnalyze={commitments.analyze}
         onCreate={commitments.create}
         onDone={commitments.markDone}
         onGiveUp={commitments.markGivenUp}
+        onDismiss={commitments.dismiss}
         onReopen={commitments.reopen}
         onRemind={commitments.registerReminder}
         onRemove={commitments.remove}

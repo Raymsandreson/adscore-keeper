@@ -48,6 +48,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'extract-activity-from-document': 'railway',
   'dictate-activity': 'railway',
   'chat-to-activity': 'railway',
+  'detect-client-commitments': 'railway', // IA lê a conversa e registra o que o cliente ficou de fazer
   'call-to-activities': 'railway', // transcreve+resume ligação de voz do chat interno → atividades
   'activity-from-movement': 'railway',
   'generate-activity-title': 'railway', // gera título curto ("o que fazer") no concluir-e-próxima e no botão renomear

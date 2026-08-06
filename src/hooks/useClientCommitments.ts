@@ -8,35 +8,44 @@
  *
  * Tabela: `lead_client_commitments` (Externo).
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { db } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
-  isCommitmentOpen, isCommitmentOverdue,
+  isCommitmentOpen, isCommitmentOverdue, isCommitmentDismissed,
   type ClientCommitment, type CommitmentKind, type CommitmentStatus,
 } from '@/lib/clientCommitments';
 
 export type {
-  ClientCommitment, CommitmentKind, CommitmentStatus,
+  ClientCommitment, CommitmentKind, CommitmentStatus, CommitmentOrigin,
 } from '@/lib/clientCommitments';
-export { COMMITMENT_KINDS, kindMeta } from '@/lib/clientCommitments';
 
 interface Params {
   leadId?: string | null;
   phone?: string | null;
   instanceName?: string | null;
   contactId?: string | null;
+  clientName?: string | null;
+  /** Dispara a leitura pela IA ao abrir a conversa. Padrão: true. */
+  autoAnalyze?: boolean;
 }
 
 const SELECT = `id, lead_id, process_id, contact_id, phone, instance_name, title, kind, status,
   due_date, promised_at, source_message_id, source_message_text, notes, last_reminded_at,
-  reminder_count, done_at, done_by_name, created_by_name, created_at`;
+  reminder_count, done_at, done_by_name, created_by_name, created_at, origin, ai_confidence`;
 
-export function useClientCommitments({ leadId, phone, instanceName, contactId }: Params) {
+export function useClientCommitments({
+  leadId, phone, instanceName, contactId, clientName, autoAnalyze = true,
+}: Params) {
   const { profile, user } = useAuthContext();
   const [items, setItems] = useState<ClientCommitment[]>([]);
   const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
+  /** Conversas já varridas nesta sessão — evita reanalisar a cada re-render/troca de aba. */
+  const analyzedKeys = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!leadId && !phone) {
@@ -97,13 +106,55 @@ export function useClientCommitments({ leadId, phone, instanceName, contactId }:
     return () => { (db as any).removeChannel(channel); };
   }, [phone, leadId, load]);
 
+  /**
+   * A IA lê a conversa e registra o que o cliente ficou de fazer.
+   * O servidor tem cache por última mensagem analisada: sem mensagem nova,
+   * a chamada volta na hora sem gastar IA.
+   */
+  const analyze = useCallback(async (force = false) => {
+    if (!phone) return { success: false as const, created: 0 };
+    setAnalyzing(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke('detect-client-commitments', {
+        body: {
+          phone,
+          instance_name: instanceName || '',
+          lead_id: leadId || null,
+          contact_id: contactId || null,
+          client_name: clientName || null,
+          force,
+        },
+      });
+      if (error) throw error;
+      const created = Number((data as any)?.created || 0);
+      if (created > 0) await load();
+      setLastAnalyzedAt(new Date().toISOString());
+      return { success: Boolean((data as any)?.success), created, cached: Boolean((data as any)?.cached) };
+    } catch {
+      return { success: false as const, created: 0 };
+    } finally {
+      setAnalyzing(false);
+    }
+  }, [phone, instanceName, leadId, contactId, clientName, load]);
+
+  // Abrir a conversa já dispara a leitura da IA (uma vez por conversa por sessão).
+  useEffect(() => {
+    if (!autoAnalyze || !phone) return;
+    const key = `${phone}|${instanceName || ''}`;
+    if (analyzedKeys.current.has(key)) return;
+    analyzedKeys.current.add(key);
+    analyze(false);
+  }, [autoAnalyze, phone, instanceName, analyze]);
+
   const open = useMemo(
     () => items.filter((i) => isCommitmentOpen(i.status)),
     [items]
   );
 
+  // Descartada não é "resolvida": some da tela toda, fica só no banco para a
+  // IA não registrar de novo o que já foi recusado.
   const done = useMemo(
-    () => items.filter((i) => !isCommitmentOpen(i.status)),
+    () => items.filter((i) => !isCommitmentOpen(i.status) && !isCommitmentDismissed(i.status)),
     [items]
   );
 
@@ -113,7 +164,7 @@ export function useClientCommitments({ leadId, phone, instanceName, contactId }:
   const byMessageId = useMemo(() => {
     const map: Record<string, ClientCommitment> = {};
     for (const i of items) {
-      if (i.source_message_id) map[i.source_message_id] = i;
+      if (i.source_message_id && !isCommitmentDismissed(i.status)) map[i.source_message_id] = i;
     }
     return map;
   }, [items]);
@@ -186,6 +237,12 @@ export function useClientCommitments({ leadId, phone, instanceName, contactId }:
 
   const markGivenUp = useCallback((id: string) => patch(id, { status: 'desistiu' }), [patch]);
 
+  /** "Não era pendência" — a IA errou. Fica gravado para ela não registrar de novo. */
+  const dismiss = useCallback(
+    (id: string) => patch(id, { status: 'descartada', dismissed_at: new Date().toISOString() }),
+    [patch]
+  );
+
   const reopen = useCallback(
     (id: string) => patch(id, { status: 'combinado', done_at: null, done_by: null, done_by_name: null }),
     [patch]
@@ -209,7 +266,8 @@ export function useClientCommitments({ leadId, phone, instanceName, contactId }:
   }, []);
 
   return {
-    items, open, done, overdue, byMessageId, loading,
-    reload: load, create, patch, markDone, markGivenUp, reopen, registerReminder, remove,
+    items, open, done, overdue, byMessageId, loading, analyzing, lastAnalyzedAt,
+    reload: load, analyze,
+    create, patch, markDone, markGivenUp, dismiss, reopen, registerReminder, remove,
   };
 }
