@@ -207,11 +207,39 @@ async function loadPrefs(userIds: string[]): Promise<Map<string, Prefs>> {
   return map;
 }
 
+/**
+ * Traduz um user_id do Externo para o do Cloud.
+ *
+ * Os dois bancos têm auth próprio e a MESMA pessoa tem ids diferentes em 26 dos
+ * 51 cadastros. Tudo que este módulo resolve (owner_user_id, responsável do
+ * processo, acolhedor_user_id) vive no Externo, mas push_subscriptions é gravada
+ * pelo front com o id do CLOUD — as 22 inscrições estão todas assim. Sem esta
+ * tradução, procurar a inscrição pelo id do Externo só acha as pessoas em que os
+ * dois ids por acaso coincidem, e as outras 26 nunca recebem nada.
+ */
+async function toCloudUserId(extUserId: string): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('auth_uuid_mapping')
+      .select('cloud_uuid')
+      .eq('ext_uuid', extUserId)
+      .maybeSingle();
+    return (data as { cloud_uuid?: string } | null)?.cloud_uuid || extUserId;
+  } catch {
+    return extUserId;
+  }
+}
+
 async function pushToUser(userId: string, payload: string): Promise<number> {
+  const cloudId = await toCloudUserId(userId);
+
+  // Aceita os dois: quem tem cloud_uuid = ext_uuid cai no mesmo valor, e uma
+  // inscrição antiga gravada com o id do Externo continua sendo encontrada.
+  const ids = Array.from(new Set([cloudId, userId]));
   const { data: subs } = await supabase
     .from('push_subscriptions')
     .select('id, endpoint, p256dh, auth')
-    .eq('user_id', userId);
+    .in('user_id', ids);
 
   if (!subs || subs.length === 0) return 0;
 
