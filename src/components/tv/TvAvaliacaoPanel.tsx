@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { Star, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -49,8 +49,11 @@ interface Ranked {
   nome: string;
   media: number;
   notas: number;
+  /** Nota 5 — o "elogio" do mural. */
   elogios: number;
   satisfeitos: number;
+  incompletos: number;
+  insatisfeitos: number;
 }
 
 /** Membros do time (ou do grupo gerencial) em UUID do Externo. null = sem filtro. */
@@ -80,6 +83,35 @@ async function carregarEscopo(teamId: string | null, grupo: string | null): Prom
     .select('user_id')
     .eq('team_id', teamId);
   return new Set<string>((data || []).map((r: { user_id: string }) => r.user_id).filter(Boolean));
+}
+
+/** Contador de um desfecho: número grande + rótulo curto, legível de longe. */
+function OutcomeStat({
+  n, label, icon, color, on,
+}: {
+  n: number;
+  label: string;
+  icon: ReactNode;
+  color: string;
+  on: boolean;
+}) {
+  return (
+    <div className={cn(
+      'rounded-lg border px-1 py-1 text-center',
+      on ? 'border-white/15 bg-white/[0.06]' : 'border-white/5 bg-transparent',
+    )}>
+      <div className={cn('text-2xl font-black leading-none tabular-nums', on ? color : 'text-white/20')}>
+        {n}
+      </div>
+      <div className={cn(
+        'mt-0.5 flex items-center justify-center gap-0.5 whitespace-nowrap text-[9px] font-black uppercase',
+        on ? 'text-white/60' : 'text-white/25',
+      )}>
+        <span className="flex items-center leading-none">{icon}</span>
+        {label}
+      </div>
+    </div>
+  );
 }
 
 export default function TvAvaliacaoPanel({
@@ -132,17 +164,21 @@ export default function TvAvaliacaoPanel({
     for (const r of rows) {
       if (!r.assigned_to || !r.feedback_rating) continue;
       if (escopo && !escopo.has(r.assigned_to)) continue;
-      const cur = map.get(r.assigned_to)
-        || { key: r.assigned_to, nome: r.assigned_to_name || 'Sem nome', media: 0, soma: 0, notas: 0, elogios: 0, satisfeitos: 0 };
+      const cur = map.get(r.assigned_to) || {
+        key: r.assigned_to, nome: r.assigned_to_name || 'Sem nome',
+        media: 0, soma: 0, notas: 0, elogios: 0, satisfeitos: 0, incompletos: 0, insatisfeitos: 0,
+      };
       cur.notas += 1;
       cur.soma += r.feedback_rating;
       if (r.feedback_rating >= 5) cur.elogios += 1;
       if (r.feedback_outcome === 'satisfeito') cur.satisfeitos += 1;
+      else if (r.feedback_outcome === 'incompleto') cur.incompletos += 1;
+      else if (r.feedback_outcome === 'insatisfeito') cur.insatisfeitos += 1;
       if (r.assigned_to_name) cur.nome = r.assigned_to_name;
       map.set(r.assigned_to, cur);
     }
     return [...map.values()]
-      .map(m => ({ key: m.key, nome: m.nome, media: m.soma / m.notas, notas: m.notas, elogios: m.elogios, satisfeitos: m.satisfeitos }))
+      .map(m => ({ ...m, media: m.soma / m.notas }))
       // Mesma regra do mural: média → mais avaliações → mais elogios.
       .sort((a, b) => b.media - a.media || b.notas - a.notas || b.elogios - a.elogios)
       .slice(0, TOP_N);
@@ -175,39 +211,45 @@ export default function TvAvaliacaoPanel({
             <div
               key={r.key}
               className={cn(
-                'flex items-center gap-2.5 rounded-xl border p-2.5',
+                'rounded-xl border p-2.5',
                 i === 0 ? 'border-amber-400/50 bg-amber-400/10' : 'border-white/10 bg-white/[0.03]',
               )}
             >
-              <span className="w-6 shrink-0 text-center text-xl leading-none">{MEDALS[i]}</span>
-              <span className={cn(
-                'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-black',
-                colorFor(r.nome),
-              )}>
-                {initials(r.nome)}
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold leading-tight">{r.nome}</p>
-                <div className="mt-0.5 flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map(n => (
-                    <Star
-                      key={n}
-                      className={cn(
-                        'h-3 w-3 shrink-0',
-                        r.media >= n - 0.25 ? 'fill-amber-400 text-amber-400' : 'text-white/20',
-                      )}
-                    />
-                  ))}
-                  <span className="ml-0.5 text-xs font-black tabular-nums text-amber-300">{r.media.toFixed(1)}</span>
+              <div className="flex items-center gap-2.5">
+                <span className="w-6 shrink-0 text-center text-xl leading-none">{MEDALS[i]}</span>
+                <span className={cn(
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-black',
+                  colorFor(r.nome),
+                )}>
+                  {initials(r.nome)}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="line-clamp-2 text-sm font-bold leading-tight">{r.nome}</p>
+                  <div className="mt-0.5 flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map(n => (
+                      <Star
+                        key={n}
+                        className={cn(
+                          'h-3 w-3 shrink-0',
+                          r.media >= n - 0.25 ? 'fill-amber-400 text-amber-400' : 'text-white/20',
+                        )}
+                      />
+                    ))}
+                    <span className="ml-0.5 text-sm font-black tabular-nums text-amber-300">{r.media.toFixed(1)}</span>
+                    <span className="ml-auto shrink-0 text-[10px] font-bold uppercase tracking-wider text-white/40">
+                      {r.notas} avaliaç{r.notas === 1 ? 'ão' : 'ões'}
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[10px] font-semibold text-white/45">
-                  <span className="inline-flex items-center gap-0.5">
-                    <Sparkles className="h-2.5 w-2.5 shrink-0" />
-                    {r.elogios} elogio{r.elogios === 1 ? '' : 's'}
-                  </span>
-                  <span>· {r.satisfeitos} satisfeito{r.satisfeitos === 1 ? '' : 's'}</span>
-                  <span>· {r.notas} avaliaç{r.notas === 1 ? 'ão' : 'ões'}</span>
-                </div>
+              </div>
+
+              {/* Todos os desfechos recebidos, no mesmo tamanho de número da
+                  corrida: dá pra ler de longe quem levou elogio e quem levou ❌. */}
+              <div className="mt-2 grid grid-cols-4 gap-1">
+                <OutcomeStat n={r.elogios} label="Elogio" icon={<Sparkles className="h-3 w-3" />} color="text-yellow-300" on={r.elogios > 0} />
+                <OutcomeStat n={r.satisfeitos} label="Satisf" icon="✅" color="text-emerald-400" on={r.satisfeitos > 0} />
+                <OutcomeStat n={r.incompletos} label="Incompl" icon="⚠️" color="text-amber-400" on={r.incompletos > 0} />
+                <OutcomeStat n={r.insatisfeitos} label="Insat" icon="❌" color="text-rose-400" on={r.insatisfeitos > 0} />
               </div>
             </div>
           ))}
