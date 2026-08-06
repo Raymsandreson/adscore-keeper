@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { Loader2, Star, Sparkles, ExternalLink } from 'lucide-react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { Loader2, Star, Sparkles, PanelRightOpen } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -14,6 +14,14 @@ import { cn } from '@/lib/utils';
 // 30 dias, mesma pessoa), pra soma bater com o que está na tela. Não usa a RPC
 // tv_ranking_detalhe porque ela trabalha com o período do telão e não separa
 // por desfecho.
+
+// A ficha da atividade abre em painel AO LADO, nunca em aba nova/redirect
+// (regra do produto — ver .agents/skills/ui-sem-redirecionar). Lazy porque é o
+// formulário completo, que não deve entrar no bundle que a TV carrega só pra
+// mostrar ranking.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then(m => ({ default: m.ActivityFullSheet })),
+);
 
 export type OutcomeTipo = 'elogio' | 'satisfeito' | 'incompleto' | 'insatisfeito';
 
@@ -51,6 +59,8 @@ export default function AvaliacaoDetailSheet({
   const [items, setItems] = useState<Item[] | null>(null);
   const [leads, setLeads] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // Atividade aberta ao lado (painel à esquerda, pra não cobrir esta lista).
+  const [atividadeAberta, setAtividadeAberta] = useState<string | null>(null);
   const cfg = OUTCOME_CFG[tipo];
 
   useEffect(() => {
@@ -119,14 +129,14 @@ export default function AvaliacaoDetailSheet({
           {items?.map(it => (
             <div key={it.id} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
               <button
-                onClick={() => window.open(`/atv/${it.id.slice(0, 8)}`, '_blank', 'noopener')}
+                onClick={() => setAtividadeAberta(it.id)}
                 className="flex w-full items-start gap-1.5 text-left"
-                title="Abrir a atividade"
+                title="Abrir a atividade aqui do lado"
               >
                 <span className="min-w-0 flex-1 text-sm font-bold leading-tight hover:underline">
                   {it.title || 'Atividade sem título'}
                 </span>
-                <ExternalLink className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
+                <PanelRightOpen className="mt-0.5 h-3.5 w-3.5 shrink-0 text-white/30" />
               </button>
 
               {it.lead_id && leads[it.lead_id] && (
@@ -185,6 +195,19 @@ export default function AvaliacaoDetailSheet({
           ))}
         </div>
       </SheetContent>
+
+      {/* Ficha da atividade ao LADO (side="left"), sem sair do telão nem cobrir
+          a lista de avaliações. */}
+      {atividadeAberta && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open
+            onOpenChange={o => { if (!o) setAtividadeAberta(null); }}
+            activityId={atividadeAberta}
+            side="left"
+          />
+        </Suspense>
+      )}
     </Sheet>
   );
 }
