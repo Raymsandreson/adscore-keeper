@@ -15,7 +15,11 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { KanbanBoard } from '@/hooks/useKanbanBoards';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
 import { useProfileNames } from '@/hooks/useProfileNames';
-import { Share2 } from 'lucide-react';
+import { Share2, ClipboardList } from 'lucide-react';
+import {
+  loadPhonesWithPendingActivity,
+  subscribeWhatsAppMessageActivityLinked,
+} from '@/lib/whatsappMessageActivities';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 
 interface LeadInfo {
@@ -90,7 +94,7 @@ interface Props {
   hasMore?: boolean;
 }
 
-type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned';
+type QuickFilter = 'all' | 'has_lead' | 'no_lead' | 'unanswered' | 'calls' | 'groups' | 'shared' | 'lead_active' | 'lead_closed' | 'lead_inviavel' | 'mine' | 'unassigned' | 'activity_pending';
 type SortMode = 'alpha' | 'last_activity';
 type DirectionFilter = 'all' | 'inbound' | 'outbound';
 type DocFilter = 'all' | 'has_doc' | 'signed' | 'unsigned' | 'no_doc';
@@ -163,6 +167,21 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     fetchProfileNames(ownerIds);
   }, [cloudAssignees, fetchProfileNames]);
   const [quickFilter, setQuickFilter] = useState<QuickFilter>('all');
+  // Conversas cuja mensagem virou atividade ainda em aberto (filtro "Atividade pendente").
+  // Uma carga por montagem + recarga quando um vínculo novo é criado no chat.
+  const [phonesWithPendingActivity, setPhonesWithPendingActivity] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      loadPhonesWithPendingActivity()
+        .then(phones => { if (!cancelled) setPhonesWithPendingActivity(phones); })
+        // Lista funciona sem isso — só o filtro fica vazio.
+        .catch(e => console.warn('[WhatsAppConversationList] atividades pendentes por mensagem indisponíveis:', e));
+    };
+    load();
+    const unsubscribe = subscribeWhatsAppMessageActivityLinked(load);
+    return () => { cancelled = true; unsubscribe(); };
+  }, []);
 
   // Listener para filtros disparados externamente (ex: cards do FocusDashboard)
   useEffect(() => {
@@ -427,6 +446,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'calls' && !hasCalls(c)) return false;
     if (quickFilter === 'groups' && !isGroupConversation(c)) return false;
     if (quickFilter === 'shared' && !sharedPhonesAll.has(c.phone)) return false;
+    if (quickFilter === 'activity_pending' && !phonesWithPendingActivity.has(c.phone)) return false;
     // Filtros de atribuição (só fazem sentido para WhatsApp API: cloud_gerencia)
     if (quickFilter === 'mine') {
       if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
@@ -485,7 +505,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     }
 
     return true;
-  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, sharedPhonesAll]);
+  }), [conversations, search, quickFilter, directionFilter, docFilter, selectedBoardId, selectedStageId, selectedChecklistItemIds, leadInfoMap, leadDocStatus, phonesWithCalls, sharedPhonesAll, phonesWithPendingActivity]);
 
   // Sort conversations based on mode
   const sortedFiltered = useMemo(() => {
@@ -562,6 +582,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     { key: 'lead_closed', label: 'Fechados', icon: <Trophy className="h-3 w-3" /> },
     { key: 'lead_inviavel', label: 'Inviáveis', icon: <AlertTriangle className="h-3 w-3" /> },
     { key: 'unanswered', label: 'Não respondidas', icon: <Clock className="h-3 w-3" /> },
+    { key: 'activity_pending', label: 'Atividade pendente', icon: <ClipboardList className="h-3 w-3" /> },
     { key: 'calls', label: 'Ligações', icon: <PhoneCall className="h-3 w-3" /> },
     { key: 'groups', label: 'Grupos', icon: <Users className="h-3 w-3" /> },
     { key: 'shared', label: 'Compartilhadas', icon: <Share2 className="h-3 w-3" /> },
@@ -582,6 +603,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     calls: conversations.filter(c => hasCalls(c)).length,
     groups: conversations.filter(c => isGroupConversation(c)).length,
     shared: conversations.filter(c => sharedPhonesAll.has(c.phone)).length,
+    activity_pending: conversations.filter(c => phonesWithPendingActivity.has(c.phone)).length,
     mine: conversations.filter(c => {
       if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
       const owner = cloudAssignees?.get(c.phone);

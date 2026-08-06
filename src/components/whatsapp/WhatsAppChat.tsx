@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect, lazy, Suspense } from 'react';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,7 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -30,6 +30,9 @@ import { MediaLightbox } from './MediaLightbox';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
+import { ClientCommitmentsBar } from './ClientCommitmentsBar';
+import { ClientCommitmentsPanel, type CommitmentDraft } from './ClientCommitmentsPanel';
+import { useClientCommitments } from '@/hooks/useClientCommitments';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -55,6 +58,17 @@ import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
+import {
+  loadWhatsAppMessageActivities,
+  subscribeWhatsAppMessageActivityLinked,
+  type WhatsAppMessageActivityMap,
+} from '@/lib/whatsappMessageActivities';
+
+// Ficha completa da atividade (painel lateral) — lazy pra não pesar o chat,
+// igual ao chat interno da equipe.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -104,7 +118,8 @@ interface Props {
   onCreateCase?: () => void;
   extractingData?: boolean;
   extractionStep?: string;
-  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string) => void;
+  /** `originMessageIds`: mensagens que originaram a atividade — viram o selo "Virou atividade" na bolha. */
+  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
   onPrivacyChanged?: () => void;
@@ -114,6 +129,8 @@ interface Props {
   onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
   /** Busca no servidor mensagens mais antigas que as já carregadas. Retorna quantas adicionou (0 = fim do histórico). */
   onLoadOlderMessages?: (phone: string, instanceName?: string | null) => Promise<number>;
+  /** Mensagem a destacar ao abrir (deep link vindo da ficha da atividade). */
+  highlightMessageId?: string | null;
 }
 
 function parseParticipants(raw: Array<Record<string, unknown>>) {
@@ -139,7 +156,7 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
   return { mapped, lidMap, phoneNameMap };
 }
 
-export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages }: Props) {
+export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages, highlightMessageId }: Props) {
   const { profile, user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
@@ -150,6 +167,49 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [sending, setSending] = useState(false);
   const [showLinkDialog, setShowLinkDialog] = useState(false);
   const [showLeadPanel, setShowLeadPanel] = useState(false);
+  // Pendências do cliente (o que ELE ficou de fazer) — ver useClientCommitments
+  const [showCommitments, setShowCommitments] = useState(false);
+  const [commitmentDraft, setCommitmentDraft] = useState<CommitmentDraft | null>(null);
+  /** Conversas em que o aviso de pendências já apareceu nesta sessão. */
+  const commitmentAlertShown = useRef<Set<string>>(new Set());
+  /**
+   * Avisar ao abrir a conversa. Fica no navegador porque é preferência de quem
+   * atende: quem trabalha o dia todo na mesma conversa não quer o painel
+   * pulando toda hora.
+   */
+  const [commitmentAlertEnabled, setCommitmentAlertEnabled] = useState(() => {
+    try { return localStorage.getItem('wa-commitment-alert') !== 'off'; } catch { return true; }
+  });
+  const toggleCommitmentAlert = useCallback((v: boolean) => {
+    setCommitmentAlertEnabled(v);
+    try { localStorage.setItem('wa-commitment-alert', v ? 'on' : 'off'); } catch { /* modo anônimo */ }
+  }, []);
+  const commitments = useClientCommitments({
+    leadId: conversation.lead_id,
+    phone: conversation.phone,
+    instanceName: conversation.instance_name,
+    contactId: conversation.contact_id,
+    clientName: conversation.contact_name,
+  });
+
+  /**
+   * Entrou na conversa e o cliente tem pendência em aberto: mostra a lista uma
+   * vez por conversa por sessão. É o lembrete que faltava — antes a barra ficava
+   * no topo e passava despercebida no meio do atendimento.
+   */
+  useEffect(() => {
+    if (!commitmentAlertEnabled) return;
+    if (commitments.loading || commitments.analyzing) return;
+    if (commitments.open.length === 0) return;
+    const key = `${conversation.phone}|${conversation.instance_name || ''}`;
+    if (commitmentAlertShown.current.has(key)) return;
+    commitmentAlertShown.current.add(key);
+    setCommitmentDraft(null);
+    setShowCommitments(true);
+  }, [
+    commitmentAlertEnabled, commitments.loading, commitments.analyzing,
+    commitments.open.length, conversation.phone, conversation.instance_name,
+  ]);
   const [leadPanelWidth, setLeadPanelWidth] = useState(480);
   const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
@@ -495,6 +555,40 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setBatchAnalysis(null);
   };
 
+  // ===== Vínculo mensagem -> atividade (selo na bolha + atalho pro painel lateral) =====
+  // Mesmo comportamento do chat interno da equipe.
+  const [msgActivities, setMsgActivities] = useState<WhatsAppMessageActivityMap>({});
+  // Atividade aberta pelo atalho da bolha (ficha completa, modo edição).
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const phone = conversation.phone;
+    if (!phone) { setMsgActivities({}); return; }
+    (async () => {
+      try {
+        const map = await loadWhatsAppMessageActivities(phone);
+        if (!cancelled) setMsgActivities(map);
+      } catch (e) {
+        // Chat funciona sem o vínculo — só perde o selo/atalho.
+        console.warn('[WhatsAppChat] vínculos mensagem→atividade indisponíveis:', e);
+        if (!cancelled) setMsgActivities({});
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [conversation.phone]);
+
+  // Atividade acabou de ser criada a partir de mensagens desta conversa:
+  // marca as bolhas na hora, sem recarregar a lista toda.
+  useEffect(() => subscribeWhatsAppMessageActivityLinked(({ phone, messageIds, activityId, activityTitle }) => {
+    if (phone !== conversation.phone) return;
+    setMsgActivities(prev => {
+      const next = { ...prev };
+      messageIds.forEach(id => { next[id] = { activity_id: activityId, activity_title: activityTitle }; });
+      return next;
+    });
+  }), [conversation.phone]);
+
   // ===== Seleção múltipla de mensagens de TEXTO para criar atividade =====
   const [textSelectionMode, setTextSelectionMode] = useState(false);
   const [textSelectionOrder, setTextSelectionOrder] = useState<string[]>([]);
@@ -510,17 +604,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setTextSelectionMode(false);
     setTextSelectionOrder([]);
   };
+  /** Uma mensagem no formato que a IA da atividade lê: quem falou, quando, o quê. */
+  const formatMsgForActivity = (m: any): string => {
+    const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
+    let when = '';
+    try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch { /* data inválida: segue sem */ }
+    return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
+  };
+
   const buildTextSelectionPrefill = (): string => {
     const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
     return textSelectionOrder
       .map((id) => msgMap.get(id))
       .filter((m: any) => m && m.message_text)
-      .map((m: any) => {
-        const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
-        let when = '';
-        try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch {}
-        return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
-      })
+      .map(formatMsgForActivity)
       .join('\n');
   };
   // Contexto p/ sugestão de resposta da IA: últimas mensagens com texto, em ordem cronológica.
@@ -595,6 +692,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.contact_id || undefined,
       conversation.contact_name || undefined,
       prefill,
+      [...textSelectionOrder],
     );
     exitTextSelection();
   };
@@ -965,6 +1063,45 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Deep link vindo da ficha da atividade ("ver a mensagem que gerou"): rola até
+  // a bolha e destaca por 2s. Depende de `messages` porque a conversa pode ainda
+  // estar carregando quando o link chega.
+  const [flashMsgId, setFlashMsgId] = useState<string | null>(null);
+  const flashedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!highlightMessageId) { flashedForRef.current = null; return; }
+    if (flashedForRef.current === highlightMessageId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const flash = (targetId: string) => {
+      const el = document.querySelector(`[data-msg-id="${targetId}"]`) as HTMLElement | null;
+      if (!el) return false;
+      flashedForRef.current = highlightMessageId;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setFlashMsgId(targetId);
+      timer = setTimeout(() => setFlashMsgId(null), 2000);
+      return true;
+    };
+
+    if (messages.some(m => m.id === highlightMessageId)) {
+      flash(highlightMessageId);
+      return () => { if (timer) clearTimeout(timer); };
+    }
+
+    // A mesma mensagem chega replicada em cada instância conectada ao grupo, com
+    // `id` e `external_message_id` próprios — o id do link pode ser o de uma
+    // instância que não é a aberta. Como todas as cópias ficam vinculadas à mesma
+    // atividade, a irmã visível é achada pelo próprio vínculo, sem consulta extra.
+    const targetActivity = msgActivities[highlightMessageId]?.activity_id;
+    if (targetActivity) {
+      const twin = messages.find(m => msgActivities[m.id]?.activity_id === targetActivity);
+      if (twin && !cancelled) flash(twin.id);
+    }
+
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [highlightMessageId, messages, msgActivities]);
 
   // Fetch leads already linked to this contact (to hide redundant "Vincular Lead" actions)
   useEffect(() => {
@@ -3099,6 +3236,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 isGroup={isGroup}
                 messageParticipants={groupParticipants}
                 onViewContact={onViewContact}
+                onOpenChat={onOpenChat}
               />
             </>
           )}
@@ -3112,6 +3250,56 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           onClick={() => setShowLeadPanel(true)}
         />
       )}
+
+      {/* Pendências do cliente — o que ele ficou de fazer. Quem lê a conversa e
+          monta a lista é a IA (`detect-client-commitments`); o assessor só marca
+          feito, cobra ou corrige o que ela entendeu errado. */}
+      <ClientCommitmentsBar
+        open={commitments.open}
+        overdue={commitments.overdue}
+        doneCount={commitments.done.length}
+        analyzing={commitments.analyzing}
+        onOpenPanel={() => { setCommitmentDraft(null); setShowCommitments(true); }}
+      />
+
+      <ClientCommitmentsPanel
+        openState={showCommitments}
+        onOpenChange={(v) => { setShowCommitments(v); if (!v) setCommitmentDraft(null); }}
+        clientName={conversation.contact_name || conversation.phone}
+        open={commitments.open}
+        done={commitments.done}
+        loading={commitments.loading}
+        analyzing={commitments.analyzing}
+        summary={commitments.summary}
+        analyzeError={commitments.analyzeError}
+        draft={commitmentDraft}
+        onDraftConsumed={() => setCommitmentDraft(null)}
+        onAnalyze={commitments.analyze}
+        onCreate={commitments.create}
+        onDone={commitments.markDone}
+        onGiveUp={commitments.markGivenUp}
+        onDismiss={commitments.dismiss}
+        onReopen={commitments.reopen}
+        onRemind={commitments.registerReminder}
+        onRemove={commitments.remove}
+        onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
+        alertEnabled={commitmentAlertEnabled}
+        onAlertEnabledChange={toggleCommitmentAlert}
+        onCreateActivity={onCreateActivity ? (item) => {
+          // Reaproveita o mesmo formulário de "Criar atividade a partir desta
+          // mensagem": a IA preenche o resto a partir deste texto.
+          const trecho = item.source_message_text ? `\nO cliente disse: "${item.source_message_text}"` : '';
+          const prazo = item.due_date ? `\nPrazo combinado: ${item.due_date}.` : '';
+          onCreateActivity(
+            conversation.lead_id || '',
+            conversation.contact_name || conversation.phone,
+            conversation.contact_id || undefined,
+            conversation.contact_name || undefined,
+            `Pendência do cliente: ${item.title}.${trecho}${prazo}`,
+          );
+          setShowCommitments(false);
+        } : undefined}
+      />
 
       {/* AI Extraction Progress Banner */}
       {extractingData && extractionStep && (
@@ -3686,7 +3874,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           // Regular message
           const msg = item.data;
           return (
-            <div key={msg.id}>
+            <div key={msg.id} data-msg-id={msg.id}>
               {dateSeparator}
               <div className={cn(
                 "flex group",
@@ -3702,7 +3890,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   "max-w-[70%] rounded-2xl px-4 py-2 text-sm relative",
                   msg.direction === 'outbound'
                     ? "bg-green-600 text-white rounded-br-sm"
-                    : "bg-card border rounded-bl-sm"
+                    : "bg-card border rounded-bl-sm",
+                  flashMsgId === msg.id && "ring-2 ring-yellow-400"
                 )}
               >
                 {/* Group sender name */}
@@ -4133,7 +4322,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                               conversation.contact_name || conversation.phone,
                               conversation.contact_id || undefined,
                               conversation.contact_name || undefined,
-                              msg.message_text || '',
+                              formatMsgForActivity(msg),
+                              [msg.id],
                             );
                           }}
                           className={cn(
@@ -4144,8 +4334,46 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           <CalendarPlus className="h-3 w-3" /> Criar atividade
                         </button>
                       )}
+                      {!textSelectionMode && (
+                        <button
+                          type="button"
+                          title="O cliente ficou de fazer algo nesta mensagem — registrar como pendência dele"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setCommitmentDraft({
+                              sourceMessageId: String(msg.id),
+                              sourceMessageText: (msg.message_text || '').slice(0, 400) || null,
+                            });
+                            setShowCommitments(true);
+                          }}
+                          className={cn(
+                            "inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
+                            msg.direction === 'outbound' ? "text-green-100" : "text-muted-foreground"
+                          )}
+                        >
+                          <ClipboardCheck className="h-3 w-3" /> Pendência
+                        </button>
+                      )}
                     </div>
                   </>
+                )}
+                {/* Selo: esta mensagem já virou pendência do cliente */}
+                {commitments.byMessageId[String(msg.id)] && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setCommitmentDraft(null); setShowCommitments(true); }}
+                    className={cn(
+                      "mb-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border transition-colors",
+                      commitments.byMessageId[String(msg.id)].status === 'feito'
+                        ? "border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-950/30 dark:text-emerald-300"
+                        : "border-amber-300 text-amber-800 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-300"
+                    )}
+                    title="Clique para abrir as pendências do cliente"
+                  >
+                    <ClipboardCheck className="h-3 w-3" />
+                    {commitments.byMessageId[String(msg.id)].status === 'feito' ? 'Pendência resolvida: ' : 'Virou pendência: '}
+                    {commitments.byMessageId[String(msg.id)].title}
+                  </button>
                 )}
                 {isMissingMedia(msg) && (
                   <div className="mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed bg-muted/40">
@@ -4167,6 +4395,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       Sincronizar
                     </Button>
                   </div>
+                )}
+                {msgActivities[msg.id] && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setOpenActivityId(msgActivities[msg.id].activity_id); }}
+                    className={cn(
+                      "w-full mt-1 flex items-center gap-1 px-1.5 py-1 rounded border text-[10px] font-medium text-left hover:opacity-80 transition-opacity",
+                      msg.direction === 'outbound'
+                        ? "border-green-100/40 bg-green-100/10 text-green-50"
+                        : "border-primary/40 bg-background/60 text-foreground"
+                    )}
+                    title="Abrir a atividade criada a partir desta mensagem"
+                  >
+                    <ClipboardList className="h-3 w-3 shrink-0" />
+                    <span className="truncate">
+                      Virou atividade{msgActivities[msg.id].activity_title ? `: ${msgActivities[msg.id].activity_title}` : ''}
+                    </span>
+                  </button>
                 )}
                 <p className={cn(
                   "text-[10px] mt-1",
@@ -4593,6 +4839,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           />
         </SheetContent>
       </Sheet>
+
+      {/* Atalho da bolha: abre a ficha da atividade que nasceu daquela mensagem
+          no painel lateral — igual ao chat interno da equipe. */}
+      {openActivityId && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open={!!openActivityId}
+            activityId={openActivityId}
+            onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

@@ -17,7 +17,8 @@ import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
-  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target
+  Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target,
+  DollarSign
 } from 'lucide-react';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
@@ -30,10 +31,12 @@ import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFieldsForm';
 import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
+import { EntityFinancialsPanel } from '@/components/finance/EntityFinancialsPanel';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 
 import { EntityTeamChatDock } from '@/components/chat/EntityTeamChatDock';
+import { CourtContactsForProcess } from './CourtContactsForProcess';
 
 interface ProcessDetailSheetProps {
   open: boolean;
@@ -158,6 +161,7 @@ const TABS = [
   { id: 'local', label: 'Local', icon: MapPin },
   { id: 'datas', label: 'Datas', icon: Calendar },
   { id: 'marcos', label: 'Marcos', icon: Milestone },
+  { id: 'financeiro', label: 'Financeiro', icon: DollarSign },
   { id: 'resultado', label: 'Status', icon: Target },
   { id: 'movimentacoes', label: 'Movimentações', icon: Newspaper },
   { id: 'campos', label: 'Campos', icon: Hash },
@@ -1118,6 +1122,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     <ExternalLink className="h-3 w-3" /> Abrir no tribunal
                   </a>
                 )}
+                <div className="mt-3 border-t pt-3">
+                  <CourtContactsForProcess processNumber={form.process_number} />
+                </div>
               </>
             )}
 
@@ -1197,6 +1204,21 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 processNumber={form.process_number || process.process_number || null}
                 caseType={leadCaseType}
                 periciaPrevista={form.pericia_prevista ?? null}
+              />
+            )}
+
+            {/* Financeiro do processo: mostra o que foi lançado direto aqui E o que
+                foi lançado de dentro das atividades deste processo (ambos gravam
+                process_id). Custas, perícia, deslocamento etc. deixam de depender
+                da ficha do lead. */}
+            {activeTab === 'financeiro' && process?.id && (
+              <EntityFinancialsPanel
+                scope="process"
+                processId={process.id}
+                caseId={process.case_id || form.case_id || null}
+                leadId={process.lead_id || null}
+                contextLabel="Lançamentos deste processo — inclui as despesas registradas dentro das atividades vinculadas a ele."
+                listMaxHeight="420px"
               />
             )}
 

@@ -680,6 +680,8 @@ export function CreateCaseFromWhatsAppDialog({ open, onOpenChange, leadId, leadN
                   title.trim(),
                   user?.id,
                   (result as any)?.case_number || caseNumber,
+                  proc.process_type || 'judicial',
+                  result.id,
                 );
 
                 const extCreatedByAct = await remapToExternal(user?.id);

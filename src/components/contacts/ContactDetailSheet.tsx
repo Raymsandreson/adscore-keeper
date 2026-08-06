@@ -180,7 +180,12 @@ export function ContactDetailSheet({
   const nameLocationAutoAppliedRef = useRef<string | null>(null);
 
   // Hooks
-  const { classifications: availableClassifications } = useContactClassifications();
+  const {
+    classifications: availableClassifications,
+    addClassification,
+    updateClassification,
+    deleteClassification,
+  } = useContactClassifications();
   const { relationships, loading: loadingRelationships } = useContactRelationships(contact?.id);
   const { leads: contactLeads, loading: loadingLeads, unlinkLead, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
@@ -902,15 +907,15 @@ export function ContactDetailSheet({
                       values={classifications}
                       onChange={handleClassificationsChange}
                       classifications={availableClassifications.map(c => ({
+                        id: c.id,
                         name: c.name,
                         color: c.color,
                         label: getClassificationLabel(c.name),
                         isSystem: c.is_system || false,
                       }))}
-                      onAddNew={async (name, color) => {
-                        // Simple add - just return the name as result
-                        return { name };
-                      }}
+                      onAddNew={addClassification}
+                      onUpdate={updateClassification}
+                      onDelete={deleteClassification}
                     />
                   </div>
                   )}

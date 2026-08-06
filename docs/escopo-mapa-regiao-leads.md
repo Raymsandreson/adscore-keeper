@@ -235,7 +235,7 @@ Entra em `LeadEditDialog.tsx:3403`, acima dos campos de CEP/estado/cidade da vis
 - **Top 3 alvos** em lista, com distância — assim o usuário vê o segundo colocado e o critério não parece mágico.
 - Botão **"Calcular rota real"**: chama o proxy, grava em `geo_route_cache`, exibe `km por estrada · tempo estimado`. Se já houver cache para o par, mostra direto com a data do cálculo, sem botão.
 - Quando a resolução é `inferida` ou há conflito UF×cidade: aviso explícito e link para corrigir o cadastro (§6.4).
-- **Parceiros** (§9.4): marcadores verdes para quem está a até 300 km, linha tracejada até o mais próximo e lista com nome, cidade/UF e distância. Sem ninguém no raio, uma linha de texto diz qual é o mais próximo e a quantos km.
+- **Parceiros** (§9.4): marcadores vermelhos para quem está a até 300 km, linha tracejada até o mais próximo e lista com nome, cidade/UF e distância. Sem ninguém no raio, uma linha de texto diz qual é o mais próximo e a quantos km.
 
 ---
 
@@ -371,7 +371,7 @@ Avisos emitidos na base real: 189 `unknown_city`, 55 `city_visit_divergence`, 49
 |---|---|
 | `src/lib/geo/partners.ts` | Converte contatos `partner` em pontos de referência, casando cidade/UF com o município do IBGE. Puro, sem I/O |
 | `src/hooks/usePartnerReferences.ts` | Busca os parceiros no Externo uma vez por sessão (cache de módulo) e devolve já posicionados |
-| `LeadLocationPanel.tsx` | Marcadores verdes, linha até o parceiro mais próximo e a lista "Parceiros na região" |
+| `LeadLocationPanel.tsx` | Marcadores vermelhos, linha até o parceiro mais próximo e a lista "Parceiros na região" |
 | `useLeads.ts` | `LEAD_INDEX_COLUMNS` volta a trazer empresa e cidade da visita |
 
 **De onde sai a posição do parceiro**: `contacts` não tem coordenada — só cidade e UF em texto livre. A posição vem do centroide do município, o mesmo caminho já usado para lead sem geocodificação. Dos 19 contatos classificados como `partner`, 18 casam direto; o 19º está cadastrado como "Porto Velho/MT" e entra por `uf_mismatch` de candidato único (Porto Velho só existe em RO), marcado na lista como "UF do cadastro diverge". Nenhum fica de fora.
