@@ -453,18 +453,27 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   // Mensagem a destacar no chat (deep link `?openChat=…&msg=…` vindo da atividade).
   const [highlightMessageId, setHighlightMessageId] = useState<string | null>(null);
 
-  const handleOpenChatByPhone = useCallback(async (phone: string) => {
+  const handleOpenChatByPhone = useCallback(async (phone: string, preferredInstanceName?: string | null) => {
     if (!phone) return;
     const conversationPhone = normalizeWhatsAppConversationPhone(phone);
 
     try {
-      const { data: latestMessage } = await externalSupabase
-        .from('whatsapp_messages')
-        .select('instance_name')
-        .in('phone', [conversationPhone, `${conversationPhone}@g.us`])
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Mensagem de grupo é gravada uma vez por instância da casa que participa
+      // dele, então "última mensagem" pode cair em qualquer uma. Quando quem
+      // chamou sabe a instância certa (push de mensagem nova), ela manda.
+      let latestMessage: { instance_name?: string | null } | null =
+        preferredInstanceName ? { instance_name: preferredInstanceName } : null;
+
+      if (!latestMessage) {
+        const { data } = await externalSupabase
+          .from('whatsapp_messages')
+          .select('instance_name')
+          .in('phone', [conversationPhone, `${conversationPhone}@g.us`])
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        latestMessage = data;
+      }
 
         const targetInstanceName = latestMessage?.instance_name || null;
       if (targetInstanceName) {
@@ -500,12 +509,15 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     const leadId = searchParams.get('leadId');
 
     if (openChat) {
-      handleOpenChatByPhone(openChat);
+      // `instance` vem do push de mensagem nova: mensagem de grupo existe numa
+      // linha por instância da casa, então quem chamou sabe qual é a certa.
+      handleOpenChatByPhone(openChat, searchParams.get('instance'));
       // `msg` vem da ficha da atividade ("ver a mensagem que gerou"): o chat
       // rola até a bolha e a destaca.
       const msg = searchParams.get('msg');
       if (msg) { setHighlightMessageId(msg); searchParams.delete('msg'); }
       searchParams.delete('openChat');
+      searchParams.delete('instance');
       setSearchParams(searchParams, { replace: true });
     } else if (contactId) {
       externalSupabase.from('contacts').select('phone').eq('id', contactId).single().then(({ data }) => {

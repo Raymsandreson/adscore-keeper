@@ -36,7 +36,10 @@ const UF_REGIONS: Record<string, string> = {
 
 interface CasoForm {
   lead_title: string;
+  /** Rótulo do acolhedor — derivado do perfil escolhido, nunca digitado à mão. */
   acolhedor: string;
+  /** Acolhedor de verdade. É este que o push de mensagem nova usa. */
+  acolhedor_user_id: string;
   case_type: string;
   damage: string;            // dano curto (só compõe o título)
   dynamics_summary: string;  // dinâmica resumida (só compõe o título)
@@ -61,7 +64,7 @@ interface CasoForm {
 }
 
 const EMPTY_FORM: CasoForm = {
-  lead_title: '', acolhedor: '', case_type: '', damage: '', dynamics_summary: '',
+  lead_title: '', acolhedor: '', acolhedor_user_id: '', case_type: '', damage: '', dynamics_summary: '',
   news_link: '', city: '', state: '', visit_city: '', visit_state: '', visit_region: '',
   visit_address: '', accident_date: '', damage_description: '', victim_name: '',
   victim_age: '', accident_address: '', contractor_company: '', main_company: '',
@@ -266,9 +269,9 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     () => profiles.filter((p) => ALLOWED_ACOLHEDOR_IDS.includes(p.user_id)),
     [profiles]
   );
-  const defaultAcolhedor = useMemo(() => {
+  const defaultAcolhedorId = useMemo(() => {
     const analyne = allowedProfiles.find((p) => p.user_id === 'f36dd4d0-b79f-42f8-8d56-8d566c25c8fc');
-    return analyne?.full_name || analyne?.email || '';
+    return analyne?.user_id || '';
   }, [allowedProfiles]);
 
   const [newsText, setNewsText] = useState('');
@@ -332,13 +335,18 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
     setGroupLink(String((lead as any).group_link || ''));
     setSteps({ save: 'idle', group: 'idle', link: 'idle' });
     const l = lead as any;
-    const allowedNames = new Set(allowedProfiles.map((p) => p.full_name || p.email || p.id));
-    const initialAcolhedor = l.acolhedor && allowedNames.has(l.acolhedor)
-      ? l.acolhedor
-      : defaultAcolhedor || profile?.full_name || user?.email || '';
+    // Pré-seleção por user_id. O acolhedor_user_id do lead manda; se ele ainda
+    // não tem (lead antigo), cai no padrão. Não se tenta mais adivinhar a pessoa
+    // pelo texto do campo.
+    const initialAcolhedorId =
+      (l.acolhedor_user_id && allowedProfiles.some((p) => p.user_id === l.acolhedor_user_id))
+        ? String(l.acolhedor_user_id)
+        : defaultAcolhedorId;
+    const initialProfile = allowedProfiles.find((p) => p.user_id === initialAcolhedorId);
     const initial: CasoForm = {
       ...EMPTY_FORM,
-      acolhedor: allowedNames.has(initialAcolhedor) ? initialAcolhedor : defaultAcolhedor || '',
+      acolhedor_user_id: initialAcolhedorId,
+      acolhedor: initialProfile?.full_name || initialProfile?.email || '',
       case_type: l.case_type || '',
       news_link: l.news_link || '',
       city: l.city || '',
@@ -511,6 +519,7 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       status: FIRST_KANBAN_STAGE,
       source: 'Internet',
       acolhedor: form.acolhedor || null,
+      acolhedor_user_id: form.acolhedor_user_id || null,
       case_type: form.case_type || null,
       news_link: form.news_link || null,
       city: form.city || null,
@@ -765,17 +774,34 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
           </div>
           <div>
             <Label>Acolhedor</Label>
+            {/* O valor do item é o user_id, nunca o nome. Antes era
+                `p.full_name || p.email || p.id`, e esse || em cascata gravava
+                três formatos diferentes na mesma coluna conforme o que o perfil
+                tivesse preenchido — foi o que espalhou 56 grafias para ~25
+                pessoas, incluindo e-mails e um UUID cru. O texto agora é só
+                rótulo derivado da escolha. */}
             {allowedProfiles.length > 0 ? (
-              <Select value={form.acolhedor} onValueChange={(v) => set({ acolhedor: v })}>
+              <Select
+                value={form.acolhedor_user_id}
+                onValueChange={(uid) => {
+                  const p = allowedProfiles.find((x) => x.user_id === uid);
+                  set({ acolhedor_user_id: uid, acolhedor: p?.full_name || p?.email || '' });
+                }}
+              >
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
                   {allowedProfiles.map((p) => (
-                    <SelectItem key={p.id} value={p.full_name || p.email || p.id}>{p.full_name || p.email}</SelectItem>
+                    <SelectItem key={p.user_id} value={p.user_id}>{p.full_name || p.email}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             ) : (
-              <Input value={form.acolhedor} onChange={(e) => set({ acolhedor: e.target.value })} />
+              // Sem campo livre de propósito: texto digitado à mão é exatamente o
+              // que sujava a coluna.
+              <p className="text-xs text-muted-foreground border rounded-md px-3 py-2">
+                Nenhum acolhedor disponível para seleção. Cadastre a pessoa em
+                Gestão de Equipe antes de registrar o caso.
+              </p>
             )}
           </div>
           <div>
