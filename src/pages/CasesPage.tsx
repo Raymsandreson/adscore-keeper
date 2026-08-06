@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
+import {
+  resolveProcessAssignment,
+  createOrAttachAndamentoActivity,
+  getCaseAssignee,
+  isPrevCase,
+  INSS_PREV_OPTIONS,
+  type PrevTrilha,
+} from '@/lib/processAssignment';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, remapToCloud } from '@/integrations/supabase/uuid-remap';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,6 +56,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useNavigate } from 'react-router-dom';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+/** Radix Select não aceita value="" — sentinela para "caso sem responsável". */
+const SEM_RESPONSAVEL = '__sem_responsavel__';
 
 const statusColors: Record<string, string> = {
   aberto: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -491,6 +501,42 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [leadResults, setLeadResults] = useState<any[]>([]);
   const [searchingLead, setSearchingLead] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Responsáveis do caso PREV, um por trilha (Cloud UUID; SEM_RESPONSAVEL quando
+  // vazio). Existem para consertar uma escolha errada no prompt de criação — sem
+  // eles não haveria como trocar depois.
+  const [editAssignee, setEditAssignee] = useState<string>(SEM_RESPONSAVEL);
+  const [editAssigneeJud, setEditAssigneeJud] = useState<string>(SEM_RESPONSAVEL);
+  // Dono atual que não está entre os 7 assessores: vira opção extra no select
+  // para que salvar o caso não apague quem já estava lá.
+  const [foraDaLista, setForaDaLista] = useState<Record<PrevTrilha, { userId: string; shortName: string } | null>>(
+    { administrativo: null, judicial: null },
+  );
+  const casoEhPrev = isPrevCase(legalCase.title, legalCase.case_number);
+
+  useEffect(() => {
+    if (!showEditDialog || !casoEhPrev) return;
+    let cancelled = false;
+    (async () => {
+      const trilhas: PrevTrilha[] = ['administrativo', 'judicial'];
+      const lidos = await Promise.all(trilhas.map(async (t) => {
+        const current = await getCaseAssignee(legalCase.id, t);
+        const cloudUuid = current ? await remapToCloud(current.extUuid) : null;
+        const conhecido = INSS_PREV_OPTIONS.find(o => o.userId === cloudUuid);
+        return {
+          trilha: t,
+          value: cloudUuid || SEM_RESPONSAVEL,
+          extra: cloudUuid && !conhecido
+            ? { userId: cloudUuid, shortName: current?.name || 'Responsável atual' }
+            : null,
+        };
+      }));
+      if (cancelled) return;
+      setEditAssignee(lidos[0].value);
+      setEditAssigneeJud(lidos[1].value);
+      setForaDaLista({ administrativo: lidos[0].extra, judicial: lidos[1].extra });
+    })();
+    return () => { cancelled = true; };
+  }, [showEditDialog, casoEhPrev, legalCase.id]);
 
   const PREDEFINED_PROCESSES = [
     'Indenização', 'Relatório de Acidente', 'TRCT + Verbas', 'Seguro de Vida',
@@ -720,6 +766,14 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         editLeadId,
         currentLeadId: legalCase.lead_id ?? null,
       });
+      // Só casos PREV têm os campos no formulário; nos demais as colunas não são
+      // tocadas (senão salvar o caso zeraria um responsável definido por fora).
+      if (casoEhPrev) {
+        (payload as any).assigned_to =
+          editAssignee === SEM_RESPONSAVEL ? null : await remapToExternal(editAssignee);
+        (payload as any).assigned_to_judicial =
+          editAssigneeJud === SEM_RESPONSAVEL ? null : await remapToExternal(editAssigneeJud);
+      }
       const { error } = await externalSupabase.from('legal_cases').update(payload).eq('id', legalCase.id);
       if (error) throw error;
 
@@ -802,7 +856,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
             // Resolvido antes do insert para gravar o responsável no processo,
             // e não só na atividade "Dar andamento".
-            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
+            // Estes processos nascem sempre administrativos (insert logo abaixo).
+            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number, 'administrativo', legalCase.id);
 
             // O erro do insert era descartado: quando ele falhava, savedProcess
             // vinha undefined e a atividade nascia sem process_id, órfã e sem
@@ -1296,6 +1351,36 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               <Label>Título *</Label>
               <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
             </div>
+            {casoEhPrev && (
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['administrativo', 'Responsável administrativo', editAssignee, setEditAssignee],
+                  ['judicial', 'Responsável judicial', editAssigneeJud, setEditAssigneeJud],
+                ] as const).map(([trilha, rotulo, valor, setValor]) => (
+                  <div key={trilha}>
+                    <Label>{rotulo}</Label>
+                    <Select value={valor} onValueChange={setValor}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Sem responsável" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SEM_RESPONSAVEL}>Sem responsável</SelectItem>
+                        {foraDaLista[trilha] && (
+                          <SelectItem value={foraDaLista[trilha]!.userId}>{foraDaLista[trilha]!.shortName}</SelectItem>
+                        )}
+                        {INSS_PREV_OPTIONS.map(o => (
+                          <SelectItem key={o.userId} value={o.userId}>{o.shortName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+                <p className="col-span-2 text-[11px] text-muted-foreground -mt-1">
+                  Cada trilha é independente: processos e atividades novos herdam do responsável da
+                  sua própria trilha.
+                </p>
+              </div>
+            )}
             <div>
               <Label>Lead vinculado</Label>
               {editLeadId ? (

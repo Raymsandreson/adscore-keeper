@@ -57,7 +57,7 @@ function SwitchActivityButton({ className, onClick }: { className?: string; onCl
   );
 }
 
-/** Escolha de pausa: rápidas (café/lanche/descanso com previsão) + longas. */
+/** Escolha de pausa: rápidas (café/lanche/descanso com previsão) + longas (reunião/almoço/intervalo). */
 function PauseChooser({
   onStart, onEndShift, onDone,
 }: {
@@ -107,8 +107,10 @@ function PauseChooser({
           </div>
         </div>
       ))}
-      <div className="text-[10px] text-muted-foreground pt-0.5">Vai demorar mais? Use Intervalo ou Almoço.</div>
+      <div className="text-[10px] text-muted-foreground pt-0.5">Vai demorar mais? Use Reunião, Intervalo ou Almoço.</div>
       <div className="border-t pt-1.5 space-y-1">
+        <button type="button" onClick={() => start('reuniao')}
+          className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🤝 Entrando em reunião</button>
         <button type="button" onClick={() => start('almoco')}
           className="w-full text-left text-sm px-2 py-1.5 rounded hover:bg-accent">🍽️ Saída para almoço</button>
         <button type="button" onClick={() => setMode('intervalo')}
@@ -137,7 +139,7 @@ function BreakMenu({ className, onStart, onEndShift }: { className?: string; onS
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           className={className}
-          title="Registrar pausa (café, lanche, descanso, almoço, intervalo…)"
+          title="Registrar pausa (café, lanche, descanso, reunião, almoço, intervalo…)"
         >
           <UtensilsCrossed className="h-3.5 w-3.5" />
         </button>
@@ -243,11 +245,23 @@ const EDGE_GUTTER = 8;
  */
 function contentLeftEdge(): number {
   if (typeof document === 'undefined') return EDGE_GUTTER;
+  let edge = EDGE_GUTTER;
   const el = document.querySelector('[data-sidebar="sidebar"]:not([data-mobile])');
-  if (!el) return EDGE_GUTTER;
-  const r = el.getBoundingClientRect();
-  // Offcanvas/escondido: o menu sai da tela (right <= 0) e não atrapalha.
-  return r.width > 0 && r.right > 0 ? Math.round(r.right) + EDGE_GUTTER : EDGE_GUTTER;
+  if (el) {
+    const r = el.getBoundingClientRect();
+    // Offcanvas/escondido: o menu sai da tela (right <= 0) e não atrapalha.
+    if (r.width > 0 && r.right > 0) edge = Math.round(r.right) + EDGE_GUTTER;
+  }
+  // Sheet/diálogo ANCORADO na borda esquerda (ex.: a atividade aberta ao lado do
+  // Relatório de Atividades) é parede como o menu: a aba mora depois dele, senão
+  // cai por cima do conteúdo e dos botões do cabeçalho (fechar, Tela cheia).
+  // Só conta o que encosta na borda (left <= 1): diálogo centralizado não empurra
+  // a aba pro meio da tela. (skill: ui-sem-sobreposicao)
+  for (const d of document.querySelectorAll('[role="dialog"][data-state="open"]')) {
+    const r = d.getBoundingClientRect();
+    if (r.width > 0 && r.left <= 1 && r.right > edge) edge = Math.round(r.right) + EDGE_GUTTER;
+  }
+  return edge;
 }
 
 /**
@@ -718,7 +732,9 @@ export function ActivityTimerOverlay() {
             title="Encerrar a pausa e voltar"
           >
             <Play className="h-3 w-3" />
-            {current.breakType === 'almoco' ? 'Retorno do almoço' : 'Retornar'}
+            {current.breakType === 'almoco' ? 'Retorno do almoço'
+              : current.breakType === 'reuniao' ? 'Fim da reunião'
+              : 'Retornar'}
           </button>
           <button
             type="button"

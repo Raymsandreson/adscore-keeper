@@ -61,6 +61,7 @@ import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useAcolhedores } from '@/hooks/useAcolhedores';
 import { useStageLabelMappings } from '@/hooks/useStageLabelMappings';
+import { LeadDistanceSuffix, LeadRegionThumb } from '@/components/leads/LeadRegionThumb';
 import type { KanbanBoard } from '@/hooks/useKanbanBoards';
 import type { LeadFilters } from '@/components/kanban/LeadAdvancedFilters';
 import {
@@ -992,7 +993,24 @@ export function LeadListView({
                   <td className="px-3 py-2">{renderVictim(row)}</td>
                   <td className="px-3 py-2">{row.display_company || '—'}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    {[row.display_city, row.display_state].filter(Boolean).join('/') || '—'}
+                    {row.display_city || row.display_state ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        {/* A view não expõe lead_lat/lng nem visit_*: aqui a posição
+                            sai do centroide do município, o que basta para a silhueta. */}
+                        <LeadRegionThumb
+                          lead={{ city: row.display_city, state: row.display_state }}
+                          size={20}
+                          fallbackIcon={false}
+                        />
+                        <span>{[row.display_city, row.display_state].filter(Boolean).join('/')}</span>
+                        <LeadDistanceSuffix
+                          lead={{ city: row.display_city, state: row.display_state }}
+                          className="text-muted-foreground"
+                        />
+                      </span>
+                    ) : (
+                      '—'
+                    )}
                   </td>
                   <td className="px-3 py-2">{renderStageBadge(row)}</td>
                   <td className="px-3 py-2">{renderTempo(row)}</td>

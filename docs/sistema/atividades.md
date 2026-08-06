@@ -51,17 +51,71 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 ---
 
+## Varas e Tribunais — contatos (ícone de tribunal no cabeçalho)
+
+**Propósito**: diretório de contatos para cobrança de andamento processual (`court_contacts`, no Supabase Externo). Sheet lateral aberto pela tela de Atividades.
+
+### Como o contato é descrito
+Cada registro é **um ponto de contato**, descrito por atributos independentes — não por uma hierarquia de pastas:
+
+| Campo | Para que serve |
+|---|---|
+| `branch` | ramo: Trabalhista, Federal, Estadual, Eleitoral, Militar, Superior, Extrajudicial/Administrativo |
+| `degree` | instância: 1º grau, JEF/Juizado, Turma Recursal, 2º grau, Superior |
+| `court_code` | chave curta do tribunal (TRT22, TJPI, TRF1) ou do órgão (INSS, PGF, CEJUSC, PERITO, CARTORIO) |
+| `uf` / `comarca` | localização — comarca na Estadual, subseção na Federal |
+| `contact_type` | com quem se fala: Secretaria, Gabinete, Central, Distribuição, Oficial, Perícia |
+| `unit_name` / `unit_key` | agrupa pontos do mesmo lugar — a secretaria e o gabinete da 6ª Vara Cível de Teresina aparecem juntos num só card |
+| `preferred_channel` | qual canal de fato responde ("só responde por e-mail") |
+| `last_confirmed_at` | data da última confirmação |
+
+O campo antigo `court_type` misturava nível e tipo de ponto (vara/tribunal vs. secretaria/outro) e continua na tabela apenas como legado — o app grava os dois desde 06/08/2026.
+
+**Por que atributos e não árvore**: uma árvore ramo→estado→comarca não comporta gabinete de 2º grau, JEF, Turma Recursal nem ponto não-judicial. Dos 6 contatos que existiam quando isso foi desenhado, 4 não cabiam na árvore. A visão hierárquica pode ser gerada a partir dos atributos; o contrário exigiria migração.
+
+### Navegação
+- Busca livre (unidade, comarca, tribunal, telefone, e-mail, observação).
+- Filtros empilháveis: Ramo, Grau, UF, Tipo — só aparecem os valores que existem na base.
+- **Ordem padrão: onde há processo ativo.** A contagem sai do número CNJ dos processos (`src/lib/cnj.ts`), sem cadastro manual de vínculo.
+- Gabinete de desembargador sem confirmação há 12+ meses fica esmaecido com o selo "a conferir" e um botão de confirmar. Secretaria de vara não envelhece — contato de gabinete é volátil (promoção, mudança de câmara, aposentadoria), o de secretaria não.
+
+### Contagem de processos e o campo de origem do CNJ
+O número CNJ (`NNNNNNN-DD.AAAA.J.TR.OOOO`) dá ramo, tribunal e unidade de origem. **O que `OOOO` identifica muda por ramo** — verificado nos dados em 06/08/2026:
+- **Trabalhista**: é a vara (TRT22 `0001` = 1ª VT de Teresina, `0002` = 2ª VT).
+- **Estadual**: é a comarca (TJPI `0140` serve a 4ª Vara Cível *e* a Vara de Registros Públicos de Teresina).
+- **Federal**: é a subseção (TRF1 `4000` cobre a 6ª, 7ª e 8ª Varas de JEF do PI).
+
+Por isso o rótulo muda: "nesta vara", "nesta comarca", "nesta subseção". Enquanto o contato não conhece nenhum código de origem, a contagem é do tribunal inteiro e mostra "no TJPI" (aproximada). Cobertura: 623 dos 1.758 processos ativos têm CNJ de 20 dígitos; os campos equivalentes vindos do Escavador cobrem só 85.
+
+### Na tela do processo (`ProcessDetailSheet` → aba Tribunal)
+Mostra os contatos do tribunal daquele processo, com quem já atende a origem no topo. O botão **"é esta"** grava o código de origem em `court_contacts.origin_codes` — a partir daí a contagem daquela unidade fica exata para todos os processos dela. É o único "cadastro" de vínculo, e acontece durante o trabalho normal.
+
+Arquivos: `CourtContactsSheet.tsx`, `CourtContactsForProcess.tsx`, `src/lib/cnj.ts`, `src/lib/courtCatalog.ts` (catálogo fechado: 24 TRTs, 6 TRFs — incluindo o TRF6/MG instalado em 2022 —, 27 TJs, 27 TREs), `useCourtProcessCounts.ts`.
+
+---
+
 ## Cronômetro global e banco de horas (presente em todas as telas)
 
 **Propósito**: badge flutuante arrastável que controla expediente, cronômetro da atividade, ociosidade e pausas.
 
 - "Iniciar expediente" — bate o ponto; nada conta sem expediente aberto.
 - Badge da atividade: tempo + título, "Previsão de tempo" (chips 15–120 min), "Pausar e salvar", menu de Pausa, microfone **"O que faço?"** (registra por voz o que está fazendo — cria atividade e liga o cronômetro), "Time agora" (painel dos cronômetros do time), minimizar.
-- Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
+- Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Entrando em reunião" (um clique, igual ao almoço), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
 - Prompts automáticos: "Ainda está nessa atividade?", "Você saiu da atividade", "Você está ocioso / vai se ausentar?", "Sua pausa passou do previsto" (+5/+10 min, virar intervalo, "Voltei ao trabalho"), 🚨 "Chamado da gestão".
 - "Qual atividade você está fazendo agora?" — troca a atividade em execução.
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
+
+### Trabalho sem atividade aberta — guarda-chuvas do dia
+
+Sem atividade vinculada, todo segundo cai na linha de gap e conta como **ocioso** (regra do `ActivityTimerContext`). Duas frentes de trabalho não têm atividade própria e ganham uma **atividade guarda-chuva por dia** — interna (`is_management`), atribuída a quem executou, uma linha reaproveitada o dia todo:
+
+| Guarda-chuva | O que liga o cronômetro | Onde |
+|---|---|---|
+| `Atendimento WhatsApp — DD/MM/AAAA` | cada mensagem enviada a cliente | `useWhatsAppTimeTracker` (chat do WhatsApp) |
+| `Controle Financeiro — DD/MM/AAAA` | cada registro gravado: categorizar transação (pendentes, banco, cartão, investimentos, empréstimos) e salvar lançamento financeiro — na página Financeiro ou na aba Financeiro da ficha do lead | `useFinanceTimeTracker` (`trackFinanceEntry`, gatilhos em `useExpenseCategories.setTransactionOverride`, `FinancialEntryForm` e `LeadFinancialsTab`) |
+
+Regras iguais nas duas: atividade específica aberta (um caso) tem prioridade e não é interrompida; pausa/almoço é respeitada; **5 min sem nenhuma ação da frente → o watchdog pausa a guarda-chuva e a pessoa volta a ocioso**, mesmo que continue mexendo no sistema. Os dois watchdogs ficam montados no `ActivityTimerOverlay`. Excluir lançamento não conta como registro.
 
 ### Painel "Time agora" (`TeamTimersPanel`)
 
@@ -71,14 +125,14 @@ Abre pelo badge do cronômetro; agrupa por time (Gestão no topo) e atualiza a c
 |---|---|
 | Fazendo | atividade em andamento (`status='running'` com `activity_id`, batimento < 2 min) |
 | Ocioso | cronômetro rodando sem atividade |
-| Intervalo | pausa justificada (`break_type`) — almoço, café, banheiro |
+| Intervalo | pausa justificada (`break_type`) — reunião, almoço, café, banheiro |
 | Não iniciou | não entrou no sistema hoje: zero produtivo **e** zero ocioso |
 
 Quem bateu o ponto e já encerrou **não** entra em "Não iniciou" — aparece como "Hoje: HH:MM:SS produtivo · fora do ar". Gestor/diretor ainda podem pausar ou encerrar o expediente do membro pelo menu `⋮`.
 
 **Quem não aparece** (em nenhum filtro, contagem ou no ranking do dia): desligados (`org_user_status.active = false`, 23 em 31/07/2026) e quem está de férias/folga/compensação cobrindo o dia (`member_time_off`). Única exceção: ausente que está com atividade em andamento continua visível, com selo "Férias"/"Folga" — é informação, não cobrança. Ambas as tabelas moram no Externo e são chaveadas pelo **Cloud user_id**. Folga só é filtrada se estiver cadastrada na aba Férias (Gestão de Equipe → `TimeOffManager`).
 
-**Intervalo esticado**: a linha fica vermelha, sobe no topo do grupo e o chip "Intervalo" ganha `⚠ n` quando a pausa passa da previsão que a pessoa deu (`estimated_minutes`) ou, sem previsão, do teto por tipo — almoço 90 min, intervalo 30, café/lanche/descanso 20. Compensação de horas nunca alerta (banco de horas é longo por definição). Na prática o teto é que vale: as pausas registradas hoje (31/07/2026) estavam todas sem previsão.
+**Intervalo esticado**: a linha fica vermelha, sobe no topo do grupo e o chip "Intervalo" ganha `⚠ n` quando a pausa passa da previsão que a pessoa deu (`estimated_minutes`) ou, sem previsão, do teto por tipo — reunião 120 min, almoço 90, intervalo 30, café/lanche/descanso 20. Compensação de horas nunca alerta (banco de horas é longo por definição). Na prática o teto é que vale: as pausas registradas hoje (31/07/2026) estavam todas sem previsão.
 
 **Sino de alerta** (`MemberAlertButton`) aparece em três situações — ocioso, intervalo e "não iniciou" — com frases prontas próprias de cada uma. Sai por dois canais:
 - `activity_timer_alerts` (Externo) → Realtime toca o prompt 🚨 na tela dele, se a aba estiver aberta; quem está fora vê ao entrar;
@@ -127,7 +181,7 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 ## Banco de Horas — `/banco-horas`
 
-**Propósito**: relatório de tempo cronometrado por membro e tipo de atividade, separando ativo, ocioso e pausas justificadas (almoço/intervalo/compensação não contam como ocioso).
+**Propósito**: relatório de tempo cronometrado por membro e tipo de atividade, separando ativo, ocioso e pausas justificadas (reunião/almoço/intervalo/compensação não contam como ocioso; cada tipo aparece como linha `Pausa · <tipo>`).
 
 - "Atualizar", "Exportar CSV".
 - Filtros: período "De"/"Até" + "Aplicar período"; multifiltros Time, Assessor, Tipo de atv; "Limpar".
@@ -141,19 +195,32 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 **Propósito**: ranking ao vivo do time (auto-atualiza a cada 45s), feito pra rodar em TV/fullscreen.
 
-- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → 4º Passos → 5º Itens do Checklist → 6º Concluídas → 7º Menos Atrasadas → 8º Mais Tempo Ativo → 9º Menos Ocioso → 10º Resposta no Chat.
+- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → 4º Passos → 5º Itens do Checklist → 6º Concluídas → 7º Menos Atrasadas → 8º Melhor Média de Estrelas ⭐ → 9º Menos Feedbacks sem Avaliar → 10º Mais Tempo Ativo → 11º Menos Ocioso → 12º Resposta no Chat.
 - Seletor de time, período "Hoje"/"Semana"/"Mês", "Atualizar", "Modo TV" (tela cheia).
-- Clique num assessor — abre o coach de desempenho ("Analisar & mandar mensagem").
+- Clique num assessor — abre o coach de desempenho ("Analisar & mandar mensagem"). No cabeçalho do coach os seis números também são clicáveis e abrem o detalhe (abaixo).
+
+**Detalhe por critério — o que entrou naquele número** (desde 04/08/2026) — clicar em **status · fases · obj · passos · concl · atr · ⭐ · s/ avaliar** (na lista, no pódio, no Modo Corrida ou no cabeçalho do coach) abre o `RankDetailSheet` com a lista itemizada. Fonte: RPC `tv_ranking_detalhe(p_nome, p_criterio, p_since)` no Externo, que replica os filtros do `tv_atividades_ranking` — a soma do painel bate com o número do telão (conferido em 12 pessoas × 6 critérios).
+- Cada item mostra em chips **cliente · processo · objetivo · fase · POP**. O processo é resolvido pelo POP do checklist (`lead_processes.workflow_id = lci.board_id`) e, se não houver, só quando o lead tem exatamente um processo — senão fica em branco em vez de chutar (`passo_processo_rotulo`). Nome da fase vem de `kanban_boards.stages` (jsonb, não existe tabela de stages — `board_stage_nome`).
+- **Atalho pra origem da marcação**: marcou dentro da ficha da **atividade** → atalho da atividade; dentro da ficha do **processo** → atalho do processo (`/processes?openProcess=<id>`, e o chip "processo" some pra não repetir). Objetivo e fase herdam a origem do **último passo**, o que fechou o conjunto. Isso exigiu passar a **gravar** a origem: `log_checklist_step` ganhou `p_activity_id` e `p_process_id` (sobrecargas de 5 e 6 args, **sem default** — default criaria ambiguidade com a de 4, que segue existindo e delega), preenchidos pelo `LeadFunnelProgressBar` conforme onde ele está montado (`ActivityFullSheet`/`ActivitiesPage` → atividade; `ProcessDetailSheet` → processo). Dentro da atividade quem manda é ela.
+- Marcação pelo funil/kanban/WhatsApp não tem origem, e **passos anteriores a 04/08/2026 também não** — o painel diz "origem não registrada" em vez de inventar. Não dá pra reconstruir: título de atividade nunca bate com o do passo (0 de 865) e correlação por horário casava só ~67%.
+- Migrations: `20260804180000`, `20260804193000`, `20260804203000`, `20260804220000`.
 
 **Modo Corrida — posição do carro = posição no ranking** (desde 04/08/2026) — a pista lê o **índice** da lista que a RPC devolve (a mesma ordenação de 10 critérios acima), não uma métrica isolada. Antes o carro andava por `passos/recorde`, então o 1º do ranking (3 status, 0 passos) aparecia parado na largada enquanto a 4ª colocada (47 passos) liderava a pista. Como a posição vem do índice, mudar a ordenação na RPC muda a corrida sozinho — nada de replicar critério no front (`computeTrackPositions`, `WackyRaceTrack.tsx`).
 - Quem **não pontuou** nada no período (status/fases/objetivos/passos/checklist/concluídas todos zerados) fica na **largada** — tempo logado não anda o carro. Empate real (todos os critérios iguais) divide a mesma marca na pista.
 - O **recorde** do período (`meta.passos`) deixou de ser a linha de chegada e virou selo: o troféu 🏆 ao lado do nome de quem iguala/supera. A chegada agora é a liderança do ranking.
 - Regressão coberta em `src/components/tv/__tests__/WackyRaceTrack.position.test.ts`.
 
-**Coluna "STATUS ESPERADO"** (1º critério) — conta no **grão de processo**, por **responsável**, no **mês em que o resultado aconteceu** (`resultado_atingido_data`), não quando foi cadastrado:
+**Coluna "STATUS ESPERADO"** (1º critério) — conta no **grão de processo**, por **responsável**, pela data em que o resultado aconteceu (`resultado_atingido_data`), não quando foi cadastrado:
 - Time de execução (POP): processos cujo status atingido (`lead_processes.resultado_atingido_id`, `status='confirmado'`) está entre os esperados do POP (`settings.resultado_esperado_ids` — pode ser mais de um).
 - Time comercial (funil): resultado do lead no funil de vendas (como antes).
 - Os dois somam por pessoa. Fonte: função `tv_atividades_ranking`. O status do processo é detectado das movimentações/e-mail — ver "Status do Processo" em `processual.md`. Grão (processo ≠ lead): `.agents/skills/lead-vs-case-identity`.
+- **Respeita o período desde 04/08/2026** (migration `20260804211000`). Até então era o único critério que ignorava o `p_since` e contava sempre o **mês corrente**: com o telão em "Hoje" um assessor liderava com 3 status batidos no dia anterior. Agora "Hoje" é hoje, igual aos outros. **Atrasadas é o único que segue fora do período** — é backlog total, e o painel de detalhe avisa isso no cabeçalho.
+
+**Colunas "⭐" e "s/ avaliar" — o feedback entra no ranking** (desde 05/08/2026, migration `20260805120000`):
+- **⭐ (8º critério)** = média das notas que a pessoa **recebeu como responsável** (`lead_activities.feedback_rating`), creditadas por `feedback_rated_at` **dentro do período** do telão — mesmo filtro que o `aprov_pct` já usava. Não é a nota que ela deu nos outros. Sem nota no período mostra "—" e o critério não desempata (`nulls last`), então ninguém é penalizado por ainda não ter sido avaliado.
+- **s/ avaliar (9º critério)** = feedbacks que **ela deveria avaliar e não avaliou**: atividade com retorno preenchido (`feedback`), ainda sem `feedback_outcome`, em que ela é **observadora ou criadora**. É **backlog total**, sem filtro de período (igual a "atrasadas") — dívida velha não some quando vira o dia. **Autofeedback não conta**: se ela é a própria responsável, aquela pendência fica de fora (mesma regra do `FeedbackFunnel`, que esconde "as minhas" por padrão). Efeito medido: o João Manoel tinha 21 pendências brutas, 17 delas de atividades dele mesmo → o telão mostra **4**.
+- Os dois chips são **clicáveis** e abrem o `RankDetailSheet` (`p_criterio` = `estrelas` / `fb_pendentes`): no ⭐ vêm nota, desfecho, quem avaliou e a justificativa; em s/ avaliar vêm o responsável pelo retorno, há quantos dias está parado e o texto do retorno.
+- Quem entra no ranking **não mudou**: o filtro do `ranked` continua exigindo entrega no período — ninguém aparece só por ter pendência de feedback.
 
 **Passo retroativo (não conta no ranking)** — ao marcar passo/objetivo, a caixa pergunta "Esse passo foi executado HOJE?" (`askStepTiming`). A janela é o **dia**, não o instante: quem executou de manhã e marca à tarde responde "Sim, foi hoje". "Não, foi em outro dia" grava `metadata.retroactive = true` no `user_activity_log` e o passo fica só no histórico.
 - Retroativo é ignorado em **PASSOS**, **ITENS DO CHECKLIST** e, desde 31/07/2026, também em **FASES** e **OBJETIVOS** (`inst_last` só considera passo não-retroativo dentro do período — migration `20260731180000`). Antes disso o mesmo clique não valia passo mas fechava fase e objetivo, que pesam mais na ordenação.
@@ -162,8 +229,14 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 **Checklist do passo é condição, não pontuação** (desde 31/07/2026) — o passo **não fecha** enquanto sobrar item do seu checklist em aberto. Não existe critério novo no telão: requisito/pergunta/verificação continuam somando em ITENS DO CHECKLIST, e o que mudou é que o **PASSO** (e, por consequência, objetivo e fase) só conta com o procedimento conferido. Motivo: 1.690 dos 2.506 passos com sub-item (67%) estavam sendo concluídos sem nenhum item conferido.
 - Regra única em `src/lib/stepSubitems.ts`, aplicada nos quatro caminhos de marcação (ficha da atividade, visão de fluxo, board do caso e `useChecklists`). "Marcar todos os passos" pula o passo travado e avisa quantos ficaram de fora.
 - **"Não se aplica"** (`notApplicable` no sub-item): escape para o item que não cabe naquele caso — destrava o passo sem afirmar que foi feito e **não** entra no ranking. Clicar de novo desfaz.
-- **Não existe mais "Marcar todos" de sub-item**: era o atalho que anulava a leitura item a item.
+- **Não existe botão "Marcar todos" de sub-item**: era o atalho que anulava a leitura item a item.
 - Fora da conta de pendência: o **espelho de resposta** (item cujo rótulo repete uma resposta do passo — quem o marca é a resposta escolhida; ver `src/lib/popAnswerMirror.ts`).
+
+**Cascata ao concluir o passo** (desde 05/08/2026, só no painel do POP dentro da atividade — `LeadFunnelProgressBar`) — marcar a bolinha do passo marca junto os sub-itens que ainda estão em aberto, em vez de recusar a marcação. Ficam de fora: **"não se aplica"** (já resolvido — dizer que foi feito seria mentira), **espelho de resposta** e **item-pergunta** (a resposta escolhida é que define fase e status; com pergunta em aberto o passo **continua travado** e o selo do bloco segue "trava o passo").
+- Os ids marcados assim ficam em `autoCheckedDocIds` no passo: **desmarcar o passo desfaz exatamente esses** e preserva o que foi conferido item a item antes.
+- **Não entra no ranking**: só o passo é logado (`log_checklist_step`); os sub-itens da cascata não geram `log_checklist_doc_item`. Um clique não vale como N conferências — é o que a medição de 31/07/2026 protege.
+- `configOf()` em `syncChecklistInstances.ts` ignora `autoCheckedDocIds`: sem isso, todo passo concluído por cascata voltaria selado como "alterado no POP" no load seguinte.
+- **Não mudou**: `/workflow-progress` (`WorkflowProgressView`) segue travando o passo, e "Marcar todos" do objetivo segue pulando passo com sub-item em aberto.
 
 ---
 

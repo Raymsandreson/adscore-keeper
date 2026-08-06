@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { db, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
 export interface ContactClassificationRecord {
@@ -35,13 +35,60 @@ export const classificationColors = [
   { value: 'bg-slate-500', label: 'Cinza' },
 ];
 
+// Rótulos dos status padrão (o `name` é slug técnico gravado em contacts.classifications).
+export const CLASSIFICATION_SYSTEM_LABELS: Record<string, string> = {
+  client: 'Cliente',
+  non_client: 'Não-Cliente',
+  prospect: 'Prospect',
+  partner: 'Parceiro',
+  supplier: 'Fornecedor',
+  ponte: 'Ponte',
+  ex_cliente: 'Ex-cliente',
+  advogado_interno: 'Advogado Interno',
+  advogado_externo: 'Advogado Externo',
+  advogado_adverso: 'Advogado Adverso',
+  parte_contraria: 'Parte Contrária',
+  prestador_servico: 'Prestador de Serviço',
+  equipe_interna: 'Equipe Interna',
+};
+
+export const classificationLabel = (name: string): string =>
+  CLASSIFICATION_SYSTEM_LABELS[name] ||
+  (name || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+/** Contatos que carregam esse status (array novo `classifications` ou coluna legada `classification`). */
+export const contactsWithClassificationFilter = (query: any, name: string) =>
+  query.or(`classification.eq.${name},classifications.cs.{"${name}"}`);
+
+/**
+ * Troca (ou remove, com `to = null`) o status em todos os contatos afetados.
+ * Uma única instrução no Postgres — 'prospect' sozinho tem ~25k contatos.
+ */
+async function rewriteOnContacts(from: string, to: string | null): Promise<number> {
+  await ensureExternalSession();
+  const { data, error } = await (db as any).rpc('contact_classification_rewrite', {
+    p_from: from,
+    p_to: to,
+  });
+  if (error) {
+    console.error('[contact_classifications] falha ao migrar contatos', error);
+    toast.error('Status alterado, mas os contatos não foram atualizados');
+    return 0;
+  }
+  return Number(data) || 0;
+}
+
+const renameOnContacts = (from: string, to: string) => rewriteOnContacts(from, to);
+const removeFromContacts = (name: string) => rewriteOnContacts(name, null);
+
 export const useContactClassifications = () => {
   const [classifications, setClassifications] = useState<ContactClassificationRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchClassifications = useCallback(async () => {
     try {
-      const { data, error } = await (supabase as any)
+      await ensureExternalSession();
+      const { data, error } = await (db as any)
         .from('contact_classifications')
         .select('*')
         .order('display_order', { ascending: true });
@@ -70,7 +117,8 @@ export const useContactClassifications = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await (supabase as any)
+      await ensureExternalSession();
+      const { data, error } = await (db as any)
         .from('contact_classifications')
         .insert([{
           name: name.toLowerCase().trim().replace(/\s+/g, '_'),
@@ -100,37 +148,86 @@ export const useContactClassifications = () => {
     }
   };
 
-  const updateClassification = async (id: string, updates: Partial<Pick<ContactClassificationRecord, 'name' | 'color' | 'show_in_workflow'>>) => {
+  const updateClassification = async (
+    id: string,
+    updates: Partial<Pick<ContactClassificationRecord, 'name' | 'color' | 'show_in_workflow'>>,
+  ): Promise<boolean> => {
+    const current = classifications.find(c => c.id === id);
+    const nextName = updates.name !== undefined
+      ? updates.name.toLowerCase().trim().replace(/\s+/g, '_')
+      : undefined;
+
+    if (updates.name !== undefined && !nextName) {
+      toast.error('Nome da classificação é obrigatório');
+      return false;
+    }
+    if (nextName && classifications.some(c => c.id !== id && c.name.toLowerCase() === nextName)) {
+      toast.error('Essa classificação já existe');
+      return false;
+    }
+
     try {
-      const { error } = await (supabase as any)
+      await ensureExternalSession();
+      const payload = { ...updates, ...(nextName ? { name: nextName } : {}) };
+      const { data, error } = await (db as any)
         .from('contact_classifications')
-        .update(updates)
-        .eq('id', id);
+        .update(payload)
+        .eq('id', id)
+        .select('id');
 
       if (error) throw error;
-      
+      if (!data || data.length === 0) {
+        toast.error('Sem permissão para editar esse status');
+        return false;
+      }
+
+      // Renomear o status precisa acompanhar os contatos, senão o valor antigo
+      // fica órfão em contacts.classifications e some da lista.
+      if (nextName && current && nextName !== current.name) {
+        const migrated = await renameOnContacts(current.name, nextName);
+        if (migrated > 0) toast.info(`${migrated} contato(s) atualizado(s)`);
+      }
+
       toast.success('Classificação atualizada');
       await fetchClassifications();
+      return true;
     } catch (error) {
       console.error('Error updating classification:', error);
       toast.error('Erro ao atualizar classificação');
+      return false;
     }
   };
 
-  const deleteClassification = async (id: string) => {
+  const deleteClassification = async (id: string): Promise<boolean> => {
+    const current = classifications.find(c => c.id === id);
+
     try {
-      const { error } = await (supabase as any)
+      await ensureExternalSession();
+      // Tira o status dos contatos ANTES de apagar a linha: se a exclusão
+      // falhar no meio, sobra a classificação órfã (recuperável), não o inverso.
+      const removed = current ? await removeFromContacts(current.name) : 0;
+
+      const { data, error } = await (db as any)
         .from('contact_classifications')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select('id');
 
       if (error) throw error;
-      
-      toast.success('Classificação removida');
+      if (!data || data.length === 0) {
+        toast.error('Sem permissão para excluir esse status');
+        return false;
+      }
+
+      toast.success(
+        removed > 0 ? `Classificação removida de ${removed} contato(s)` : 'Classificação removida',
+      );
       await fetchClassifications();
+      return true;
     } catch (error) {
       console.error('Error deleting classification:', error);
       toast.error('Erro ao remover classificação');
+      return false;
     }
   };
 
@@ -140,23 +237,8 @@ export const useContactClassifications = () => {
 
   // Build config object for use in components
   const classificationConfig = classifications.reduce((acc, c) => {
-    const labelMap: Record<string, string> = {
-      client: 'Cliente',
-      non_client: 'Não-Cliente',
-      prospect: 'Prospect',
-      partner: 'Parceiro',
-      supplier: 'Fornecedor',
-      ponte: 'Ponte',
-      ex_cliente: 'Ex-cliente',
-      advogado_interno: 'Advogado Interno',
-      advogado_externo: 'Advogado Externo',
-      advogado_adverso: 'Advogado Adverso',
-      parte_contraria: 'Parte Contrária',
-      prestador_servico: 'Prestador de Serviço',
-      equipe_interna: 'Equipe Interna',
-    };
     acc[c.name] = {
-      label: labelMap[c.name] || c.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      label: classificationLabel(c.name),
       color: c.color,
       isSystem: c.is_system,
       showInWorkflow: c.show_in_workflow

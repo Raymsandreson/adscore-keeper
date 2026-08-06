@@ -5,6 +5,7 @@ import { facebookCAPI } from '@/services/facebookCAPI';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 import { CampaignPicker } from '@/components/leads/CampaignPicker';
@@ -12,6 +13,8 @@ const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedConta
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
 const EntityAIChat = lazy(() => import('@/components/activities/EntityAIChat').then(m => ({ default: m.EntityAIChat })));
+// Lazy porque carrega o Leaflet: só quem abre a aba "Local" paga por ele.
+const LeadLocationPanel = lazy(() => import('@/components/leads/LeadLocationPanel').then(m => ({ default: m.LeadLocationPanel })));
 import {
   Dialog,
   DialogContent,
@@ -186,6 +189,27 @@ const stateToRegion: Record<string, string> = {
   'ES': 'Sudeste', 'MG': 'Sudeste', 'RJ': 'Sudeste', 'SP': 'Sudeste',
   'PR': 'Sul', 'RS': 'Sul', 'SC': 'Sul',
 };
+
+/**
+ * Resumo do caso que vai junto na tarefa de Marketing (popup de cidade sem
+ * contatos). Só contexto de negócio — nada de dado sensível do cliente.
+ */
+function buildCaseDetails(src: {
+  case_type?: string | null; accident_date?: string | null;
+  contractor_company?: string | null; main_company?: string | null; sector?: string | null;
+  news_link?: string | null; news_links?: string[] | null;
+}): { label: string; value: string }[] {
+  const br = (d?: string | null) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(0, 10).split('-').reverse().join('/') : (d || ''));
+  const links = Array.from(new Set([...(src.news_links || []), src.news_link || ''].filter(Boolean))) as string[];
+  return [
+    { label: 'Tipo de caso', value: src.case_type || '' },
+    { label: 'Data do acidente', value: br(src.accident_date) },
+    { label: 'Empresa contratante', value: src.contractor_company || '' },
+    { label: 'Empresa principal', value: src.main_company || '' },
+    { label: 'Setor', value: src.sector || '' },
+    { label: links.length > 1 ? 'Notícias do caso' : 'Notícia do caso', value: links.join(' · ') },
+  ].filter(d => d.value);
+}
 
 const caseTypes = [
   'Queda de Altura',
@@ -411,7 +435,7 @@ export function LeadEditDialog({
   // Externo antes de preencher o formulário.
   const [hydratedLead, setHydratedLead] = useState<Lead | null>(null);
   const [hydrationTick, setHydrationTick] = useState(0);
-  const isThinLead = !!lead && !('board_id' in (lead as Record<string, unknown>));
+  const isThinLead = !!lead && !('board_id' in (lead as unknown as Record<string, unknown>));
   const hydrating = isThinLead && (!hydratedLead || hydratedLead.id !== lead?.id);
   const currentLead = (hydratedLead && lead && hydratedLead.id === lead.id) ? hydratedLead : lead;
 
@@ -445,7 +469,7 @@ export function LeadEditDialog({
   const acolhedorOptions = useMemo(() => (
     isTrabalhistaBoard((currentLead as any)?.board_id)
       ? TRABALHISTA_ACOLHEDORES
-      : profiles.map((p) => p.full_name || p.email || p.id)
+      : filterAssignableMembers(profiles).map((p) => p.full_name || p.email || p.id)
   ), [currentLead, profiles]);
   const autoDrive = useAutoImportGroupDocs(
     currentLead?.id || null,
@@ -598,7 +622,15 @@ export function LeadEditDialog({
     // Ao abrir o lead para editar, sugere contatos nossos na mesma cidade (se houver cidade+estado)
     const openCity = leadAny.visit_city || '';
     if (openCity && state) {
-      setCitySuggest({ city: openCity, state });
+      setCitySuggest({
+        city: openCity,
+        state,
+        cep: leadAny.visit_cep || '',
+        address: leadAny.visit_address || '',
+        region: leadAny.visit_region || stateToRegion[state] || '',
+        details: buildCaseDetails(leadAny),
+        newsUrl: (leadAny.news_links || [])[0] || leadAny.news_link || '',
+      });
     }
 
     // Companies fields
@@ -1436,6 +1468,14 @@ ${scrapeData.content || ''}
 
     if (!leadName.trim()) {
       toast.error('Nome é obrigatório');
+      return;
+    }
+
+    // CEP da visita: obrigatório quando há cidade da visita — é o que o Marketing
+    // usa para segmentar anúncio de captação de parceiros naquela região.
+    if (visitCity && isFieldVisible('visit_cep') && visitCep.replace(/\D/g, '').length !== 8) {
+      toast.error('Informe o CEP da visita (8 dígitos) — obrigatório quando a cidade da visita está preenchida.');
+      setActiveTab('location');
       return;
     }
 
@@ -3402,10 +3442,25 @@ ${scrapeData.content || ''}
             {/* Location Tab */}
             <TabsContent value="location" className="space-y-4 mt-0">
               {activeTab === 'location' && (<>
+              {/* Reage aos campos sendo editados, não ao que está salvo: mudou a
+                  cidade da visita, o mapa acompanha antes mesmo de salvar. */}
+              <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                <LeadLocationPanel
+                  lead={{
+                    city: lead?.city,
+                    state: lead?.state,
+                    visit_city: visitCity,
+                    visit_state: visitState,
+                    lead_lat: lead?.lead_lat,
+                    lead_lng: lead?.lead_lng,
+                  }}
+                />
+              </Suspense>
+
               <div className="grid grid-cols-2 gap-4">
                 {isFieldVisible('visit_cep') && (<div>
                   <Label className="flex items-center gap-2">
-                    CEP da Visita
+                    CEP da Visita {visitCity && <span className="text-destructive">*</span>}
                     {loadingCep && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                   </Label>
                   <Input
@@ -3448,7 +3503,19 @@ ${scrapeData.content || ''}
                     value={safeSelectValue(visitCity)}
                     onValueChange={(value) => {
                       setVisitCity(value);
-                      if (value && visitState) setCitySuggest({ city: value, state: visitState });
+                      if (value && visitState) setCitySuggest({
+                        city: value,
+                        state: visitState,
+                        cep: visitCep,
+                        address: visitAddress,
+                        region: visitRegion || stateToRegion[visitState] || '',
+                        details: buildCaseDetails({
+                          case_type: caseType, accident_date: accidentDate,
+                          contractor_company: contractorCompany, main_company: mainCompany, sector,
+                          news_link: newsLink, news_links: newsLinks,
+                        }),
+                        newsUrl: newsLinks[0] || newsLink || '',
+                      });
                     }}
                     disabled={!visitState || loadingCities}
                   >
@@ -3840,6 +3907,7 @@ ${scrapeData.content || ''}
           onClose={() => setCitySuggest(null)}
           leadId={lead?.id}
           leadName={lead?.lead_name}
+          onCepChange={setVisitCep}
         />
 
         <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>

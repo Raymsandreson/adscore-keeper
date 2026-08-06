@@ -13,6 +13,7 @@ Documentação de todas as seções do sistema: propósito de cada tela, funcion
 - [Leads e CRM](leads-crm.md) — kanban de leads, acolhimento, contatos, casos, funis, mapa
 - [Processual](processual.md) — processos, audiências, acompanhamento, BPC, procurações, núcleos
 - [Comunicação e gestão](comunicacao-gestao.md) — WhatsApp, chat da equipe, campanhas, relatórios IA, equipe, analytics, financeiro, configurações
+- [Financeiro no processo e na atividade](financeiro-processo-atividade.md) — onde lançar despesa/receita de cliente e como o lançamento sobe para processo, caso e lead
 
 ## Observação sobre propriedade intelectual (Brasil)
 

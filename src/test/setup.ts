@@ -14,6 +14,49 @@ Object.defineProperty(window, "matchMedia", {
   }),
 });
 
+/**
+ * localStorage no Node 22+ (aqui: v26).
+ *
+ * O Node passou a definir um `localStorage` global próprio (experimental), que
+ * fica `undefined` quando o processo roda sem `--localstorage-file` — é a
+ * origem do aviso "localStorage is not available because --localstorage-file
+ * was not provided". Como a chave JÁ EXISTE em `globalThis`, o ambiente jsdom
+ * do vitest não instala o dele por cima e o global fica undefined (só
+ * `localStorage` colide; `sessionStorage` entra normalmente). Resultado: todo
+ * teste que encostava em localStorage morria em "Cannot read properties of
+ * undefined (reading 'clear')" — 11 deles, em BoardsList.view-mode e
+ * UnifiedKanbanManager.board-param.
+ *
+ * O descriptor do Node é `configurable`, então dá para substituir por um
+ * Storage de memória. Cada arquivo de teste roda isolado, então não há estado
+ * vazando entre eles.
+ */
+if (!globalThis.localStorage) {
+  const store = new Map<string, string>();
+  const memoryStorage = {
+    get length() {
+      return store.size;
+    },
+    key: (index: number) => [...store.keys()][index] ?? null,
+    getItem: (key: string) => (store.has(String(key)) ? store.get(String(key))! : null),
+    setItem: (key: string, value: string) => {
+      store.set(String(key), String(value));
+    },
+    removeItem: (key: string) => {
+      store.delete(String(key));
+    },
+    clear: () => {
+      store.clear();
+    },
+  } as Storage;
+
+  Object.defineProperty(globalThis, "localStorage", {
+    value: memoryStorage,
+    configurable: true,
+    writable: true,
+  });
+}
+
 // Radix UI usa esses APIs ausentes no jsdom
 if (!Element.prototype.hasPointerCapture) {
   Element.prototype.hasPointerCapture = () => false;

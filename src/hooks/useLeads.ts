@@ -65,6 +65,11 @@ const LEAD_INDEX_COLUMNS = [
   'status', 'lead_status', 'source',
   'created_at', 'updated_at',
   'acolhedor', 'case_number', 'victim_name', 'case_type',
+  // O card mostra empresa e cidade da visita. Sem estas quatro, os campos vêm
+  // sempre undefined e o bloco some da tela sem erro nenhum — foi o que
+  // aconteceu entre 24/06 e 05/08/2026 com a empresa.
+  'contractor_company', 'main_company',
+  'visit_city', 'visit_state',
   'city', 'state', 'product_service_id',
   'ad_spend_at_conversion', 'conversion_value',
   'lead_status_reason', 'lead_status_changed_at',
@@ -203,7 +208,7 @@ export interface Lead {
   campaign_id: string | null;
   campaign_name: string | null;
   /** campaigns.id do CRM — vínculo do lead com a campanha (métricas de ROI/CAC). */
-  crm_campaign_id: string | null;
+  crm_campaign_id?: string | null;
   adset_id: string | null;
   adset_name: string | null;
   creative_id: string | null;
@@ -234,6 +239,9 @@ export interface Lead {
   city: string | null;
   state: string | null;
   neighborhood: string | null;
+  /** Geocodificação do município (backfill-lead-geocode). Opcional: nem toda query as seleciona. */
+  lead_lat?: number | null;
+  lead_lng?: number | null;
   // Follow-up tracking fields
   followup_count: number | null;
   last_followup_at: string | null;
@@ -643,36 +651,31 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
         lead_state: (newLead as any).lead_state,
       }).catch(e => console.warn('[GeoRule] Background error:', e));
 
-      // Auto-create WhatsApp group when acolhedor is assigned
+      // Auto-create WhatsApp group when acolhedor is assigned.
+      // Passa pelo functionRouter (alvo 'external'): o fetch direto pro projeto Cloud
+      // caía na cópia legada da função, que montava o nome com o template antigo
+      // ("PREV1954 Cidade - UF ( Bairro ) Acd- Acolhedor -") e numeração própria.
       if ((newLead as any).acolhedor && newLead.board_id) {
-        const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-        const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-        if (projectId && anonKey) {
-          fetch(`https://${projectId}.supabase.co/functions/v1/create-whatsapp-group`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${anonKey}`,
-            },
-            body: JSON.stringify({
-              lead_id: newLead.id,
-              lead_name: newLead.lead_name,
-              board_id: newLead.board_id,
-              phone: newLead.lead_phone || null,
-              contact_phone: newLead.lead_phone || null,
-              creation_origin: 'acolhedor_assignment',
-            }),
-          }).then(async (res) => {
-            const data = await res.json();
-            if (data.success) {
-              toast.success('Grupo WhatsApp criado automaticamente');
-            } else if (data.queued) {
-              toast.info('Grupo na fila - será criado quando uma instância estiver online');
-            } else {
-              console.warn('[AutoGroup] Error:', data.error);
-            }
-          }).catch(e => console.warn('[AutoGroup] Background error:', e));
-        }
+        cloudFunctions.invoke<any>('create-whatsapp-group', {
+          body: {
+            lead_id: newLead.id,
+            lead_name: newLead.lead_name,
+            board_id: newLead.board_id,
+            phone: newLead.lead_phone || null,
+            contact_phone: newLead.lead_phone || null,
+            creation_origin: 'acolhedor_assignment',
+          },
+        }).then(({ data, error }) => {
+          if (error) {
+            console.warn('[AutoGroup] Error:', error);
+          } else if (data?.success) {
+            toast.success('Grupo WhatsApp criado automaticamente');
+          } else if (data?.queued) {
+            toast.info('Grupo na fila - será criado quando uma instância estiver online');
+          } else {
+            console.warn('[AutoGroup] Error:', data?.error);
+          }
+        }).catch(e => console.warn('[AutoGroup] Background error:', e));
       }
       // Tenta vincular processos INSS órfãos a este lead recém-criado (background)
       fireOrphanMatchForLead(newLead.id);

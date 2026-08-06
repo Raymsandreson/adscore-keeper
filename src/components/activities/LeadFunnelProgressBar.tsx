@@ -21,7 +21,7 @@ import {
   normalizeLabel as normalizePopLabel,
   mirrorLabelsOf as mirrorLabels,
 } from '@/lib/popAnswerMirror';
-import { isStepBlockedBySubItems, pendingSubItemsMessage } from '@/lib/stepSubitems';
+import { isStepBlockedBySubItems, pendingSubItems } from '@/lib/stepSubitems';
 
 interface Stage {
   id: string;
@@ -95,6 +95,12 @@ interface ChecklistItem {
   answers?: AnswerOption[];
   selectedAnswerId?: string;
   docChecklist?: DocChecklistItem[];
+  /**
+   * Sub-itens que ESTE passo marcou em cascata ao ser concluído (persiste).
+   * É o que permite desmarcar o passo e desfazer só o que o clique marcou,
+   * sem apagar a conferência feita item a item antes dele.
+   */
+  autoCheckedDocIds?: string[];
   /** Registro do passo como era antes de o POP mudar (persiste; não é marcável). */
   supersededBy?: string;
   /** Selos de exibição calculados no load contra o template. Não persistem. */
@@ -122,9 +128,15 @@ interface LeadFunnelProgressBarProps {
    * uma atividade (ficha do processo, por ex.).
    */
   activityId?: string | null;
+  /**
+   * Processo de onde a barra está sendo usada (ficha do processo). Mesma ideia
+   * do activityId: registra a ORIGEM da marcação. Só é considerado quando não
+   * há atividade — dentro da atividade, quem manda é ela.
+   */
+  processId?: string | null;
 }
 
-export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: LeadFunnelProgressBarProps) {
+export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, processId = null }: LeadFunnelProgressBarProps) {
   const { user } = useAuthContext();
   const [stages, setStages] = useState<Stage[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
@@ -366,6 +378,24 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
     return live.length > 0 && live.every(i => i.checked);
   };
 
+  /**
+   * Marca/desmarca o passo. Marcar CONCLUI o checklist do passo junto: os
+   * sub-itens ainda em aberto são marcados em cascata (decisão do usuário em
+   * 05/08/2026 — antes o clique não fazia nada, só avisava o que faltava).
+   *
+   * Ficam de fora, de propósito:
+   *   - "não se aplica": já está resolvido, e dizer que foi FEITO seria mentira;
+   *   - espelho de resposta: quem marca é a resposta escolhida no passo;
+   *   - item-pergunta: marcar é escolher uma resposta, e é dela que saem a fase
+   *     de destino e o status do POP — isso ninguém decide por cascata. Com
+   *     pergunta em aberto o passo continua travado.
+   *
+   * Os ids marcados assim ficam em `autoCheckedDocIds`: desmarcar o passo
+   * desfaz exatamente esses e preserva o que já tinha sido conferido item a
+   * item. A cascata NÃO é logada no ranking do telão (só o passo entra, via
+   * log_checklist_step): um clique não pode valer como N conferências — é o
+   * que a medição de 31/07/2026 protege (ver src/lib/stepSubitems.ts).
+   */
   const handleToggleItem = async (instance: ChecklistInstance, itemId: string) => {
     if (instance.is_readonly) return;
 
@@ -377,29 +407,58 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
       return;
     }
 
-    // Sub-item em aberto trava o passo (src/lib/stepSubitems.ts). Item que não
-    // cabe no caso sai do caminho pelo "não se aplica", não pela marcação falsa.
-    if (!target?.checked && isStepBlockedBySubItems(target)) {
-      toast.info(pendingSubItemsMessage(target));
-      return;
-    }
+    const marcando = !target?.checked;
 
-    // Desmarcar a pergunta desfaz também o item de checklist que a resposta
-    // tinha marcado — a escolha deixou de existir.
+    // Sub-itens que este clique marca junto (mesma conta que travava o passo:
+    // fora os resolvidos e os espelhos de resposta).
+    let cascata: DocChecklistItem[] = [];
+    if (marcando && target) {
+      const pendentes = pendingSubItems(target) as DocChecklistItem[];
+      const perguntas = pendentes.filter(d => (d.answers?.length || 0) > 0);
+      if (perguntas.length > 0) {
+        toast.info(perguntas.length === 1
+          ? `Escolha a resposta de "${perguntas[0].label}" para concluir este passo`
+          : `Escolha a resposta dos ${perguntas.length} itens-pergunta do checklist para concluir este passo`);
+        return;
+      }
+      cascata = pendentes;
+    }
+    const cascataIds = new Set(cascata.map(d => d.id));
+    const desfeitos = marcando ? 0 : (target?.autoCheckedDocIds?.length || 0);
+
     const updatedItems = instance.items.map(item => {
       if (item.id !== itemId) return item;
-      const undoing = !!item.checked && !!item.answers?.length;
-      const mirrors = undoing ? mirrorLabelsOf(item) : null;
-      return {
-        ...item,
-        checked: !item.checked,
-        selectedAnswerId: item.checked ? undefined : item.selectedAnswerId,
-        docChecklist: mirrors
-          ? (item.docChecklist || []).map(d =>
-              mirrors.has(normalizeLabel(d.label)) ? { ...d, checked: false } : d
-            )
-          : item.docChecklist,
-      };
+
+      if (!marcando) {
+        // Desmarcar desfaz o que a cascata deste passo marcou e, no
+        // passo-pergunta, o espelho que a resposta tinha marcado — a escolha
+        // deixou de existir. O que foi conferido na mão continua marcado.
+        const auto = new Set(item.autoCheckedDocIds || []);
+        const mirrors = item.answers?.length ? mirrorLabelsOf(item) : null;
+        const { autoCheckedDocIds: _limpo, ...semCascata } = item;
+        const desmarcado: ChecklistItem = {
+          ...semCascata,
+          checked: false,
+          selectedAnswerId: undefined,
+        };
+        if (item.docChecklist) {
+          desmarcado.docChecklist = item.docChecklist.map(d =>
+            auto.has(d.id) || mirrors?.has(normalizeLabel(d.label))
+              ? { ...d, checked: false }
+              : d
+          );
+        }
+        return desmarcado;
+      }
+
+      const marcado: ChecklistItem = { ...item, checked: true };
+      if (cascataIds.size > 0 && item.docChecklist) {
+        marcado.docChecklist = item.docChecklist.map(d =>
+          cascataIds.has(d.id) ? { ...d, checked: true } : d
+        );
+        marcado.autoCheckedDocIds = [...cascataIds];
+      }
+      return marcado;
     });
 
     // Ao MARCAR, pergunta antes de gravar: "Cancelar" desiste da marcação
@@ -426,6 +485,19 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
       return;
     }
 
+    // Deixa visível o que o clique fez além do passo — marcar (ou desfazer) o
+    // checklist em silêncio esconderia trabalho que ninguém conferiu.
+    if (cascata.length > 0) {
+      toast.success(cascata.length === 1
+        ? '1 item do checklist marcado junto com o passo'
+        : `${cascata.length} itens do checklist marcados junto com o passo`);
+    }
+    if (desfeitos > 0) {
+      toast.info(desfeitos === 1
+        ? '1 item que o passo tinha marcado voltou a ficar em aberto'
+        : `${desfeitos} itens que o passo tinha marcado voltaram a ficar em aberto`);
+    }
+
     // #8: loga o passo recém-MARCADO por pessoa (user_activity_log via RPC).
     // Fire-and-forget; só quando marca (não no desmarcar). O timing já foi
     // respondido antes do save (retroativo não conta no ranking).
@@ -436,6 +508,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
         p_item_label: toggledItem.label,
         p_retroactive: retroactive,
         p_activity_id: activityId,
+        p_process_id: processId,
       }).then((res: { error?: { message?: string } | null }) => {
         if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
       });
@@ -517,6 +590,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
           p_item_label: it.label,
           p_retroactive: retroactive,
           p_activity_id: activityId,
+          p_process_id: processId,
         }).then((res: { error?: { message?: string } | null }) => {
           if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
         });
@@ -531,9 +605,11 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
    * só pra sair. NÃO entra no ranking: não é trabalho, é uma decisão sobre o
    * caso. Clicar de novo desfaz.
    *
-   * Substituiu o "Marcar todos" dos sub-itens (removido de propósito): enquanto
-   * um clique fechava os 20 itens de uma vez, ninguém lia nenhum — 67% dos
-   * passos com sub-item eram concluídos sem conferir um só (medido em 31/07/2026).
+   * Continua sem botão "Marcar todos" no bloco de sub-itens (removido de
+   * propósito: um clique fechava 20 itens e ninguém lia nenhum — 67% dos passos
+   * com sub-item eram concluídos sem conferir um só, medido em 31/07/2026). O
+   * que existe desde 05/08/2026 é a cascata ao concluir o PASSO, que não conta
+   * no ranking — ver handleToggleItem.
    */
   const handleToggleDocNotApplicable = async (instance: ChecklistInstance, itemId: string, docId: string) => {
     if (instance.is_readonly) return;
@@ -747,6 +823,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
         p_item_label: `${item.label} — ${answer.label}`,
         p_retroactive: retroactive,
         p_activity_id: activityId,
+        p_process_id: processId,
       }).then(res => {
         if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
       });
@@ -1121,6 +1198,10 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
                             // Itens que repetem as respostas do passo: a escolha da
                             // resposta é que marca (e desmarca) esses.
                             const stepMirrors = mirrorLabelsOf(item);
+                            // Só item-pergunta ainda segura o passo: o resto é
+                            // marcado em cascata ao concluir (handleToggleItem).
+                            const pendentesDoPasso = pendingSubItems(item) as DocChecklistItem[];
+                            const travadoPorPergunta = pendentesDoPasso.some(d => (d.answers?.length || 0) > 0);
                             return (
                               <div className="ml-6 p-1.5 rounded bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800/40">
                                 <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -1130,12 +1211,13 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null }: Le
                                       {typeInfo.icon} {typeInfo.label} · {docDone}/{item.docChecklist.length}
                                     </span>
                                   </div>
-                                  {/* Sem "marcar todos" aqui, de propósito: o passo só
-                                      fecha com o checklist conferido item a item —
-                                      o que não couber no caso vai em "não se aplica". */}
+                                  {/* Concluir o passo marca o que sobrou aqui (menos
+                                      "não se aplica", espelho de resposta e pergunta).
+                                      Aviso pra ninguém fechar o passo achando que o
+                                      checklist ficou intocado. */}
                                   {!instance.is_readonly && !isHistory && docDone < item.docChecklist.length && (
                                     <span className="text-[9px] shrink-0 text-orange-700/80 dark:text-orange-400/80 whitespace-nowrap">
-                                      trava o passo
+                                      {travadoPorPergunta ? 'trava o passo' : 'marcados ao concluir o passo'}
                                     </span>
                                   )}
                                 </div>

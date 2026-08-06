@@ -15,10 +15,11 @@ import { ptBR } from 'date-fns/locale';
 import {
   FileText, Copy, Download, Loader2, MessageSquare, Send, UserPlus,
   Target, Phone, ArrowRightLeft, CheckCircle2, Clock, Trophy,
-  ListChecks, AlertTriangle, Briefcase, CalendarIcon,
+  ListChecks, AlertTriangle, Briefcase, CalendarIcon, ExternalLink,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import type { MyProductivity, MyDailyGoals } from '@/hooks/useMyProductivity';
 
 interface DailyReportDialogProps {
@@ -65,6 +66,8 @@ export function DailyReportDialog({
   const [commentReplies, setCommentReplies] = useState<DetailEntry[]>([]);
   const [activitiesCompleted, setActivitiesCompleted] = useState<DetailEntry[]>([]);
   const [callsMade, setCallsMade] = useState<DetailEntry[]>([]);
+  // Atividade aberta em preview ao lado (esquerda) — sem sair do relatório.
+  const [previewActivityId, setPreviewActivityId] = useState<string | null>(null);
 
   const rangeIsSingleDay = !reportDateRange || isSameDay(reportDateRange.start, reportDateRange.end);
 
@@ -400,6 +403,8 @@ export function DailyReportDialog({
     icon: React.ReactNode,
     title: string,
     onItemClick?: (item: DetailEntry) => void,
+    /** Ação secundária no ícone à direita — sai do relatório e vai pra tela do item. */
+    onItemRedirect?: (item: DetailEntry) => void,
   ) => {
     if (items.length === 0) return null;
     return (
@@ -420,17 +425,36 @@ export function DailyReportDialog({
                 <span className="text-muted-foreground shrink-0">{item.time}</span>
               </>
             );
-            return clickable ? (
-              <button
+            // Botão de redirecionar fica IRMÃO do botão principal (não aninhado — HTML inválido).
+            return (
+              <div
                 key={item.id}
-                onClick={() => onItemClick!(item)}
-                className="flex w-full items-start gap-2 p-2 rounded-md border bg-card text-xs text-left hover:bg-accent transition"
+                className={cn(
+                  'flex items-start gap-1 rounded-md border bg-card text-xs',
+                  clickable && 'transition hover:bg-accent',
+                )}
               >
-                {content}
-              </button>
-            ) : (
-              <div key={item.id} className="flex items-start gap-2 p-2 rounded-md border bg-card text-xs">
-                {content}
+                {clickable ? (
+                  <button
+                    onClick={() => onItemClick!(item)}
+                    className="flex flex-1 min-w-0 items-start gap-2 p-2 text-left"
+                    title="Abrir ao lado, sem sair do relatório"
+                  >
+                    {content}
+                  </button>
+                ) : (
+                  <div className="flex flex-1 min-w-0 items-start gap-2 p-2">{content}</div>
+                )}
+                {onItemRedirect && (
+                  <button
+                    onClick={() => onItemRedirect(item)}
+                    className="shrink-0 self-center mr-1 rounded p-1.5 text-muted-foreground transition hover:bg-background hover:text-foreground"
+                    title="Ir para a atividade na tela de Atividades"
+                    aria-label="Ir para a atividade"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
             );
           })}
@@ -439,13 +463,19 @@ export function DailyReportDialog({
     );
   };
 
+  /** Abre a atividade num painel à esquerda, mantendo o relatório visível à direita. */
+  const previewActivity = (id: string) => setPreviewActivityId(id);
+
+  /** Redireciona de fato: fecha o relatório e vai pra tela de Atividades. */
   const openActivity = (id: string) => {
+    setPreviewActivityId(null);
     onOpenChange(false);
     navigate(`/?openActivity=${id}`);
   };
 
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-lg">
         <SheetHeader>
@@ -583,11 +613,33 @@ export function DailyReportDialog({
               {renderDetailList(commentReplies, <MessageSquare className="h-4 w-4 text-blue-600" />, 'Comentários')}
               {renderDetailList(dmsSent, <Send className="h-4 w-4 text-violet-600" />, 'DMs Enviadas')}
               {renderDetailList(callsMade, <Phone className="h-4 w-4 text-green-600" />, 'Ligações')}
-              {renderDetailList(activitiesCompleted, <CheckCircle2 className="h-4 w-4 text-emerald-600" />, 'Atividades Concluídas', (item) => openActivity(item.id))}
+              {renderDetailList(
+                activitiesCompleted,
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />,
+                'Atividades Concluídas',
+                (item) => previewActivity(item.id),
+                (item) => openActivity(item.id),
+              )}
             </div>
           </ScrollArea>
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Preview da atividade à ESQUERDA — mesmo formulário completo do sistema,
+        sem sair do relatório (que segue visível à direita). O botão "Tela cheia"
+        do próprio painel, e o ícone de link em cada linha, fazem o redirecionamento real. */}
+    <ActivityFullSheet
+      open={!!previewActivityId}
+      onOpenChange={(v) => { if (!v) setPreviewActivityId(null); }}
+      activityId={previewActivityId}
+      side="left"
+      // Estica até 2rem antes do relatório (sm:max-w-lg = 32rem à direita). A folga
+      // é onde a aba do cronômetro encosta, sem cobrir nenhum dos dois painéis.
+      // Só a partir de lg: abaixo disso não há espaço pros dois lado a lado.
+      contentClassName="lg:max-w-[calc(100vw-34rem)]"
+      onUpdated={fetchReportData}
+    />
+    </>
   );
 }

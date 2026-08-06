@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, UserPlus, Users, Phone, MapPin, Mail, Briefcase, ChevronDown, ChevronUp, Search } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -208,7 +209,7 @@ export function GroupContactSyncDialog({
     setPhase('loading');
     try {
       if (leadId) {
-        const { data: leadData } = await supabase
+        const { data: leadData } = await externalSupabase
           .from('leads')
           .select('city, state')
           .eq('id', leadId)
@@ -271,10 +272,13 @@ export function GroupContactSyncDialog({
     let failed = 0;
     let firstError: string | null = null;
     const { data: { user: authUser } } = await supabase.auth.getUser();
+    // created_by aponta para auth.users do EXTERNO — sem remap grava um uuid
+    // que não resolve nome nenhum.
+    const extCreatedBy = await remapToExternal(authUser?.id);
 
     for (const s of toCreate) {
       try {
-        const { data: newContact, error: createError } = await supabase
+        const { data: newContact, error: createError } = await externalSupabase
           .from('contacts')
           .insert({
             full_name: s.final_name.trim() || s.phone,
@@ -287,7 +291,7 @@ export function GroupContactSyncDialog({
             email: s.email.trim() || null,
             profession: s.profession.trim() || null,
             notes: s.notes.trim() || null,
-            created_by: authUser?.id || null,
+            created_by: extCreatedBy,
             action_source: 'whatsapp_group',
             action_source_detail: groupName || groupJid || null,
           })
