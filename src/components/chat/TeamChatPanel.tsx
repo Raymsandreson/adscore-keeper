@@ -950,7 +950,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             <button onClick={stopRecording} className="font-medium underline">Parar e enviar</button>
           </div>
         )}
-        <div className="relative px-3 py-2 flex items-end gap-1.5">
+        {/* As ferramentas ficam ACIMA do campo: numa ficha estreita elas
+            espremiam o texto a ponto de a palavra quebrar letra a letra. */}
+        <div className="relative px-3 pt-2 pb-1 flex items-center gap-0.5 flex-wrap">
           {/* Picker de menção de entidade (abre acima do input) */}
           <TeamChatEntityMention
             open={showEntityMention}
@@ -1023,14 +1025,17 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           >
             <MessageSquarePlus className="h-4 w-4 text-primary" />
           </Button>
+        </div>
 
+        {/* Linha do texto: só o campo e o enviar — o campo fica com a largura toda. */}
+        <div className="px-3 pb-2 flex items-end gap-1.5">
           <AutoResizeTextarea
             ref={inputRef}
             value={inputText}
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={urgent ? 'Mensagem URGENTE… use @nome' : 'Mensagem... use @nome para mencionar'}
-            className={cn('flex-1 min-h-[36px] py-2 text-sm', urgent && 'ring-1 ring-destructive/50')}
+            className={cn('flex-1 min-w-0 min-h-[36px] py-2 text-sm', urgent && 'ring-1 ring-destructive/50')}
           />
           <Button
             size="icon"
