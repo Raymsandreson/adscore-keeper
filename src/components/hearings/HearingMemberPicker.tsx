@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
@@ -19,10 +20,13 @@ export function HearingMemberPicker({ value, onChange }: Props) {
 
   const selected = useMemo(() => profiles.find((p) => p.user_id === value) || null, [profiles, value]);
 
+  // `selected` acima usa a lista crua de propósito: quem já está gravado numa
+  // audiência antiga continua exibindo o nome mesmo se saiu do quadro.
   const filtered = useMemo(() => {
+    const assignable = filterAssignableMembers(profiles);
     const term = query.trim().toLowerCase();
-    if (!term) return profiles;
-    return profiles.filter((p) =>
+    if (!term) return assignable;
+    return assignable.filter((p) =>
       (p.full_name || '').toLowerCase().includes(term) ||
       (p.email || '').toLowerCase().includes(term)
     );

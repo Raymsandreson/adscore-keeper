@@ -5,6 +5,7 @@ import { facebookCAPI } from '@/services/facebookCAPI';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 import { CampaignPicker } from '@/components/leads/CampaignPicker';
@@ -468,7 +469,7 @@ export function LeadEditDialog({
   const acolhedorOptions = useMemo(() => (
     isTrabalhistaBoard((currentLead as any)?.board_id)
       ? TRABALHISTA_ACOLHEDORES
-      : profiles.map((p) => p.full_name || p.email || p.id)
+      : filterAssignableMembers(profiles).map((p) => p.full_name || p.email || p.id)
   ), [currentLead, profiles]);
   const autoDrive = useAutoImportGroupDocs(
     currentLead?.id || null,

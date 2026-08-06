@@ -51,6 +51,49 @@ Ao abrir uma atividade sua não concluída, o cronômetro inicia sozinho; abrir 
 
 ---
 
+## Varas e Tribunais — contatos (ícone de tribunal no cabeçalho)
+
+**Propósito**: diretório de contatos para cobrança de andamento processual (`court_contacts`, no Supabase Externo). Sheet lateral aberto pela tela de Atividades.
+
+### Como o contato é descrito
+Cada registro é **um ponto de contato**, descrito por atributos independentes — não por uma hierarquia de pastas:
+
+| Campo | Para que serve |
+|---|---|
+| `branch` | ramo: Trabalhista, Federal, Estadual, Eleitoral, Militar, Superior, Extrajudicial/Administrativo |
+| `degree` | instância: 1º grau, JEF/Juizado, Turma Recursal, 2º grau, Superior |
+| `court_code` | chave curta do tribunal (TRT22, TJPI, TRF1) ou do órgão (INSS, PGF, CEJUSC, PERITO, CARTORIO) |
+| `uf` / `comarca` | localização — comarca na Estadual, subseção na Federal |
+| `contact_type` | com quem se fala: Secretaria, Gabinete, Central, Distribuição, Oficial, Perícia |
+| `unit_name` / `unit_key` | agrupa pontos do mesmo lugar — a secretaria e o gabinete da 6ª Vara Cível de Teresina aparecem juntos num só card |
+| `preferred_channel` | qual canal de fato responde ("só responde por e-mail") |
+| `last_confirmed_at` | data da última confirmação |
+
+O campo antigo `court_type` misturava nível e tipo de ponto (vara/tribunal vs. secretaria/outro) e continua na tabela apenas como legado — o app grava os dois desde 06/08/2026.
+
+**Por que atributos e não árvore**: uma árvore ramo→estado→comarca não comporta gabinete de 2º grau, JEF, Turma Recursal nem ponto não-judicial. Dos 6 contatos que existiam quando isso foi desenhado, 4 não cabiam na árvore. A visão hierárquica pode ser gerada a partir dos atributos; o contrário exigiria migração.
+
+### Navegação
+- Busca livre (unidade, comarca, tribunal, telefone, e-mail, observação).
+- Filtros empilháveis: Ramo, Grau, UF, Tipo — só aparecem os valores que existem na base.
+- **Ordem padrão: onde há processo ativo.** A contagem sai do número CNJ dos processos (`src/lib/cnj.ts`), sem cadastro manual de vínculo.
+- Gabinete de desembargador sem confirmação há 12+ meses fica esmaecido com o selo "a conferir" e um botão de confirmar. Secretaria de vara não envelhece — contato de gabinete é volátil (promoção, mudança de câmara, aposentadoria), o de secretaria não.
+
+### Contagem de processos e o campo de origem do CNJ
+O número CNJ (`NNNNNNN-DD.AAAA.J.TR.OOOO`) dá ramo, tribunal e unidade de origem. **O que `OOOO` identifica muda por ramo** — verificado nos dados em 06/08/2026:
+- **Trabalhista**: é a vara (TRT22 `0001` = 1ª VT de Teresina, `0002` = 2ª VT).
+- **Estadual**: é a comarca (TJPI `0140` serve a 4ª Vara Cível *e* a Vara de Registros Públicos de Teresina).
+- **Federal**: é a subseção (TRF1 `4000` cobre a 6ª, 7ª e 8ª Varas de JEF do PI).
+
+Por isso o rótulo muda: "nesta vara", "nesta comarca", "nesta subseção". Enquanto o contato não conhece nenhum código de origem, a contagem é do tribunal inteiro e mostra "no TJPI" (aproximada). Cobertura: 623 dos 1.758 processos ativos têm CNJ de 20 dígitos; os campos equivalentes vindos do Escavador cobrem só 85.
+
+### Na tela do processo (`ProcessDetailSheet` → aba Tribunal)
+Mostra os contatos do tribunal daquele processo, com quem já atende a origem no topo. O botão **"é esta"** grava o código de origem em `court_contacts.origin_codes` — a partir daí a contagem daquela unidade fica exata para todos os processos dela. É o único "cadastro" de vínculo, e acontece durante o trabalho normal.
+
+Arquivos: `CourtContactsSheet.tsx`, `CourtContactsForProcess.tsx`, `src/lib/cnj.ts`, `src/lib/courtCatalog.ts` (catálogo fechado: 24 TRTs, 6 TRFs — incluindo o TRF6/MG instalado em 2022 —, 27 TJs, 27 TREs), `useCourtProcessCounts.ts`.
+
+---
+
 ## Cronômetro global e banco de horas (presente em todas as telas)
 
 **Propósito**: badge flutuante arrastável que controla expediente, cronômetro da atividade, ociosidade e pausas.

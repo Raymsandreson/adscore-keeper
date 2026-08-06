@@ -32,6 +32,7 @@ import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
@@ -254,7 +255,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
     return list;
   }, [assigneeRoutine, activityTypes, formIsSystem, formType]);
-  const teamMembers = profiles.map(p => ({ user_id: p.user_id, full_name: p.full_name }));
+  // Só quem pode receber atividade. `profiles` cru continua sendo usado abaixo
+  // para resolver nome de quem já consta no histórico.
+  const teamMembers = filterAssignableMembers(profiles).map(p => ({ user_id: p.user_id, full_name: p.full_name }));
 
   // ---- Mensagem da atividade (Copiar / Enviar ao Grupo / Enviar ao Assessor / áudio) ----
   // Mesma função da ActivitiesPage: a ficha é a mesma em qualquer tela que a abra.
