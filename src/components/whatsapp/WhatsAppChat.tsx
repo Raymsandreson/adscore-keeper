@@ -3192,6 +3192,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         done={commitments.done}
         loading={commitments.loading}
         analyzing={commitments.analyzing}
+        summary={commitments.summary}
+        analyzeError={commitments.analyzeError}
         draft={commitmentDraft}
         onDraftConsumed={() => setCommitmentDraft(null)}
         onAnalyze={commitments.analyze}

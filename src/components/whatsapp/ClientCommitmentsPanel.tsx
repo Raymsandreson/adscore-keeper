@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
   ClipboardCheck, Check, Bell, X, RotateCcw, Trash2, AlertTriangle, Loader2,
-  MessageSquareQuote, Sparkles, RefreshCw, ThumbsDown, Plus,
+  MessageSquareQuote, Sparkles, RefreshCw, ThumbsDown, Plus, FileText, AlertCircle,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -30,11 +30,15 @@ interface Props {
   loading: boolean;
   /** IA lendo a conversa agora. */
   analyzing: boolean;
+  /** Resumo do contexto escrito pela IA. */
+  summary?: string | null;
+  /** Motivo da última falha de leitura, se houve. */
+  analyzeError?: string | null;
   /** Rascunho vindo de "Virou pendência" numa bolha da conversa. */
   draft?: CommitmentDraft | null;
   onDraftConsumed?: () => void;
   /** Relê a conversa inteira ignorando o cache. */
-  onAnalyze: (force?: boolean) => Promise<{ success: boolean; created: number; cached?: boolean }>;
+  onAnalyze: (force?: boolean) => Promise<{ success: boolean; created: number; closed?: number; cached?: boolean; error?: string }>;
   onCreate: (input: {
     title: string;
     kind: string;
@@ -189,7 +193,7 @@ function ItemCard({
 }
 
 export function ClientCommitmentsPanel({
-  openState, onOpenChange, clientName, open, done, loading, analyzing,
+  openState, onOpenChange, clientName, open, done, loading, analyzing, summary, analyzeError,
   draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
   onReopen, onRemind, onRemove, onDraftMessage,
 }: Props) {
@@ -198,7 +202,9 @@ export function ClientCommitmentsPanel({
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [showDone, setShowDone] = useState(false);
+  // Resolvidas começam abertas: o valor está justamente em ver o que o cliente
+  // já entregou sem ter que caçar na conversa.
+  const [showDone, setShowDone] = useState(true);
 
   // "Pendência" numa bolha: abre o registro manual já com a mensagem citada.
   useEffect(() => {
@@ -237,10 +243,15 @@ export function ClientCommitmentsPanel({
 
   const handleReanalyze = async () => {
     const r = await onAnalyze(true);
-    if (!r.success) return toast.error('Não consegui ler a conversa agora');
-    toast.success(r.created > 0
-      ? `${r.created} pendência(s) nova(s) encontrada(s) na conversa`
-      : 'Reli a conversa — nada de novo por aqui');
+    if (!r.success) {
+      // Mostra o motivo: sem isso "não consegui" servia tanto para deploy fora
+      // do ar quanto para falha da IA, e ninguém sabia o que fazer.
+      return toast.error(r.error ? `Não consegui ler a conversa: ${r.error}` : 'Não consegui ler a conversa agora');
+    }
+    const partes: string[] = [];
+    if (r.created > 0) partes.push(`${r.created} pendência(s) nova(s)`);
+    if ((r.closed || 0) > 0) partes.push(`${r.closed} já resolvida(s)`);
+    toast.success(partes.length > 0 ? `Li a conversa: ${partes.join(' e ')}` : 'Reli a conversa — nada de novo por aqui');
   };
 
   return (
@@ -262,6 +273,27 @@ export function ClientCommitmentsPanel({
 
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-4">
+            {analyzeError && (
+              <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3">
+                <p className="text-[11px] text-destructive flex items-start gap-1.5">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  <span>
+                    <strong>Não consegui ler a conversa.</strong> {analyzeError}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {summary && (
+              <div className="rounded-lg border bg-muted/30 p-3">
+                <p className="text-[11px] font-medium text-muted-foreground flex items-center gap-1.5 mb-1">
+                  <FileText className="h-3.5 w-3.5" /> Resumo da conversa
+                  <Sparkles className="h-2.5 w-2.5 text-primary" />
+                </p>
+                <p className="text-xs leading-relaxed whitespace-pre-wrap break-words">{summary}</p>
+              </div>
+            )}
+
             {(analyzing || loading) && (
               <p className="text-xs text-muted-foreground text-center py-3 inline-flex items-center gap-2 w-full justify-center">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -356,7 +388,7 @@ export function ClientCommitmentsPanel({
                   className="text-xs font-medium text-muted-foreground hover:text-foreground"
                   onClick={() => setShowDone((v) => !v)}
                 >
-                  {showDone ? '▾' : '▸'} Resolvidas ({done.length})
+                  {showDone ? '▾' : '▸'} Já resolvidas ({done.length})
                 </button>
                 {showDone && done.map((item) => (
                   <ItemCard
