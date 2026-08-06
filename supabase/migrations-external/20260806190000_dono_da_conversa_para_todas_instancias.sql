@@ -24,12 +24,18 @@
 --   drop policy if exists wa_assignees_claim_self on public.whatsapp_cloud_assignees;
 --   drop policy if exists wa_assignees_handoff on public.whatsapp_cloud_assignees;
 
--- Assumir a conversa: só para si mesmo. Ninguém empurra conversa para o colega
--- pelas costas — atribuir a outra pessoa é o handoff abaixo, que é explícito.
+-- Assumir a conversa.
+--
+-- NÃO dá para amarrar em auth.uid(): a sessão do front no Externo é ANÔNIMA
+-- (external-client.ts chama signInAnonymously), então auth.uid() ali é um id
+-- aleatório, nunca o do usuário no Cloud. A primeira versão desta policy exigia
+-- auth.uid() = assigned_user_id e bloqueou 100% das tentativas em silêncio.
+-- A identidade aqui vem da aplicação, como no resto desta base (o front já
+-- escreve direto em whatsapp_instances do mesmo jeito).
 drop policy if exists wa_assignees_claim_self on public.whatsapp_cloud_assignees;
 create policy wa_assignees_claim_self on public.whatsapp_cloud_assignees
   for insert to authenticated
-  with check (auth.uid() = assigned_user_id);
+  with check (assigned_user_id is not null);
 
 -- Handoff: passar a conversa adiante. Aqui o destino pode ser outra pessoa —
 -- é o "esse assunto é do fulano, passa pra ele" que a equipe já faz na mão.
