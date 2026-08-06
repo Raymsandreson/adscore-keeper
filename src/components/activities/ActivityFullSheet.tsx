@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { displayProcessLabel } from '@/lib/processLabel';
+import ProcessMarcosInline from '@/components/cases/ProcessMarcosInline';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
@@ -1216,6 +1217,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 <FileText className="h-3 w-3" /> Vincular Processo
               </Button>
             ) : null}
+            {/* Em que altura está o processo desta atividade. Antes era preciso
+                sair da tela pra saber se já tinha sentença. */}
+            {formProcessId && (
+              <div className="w-full mt-1">
+                <ProcessMarcosInline
+                  processId={formProcessId}
+                  processNumber={(linkedProcess as any)?.process_number}
+                />
+              </div>
+            )}
             {formContactName ? (
               <Badge variant="outline" className="text-[10px] gap-1 max-w-[220px]">
                 <UserPlus className="h-3 w-3 shrink-0" /><span className="truncate">{formContactName}</span>
