@@ -61,7 +61,9 @@ ALTER TABLE public.lead_financials
 
 `ON DELETE SET NULL` segue o que `case_id` já fazia: apagar processo ou atividade não pode apagar dinheiro já lançado — o valor foi gasto de qualquer jeito e continua valendo para o caso e para o lead.
 
-**Sem a migration aplicada, as abas de processo e atividade não funcionam** (o filtro por `process_id`/`activity_id` retorna erro). O painel agora mostra o erro do banco em toast em vez de engolir e exibir lista vazia — era assim que a aba do lead se comportava antes, e foi o que escondeu o roteamento errado por meses.
+**Aplicada em 05/08/2026** no `kmedldlepwiityjsdahz`, com 0 linhas na tabela. Colunas, as duas FKs e os dois índices parciais conferidos no banco depois de rodar.
+
+O painel mostra erro do banco em toast em vez de engolir a falha e exibir lista vazia — era assim que a aba do lead se comportava antes, e foi o que escondeu o roteamento errado.
 
 Rollback (reversível em <1min, sem perda de dado pré-existente):
 
