@@ -44,6 +44,10 @@ export function useClientCommitments({
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
+  /** Resumo do contexto da conversa, escrito pela IA na última varredura. */
+  const [summary, setSummary] = useState<string | null>(null);
+  /** Motivo real da última falha — o toast genérico escondia se era rede, deploy ou IA. */
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   /** Conversas já varridas nesta sessão — evita reanalisar a cada re-render/troca de aba. */
   const analyzedKeys = useRef<Set<string>>(new Set());
 
@@ -112,8 +116,9 @@ export function useClientCommitments({
    * a chamada volta na hora sem gastar IA.
    */
   const analyze = useCallback(async (force = false) => {
-    if (!phone) return { success: false as const, created: 0 };
+    if (!phone) return { success: false as const, created: 0, error: 'conversa sem telefone' };
     setAnalyzing(true);
+    setAnalyzeError(null);
     try {
       const { data, error } = await cloudFunctions.invoke('detect-client-commitments', {
         body: {
@@ -126,16 +131,54 @@ export function useClientCommitments({
         },
       });
       if (error) throw error;
-      const created = Number((data as any)?.created || 0);
-      if (created > 0) await load();
+
+      const payload = (data || {}) as {
+        success?: boolean; created?: number; closed?: number;
+        cached?: boolean; summary?: string | null; error?: string;
+      };
+
+      // A função responde 200 com success:false quando a IA falha — isso não
+      // vira exception, e sem tratar aqui o painel dizia "nada em aberto".
+      if (payload.success === false) {
+        setAnalyzeError(payload.error || 'a IA não conseguiu ler a conversa');
+        return { success: false as const, created: 0, error: payload.error };
+      }
+
+      const created = Number(payload.created || 0);
+      const closed = Number(payload.closed || 0);
+      if (created > 0 || closed > 0) await load();
+      if (payload.summary) setSummary(payload.summary);
       setLastAnalyzedAt(new Date().toISOString());
-      return { success: Boolean((data as any)?.success), created, cached: Boolean((data as any)?.cached) };
-    } catch {
-      return { success: false as const, created: 0 };
+      return { success: true as const, created, closed, cached: Boolean(payload.cached) };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Função ainda não publicada no Railway é o caso mais comum logo após um
+      // deploy — a mensagem crua ("404") não dizia nada a quem está usando.
+      const friendly = /40[34]|not found|failed to fetch|networkerror/i.test(msg)
+        ? 'o servidor ainda não respondeu a esta função (deploy em andamento?)'
+        : msg;
+      setAnalyzeError(friendly);
+      return { success: false as const, created: 0, error: friendly };
     } finally {
       setAnalyzing(false);
     }
   }, [phone, instanceName, leadId, contactId, clientName, load]);
+
+  // Resumo já gravado numa varredura anterior (outra sessão, outro assessor).
+  useEffect(() => {
+    if (!phone) { setSummary(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await (db as any)
+        .from('lead_client_commitment_scans')
+        .select('summary')
+        .eq('phone', phone)
+        .eq('instance_name', instanceName || '')
+        .maybeSingle();
+      if (!cancelled && data?.summary) setSummary(data.summary as string);
+    })();
+    return () => { cancelled = true; };
+  }, [phone, instanceName]);
 
   // Abrir a conversa já dispara a leitura da IA (uma vez por conversa por sessão).
   useEffect(() => {
@@ -267,6 +310,7 @@ export function useClientCommitments({
 
   return {
     items, open, done, overdue, byMessageId, loading, analyzing, lastAnalyzedAt,
+    summary, analyzeError,
     reload: load, analyze,
     create, patch, markDone, markGivenUp, dismiss, reopen, registerReminder, remove,
   };
