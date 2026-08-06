@@ -33,7 +33,20 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 - **Quem é marcado com `@` ganha acesso a esta conversa do WhatsApp** e é notificado — inclusive quando a instância não é dele. Com "@todos" isso vale para todo mundo, e o sistema avisa quantas pessoas serão liberadas antes do envio. O acesso é revogável no diálogo de compartilhamento.
 - **Comentar mensagem do cliente**: "Comentar" numa bolha (ou o checkbox de seleção → "Comentar com a equipe", para várias de uma vez) cola as mensagens citadas no rascunho do chat interno, com autor e hora. Transcrição de áudio entra como texto; citação acima de 400 caracteres é cortada com "…". Na mensagem enviada, o trecho citado aparece em bloco separado com barra lateral.
 
-**Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal.
+### Pendências do cliente — "Cliente ficou de" (desde 05/08/2026)
+
+Barra logo abaixo do "Progresso" do POP, dentro da conversa: **o que o CLIENTE ficou de fazer**. Cobre o que era combinado por áudio e se perdia — avaliar o escritório no Google, gravar vídeo de depoimento, mandar documento, comparecer, pagar. Antes disso não existia registro nenhum: atividade é tarefa do assessor e checklist é passo de POP; a promessa do cliente não tinha onde morar.
+
+- A barra mostra os três primeiros títulos em aberto, `+N` no resto, `n em aberto` e, em vermelho, `n vencida(s)`. Sem nada registrado ela fica discreta ("nada registrado") e só oferece o botão **"+ Pendência"**.
+- **Registrar a partir da mensagem**: na bolha, ao lado de "Criar atividade", o botão **"Pendência"** abre o painel já com a mensagem citada (é o "Vou fazer sim" que vira registro). A bolha ganha o selo **"Virou pendência: {título}"** — verde quando resolvida —, no mesmo espírito do "Virou atividade" do chat interno.
+- **Painel lateral**: chips de tipo (⭐ Avaliar no Google, 🎥 Vídeo de depoimento, 📄 Enviar documento, 📍 Comparecer, 💰 Pagamento, 📌 Outro) preenchem um título sugerido que dá pra reescrever; prazo e observação são opcionais. Por item: **Feito**, **Cobrar**, **Desistiu**, **Reabrir** e excluir.
+- **"Cobrar" não envia nada.** Grava a cobrança (`status='cobrado'`, `reminder_count+1`, `last_reminded_at`) e **escreve o texto no campo de mensagem** da conversa para o assessor revisar e enviar. O card passa a mostrar "cobrado Nx".
+- **Prazo é opcional e sem prazo nunca vence** — a maioria das combinações do WhatsApp não tem data. Vencida = em aberto com prazo anterior a hoje.
+- Tabela `lead_client_commitments` (Externo, RLS + realtime): a conversa sem lead também controla pendência (`lead_id` OU `phone`+`instance_name`, garantido por CHECK), então cliente ainda em captação não fica de fora. Marcação feita por outro assessor aparece na hora via Realtime.
+- Regras puras em `src/lib/clientCommitments.ts` (13 testes em `src/lib/__tests__/clientCommitments.test.ts`); dados em `src/hooks/useClientCommitments.ts`; UI em `ClientCommitmentsBar.tsx` / `ClientCommitmentsPanel.tsx`. Migration `20260805140000`.
+- **Ainda não existe** (fase 2): cobrança automática virando atividade do responsável quando a pendência vence, e sugestão por IA ao detectar a promessa na conversa. Hoje o registro é manual.
+
+**Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Cliente prometeu alguma coisa ("vou avaliar", "vou gravar o vídeo"): botão **"Pendência"** na bolha, em vez de confiar na memória.
 
 ---
 
