@@ -8,14 +8,12 @@ import { Separator } from '@/components/ui/separator';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import {
-  ClipboardCheck, Check, Bell, X, RotateCcw, Trash2, AlertTriangle, Loader2, MessageSquareQuote,
+  ClipboardCheck, Check, Bell, X, RotateCcw, Trash2, AlertTriangle, Loader2,
+  MessageSquareQuote, Sparkles, RefreshCw, ThumbsDown, Plus,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import {
-  COMMITMENT_KINDS, kindMeta,
-  type ClientCommitment, type CommitmentKind,
-} from '@/hooks/useClientCommitments';
+import { type ClientCommitment } from '@/hooks/useClientCommitments';
 import { buildReminderText, isCommitmentOpen, isCommitmentOverdue } from '@/lib/clientCommitments';
 
 export interface CommitmentDraft {
@@ -30,12 +28,16 @@ interface Props {
   open: ClientCommitment[];
   done: ClientCommitment[];
   loading: boolean;
+  /** IA lendo a conversa agora. */
+  analyzing: boolean;
   /** Rascunho vindo de "Virou pendência" numa bolha da conversa. */
   draft?: CommitmentDraft | null;
   onDraftConsumed?: () => void;
+  /** Relê a conversa inteira ignorando o cache. */
+  onAnalyze: (force?: boolean) => Promise<{ success: boolean; created: number; cached?: boolean }>;
   onCreate: (input: {
     title: string;
-    kind: CommitmentKind;
+    kind: string;
     dueDate?: string | null;
     notes?: string | null;
     sourceMessageId?: string | null;
@@ -43,6 +45,8 @@ interface Props {
   }) => Promise<unknown>;
   onDone: (id: string) => Promise<unknown>;
   onGiveUp: (id: string) => Promise<unknown>;
+  /** "Não era pendência" — a IA errou. */
+  onDismiss: (id: string) => Promise<unknown>;
   onReopen: (id: string) => Promise<unknown>;
   onRemind: (item: ClientCommitment) => Promise<unknown>;
   onRemove: (id: string) => Promise<unknown>;
@@ -51,21 +55,22 @@ interface Props {
 }
 
 function ItemCard({
-  item, clientName, onDone, onGiveUp, onReopen, onRemind, onRemove, onDraftMessage,
+  item, clientName, onDone, onGiveUp, onDismiss, onReopen, onRemind, onRemove, onDraftMessage,
 }: {
   item: ClientCommitment;
   clientName: string;
   onDone: Props['onDone'];
   onGiveUp: Props['onGiveUp'];
+  onDismiss: Props['onDismiss'];
   onReopen: Props['onReopen'];
   onRemind: Props['onRemind'];
   onRemove: Props['onRemove'];
   onDraftMessage?: Props['onDraftMessage'];
 }) {
   const [busy, setBusy] = useState(false);
-  const meta = kindMeta(item.kind);
   const isOpen = isCommitmentOpen(item.status);
   const isOverdue = isCommitmentOverdue(item);
+  const fromAI = item.origin === 'ia';
 
   const run = async (fn: () => Promise<unknown>, okMsg?: string) => {
     setBusy(true);
@@ -85,45 +90,53 @@ function ItemCard({
       isOverdue ? 'border-destructive/40 bg-destructive/5' : 'bg-card',
       !isOpen && 'opacity-70'
     )}>
-      <div className="flex items-start gap-2">
-        <span className="text-base leading-none mt-0.5">{meta.emoji}</span>
-        <div className="min-w-0 flex-1">
-          <p className={cn('text-sm font-medium break-words', !isOpen && 'line-through')}>
-            {item.title}
+      <div className="min-w-0 flex-1">
+        <p className={cn('text-sm font-medium break-words', !isOpen && 'line-through')}>
+          {item.title}
+        </p>
+
+        <p className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1">
+          {fromAI ? (
+            <span className="inline-flex items-center gap-1 text-primary">
+              <Sparkles className="h-3 w-3" /> detectada na conversa
+            </span>
+          ) : (
+            <span>registrada por {item.created_by_name || 'alguém da equipe'}</span>
+          )}
+          <span>· {formatDistanceToNow(new Date(item.promised_at), { addSuffix: true, locale: ptBR })}</span>
+          {item.kind && item.kind !== 'outro' && <span>· {item.kind}</span>}
+          {item.reminder_count > 0 && <span>· cobrado {item.reminder_count}x</span>}
+        </p>
+
+        {item.due_date && (
+          <p className={cn(
+            'text-[11px] mt-0.5 inline-flex items-center gap-1',
+            isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'
+          )}>
+            {isOverdue && <AlertTriangle className="h-3 w-3" />}
+            prazo {format(new Date(`${item.due_date}T12:00:00`), 'dd/MM/yyyy', { locale: ptBR })}
           </p>
-          <p className="text-[11px] text-muted-foreground mt-0.5">
-            combinado {formatDistanceToNow(new Date(item.promised_at), { addSuffix: true, locale: ptBR })}
-            {item.created_by_name ? ` · por ${item.created_by_name}` : ''}
-            {item.reminder_count > 0 ? ` · cobrado ${item.reminder_count}x` : ''}
+        )}
+
+        {item.status === 'feito' && item.done_at && (
+          <p className="text-[11px] text-emerald-600 mt-0.5">
+            feito {formatDistanceToNow(new Date(item.done_at), { addSuffix: true, locale: ptBR })}
+            {item.done_by_name ? ` · marcado por ${item.done_by_name}` : ''}
           </p>
-          {item.due_date && (
-            <p className={cn(
-              'text-[11px] mt-0.5 inline-flex items-center gap-1',
-              isOverdue ? 'text-destructive font-medium' : 'text-muted-foreground'
-            )}>
-              {isOverdue && <AlertTriangle className="h-3 w-3" />}
-              prazo {format(new Date(`${item.due_date}T12:00:00`), "dd/MM/yyyy", { locale: ptBR })}
-            </p>
-          )}
-          {item.status === 'feito' && item.done_at && (
-            <p className="text-[11px] text-emerald-600 mt-0.5">
-              feito {formatDistanceToNow(new Date(item.done_at), { addSuffix: true, locale: ptBR })}
-              {item.done_by_name ? ` · marcado por ${item.done_by_name}` : ''}
-            </p>
-          )}
-          {item.status === 'desistiu' && (
-            <p className="text-[11px] text-muted-foreground mt-0.5">cliente desistiu</p>
-          )}
-          {item.source_message_text && (
-            <p className="mt-1.5 text-[11px] text-muted-foreground border-l-2 border-muted pl-2 italic break-words">
-              <MessageSquareQuote className="h-3 w-3 inline mr-1" />
-              {item.source_message_text}
-            </p>
-          )}
-          {item.notes && (
-            <p className="mt-1 text-[11px] text-muted-foreground break-words">{item.notes}</p>
-          )}
-        </div>
+        )}
+        {item.status === 'desistiu' && (
+          <p className="text-[11px] text-muted-foreground mt-0.5">cliente desistiu</p>
+        )}
+
+        {item.source_message_text && (
+          <p className="mt-1.5 text-[11px] text-muted-foreground border-l-2 border-primary/40 pl-2 italic break-words">
+            <MessageSquareQuote className="h-3 w-3 inline mr-1" />
+            “{item.source_message_text}”
+          </p>
+        )}
+        {item.notes && (
+          <p className="mt-1 text-[11px] text-muted-foreground break-words">{item.notes}</p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -132,7 +145,7 @@ function ItemCard({
           <>
             <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
               disabled={busy}
-              onClick={() => run(() => onDone(item.id), 'Pendência marcada como feita')}>
+              onClick={() => run(() => onDone(item.id), 'Marcada como feita')}>
               <Check className="h-3 w-3" /> Feito
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
@@ -149,6 +162,14 @@ function ItemCard({
               onClick={() => run(() => onGiveUp(item.id), 'Marcada como desistência')}>
               <X className="h-3 w-3" /> Desistiu
             </Button>
+            {fromAI && (
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
+                title="A IA entendeu errado — some da lista e ela não registra de novo"
+                disabled={busy}
+                onClick={() => run(() => onDismiss(item.id), 'Ok, não era pendência')}>
+                <ThumbsDown className="h-3 w-3" /> Não era
+              </Button>
+            )}
           </>
         ) : (
           <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1"
@@ -168,34 +189,22 @@ function ItemCard({
 }
 
 export function ClientCommitmentsPanel({
-  openState, onOpenChange, clientName, open, done, loading,
-  draft, onDraftConsumed, onCreate, onDone, onGiveUp, onReopen, onRemind, onRemove, onDraftMessage,
+  openState, onOpenChange, clientName, open, done, loading, analyzing,
+  draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
+  onReopen, onRemind, onRemove, onDraftMessage,
 }: Props) {
-  const [kind, setKind] = useState<CommitmentKind>('avaliacao_google');
+  const [showManual, setShowManual] = useState(false);
   const [title, setTitle] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDone, setShowDone] = useState(false);
 
-  // "Virou pendência" numa bolha: abre já com a mensagem citada.
+  // "Pendência" numa bolha: abre o registro manual já com a mensagem citada.
   useEffect(() => {
     if (!draft) return;
-    setNotes('');
-    setDueDate('');
-    if (!title) {
-      setKind('outro');
-      setTitle('');
-    }
-  }, [draft]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const pickKind = (k: CommitmentKind) => {
-    setKind(k);
-    const suggestion = kindMeta(k).suggestion;
-    if (suggestion && (!title.trim() || COMMITMENT_KINDS.some((c) => c.suggestion === title))) {
-      setTitle(suggestion);
-    }
-  };
+    setShowManual(true);
+  }, [draft]);
 
   const canSave = title.trim().length >= 3 && !saving;
 
@@ -205,7 +214,7 @@ export function ClientCommitmentsPanel({
     try {
       await onCreate({
         title,
-        kind,
+        kind: 'outro',
         dueDate: dueDate || null,
         notes: notes.trim() || null,
         sourceMessageId: draft?.sourceMessageId || null,
@@ -214,6 +223,7 @@ export function ClientCommitmentsPanel({
       setTitle('');
       setDueDate('');
       setNotes('');
+      setShowManual(false);
       onDraftConsumed?.();
       toast.success('Pendência registrada');
     } catch {
@@ -225,6 +235,14 @@ export function ClientCommitmentsPanel({
 
   const overdueCount = useMemo(() => open.filter((i) => isCommitmentOverdue(i)).length, [open]);
 
+  const handleReanalyze = async () => {
+    const r = await onAnalyze(true);
+    if (!r.success) return toast.error('Não consegui ler a conversa agora');
+    toast.success(r.created > 0
+      ? `${r.created} pendência(s) nova(s) encontrada(s) na conversa`
+      : 'Reli a conversa — nada de novo por aqui');
+  };
+
   return (
     <Sheet open={openState} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col">
@@ -234,8 +252,9 @@ export function ClientCommitmentsPanel({
             Pendências do cliente
           </SheetTitle>
           <SheetDescription className="text-xs">
-            O que <strong>{clientName}</strong> ficou de fazer. {open.length} em aberto
-            {overdueCount > 0 ? ` · ${overdueCount} vencida(s)` : ''}.
+            O que <strong>{clientName}</strong> ficou de fazer, lido da conversa pela IA.
+            {open.length > 0 && ` ${open.length} em aberto`}
+            {overdueCount > 0 ? ` · ${overdueCount} vencida(s)` : ''}
           </SheetDescription>
         </SheetHeader>
 
@@ -243,73 +262,16 @@ export function ClientCommitmentsPanel({
 
         <ScrollArea className="flex-1">
           <div className="p-4 space-y-4">
-            {/* Registrar nova */}
-            <div className="rounded-lg border p-3 space-y-2.5 bg-muted/30">
-              <p className="text-xs font-medium">Registrar pendência</p>
-
-              {draft?.sourceMessageText && (
-                <p className="text-[11px] text-muted-foreground border-l-2 border-primary/50 pl-2 italic break-words">
-                  <MessageSquareQuote className="h-3 w-3 inline mr-1" />
-                  {draft.sourceMessageText.slice(0, 300)}
-                </p>
-              )}
-
-              <div className="flex flex-wrap gap-1">
-                {COMMITMENT_KINDS.map((k) => (
-                  <button
-                    key={k.value}
-                    type="button"
-                    onClick={() => pickKind(k.value)}
-                    className={cn(
-                      'text-[11px] px-2 py-1 rounded-full border transition-colors',
-                      kind === k.value
-                        ? 'bg-primary text-primary-foreground border-primary'
-                        : 'hover:bg-accent'
-                    )}
-                  >
-                    {k.emoji} {k.label}
-                  </button>
-                ))}
-              </div>
-
-              <Input
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="O que ele ficou de fazer"
-                className="h-8 text-sm"
-              />
-
-              <div className="flex items-center gap-2">
-                <label className="text-[11px] text-muted-foreground shrink-0">Prazo</label>
-                <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="h-8 text-sm"
-                />
-              </div>
-
-              <Textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Observação (opcional)"
-                className="text-sm min-h-[52px]"
-              />
-
-              <Button size="sm" className="w-full h-8 text-xs" disabled={!canSave} onClick={handleCreate}>
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
-                Registrar
-              </Button>
-            </div>
-
-            {loading && open.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">Carregando…</p>
+            {(analyzing || loading) && (
+              <p className="text-xs text-muted-foreground text-center py-3 inline-flex items-center gap-2 w-full justify-center">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {analyzing ? 'Lendo a conversa…' : 'Carregando…'}
+              </p>
             )}
 
             {/* Em aberto */}
             {open.length > 0 && (
               <div className="space-y-2">
-                <p className="text-xs font-medium text-muted-foreground">Em aberto ({open.length})</p>
                 {open.map((item) => (
                   <ItemCard
                     key={item.id}
@@ -317,6 +279,7 @@ export function ClientCommitmentsPanel({
                     clientName={clientName}
                     onDone={onDone}
                     onGiveUp={onGiveUp}
+                    onDismiss={onDismiss}
                     onReopen={onReopen}
                     onRemind={onRemind}
                     onRemove={onRemove}
@@ -326,10 +289,64 @@ export function ClientCommitmentsPanel({
               </div>
             )}
 
-            {open.length === 0 && !loading && (
+            {open.length === 0 && !loading && !analyzing && (
               <p className="text-xs text-muted-foreground text-center py-2">
-                Nada em aberto com este cliente.
+                A IA não achou nada em aberto nesta conversa.
               </p>
+            )}
+
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1 flex-1"
+                disabled={analyzing}
+                onClick={handleReanalyze}>
+                {analyzing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Reler a conversa
+              </Button>
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
+                onClick={() => setShowManual((v) => !v)}>
+                <Plus className="h-3 w-3" /> Adicionar à mão
+              </Button>
+            </div>
+
+            {/* Registro manual — exceção, não o caminho principal */}
+            {showManual && (
+              <div className="rounded-lg border p-3 space-y-2.5 bg-muted/30">
+                {draft?.sourceMessageText && (
+                  <p className="text-[11px] text-muted-foreground border-l-2 border-primary/50 pl-2 italic break-words">
+                    <MessageSquareQuote className="h-3 w-3 inline mr-1" />
+                    {draft.sourceMessageText.slice(0, 300)}
+                  </p>
+                )}
+
+                <Input
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="O que ele ficou de fazer"
+                  className="h-8 text-sm"
+                />
+
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-muted-foreground shrink-0">Prazo</label>
+                  <Input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="h-8 text-sm"
+                  />
+                </div>
+
+                <Textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Observação (opcional)"
+                  className="text-sm min-h-[52px]"
+                />
+
+                <Button size="sm" className="w-full h-8 text-xs" disabled={!canSave} onClick={handleCreate}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : null}
+                  Registrar
+                </Button>
+              </div>
             )}
 
             {/* Resolvidas */}
@@ -348,6 +365,7 @@ export function ClientCommitmentsPanel({
                     clientName={clientName}
                     onDone={onDone}
                     onGiveUp={onGiveUp}
+                    onDismiss={onDismiss}
                     onReopen={onReopen}
                     onRemind={onRemind}
                     onRemove={onRemove}
