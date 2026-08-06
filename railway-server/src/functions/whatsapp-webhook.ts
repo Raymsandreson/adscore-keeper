@@ -14,6 +14,7 @@ import { geminiChat } from '../lib/gemini';
 import { getLocationFromDDD } from '../lib/ddd-mapping';
 import { transcribeAudio } from '../lib/stt';
 import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
+import { loadCurrentLabelNames, filterByLabelName, checkLabelName } from '../lib/label-name-guard';
 import { uploadImageThumb } from '../lib/imageThumb';
 
 // ============================================================
@@ -992,9 +993,21 @@ export const handler: RequestHandler = async (req, res) => {
           .ilike('instance_name', webhookInstanceName)
           .is('deleted_at', null);
 
-        const matchedAgentLabels = (agentLabelMappings || []).filter((m: any) => {
+        const agentIdMatches = (agentLabelMappings || []).filter((m: any) => {
           const lid = String(m.label_id).split(':').pop() || String(m.label_id);
           return normalizedWaLabels.includes(lid);
+        });
+
+        // Guard contra ID reciclado: só consulta a UazAPI se algum ID casou
+        // (a esmagadora maioria dos eventos de etiqueta não casa com nada).
+        // O resultado é cacheado por instância e reusado pelos blocos abaixo.
+        const currentLabelNames = (agentIdMatches.length > 0 || (triggers || []).length > 0)
+          ? await loadCurrentLabelNames(webhookInstanceName)
+          : null;
+
+        // Ativar IA manda mensagem pra cliente: dano externo, guard bloqueia.
+        const matchedAgentLabels = filterByLabelName(agentIdMatches as any[], currentLabelNames, {
+          enforce: true, scope: 'agent', instanceName: webhookInstanceName,
         });
 
         for (const m of matchedAgentLabels) {
@@ -1054,7 +1067,11 @@ export const handler: RequestHandler = async (req, res) => {
             if (mappingForActive) {
               const lid = String((mappingForActive as any).label_id).split(':').pop()
                 || String((mappingForActive as any).label_id);
-              const stillPresent = normalizedWaLabels.includes(lid);
+              // Guard: ID presente mas com outro nome = a etiqueta do agente
+              // foi apagada e o número reaproveitado. Conta como ausente,
+              // senão o agente ficaria ativo pra sempre por causa do sósia.
+              const nameVerdict = checkLabelName(currentLabelNames, lid, (mappingForActive as any).label_name);
+              const stillPresent = normalizedWaLabels.includes(lid) && nameVerdict !== 'stale';
               if (!stillPresent) {
                 await supabase
                   .from('whatsapp_conversation_agents')
@@ -1099,10 +1116,18 @@ export const handler: RequestHandler = async (req, res) => {
             .ilike('instance_name', webhookInstanceName)
             .is('deleted_at', null);
 
-          const matchedResultLabels = (resultLabelMappings || []).filter((m: any) => {
+          const resultIdMatches = (resultLabelMappings || []).filter((m: any) => {
             const lid = String(m.label_id).split(':').pop() || String(m.label_id);
             return normalizedWaLabels.includes(lid);
           });
+
+          // Só muda status de lead no CRM — dano interno e reversível.
+          // Guard em modo LOG até medirmos quantos casos reais aparecem.
+          const matchedResultLabels = filterByLabelName(
+            resultIdMatches as any[],
+            resultIdMatches.length > 0 ? await loadCurrentLabelNames(webhookInstanceName) : null,
+            { enforce: false, scope: 'result', instanceName: webhookInstanceName },
+          );
 
           if (matchedResultLabels.length > 0) {
             // Resolve lead_id: 1) conversa→agent, 2) contact→lead, 3) telefone direto no lead
@@ -1323,10 +1348,20 @@ export const handler: RequestHandler = async (req, res) => {
             .ilike('instance_name', webhookInstanceName)
             .is('deleted_at', null);
 
-          const matchedStageLabels = (stageMappings || []).filter((m: any) => {
+          const stageIdMatches = (stageMappings || []).filter((m: any) => {
             const lid = String(m.label_id).split(':').pop() || String(m.label_id);
             return normalizedWaLabels.includes(lid);
           });
+
+          // Só move card de kanban — dano interno e reversível. Guard em modo
+          // LOG: a auditoria de 06/08/2026 achou 16 mapeamentos de etapa com
+          // nome divergente (boards diferentes colidindo no mesmo ID). Ligar
+          // enforce aqui sem investigar pararia a movimentação em 3 instâncias.
+          const matchedStageLabels = filterByLabelName(
+            stageIdMatches as any[],
+            stageIdMatches.length > 0 ? await loadCurrentLabelNames(webhookInstanceName) : null,
+            { enforce: false, scope: 'stage', instanceName: webhookInstanceName },
+          );
 
           if (matchedStageLabels.length > 0) {
             // Resolve lead via telefone + board
@@ -1522,9 +1557,14 @@ export const handler: RequestHandler = async (req, res) => {
           return res.json({ success: true, skipped: true, reason: 'no_triggers_for_instance' });
         }
 
-        const matched = triggers.filter((t: any) => {
+        const triggerIdMatches = triggers.filter((t: any) => {
           const triggerLabelId = String(t.label_id).split(':').pop() || String(t.label_id);
           return normalizedWaLabels.includes(triggerLabelId);
+        });
+
+        // Dispara procuração/documento pro cliente: dano externo, guard bloqueia.
+        const matched = filterByLabelName(triggerIdMatches as any[], currentLabelNames, {
+          enforce: true, scope: 'doc_trigger', instanceName: webhookInstanceName,
         });
         console.log('[label-trigger] matching', { waLabels, normalizedWaLabels, triggerCount: triggers.length, matchedCount: matched.length, agentLabelSyncMatches: matchedAgentLabels.length });
 

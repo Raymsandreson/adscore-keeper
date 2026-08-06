@@ -10,6 +10,7 @@
 // o bot inteiro por instabilidade de rede). Se a etiqueta sumir → bloqueia.
 
 import { supabase } from './supabase';
+import { loadCurrentLabelNames, checkLabelName, labelIdSuffix } from './label-name-guard';
 
 const UAZ_TIMEOUT_MS = 4000;
 
@@ -73,7 +74,7 @@ export async function verifyAgentLabelBeforeSend(phone: string, instanceName: st
     // Pega label_id mapeado para esse agente nessa instância
     const { data: mapping } = await supabase
       .from('agent_instance_labels')
-      .select('label_id, deleted_at')
+      .select('label_id, label_name, deleted_at')
       .eq('agent_id', agentId)
       .ilike('instance_name', instanceName)
       .maybeSingle();
@@ -83,7 +84,11 @@ export async function verifyAgentLabelBeforeSend(phone: string, instanceName: st
       return { allowed: true, reason: 'no-label-mapping' };
     }
 
-    const expectedLabelId = String((mapping as any).label_id);
+    // O banco guarda "owner:id" ("558681595991:29") mas fetchChatLabels devolve
+    // só o sufixo ("29"). Sem normalizar, o includes abaixo NUNCA batia e todo
+    // envio com mapping caía no ramo "etiqueta sumiu" — bloqueava e desativava
+    // o agente por engano. Bug pré-existente, corrigido aqui.
+    const expectedLabelId = labelIdSuffix((mapping as any).label_id);
 
     // Pega credenciais da instância
     const { data: inst } = await supabase
@@ -106,7 +111,24 @@ export async function verifyAgentLabelBeforeSend(phone: string, instanceName: st
     }
 
     const present = labelsOnChat.includes(expectedLabelId);
-    if (present) return { allowed: true, reason: 'label-present' };
+    if (present) {
+      // Segunda camada contra ID reciclado: a etiqueta está no chat, mas ainda
+      // se chama o que o mapping diz? Se o número foi herdado por outra
+      // etiqueta, o webhook pode ter ativado antes do guard existir (ou com a
+      // UazAPI fora do ar). Aqui é o último portão antes de falar com o cliente.
+      const currentNames = await loadCurrentLabelNames(instanceName);
+      const verdict = checkLabelName(currentNames, expectedLabelId, (mapping as any).label_name);
+      if (verdict === 'stale') {
+        await supabase
+          .from('whatsapp_conversation_agents')
+          .update({ is_active: false, human_paused_until: null, updated_at: new Date().toISOString() } as any)
+          .eq('phone', phone)
+          .eq('instance_name', instanceName);
+        console.log(`[verify-label] BLOCKED reply phone=${phone} instance=${instanceName} label=${expectedLabelId} nome_no_banco="${(mapping as any).label_name}" nome_na_uazapi="${currentNames?.get(expectedLabelId)}" → ID reciclado, agente desativado`);
+        return { allowed: false, reason: 'label-name-mismatch-deactivated' };
+      }
+      return { allowed: true, reason: 'label-present' };
+    }
 
     // Etiqueta sumiu na UazAPI mas DB diz ativo → reconcilia e bloqueia.
     await supabase

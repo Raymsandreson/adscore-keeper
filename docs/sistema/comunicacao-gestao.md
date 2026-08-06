@@ -19,6 +19,7 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 - "Abrir WhatsApp", abrir ficha do lead, "Mudar etiqueta no WhatsApp e etapa no Kanban", ficha do contato, "Ligar via CallFace".
 - Menu de criação: "Vincular Lead", "Criar Lead + Contato", "Criar Caso Jurídico", "Atualizar com IA" (extrai e preenche campos a partir da conversa).
 - Por mensagem: "Copiar texto", "Sugerir resposta a esta mensagem com IA", "Comentar" (leva a mensagem citada para o chat interno da equipe), "Criar atividade a partir desta mensagem".
+- **Mensagem que virou atividade fica marcada**: criada a atividade a partir de uma bolha (ou de várias, pelo checkbox → "Criar atividade"), a mensagem de origem ganha o selo "Virou atividade: {assunto}" e clicar nele abre a **ficha completa da atividade no painel lateral**, sem sair da conversa — mesmo comportamento do chat interno da equipe. O vínculo fica em `whatsapp_message_activities` (Externo), carregado por telefone. Fechar o formulário sem criar não marca nada.
 - Mídia: baixar e "Salvar na pasta do lead no Google Drive" (com classificação por IA).
 - Criação de caso pelo WhatsApp: "Preencher com IA a partir da conversa" → "Criar Caso" (cria lead fechado + contato + caso + processos detectados + atividades).
 
@@ -33,7 +34,23 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 - **Quem é marcado com `@` ganha acesso a esta conversa do WhatsApp** e é notificado — inclusive quando a instância não é dele. Com "@todos" isso vale para todo mundo, e o sistema avisa quantas pessoas serão liberadas antes do envio. O acesso é revogável no diálogo de compartilhamento.
 - **Comentar mensagem do cliente**: "Comentar" numa bolha (ou o checkbox de seleção → "Comentar com a equipe", para várias de uma vez) cola as mensagens citadas no rascunho do chat interno, com autor e hora. Transcrição de áudio entra como texto; citação acima de 400 caracteres é cortada com "…". Na mensagem enviada, o trecho citado aparece em bloco separado com barra lateral.
 
-**Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal.
+### Pendências do cliente — "Cliente ficou de" (desde 05/08/2026; leitura por IA desde 06/08/2026)
+
+Barra logo abaixo do "Progresso" do POP, dentro da conversa: **o que o CLIENTE ficou de fazer**. Quem monta a lista é a **IA lendo a conversa** — avaliar o escritório no Google, gravar o vídeo de depoimento, mandar um documento, comparecer na perícia. Antes disso não existia registro nenhum: atividade é tarefa do assessor e checklist é passo de POP; a promessa do cliente não tinha onde morar, e ninguém ia parar no meio do atendimento pra cadastrar à mão.
+
+- **A IA lê e registra sozinha.** Ao abrir a conversa, `detect-client-commitments` (Railway) varre as últimas 120 mensagens, identifica as promessas do cliente e grava. O título sai **com as palavras da conversa** ("Mandar a carteira de trabalho", "Levar o laudo na perícia do dia 12") — não existe lista fechada de tipos; `kind` é rótulo livre que a IA escreve.
+- **Custo controlado por cache**: `lead_client_commitment_scans` guarda a última mensagem já analisada por conversa. Reabrir a mesma conversa sem mensagem nova **não gasta chamada de IA**. "Reler a conversa" no painel força a varredura (`force: true`).
+- **O que a IA NÃO registra**: tarefa do escritório (protocolar, dar retorno), coisa que o cliente já cumpriu na própria conversa, e promessa vaga (confiança < 0,5 é descartada antes de gravar).
+- **Não duplica**: índice único por alvo + título normalizado (`lcc_dedup_idx`), e a lista do que já existe vai no prompt para a IA não repetir com outras palavras. Conferido: mesma promessa em CAIXA ALTA e com espaços extras é barrada pelo banco.
+- **"Não era"** (só em pendência da IA): marca `status='descartada'`, some da tela e a IA não registra aquilo de novo. É a correção quando ela entende errado — diferente de "Desistiu", que é o cliente desistindo de verdade.
+- Por item: **Feito**, **Cobrar**, **Desistiu**, **Não era**, **Reabrir**, excluir. **"Cobrar" não envia nada**: grava a cobrança (`reminder_count+1`, "cobrado 2x") e **escreve o texto no campo de mensagem** pro assessor revisar e enviar. O texto é escolhido por palavra-chave do título/kind, já que o tipo é livre.
+- **Registro manual continua**, escondido atrás de "Adicionar à mão" — é exceção, não o caminho principal. Na bolha, o botão "Pendência" abre esse formulário já com a mensagem citada.
+- **Prazo é opcional e sem prazo nunca vence** — a maioria das promessas do WhatsApp não tem data. Vencida = em aberto com prazo anterior a hoje.
+- Tabela `lead_client_commitments` (Externo, RLS + realtime): conversa sem lead também controla pendência (`lead_id` OU `phone`+`instance_name`, garantido por CHECK). Marcação feita por outro assessor aparece na hora via Realtime.
+- Código: função `railway-server/src/functions/detect-client-commitments.ts`; regras puras em `src/lib/clientCommitments.ts` (13 testes); dados em `src/hooks/useClientCommitments.ts`; UI em `ClientCommitmentsBar.tsx` / `ClientCommitmentsPanel.tsx`. Migrations `20260805140000` e `20260806120000`.
+- **Ainda não existe** (fase 2): pendência vencida virando atividade de cobrança do responsável, e varredura em segundo plano das conversas que ninguém abriu.
+
+**Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Promessa do cliente ("vou avaliar", "vou gravar o vídeo") a IA já registra sozinha na barra "Cliente ficou de" — o assessor só marca **Feito**, **Cobra** ou corrige com **"Não era"**.
 
 ---
 
@@ -45,6 +62,19 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 - Editor por abas: "⚙️ Geral" (nome, etapas vinculadas, base de conhecimento), "🧠 IA" (modelo, prompt com construtor por chat, voz/áudio, dividir mensagens), "Assistente", "🤝 Handoff", "⚡ Automações", "⏱️ Tempos" (delay, follow-up, janela de horário, pausa quando humano entra), "📞 Chamadas" (discadora), "📢 Campanhas" (criar lead automaticamente no funil).
 
 **Fluxo recomendado**: "Novo Agente" → Geral (nome) → IA (prompt/modelo) → salvar → reabrir pra configurar etapas, tempos, chamadas e campanhas.
+
+### Etiqueta do WhatsApp como gatilho — cuidado com ID reciclado
+
+O vínculo etiqueta→agente (e →etapa, →resultado, →documento) casa pelo **ID numérico** da etiqueta (`558681595991:29`), gravado em `agent_instance_labels`, `stage_instance_labels`, `result_instance_labels` e `label_document_triggers`.
+
+**O WhatsApp recicla esse número.** Ao apagar uma etiqueta no celular, o número fica livre e a próxima etiqueta criada o herda — junto com o vínculo antigo. Incidente 05/08/2026: "Parceiros SP" herdou o ID 29 da "🤖 Raym_assistente" apagada e passou a ativar a IA em quem recebesse a etiqueta nova.
+
+Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): antes de agir, o webhook confere na UazAPI se aquele ID ainda se chama o que o banco diz (cache de 60s por instância).
+- **agent** e **doc_trigger**: bloqueiam quando o nome diverge (mandam mensagem/documento pro cliente).
+- **stage** e **result**: só registram `[label-guard][stage] ID reaproveitado` no log do Railway, sem bloquear — para medir antes de ligar.
+- Não deu pra verificar (instância desconectada, timeout): **fail-open**, age como antes.
+
+**Regra prática de operação**: criar etiqueta nova é seguro (pega um número inédito). Apagar uma etiqueta com vínculo e depois criar outra é o que morde. Para limpar etiquetas em massa, zerar antes os mapeamentos das 4 tabelas — `wipe-instance-agent-labels` faz isso, mas só para as de agente.
 
 ---
 
