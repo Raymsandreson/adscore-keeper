@@ -57,6 +57,12 @@ const PREV_ADMIN_BY_DIGIT = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4] as const;
 const PREV_JUD_ODD = 5;
 const PREV_JUD_EVEN = 6;
 
+/** Quem já é da trilha judicial — um caso delas não reabre o prompt. */
+const PREV_JUD_USER_IDS: readonly string[] = [
+  INSS_PREV_OPTIONS[PREV_JUD_ODD].userId,
+  INSS_PREV_OPTIONS[PREV_JUD_EVEN].userId,
+];
+
 /**
  * Extrai o número do PREV ("✅PREV 1984 - AMANDA…" → "1984"). O `case_number`
  * tem prioridade sobre o título porque é ele que carrega o prefixo do funil de
@@ -119,7 +125,7 @@ export function isPrevCase(
  */
 export async function getCaseAssignee(
   caseId: string | null | undefined,
-): Promise<{ extUuid: string; name: string | null } | null> {
+): Promise<{ extUuid: string; name: string | null; option: PrevAssignee | null } | null> {
   if (!caseId) return null;
   try {
     const { data } = await externalSupabase
@@ -131,15 +137,15 @@ export async function getCaseAssignee(
     if (!extUuid) return null;
 
     const cloudUuid = await remapToCloud(extUuid);
-    const known = INSS_PREV_OPTIONS.find((o) => o.userId === cloudUuid);
-    if (known) return { extUuid, name: known.userName };
+    const known = INSS_PREV_OPTIONS.find((o) => o.userId === cloudUuid) || null;
+    if (known) return { extUuid, name: known.userName, option: known };
 
     const { data: prof } = await externalSupabase
       .from('profiles')
       .select('full_name')
       .eq('user_id', extUuid)
       .maybeSingle();
-    return { extUuid, name: (prof as any)?.full_name || null };
+    return { extUuid, name: (prof as any)?.full_name || null, option: null };
   } catch {
     return null;
   }
@@ -190,14 +196,19 @@ export async function pickCaseAssigneeForNewCase(
  * Resolve quem fica com a atividade automática "Dar andamento" para um processo
  * recém-cadastrado. Já devolve `extAssignedTo` (UUID Externo) pronto pra gravar.
  *
- * - Mapa fixo (Natasha, João Vitor, Wanessa, Abderaman) → vence sempre.
- * - "Benefício INSS" tem regra especial baseada no **título do caso**:
- *   - contém "PREV"  → o responsável mora no **caso** (`legal_cases.assigned_to`),
- *     não no processo. Processo administrativo herda calado; processo judicial
- *     reabre o prompt (sugerindo Gisele/ímpar ou Isabela/par) e a escolha
- *     **substitui** o responsável do caso.
- *   - contém "CASO"  → Maria Clara.
- *   - nenhum dos dois → fallback no criador do caso.
+ * Ordem de precedência:
+ *
+ * 1. **Caso PREV** → o responsável mora no caso (`legal_cases.assigned_to`) e
+ *    vence tudo, **inclusive o mapa fixo**: num caso PREV até a atividade
+ *    automática de "Seguro de Vida" ou "Organizar docs" fica com o assessor do
+ *    caso (decisão da firma, ago/2026 — o caso tem um dono só).
+ *    Processo administrativo herda calado. Processo judicial reabre o prompt
+ *    (Gisele/ímpar, Isabela/par) e a escolha **substitui** o dono do caso —
+ *    exceto se o caso já for de Gisele ou Isabela, quando também herda calado
+ *    (senão cadastrar 3 judiciais em sequência abriria 3 prompts).
+ * 2. Fora do PREV, mapa fixo (Natasha, João Vitor, Wanessa, Abderaman).
+ * 3. "Benefício INSS" em caso "CASO" → Maria Clara.
+ * 4. Nada disso → fallback no criador.
  */
 export async function resolveProcessAssignment(
   processTitle: string,
@@ -207,48 +218,56 @@ export async function resolveProcessAssignment(
   processType?: string | null | undefined,
   caseId?: string | null | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
+  // Olhamos title + case_number juntos. Usuários frequentemente nomeiam casos
+  // sem "PREV"/"CASO" no título (ex: "✅Familia 384 Cocal...") mas o
+  // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
+  if (isPrevCase(caseTitle, caseNumber)) {
+    const judicial = isJudicialProcess(processType);
+    const current = await getCaseAssignee(caseId);
+    const jaNaTrilhaJudicial = !!current?.option && PREV_JUD_USER_IDS.includes(current.option.userId);
+
+    // Herda calado: administrativo em caso com dono, ou judicial em caso que já
+    // é da Gisele/Isabela.
+    if (current && (!judicial || jaNaTrilhaJudicial)) {
+      return { extAssignedTo: current.extUuid, assignedName: current.name };
+    }
+
+    // Judicial entrando num caso administrativo (ou caso legado ainda sem
+    // responsável): pergunta, e a escolha passa a ser o dono do caso.
+    const choice = pickInssPrevAssignee(
+      extractPrevNumber(caseNumber, caseTitle),
+      judicial,
+      { kind: judicial ? 'judicial' : 'sem-responsavel', atual: current?.name || null },
+    );
+    if (choice) {
+      const ext = await remapToExternal(choice.userId);
+      if (ext !== current?.extUuid) await setCaseAssignee(caseId, ext);
+      return { extAssignedTo: ext, assignedName: choice.userName };
+    }
+    // Cancelou: mantém o responsável do caso se houver, senão cai no criador.
+    if (current) return { extAssignedTo: current.extUuid, assignedName: current.name };
+    return fallbackNoCriador(currentUserId);
+  }
+
   const mapped = CASO_PROCESS_ASSIGNMENTS[processTitle];
   if (mapped) {
     const ext = await remapToExternal(mapped.userId);
     return { extAssignedTo: ext, assignedName: mapped.userName };
   }
 
-  if (processTitle === 'Benefício INSS') {
-    // Olhamos title + case_number juntos. Usuários frequentemente nomeiam casos
-    // sem "PREV"/"CASO" no título (ex: "✅Familia 384 Cocal...") mas o
-    // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
-    const haystack = `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase();
-    if (haystack.includes('PREV')) {
-      const judicial = isJudicialProcess(processType);
-      const current = await getCaseAssignee(caseId);
-
-      // Administrativo: o caso já tem dono, herda sem perguntar de novo.
-      if (!judicial && current) {
-        return { extAssignedTo: current.extUuid, assignedName: current.name };
-      }
-
-      // Judicial (ou caso legado ainda sem responsável): pergunta e a escolha
-      // passa a ser o responsável do caso.
-      const choice = pickInssPrevAssignee(
-        extractPrevNumber(caseNumber, caseTitle),
-        judicial,
-        { kind: judicial ? 'judicial' : 'sem-responsavel', atual: current?.name || null },
-      );
-      if (choice) {
-        const ext = await remapToExternal(choice.userId);
-        if (ext !== current?.extUuid) await setCaseAssignee(caseId, ext);
-        return { extAssignedTo: ext, assignedName: choice.userName };
-      }
-      // Cancelou: mantém o responsável do caso se houver, senão cai no criador.
-      if (current) return { extAssignedTo: current.extUuid, assignedName: current.name };
-    } else if (haystack.includes('CASO')) {
-      const ext = await remapToExternal(INSS_CASO_DEFAULT.userId);
-      return { extAssignedTo: ext, assignedName: INSS_CASO_DEFAULT.userName };
-    }
-    // fallback abaixo (criador)
+  if (processTitle === 'Benefício INSS'
+      && `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase().includes('CASO')) {
+    const ext = await remapToExternal(INSS_CASO_DEFAULT.userId);
+    return { extAssignedTo: ext, assignedName: INSS_CASO_DEFAULT.userName };
   }
 
+  return fallbackNoCriador(currentUserId);
+}
 
+/** Último recurso: a atividade fica com quem está cadastrando. */
+async function fallbackNoCriador(
+  currentUserId: string | undefined,
+): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
   if (currentUserId) {
     let name: string | null = null;
     try {

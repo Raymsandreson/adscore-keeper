@@ -175,6 +175,54 @@ describe('processo judicial em caso PREV', () => {
   });
 });
 
+describe('precedência: o dono do caso PREV vence o mapa fixo', () => {
+  // Decisão ago/2026: caso PREV tem um dono só, então nem "Seguro de Vida"
+  // (Natasha) nem "Organizar docs" (Abderaman) escapam para o mapa fixo.
+  it.each(['Seguro de Vida', 'Organizar docs', 'Onboarding', 'Indenização'])(
+    '"%s" em caso PREV fica com o assessor do caso',
+    async (titulo) => {
+      state.caseAssignee = `ext:${JOSE.userId}`;
+
+      const r = await resolveProcessAssignment(
+        titulo, '✅PREV 1984 - AMANDA', 'cloud-user', 'PREV 1984', 'administrativo', 'case-1',
+      );
+
+      expect(r.assignedName).toBe(JOSE.userName);
+      expect(aceitaSugestao).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fora do PREV o mapa fixo continua valendo', async () => {
+    const r = await resolveProcessAssignment(
+      'Seguro de Vida', 'CASO 384 - Camila', 'cloud-user', 'CASO-0384', 'administrativo', 'case-2',
+    );
+    expect(r.assignedName).toBe('Natasha');
+  });
+
+  it('Benefício INSS em caso CASO segue com Maria Clara', async () => {
+    const r = await resolveProcessAssignment(
+      'Benefício INSS', 'CASO 384 - Camila', 'cloud-user', 'CASO-0384', 'administrativo', 'case-2',
+    );
+    expect(r.assignedName).toBe('Maria Clara');
+  });
+});
+
+describe('judicial em caso que já é da trilha judicial', () => {
+  // Sem isso, cadastrar 3 processos judiciais em sequência abriria 3 prompts.
+  it.each([
+    ['Gisele', GISELE],
+    ['Isabela', ISABELA],
+  ])('caso da %s herda sem reabrir o prompt', async (_nome, pessoa: any) => {
+    state.caseAssignee = `ext:${pessoa.userId}`;
+
+    const r = await inssNoPrev1984('judicial');
+
+    expect(aceitaSugestao).not.toHaveBeenCalled();
+    expect(r.extAssignedTo).toBe(`ext:${pessoa.userId}`);
+    expect(state.updates).toHaveLength(0);
+  });
+});
+
 describe('pickCaseAssigneeForNewCase', () => {
   it('não pergunta nada fora do funil PREV', async () => {
     expect(await pickCaseAssigneeForNewCase('CASO-0872', 'Camila - BPC')).toBeNull();

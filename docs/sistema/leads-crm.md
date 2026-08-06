@@ -126,8 +126,12 @@ Onde a escolha aparece:
 
 Detalhes que valem entender:
 
+- **O dono do caso vence o mapa fixo**: dentro de um caso PREV, até a atividade automática de
+  "Seguro de Vida", "Organizar docs" ou "Onboarding" fica com o assessor do caso — o mapa
+  fixo (Natasha/Wanessa/João Vitor/Abderaman) só vale fora do PREV.
 - **Judicial vence o rodízio**: PREV 1984 sugere José na criação do caso e Isabela quando
-  entra um processo judicial.
+  entra um processo judicial. Mas se o caso **já é** da Gisele ou da Isabela, um novo processo
+  judicial herda calado — senão cadastrar 3 judiciais em sequência abriria 3 prompts.
 - O número sai do `case_number` (`extractPrevNumber`), com o título do caso como segundo recurso —
   o título é renomeado à mão pela equipe, o `case_number` não. Sem número legível, o prompt abre
   sem pré-seleção em vez de chutar.
@@ -136,8 +140,12 @@ Detalhes que valem entender:
 - A **Keliane** da lista é a `Keliane Sousa Amorim Araújo`. `KEILANE DE LIMA TEIXEIRA` está na
   `ASSIGNEE_BLOCKLIST` e um teste garante que ela não entre aqui.
 - Caso **CASO** (não PREV) continua indo direto pra Maria Clara, sem prompt.
-- **Não houve backfill**: os ~1.730 casos anteriores seguem com `assigned_to` nulo e só ganham
-  responsável quando alguém cadastrar um processo neles ou editar o caso.
+- **Backfill retroativo (06/08/2026)**: `supabase/migrations/20260806160000_backfill_responsavel_prev.sql`
+  aplicou a regra em **900 casos PREV** e nas **424 atividades pendentes/em andamento** que estavam
+  com o dono errado. **Atividades concluídas ficaram intocadas de propósito** — `assigned_to` é o
+  único registro de quem executou o trabalho, e reescrevê-lo apagaria 3.737 autorias reais.
+  Valores anteriores em `backfill_prev_responsavel_20260806` (RLS on, sem policy), com o rollback
+  comentado no fim da migration.
 - Regra em `src/lib/processAssignment.ts` (`getCaseAssignee`/`setCaseAssignee`/
   `pickCaseAssigneeForNewCase`), coberta por `src/lib/__tests__/prevAssignee.test.ts`
   (rodízio) e `src/lib/__tests__/caseAssignee.test.ts` (herança e troca).
