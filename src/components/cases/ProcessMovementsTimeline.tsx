@@ -23,6 +23,8 @@ const MARCO_LABEL: Record<MarcoTipo, string> = {
   acordao_2grau: 'Acórdão (2º Grau)',
   acordao_superior: 'Acórdão (Superior)',
   transito_julgado: 'Trânsito em Julgado',
+  cumprimento_sentenca: 'Cumprimento de Sentença',
+  precatorio_rpv: 'Precatório / RPV',
   pagamento: 'Pagamento',
 };
 
@@ -36,6 +38,8 @@ const MARCO_COLOR: Record<MarcoTipo, string> = {
   acordao_2grau: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
   acordao_superior: 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300',
   transito_julgado: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300',
+  cumprimento_sentenca: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300',
+  precatorio_rpv: 'bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300',
   pagamento: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
 };
 

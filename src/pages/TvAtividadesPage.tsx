@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } fro
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer, ListChecks } from 'lucide-react';
+import { ArrowLeft, Crown, RefreshCw, Maximize2, Minimize2, Trophy, Megaphone, Flag, Play, Pause, Volume2, VolumeX, SlidersHorizontal, Check, RotateCw, Timer, ListChecks, Briefcase } from 'lucide-react';
 import { format, startOfDay, startOfWeek, startOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -10,7 +10,7 @@ import PerformanceCoachDialog from '@/components/tv/PerformanceCoachDialog';
 import RankDetailSheet, { type DetailCriterio } from '@/components/tv/RankDetailSheet';
 import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, estrelaLabel, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
-import TvProtocolosPanel from '@/components/tv/TvProtocolosPanel';
+import TvCarteiraPanel from '@/components/tv/TvCarteiraPanel';
 // Ficha completa do processo, aberta por cima do detalhe. Lazy porque é o
 // ProcessDetailSheet inteiro — não pode entrar no bundle que a TV carrega só
 // pra mostrar ranking.
@@ -53,6 +53,8 @@ interface RankRow {
   notas_n: number;
   /** Feedbacks que ela deveria avaliar e não avaliou (backlog total). */
   fb_pendentes: number;
+  /** Pendências do cliente em aberto sob responsabilidade da pessoa (backlog total). */
+  pend_cliente: number;
   chat_resp_seg: number | null;
   ativo_seg: number;
   ocioso_seg: number;
@@ -78,11 +80,16 @@ const LIST_MAX = 7; // linhas abaixo do pódio (posições 4..10)
 // Valor sentinela no seletor de time: só gestores de time + diretoria
 // (team_managers + org_directors no Externo; a RPC resolve via p_grupo).
 const GRUPO_GERENCIAL = 'gerencial';
-// Segundo pseudo-item do rodízio (mesmo mecanismo do GRUPO_GERENCIAL): não é um
-// time, é uma vista inteira diferente — protocolos INSS do dia, sem ranking por
-// pessoa (ninguém registra quem protocolou). Reaproveita rodízio, seletor e
-// persistência na URL sem tocar no motor.
-const VISTA_PROTOCOLOS = 'protocolos';
+// A vista "Protocolos do Dia" saiu do rodízio em 05/08/2026 (o telão é sobre
+// marcos, não sobre volume de protocolo). Os mesmos números continuam na Visão
+// Geral e no Acompanhamento Processual, via ProtocolosDiaCard.
+// A TV fica dias no ar sem ninguém tocar na URL: se o telão estiver parado em
+// ?team=protocolos, esse valor cairia no p_team_id da RPC e quebraria o cast de
+// uuid, deixando a tela vazia pra sempre. Por isso o valor legado vira ''.
+const VISTA_PROTOCOLOS_LEGADO = 'protocolos';
+function sanitizeTeamParam(v: string | null) {
+  return !v || v === VISTA_PROTOCOLOS_LEGADO ? '' : v;
+}
 // Token na URL pro "Ranking Geral" (teamId '') na lista de itens fora do rodízio.
 function rotEnc(v: string) { return v === '' ? 'geral' : v; }
 function rotDec(t: string) { return t === 'geral' ? '' : t; }
@@ -146,7 +153,7 @@ export default function TvAtividadesPage() {
   const titulo = params.get('titulo') || 'Time Processual';
 
   const [period, setPeriod] = useState<Period>('hoje');
-  const [teamId, setTeamId] = useState<string>(params.get('team') || ''); // '' = todos os times
+  const [teamId, setTeamId] = useState<string>(sanitizeTeamParam(params.get('team'))); // '' = todos os times
   const [teams, setTeams] = useState<{ id: string; name: string }[]>([]);
   const [data, setData] = useState<Payload | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
@@ -164,6 +171,10 @@ export default function TvAtividadesPage() {
   // Modo Corrida: o ranking vira pista estilo cartoon. Escolha de carro por nome.
   // É a visualização PADRÃO; só `?corrida=0` cai no pódio clássico.
   const [raceMode, setRaceMode] = useState(params.get('corrida') !== '0');
+  // Vista "Carteira": o mesmo período, mas esforço (atividades) ao lado de
+  // resultado (processos que andaram). Fora do rodízio automático — é vista de
+  // conversa de gestão, não de TV girando sozinha.
+  const [carteiraMode, setCarteiraMode] = useState(params.get('carteira') === '1');
   const [cars, setCars] = useState<Record<string, CarChoice>>({});
   // Ausências que cobrem HOJE (member_time_off): quem está de folga/férias sai
   // da corrida e vai pro "pit stop". Casamento com o ranking é por nome.
@@ -256,31 +267,24 @@ export default function TvAtividadesPage() {
     setSearchParams(next, { replace: true });
   }, [params, setSearchParams]);
 
-  // Vista de protocolos: tela própria, não é ranking de assessor.
-  const vistaProtocolos = teamId === VISTA_PROTOCOLOS;
-
   const selectedTeamName = useMemo(
     () => teamId === GRUPO_GERENCIAL
       ? 'Gerencial e Diretoria'
-      : teamId === VISTA_PROTOCOLOS
-      ? 'Protocolos do Dia'
       : teams.find(t => t.id === teamId)?.name,
     [teams, teamId],
   );
   // Nome do que está na tela agora (todos = "Ranking Geral").
   const currentViewName = teamId === '' ? 'Ranking Geral' : (selectedTeamName || titulo);
 
-  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial →
-  // Protocolos.
+  // Todos os itens rodiziáveis: Ranking Geral ('') → cada time → Gerencial.
   const rotatable = useMemo(
-    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL, VISTA_PROTOCOLOS],
+    () => ['', ...teams.map(t => t.id), GRUPO_GERENCIAL],
     [teams],
   );
   // Nome legível de um item do rodízio.
   const rotItemName = useCallback(
     (v: string) => v === '' ? 'Ranking Geral'
       : v === GRUPO_GERENCIAL ? 'Gerencial e Diretoria'
-      : v === VISTA_PROTOCOLOS ? 'Protocolos do Dia'
       : (teams.find(t => t.id === v)?.name || v),
     [teams],
   );
@@ -345,9 +349,6 @@ export default function TvAtividadesPage() {
   }, [autoRotate, rotateMin, rotateCycle, teamId, onSelectTeam]);
 
   const load = useCallback(async () => {
-    // A vista de protocolos tem fonte própria (TvProtocolosPanel busca sozinho).
-    // Sem isto, o rodízio dispararia o ranking a cada 45s por nada.
-    if (vistaProtocolos) { setLoading(false); return; }
     setLoading(true);
     try {
       await ensureExternalSession();
@@ -366,7 +367,7 @@ export default function TvAtividadesPage() {
     } finally {
       setLoading(false);
     }
-  }, [period, teamId, vistaProtocolos]);
+  }, [period, teamId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -952,7 +953,6 @@ export default function TvAtividadesPage() {
           >
             <option value="">Todos os times</option>
             <option value={GRUPO_GERENCIAL}>Gerencial e Diretoria</option>
-            <option value={VISTA_PROTOCOLOS}>Protocolos do Dia</option>
             {teams.map(t => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
@@ -1039,6 +1039,17 @@ export default function TvAtividadesPage() {
             <Flag className="h-4 w-4" />
             {raceMode ? 'Ver pódio' : 'Modo Corrida'}
           </button>
+          <button
+            onClick={() => setCarteiraMode(v => !v)}
+            className={cn(
+              'flex items-center gap-1.5 rounded-full text-xs font-black px-3.5 py-1.5 transition',
+              carteiraMode ? 'bg-emerald-400 text-slate-900 hover:bg-emerald-300' : 'bg-white/10 text-white/70 hover:text-white',
+            )}
+            title="Atividade concluída ao lado de processo que andou"
+          >
+            <Briefcase className="h-4 w-4" />
+            {carteiraMode ? 'Voltar ao ranking' : 'Carteira'}
+          </button>
           {/* Música do telão: play/pausa + volume (aparece só tocando). */}
           <div className="flex items-center gap-1.5">
             <button
@@ -1123,8 +1134,10 @@ export default function TvAtividadesPage() {
           </div>
         )}
 
-        {vistaProtocolos ? (
-          <TvProtocolosPanel />
+        {carteiraMode ? (
+          /* Esforço x resultado. Independe do ranking ter linhas: a carteira
+             vem de process_owners() e existe mesmo numa semana sem atividade. */
+          <TvCarteiraPanel rows={ranking} refreshMs={tv ? 60_000 : 0} />
         ) : ranking.length === 0 && pit.length === 0 ? (
           <div className="py-24 text-center text-white/50 text-lg">
             {loading ? 'Carregando…' : 'Sem atividades no período.'}
@@ -1136,7 +1149,7 @@ export default function TvAtividadesPage() {
               ranking={ranking}
               cars={cars}
               onSaveCar={saveCar}
-              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, ...(row as RaceRow) } as RankRow, rank })}
+              onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, pend_cliente: 0, ...(row as RaceRow) } as RankRow, rank })}
               onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
               meta={data?.meta?.passos}
               periodo={period}
@@ -1290,6 +1303,12 @@ function PodiumSpot({ row, place, onSelect, onDetail }: { row: RankRow | undefin
           <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail(row, 'concluidas', row.concluidas)} />
           <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" onClick={() => onDetail(row, 'atrasadas', row.atrasadas)} />
           <PodiumStat
+            text={row.pend_cliente ?? 0}
+            label="cliente"
+            color="text-cyan-400"
+            onClick={() => onDetail(row, 'pend_cliente', row.pend_cliente ?? 0)}
+          />
+          <PodiumStat
             text={estrelaLabel(row.media_estrelas)}
             label="⭐"
             color="text-amber-400"
@@ -1346,6 +1365,12 @@ function ListRow({ rank, row, onSelect, onDetail }: { rank: number; row: RankRow
       <Stat value={row.doc_itens ?? 0} label="check" color="text-fuchsia-400" />
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail('concluidas', row.concluidas)} />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" onClick={() => onDetail('atrasadas', row.atrasadas)} />
+      <Stat
+        value={row.pend_cliente ?? 0}
+        label="cliente"
+        color="text-cyan-400"
+        onClick={() => onDetail('pend_cliente', row.pend_cliente ?? 0)}
+      />
       <Stat
         value={estrelaLabel(row.media_estrelas)}
         label="⭐"
@@ -1504,7 +1529,7 @@ function Footer({ resumo, participantes, ranking }: { resumo: Resumo | null; par
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total. {participantes} no ranking.</span>
+          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, menos pendências do cliente em aberto, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total; <b className="text-white/80">cliente</b> = pendências que o cliente ficou de fazer e continuam em aberto nos casos sob responsabilidade dela (backlog total; pendência de caso sem responsável definido não conta para ninguém). {participantes} no ranking.</span>
         </p>
       </div>
       </div>
