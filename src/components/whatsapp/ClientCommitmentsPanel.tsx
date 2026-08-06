@@ -84,7 +84,7 @@ interface Props {
   onAlertEnabledChange?: (v: boolean) => void;
 }
 
-function ItemCard({
+export function CommitmentItemCard({
   item, clientName, onDone, onGiveUp, onDismiss, onReopen, onRemind, onRemove, onDraftMessage,
   onCreateActivity, onAskResolver,
 }: {
@@ -382,7 +382,7 @@ export function ClientCommitmentsPanel({
             {open.length > 0 && (
               <div className="space-y-2">
                 {open.map((item) => (
-                  <ItemCard
+                  <CommitmentItemCard
                     key={item.id}
                     item={item}
                     clientName={clientName}
@@ -489,7 +489,7 @@ export function ClientCommitmentsPanel({
                   {showDone ? '▾' : '▸'} Já resolvidas ({done.length})
                 </button>
                 {showDone && done.map((item) => (
-                  <ItemCard
+                  <CommitmentItemCard
                     key={item.id}
                     item={item}
                     clientName={clientName}
