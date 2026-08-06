@@ -60,6 +60,8 @@ Pular etapas só vale para mudanças triviais (typo, remover `console.log`, reno
 - `git status`, `git diff`, `git log`
 - `git push` — autorização durável do usuário (jun/2026): empurrar direto sem perguntar. Ainda mostrar o diff resumido no resumo pós-push.
 - Sincronizar main no início de toda sessão — autorização durável do usuário (jul/2026): rodar `git fetch origin` + `git merge --ff-only origin/main` antes da primeira edição, sem pedir. Só fast-forward: se houver divergência ou conflito com o working tree, parar e avisar em vez de forçar.
+- Mergear a branch de feature em `main` e publicar — autorização durável do usuário (ago/2026): sem perguntar, desde que `npm run build` e `tsc --noEmit` passem e os testes existentes continuem verdes. Ordem obrigatória: `git fetch origin main` → se `main` avançou, mergear `origin/main` **na branch** primeiro, resolver conflitos e revalidar (build + testes) → só então subir. O push em `main` tem que ser fast-forward (`git push origin <branch>:main`); se não for, parar e avisar em vez de forçar. Mostrar no resumo o que subiu e o commit resultante. Lembrete: só o merge publica no Railway — push em branch não sobe nada.
+  - Neste ambiente remoto o clone é **raso** (`--depth`), e o `main` **local** pode apontar para um histórico não relacionado ao `origin/main` — daí `git checkout main` + `merge --ff-only` falhar com `refusing to merge unrelated histories`. Não é divergência real: trabalhar sempre a partir de `origin/main` e publicar com `git push origin <branch>:main`, sem checkout do `main` local.
 
 ### Sempre pedir confirmação explícita:
 - `git commit` incluindo arquivos que você não editou nesta sessão
