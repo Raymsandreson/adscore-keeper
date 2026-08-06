@@ -60,6 +60,19 @@ Barra logo abaixo do "Progresso" do POP, dentro da conversa: **o que o CLIENTE f
 
 **Fluxo recomendado**: "Novo Agente" → Geral (nome) → IA (prompt/modelo) → salvar → reabrir pra configurar etapas, tempos, chamadas e campanhas.
 
+### Etiqueta do WhatsApp como gatilho — cuidado com ID reciclado
+
+O vínculo etiqueta→agente (e →etapa, →resultado, →documento) casa pelo **ID numérico** da etiqueta (`558681595991:29`), gravado em `agent_instance_labels`, `stage_instance_labels`, `result_instance_labels` e `label_document_triggers`.
+
+**O WhatsApp recicla esse número.** Ao apagar uma etiqueta no celular, o número fica livre e a próxima etiqueta criada o herda — junto com o vínculo antigo. Incidente 05/08/2026: "Parceiros SP" herdou o ID 29 da "🤖 Raym_assistente" apagada e passou a ativar a IA em quem recebesse a etiqueta nova.
+
+Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): antes de agir, o webhook confere na UazAPI se aquele ID ainda se chama o que o banco diz (cache de 60s por instância).
+- **agent** e **doc_trigger**: bloqueiam quando o nome diverge (mandam mensagem/documento pro cliente).
+- **stage** e **result**: só registram `[label-guard][stage] ID reaproveitado` no log do Railway, sem bloquear — para medir antes de ligar.
+- Não deu pra verificar (instância desconectada, timeout): **fail-open**, age como antes.
+
+**Regra prática de operação**: criar etiqueta nova é seguro (pega um número inédito). Apagar uma etiqueta com vínculo e depois criar outra é o que morde. Para limpar etiquetas em massa, zerar antes os mapeamentos das 4 tabelas — `wipe-instance-agent-labels` faz isso, mas só para as de agente.
+
 ---
 
 ## Chat da Equipe (painel lateral, abas "Menções" e "Chat")
