@@ -149,6 +149,20 @@ export function MemberDetailSheet({ open, onOpenChange, member, onUpdate }: Memb
       setFullName(member.full_name || '');
       setEmail(member.email || '');
       setSelectedProfileId((member as any).access_profile_id || '');
+
+      // Limpa ANTES de buscar. Os campos abaixo só eram preenchidos ao fim do
+      // fetchProfileExtras, que é assíncrono — então ao trocar de membro a ficha
+      // seguia exibindo os dados do anterior enquanto a consulta estava em voo,
+      // e para sempre se ela falhasse. Com o botão "Salvar alterações" logo
+      // abaixo, dava para gravar o telefone de um membro no cadastro de outro.
+      setPhone('');
+      setOabNumber('');
+      setOabUf('');
+      setOabEntries([]);
+      setDefaultInstanceId('');
+      setVoiceId('');
+      setVoiceName('');
+
       fetchProfileExtras();
       fetchMemberData();
     }
