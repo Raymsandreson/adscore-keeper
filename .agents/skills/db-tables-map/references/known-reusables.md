@@ -40,6 +40,9 @@ Já registram mudança de etapa/status. Não criar `lead_changelog`.
 ### `lead_followups`
 Follow-ups (whatsapp, call, etc.). Triggers já populam ao registrar call/outbound.
 
+### `lead_client_commitments` (Externo)
+Pendência do **CLIENTE** — o que ELE ficou de fazer (avaliar no Google, gravar depoimento, mandar documento). Não confundir com `lead_activities` (tarefa do assessor, entra em cronômetro/telão) nem com `lead_followups` (log do escritório). Chaveada por `lead_id` OU `phone`+`instance_name` (conversa ainda sem lead). Guarda `source_message_id` da mensagem que originou, `status` (combinado/cobrado/feito/desistiu) e contador de cobranças.
+
 ## Permissões / Equipe
 
 ### `member_module_permissions` (Cloud)

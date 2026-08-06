@@ -69,6 +69,7 @@ import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus'
 import { handler as extractActivityFromDocument } from './functions/extract-activity-from-document';
 import { handler as dictateActivity } from './functions/dictate-activity';
 import { handler as chatToActivity } from './functions/chat-to-activity';
+import { handler as detectClientCommitments } from './functions/detect-client-commitments';
 import { handler as callToActivities } from './functions/call-to-activities';
 import { handler as activityFromMovement } from './functions/activity-from-movement';
 import { handler as generateActivityTitle } from './functions/generate-activity-title';
@@ -140,6 +141,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'extract-activity-from-document': extractActivityFromDocument,
   'dictate-activity': dictateActivity,
   'chat-to-activity': chatToActivity,
+  'detect-client-commitments': detectClientCommitments,
   'call-to-activities': callToActivities,
   'activity-from-movement': activityFromMovement,
   'generate-activity-title': generateActivityTitle,

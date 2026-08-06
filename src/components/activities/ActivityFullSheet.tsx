@@ -11,7 +11,9 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { displayProcessLabel } from '@/lib/processLabel';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
@@ -192,6 +194,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [leadPreview, setLeadPreview] = useState<{ board_id: string | null; lead_status: string | null; whatsapp_group_id?: string | null; lead_phone?: string | null } | null>(null);
   // "Preencher com" (paridade com a ActivitiesPage): áudio e documento preenchem o form via IA.
   const [preencherOpen, setPreencherOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [searchedLeads, setSearchedLeads] = useState<{ id: string; lead_name: string | null }[]>([]);
@@ -1019,6 +1022,23 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 </PopoverContent>
               </Popover>
 
+              {/* Despesa/receita lançada de dentro da atividade. Grava já vinculada
+                  ao processo/caso/lead da própria atividade, então o lançamento
+                  aparece sozinho na aba Financeiro do processo e na do lead —
+                  não precisa mais abrir a ficha do lead só para registrar custa. */}
+              {!isCreate && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1 shrink-0"
+                  onClick={() => setFinanceOpen(true)}
+                  title="Registrar despesa/receita desta atividade"
+                >
+                  <DollarSign className="h-3 w-3" />
+                  Financeiro
+                </Button>
+              )}
+
               {/* Painéis controlados pelo menu acima (gatilho sr-only sempre montado,
                   como na ActivitiesPage, pra não perder a âncora ao fechar o dropdown) */}
               <ActivityCallRecorder
@@ -1362,6 +1382,28 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           </div>
         </div>
       </SheetContent>
+
+      <Dialog open={financeOpen} onOpenChange={setFinanceOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-base">Financeiro da atividade</DialogTitle>
+          </DialogHeader>
+          <EntityFinancialsPanel
+            scope="activity"
+            activityId={activityId}
+            linkOptions={buildFinancialLinkOptions({
+              processId: formProcessId,
+              processLabel: displayProcessLabel(linkedProcess, formProcessTitle),
+              caseId: formCaseId,
+              caseLabel: formCaseTitle,
+              leadId: formLeadId,
+              leadLabel: formLeadName,
+            })}
+            contextLabel="O lançamento fica pendurado no destino escolhido e aparece no financeiro dele."
+            listMaxHeight="260px"
+          />
+        </DialogContent>
+      </Dialog>
 
       <AIFieldMergeDialog
         open={aiMergeOpen}
