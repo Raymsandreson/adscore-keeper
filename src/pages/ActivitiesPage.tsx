@@ -13,6 +13,7 @@ import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { ClientCommitmentsInbox } from '@/components/activities/ClientCommitmentsInbox';
 import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
@@ -45,6 +46,7 @@ import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, CommandList } from '@/components/ui/command';
 import {
   Plus, Calendar, CheckCircle2, Clock, AlertTriangle,
@@ -70,6 +72,7 @@ import { TimeBlockSettingsDialog, TimeBlockConfig } from '@/components/activitie
 import { ActivityCreatedDialog, randomChurchillQuote } from '@/components/activities/ActivityCreatedDialog';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
+import { useAcolhedores } from '@/hooks/useAcolhedores';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -118,6 +121,12 @@ const PRIORITY_OPTIONS = [
 
 const hasSelectValue = (value: string | null | undefined): value is string =>
   typeof value === 'string' && value.trim().length > 0;
+
+// Atalhos do cabeçalho que levam a algum lugar são <a href> de verdade, pra o menu
+// do botão direito oferecer "Abrir em nova guia" e o ctrl/cmd+clique funcionar.
+// Clique simples continua navegando dentro do SPA (sem recarregar a página).
+const isPlainLeftClick = (e: React.MouseEvent) =>
+  e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey;
 
 const statusColors: Record<string, string> = {
   pendente: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -438,10 +447,15 @@ const ActivitiesPage = () => {
   const [preencherOpen, setPreencherOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
   const [feedbackFunnelOpen, setFeedbackFunnelOpen] = useState(false);
+  /** Caixa de pendências do cliente (o que ELE ficou de fazer, todas as conversas). */
+  const [commitmentsInboxOpen, setCommitmentsInboxOpen] = useState(false);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [nextStepsOpen, setNextStepsOpen] = useState(false);
   const { configs: timeBlockSettings, saveSettings: saveTimeBlockConfigs } = useTimeBlockSettings();
+  // Avatar do responsável no cabeçalho: foto quando existe (tabela acolhedores /
+  // assets locais), senão iniciais com cor determinística.
+  const { resolve: resolvePersonAvatar } = useAcolhedores();
   // Assignee's routine: when creating/editing for another user, load their routine
   const { configs: assigneeTimeBlockSettings } = useTimeBlockSettings(formAssignedTo || user?.id || undefined);
   // Blocks view: load the routine of the single selected assignee
@@ -1395,6 +1409,27 @@ const ActivitiesPage = () => {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activities.length, searchParams]);
+
+  // Deep-link do botão Feedbacks (?feedbacks=1) — é o que permite abrir o funil
+  // em nova aba pelo botão direito. Limpa o param pra o F5 não reabrir sozinho.
+  useEffect(() => {
+    if (searchParams.get('feedbacks') !== '1') return;
+    setFeedbackFunnelOpen(true);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('feedbacks');
+    setSearchParams(newParams, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  // Mesmo esquema para a caixa de pendências do cliente (?pendencias=1).
+  useEffect(() => {
+    if (searchParams.get('pendencias') !== '1') return;
+    setCommitmentsInboxOpen(true);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('pendencias');
+    setSearchParams(newParams, { replace: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleUpdate = async () => {
     if (!selectedActivity) return;
@@ -3333,17 +3368,43 @@ const ActivitiesPage = () => {
               <List className="h-3.5 w-3.5" />
               Lista
             </button>
-            <button
-              onClick={() => navigate('/tv/atividades')}
+            <a
+              href="/tv/atividades"
+              onClick={(e) => {
+                if (!isPlainLeftClick(e)) return;
+                e.preventDefault();
+                navigate('/tv/atividades');
+              }}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all bg-amber-400 text-slate-900 shadow-sm hover:bg-amber-300"
               title="Telão de Atividades — ranking ao vivo do time (modo TV)"
             >
               <Trophy className="h-3.5 w-3.5" />
               Telão
-            </button>
+            </a>
           </div>
-          <Button variant="ghost" size="sm" className="h-8 text-primary-foreground hover:bg-primary-foreground/10 gap-1" onClick={() => setFeedbackFunnelOpen(true)} title="Feedbacks das suas atividades (você observa)">
-            💬 Feedbacks
+          <Button asChild variant="ghost" size="sm" className="h-8 text-primary-foreground hover:bg-primary-foreground/10 gap-1" title="Feedbacks das suas atividades (você observa)">
+            <a
+              href="/?feedbacks=1"
+              onClick={(e) => {
+                if (!isPlainLeftClick(e)) return;
+                e.preventDefault();
+                setFeedbackFunnelOpen(true);
+              }}
+            >
+              💬 Feedbacks
+            </a>
+          </Button>
+          <Button asChild variant="ghost" size="sm" className="h-8 text-primary-foreground hover:bg-primary-foreground/10 gap-1" title="Pendências dos clientes — o que eles ficaram de fazer, de todas as conversas">
+            <a
+              href="/?pendencias=1"
+              onClick={(e) => {
+                if (!isPlainLeftClick(e)) return;
+                e.preventDefault();
+                setCommitmentsInboxOpen(true);
+              }}
+            >
+              📌 Pendências
+            </a>
           </Button>
           <Button variant="ghost" size="icon" className="h-8 w-8 text-primary-foreground hover:bg-primary-foreground/10" onClick={() => setCourtContactsOpen(true)} title="Varas e Tribunais — contatos">
             <Landmark className="h-4 w-4" />
@@ -4806,6 +4867,62 @@ const ActivitiesPage = () => {
                       </div>
                     )}
 
+                    {/* Situação + responsável: antes só apareciam ao rolar o formulário,
+                        então o cabeçalho não dizia em que pé estava nem de quem era. */}
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                      <span
+                        className={cn(
+                          'shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                          statusColors[formStatus] || 'bg-muted text-muted-foreground',
+                        )}
+                        title="Situação da atividade"
+                      >
+                        {STATUS_OPTIONS.find(s => s.value === formStatus)?.label || 'Pendente'}
+                      </span>
+                      {(() => {
+                        // Chip temporal só nos casos que pedem ação (atrasada/vence hoje);
+                        // nos demais seria repetir a situação ao lado.
+                        const ts = getTemporalStatus({ status: formStatus, deadline: formDeadline });
+                        if (ts !== 'atrasada' && ts !== 'hoje') return null;
+                        const ribbon = getTemporalRibbon({ status: formStatus, deadline: formDeadline });
+                        return (
+                          <span className={cn('shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full', ribbon.className)}>
+                            {ribbon.label}
+                          </span>
+                        );
+                      })()}
+                      {formAssignedToName ? (
+                        <span className="flex items-center gap-1.5 min-w-0" title={`Responsável: ${formAssignedToName}`}>
+                          {(() => {
+                            const av = resolvePersonAvatar(formAssignedToName);
+                            return (
+                              <Avatar className="h-5 w-5 shrink-0">
+                                {av?.fotoUrl && (
+                                  <AvatarImage src={av.fotoUrl} alt={formAssignedToName} className="object-cover" />
+                                )}
+                                <AvatarFallback
+                                  className="text-[9px] font-semibold text-white"
+                                  style={{ backgroundColor: av?.bgColor }}
+                                >
+                                  {av?.initials || '?'}
+                                </AvatarFallback>
+                              </Avatar>
+                            );
+                          })()}
+                          <span className="text-xs text-muted-foreground truncate">{formAssignedToName}</span>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground/70">Sem responsável</span>
+                      )}
+                      {formCoAssignees.length > 0 && (
+                        <span
+                          className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground"
+                          title={`Também responsáveis: ${formCoAssignees.map(c => c.full_name).join(', ')}`}
+                        >
+                          +{formCoAssignees.length}
+                        </span>
+                      )}
+                    </div>
 
                   </div>
                 </div>
@@ -5809,6 +5926,11 @@ const ActivitiesPage = () => {
         open={feedbackFunnelOpen}
         onOpenChange={setFeedbackFunnelOpen}
         onCreateFollowUp={openFollowUpFromFeedback}
+      />
+      <ClientCommitmentsInbox
+        open={commitmentsInboxOpen}
+        onOpenChange={setCommitmentsInboxOpen}
+        teamOptions={teamMembers}
       />
       <ActivityCreatedDialog
         open={createdDialog.open}

@@ -49,6 +49,46 @@ interface MessageRow {
 
 const normalize = (s: string) => s.toLowerCase().trim().replace(/\s+/g, ' ');
 
+/**
+ * Palavras que não distinguem uma pendência de outra. "Fazer a visita do caso
+ * do Morumbi" e "Realizar a visita do caso do Morumbi" são a MESMA coisa — o
+ * dedup por título exato deixava as duas passarem, e o painel mostrava a
+ * pendência repetida com outras palavras.
+ */
+const STOPWORDS = new Set([
+  'a','o','as','os','um','uma','de','do','da','dos','das','em','no','na','nos','nas',
+  'para','pra','pro','por','com','ao','aos','e','que','se','ja','já','vai','ir',
+  'fazer','realizar','efetuar','providenciar','enviar','mandar','levar','dar',
+  'sobre','antes','depois','durante','the',
+]);
+
+/** Palavras que realmente identificam a pendência. */
+function keyTokens(title: string): Set<string> {
+  return new Set(
+    normalize(title)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // acento não pode separar "visíta" de "visita"
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOPWORDS.has(w))
+  );
+}
+
+/**
+ * Duas pendências são a mesma quando as palavras que importam coincidem em 70%
+ * ou mais (Jaccard). Acima disso é reescrita da mesma promessa; abaixo, são
+ * coisas diferentes ("visita do Morumbi" × "visita de Itatiba").
+ */
+function isSameCommitment(a: string, b: string): boolean {
+  if (normalize(a) === normalize(b)) return true;
+  const ta = keyTokens(a);
+  const tb = keyTokens(b);
+  if (ta.size === 0 || tb.size === 0) return false;
+  let inter = 0;
+  for (const t of ta) if (tb.has(t)) inter++;
+  const union = ta.size + tb.size - inter;
+  return union > 0 && inter / union >= 0.7;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
 
@@ -114,7 +154,7 @@ export const handler: RequestHandler = async (req, res) => {
       .or(targetFilter);
 
     const existing = (existingData as Array<{ title: string; status: string }>) || [];
-    const existingTitles = new Set(existing.map((e) => normalize(e.title)));
+    const existingTitles = existing.map((e) => e.title);
 
     // ---- 4. transcript ------------------------------------------------------------
     const clientLabel = client_name || 'CLIENTE';
@@ -156,7 +196,7 @@ REGRAS DE ESCRITA:
 - confidence: 0 a 1. Use abaixo de 0.6 quando a promessa for vaga.
 - NÃO invente. Sem promessa clara na conversa, devolva lista vazia.
 
-${existingTitles.size > 0
+${existingTitles.length > 0
   ? `JÁ REGISTRADAS (não repita, nem com outras palavras): ${existing.map((e) => `"${e.title}"`).join(', ')}`
   : 'Nada registrado ainda nesta conversa.'}`;
 
@@ -240,10 +280,12 @@ ${existingTitles.size > 0
       .filter((c) => {
         const title = String(c?.title || '').trim();
         if (title.length < 3) return false;
-        const key = normalize(title);
-        if (existingTitles.has(key) || seenNow.has(key)) return false; // já registrada ou repetida na mesma resposta
-        if (Number(c.confidence) < 0.5) return false;                  // promessa vaga demais
-        seenNow.add(key);
+        if (Number(c.confidence) < 0.5) return false; // promessa vaga demais
+        // Repetida com outras palavras conta como repetida — tanto contra o que
+        // já está gravado quanto dentro da própria resposta da IA.
+        if (existingTitles.some((t) => isSameCommitment(t, title))) return false;
+        if ([...seenNow].some((t) => isSameCommitment(t, title))) return false;
+        seenNow.add(title);
         return true;
       })
       .map((c) => {
@@ -282,11 +324,11 @@ ${existingTitles.size > 0
     let closed = 0;
     const doneTitles = detected
       .filter((c) => c?.done === true && String(c?.title || '').trim())
-      .map((c) => normalize(String(c.title)));
+      .map((c) => String(c.title));
 
     for (const e of (existingData as Array<{ id: string; title: string; status: string }>) || []) {
       if (e.status !== 'combinado' && e.status !== 'cobrado') continue;
-      if (!doneTitles.includes(normalize(e.title))) continue;
+      if (!doneTitles.some((t) => isSameCommitment(t, e.title))) continue;
       const { error: closeError } = await supabase
         .from('lead_client_commitments')
         .update({

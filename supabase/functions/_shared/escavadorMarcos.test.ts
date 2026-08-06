@@ -114,7 +114,9 @@ Deno.test("escala: marco_ordem usa a régua de 10 estações, não uma escala pr
     ["Acordo", "Homologação de acordo entre as partes", 6],
     ["Acórdão", "Acórdão. Negaram provimento ao recurso ordinário", 7],
     ["Trânsito em julgado", "Certidão de trânsito em julgado", 9],
-    ["Alvará", "Expedido alvará de levantamento", 10],
+    // 12, não 10: em 06/08/2026 entraram cumprimento_sentenca (10) e
+    // precatorio_rpv (11) entre trânsito em julgado e pagamento.
+    ["Alvará", "Expedido alvará de levantamento", 12],
   ];
   for (const [titulo, conteudo, ordem] of casos) {
     const out = extractMarcos([{ id: 1, data: "2026-01-10", titulo, conteudo }]);

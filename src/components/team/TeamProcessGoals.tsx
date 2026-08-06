@@ -48,6 +48,8 @@ const MARCO_LABEL: Record<MarcoTipo, string> = {
   acordao_2grau: 'Acórdão (2º grau)',
   acordao_superior: 'Acórdão (superior)',
   transito_julgado: 'Trânsito em Julgado',
+  cumprimento_sentenca: 'Cumprimento de Sentença',
+  precatorio_rpv: 'Precatório / RPV',
   pagamento: 'Pagamento',
 };
 
@@ -55,7 +57,7 @@ const MARCO_LABEL: Record<MarcoTipo, string> = {
 const MARCO_ORDER: MarcoTipo[] = [
   'peticao_inicial', 'audiencia_conciliacao', 'pericia', 'audiencia_instrucao',
   'sentenca_1grau', 'acordo', 'acordao_2grau', 'acordao_superior',
-  'transito_julgado', 'pagamento',
+  'transito_julgado', 'cumprimento_sentenca', 'precatorio_rpv', 'pagamento',
 ];
 
 const PERIOD_LABEL: Record<GoalPeriodType, string> = {

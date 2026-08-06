@@ -11,6 +11,8 @@ export type MarcoTipo =
   | 'acordao_2grau'
   | 'acordao_superior'
   | 'transito_julgado'
+  | 'cumprimento_sentenca'
+  | 'precatorio_rpv'
   | 'pagamento';
 
 /**

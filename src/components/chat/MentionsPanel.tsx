@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMyMentions } from '@/hooks/useTeamChat';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -25,6 +27,7 @@ const entityIcons: Record<string, React.ReactNode> = {
   activity: <ClipboardList className="h-3.5 w-3.5" />,
   contact: <Users className="h-3.5 w-3.5" />,
   workflow: <Workflow className="h-3.5 w-3.5" />,
+  pop_step: <Workflow className="h-3.5 w-3.5" />,
   whatsapp: <MessageCircle className="h-3.5 w-3.5" />,
   team_chat: <MessageCircle className="h-3.5 w-3.5" />,
   process: <Scale className="h-3.5 w-3.5" />,
@@ -36,6 +39,7 @@ const entityLabels: Record<string, string> = {
   activity: 'Atividade',
   contact: 'Contato',
   workflow: 'POP',
+  pop_step: 'Passo do POP',
   whatsapp: 'WhatsApp',
   team_chat: 'Chat da Equipe',
   process: 'Processo',
@@ -47,6 +51,7 @@ const entityColors: Record<string, string> = {
   activity: 'bg-emerald-500/10 text-emerald-600',
   contact: 'bg-purple-500/10 text-purple-600',
   workflow: 'bg-orange-500/10 text-orange-600',
+  pop_step: 'bg-orange-500/10 text-orange-600',
   whatsapp: 'bg-green-500/10 text-green-600',
   team_chat: 'bg-sky-500/10 text-sky-600',
   process: 'bg-amber-500/10 text-amber-600',
@@ -58,6 +63,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('chat');
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [onlyUnread, setOnlyUnread] = useState(false);
 
   useEffect(() => {
     return subscribeToTeamChatConversation((intent) => {
@@ -189,6 +197,35 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
 
   const unreadCount = mentions.filter(m => !m.is_read).length;
 
+  // Tipos que realmente aparecem nas menções — não adianta oferecer filtro vazio.
+  const availableTypes = useMemo(() => {
+    const set = new Set(mentions.map(m => m.entity_type || 'team_chat'));
+    return Array.from(set).sort((a, b) =>
+      (entityLabels[a] || a).localeCompare(entityLabels[b] || b, 'pt-BR')
+    );
+  }, [mentions]);
+
+  const visibleMentions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return mentions.filter(m => {
+      if (onlyUnread && m.is_read) return false;
+      if (typeFilter !== 'all' && (m.entity_type || 'team_chat') !== typeFilter) return false;
+      if (!term) return true;
+      const haystack = [
+        m.message?.sender_name,
+        m.message?.content,
+        m.entity_name,
+        entityLabels[m.entity_type || 'team_chat'],
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(term);
+    });
+  }, [mentions, search, typeFilter, onlyUnread]);
+
+  const hasActiveFilter = search.trim() !== '' || typeFilter !== 'all' || onlyUnread;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-[380px] sm:w-[420px] p-0 flex flex-col">
@@ -256,6 +293,61 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
           </div>
         </div>
 
+        {/* Filtros das menções */}
+        {activeTab === 'mentions' && mentions.length > 0 && (
+          <div className="shrink-0 px-3 py-2 border-b space-y-1.5">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Buscar por pessoa, texto ou registro..."
+                className="h-8 pl-8 text-sm"
+              />
+            </div>
+            {availableTypes.length > 1 && (
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue placeholder="Filtrar por tipo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os tipos</SelectItem>
+                  {availableTypes.map(t => (
+                    <SelectItem key={t} value={t}>{entityLabels[t] || t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setOnlyUnread(false)}
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
+                  !onlyUnread
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
+                )}
+              >
+                Todas
+              </button>
+              <button
+                type="button"
+                onClick={() => setOnlyUnread(v => !v)}
+                title="Menções que você ainda não abriu"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors',
+                  onlyUnread
+                    ? 'bg-amber-500 text-white border-amber-500'
+                    : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/20'
+                )}
+              >
+                Não lidas{unreadCount > 0 ? ` (${unreadCount})` : ''}
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         {activeTab === 'chat' ? (
           <div className="flex-1 min-h-0">
@@ -275,9 +367,24 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 <AtSign className="h-8 w-8 opacity-30" />
                 <p>Nenhuma menção ainda.<br/>Quando alguém marcar você com <span className="font-medium text-primary">@seu_nome</span>, aparecerá aqui.</p>
               </div>
+            ) : visibleMentions.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-xs text-center gap-2 px-6">
+                <Search className="h-8 w-8 opacity-30" />
+                <p>Nenhuma menção com esse filtro.</p>
+                {hasActiveFilter && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => { setSearch(''); setTypeFilter('all'); setOnlyUnread(false); }}
+                  >
+                    Limpar filtros
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="divide-y">
-                {mentions.map(mention => (
+                {visibleMentions.map(mention => (
                   <button
                     key={mention.id}
                     onClick={() => handleMentionClick(mention)}
@@ -311,28 +418,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                           {mention.entity_name && (
                             <span className="text-[10px] text-muted-foreground truncate max-w-[120px]">{mention.entity_name}</span>
                           )}
-                          <div className="ml-auto flex items-center gap-2 shrink-0">
-                            <span className="text-[10px] text-muted-foreground">
-                              {format(new Date(mention.created_at), "dd/MM HH:mm", { locale: ptBR })}
-                            </span>
-                            {!mention.is_read ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-6 px-2 text-[10px]"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  markAsRead(mention.id);
-                                }}
-                              >
-                                Dar ciência
-                              </Button>
-                            ) : (
-                              <Badge variant="secondary" className="h-5 px-1.5 text-[9px]">
-                                Ciente
-                              </Badge>
-                            )}
-                          </div>
+                          <span className="ml-auto text-[10px] text-muted-foreground shrink-0">
+                            {format(new Date(mention.created_at), "dd/MM HH:mm", { locale: ptBR })}
+                          </span>
                         </div>
                       </div>
                       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-2" />

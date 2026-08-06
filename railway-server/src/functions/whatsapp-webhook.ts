@@ -16,6 +16,7 @@ import { transcribeAudio } from '../lib/stt';
 import { verifyAgentLabelBeforeSend } from '../lib/verify-agent-label';
 import { loadCurrentLabelNames, filterByLabelName, checkLabelName } from '../lib/label-name-guard';
 import { uploadImageThumb } from '../lib/imageThumb';
+import { notifyNewWhatsAppMessage } from '../lib/whatsapp-push';
 
 // ============================================================
 // Proactive first message — disparado quando o agente é ativado
@@ -595,15 +596,25 @@ function getFileExtension(contentType: string, messageType: string): string {
     'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/amr': 'amr', 'audio/aac': 'aac',
     'audio/wav': 'wav', 'audio/webm': 'webm',
     'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+    'image/heic': 'heic', 'image/heif': 'heif',
     'video/mp4': 'mp4', 'video/3gpp': '3gp', 'video/quicktime': 'mov',
     'application/pdf': 'pdf', 'application/zip': 'zip',
     'application/msword': 'doc',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
     'application/vnd.ms-excel': 'xls',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-powerpoint': 'ppt',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+    'text/csv': 'csv', 'text/tab-separated-values': 'tsv', 'text/plain': 'txt', 'text/html': 'html',
   };
   const ct = (contentType || '').split(';')[0].trim().toLowerCase();
   if (map[ct]) return map[ct];
+  // Mime conhecido mas fora do mapa: derivar do subtype. Chutar `.pdf` aqui gravava
+  // arquivo com nome .pdf e content-type de outra coisa, e o navegador baixava sozinho.
+  if (ct && ct !== 'application/octet-stream') {
+    const derived = (ct.split('/')[1] || '').split('.').pop()!.replace(/[^a-z0-9]/g, '');
+    if (derived && derived.length <= 8) return derived;
+  }
   if (messageType === 'audio') return 'ogg';
   if (messageType === 'image') return 'jpg';
   if (messageType === 'video') return 'mp4';
@@ -2120,6 +2131,24 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     console.log('Message saved:', message.id, 'Contact:', contactId, 'Lead:', leadId, 'Instance:', instanceName);
+
+    // ========== PUSH DE MENSAGEM NOVA ==========
+    // Fire-and-forget, só inbound (outbound é a própria casa respondendo).
+    // Quem decide destinatário, agrupamento e duplicata é o módulo; aqui não se
+    // espera nem se propaga erro — a mensagem já está gravada.
+    if (direction === 'inbound') {
+      void notifyNewWhatsAppMessage({
+        phone,
+        instanceName,
+        contactName,
+        messageText,
+        messageType,
+        externalMessageId,
+        messageId: message.id,
+        isGroup,
+        leadId,
+      });
+    }
 
     // ========== AUTO-ACTIVATE DEFAULT AGENT ==========
     // Se a instância tem default_agent_id e ainda não há agente ativado para essa conversa,

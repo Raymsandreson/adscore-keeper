@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { pickCaseAssigneeForNewCase } from '@/lib/processAssignment';
 import { toast } from 'sonner';
 
 type ExternalLeadCaseData = {
@@ -107,12 +108,18 @@ export function useLegalCases(leadId?: string) {
       
       let caseNumber = caseData.case_number?.trim();
       
-      // If user provided a case_number, check uniqueness
+      // If user provided a case_number, check uniqueness.
+      // A unicidade vale só entre casos VIVOS — índice parcial
+      // legal_cases_case_number_active_uniq (migration 20260806145748). Excluir um
+      // caso devolve o número, então o check tem que ignorar os soft-deletados: era
+      // exatamente isso que travava o recadastro do PREV 77.
       if (caseNumber) {
         const { data: existing } = await externalSupabase
           .from('legal_cases')
           .select('id')
           .eq('case_number', caseNumber)
+          .is('deleted_at', null)
+          .limit(1)
           .maybeSingle();
         if (existing) {
           toast.error(`Já existe um caso com o número "${caseNumber}"`);
@@ -136,6 +143,12 @@ export function useLegalCases(leadId?: string) {
       }
 
 
+      // Caso PREV tem um único responsável, escolhido aqui e gravado no caso.
+      // Os processos e atividades do caso herdam sem perguntar de novo — só
+      // processo judicial reabre a escolha (ver resolveProcessAssignment).
+      // Cancelar deixa assigned_to nulo: o primeiro processo volta a perguntar.
+      const prevAssignee = await pickCaseAssigneeForNewCase(caseNumber, caseData.title);
+
       const extCreatedByCase = await remapToExternal(user?.id);
       const { leadId: externalLeadId, leadData: externalLeadData } = await ensureExternalLeadForCase(
         caseData.lead_id,
@@ -154,10 +167,19 @@ export function useLegalCases(leadId?: string) {
           acolhedor: caseData.acolhedor || null,
           closed_at: caseData.closed_at || null,
           created_by: extCreatedByCase,
+          assigned_to: prevAssignee?.extAssignedTo || null,
         } as never)
         .select('*, specialized_nuclei(name, prefix, color)')
         .single();
-      if (error) throw error;
+      if (error) {
+        // 23505 = legal_cases_case_number_active_uniq. Rede de segurança para a
+        // corrida entre o check acima e o insert, e para o número vindo da RPC
+        // generate_case_number (que não checa colisão).
+        if ((error as any).code === '23505') {
+          toast.error(`O número "${caseNumber}" já está em uso por outro caso. Use outro número.`);
+        }
+        throw error;
+      }
 
       const enriched = {
         ...data,

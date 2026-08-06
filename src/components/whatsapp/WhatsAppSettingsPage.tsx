@@ -22,6 +22,7 @@ import { WhatsAppCommandConfig } from './WhatsAppCommandConfig';
 import { WhatsAppInstanceManager } from './WhatsAppInstanceManager';
 import { WhatsAppNotificationSettings } from './WhatsAppNotificationSettings';
 import { PushNotificationSettings } from '@/components/chat/PushNotificationSettings';
+import { WhatsAppPushSettings } from '@/components/whatsapp/WhatsAppPushSettings';
 import { VoiceSettings } from '@/components/voice/VoiceSettings';
 import { BoardGroupInstancesConfig } from './BoardGroupInstancesConfig';
 import { NucleiSettings } from './NucleiSettings';
@@ -287,6 +288,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'notifications' && (
               <div className="space-y-6">
                 <PushNotificationSettings />
+                <WhatsAppPushSettings />
                 <WhatsAppNotificationSettings />
               </div>
             )}

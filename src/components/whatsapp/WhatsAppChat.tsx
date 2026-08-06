@@ -33,6 +33,7 @@ import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
 import { ClientCommitmentsPanel, type CommitmentDraft } from './ClientCommitmentsPanel';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -170,6 +171,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Pendências do cliente (o que ELE ficou de fazer) — ver useClientCommitments
   const [showCommitments, setShowCommitments] = useState(false);
   const [commitmentDraft, setCommitmentDraft] = useState<CommitmentDraft | null>(null);
+  /** Conversas em que o aviso de pendências já apareceu nesta sessão. */
+  const commitmentAlertShown = useRef<Set<string>>(new Set());
+  /**
+   * Avisar ao abrir a conversa. Fica no navegador porque é preferência de quem
+   * atende: quem trabalha o dia todo na mesma conversa não quer o painel
+   * pulando toda hora.
+   */
+  const [commitmentAlertEnabled, setCommitmentAlertEnabled] = useState(() => {
+    try { return localStorage.getItem('wa-commitment-alert') !== 'off'; } catch { return true; }
+  });
+  const toggleCommitmentAlert = useCallback((v: boolean) => {
+    setCommitmentAlertEnabled(v);
+    try { localStorage.setItem('wa-commitment-alert', v ? 'on' : 'off'); } catch { /* modo anônimo */ }
+  }, []);
   const commitments = useClientCommitments({
     leadId: conversation.lead_id,
     phone: conversation.phone,
@@ -177,6 +192,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     contactId: conversation.contact_id,
     clientName: conversation.contact_name,
   });
+
+  /**
+   * Entrou na conversa e o cliente tem pendência em aberto: mostra a lista uma
+   * vez por conversa por sessão. É o lembrete que faltava — antes a barra ficava
+   * no topo e passava despercebida no meio do atendimento.
+   */
+  useEffect(() => {
+    if (!commitmentAlertEnabled) return;
+    if (commitments.loading || commitments.analyzing) return;
+    if (commitments.open.length === 0) return;
+    const key = `${conversation.phone}|${conversation.instance_name || ''}`;
+    if (commitmentAlertShown.current.has(key)) return;
+    commitmentAlertShown.current.add(key);
+    setCommitmentDraft(null);
+    setShowCommitments(true);
+  }, [
+    commitmentAlertEnabled, commitments.loading, commitments.analyzing,
+    commitments.open.length, conversation.phone, conversation.instance_name,
+  ]);
   const [leadPanelWidth, setLeadPanelWidth] = useState(480);
   const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
@@ -979,6 +1013,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
+
+  /**
+   * Quem da equipe falou com o cliente por último nesta conversa. A instância é
+   * compartilhada (a de atendimento tem dezenas de donos), então a única pista
+   * de autoria é o prefixo "*Nome:*" que o envio identificado coloca no texto.
+   * Reusa a lista de `profiles` já carregada para o @menção — sem query nova.
+   */
+  const suggestedResolver = useMemo(() => {
+    const nome = lastSenderName(conversation.messages || []);
+    if (!nome) return null;
+    const membro = matchMemberByName(nome, teamMembers);
+    return membro ? { user_id: membro.user_id, full_name: membro.full_name } : null;
+  }, [conversation.messages, teamMembers]);
+
+  const commitmentTeamOptions = useMemo(
+    () => [...teamMembers].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')),
+    [teamMembers]
+  );
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   // Group @mention (WhatsApp native): picker over participants while composing
   const [groupMentionQuery, setGroupMentionQuery] = useState<string | null>(null); // null = picker closed
@@ -3203,6 +3255,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 isGroup={isGroup}
                 messageParticipants={groupParticipants}
                 onViewContact={onViewContact}
+                onOpenChat={onOpenChat}
               />
             </>
           )}
@@ -3249,6 +3302,24 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onRemind={commitments.registerReminder}
         onRemove={commitments.remove}
         onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
+        alertEnabled={commitmentAlertEnabled}
+        onAlertEnabledChange={toggleCommitmentAlert}
+        teamOptions={commitmentTeamOptions}
+        suggestedResolver={suggestedResolver}
+        onCreateActivity={onCreateActivity ? (item) => {
+          // Reaproveita o mesmo formulário de "Criar atividade a partir desta
+          // mensagem": a IA preenche o resto a partir deste texto.
+          const trecho = item.source_message_text ? `\nO cliente disse: "${item.source_message_text}"` : '';
+          const prazo = item.due_date ? `\nPrazo combinado: ${item.due_date}.` : '';
+          onCreateActivity(
+            conversation.lead_id || '',
+            conversation.contact_name || conversation.phone,
+            conversation.contact_id || undefined,
+            conversation.contact_name || undefined,
+            `Pendência do cliente: ${item.title}.${trecho}${prazo}`,
+          );
+          setShowCommitments(false);
+        } : undefined}
       />
 
       {/* AI Extraction Progress Banner */}
@@ -4050,10 +4121,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_type === 'document' && msg.media_url && !isEncUrl(msg.media_url) && (() => {
-                  const mt = (msg.media_type || '').toLowerCase();
+                  const mt = (msg.media_type || '').toLowerCase().split(';')[0].trim();
                   const urlLower = msg.media_url.toLowerCase();
-                  const isPdf = mt.includes('pdf') || /\.pdf($|\?)/i.test(urlLower);
-                  const isImage = mt.startsWith('image/') || /\.(jpe?g|png|webp|gif)($|\?)/i.test(urlLower);
+                  // A extensão da URL não prova nada: o webhook grava `.pdf` como fallback de
+                  // documento, então pptx/csv/tsv/heic chegam com nome `.pdf`. Só confiamos na
+                  // extensão quando o mime é genérico (ou ausente).
+                  const mtIsGeneric = !mt || mt === 'application/octet-stream';
+                  const isPdf = mt.includes('pdf') || (mtIsGeneric && /\.pdf($|\?)/i.test(urlLower));
+                  const isImage = mt.startsWith('image/') || (mtIsGeneric && /\.(jpe?g|png|webp|gif)($|\?)/i.test(urlLower));
                   const fileName = msg.message_text || (msg.media_url.split('/').pop()?.split('?')[0]) || 'Documento';
                   const driveInfo = driveSavedById[msg.id] || (msg.metadata?.drive ? { link: msg.metadata.drive.web_view_link, name: msg.metadata.drive.file_name } : null);
                   return (
@@ -4071,8 +4146,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     >
                       {isPdf && (
                         <div className="rounded-lg overflow-hidden border bg-white">
+                          {/* Sem <iframe> de fallback: quando o arquivo não é PDF de verdade,
+                              o iframe navega para um recurso não-exibível e o Chrome baixa o
+                              arquivo sozinho a cada render da conversa. */}
                           <object data={msg.media_url} type="application/pdf" className="w-full h-[420px]">
-                            <iframe src={msg.media_url} className="w-full h-[420px]" title={fileName} />
+                            <div className="flex h-[420px] items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                              Não foi possível exibir a prévia — use o botão de download.
+                            </div>
                           </object>
                         </div>
                       )}

@@ -1,10 +1,18 @@
-import { useEffect, useState } from 'react';
-import { Loader2, ListChecks, CheckCircle2, AlarmClock, ExternalLink, Target, Flag, Goal, Star, Inbox } from 'lucide-react';
+import { useEffect, useState, lazy, Suspense } from 'react';
+import { Loader2, ListChecks, CheckCircle2, AlarmClock, PanelRightOpen, Target, Flag, Goal, Star, Inbox } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cn } from '@/lib/utils';
+
+// A ficha da atividade abre num painel AO LADO — nunca redirect nem aba nova
+// (regra do produto; ver .agents/skills/ui-sem-redirecionar). Lazy porque é o
+// formulário completo de atividade.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then(m => ({ default: m.ActivityFullSheet })),
+);
+const ProcessQuickSheet = lazy(() => import('@/components/tv/ProcessQuickSheet'));
 
 // Painel lateral do telão /tv/atividades: ao clicar num chip de critério
 // (status / fases / objetivos / passos / concluídas / atrasadas) de uma pessoa,
@@ -14,10 +22,11 @@ import { cn } from '@/lib/utils';
 
 export type DetailCriterio =
   | 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas'
-  | 'estrelas' | 'fb_pendentes';
+  | 'estrelas' | 'fb_pendentes' | 'pend_cliente';
 
 interface DetailItem {
-  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente';
+  tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente'
+    | 'pend_cliente';
   quando?: string;
   titulo: string | null;
   lead_nome?: string | null;
@@ -44,6 +53,11 @@ interface DetailItem {
   responsavel?: string | null;
   retorno?: string | null;
   dias_parado?: number;
+  /** Pendência do cliente: prazo combinado, quantas cobranças e a fala dele. */
+  prazo?: string | null;
+  cobrancas?: number;
+  origem_pendencia?: 'ia' | 'manual';
+  trecho?: string | null;
 }
 
 // Linha "de onde veio a marcação". A regra é a do Raym (04/08/2026): marcou
@@ -79,12 +93,12 @@ function Origem({
           if (naAtividade) onAtividade(it.activity_id);
           else onProcesso(it.process_id);
         }}
-        title={naAtividade ? 'Abrir a atividade em nova aba' : 'Abrir o processo em nova aba'}
+        title={naAtividade ? 'Abrir a atividade aqui do lado' : 'Abrir o processo aqui do lado'}
       >
         <span className="min-w-0 underline decoration-sky-300/40 underline-offset-2 group-hover/o:decoration-sky-200">
           {naAtividade ? it.atividade : it.processo}
         </span>
-        <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
+        <PanelRightOpen className="mt-0.5 h-3 w-3 shrink-0 opacity-60" />
       </button>
     </div>
   );
@@ -99,7 +113,7 @@ function Chip({ label, valor, onClick }: { label: string; valor: string; onClick
         onClick && 'cursor-pointer transition hover:bg-white/[0.12]',
       )}
       onClick={onClick ? e => { e.stopPropagation(); onClick(); } : undefined}
-      title={onClick ? 'Abrir o processo em nova aba' : undefined}
+      title={onClick ? 'Abrir o processo aqui do lado' : undefined}
     >
       <span className="shrink-0 uppercase tracking-wider text-white/30">{label}</span>
       <span className={cn('min-w-0 truncate', onClick ? 'text-sky-300 underline decoration-sky-300/30 underline-offset-2' : 'text-white/70')}>
@@ -118,6 +132,7 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
   estrelas: { titulo: 'Média das avaliações', cor: 'text-amber-400', Icon: Star },
   fb_pendentes: { titulo: 'Feedbacks sem avaliar', cor: 'text-pink-400', Icon: Inbox },
+  pend_cliente: { titulo: 'Pendências do cliente em aberto', cor: 'text-cyan-400', Icon: Inbox },
 };
 
 // "Atrasadas" e "feedbacks sem avaliar" não usam o período aberto no telão — são
@@ -126,6 +141,7 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
 function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
   if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
   if (criterio === 'fb_pendentes') return 'esperando a avaliação dela · backlog total';
+  if (criterio === 'pend_cliente') return 'o cliente ficou de fazer e não fez · backlog total';
   if (criterio === 'estrelas') return `notas recebidas · ${periodLabel}`;
   return periodLabel;
 }
@@ -145,6 +161,10 @@ interface Props {
 export default function RankDetailSheet({ nome, criterio, count, since, periodLabel, onAbrirProcesso, onClose }: Props) {
   const [items, setItems] = useState<DetailItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Atividade aberta ao lado, sem tirar ninguém desta lista.
+  const [atividadeAberta, setAtividadeAberta] = useState<string | null>(null);
+  // Processo aberto aqui mesmo quando quem usa o componente não trata (fora do telão).
+  const [processoLocal, setProcessoLocal] = useState<string | null>(null);
   const cfg = CRITERIO_CFG[criterio];
 
   useEffect(() => {
@@ -167,16 +187,18 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
     return () => { cancelled = true; };
   }, [nome, criterio, since]);
 
+  // Atividade abre em painel AO LADO (side="left"), nunca redirecionando nem em
+  // aba nova — regra do produto, ver .agents/skills/ui-sem-redirecionar.
   const openActivity = (id?: string) => {
-    if (id) window.open(`/atv/${id.slice(0, 8)}`, '_blank', 'noopener');
+    if (id) setAtividadeAberta(id);
   };
   // Ficha do processo em aba lateral, por cima do detalhe — sem tirar ninguém
-  // do telão. Sem o callback (uso fora do telão), cai no deep-link da
-  // ProcessesPage, que lê ?openProcess=<id>.
+  // do telão. Sem o callback (uso fora do telão), abre o ProcessQuickSheet aqui
+  // mesmo: redirecionar/abrir aba nova é proibido pela regra do produto.
   const openProcesso = (id?: string | null) => {
     if (!id) return;
     if (onAbrirProcesso) onAbrirProcesso(id);
-    else window.open(`/processes?openProcess=${id}`, '_blank', 'noopener');
+    else setProcessoLocal(id);
   };
 
   return (
@@ -202,7 +224,9 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
             </div>
           ) : items.length === 0 ? (
             <div className="py-10 text-center text-white/50">
-              {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏' : 'Nada no período.'}
+              {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏'
+                : criterio === 'pend_cliente' ? 'Nenhuma pendência de cliente em aberto. 👏'
+                : 'Nada no período.'}
             </div>
           ) : (
             items.map((it, i) => (
@@ -213,13 +237,13 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                   it.activity_id && 'cursor-pointer transition hover:bg-white/[0.1]'
                 )}
                 onClick={() => openActivity(it.activity_id)}
-                title={it.activity_id ? 'Abrir atividade em nova aba' : undefined}
+                title={it.activity_id ? 'Abrir a atividade aqui do lado' : undefined}
               >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1 text-sm font-semibold leading-snug">
                     {it.titulo || '(sem título)'}
                   </div>
-                  {it.activity_id && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
+                  {it.activity_id && <PanelRightOpen className="h-3.5 w-3.5 shrink-0 text-white/40 mt-0.5" />}
                 </div>
                 {/* Onde esse item mora: cliente · processo · objetivo · fase · POP */}
                 <div className="mt-1.5 flex flex-wrap gap-1">
@@ -297,6 +321,31 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                   </div>
                 )}
 
+                {/* Pendência do cliente: há quantos dias está parada, quantas
+                    vezes já foi cobrado e o que ele disse quando prometeu. */}
+                {it.tipo === 'pend_cliente' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {typeof it.dias_parado === 'number' && it.dias_parado > 0 && (
+                        <span className="font-bold text-cyan-400">
+                          combinado há {it.dias_parado} {it.dias_parado === 1 ? 'dia' : 'dias'}
+                        </span>
+                      )}
+                      {typeof it.cobrancas === 'number' && it.cobrancas > 0 && (
+                        <span className="text-white/40">cobrado {it.cobrancas}x</span>
+                      )}
+                      {it.prazo && (
+                        <span className="text-white/40">
+                          prazo {format(new Date(`${it.prazo}T00:00:00`), 'dd/MM/yyyy', { locale: ptBR })}
+                        </span>
+                      )}
+                    </div>
+                    {it.trecho && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-3">“{it.trecho}”</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-white/50">
                   {it.tipo === 'atrasada' ? (
                     <>
@@ -314,6 +363,26 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
           )}
         </div>
       </SheetContent>
+
+      {/* Ficha da atividade AO LADO (esquerda), sem cobrir esta lista e sem
+          tirar ninguém da tela. */}
+      {atividadeAberta && (
+        <Suspense fallback={null}>
+          <ActivityFullSheet
+            open
+            onOpenChange={o => { if (!o) setAtividadeAberta(null); }}
+            activityId={atividadeAberta}
+            side="left"
+          />
+        </Suspense>
+      )}
+
+      {/* Processo, quando quem chamou não trata (fora do telão). */}
+      {processoLocal && (
+        <Suspense fallback={null}>
+          <ProcessQuickSheet processId={processoLocal} onClose={() => setProcessoLocal(null)} />
+        </Suspense>
+      )}
     </Sheet>
   );
 }

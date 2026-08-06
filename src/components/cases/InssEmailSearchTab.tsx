@@ -407,7 +407,8 @@ export default function InssEmailSearchTab({
 
           const title = inssProcessTitle(proc);
           try {
-            const { extAssignedTo, assignedName } = await resolveAssignmentForCase(title, caseId, user?.id);
+            // Requerimento do INSS puxado do e-mail: sempre administrativo.
+            const { extAssignedTo, assignedName } = await resolveAssignmentForCase(title, caseId, user?.id, 'administrativo');
             const r = await createOrAttachAndamentoActivity({
               leadId,
               caseId,

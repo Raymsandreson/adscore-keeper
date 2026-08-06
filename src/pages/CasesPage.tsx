@@ -1,9 +1,16 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { resolveProcessAssignment, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
+import {
+  resolveProcessAssignment,
+  createOrAttachAndamentoActivity,
+  getCaseAssignee,
+  isPrevCase,
+  INSS_PREV_OPTIONS,
+  type PrevTrilha,
+} from '@/lib/processAssignment';
 import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, remapToCloud } from '@/integrations/supabase/uuid-remap';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +40,8 @@ import {
 import { LegalCase } from '@/hooks/useLegalCases';
 import { CopyableText } from '@/components/ui/copyable-text';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
+import { useCaseAssignees, type AssigneeInfo } from '@/hooks/useCaseAssignees';
+import { CaseAssigneeAvatars } from '@/components/cases/CaseAssigneeAvatars';
 import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
 import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
@@ -49,6 +58,9 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useNavigate } from 'react-router-dom';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+
+/** Radix Select não aceita value="" — sentinela para "caso sem responsável". */
+const SEM_RESPONSAVEL = '__sem_responsavel__';
 
 const statusColors: Record<string, string> = {
   aberto: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300',
@@ -106,6 +118,12 @@ const statusLabels: Record<string, string> = {
 
 export default function CasesPage() {
   const [cases, setCases] = useState<any[]>([]);
+  // Uma consulta só para toda a lista, em vez de uma por card.
+  const uuidsResponsaveis = useMemo(
+    () => cases.flatMap(c => [c.assigned_to, c.assigned_to_judicial]),
+    [cases],
+  );
+  const responsaveis = useCaseAssignees(uuidsResponsaveis);
   const [loading, setLoading] = useState(true);
   const [searchParams] = useSearchParams();
   const [search, setSearch] = useState(() => searchParams.get('search') || '');
@@ -116,6 +134,18 @@ export default function CasesPage() {
   const fetchSeqRef = useRef(0);
   const [statusFilter, setStatusFilter] = useState('all');
   const [nucleusFilter, setNucleusFilter] = useState('all');
+  // Cloud UUID do assessor, ou 'all'. Vira UUID do Externo na hora da query.
+  const [responsavelFilter, setResponsavelFilter] = useState('all');
+  const [responsavelExt, setResponsavelExt] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      const ext = responsavelFilter === 'all' ? null : await remapToExternal(responsavelFilter);
+      if (!cancelado) setResponsavelExt(ext);
+    })();
+    return () => { cancelado = true; };
+  }, [responsavelFilter]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { caseId: routeCaseId } = useParams<{ caseId?: string }>();
   const { nuclei } = useSpecializedNuclei();
@@ -178,6 +208,9 @@ export default function CasesPage() {
           .order('created_at', { ascending: false });
         if (statusFilter !== 'all') q = q.eq('status', statusFilter);
         if (nucleusFilter !== 'all') q = q.eq('nucleus_id', nucleusFilter);
+        // As duas trilhas contam: um caso onde a Gisele é a judicial aparece
+        // tanto pra ela quanto pro responsável administrativo.
+        if (responsavelExt) q = q.or(`assigned_to.eq.${responsavelExt},assigned_to_judicial.eq.${responsavelExt}`);
         return q;
       };
 
@@ -229,6 +262,7 @@ export default function CasesPage() {
         // "Núcleo = X" selecionado trazia casos de outros núcleos.
         if (statusFilter !== 'all') leadQuery = leadQuery.eq('status', statusFilter);
         if (nucleusFilter !== 'all') leadQuery = leadQuery.eq('nucleus_id', nucleusFilter);
+        if (responsavelExt) leadQuery = leadQuery.or(`assigned_to.eq.${responsavelExt},assigned_to_judicial.eq.${responsavelExt}`);
         const { data: leadMatches, error: leadErr } = await leadQuery;
         if (leadErr) throw leadErr;
         if (seq !== fetchSeqRef.current) return;
@@ -253,6 +287,12 @@ export default function CasesPage() {
           .limit(500);
         if (statusFilter !== 'all') procQuery = procQuery.eq('legal_cases.status', statusFilter);
         if (nucleusFilter !== 'all') procQuery = procQuery.eq('legal_cases.nucleus_id', nucleusFilter);
+        if (responsavelExt) {
+          procQuery = procQuery.or(
+            `assigned_to.eq.${responsavelExt},assigned_to_judicial.eq.${responsavelExt}`,
+            { foreignTable: 'legal_cases' },
+          );
+        }
         // O erro era descartado: quando esta query falhava, buscar por número
         // CNJ simplesmente não achava nada e ninguém ficava sabendo.
         const { data: procMatches, error: procErr } = await procQuery;
@@ -292,7 +332,7 @@ export default function CasesPage() {
     } finally {
       if (seq === fetchSeqRef.current) setLoading(false);
     }
-  }, [debouncedSearch, statusFilter, nucleusFilter]);
+  }, [debouncedSearch, statusFilter, nucleusFilter, responsavelExt]);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 350);
@@ -385,6 +425,19 @@ export default function CasesPage() {
               ))}
             </SelectContent>
           </Select>
+          {/* Casa as DUAS colunas: quem é judicial num caso e administrativo em
+              outro encontra os dois grupos no mesmo filtro. */}
+          <Select value={responsavelFilter} onValueChange={setResponsavelFilter}>
+            <SelectTrigger className="w-[170px] h-9">
+              <SelectValue placeholder="Responsável" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos responsáveis</SelectItem>
+              {INSS_PREV_OPTIONS.map(o => (
+                <SelectItem key={o.userId} value={o.userId}>{o.shortName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -409,6 +462,7 @@ export default function CasesPage() {
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
               onCaseUpdated={fetchCases}
               onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
+              responsaveis={responsaveis}
             />
         ))}
       </div>
@@ -462,8 +516,9 @@ export default function CasesPage() {
   );
 }
 
-function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead }: { 
+function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead, responsaveis }: {
   legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
+  responsaveis: Map<string, AssigneeInfo>;
 }) {
   const [processes, setProcesses] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
@@ -491,6 +546,48 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [leadResults, setLeadResults] = useState<any[]>([]);
   const [searchingLead, setSearchingLead] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
+  // Responsáveis do caso PREV, um por trilha (Cloud UUID; SEM_RESPONSAVEL quando
+  // vazio). Existem para consertar uma escolha errada no prompt de criação — sem
+  // eles não haveria como trocar depois.
+  const [editAssignee, setEditAssignee] = useState<string>(SEM_RESPONSAVEL);
+  const [editAssigneeJud, setEditAssigneeJud] = useState<string>(SEM_RESPONSAVEL);
+  // Dono atual que não está entre os 7 assessores: vira opção extra no select
+  // para que salvar o caso não apague quem já estava lá.
+  const [foraDaLista, setForaDaLista] = useState<Record<PrevTrilha, { userId: string; shortName: string } | null>>(
+    { administrativo: null, judicial: null },
+  );
+  // Valor lido do banco ao abrir o diálogo. Só propaga para as atividades se o
+  // usuário de fato mexeu — senão todo "Salvar" reescreveria as atividades.
+  const [assigneeInicial, setAssigneeInicial] = useState<Record<PrevTrilha, string>>(
+    { administrativo: SEM_RESPONSAVEL, judicial: SEM_RESPONSAVEL },
+  );
+  const casoEhPrev = isPrevCase(legalCase.title, legalCase.case_number);
+
+  useEffect(() => {
+    if (!showEditDialog || !casoEhPrev) return;
+    let cancelled = false;
+    (async () => {
+      const trilhas: PrevTrilha[] = ['administrativo', 'judicial'];
+      const lidos = await Promise.all(trilhas.map(async (t) => {
+        const current = await getCaseAssignee(legalCase.id, t);
+        const cloudUuid = current ? await remapToCloud(current.extUuid) : null;
+        const conhecido = INSS_PREV_OPTIONS.find(o => o.userId === cloudUuid);
+        return {
+          trilha: t,
+          value: cloudUuid || SEM_RESPONSAVEL,
+          extra: cloudUuid && !conhecido
+            ? { userId: cloudUuid, shortName: current?.name || 'Responsável atual' }
+            : null,
+        };
+      }));
+      if (cancelled) return;
+      setEditAssignee(lidos[0].value);
+      setEditAssigneeJud(lidos[1].value);
+      setForaDaLista({ administrativo: lidos[0].extra, judicial: lidos[1].extra });
+      setAssigneeInicial({ administrativo: lidos[0].value, judicial: lidos[1].value });
+    })();
+    return () => { cancelled = true; };
+  }, [showEditDialog, casoEhPrev, legalCase.id]);
 
   const PREDEFINED_PROCESSES = [
     'Indenização', 'Relatório de Acidente', 'TRCT + Verbas', 'Seguro de Vida',
@@ -720,8 +817,41 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         editLeadId,
         currentLeadId: legalCase.lead_id ?? null,
       });
+      // Só casos PREV têm os campos no formulário; nos demais as colunas não são
+      // tocadas (senão salvar o caso zeraria um responsável definido por fora).
+      if (casoEhPrev) {
+        (payload as any).assigned_to =
+          editAssignee === SEM_RESPONSAVEL ? null : await remapToExternal(editAssignee);
+        (payload as any).assigned_to_judicial =
+          editAssigneeJud === SEM_RESPONSAVEL ? null : await remapToExternal(editAssigneeJud);
+      }
       const { error } = await externalSupabase.from('legal_cases').update(payload).eq('id', legalCase.id);
       if (error) throw error;
+
+      // Trocar o responsável do caso arrasta as atividades VIVAS dele — cada uma
+      // pela trilha do seu processo. Sem isso a troca ficava só na linha do caso
+      // e as atividades existentes seguiam com o dono antigo.
+      // O trabalho é feito na RPC porque ela precisa pular colisões do índice
+      // lead_activities_dedup_pending_idx; em JS, um 23505 derrubaria o salvamento.
+      if (casoEhPrev && (editAssignee !== assigneeInicial.administrativo
+                      || editAssigneeJud !== assigneeInicial.judicial)) {
+        try {
+          const { data: prop, error: propErr } = await (externalSupabase as any)
+            .rpc('aplicar_responsavel_do_caso_nas_atividades', { p_case_id: legalCase.id });
+          if (propErr) throw propErr;
+          const linhas = (prop || []) as Array<{ trilha: string; atualizadas: number; puladas: number }>;
+          const movidas = linhas.reduce((s, l) => s + (l.atualizadas || 0), 0);
+          const puladas = linhas.reduce((s, l) => s + (l.puladas || 0), 0);
+          if (movidas > 0) toast.success(`${movidas} atividade(s) passaram para o novo responsável`);
+          if (puladas > 0) {
+            toast.warning(`${puladas} atividade(s) não mudaram: são duplicatas de outra pendente do mesmo lead`);
+          }
+        } catch (propError: any) {
+          // O caso já foi salvo; avisar em vez de fingir que deu tudo certo.
+          console.error('[CasesPage] propagacao de responsavel falhou', propError);
+          toast.error('Responsável do caso salvo, mas as atividades não foram atualizadas');
+        }
+      }
 
       // Adota os filhos órfãos do caso. Sem isso, atividades e processos
       // criados enquanto o caso estava sem lead continuariam com lead_id NULL
@@ -802,7 +932,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
             // Resolvido antes do insert para gravar o responsável no processo,
             // e não só na atividade "Dar andamento".
-            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number);
+            // Estes processos nascem sempre administrativos (insert logo abaixo).
+            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number, 'administrativo', legalCase.id);
 
             // O erro do insert era descartado: quando ele falhava, savedProcess
             // vinha undefined e a atividade nascia sem process_id, órfã e sem
@@ -960,9 +1091,15 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                   )}
                 </div>
               </div>
-              <Badge variant="secondary" className={`text-xs shrink-0 ${statusColors[legalCase.status]}`}>
-                {statusLabels[legalCase.status]}
-              </Badge>
+              <div className="flex items-center gap-2 shrink-0">
+                <CaseAssigneeAvatars
+                  administrativo={responsaveis.get(legalCase.assigned_to)}
+                  judicial={responsaveis.get(legalCase.assigned_to_judicial)}
+                />
+                <Badge variant="secondary" className={`text-xs ${statusColors[legalCase.status]}`}>
+                  {statusLabels[legalCase.status]}
+                </Badge>
+              </div>
             </div>
           </CollapsibleTrigger>
 
@@ -1296,6 +1433,36 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               <Label>Título *</Label>
               <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
             </div>
+            {casoEhPrev && (
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ['administrativo', 'Responsável administrativo', editAssignee, setEditAssignee],
+                  ['judicial', 'Responsável judicial', editAssigneeJud, setEditAssigneeJud],
+                ] as const).map(([trilha, rotulo, valor, setValor]) => (
+                  <div key={trilha}>
+                    <Label>{rotulo}</Label>
+                    <Select value={valor} onValueChange={setValor}>
+                      <SelectTrigger className="mt-1">
+                        <SelectValue placeholder="Sem responsável" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={SEM_RESPONSAVEL}>Sem responsável</SelectItem>
+                        {foraDaLista[trilha] && (
+                          <SelectItem value={foraDaLista[trilha]!.userId}>{foraDaLista[trilha]!.shortName}</SelectItem>
+                        )}
+                        {INSS_PREV_OPTIONS.map(o => (
+                          <SelectItem key={o.userId} value={o.userId}>{o.shortName}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                ))}
+                <p className="col-span-2 text-[11px] text-muted-foreground -mt-1">
+                  Cada trilha é independente: processos e atividades novos herdam do responsável da
+                  sua própria trilha.
+                </p>
+              </div>
+            )}
             <div>
               <Label>Lead vinculado</Label>
               {editLeadId ? (

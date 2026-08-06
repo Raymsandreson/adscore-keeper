@@ -32,6 +32,7 @@ export interface RaceRow {
   notas_n?: number;
   /** Feedbacks que a pessoa deveria avaliar e não avaliou (backlog total). */
   fb_pendentes?: number;
+  pend_cliente?: number;
   home_office?: boolean;
 }
 export interface CarChoice { car_id: string; color: string }
@@ -129,6 +130,7 @@ export default function WackyRaceTrack({
   onDetail,
   meta,
   periodo = 'hoje',
+  medalhaQualidade,
 }: {
   ranking: RaceRow[];
   cars: Record<string, CarChoice>;
@@ -140,6 +142,8 @@ export default function WackyRaceTrack({
   // Meta = RECORDE individual de passos do período/time (linha de chegada).
   meta?: number;
   periodo?: 'hoje' | 'semana' | 'mes';
+  // Quem leva a medalha de melhor avaliação do período (só com >= 3 notas).
+  medalhaQualidade?: string | null;
 }) {
   // Piloto sendo editado (nome) → abre o seletor de carro.
   const [picking, setPicking] = useState<RaceRow | null>(null);
@@ -211,6 +215,14 @@ export default function WackyRaceTrack({
                   <span className="flex items-center gap-1 font-bold text-xs md:text-base truncate group-hover:text-amber-300 transition">
                     <span className="truncate">{r.nome}</span>
                     {r.home_office && <span title="Home office">🏠</span>}
+                    {medalhaQualidade && r.nome === medalhaQualidade && (
+                      <span
+                        className="shrink-0"
+                        title={`Melhor avaliação do período (${r.media_estrelas} de média em ${r.notas_n} notas)`}
+                      >
+                        🏅
+                      </span>
+                    )}
                     {bateu && (
                       <span className="shrink-0 animate-pulse" title={`Bateu o recorde ${scopeLabel} (${finish} passos)!`}>🏆</span>
                     )}

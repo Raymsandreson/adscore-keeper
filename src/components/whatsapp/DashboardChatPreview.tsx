@@ -1,5 +1,10 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
+import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
+import { ClientCommitmentsBar } from './ClientCommitmentsBar';
+import { CommitmentItemCard } from './ClientCommitmentsPanel';
+import { useClientCommitments } from '@/hooks/useClientCommitments';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,7 +20,7 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList } from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList, MessageSquare} from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
@@ -100,6 +105,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const canTogglePrivate = !!(privatePhone && phoneProp && privatePhone.replace(/\D/g, '') !== phoneProp.replace(/\D/g, ''));
   const isPrivateAllView = viewMode === 'private' && canTogglePrivate;
   const phone = (isPrivateAllView ? privatePhone : phoneProp) ?? null;
+  /**
+   * As mesmas peças da conversa completa. O painel de baixo virou o caminho
+   * principal para tratar pendência (vem da caixa de pendências), então não
+   * pode ser uma versão capada da conversa.
+   */
+  const [teamChatOpen, setTeamChatOpen] = useState(false);
+  const [commitmentsOpen, setCommitmentsOpen] = useState(false);
+
   const [instanceOwners, setInstanceOwners] = useState<Record<string, string>>({});
   const [sendAsInstance, setSendAsInstance] = useState<string>('');
   // No privado unificado o envio precisa sair de uma instância explícita; fora dele, mantém o comportamento antigo.
@@ -146,6 +159,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [linkedLead, setLinkedLead] = useState<Lead | null>(null);
   const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
+
+  /** Pendências do cliente desta conversa — mesma fonte da conversa completa. */
+  const commitments = useClientCommitments({
+    leadId: linkedLead?.id || null,
+    phone,
+    instanceName,
+    contactId: linkedContact?.id || null,
+    clientName: contactName || linkedLead?.lead_name || null,
+  });
   const [groupName, setGroupName] = useState<string | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
   const [showContactEdit, setShowContactEdit] = useState(false);
@@ -1542,6 +1564,18 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
               >
                 {loadingSuggestion ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4 text-amber-500" />}
               </Button>
+              {phone && (
+                <Button
+                  variant={teamChatOpen ? 'secondary' : 'outline'}
+                  size="sm"
+                  className="h-8 gap-1.5 px-2 text-primary"
+                  onClick={() => setTeamChatOpen((v) => !v)}
+                  title={teamChatOpen ? 'Fechar o chat interno da equipe' : 'Abrir o chat interno da equipe sobre esta conversa'}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  <span className="text-xs font-medium">Equipe</span>
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon" className="h-8 w-8">
@@ -1663,6 +1697,70 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
             </div>
           </div>
         </DrawerHeader>
+
+        {/* Progresso do POP e pendências do cliente — as duas barras que a
+            conversa completa mostra. */}
+        {linkedLead?.id && (
+          <div className="shrink-0">
+            <WhatsAppLeadProgressBar leadId={linkedLead.id} onClick={() => setShowLeadEdit(true)} />
+          </div>
+        )}
+        {phone && (
+          <div className="shrink-0">
+            <ClientCommitmentsBar
+              open={commitments.open}
+              overdue={commitments.overdue}
+              doneCount={commitments.done.length}
+              analyzing={commitments.analyzing}
+              onOpenPanel={() => setCommitmentsOpen((v) => !v)}
+            />
+          </div>
+        )}
+
+        {/* Lista das pendências: expande DENTRO do painel em vez de abrir outro
+            modal por cima do Drawer (dois modais brigam por foco e rolagem). */}
+        {commitmentsOpen && (
+          <div className="shrink-0 max-h-[38vh] overflow-y-auto border-b bg-muted/20 p-3 space-y-2">
+            {commitments.summary && (
+              <p className="text-[11px] leading-relaxed rounded border bg-background p-2">
+                {commitments.summary}
+              </p>
+            )}
+            {commitments.open.length === 0 && !commitments.analyzing && (
+              <p className="text-[11px] text-muted-foreground text-center py-2">
+                A IA não achou nada em aberto nesta conversa.
+              </p>
+            )}
+            {commitments.open.map((item) => (
+              <CommitmentItemCard
+                key={item.id}
+                item={item}
+                clientName={contactName || linkedLead?.lead_name || phone || ''}
+                onDone={commitments.markDone}
+                onGiveUp={commitments.markGivenUp}
+                onDismiss={commitments.dismiss}
+                onReopen={commitments.reopen}
+                onRemind={commitments.registerReminder}
+                onRemove={commitments.remove}
+                onDraftMessage={(t) => setNewMessage(t)}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Chat interno da equipe: mesma peça da conversa completa, aqui como
+            faixa dentro do painel — o Drawer já é o modal, não cabe outro. */}
+        {teamChatOpen && phone && (
+          <div className="shrink-0 h-[45vh] border-b">
+            <WhatsAppConversationTeamChat
+              phone={phone}
+              instanceName={instanceName}
+              contactName={contactName || linkedLead?.lead_name || null}
+              onClose={() => setTeamChatOpen(false)}
+              className="w-full h-full"
+            />
+          </div>
+        )}
 
         {/* AI Suggestion Banner */}
         {aiSuggestion && (
@@ -2182,6 +2280,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         leadId={linkedLead?.id || null}
         isGroup={true}
         messageParticipants={[]}
+        onOpenChat={onOpenChat ? (memberPhone) => { onOpenChange(false); onOpenChat(memberPhone); } : undefined}
       />
     )}
     <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />

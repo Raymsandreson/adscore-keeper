@@ -145,6 +145,20 @@ Antes de qualquer sugestão de código ou arquitetura, avaliar:
 
 ---
 
+## Princípios permanentes de interface
+
+Valem em QUALQUER tela, em qualquer conversa — inclusive quando o assunto for outro:
+
+1. **Nunca redirecionar, nunca abrir aba nova**: clique que abre alguma coisa (atividade, lead, caso, processo, POP, documento, feedback, avaliação, conversa, item de lista) abre em **aba lateral (Sheet)** ou em **painel de baixo pra cima (Drawer)**, por cima do que já está aberto, e o fechar devolve a pessoa exatamente de onde saiu. `window.open`, `target="_blank"`, `location.href` e `navigate()` em clique de "ver/abrir/detalhar" são proibidos. Empilhar painéis é o padrão (telão → detalhe → ficha). Exceção só com pedido explícito do usuário na hora, ou site de terceiros que não roda dentro do app. Detalhes e componentes prontos: skill `ui-sem-redirecionar`.
+
+2. **Nada sobreposto a nada**: título e informação sempre 100% legíveis; nenhum flutuante/badge/overlay cobrindo conteúdo. Detalhes: skill `ui-sem-sobreposicao`.
+
+3. **Imagem e PDF nunca abrem página**: sempre no `MediaLightbox`, dentro do app.
+
+4. **Formulário é único**: atividade usa `ActivityFormCompact`/`ActivityFullSheet`, lead usa `LeadEditDialog`. Nunca criar subformulário reduzido paralelo.
+
+---
+
 ## Princípios permanentes de processo e rigor
 
 Regras de conduta obrigatórias durante qualquer execução:
