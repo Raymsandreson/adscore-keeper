@@ -111,7 +111,22 @@ O banco é a autoridade: o trigger `trg_process_movements_marco_ordem` recarimba
 
 Ramo da Justiça dos que têm marco: **Trabalho 176 · Federal 128 · Estadual 106** (+1 sem CNJ).
 
-Salto desde 30/07: 68 → 604 processos com movimentações e 89 → 411 com marco, efeito do backfill. **913 processos seguem sem CNJ** e por isso fora de qualquer marco. `process_movement_monitors` continua **vazio** (0 linhas) e a `check-process-movements` só percorre monitores — o sync ainda não roda sozinho.
+Salto desde 30/07: 68 → 604 processos com movimentações e 89 → 411 com marco, efeito do backfill. `process_movement_monitors` continua **vazio** (0 linhas) e a `check-process-movements` só percorre monitores — o sync ainda não roda sozinho.
+
+#### O denominador não é 1.776 — é 863
+
+Dos 1.776, **913 não têm número nenhum, e a maioria não é processo**: são itens de checklist do POP gravados na mesma tabela (`lead_processes` tem dupla função). Os títulos entregam — "Benefício INSS" 614, "Onboarding" 72, "Organizar docs" 67, "Seguro de Vida" 27. Só ~15 têm número escondido no título. **Não é falha de cadastro, é a tabela guardando duas coisas.** Cobrar régua deles é erro de leitura.
+
+Dos **863 que têm número**, a forma diz o que dá para acompanhar (07/08/2026):
+
+| Forma | Qtd | Com marco | Fonte |
+|---|---|---|---|
+| CNJ | 626 | 409 | Escavador |
+| Requerimento INSS (7-12 dígitos puros) | 194 | 156 | e-mail do INSS |
+| NUP `NNNNN.NNNNNN/AAAA-DD` | 10 | 0 | **nenhuma** |
+| Indefinido | 33 | ~0 | nenhuma |
+
+Cobertura real: **565 de 863 (65%)**. Os descobertos são 216 CNJ sem movimentação (o buraco de verdade), 38 requerimentos cujo e-mail não chegou, e 43 que nunca terão régua.
 
 ### Linhas gravadas por estação (tabela inteira)
 
@@ -195,6 +210,22 @@ Solução (view `inss_requerimento_status`, migration `20260806170000`): **ancor
 
 Na ficha, processo administrativo mostra a régua do INSS em vez de "sem marco" (`df6383c`).
 
+#### NUP não é requerimento — `4445f84` (07/08/2026)
+
+A tela mandava conferir a caixa do INSS para **todo** processo sem requerimento capturado. Para 43 dos 81 isso é falso, e é o mesmo erro da mensagem antiga que culpava o Escavador: só troca o culpado.
+
+Os **10 processos no formato `NNNNN.NNNNNN/AAAA-DD`** são protocolo da administração federal, não requerimento de benefício. Provas: `inss_admin_processes.requerimento_number` tem 7 a 12 dígitos puros em **848/848** linhas — nunca esse formato; o número não aparece no `details` de nenhum requerimento nem nos **2.719** `processual_emails`; e 9 dos 10 estão em itens "Relatório de Acidente" (de 39 desses itens, **29 não têm número algum**). **Não é bug de casamento: o casamento nunca poderia acontecer.**
+
+`classificarNumeroProcesso()` em `src/lib/inssRegua.ts` separa os três, e cada um pede ação oposta:
+
+| Forma | Mensagem | Ação |
+|---|---|---|
+| `nb` | requerimento ainda não capturado | cobrar a caixa monitorada |
+| `nup` | protocolo administrativo fora do acompanhamento | consultar no órgão |
+| `indefinido` | o campo não contém número de processo | corrigir o cadastro |
+
+Exigir dígito puro em `nb` não é preciosismo: dos 199 na faixa de 7-12 dígitos, os **5 com separador** (datas, CNPJ) casam **0** vezes; dos 194 sem separador, casam 156.
+
 ### O que ainda não tem regra própria
 
 - **Criminal / inquérito policial** (POP "INQUÉRITO POLICIAL", 9 processos): o ciclo é outro — inquérito, denúncia, instrução, sentença. Nenhuma das 12 estações descreve isso direito.
@@ -210,4 +241,6 @@ Resolvidas em 06/08/2026 e removidas desta lista: fase de execução na régua, 
 3. **Gerar Petição Inicial a partir de `data_distribuicao`** quando não houver movimentação (97 processos com marco sem petição inicial)?
 4. **Estação 11 (Precatório/RPV) está zerada** — conferir se são casos que não apareceram ainda ou classificação caindo em Pagamento.
 5. **Inquérito/criminal**: criar marcos próprios ou deixar fora da régua?
-6. **Os 913 processos sem CNJ** ficam permanentemente fora da régua judicial. Decidir se entram por outra via ou se são só administrativos e já estão cobertos pela régua do INSS.
+6. ~~Os 913 processos sem CNJ~~ — **resolvido em 07/08/2026**: não são processos, são itens de checklist do POP. Ficam fora da régua porque não deveriam estar nela. Ver "O denominador não é 1.776" na seção 3.
+7. **Validar o número no cadastro** — o campo aceita hoje CNPJ, CEP, data e recado ("reprotocolar-cliente nao foi p perícia"). São 33 registros e a sangria continua. Classificar na hora de salvar (CNJ / requerimento / NUP / sem número) para no futuro; não conserta o passado.
+8. **216 CNJ válidos sem nenhuma movimentação** — separar "Escavador devolveu 404" de "nunca buscamos". Hoje aparecem iguais na tela e o tratamento é oposto: um é número inexistente ou segredo de justiça, o outro é fila de trabalho.
