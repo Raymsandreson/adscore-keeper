@@ -132,6 +132,8 @@ interface Props {
   onLoadOlderMessages?: (phone: string, instanceName?: string | null) => Promise<number>;
   /** Mensagem a destacar ao abrir (deep link vindo da ficha da atividade). */
   highlightMessageId?: string | null;
+  /** Controle de dono da conversa, injetado pela inbox (que é quem conhece a equipe). */
+  headerExtra?: React.ReactNode;
 }
 
 function parseParticipants(raw: Array<Record<string, unknown>>) {
@@ -157,7 +159,7 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
   return { mapped, lidMap, phoneNameMap };
 }
 
-export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages, highlightMessageId }: Props) {
+export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages, highlightMessageId, headerExtra }: Props) {
   const { profile, user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
@@ -2832,6 +2834,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            {headerExtra}
             <a
               href={`https://wa.me/${whatsappPhone}`}
               target="_blank"
