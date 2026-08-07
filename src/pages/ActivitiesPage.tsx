@@ -5479,7 +5479,18 @@ const ActivitiesPage = () => {
                   <div className="text-xs text-muted-foreground mt-3 space-y-1">
                     <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
                     {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
-                      <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                      <p>
+                        Última atualização por:{' '}
+                        {resolveUserName((selectedActivity as any).updated_by) || (
+                          <span
+                            className="italic"
+                            title="Alteração sem usuário associado — rotina do sistema ou manutenção feita direto no banco"
+                          >
+                            sem registro
+                          </span>
+                        )}{' '}
+                        em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}
+                      </p>
                     )}
                   </div>
                 )}

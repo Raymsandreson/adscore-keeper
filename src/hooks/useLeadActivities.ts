@@ -3,6 +3,7 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { supabase as cloudSupabase } from '@/integrations/supabase/client';
 import { remapToExternal, remapToCloud, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { getTimeOffConflicts, describeTimeOff } from '@/lib/timeOff';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -529,6 +530,9 @@ export function useLeadActivities() {
           completed_at: new Date().toISOString(),
           completed_by: extUserId,
           completed_by_name: fullName,
+          // Concluir é alteração como qualquer outra: sem carimbar o autor aqui,
+          // o trigger sobe `updated_at` e a ficha exibe "atualizada por —".
+          updated_by: extUserId,
         })
         .eq('id', id);
 
@@ -560,7 +564,7 @@ export function useLeadActivities() {
 
       const { error } = await externalSupabase
         .from('lead_activities')
-        .update({ deleted_at: new Date().toISOString() } as any)
+        .update({ deleted_at: new Date().toISOString(), updated_by: await currentExtUserId() } as any)
         .eq('id', id);
 
       if (error) throw error;

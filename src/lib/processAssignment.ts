@@ -8,6 +8,7 @@
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal, remapToCloud } from '@/integrations/supabase/uuid-remap';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { formatProcessLabel } from '@/lib/processLabel';
 
 
@@ -473,6 +474,7 @@ export async function createOrAttachAndamentoActivity(
         process_id: input.processId,
         process_title: processLabel,
         description,
+        updated_by: await currentExtUserId(),
       };
       if (input.caseId) updates.case_id = input.caseId;
       if (caseTitle) updates.case_title = caseTitle;

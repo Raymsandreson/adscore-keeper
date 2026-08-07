@@ -125,6 +125,7 @@ export async function salvarAvaliacao({
       feedback_rated_by: extId,
       feedback_rated_by_name: avaliadorNome,
       feedback_rated_at: ratedAt,
+      updated_by: extId,
     })
     .eq('id', alvo.id);
   if (error) throw error;
