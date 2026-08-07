@@ -115,6 +115,16 @@ Isto é **leitura**. Para decidir por onde ENVIAR em grupo continua valendo `res
 
 **Regressão corrigida em 07/08/2026**: a tela de Atividades montava o dialog com `instanceName={undefined}` fixo, então todo "Buscar" caía em *"Instância WhatsApp não definida para este lead"* (o Enter no campo disparava o erro mesmo com o botão desabilitado). A `find-contact-groups` também exigia `instance_name` na busca por nome, onde ele só serve de desempate; hoje ela roda no Externo (rota `external` no `functionRouter`, fallback → Cloud) e só exige instância na busca por participante.
 
+#### Instância morta no índice de grupos (07/08/2026)
+
+`whatsapp_groups_index` identifica quem viu cada grupo pelo **nome** da instância (`instance_name` é parte da PK), e nome de instância removida ou renomeada fica lá para sempre: eram **504 de 27.924 linhas** — "BRUNO DANTAS" (345, congeladas em 24/05) e "Auxílio Maternidade" (159, ainda regravadas pelo webhook). Escolher um desses grupos na busca levava a `instance not found` e roster vazio.
+
+- `get-group-participants` (Railway) **não aborta mais** quando a instância pedida não está cadastrada: segue sem preferida e usa a varredura entre instâncias que já existia ali. Cache e `chat_details` passam a ser gravados sob quem de fato respondeu — grupo com índice desatualizado refaz a varredura, em vez de espalhar o nome fóssil.
+- `whatsapp_groups_index.instance_id` (FK para `whatsapp_instances`) é preenchido por trigger case-insensitive; nem a sync nem o webhook precisaram mudar. **`instance_id IS NULL` é a medida do problema** — 504 linhas hoje.
+- `search_whatsapp_groups_by_tokens` devolve o nome **vivo** da instância quando o id resolve, e só cai no texto histórico quando ela não existe mais.
+
+Renomear as linhas órfãs para a instância atual **não** é a correção: "Bruno Wenner" (mesma pessoa, instância recriada em 31/07) não alcança aqueles grupos — quem alcança é "Raym". Quem resolve é a varredura, não o nome.
+
 ---
 
 ## Agentes IA do WhatsApp (Configurações → aba "Agentes IA")
@@ -170,6 +180,23 @@ O que existia só na conversa do WhatsApp passou a existir **em todo chat intern
 - **O que NÃO foi replicado**: o botão "Pendência" do WhatsApp registra compromisso **do cliente** (`lead_client_commitments`) — no chat interno a pendência é a própria atividade, então não existe botão equivalente.
 - **Pendente**: selo "Virou atividade" na bolha **do chat de ficha**. O vínculo mora em `team_message_activities`, cuja FK aponta para `team_messages` (chat direto), enquanto o chat de ficha grava em `team_chat_messages` — marcar a bolha lá exige migration no Externo. No chat direto o selo já funciona.
 - Código: `src/components/chat/TeamChatPanel.tsx` e `TeamDirectChatPanel.tsx`; componentes de IA em `src/components/ui/AITextActions.tsx` e `AISuggestReply.tsx`; citação em `src/lib/teamChatQuoteEvents.ts` (`formatQuotedMessages`).
+
+### Notificação nativa no celular (Web Push) — sem app de loja (07/08/2026)
+
+O alerta que aparece na barra de notificações do celular e **fica lá até ser tocado** é Web Push, não app nativo. Não existe app na App Store/Play Store e não precisa existir.
+
+**Como funciona**: `usePushNotifications` assina o aparelho e grava em `push_subscriptions` (Externo); o service worker `public/push-sw.js` exibe a notificação e trata o toque; `railway-server/src/functions/send-team-push.ts` envia com a chave privada VAPID. Mensagem de WhatsApp tem caminho próprio (`railway-server/src/lib/whatsapp-push.ts`).
+
+**Regra por sistema operacional** — é aqui que mora quase toda a confusão:
+- **Android**: funciona no Chrome **sem instalar nada**. Basta ativar uma vez naquele aparelho.
+- **iPhone/iPad**: o iOS **só** entrega Web Push para app **instalado na tela inicial** (Compartilhar → Adicionar à Tela de Início, iOS 16.4+). Fora do standalone o Safari nem expõe `PushManager`. O hook devolve `needsInstall: true` nesse caso e a interface convida a instalar em vez de mentir "não suportado neste navegador" — que era o texto antigo, sem saída nenhuma.
+- **Assinatura é por aparelho**: ativar no computador não ativa no celular. Em 07/08/2026 havia 22 assinaturas, 20 delas em desktop, 1 Android e **nenhum iPhone** — era esse o motivo real de "no celular não abre", não falha de envio.
+
+**Onde a pessoa ativa**: faixa `PushNotificationPrompt` no topo (aparece também quando a permissão já foi dada mas **este** aparelho não tem assinatura; dispensar adia 7 dias, não some pra sempre) e o cartão `PushNotificationSettings`, que vive em Configurações → Notificações **e** na página `/install`. Para a equipe, mandar só o link `/install`: ele ensina a instalar e ativa a notificação no mesmo lugar.
+
+**Toque na notificação**: cai na conversa certa via `?openTeamChat=<id>`, lido por `TeamChatDeepLink`. "Reenviar como urgente" também dispara push — antes só gravava no banco e quem estava com o app fechado nunca ficava sabendo.
+
+**Alertas que NÃO chegam com o app fechado**: metas (`useGoalNotifications`), métricas (`useMetricAlerts`), conversão (`useConversionAlerts`) e outbound (`useOutboundNotifications`) são calculados **na aba aberta**. Eles agora aparecem no celular com o app aberto — antes nem isso, porque usavam `new Notification(...)`, que **não é construível no Chrome do Android** (`TypeError: Illegal constructor`). Todos passaram a usar `showNativeNotification` (`src/lib/nativeNotification.ts`), que exibe pelo service worker. Para alcançar celular com o app **fechado**, o cálculo teria que sair da aba e virar rotina no servidor — não foi feito.
 
 ---
 

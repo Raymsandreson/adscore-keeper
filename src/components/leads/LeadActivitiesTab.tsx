@@ -288,6 +288,7 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
       status: 'concluida',
       completed_at: new Date().toISOString(),
       completed_by: extCompletedBy,
+      updated_by: extCompletedBy,
     }).eq('id', id);
 
     if (!error) {

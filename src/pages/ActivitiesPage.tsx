@@ -24,6 +24,7 @@ import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/a
 import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -483,7 +484,12 @@ const ActivitiesPage = () => {
   const [countdownRemaining, setCountdownRemaining] = useState(0);
   // Map: leadId -> activityType derived from workflow step (used in blocks view)
   const [leadWorkflowActivityTypes, setLeadWorkflowActivityTypes] = useState<Record<string, string>>({});
-  const [leadPreview, setLeadPreview] = useState<{
+  // `lead_id` carimba de qual lead veio este preview. Sem ele, uma resposta
+  // atrasada (ou uma query que falhou e caiu no catch) deixava o preview do lead
+  // ANTERIOR na tela da atividade nova — foi assim que o áudio do
+  // "CG 90- Inventário Isaías" foi parar no grupo do "CASO 244" em 06/08/2026.
+  const [leadPreviewRaw, setLeadPreview] = useState<{
+    lead_id?: string | null;
     case_type?: string | null;
     damage_description?: string | null;
     accident_date?: string | null;
@@ -494,6 +500,12 @@ const ActivitiesPage = () => {
     whatsapp_group_id?: string | null;
     lead_phone?: string | null;
   } | null>(null);
+  // Preview só vale se for do lead que está aberto agora. Preview de outro lead
+  // vira `null` (some da tela) em vez de virar destino de mensagem.
+  const leadPreview = useMemo(
+    () => (leadPreviewRaw && leadPreviewRaw.lead_id === formLeadId ? leadPreviewRaw : null),
+    [leadPreviewRaw, formLeadId],
+  );
 
   const getFilterParams = () => ({
     // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
@@ -1352,7 +1364,7 @@ const ActivitiesPage = () => {
             const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
             boardName = boardData?.name || null;
           }
-          setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
+          setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, lead_id: activity.lead_id, board_name: boardName } : null);
 
           // Contacts
           if (linkedRes.data && linkedRes.data.length > 0) {
@@ -2025,7 +2037,7 @@ const ActivitiesPage = () => {
           const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
           boardName = boardData?.name || null;
         }
-        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
+        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, lead_id: activity.lead_id, board_name: boardName } : null);
         if (linkedData.data && linkedData.data.length > 0) {
           const contactIds = linkedData.data.map(cl => cl.contact_id);
           const { data: contactsData } = await externalSupabase
@@ -2168,7 +2180,7 @@ const ActivitiesPage = () => {
           const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', data.board_id).maybeSingle();
           boardName = boardData?.name || null;
         }
-        setLeadPreview({ ...data, board_name: boardName });
+        setLeadPreview({ ...data, lead_id: leadId, board_name: boardName });
       });
     // Auto-set activity type based on lead's workflow step
     const workflowType = leadWorkflowActivityTypes[leadId];
@@ -5527,7 +5539,18 @@ const ActivitiesPage = () => {
                   <div className="text-xs text-muted-foreground mt-3 space-y-1">
                     <p>Criado por: {resolveUserName(selectedActivity.created_by) || '—'} em {format(parseISO(selectedActivity.created_at), "dd/MM/yyyy 'às' HH:mm")}</p>
                     {selectedActivity.updated_at && selectedActivity.updated_at !== selectedActivity.created_at && (
-                      <p>Última atualização por: {resolveUserName((selectedActivity as any).updated_by) || '—'} em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}</p>
+                      <p>
+                        Última atualização por:{' '}
+                        {resolveUserName((selectedActivity as any).updated_by) || (
+                          <span
+                            className="italic"
+                            title="Alteração sem usuário associado — rotina do sistema ou manutenção feita direto no banco"
+                          >
+                            sem registro
+                          </span>
+                        )}{' '}
+                        em {format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm")}
+                      </p>
                     )}
                   </div>
                 )}
@@ -5584,8 +5607,18 @@ const ActivitiesPage = () => {
                           if (!target || !pendingAudio) return;
                           setSendingPendingAudio(true);
                           try {
-                            await sendVoiceToWa(pendingAudio.url, target, formLeadId);
-                            toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
+                            // Grupo: confirma o destino no banco, pelo lead da atividade
+                            // aberta (nunca pelo state da tela — incidente 06/08/2026).
+                            let dest = target;
+                            let destLabel = label;
+                            if (leadPreview?.whatsapp_group_id) {
+                              const resolved = await resolveLeadAudioTarget(formLeadId);
+                              if (!resolved.jid) { toast.error(resolved.error); return; }
+                              dest = resolved.jid;
+                              destLabel = resolved.name ? `grupo ${resolved.name}` : 'grupo';
+                            }
+                            await sendVoiceToWa(pendingAudio.url, dest, formLeadId);
+                            toast.success(`Áudio enviado ao ${destLabel} do WhatsApp!`);
                             setPendingAudio(null);
                           } catch (e: any) {
                             toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
@@ -5717,9 +5750,18 @@ const ActivitiesPage = () => {
                                     if (!pendingAudio || !audioTarget) return;
                                     setSendingPendingAudio(true);
                                     try {
-                                      await sendVoiceToWa(pendingAudio.url, audioTarget, formLeadId);
-                                      toast.success('Áudio enviado ao grupo do WhatsApp!');
-                                      setPendingAudio(null);
+                                      // Destino vem do banco, pelo lead desta atividade. Foi
+                                      // aqui que o áudio do "CG 90- Inventário Isaías" saiu
+                                      // pro grupo do "CASO 244" em 06/08/2026: o state
+                                      // `leadPreview` ainda era do lead anterior.
+                                      const resolved = await resolveLeadAudioTarget(formLeadId);
+                                      if (!resolved.jid) {
+                                        toast.error(resolved.error);
+                                      } else {
+                                        await sendVoiceToWa(pendingAudio.url, resolved.jid, formLeadId);
+                                        toast.success(`Áudio enviado ao grupo ${resolved.name || 'do WhatsApp'}!`);
+                                        setPendingAudio(null);
+                                      }
                                     } catch (e: any) {
                                       toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
                                     } finally {

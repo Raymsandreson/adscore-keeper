@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { KanbanBoard } from './useKanbanBoards';
+import { showNativeNotification } from '@/lib/nativeNotification';
 
 export interface ConversionThreshold {
   stageFromId: string;
@@ -93,9 +94,8 @@ export const useConversionAlerts = (
       'Notification' in window && 
       settings?.pushNotificationsEnabled
     ) {
-      new Notification(title, {
+      void showNativeNotification(title, {
         body,
-        icon: '/favicon.ico',
         tag: `conversion_${title}`,
         requireInteraction: true,
       });

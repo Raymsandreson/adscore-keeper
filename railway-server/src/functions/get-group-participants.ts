@@ -172,13 +172,13 @@ async function fetchGroupInfo(baseUrl: string, token: string, groupJid: string) 
 // recover-leads-phone-55 e sync-whatsapp-group-description já tratavam isso
 // varrendo as instâncias ativas; este handler não, e uma instância fora do
 // grupo bastava para o roster vir vazio.
-async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any, groupJid: string) {
+async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any | null, groupJid: string) {
   const others = instances
-    .filter((i) => i.instance_name !== preferred.instance_name && i.is_active !== false)
+    .filter((i) => i.instance_name !== preferred?.instance_name && i.is_active !== false)
     .slice(0, MAX_INSTANCE_PROBES);
   const tried: string[] = [];
 
-  for (const inst of [preferred, ...others]) {
+  for (const inst of (preferred ? [preferred, ...others] : others)) {
     try {
       const info = await fetchGroupInfo(inst.base_url || DEFAULT_BASE, inst.instance_token, groupJid);
       if (info.participants.length > 0) {
@@ -293,12 +293,21 @@ export const handler: RequestHandler = async (req, res) => {
       .select('instance_name, owner_phone, base_url, instance_token, is_active');
     const instances = ((allInst as any[]) || []).filter((r) => r?.instance_token);
 
-    const instRow = instances.find(
-      (r) => String(r.instance_name || '').toLowerCase() === String(instance_name).toLowerCase(),
-    );
+    // Instância pedida pode não estar mais cadastrada: `whatsapp_groups_index`
+    // guarda o NOME da instância que viu o grupo, e nome de instância morta ou
+    // renomeada sobrevive ali (504 grupos em 07/08/2026 — "BRUNO DANTAS" e
+    // "Auxílio Maternidade"). Abortar aqui matava o roster de grupos que outra
+    // instância-membro alcança sem problema; segue-se sem preferida e a
+    // varredura abaixo resolve.
+    const instRow =
+      instances.find(
+        (r) => String(r.instance_name || '').toLowerCase() === String(instance_name).toLowerCase(),
+      ) || null;
     if (!instRow) {
-      return res.json({ success: false, error: `instance not found: ${instance_name}` });
+      console.warn(`[get-group-participants] instância "${instance_name}" não cadastrada — varrendo as demais`);
     }
+    // Nome de referência para ler/gravar caches quando a pedida não existe.
+    const requestedInstanceName: string = instRow?.instance_name || String(instance_name);
 
     const ownerKeys = new Set(
       ((allInst as any[]) || [])
@@ -342,8 +351,11 @@ export const handler: RequestHandler = async (req, res) => {
       // Roster vazio não vira cache: gravar [] só faria a próxima leitura
       // repetir a falha em vez de tentar de novo.
       if (rawParts.length > 0) {
+        // Grava sob quem de fato respondeu, não sob o nome pedido: cache é
+        // "grupos vistos pela instância X", e nome órfão só espalharia o fóssil.
+        // Custo: grupo com índice desatualizado refaz a varredura toda vez.
         const { error: upErr } = await ext.from('whatsapp_groups_cache').upsert({
-          instance_name: instRow.instance_name,
+          instance_name: usedInstance || requestedInstanceName,
           group_jid,
           group_name: groupName,
           participants: rawParts,
@@ -415,11 +427,11 @@ export const handler: RequestHandler = async (req, res) => {
 
     const fetchTargets = refresh ? withPhone : withPhone.filter((p) => !cachedDetails[p.phone]);
     const newDetails = await mapWithConcurrency(fetchTargets, CONCURRENCY, async (p) => {
-      const found = await fetchDetailsAcrossInstances(instances, instRow.instance_name, p.phone);
+      const found = await fetchDetailsAcrossInstances(instances, usedInstance || requestedInstanceName, p.phone);
       const d = found?.details;
       if (!d) return null;
       const row = {
-        instance_name: instRow.instance_name,
+        instance_name: found?.source_instance || usedInstance || requestedInstanceName,
         phone: p.phone,
         name: pickName(d) || p.display_name || null,
         image: d?.image || d?.imagePreview || null,
@@ -438,7 +450,7 @@ export const handler: RequestHandler = async (req, res) => {
         lead_field15: d?.lead_field15 || null,
         lead_field16: d?.lead_field16 || null,
         common_groups: parseCommonGroups(d?.common_groups),
-        raw: { ...d, __source_instance: found?.source_instance || instRow.instance_name },
+        raw: { ...d, __source_instance: found?.source_instance || usedInstance || requestedInstanceName },
         fetched_at: new Date().toISOString(),
       };
       const { error } = await ext.from('whatsapp_chat_details_cache').upsert(row, { onConflict: 'instance_name,phone' });

@@ -10,6 +10,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Command, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { Loader2, AlertTriangle, ArrowRight, Filter, Check, ChevronsUpDown } from 'lucide-react';
 import { toast } from 'sonner';
@@ -141,6 +142,8 @@ export function ReassignActivitiesDialog({ open, onOpenChange, member, candidate
         const targetExt = await remapToExternal(targetUserId);
         if (!targetExt) throw new Error('Não foi possível mapear o membro destino.');
         const target = targetCandidates.find((c) => c.user_id === targetUserId);
+        // Quem está reatribuindo — sem isso o lote inteiro fica "atualizado por —"
+        const actorExt = await currentExtUserId();
 
         // Buscar IDs (Supabase update com .in evita problemas de or/range)
         let idsQuery = externalSupabase
@@ -169,6 +172,7 @@ export function ReassignActivitiesDialog({ open, onOpenChange, member, candidate
               .update({
                 assigned_to: targetExt,
                 assigned_to_name: target?.full_name || target?.email || null,
+                updated_by: actorExt,
               })
               .in('id', chunk);
             if (upErr) throw upErr;

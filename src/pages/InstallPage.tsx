@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, Smartphone, Check, Share, MoreVertical } from 'lucide-react';
+import { PushNotificationSettings } from '@/components/chat/PushNotificationSettings';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -36,15 +37,22 @@ export default function InstallPage() {
     setDeferredPrompt(null);
   };
 
+  // Instalado é metade do caminho: sem assinar o push o celular continua mudo.
+  // Por isso o cartão de notificações vem aqui, no passo seguinte natural.
   if (isStandalone) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-        <div className="text-center space-y-4 max-w-sm">
+        <div className="text-center space-y-4 max-w-sm w-full">
           <div className="h-16 w-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
             <Check className="h-8 w-8 text-primary" />
           </div>
           <h1 className="text-2xl font-bold">App instalado!</h1>
-          <p className="text-muted-foreground">Você já está usando o WhatsJUD como app.</p>
+          <p className="text-muted-foreground">
+            Falta um passo: ativar as notificações neste aparelho.
+          </p>
+          <div className="text-left">
+            <PushNotificationSettings />
+          </div>
           <Button onClick={() => window.location.href = '/'} className="w-full">
             Ir para o início
           </Button>
@@ -115,6 +123,12 @@ export default function InstallPage() {
             </ol>
           </div>
         )}
+
+        {/* No Android o push funciona sem instalar — quem só quer o alerta
+            resolve aqui mesmo. No iPhone o cartão explica que falta instalar. */}
+        <div className="text-left">
+          <PushNotificationSettings />
+        </div>
 
         <Button variant="ghost" onClick={() => window.location.href = '/'} className="w-full text-muted-foreground">
           Continuar no navegador
