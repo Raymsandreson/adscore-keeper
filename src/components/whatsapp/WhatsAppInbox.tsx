@@ -196,6 +196,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     instanceStats: _allInstanceStats,
     statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, claimConversation, transferConversation, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
     loadMoreConversations, hasMoreConversations, loadOlderConversationMessages,
+    loadConversationMessagesAround, loadConversationMessagesForward,
   } = useWhatsAppMessages(selectedInstanceId, lockInstanceName);
 
   // Filtra instâncias/conversas/stats por aba (UazAPI x WhatsJUD API).
@@ -2248,6 +2249,8 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   onOpenChat={handleOpenChatByPhone}
                   onClearConversation={clearConversation}
                   onLoadOlderMessages={loadOlderConversationMessages}
+                  onLoadMessagesAround={loadConversationMessagesAround}
+                  onLoadMessagesForward={loadConversationMessagesForward}
                   highlightMessageId={highlightMessageId}
                 />
               )}
@@ -2342,6 +2345,8 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   onOpenChat={handleOpenChatByPhone}
                   onClearConversation={clearConversation}
                   onLoadOlderMessages={loadOlderConversationMessages}
+                  onLoadMessagesAround={loadConversationMessagesAround}
+                  onLoadMessagesForward={loadConversationMessagesForward}
                   highlightMessageId={highlightMessageId}
                 />
               ) : (
