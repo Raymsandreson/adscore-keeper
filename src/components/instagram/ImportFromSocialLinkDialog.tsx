@@ -66,6 +66,13 @@ interface ExtractedData {
     victim_age?: string;
     damage_description?: string;
   }> | null;
+  // Campos que a IA devolve quando o alvo é contato...
+  instagram_username?: string | null;
+  // ...ou atividade
+  titulo?: string | null;
+  descricao?: string | null;
+  prioridade?: string | null;
+  prazo_sugerido?: string | null;
 }
 
 // Convert date from DD/MM/YYYY to YYYY-MM-DD (ISO)
@@ -187,6 +194,9 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [activityPriority, setActivityPriority] = useState('normal');
   const [activityDeadline, setActivityDeadline] = useState('');
   const [activityAssignedTo, setActivityAssignedTo] = useState('');
+  // @usuário detectado pela IA quando o alvo é Contato (o app casa contatos por
+  // instagram_username em vários pontos, então vale gravar)
+  const [contactInstagram, setContactInstagram] = useState('');
 
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
@@ -330,7 +340,21 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
             ? (extracted.nome || `Lead ${detectPlatform(url)}`)
             : targetType === 'contact'
               ? (extracted.nome || extracted.victim_name || '')
-              : (captionTitle || extracted.interesse || `Analisar post do ${detectPlatform(url)}`);
+              : (extracted.titulo || captionTitle || extracted.interesse || `Analisar post do ${detectPlatform(url)}`);
+
+        if (targetType === 'contact') {
+          setContactInstagram((extracted.instagram_username || '').replace('@', '').trim());
+        }
+
+        // Atividade: a IA sugere prioridade e prazo. Só aceita valores válidos.
+        if (targetType === 'activity') {
+          const suggestedPriority = (extracted.prioridade || '').toLowerCase();
+          if (['baixa', 'normal', 'alta', 'urgente'].includes(suggestedPriority)) {
+            setActivityPriority(suggestedPriority);
+          }
+          const suggestedDeadline = convertDateToISO(extracted.prazo_sugerido || '');
+          if (suggestedDeadline) setActivityDeadline(suggestedDeadline);
+        }
 
         setFormData({
           ...initialFormData,
@@ -342,7 +366,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           visit_state: extracted.estado?.toUpperCase() || '',
           visit_region: stateToRegionMap[extracted.estado?.toUpperCase() || ''] || '',
           case_type: mapCaseType(extracted.tipo_caso || ''),
-          notes: noteParts,
+          notes: targetType === 'activity' && extracted.descricao ? extracted.descricao : noteParts,
           news_link: url.trim() || '',
           victim_name: extracted.victim_name || extracted.nome || '',
           victim_age: extracted.victim_age || '',
@@ -648,6 +672,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           city: formData.visit_city || null,
           state: formData.visit_state || null,
           notes: formData.notes || null,
+          instagram_username: contactInstagram || null,
+          instagram_url: contactInstagram ? `https://instagram.com/${contactInstagram}` : null,
           created_by: extCreatedBy,
           action_source: 'social_link_import',
           action_source_detail: url.trim() || null,
@@ -869,6 +895,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setActivityPriority('normal');
     setActivityDeadline('');
     setActivityAssignedTo('');
+    setContactInstagram('');
     onOpenChange(false);
   };
 
