@@ -26,6 +26,8 @@ import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/Accid
 import { useAuthContext } from '@/contexts/AuthContext';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { BridgeContactCard } from './BridgeContactCard';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 
 interface ImportFromSocialLinkDialogProps {
   open: boolean;
@@ -177,13 +179,22 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   const [isGeneratingReplies, setIsGeneratingReplies] = useState(false);
   const [regeneratingContact, setRegeneratingContact] = useState<string | null>(null);
 
+  // Campos exclusivos do alvo "Atividade" (não usam o AccidentLeadForm)
+  const { types: activityTypes } = useActivityTypes();
+  // Sem default hardcoded: no Externo não existe a key seed `tarefa` — os tipos
+  // são linhas custom_*. Gravar 'tarefa' cria atividade com tipo órfão.
+  const [activityType, setActivityType] = useState('');
+  const [activityPriority, setActivityPriority] = useState('normal');
+  const [activityDeadline, setActivityDeadline] = useState('');
+  const [activityAssignedTo, setActivityAssignedTo] = useState('');
+
   // Lead form data (used in review step)
   const [formData, setFormData] = useState<AccidentLeadFormData>({ ...initialFormData });
   // Board selection
   const [boards, setBoards] = useState<Array<{ id: string; name: string; stages?: any[] }>>([]);
   const [selectedBoardId, setSelectedBoardId] = useState<string>('');
   // Team profiles for acolhedor selector
-  const [teamMembers, setTeamMembers] = useState<{ id: string; full_name: string | null; email: string | null }[]>([]);
+  const [teamMembers, setTeamMembers] = useState<{ id: string; user_id: string | null; full_name: string | null; email: string | null }[]>([]);
 
   // When board is selected, fetch group settings and auto-set lead_name
   const handleBoardChange = async (boardId: string) => {
@@ -231,7 +242,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   // Load boards and team members when entering review step
   useEffect(() => {
     if (step === 'review') {
-      if (boards.length === 0) {
+      if (boards.length === 0 && targetType === 'lead') {
         externalSupabase.from('kanban_boards').select('id, name, stages, board_type').order('display_order').then(({ data }) => {
           if (data) {
             setBoards(data.filter(b => b.board_type === 'funnel' || !b.board_type).map(b => ({ id: b.id, name: b.name, stages: Array.isArray((b as any).stages) ? (b as any).stages : [] })));
@@ -241,11 +252,26 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
       // Always reload team members to ensure fresh data
       supabase.from('profiles').select('id, user_id, full_name, email').order('full_name').then(({ data }) => {
         if (data) {
-          setTeamMembers(data.map(p => ({ id: p.id, full_name: p.full_name, email: p.email })));
+          setTeamMembers(data.map(p => ({ id: p.id, user_id: p.user_id, full_name: p.full_name, email: p.email })));
         }
       });
+      // Atividade nasce atribuída a quem está importando
+      if (targetType === 'activity' && !activityAssignedTo && user?.id) {
+        setActivityAssignedTo(user.id);
+      }
     }
-  }, [step]);
+  }, [step, targetType]);
+
+  // Default do tipo de atividade: "Tarefa" pelo rótulo (a key varia por banco),
+  // com fallback pro primeiro tipo ativo.
+  useEffect(() => {
+    if (targetType !== 'activity' || activityType || activityTypes.length === 0) return;
+    const actives = activityTypes.filter(t => t.is_active);
+    if (actives.length === 0) return;
+    const norm = (s: string) => s.normalize('NFD').replace(/\p{Diacritic}/gu, '').trim().toLowerCase();
+    const tarefa = actives.find(t => norm(t.label) === 'tarefa');
+    setActivityType((tarefa || actives[0]).key);
+  }, [targetType, activityTypes, activityType]);
 
   const detectPlatform = (u: string) => {
     if (u.includes('instagram.com')) return 'Instagram';
@@ -295,9 +321,20 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           extracted.tags?.length ? `Tags: ${extracted.tags.join(', ')}` : null,
         ].filter(Boolean).join('\n');
 
+        // O campo lead_name é reaproveitado como "nome do contato" e "título da
+        // atividade". Cada alvo precisa de um default próprio — "Lead Instagram"
+        // como título de atividade não faz sentido nenhum.
+        const captionTitle = caption.trim().split('\n').map(s => s.trim()).find(Boolean)?.slice(0, 120) || '';
+        const defaultName =
+          targetType === 'lead'
+            ? (extracted.nome || `Lead ${detectPlatform(url)}`)
+            : targetType === 'contact'
+              ? (extracted.nome || extracted.victim_name || '')
+              : (captionTitle || extracted.interesse || `Analisar post do ${detectPlatform(url)}`);
+
         setFormData({
           ...initialFormData,
-          lead_name: extracted.nome || `Lead ${detectPlatform(url)}`,
+          lead_name: defaultName,
           lead_phone: extracted.telefone || '',
           lead_email: extracted.email || '',
           source: detectPlatform(url).toLowerCase(),
@@ -317,8 +354,8 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           main_company: extracted.main_company || '',
           sector: extracted.sector || '',
         });
-        // Store additional victims if detected
-        if (extracted.additional_victims?.length) {
+        // Store additional victims if detected (só faz sentido para lead)
+        if (targetType === 'lead' && extracted.additional_victims?.length) {
           setAdditionalVictims(extracted.additional_victims.filter(v => v.victim_name).map(v => ({
             victim_name: v.victim_name || '',
             victim_age: v.victim_age,
@@ -330,7 +367,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
         const accidentDate = convertDateToISO(extracted.accident_date || '');
         const city = extracted.cidade || '';
         const state = extracted.estado || '';
-        if (victimName.trim() && (accidentDate.trim() || city.trim())) {
+        if (targetType === 'lead' && victimName.trim() && (accidentDate.trim() || city.trim())) {
           let query = externalSupabase.from('leads').select('id, lead_name').limit(5);
           if (victimName.trim()) query = query.ilike('victim_name', `%${victimName.trim()}%`);
           if (accidentDate.trim()) query = query.eq('accident_date', accidentDate.trim());
@@ -360,18 +397,36 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
   };
 
   const handleSave = async () => {
-    // Validate required fields
-    if (!formData.lead_name.trim()) {
-      toast.error('O nome do lead é obrigatório');
-      return;
-    }
-    if (!selectedBoardId) {
-      toast.error('O funil de vendas é obrigatório');
-      return;
-    }
-    if (!formData.acolhedor?.trim()) {
-      toast.error('O acolhedor é obrigatório');
-      return;
+    // Validação por alvo. Funil e acolhedor são campos exclusivos de lead — o
+    // seletor de funil nem é renderizado para contato/atividade, então exigi-los
+    // sempre travava o save desses dois alvos.
+    if (targetType === 'lead') {
+      if (!formData.lead_name.trim()) {
+        toast.error('O nome do lead é obrigatório');
+        return;
+      }
+      if (!selectedBoardId) {
+        toast.error('O funil de vendas é obrigatório');
+        return;
+      }
+      if (!formData.acolhedor?.trim()) {
+        toast.error('O acolhedor é obrigatório');
+        return;
+      }
+    } else if (targetType === 'contact') {
+      if (!formData.lead_name.trim()) {
+        toast.error('O nome do contato é obrigatório');
+        return;
+      }
+    } else if (targetType === 'activity') {
+      if (!formData.lead_name.trim()) {
+        toast.error('O título da atividade é obrigatório');
+        return;
+      }
+      if (!activityType) {
+        toast.error('O tipo da atividade é obrigatório');
+        return;
+      }
     }
     setIsSubmitting(true);
     setStep('saving');
@@ -585,6 +640,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
 
         return; // Save concluído do ponto de vista do usuário
       } else if (targetType === 'contact') {
+        const extCreatedBy = await remapToExternal(user?.id);
         const { error } = await externalSupabase.from('contacts').insert({
           full_name: formData.lead_name || `Contato ${detectPlatform(url)}`,
           phone: formData.lead_phone || null,
@@ -592,16 +648,33 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
           city: formData.visit_city || null,
           state: formData.visit_state || null,
           notes: formData.notes || null,
+          created_by: extCreatedBy,
+          action_source: 'social_link_import',
+          action_source_detail: url.trim() || null,
         });
         if (error) throw error;
         toast.success('Contato criado com sucesso!');
       } else if (targetType === 'activity') {
+        const assignedProfile = teamMembers.find(m => m.user_id === activityAssignedTo);
+        const [extCreatedBy, extAssignedTo] = await Promise.all([
+          remapToExternal(user?.id),
+          remapToExternal(activityAssignedTo || user?.id || null),
+        ]);
+        const descriptionParts = [
+          formData.notes || null,
+          url.trim() ? `Post: ${url.trim()}` : null,
+        ].filter(Boolean).join('\n\n');
+
         const { error } = await externalSupabase.from('lead_activities').insert({
           title: formData.lead_name || `Atividade via ${detectPlatform(url)}`,
-          description: formData.notes || null,
-          activity_type: 'tarefa',
+          description: descriptionParts || null,
+          activity_type: activityType,
           status: 'pendente',
-          priority: 'normal',
+          priority: activityPriority,
+          deadline: activityDeadline || null,
+          assigned_to: extAssignedTo,
+          assigned_to_name: assignedProfile?.full_name || assignedProfile?.email || null,
+          created_by: extCreatedBy,
         });
         if (error) throw error;
         toast.success('Atividade criada com sucesso!');
@@ -792,6 +865,10 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
     setAdditionalVictims([]);
     setBridgeReplies({});
     setIsGeneratingReplies(false);
+    setActivityType('');
+    setActivityPriority('normal');
+    setActivityDeadline('');
+    setActivityAssignedTo('');
     onOpenChange(false);
   };
 
@@ -1070,7 +1147,7 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
             )}
 
             {/* Additional Victims Alert */}
-            {additionalVictims.length > 0 && (
+            {targetType === 'lead' && additionalVictims.length > 0 && (
               <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 space-y-2">
                 <p className="text-sm font-medium flex items-center gap-2">
                   <Users className="h-4 w-4 text-amber-600" />
@@ -1099,13 +1176,142 @@ export function ImportFromSocialLinkDialog({ open, onOpenChange, onSuccess, init
               </div>
             )}
 
-            {/* AccidentLeadForm - same as CreateLeadFromSearchDialog */}
-            <AccidentLeadForm
-              formData={formData}
-              onChange={handleFormChange}
-              onOpenExtractor={() => {}}
-              teamMembers={teamMembers}
-            />
+            {/* Formulário do alvo escolhido */}
+            {targetType === 'lead' && (
+              <AccidentLeadForm
+                formData={formData}
+                onChange={handleFormChange}
+                onOpenExtractor={() => {}}
+                teamMembers={teamMembers}
+              />
+            )}
+
+            {targetType === 'contact' && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Nome do contato *</Label>
+                  <Input
+                    value={formData.lead_name}
+                    onChange={(e) => handleFormChange({ lead_name: e.target.value })}
+                    placeholder="Nome completo"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Telefone</Label>
+                    <Input
+                      value={formData.lead_phone}
+                      onChange={(e) => handleFormChange({ lead_phone: e.target.value })}
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>E-mail</Label>
+                    <Input
+                      value={formData.lead_email}
+                      onChange={(e) => handleFormChange({ lead_email: e.target.value })}
+                      placeholder="email@exemplo.com"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-[1fr_100px] gap-3">
+                  <div className="space-y-2">
+                    <Label>Cidade</Label>
+                    <Input
+                      value={formData.visit_city}
+                      onChange={(e) => handleFormChange({ visit_city: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>UF</Label>
+                    <Input
+                      value={formData.visit_state}
+                      maxLength={2}
+                      onChange={(e) => handleFormChange({ visit_state: e.target.value.toUpperCase() })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Observações</Label>
+                  <Textarea
+                    value={formData.notes}
+                    onChange={(e) => handleFormChange({ notes: e.target.value })}
+                    rows={4}
+                  />
+                </div>
+              </div>
+            )}
+
+            {targetType === 'activity' && (
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Título da atividade *</Label>
+                  <Input
+                    value={formData.lead_name}
+                    onChange={(e) => handleFormChange({ lead_name: e.target.value })}
+                    placeholder="O que precisa ser feito"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Tipo</Label>
+                    <Select value={activityType} onValueChange={setActivityType}>
+                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        {activityTypes.length > 0
+                          ? activityTypes.filter(t => t.is_active).map(t => (
+                              <SelectItem key={t.key} value={t.key}>{t.label}</SelectItem>
+                            ))
+                          : <SelectItem value="tarefa">Tarefa</SelectItem>}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Prioridade</Label>
+                    <Select value={activityPriority} onValueChange={setActivityPriority}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="baixa">Baixa</SelectItem>
+                        <SelectItem value="normal">Normal</SelectItem>
+                        <SelectItem value="alta">Alta</SelectItem>
+                        <SelectItem value="urgente">Urgente</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label>Prazo</Label>
+                    <Input
+                      type="date"
+                      value={activityDeadline}
+                      onChange={(e) => setActivityDeadline(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Responsável</Label>
+                    <Select value={activityAssignedTo} onValueChange={setActivityAssignedTo}>
+                      <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                      <SelectContent>
+                        {teamMembers.filter(m => m.user_id).map(m => (
+                          <SelectItem key={m.id} value={m.user_id as string}>
+                            {m.full_name || m.email || m.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Descrição</Label>
+                  <Textarea
+                    value={formData.notes}
+                    onChange={(e) => handleFormChange({ notes: e.target.value })}
+                    rows={5}
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
