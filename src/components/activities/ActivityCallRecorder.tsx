@@ -10,6 +10,7 @@ import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
 // O `export { … } from` da linha ~139 não cria binding local — sem este import,
 // as chamadas de stripHtmlToText abaixo viram ReferenceError em runtime.
 import { stripHtmlToText } from './richTextFields';
@@ -618,16 +619,28 @@ export function ActivityCallRecorder({ context, onFields, activityId, leadId, ca
     if (!recordingUrl || !waTarget) return;
     setSendingToWa(true);
     try {
-      await sendVoiceToWa(recordingUrl, waTarget, leadId);
+      // A prop `groupJid` vem do state da tela de atividades e pode estar
+      // atrasada em relação à atividade aberta (incidente 06/08/2026: áudio do
+      // "CG 90- Inventário Isaías" no grupo do "CASO 244"). Ela só habilita o
+      // botão; quem manda no destino é o lead, consultado agora.
+      let dest = waTarget;
+      let destLabel = waTargetLabel;
+      if (groupJid) {
+        const resolved = await resolveLeadAudioTarget(leadId);
+        if (!resolved.jid) { toast.error(resolved.error); return; }
+        dest = resolved.jid;
+        destLabel = resolved.name ? `grupo ${resolved.name}` : 'grupo';
+      }
+      await sendVoiceToWa(recordingUrl, dest, leadId);
       setSentToWa(true);
-      toast.success(`Áudio enviado ao ${waTargetLabel} do WhatsApp!`);
+      toast.success(`Áudio enviado ao ${destLabel} do WhatsApp!`);
     } catch (e: any) {
       console.error('sendAudioToWa error', e);
       toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
     } finally {
       setSendingToWa(false);
     }
-  }, [recordingUrl, waTarget, waTargetLabel, leadId]);
+  }, [recordingUrl, waTarget, waTargetLabel, groupJid, leadId]);
 
 
 
