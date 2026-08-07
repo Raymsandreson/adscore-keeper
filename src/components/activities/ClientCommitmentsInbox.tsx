@@ -32,6 +32,7 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useClientCommitmentsInbox } from '@/hooks/useClientCommitmentsInbox';
+import { useConversationDisplayNames, conversationDisplayName } from '@/hooks/useConversationDisplayNames';
 import { ensureRemapCache, remapToCloudSync, remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOverdue } from '@/lib/clientCommitments';
 import {
@@ -102,6 +103,16 @@ export function ClientCommitmentsInbox({
   const [trocandoDono, setTrocandoDono] = useState<InboxCommitment | null>(null);
   const [novoDonoId, setNovoDonoId] = useState('');
 
+  /**
+   * Nome da conversa (grupo ou contato). Sem isto a lista mostrava o JID cru
+   * do grupo quando a pendência não tinha lead vinculado.
+   */
+  const nomesResolvidos = useConversationDisplayNames(useMemo(() => items.map((i) => i.phone), [items]));
+  const nomeDaConversa = useCallback(
+    (i: InboxCommitment) => conversationDisplayName(i.phone, i.lead_name, nomesResolvidos),
+    [nomesResolvidos]
+  );
+
   const nomePorId = useMemo(() => {
     const m: Record<string, string> = {};
     for (const t of teamOptions) if (t.full_name) m[t.user_id] = t.full_name;
@@ -135,8 +146,10 @@ export function ClientCommitmentsInbox({
   const casaBusca = useCallback((i: InboxCommitment) => {
     const termo = busca.trim().toLowerCase();
     if (!termo) return true;
-    return `${i.title} ${i.lead_name || ''} ${i.phone || ''}`.toLowerCase().includes(termo);
-  }, [busca]);
+    // O nome do grupo entra na busca: quem procura "Denisson" não sabe o JID.
+    const nome = nomeDaConversa(i);
+    return `${i.title} ${i.lead_name || ''} ${nome} ${i.phone || ''}`.toLowerCase().includes(termo);
+  }, [busca, nomeDaConversa]);
 
   /**
    * A fila de cobrança: o que ainda não virou atividade. As contagens do filtro
@@ -407,6 +420,7 @@ export function ClientCommitmentsInbox({
                     <InboxCard
                       key={item.id}
                       item={item}
+                      nomeCliente={nomeDaConversa(item)}
                       donoNome={resolveNome(item.owner_user_id)}
                       onAbrirConversa={abrirConversa}
                       onResolver={abrirResolver}
@@ -475,6 +489,7 @@ export function ClientCommitmentsInbox({
                         <InboxCard
                           key={item.id}
                           item={item}
+                          nomeCliente={nomeDaConversa(item)}
                           donoNome={resolveNome(item.owner_user_id)}
                           onAbrirConversa={abrirConversa}
                           onResolver={abrirResolver}
@@ -507,7 +522,7 @@ export function ClientCommitmentsInbox({
           open={!!conversaAberta}
           onOpenChange={(v) => { if (!v) fecharConversa(); }}
           phone={conversaAberta.phone}
-          contactName={conversaAberta.lead_name}
+          contactName={nomeDaConversa(conversaAberta)}
           instanceName={conversaAberta.instance_name}
           hasLead={!!conversaAberta.lead_id}
           hasContact={!!conversaAberta.contact_id}
@@ -598,11 +613,13 @@ export function ClientCommitmentsInbox({
 }
 
 function InboxCard({
-  item, donoNome, onAbrirConversa, onResolver, onDismiss, onCreateActivity,
+  item, donoNome, nomeCliente, onAbrirConversa, onResolver, onDismiss, onCreateActivity,
   onOpenActivity, onTrocarDono,
 }: {
   item: InboxCommitment;
   donoNome: string | null;
+  /** Nome do grupo/contato da conversa — nunca o JID. */
+  nomeCliente: string;
   onAbrirConversa: (i: InboxCommitment) => void;
   onResolver: (i: InboxCommitment) => void;
   onDismiss: (id: string) => Promise<void>;
@@ -632,7 +649,7 @@ function InboxCard({
         )}
 
         <p className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1">
-          <span className="font-medium text-foreground/70">{item.lead_name || item.phone}</span>
+          <span className="font-medium text-foreground/70">{nomeCliente}</span>
           {item.origin === 'ia' && (
             <span className="inline-flex items-center gap-1 text-primary">
               <Sparkles className="h-3 w-3" /> detectada na conversa

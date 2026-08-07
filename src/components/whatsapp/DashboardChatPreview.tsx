@@ -1962,7 +1962,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
               <CommitmentItemCard
                 key={item.id}
                 item={item}
-                clientName={contactName || linkedLead?.lead_name || phone || ''}
+                clientName={headerTitle || ''}
                 onDone={commitments.markDone}
                 onGiveUp={commitments.markGivenUp}
                 onDismiss={commitments.dismiss}
