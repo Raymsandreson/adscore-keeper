@@ -750,6 +750,8 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  /** Nada vinculado ainda — só aí os atalhos de Lead/Caso/Contato fazem sentido. */
+  const semVinculo = !props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId;
   // availableCases traz só os 500 casos mais recentes (há 1500+) — casos antigos
   // (ex.: CASO 225) não apareciam na busca. Ao digitar, busca também no servidor.
   const [remoteCases, setRemoteCases] = useState<{ id: string; case_number: string; title: string; lead_id: string | null }[]>([]);
@@ -904,9 +906,9 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     <div className="space-y-3">
       {/* Título foi movido para o cabeçalho fixo (editável inline com ícone de lápis). */}
 
-      {/* Vínculos (Lead/Caso/Processo/Contato/Sistema) ficam APENAS no cabeçalho fixo da atividade
+      {/* Vínculos (Lead/Caso/Processo/Contato) ficam APENAS no cabeçalho fixo da atividade
           para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,
-          como atalho inicial. */}
+          como atalho inicial. "Interna" é a exceção — ver o comentário abaixo. */}
       {props.setFormCampaignId && (
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Vincular:</span>
@@ -917,9 +919,13 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           />
         </div>
       )}
-      {!props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId && (
+      {/* "Interna" fica FORA do teste de vínculo: ela não é um vínculo, é o que
+          dispensa o POP obrigatório. Escondê-la quando já há lead/contato (caso
+          de toda atividade aberta a partir de um cliente — pendência, lead,
+          conversa) deixava o formulário travado no "Selecione um POP" sem saída. */}
+      {(semVinculo || props.setFormIsSystem || props.setFormIsManagement) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          {!props.formIsSystem && !props.formIsManagement && (
+          {semVinculo && !props.formIsSystem && !props.formIsManagement && (
             <>
               <Button type="button" variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1" onClick={() => setLinkLeadOpen(true)}>
                 <Building2 className="h-3 w-3" /> Lead
@@ -934,7 +940,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           )}
           {(props.setFormIsSystem || props.setFormIsManagement) && (
             <>
-              {!props.formIsSystem && !props.formIsManagement && <span className="text-muted-foreground text-xs">|</span>}
+              {semVinculo && !props.formIsSystem && !props.formIsManagement && <span className="text-muted-foreground text-xs">|</span>}
               {props.setFormIsSystem && (
                 <Button
                   type="button"
@@ -953,7 +959,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               )}
             </>
           )}
-          {!props.formIsSystem && !props.formIsManagement && (
+          {semVinculo && !props.formIsSystem && !props.formIsManagement && (
             <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 w-full mt-1">
               <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
               <span className="text-[11px] text-amber-700 dark:text-amber-300">
