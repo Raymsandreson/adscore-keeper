@@ -198,7 +198,7 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 **Propósito**: ranking ao vivo do time (auto-atualiza a cada 45s), feito pra rodar em TV/fullscreen.
 
-- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → **4º Qualidade ⭐ (3+ notas)** → 5º Passos → 6º Itens do Checklist → 7º Concluídas → 8º Menos Atrasadas → 9º Menos Pendências do Cliente em aberto → 10º Média ⭐ (desempate) → 11º Menos Feedbacks sem Avaliar → 12º Mais Tempo Ativo → 13º Menos Ocioso → 14º Resposta no Chat.
+- Ordenação exibida: 1º Status Esperado → 2º Fases → 3º Objetivos → **4º Qualidade ⭐ (3+ notas)** → 5º Passos → 6º Itens do Checklist → 7º Concluídas → 8º Menos Atrasadas → **9º Mais Pendências do Cliente Feitas** → **10º Menos Pendências Faltando** → 11º Média ⭐ (desempate) → 12º Menos Feedbacks sem Avaliar → 13º Mais Tempo Ativo → 14º Menos Ocioso → 15º Resposta no Chat.
 - Seletor de time, período "Hoje"/"Semana"/"Mês", "Atualizar", "Modo TV" (tela cheia).
 - Clique num assessor — abre o coach de desempenho ("Analisar & mandar mensagem"). No cabeçalho do coach os seis números também são clicáveis e abrem o detalhe (abaixo).
 
@@ -224,6 +224,14 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 - **A quem a pendência é creditada** (cascata, o primeiro que existir): responsável do processo mais recente do lead (`lead_processes.responsible_user_id`) → responsável processual do lead (`leads.processual_responsible_id`) → último assessor que trabalhou o lead (`lead_activities.assigned_to`). **Pendência sem nenhum dos três não conta para ninguém.**
 - **Limite medido antes de aplicar (06/08/2026)**: das 179 pendências abertas, só **40 (22%)** chegam a ter dono por essa cascata — 7 pelo responsável processual, o resto pelo assessor da atividade. O critério é conservador por construção: só desempata onde o caso tem responsável definido, e passa a medir mais conforme o cadastro de responsável melhorar, sem precisar mexer na função.
 - O chip é **clicável** e abre o `RankDetailSheet` (`p_criterio = 'pend_cliente'`) com cliente, o que ficou de fazer, há quantos dias foi combinado, quantas cobranças e o trecho em que ele prometeu. Conferido em 06/08/2026: o painel da Maria Lydia trouxe 14 itens, o mesmo número do chip.
+
+**"pend feitas" e "pend faltam" — as duas pontas da pendência** (desde 07/08/2026, migration `20260807200000`):
+- O card passa a mostrar **dois números logo depois de "atr"**: `pend feitas` (verde) e `pend faltam` (ciano). Antes só o backlog aparecia — e no **Modo Corrida** nem isso.
+- **pend feitas (9º critério)** = pendências marcadas como cumpridas (`status = 'feito'`) com `done_at` **dentro do período** do telão. Mais é melhor. **pend faltam (10º critério)** = o backlog em aberto de sempre, sem filtro de período. Menos é melhor. Os dois entram na ordenação logo depois de "menos atrasadas".
+- **O dono das duas contagens agora sai de `vw_client_commitments_owner`** (a mesma view da caixa de pendências), não mais da cascata inline de 3 degraus: `assigned_to` (troca manual) → responsável do processo → responsável processual do lead → último assessor → dono da conversa → dono da instância. Consequência prática: **trocar o responsável de uma pendência na caixa agora move a contagem no telão**. Medido em 07/08/2026: das 441 pendências abertas, 87 tinham dono pela cascata antiga e **162 têm pela view**.
+- **Por que o crédito é do dono do caso e não de `done_by`**: das 325 pendências cumpridas, **315 foram marcadas pela IA** ao ver a conversa (`done_by_name = 'IA (visto na conversa)'`, `done_by` nulo). Creditar por quem clicou zeraria o critério.
+- O chip novo abre o `RankDetailSheet` (`p_criterio = 'pend_feitas'`) com o que o cliente cumpriu, em quantos dias, quantas cobranças foram precisas, quem deu a baixa e o trecho da conversa.
+- Conferido em 07/08/2026 com os dois lados na mesma query: chip e lista batem 1:1 em todas as pessoas (Maria Lydia 17 feitas / 52 faltando, Natasha 10/6, Vanessa 9/12, Abderaman 8/5…).
 
 **Colunas "⭐" e "s/ avaliar" — o feedback entra no ranking** (desde 05/08/2026, migration `20260805120000`):
 - **⭐ (8º critério)** = média das notas que a pessoa **recebeu como responsável** (`lead_activities.feedback_rating`), creditadas por `feedback_rated_at` **dentro do período** do telão — mesmo filtro que o `aprov_pct` já usava. Não é a nota que ela deu nos outros. Sem nota no período mostra "—" e o critério não desempata (`nulls last`), então ninguém é penalizado por ainda não ter sido avaliado.

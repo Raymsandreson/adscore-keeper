@@ -56,6 +56,8 @@ interface RankRow {
   notas_n: number;
   /** Feedbacks que ela deveria avaliar e não avaliou (backlog total). */
   fb_pendentes: number;
+  /** Pendências do cliente cumpridas no período, nos casos sob responsabilidade dela. */
+  pend_feitas: number;
   /** Pendências do cliente em aberto sob responsabilidade da pessoa (backlog total). */
   pend_cliente: number;
   chat_resp_seg: number | null;
@@ -933,17 +935,19 @@ export default function TvAtividadesPage() {
           <span className="text-white/30">·</span>
           <span>8º <span className="text-rose-400">Menos Atrasadas</span></span>
           <span className="text-white/30">·</span>
-          <span>9º <span className="text-cyan-400">Menos Pendências do Cliente</span></span>
+          <span>9º <span className="text-emerald-300">Mais Pendências do Cliente Feitas</span></span>
           <span className="text-white/30">·</span>
-          <span>10º <span className="text-amber-300">Média ⭐ (desempate)</span></span>
+          <span>10º <span className="text-cyan-400">Menos Pendências Faltando</span></span>
           <span className="text-white/30">·</span>
-          <span>11º <span className="text-pink-400">Menos Feedbacks sem Avaliar</span></span>
+          <span>11º <span className="text-amber-300">Média ⭐ (desempate)</span></span>
           <span className="text-white/30">·</span>
-          <span>12º <span className="text-teal-400">Mais Tempo Ativo</span></span>
+          <span>12º <span className="text-pink-400">Menos Feedbacks sem Avaliar</span></span>
           <span className="text-white/30">·</span>
-          <span>13º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span>13º <span className="text-teal-400">Mais Tempo Ativo</span></span>
           <span className="text-white/30">·</span>
-          <span>14º <span className="text-violet-400">Resposta no Chat</span></span>
+          <span>14º <span className="text-orange-400">Menos Ocioso</span></span>
+          <span className="text-white/30">·</span>
+          <span>15º <span className="text-violet-400">Resposta no Chat</span></span>
         </div>
 
         {/* ===== Pílula do recorde (telas < 2xl; no wide vira o selo do canto) ===== */}
@@ -1180,7 +1184,7 @@ export default function TvAtividadesPage() {
                   ranking={ranking}
                   cars={cars}
                   onSaveCar={saveCar}
-                  onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, pend_cliente: 0, ...(row as RaceRow) } as RankRow, rank })}
+                  onAnalyze={(row, rank) => setCoach({ row: { doc_itens: 0, media_estrelas: null, notas_n: 0, fb_pendentes: 0, pend_feitas: 0, pend_cliente: 0, ...(row as RaceRow) } as RankRow, rank })}
                   onDetail={(row, criterio, count) => setDetail({ nome: row.nome, criterio, count })}
                   meta={data?.meta?.passos}
                   periodo={period}
@@ -1350,8 +1354,14 @@ function PodiumSpot({ row, place, onSelect, onDetail, medalha }: { row: RankRow 
           <PodiumStat text={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail(row, 'concluidas', row.concluidas)} />
           <PodiumStat text={row.atrasadas} label="atras" color="text-rose-400" onClick={() => onDetail(row, 'atrasadas', row.atrasadas)} />
           <PodiumStat
+            text={row.pend_feitas ?? 0}
+            label="pend feitas"
+            color="text-emerald-300"
+            onClick={() => onDetail(row, 'pend_feitas', row.pend_feitas ?? 0)}
+          />
+          <PodiumStat
             text={row.pend_cliente ?? 0}
-            label="cliente"
+            label="pend faltam"
             color="text-cyan-400"
             onClick={() => onDetail(row, 'pend_cliente', row.pend_cliente ?? 0)}
           />
@@ -1416,8 +1426,14 @@ function ListRow({ rank, row, onSelect, onDetail, medalha }: { rank: number; row
       <Stat value={row.concluidas} label="concl" color="text-emerald-400" onClick={() => onDetail('concluidas', row.concluidas)} />
       <Stat value={row.atrasadas} label="atr" color="text-rose-400" onClick={() => onDetail('atrasadas', row.atrasadas)} />
       <Stat
+        value={row.pend_feitas ?? 0}
+        label="pend ok"
+        color="text-emerald-300"
+        onClick={() => onDetail('pend_feitas', row.pend_feitas ?? 0)}
+      />
+      <Stat
         value={row.pend_cliente ?? 0}
-        label="cliente"
+        label="pend falta"
         color="text-cyan-400"
         onClick={() => onDetail('pend_cliente', row.pend_cliente ?? 0)}
       />
@@ -1579,7 +1595,7 @@ function Footer({ resumo, participantes, ranking }: { resumo: Resumo | null; par
         </p>
         <p className="mt-1.5 flex gap-2">
           <span className="text-sky-400">◷</span>
-          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, menos pendências do cliente em aberto, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total; <b className="text-white/80">cliente</b> = pendências que o cliente ficou de fazer e continuam em aberto nos casos sob responsabilidade dela (backlog total; pendência de caso sem responsável definido não conta para ninguém). {participantes} no ranking.</span>
+          <span><b className="text-white/80">Ordem</b>: 1º fases fechadas, 2º objetivos concluídos, 3º passos, 4º itens do checklist, 5º concluídas, e no empate seguem menos atrasadas, mais pendências do cliente cumpridas no período, menos pendências faltando, melhor média de estrelas, menos feedbacks sem avaliar, mais tempo ativo, menos ocioso e resposta no chat (média do período; respostas em até 8h). <b className="text-white/80">Fase/objetivo</b> = checklist do processo fechado, creditado a quem marcou o último passo. <b className="text-white/80">⭐</b> = média das notas que a pessoa recebeu no período (feedback avaliado por quem observa); <b className="text-white/80">s/ avaliar</b> = feedbacks esperando a avaliação dela, backlog total; <b className="text-white/80">pend feitas</b> = o que o cliente ficou de fazer e cumpriu no período; <b className="text-white/80">pend faltam</b> = as que continuam em aberto (backlog total). Nos dois casos valem os casos sob responsabilidade dela — o responsável é o mesmo da caixa de pendências, e pendência de caso sem responsável definido não conta para ninguém. {participantes} no ranking.</span>
         </p>
       </div>
       </div>
