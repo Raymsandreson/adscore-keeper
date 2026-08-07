@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent } from '@/components/ui/collapsible';
-import { ChevronDown, ChevronUp, X, ClipboardList } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, ClipboardList, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useChecklists, CHECKLIST_TYPES } from '@/hooks/useChecklists';
@@ -22,6 +22,7 @@ import {
   mirrorLabelsOf as mirrorLabels,
 } from '@/lib/popAnswerMirror';
 import { isStepBlockedBySubItems, pendingSubItems } from '@/lib/stepSubitems';
+import { PopCatchUpSheet, type PopCatchUpStep, type PopCatchUpMark } from '@/components/activities/PopCatchUpSheet';
 
 interface Stage {
   id: string;
@@ -33,6 +34,20 @@ interface Stage {
 type RpcResult = { error?: { message?: string } | null };
 const rpcExternal = (fn: string, args: Record<string, unknown>): PromiseLike<RpcResult> =>
   (externalSupabase.rpc as unknown as (f: string, a: Record<string, unknown>) => PromiseLike<RpcResult>)(fn, args);
+
+/** Mesma coisa, quando a RPC RETORNA linhas (leitura) — hoje só `pop_steps_log`. */
+type RpcRowsResult<T> = { data?: T[] | null; error?: { message?: string } | null };
+const rpcExternalRows = <T,>(fn: string, args: Record<string, unknown>): PromiseLike<RpcRowsResult<T>> =>
+  (externalSupabase.rpc as unknown as (f: string, a: Record<string, unknown>) => PromiseLike<RpcRowsResult<T>>)(fn, args);
+
+/** Uma linha de `pop_steps_log`: passo marcado, quando e se foi retroativo. */
+interface PopStepLogRow {
+  instance_id: string;
+  item_label: string;
+  retroactive: boolean;
+  marked_by: string | null;
+  marked_at: string;
+}
 
 /**
  * Item de checklist que ESPELHA uma resposta do passo — no POP o gerente
@@ -157,6 +172,16 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
   // Funil do próprio lead: só nele a fase mora em leads.status (no POP de
   // processo a fase vem do lead_stage_history deste board).
   const [leadBoardId, setLeadBoardId] = useState<string | null>(null);
+  // Régua "onde você está": passos já marcados neste POP (últimos 45 dias), pra
+  // separar o que foi feito HOJE do que veio de outro dia. Vem por RPC porque a
+  // sessão do Externo é anônima e a policy de user_activity_log é por auth.uid().
+  const [stepLog, setStepLog] = useState<PopStepLogRow[]>([]);
+  // Só mostra a régua quando a RPC respondeu de verdade. Sem isso, ambiente sem
+  // a função `pop_steps_log` exibiria "nenhum passo hoje" com passos marcados —
+  // erro silencioso é pior que régua ausente.
+  const [stepLogReady, setStepLogReady] = useState(false);
+  const [catchUpOpen, setCatchUpOpen] = useState(false);
+  const [leadName, setLeadName] = useState('');
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
   const fetchData = useCallback(async () => {
@@ -169,7 +194,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
       const [boardRes, historyRes, leadRes, linksRes, settingsRes] = await Promise.all([
         externalSupabase.from('kanban_boards').select('stages, board_type, name').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
-        externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id').eq('id', leadId).maybeSingle(),
+        externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id, lead_name').eq('id', leadId).maybeSingle(),
         externalSupabase.from('checklist_stage_links').select('stage_id, checklist_template_id, display_order').eq('board_id', boardId),
         fromExternalLoose('kanban_boards').select('settings').eq('id', boardId).maybeSingle(),
       ]);
@@ -192,6 +217,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
       const isClosed = isShowingSalesFunnel && (leadData?.lead_status === 'closed' || !!leadData?.became_client_date);
       setIsLeadClosed(isClosed);
       setLeadBoardId(leadData?.board_id || null);
+      setLeadName(leadData?.lead_name || '');
 
       let stageId: string | null = null;
       let parsedStages: Stage[] = [];
@@ -598,6 +624,118 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
     }
   };
 
+  // Carrega o log dos passos deste POP (régua "hoje x outro dia"). Silencioso
+  // por natureza: se a RPC não existir no ambiente, a régua some — nunca quebra
+  // a barra de progresso.
+  const instanceIdsKey = useMemo(
+    () => instances.map(i => i.id).sort().join(','),
+    [instances],
+  );
+  useEffect(() => {
+    const ids = instanceIdsKey ? instanceIdsKey.split(',') : [];
+    if (ids.length === 0) { setStepLog([]); setStepLogReady(false); return; }
+    let cancelled = false;
+    (async () => {
+      const res = await rpcExternalRows<PopStepLogRow>('pop_steps_log', {
+        p_instance_ids: ids,
+        p_days: 45,
+      });
+      if (cancelled) return;
+      if (res?.error) {
+        console.warn('[LeadFunnelProgressBar] pop_steps_log indisponível:', res.error.message);
+        setStepLog([]);
+        setStepLogReady(false);
+        return;
+      }
+      setStepLog(res?.data || []);
+      setStepLogReady(true);
+    })();
+    return () => { cancelled = true; };
+  }, [instanceIdsKey]);
+
+  // Resumo da régua: quantos passos foram marcados HOJE (sem contar retroativo,
+  // que por definição é trabalho de outro dia) e quando foi a última marcação.
+  const stepLogResumo = useMemo(() => {
+    const hoje = new Date().toISOString().slice(0, 10);
+    const doDia = stepLog.filter(l => !l.retroactive && String(l.marked_at).slice(0, 10) === hoje);
+    const labelsHoje = Array.from(new Set(doDia.map(l => l.item_label).filter(Boolean)));
+    const anteriores = stepLog.filter(l => !doDia.includes(l));
+    const ultima = anteriores[0]?.marked_at ? String(anteriores[0].marked_at).slice(0, 10) : null;
+    return { hojeCount: doDia.length, labelsHoje, anterioresCount: anteriores.length, ultima };
+  }, [stepLog]);
+
+  /**
+   * Marca de uma vez os passos que a IA identificou como já concluídos
+   * (PopCatchUpSheet). Mesmo caminho de gravação do "marcar todos": update dos
+   * items da instância + log por passo. A diferença é o `retroactive`, que aqui
+   * vem por passo — só conta no ranking do telão o que tem evidência de hoje.
+   */
+  const applyCatchUp = async (marks: PopCatchUpMark[]) => {
+    const byInstance = new Map<string, PopCatchUpMark[]>();
+    for (const m of marks) {
+      const list = byInstance.get(m.instanceId) || [];
+      list.push(m);
+      byInstance.set(m.instanceId, list);
+    }
+
+    let aplicados = 0;
+    let falhas = 0;
+    for (const [instanceId, list] of byInstance) {
+      const instance = instances.find(i => i.id === instanceId);
+      if (!instance || instance.is_readonly) { falhas += list.length; continue; }
+
+      const alvo = new Set(list.map(m => m.itemId));
+      const updatedItems = instance.items.map(it =>
+        alvo.has(it.id) && !it.checked ? { ...it, checked: true } : it
+      );
+      const objetivoFechado = allLiveChecked(updatedItems);
+
+      const { error } = await externalSupabase
+        .from('lead_checklist_instances')
+        .update({
+          items: itemsForDb(updatedItems),
+          is_completed: objetivoFechado,
+          completed_at: objetivoFechado ? new Date().toISOString() : null,
+        })
+        .eq('id', instanceId);
+
+      if (error) {
+        console.warn('[LeadFunnelProgressBar] marcar em lote falhou:', error.message);
+        falhas += list.length;
+        continue;
+      }
+
+      aplicados += list.length;
+      setInstances(prev => prev.map(i =>
+        i.id === instanceId ? { ...i, items: updatedItems, is_completed: objetivoFechado } : i
+      ));
+
+      if (user?.id) {
+        for (const m of list) {
+          rpcExternal('log_checklist_step', {
+            p_user_id: user.id,
+            p_instance_id: instanceId,
+            p_item_label: m.label,
+            p_retroactive: m.retroactive,
+            p_activity_id: activityId,
+            p_process_id: processId,
+          }).then(res => {
+            if (res?.error) console.warn('[LeadFunnelProgressBar] log de passo falhou:', res.error.message);
+          });
+        }
+      }
+    }
+
+    if (aplicados > 0) {
+      toast.success(aplicados === 1 ? '1 passo marcado' : `${aplicados} passos marcados`);
+      // Régua e progresso vêm do banco: recarrega pra refletir o lote inteiro.
+      fetchData();
+    }
+    if (falhas > 0) {
+      toast.error(falhas === 1 ? '1 passo não pôde ser marcado' : `${falhas} passos não puderam ser marcados`);
+    }
+  };
+
   /**
    * "Não se aplica" no sub-item: destrava o passo sem afirmar que o item foi
    * feito. É o escape da regra de conferência (src/lib/stepSubitems.ts) — sem
@@ -910,9 +1048,37 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
       });
   }, [liveInstances, activeViewStageId, linkOrder]);
 
+  // Cardápio do "Atualizar passos com IA": TODOS os passos do POP (todas as
+  // fases), com fase e objetivo pra IA se localizar. Passo-pergunta e passo com
+  // checklist em aberto vão marcados como bloqueados — concluir depende de
+  // escolher a resposta ou de conferir item a item, e isso ninguém faz pelo
+  // assessor (src/lib/stepSubitems.ts).
+  const catchUpSteps = useMemo<PopCatchUpStep[]>(() => {
+    const stageName = new Map(stages.map(s => [s.id, s.name]));
+    return liveInstances.flatMap(inst =>
+      inst.items
+        .filter(it => !it.supersededBy)
+        .map(it => ({
+          instanceId: inst.id,
+          itemId: it.id,
+          label: it.label,
+          description: it.description,
+          phase: stageName.get(inst.stage_id) || '—',
+          objective: inst.template_name || 'Passos',
+          checked: !!it.checked,
+          blockedReason: it.answers?.length
+            ? 'passo-pergunta'
+            : isStepBlockedBySubItems(it)
+              ? 'checklist em aberto'
+              : undefined,
+        }))
+    );
+  }, [liveInstances, stages]);
+
   if (!boardId || stages.length === 0) return null;
 
   return (
+    <>
     <Collapsible open={expanded} onOpenChange={setExpanded}>
       {/* Stepper bar — always visible, segments clickable to switch stage view, click toggles expand */}
       <div className="w-full mt-2">
@@ -1053,6 +1219,42 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
               </div>
             );
           })()}
+
+          {/* Régua "onde você está": o que foi marcado hoje x em outro dia, e o
+              atalho pra conciliar o POP com as movimentações do processo. */}
+          <div className="flex items-start justify-between gap-2 px-1">
+            <p className="text-[10px] leading-snug text-muted-foreground min-w-0 flex-1">
+              {!stepLogReady ? null : stepLogResumo.hojeCount > 0 ? (
+                <>
+                  <span className="font-medium text-foreground">
+                    Hoje: {stepLogResumo.hojeCount} passo{stepLogResumo.hojeCount > 1 ? 's' : ''}
+                  </span>
+                  {stepLogResumo.labelsHoje.length > 0 && (
+                    <span> — {stepLogResumo.labelsHoje.slice(0, 3).join(', ')}
+                      {stepLogResumo.labelsHoje.length > 3 && ` +${stepLogResumo.labelsHoje.length - 3}`}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="font-medium text-foreground">Nenhum passo marcado hoje</span>
+                  {stepLogResumo.anterioresCount > 0 && stepLogResumo.ultima && (
+                    <span> — os {stepLogResumo.anterioresCount} últimos são de outro dia (último em{' '}
+                      {stepLogResumo.ultima.split('-').reverse().join('/')})
+                    </span>
+                  )}
+                </>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => setCatchUpOpen(true)}
+              className="shrink-0 inline-flex items-center gap-1 rounded border border-violet-200 px-1.5 py-0.5 text-[10px] text-violet-700 hover:bg-violet-50 dark:border-violet-800 dark:text-violet-400 dark:hover:bg-violet-900/20 transition-colors"
+              title="A IA lê as movimentações do processo e sugere os passos que já podem ser marcados"
+            >
+              <Sparkles className="h-3 w-3" /> Atualizar passos
+            </button>
+          </div>
 
           {/* Current stage checklists with objective percentages */}
           {currentStageInstances.length > 0 ? (
@@ -1321,6 +1523,21 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
         </div>
       </CollapsibleContent>
     </Collapsible>
+
+    <PopCatchUpSheet
+      open={catchUpOpen}
+      onOpenChange={setCatchUpOpen}
+      leadId={leadId}
+      processId={processId}
+      steps={catchUpSteps}
+      context={{
+        leadName,
+        workflowName: boardName,
+        currentPhase: stages.find(s => s.id === currentStageId)?.name,
+      }}
+      onApply={applyCatchUp}
+    />
+    </>
   );
 }
 
