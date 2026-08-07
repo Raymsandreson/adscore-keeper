@@ -16,7 +16,7 @@ import { toast } from 'sonner';
 import {
   ClipboardCheck, Check, Bell, X, RotateCcw, Trash2, AlertTriangle, Loader2,
   MessageSquareQuote, Sparkles, RefreshCw, ThumbsDown, Plus, FileText, AlertCircle,
-  CalendarPlus,
+  CalendarPlus, UserCog, ExternalLink,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -24,6 +24,15 @@ import { type ClientCommitment } from '@/hooks/useClientCommitments';
 import {
   buildReminderText, isCommitmentOpen, isCommitmentOverdue, isSameCommitmentTitle,
 } from '@/lib/clientCommitments';
+import { isCommitmentConverted, type InboxCommitment } from '@/lib/clientCommitmentsInbox';
+
+/**
+ * A conversa lê as pendências da mesma view da caixa de pendências, então o
+ * card recebe os campos extras (dono resolvido, atividade gerada) quando eles
+ * existem — e continua funcionando com o registro cru da tabela.
+ */
+export type CommitmentCardItem = ClientCommitment &
+  Partial<Pick<InboxCommitment, 'owner_user_id' | 'assigned_to' | 'activity_id' | 'converted_at'>>;
 
 export interface TeamOption {
   user_id: string;
@@ -79,6 +88,12 @@ interface Props {
   onDraftMessage?: (text: string) => void;
   /** Abre o formulário de atividade já preenchido a partir da pendência. */
   onCreateActivity?: (item: ClientCommitment) => void;
+  /** Nome de quem cuida da pendência (o pai resolve o remap Externo→Cloud). */
+  resolveDonoNome?: (item: CommitmentCardItem) => string | null;
+  /** Trocar à mão quem cuida da pendência. */
+  onTrocarDono?: (item: CommitmentCardItem) => void;
+  /** Abrir a ficha da atividade gerada a partir da pendência. */
+  onOpenActivity?: (activityId: string) => void;
   /** Mostrar esta tela sozinha ao entrar numa conversa com pendência em aberto. */
   alertEnabled?: boolean;
   onAlertEnabledChange?: (v: boolean) => void;
@@ -86,9 +101,9 @@ interface Props {
 
 export function CommitmentItemCard({
   item, clientName, onDone, onGiveUp, onDismiss, onReopen, onRemind, onRemove, onDraftMessage,
-  onCreateActivity, onAskResolver,
+  onCreateActivity, onAskResolver, donoNome, onTrocarDono, onOpenActivity,
 }: {
-  item: ClientCommitment;
+  item: CommitmentCardItem;
   clientName: string;
   onDone: Props['onDone'];
   onGiveUp: Props['onGiveUp'];
@@ -100,11 +115,21 @@ export function CommitmentItemCard({
   onCreateActivity?: Props['onCreateActivity'];
   /** Sem lista de equipe o botão conclui direto; com lista, pergunta antes. */
   onAskResolver?: (item: ClientCommitment) => void;
+  /** Nome de quem cuida desta pendência, já resolvido pelo pai. */
+  donoNome?: string | null;
+  /** Trocar à mão quem cuida — mesma ação da caixa de pendências. */
+  onTrocarDono?: (item: CommitmentCardItem) => void;
+  /** Abrir a ficha da atividade que nasceu desta pendência. */
+  onOpenActivity?: (activityId: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const isOpen = isCommitmentOpen(item.status);
   const isOverdue = isCommitmentOverdue(item);
   const fromAI = item.origin === 'ia';
+  const virouAtividade = isCommitmentConverted({
+    converted_at: item.converted_at ?? null,
+    activity_id: item.activity_id ?? null,
+  });
 
   const run = async (fn: () => Promise<unknown>, okMsg?: string) => {
     setBusy(true);
@@ -121,13 +146,21 @@ export function CommitmentItemCard({
   return (
     <div className={cn(
       'rounded-lg border p-3 space-y-2',
-      isOverdue ? 'border-destructive/40 bg-destructive/5' : 'bg-card',
+      virouAtividade
+        ? 'border-primary/40 bg-primary/5'
+        : isOverdue ? 'border-destructive/40 bg-destructive/5' : 'bg-card',
       !isOpen && 'opacity-70'
     )}>
       <div className="min-w-0 flex-1">
         <p className={cn('text-sm font-medium break-words', !isOpen && 'line-through')}>
           {item.title}
         </p>
+
+        {virouAtividade && (
+          <p className="text-[11px] mt-0.5 inline-flex items-center gap-1 text-primary font-medium">
+            <CalendarPlus className="h-3 w-3" /> Virou atividade do escritório
+          </p>
+        )}
 
         <p className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1">
           {fromAI ? (
@@ -139,6 +172,23 @@ export function CommitmentItemCard({
           )}
           <span>· {formatDistanceToNow(new Date(item.promised_at), { addSuffix: true, locale: ptBR })}</span>
           {item.kind && item.kind !== 'outro' && <span>· {item.kind}</span>}
+          {/* Clicar no responsável troca o responsável: é onde a pessoa já está
+              olhando quando percebe que a pendência caiu no nome errado. */}
+          {onTrocarDono && (
+            <span>
+              · <button
+                type="button"
+                onClick={() => onTrocarDono(item)}
+                className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                title="Trocar quem cuida desta pendência"
+              >
+                {donoNome
+                  ? `responsável: ${donoNome}`
+                  : item.owner_user_id ? 'responsável não identificado' : 'sem responsável definido'}
+                {item.assigned_to ? ' (definido à mão)' : ''}
+              </button>
+            </span>
+          )}
           {item.reminder_count > 0 && <span>· cobrado {item.reminder_count}x</span>}
         </p>
 
@@ -193,12 +243,30 @@ export function CommitmentItemCard({
               }}>
               <Bell className="h-3 w-3" /> Cobrar
             </Button>
-            {onCreateActivity && (
+            {/* Já tem atividade: o caminho passa a ser abrir a ficha dela, não
+                gerar outra — dois cards para a mesma promessa era o efeito antigo. */}
+            {virouAtividade && item.activity_id && onOpenActivity && (
+              <Button size="sm" variant="default" className="h-7 text-[11px] gap-1"
+                title="Abrir a ficha da atividade em aba lateral"
+                disabled={busy}
+                onClick={() => onOpenActivity(item.activity_id!)}>
+                <ExternalLink className="h-3 w-3" /> Ver atividade
+              </Button>
+            )}
+            {!virouAtividade && onCreateActivity && (
               <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
                 title="Abrir uma atividade do escritório para tratar desta pendência"
                 disabled={busy}
                 onClick={() => onCreateActivity(item)}>
-                <CalendarPlus className="h-3 w-3" /> Atividade
+                <CalendarPlus className="h-3 w-3" /> Gerar atividade
+              </Button>
+            )}
+            {onTrocarDono && (
+              <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
+                title="Trocar quem cuida desta pendência"
+                disabled={busy}
+                onClick={() => onTrocarDono(item)}>
+                <UserCog className="h-3 w-3" /> Responsável
               </Button>
             )}
             <Button size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
@@ -237,6 +305,7 @@ export function ClientCommitmentsPanel({
   draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
   onReopen, onRemind, onRemove, onDraftMessage, onCreateActivity,
   alertEnabled, onAlertEnabledChange, teamOptions, suggestedResolver,
+  resolveDonoNome, onTrocarDono, onOpenActivity,
 }: Props) {
   const [showManual, setShowManual] = useState(false);
   const [title, setTitle] = useState('');
@@ -394,6 +463,9 @@ export function ClientCommitmentsPanel({
                     onRemove={onRemove}
                     onCreateActivity={onCreateActivity}
                     onAskResolver={temEquipe ? abrirResolver : undefined}
+                    donoNome={resolveDonoNome?.(item) ?? null}
+                    onTrocarDono={onTrocarDono}
+                    onOpenActivity={onOpenActivity}
                     onDraftMessage={(t) => { onDraftMessage?.(t); onOpenChange(false); }}
                   />
                 ))}
@@ -500,6 +572,9 @@ export function ClientCommitmentsPanel({
                     onRemind={onRemind}
                     onRemove={onRemove}
                     onCreateActivity={onCreateActivity}
+                    donoNome={resolveDonoNome?.(item) ?? null}
+                    onTrocarDono={onTrocarDono}
+                    onOpenActivity={onOpenActivity}
                     onDraftMessage={onDraftMessage}
                   />
                 ))}

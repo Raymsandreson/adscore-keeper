@@ -32,6 +32,9 @@ export interface RaceRow {
   notas_n?: number;
   /** Feedbacks que a pessoa deveria avaliar e não avaliou (backlog total). */
   fb_pendentes?: number;
+  /** Pendências do cliente cumpridas no período (mais é melhor). */
+  pend_feitas?: number;
+  /** Pendências do cliente ainda em aberto (backlog total; menos é melhor). */
   pend_cliente?: number;
   home_office?: boolean;
 }
@@ -87,6 +90,7 @@ function tieKey(r: RaceRow) {
   return [
     r.resultado, r.fases, r.objetivos, r.passos, r.doc_itens ?? 0,
     r.concluidas, r.atrasadas,
+    r.pend_feitas ?? 0, r.pend_cliente ?? 0,
     r.media_estrelas ?? -1, r.fb_pendentes ?? 0,
     r.ativo_seg, r.ocioso_seg,
     r.chat_resp_seg ?? -1,
@@ -234,6 +238,20 @@ export default function WackyRaceTrack({
                     <RaceStat n={r.passos} label="passos" cor="text-sky-400" onClick={onDetail && (() => onDetail(r, 'passos', r.passos))} />
                     <RaceStat n={r.concluidas} label="concl" cor="text-emerald-400" onClick={onDetail && (() => onDetail(r, 'concluidas', r.concluidas))} />
                     <RaceStat n={r.atrasadas} label="atr" cor="text-rose-400" onClick={onDetail && (() => onDetail(r, 'atrasadas', r.atrasadas))} />
+                    {/* Pendências do cliente nas duas pontas: cumpridas no período e o
+                        que continua faltando (backlog). */}
+                    <RaceStat
+                      n={r.pend_feitas ?? 0}
+                      label="pend feitas"
+                      cor="text-emerald-300"
+                      onClick={onDetail && (() => onDetail(r, 'pend_feitas', r.pend_feitas ?? 0))}
+                    />
+                    <RaceStat
+                      n={r.pend_cliente ?? 0}
+                      label="pend faltam"
+                      cor="text-cyan-400"
+                      onClick={onDetail && (() => onDetail(r, 'pend_cliente', r.pend_cliente ?? 0))}
+                    />
                     {/* Qualidade do retorno (nota recebida) e dívida de avaliação (a dar). */}
                     <RaceStat
                       n={estrelaLabel(r.media_estrelas)}

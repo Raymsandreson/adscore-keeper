@@ -9,6 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign } from 'lucide-react';
@@ -130,6 +132,12 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+
+  // Cadeia de continuidade ("Concluir + próxima"). O painel só faz sentido em
+  // atividade já existente — no modo criar não há de onde vir nem para onde ir.
+  const chain = useActivityChain(!isCreate && open ? selectedActivity : null);
+  const [chainOpenId, setChainOpenId] = useState<string | null>(null);
+
   // Caminho inverso do selo do WhatsApp: de qual mensagem esta atividade nasceu.
   const [messageOrigin, setMessageOrigin] = useState<ActivityMessageOrigin | null>(null);
   const [originChatOpen, setOriginChatOpen] = useState(false);
@@ -553,6 +561,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   // (fechar uma atv consultada não mexe no seu cronômetro).
   const handleClose = () => {
     if (runningTimer?.kind === 'activity' && runningTimer.activityId === activityId) requestLeave();
+    // Fechar a ficha fecha junto a ficha da cadeia aberta ao lado — senão ela
+    // ficaria órfã na tela, sem a origem por trás.
+    setChainOpenId(null);
     onOpenChange(false);
   };
 
@@ -1297,7 +1308,29 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             <Skeleton className="h-32 w-full" />
           </div>
         ) : (
+          <Tabs defaultValue="atividade" className="flex-1 flex flex-col min-h-0">
+            {/* Aba de continuidade: só existe em atividade já criada. Fica
+                sempre visível (mesmo sem cadeia ainda) pra quem abre a ficha
+                saber que dá pra caminhar pelas atividades da sequência. */}
+            {!isCreate && (
+              <TabsList className="mx-4 mt-2 h-8 shrink-0 self-start">
+                <TabsTrigger value="atividade" className="h-6 text-xs">Atividade</TabsTrigger>
+                <TabsTrigger value="historico" className="h-6 text-xs gap-1">
+                  Histórico
+                  {chain.items.length > 0 && (
+                    <Badge variant="secondary" className="h-4 px-1 text-[9px] font-normal">
+                      {chain.items.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </TabsList>
+            )}
+
           <ScrollArea className="flex-1">
+            {/* forceMount: o formulário NUNCA desmonta ao trocar de aba —
+                desmontar perderia o estado interno de busca/editor e faria a
+                ficha recarregar do zero na volta. */}
+            <TabsContent value="atividade" forceMount className="mt-0 data-[state=inactive]:hidden">
             <div className="p-4">
               <ActivityFormCompact
                 stepContext={stepContext}
@@ -1373,7 +1406,21 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 leads={searchedLeads}
               />
             </div>
+            </TabsContent>
+
+            <TabsContent value="historico" className="mt-0">
+              <div className="p-4">
+                <ActivityChainPanel
+                  currentActivityId={activityId}
+                  items={chain.items}
+                  loading={chain.loading}
+                  unavailable={chain.unavailable}
+                  onOpenActivity={setChainOpenId}
+                />
+              </div>
+            </TabsContent>
           </ScrollArea>
+          </Tabs>
         )}
 
         {/* Footer actions */}
@@ -1404,6 +1451,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           </div>
         </div>
       </SheetContent>
+
+      {/* Outra atividade da MESMA cadeia, aberta pela aba Histórico. Entra à
+          esquerda pra ficar AO LADO desta ficha, não por cima (skills
+          `ui-sem-redirecionar` + `ui-sem-sobreposicao`). Fechar devolve a pessoa
+          exatamente à ficha de onde ela saiu, na mesma aba. */}
+      {chainOpenId && (
+        <ActivityFullSheet
+          open
+          onOpenChange={(o) => { if (!o) setChainOpenId(null); }}
+          activityId={chainOpenId}
+          side="left"
+          onUpdated={() => { chain.reload(); onUpdated?.(); }}
+        />
+      )}
 
       {/* Conversa que gerou a atividade — painel de baixo pra cima, por cima da
           ficha. Fechar devolve a pessoa à ficha, no mesmo lugar. */}

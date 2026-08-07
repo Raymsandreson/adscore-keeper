@@ -13,12 +13,12 @@ import { db } from '@/integrations/supabase';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOpen, isCommitmentOverdue } from '@/lib/clientCommitments';
-import type { InboxCommitment } from '@/lib/clientCommitmentsInbox';
+import { isCommitmentConverted, type InboxCommitment } from '@/lib/clientCommitmentsInbox';
 
 const SELECT = `id, lead_id, process_id, contact_id, phone, instance_name, title, kind, status,
   due_date, promised_at, source_message_id, source_message_text, notes, last_reminded_at,
   reminder_count, done_at, done_by_name, created_by_name, created_at, origin, ai_confidence,
-  owner_user_id, lead_name`;
+  owner_user_id, lead_name, activity_id, converted_at, assigned_to`;
 
 /** Teto de linhas: a caixa é operacional, não relatório histórico. */
 const LIMITE = 500;
@@ -57,12 +57,15 @@ export function useClientCommitmentsInbox({ enabled = true }: { enabled?: boolea
 
   useEffect(() => { load(); }, [load]);
 
+  /** O que ainda está na fila de cobrança — o que virou atividade sai daqui. */
+  const emCobranca = useMemo(() => items.filter((i) => !isCommitmentConverted(i)), [items]);
+
   const minhas = useMemo(
-    () => (meExtId ? items.filter((i) => i.owner_user_id === meExtId) : []),
-    [items, meExtId]
+    () => (meExtId ? emCobranca.filter((i) => i.owner_user_id === meExtId) : []),
+    [emCobranca, meExtId]
   );
 
-  const vencidas = useMemo(() => items.filter((i) => isCommitmentOverdue(i)), [items]);
+  const vencidas = useMemo(() => emCobranca.filter((i) => isCommitmentOverdue(i)), [emCobranca]);
 
   /** Donos presentes na lista, para o filtro por pessoa. */
   const donos = useMemo(() => {
@@ -83,6 +86,52 @@ export function useClientCommitmentsInbox({ enabled = true }: { enabled?: boolea
     )));
   }, []);
 
+  /**
+   * Muda a linha e recarrega ELA sozinha da view.
+   *
+   * Releitura em vez de merge local porque `owner_user_id` é calculado pela
+   * cascata da view — escrever `assigned_to` e adivinhar o dono aqui repetiria
+   * a regra em dois lugares, que é como ela sai de sincronia.
+   */
+  const patchInPlace = useCallback(async (id: string, changes: Record<string, unknown>) => {
+    const { error } = await (db as any)
+      .from('lead_client_commitments')
+      .update(changes)
+      .eq('id', id);
+    if (error) throw error;
+
+    const { data } = await (db as any)
+      .from('vw_client_commitments_owner')
+      .select(SELECT)
+      .eq('id', id)
+      .maybeSingle();
+    if (data) setItems((prev) => prev.map((i) => (i.id === id ? (data as InboxCommitment) : i)));
+  }, []);
+
+  /**
+   * Registra que a pendência virou atividade do escritório. Não fecha a
+   * pendência: o cliente continua devendo o que prometeu — o que muda é que
+   * agora existe tarefa nossa cuidando disso, então ela sai da fila de cobrança.
+   */
+  const markConverted = useCallback(
+    (id: string, activityId: string) =>
+      patchInPlace(id, { activity_id: activityId, converted_at: new Date().toISOString() }),
+    [patchInPlace]
+  );
+
+  /**
+   * Troca à mão quem cuida da pendência. `null` devolve para o automático (a
+   * cascata do caso/conversa/linha).
+   */
+  const setAssignee = useCallback(
+    (id: string, extUserId: string | null) =>
+      patchInPlace(id, {
+        assigned_to: extUserId,
+        assigned_at: extUserId ? new Date().toISOString() : null,
+      }),
+    [patchInPlace]
+  );
+
   const markDone = useCallback(
     async (id: string, resolver?: { userId?: string | null; name?: string | null }) => {
       const extUserId = await remapToExternal(resolver?.userId ?? user?.id);
@@ -101,5 +150,8 @@ export function useClientCommitmentsInbox({ enabled = true }: { enabled?: boolea
     [patch]
   );
 
-  return { items, minhas, vencidas, donos, loading, reload: load, markDone, dismiss, meExtId };
+  return {
+    items, minhas, vencidas, donos, loading, reload: load,
+    markDone, dismiss, markConverted, setAssignee, meExtId,
+  };
 }
