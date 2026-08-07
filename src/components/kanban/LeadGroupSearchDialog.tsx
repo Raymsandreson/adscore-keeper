@@ -117,7 +117,7 @@ export function LeadGroupSearchDialog({
     if (!useInstance) return;
     setRefreshingPhone(phone);
     try {
-      const { data, error } = await supabase.functions.invoke('get-group-participants', {
+      const { data, error } = await cloudFunctions.invoke('get-group-participants', {
         body: { group_jid: chosenGroup.jid, instance_name: useInstance, refresh: true },
       });
       if (error) throw error;
@@ -221,7 +221,7 @@ export function LeadGroupSearchDialog({
     setStep('participants');
     setLoadingParticipants(true);
     try {
-      const { data, error } = await supabase.functions.invoke('get-group-participants', {
+      const { data, error } = await cloudFunctions.invoke('get-group-participants', {
         body: { group_jid: g.jid, instance_name: useInstance, refresh: refreshParticipants },
       });
       if (error) throw error;
