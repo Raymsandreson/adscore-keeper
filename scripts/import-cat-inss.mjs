@@ -301,6 +301,46 @@ function estatisticas(registros) {
   ].join('\n');
 }
 
+/**
+ * A tabela so tem policy de SELECT, entao a carga depende de bypass de RLS.
+ * Sem esta checagem, uma chave errada so falha no primeiro lote, com
+ * 401 / 42501 "new row violates row-level security policy" — mensagem que
+ * parece bug de policy e nao chave trocada. Falhar antes, dizendo o motivo.
+ */
+function conferirChave(chave) {
+  if (chave.startsWith('sbp_')) {
+    throw new Error(
+      'essa e um Personal Access Token (sbp_), da Management API — o PostgREST nao aceita.\n' +
+        '       Use a service_role do projeto em Project Settings > API.',
+    );
+  }
+  // Chave nova do Supabase: sb_secret_ equivale a service_role, sb_publishable_ nao.
+  if (chave.startsWith('sb_publishable_')) {
+    throw new Error('essa e a chave publishable, que respeita RLS. Use a secret (sb_secret_...) ou a service_role.');
+  }
+  if (chave.startsWith('sb_secret_')) return;
+
+  const partes = chave.split('.');
+  if (partes.length !== 3) {
+    throw new Error('formato de chave nao reconhecido. Esperado JWT (eyJ...) ou sb_secret_...');
+  }
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(partes[1], 'base64url').toString('utf8'));
+  } catch {
+    throw new Error('nao consegui decodificar o payload da chave — confira se ela veio completa.');
+  }
+  if (payload.role !== 'service_role') {
+    throw new Error(
+      `essa chave tem role "${payload.role}", que respeita RLS e nao consegue inserir.\n` +
+        '       Pegue a service_role em Project Settings > API (nao a anon/publishable).',
+    );
+  }
+  if (payload.ref && payload.ref !== 'kmedldlepwiityjsdahz') {
+    throw new Error(`essa chave e do projeto "${payload.ref}", nao do Externo (kmedldlepwiityjsdahz).`);
+  }
+}
+
 async function enviar(registros, chave) {
   let inseridos = 0;
   for (let i = 0; i < registros.length; i += BATCH) {
@@ -336,10 +376,13 @@ async function main() {
     process.exit(1);
   }
 
-  const chave = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!dryRun && !chave) {
-    console.error('erro: defina SUPABASE_SERVICE_ROLE_KEY (ou rode com --dry-run)');
-    process.exit(1);
+  const chave = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? '').trim();
+  if (!dryRun) {
+    if (!chave) {
+      console.error('erro: defina SUPABASE_SERVICE_ROLE_KEY (ou rode com --dry-run)');
+      process.exit(1);
+    }
+    conferirChave(chave);
   }
 
   let total = 0;
