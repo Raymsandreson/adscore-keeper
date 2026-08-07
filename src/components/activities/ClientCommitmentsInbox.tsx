@@ -5,7 +5,7 @@
  * problema é o mesmo: dívida espalhada que ninguém vê se não for procurar.
  * Aqui a pendência aparece por data, sem depender de abrir a conversa.
  */
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +31,7 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useClientCommitmentsInbox } from '@/hooks/useClientCommitmentsInbox';
+import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOverdue } from '@/lib/clientCommitments';
 import {
   groupByBucket, countByDay, commitmentDate, BUCKET_LABEL,
@@ -77,6 +78,25 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
     for (const t of teamOptions) if (t.full_name) m[t.user_id] = t.full_name;
     return m;
   }, [teamOptions]);
+
+  // O cache do remap precisa estar quente antes do primeiro render da lista:
+  // `resolveNome` é síncrono e, sem cache, cai no caso de identidade.
+  useEffect(() => { if (open) void ensureRemapCache(); }, [open]);
+
+  /**
+   * `owner_user_id` vem do Externo; `teamOptions` vem do Cloud. Os dois IDs só
+   * coincidem para parte da equipe, então procurar direto perde o nome de quem
+   * tem UUID diferente nos dois bancos — e a tela dizia "sem responsável" para
+   * pendência que TEM dono. Mesma cascata do resolveUserName da ActivitiesPage.
+   */
+  const resolveNome = useCallback((userId: string | null | undefined) => {
+    if (!userId) return null;
+    const direto = nomePorId[userId];
+    if (direto) return direto;
+    const cloudId = remapToCloudSync(userId);
+    if (cloudId && cloudId !== userId && nomePorId[cloudId]) return nomePorId[cloudId];
+    return null;
+  }, [nomePorId]);
 
   const filtradas = useMemo(() => {
     const termo = busca.trim().toLowerCase();
@@ -126,7 +146,10 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
   const abrirResolver = (item: InboxCommitment) => {
     // Pré-seleciona o dono do caso: aqui, fora da conversa, não dá para saber
     // quem falou por último com o cliente.
-    setResolverId(item.owner_user_id && nomePorId[item.owner_user_id] ? item.owner_user_id : '');
+    // O select lista IDs do Cloud (teamOptions); `owner_user_id` é do Externo.
+    // Sem converter, a pré-seleção só acertava quem tem o mesmo UUID nos dois.
+    const donoCloud = remapToCloudSync(item.owner_user_id);
+    setResolverId(donoCloud && nomePorId[donoCloud] ? donoCloud : '');
     setResolvendo(item);
   };
 
@@ -237,7 +260,7 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
                     <InboxCard
                       key={item.id}
                       item={item}
-                      donoNome={item.owner_user_id ? nomePorId[item.owner_user_id] : null}
+                      donoNome={resolveNome(item.owner_user_id)}
                       onAbrirConversa={abrirConversa}
                       onResolver={abrirResolver}
                       onDismiss={async (id) => {
@@ -302,7 +325,7 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
                         <InboxCard
                           key={item.id}
                           item={item}
-                          donoNome={item.owner_user_id ? nomePorId[item.owner_user_id] : null}
+                          donoNome={resolveNome(item.owner_user_id)}
                           onAbrirConversa={abrirConversa}
                           onResolver={abrirResolver}
                           onDismiss={async (id) => {
@@ -404,7 +427,13 @@ function InboxCard({
               <Sparkles className="h-3 w-3" /> detectada na conversa
             </span>
           )}
-          <span>· {donoNome ? `responsável: ${donoNome}` : 'sem responsável definido'}</span>
+          {/* Dono sem nome resolvido ≠ pendência órfã. Dizer "sem responsável"
+              nesse caso mandava a equipe procurar dono que já existia. */}
+          <span>
+            · {donoNome
+              ? `responsável: ${donoNome}`
+              : item.owner_user_id ? 'responsável não identificado' : 'sem responsável definido'}
+          </span>
           {item.reminder_count > 0 && <span>· cobrado {item.reminder_count}x</span>}
         </p>
 
