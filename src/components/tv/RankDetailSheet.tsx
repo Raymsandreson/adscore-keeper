@@ -23,11 +23,11 @@ import FeedbackAvaliarInline from '@/components/tv/FeedbackAvaliarInline';
 
 export type DetailCriterio =
   | 'status' | 'fases' | 'objetivos' | 'passos' | 'concluidas' | 'atrasadas'
-  | 'estrelas' | 'fb_pendentes' | 'pend_cliente';
+  | 'estrelas' | 'fb_pendentes' | 'pend_feitas' | 'pend_cliente';
 
 interface DetailItem {
   tipo: 'status' | 'fase' | 'objetivo' | 'passo' | 'concluida' | 'atrasada' | 'estrela' | 'fb_pendente'
-    | 'pend_cliente';
+    | 'pend_cliente' | 'pend_feita';
   quando?: string;
   titulo: string | null;
   lead_nome?: string | null;
@@ -57,6 +57,9 @@ interface DetailItem {
   /** Pendência do cliente: prazo combinado, quantas cobranças e a fala dele. */
   prazo?: string | null;
   cobrancas?: number;
+  /** Pendência cumprida: quem marcou (quase sempre a IA) e em quantos dias. */
+  quem_marcou?: string | null;
+  dias_ate_cumprir?: number;
   origem_pendencia?: 'ia' | 'manual';
   trecho?: string | null;
 }
@@ -133,6 +136,7 @@ const CRITERIO_CFG: Record<DetailCriterio, { titulo: string; cor: string; Icon: 
   atrasadas: { titulo: 'Atrasadas', cor: 'text-rose-400', Icon: AlarmClock },
   estrelas: { titulo: 'Média das avaliações', cor: 'text-amber-400', Icon: Star },
   fb_pendentes: { titulo: 'Feedbacks sem avaliar', cor: 'text-pink-400', Icon: Inbox },
+  pend_feitas: { titulo: 'Pendências que o cliente cumpriu', cor: 'text-emerald-300', Icon: CheckCircle2 },
   pend_cliente: { titulo: 'Pendências do cliente em aberto', cor: 'text-cyan-400', Icon: Inbox },
 };
 
@@ -143,6 +147,7 @@ function escopoLabel(criterio: DetailCriterio, periodLabel: string) {
   if (criterio === 'atrasadas') return 'backlog total (não filtra por período)';
   if (criterio === 'fb_pendentes') return 'esperando a avaliação dela · backlog total';
   if (criterio === 'pend_cliente') return 'o cliente ficou de fazer e não fez · backlog total';
+  if (criterio === 'pend_feitas') return `o cliente ficou de fazer e cumpriu · ${periodLabel}`;
   if (criterio === 'estrelas') return `notas recebidas · ${periodLabel}`;
   return periodLabel;
 }
@@ -227,6 +232,7 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
             <div className="py-10 text-center text-white/50">
               {criterio === 'fb_pendentes' ? 'Nenhum feedback esperando avaliação. 👏'
                 : criterio === 'pend_cliente' ? 'Nenhuma pendência de cliente em aberto. 👏'
+                : criterio === 'pend_feitas' ? 'Nenhuma pendência do cliente cumprida no período.'
                 : 'Nada no período.'}
             </div>
           ) : (
@@ -330,6 +336,29 @@ export default function RankDetailSheet({ nome, criterio, count, since, periodLa
                       <FeedbackAvaliarInline
                         alvo={{ id: it.activity_id, assigned_to_name: it.responsavel ?? null, title: it.titulo }}
                       />
+                    )}
+                  </div>
+                )}
+
+                {/* Pendência cumprida: em quantos dias saiu, quem deu baixa
+                    (quase sempre a IA ao ver a conversa) e a fala do cliente. */}
+                {it.tipo === 'pend_feita' && (
+                  <div className="mt-1.5 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      {typeof it.dias_ate_cumprir === 'number' && (
+                        <span className="font-bold text-emerald-300">
+                          {it.dias_ate_cumprir === 0
+                            ? 'cumprida no mesmo dia'
+                            : `cumprida em ${it.dias_ate_cumprir} ${it.dias_ate_cumprir === 1 ? 'dia' : 'dias'}`}
+                        </span>
+                      )}
+                      {typeof it.cobrancas === 'number' && it.cobrancas > 0 && (
+                        <span className="text-white/40">cobrado {it.cobrancas}x</span>
+                      )}
+                      {it.quem_marcou && <span className="text-white/40">baixa por {it.quem_marcou}</span>}
+                    </div>
+                    {it.trecho && (
+                      <p className="rounded bg-white/[0.04] p-1.5 text-xs leading-snug text-white/60 line-clamp-3">“{it.trecho}”</p>
                     )}
                   </div>
                 )}

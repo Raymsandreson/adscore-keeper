@@ -12,6 +12,25 @@ export interface InboxCommitment extends ClientCommitment {
   /** Dono resolvido pela view `vw_client_commitments_owner`. */
   owner_user_id: string | null;
   lead_name: string | null;
+  /** Atividade do escritório aberta a partir desta pendência. */
+  activity_id: string | null;
+  converted_at: string | null;
+  /** Responsável escolhido à mão — degrau 0 da cascata de dono. */
+  assigned_to: string | null;
+}
+
+/**
+ * Já virou atividade do escritório.
+ *
+ * A pendência do CLIENTE continua aberta (ele ainda não fez o que prometeu),
+ * mas o escritório já tem tarefa para tratar disso — deixar as duas coisas na
+ * mesma lista fazia a equipe cobrar de novo o que já estava sendo tratado.
+ * Some da caixa de abertas e reaparece só no filtro "Viraram atividade".
+ */
+export function isCommitmentConverted(
+  item: Pick<InboxCommitment, 'converted_at' | 'activity_id'>
+): boolean {
+  return Boolean(item.converted_at || item.activity_id);
 }
 
 /**

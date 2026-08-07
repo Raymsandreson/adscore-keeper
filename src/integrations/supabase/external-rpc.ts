@@ -348,6 +348,91 @@ export async function getConversationMessagesSince(
   return data || [];
 }
 
+/**
+ * Busca dentro de UMA conversa (texto e/ou faixa de data). O filtro por
+ * instância+telefone entra pelo idx_wam_inst_phone_created, então o `ilike`
+ * roda só sobre as mensagens daquela conversa — medido no grupo mais pesado do
+ * banco (26k msgs): ~95ms quente, ~3,4s a frio.
+ */
+export async function searchConversationMessages(
+  phone: string,
+  instanceName: string,
+  opts: {
+    term?: string;
+    /** created_at >= fromIso */
+    fromIso?: string;
+    /** created_at < toIso */
+    toIso?: string;
+    /** 'desc' = mais recentes primeiro (busca de texto); 'asc' = começo do período (pular pra data) */
+    order?: 'asc' | 'desc';
+    limit?: number;
+  } = {}
+): Promise<WhatsAppMessage[]> {
+  const { term, fromIso, toIso, order = 'desc', limit = 60 } = opts;
+  const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
+  const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
+  let query = (externalSupabase as any)
+    .from('whatsapp_messages')
+    .select('*')
+    .in('phone', phoneVariants)
+    .in('instance_name', instanceNameVariants(instanceName));
+  if (term && term.trim()) {
+    // `%` e `_` são curingas do LIKE; `,` quebraria o parser do PostgREST.
+    const escaped = term.trim().replace(/[%_,]/g, (c) => `\\${c}`);
+    query = query.ilike('message_text', `%${escaped}%`);
+  }
+  if (fromIso) query = query.gte('created_at', fromIso);
+  if (toIso) query = query.lt('created_at', toIso);
+  const { data, error } = await query
+    .order('created_at', { ascending: order === 'asc' })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
+/**
+ * Bloco de mensagens em torno de um instante — usado quando a busca aponta para
+ * um trecho que não está no cache local (conversa longa). Traz contexto antes e
+ * depois pra bolha não aparecer sozinha no vazio.
+ */
+export async function getConversationMessagesAround(
+  phone: string,
+  instanceName: string,
+  anchorIso: string,
+  before = 60,
+  after = 140
+): Promise<WhatsAppMessage[]> {
+  const [older, newer] = await Promise.all([
+    searchConversationMessages(phone, instanceName, { toIso: anchorIso, order: 'desc', limit: before }),
+    searchConversationMessages(phone, instanceName, { fromIso: anchorIso, order: 'asc', limit: after }),
+  ]);
+  return [...older, ...newer];
+}
+
+/**
+ * Página seguinte a partir de um instante (ordem cronológica). Preenche o vão
+ * entre o bloco carregado pela busca e o que já estava em memória.
+ */
+export async function getConversationMessagesForward(
+  phone: string,
+  instanceName: string,
+  afterIso: string,
+  limit = 200
+): Promise<WhatsAppMessage[]> {
+  const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
+  const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
+  const { data, error } = await (externalSupabase as any)
+    .from('whatsapp_messages')
+    .select('*')
+    .in('phone', phoneVariants)
+    .in('instance_name', instanceNameVariants(instanceName))
+    .gt('created_at', afterIso)
+    .order('created_at', { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
+}
+
 export async function markMessagesAsRead(
   phone: string,
   instanceName: string

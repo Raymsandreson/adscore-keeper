@@ -25,7 +25,7 @@ import {
 import {
   ClipboardCheck, Check, MessageSquare, ThumbsDown, Loader2, RefreshCw,
   CalendarDays, ListChecks, ChevronLeft, ChevronRight, AlertTriangle, Sparkles, Search,
-  CalendarPlus, ChevronsUpDown,
+  CalendarPlus, ExternalLink, UserCog, ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -36,10 +36,10 @@ import {
 } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useClientCommitmentsInbox } from '@/hooks/useClientCommitmentsInbox';
-import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
+import { ensureRemapCache, remapToCloudSync, remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOverdue } from '@/lib/clientCommitments';
 import {
-  groupByBucket, countByDay, countByOwner, commitmentDate, BUCKET_LABEL,
+  groupByBucket, countByDay, countByOwner, commitmentDate, isCommitmentConverted, BUCKET_LABEL,
   type InboxCommitment,
 } from '@/lib/clientCommitmentsInbox';
 
@@ -59,6 +59,11 @@ interface Props {
    * sem ela, quem varre a caixa tem que redigitar a atividade do zero.
    */
   onCreateActivity?: (item: InboxCommitment) => void;
+  /**
+   * Abre a ficha de uma atividade já existente em aba lateral — o atalho da
+   * pendência que virou atividade. Nunca redireciona.
+   */
+  onOpenActivity?: (activityId: string) => void;
 }
 
 /**
@@ -67,9 +72,16 @@ interface Props {
  */
 const MEMBRO_PREFIX = 'membro:';
 
-export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], onCreateActivity }: Props) {
+/** Filtro das que já viraram atividade do escritório. */
+const ESCOPO_CONVERTIDAS = 'convertidas';
+
+export function ClientCommitmentsInbox({
+  open, onOpenChange, teamOptions = [], onCreateActivity, onOpenActivity,
+}: Props) {
   const navigate = useNavigate();
-  const { items, loading, reload, markDone, dismiss, meExtId } = useClientCommitmentsInbox({ enabled: open });
+  const {
+    items, loading, reload, markDone, dismiss, setAssignee, meExtId,
+  } = useClientCommitmentsInbox({ enabled: open });
 
   // Calendário é o padrão: a pergunta que a equipe faz é "o que tem pra hoje",
   // e o mês inteiro mostra de cara onde está a dívida acumulada.
@@ -91,6 +103,9 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
   const [resolvendo, setResolvendo] = useState<InboxCommitment | null>(null);
   const [resolverId, setResolverId] = useState('');
   const [salvando, setSalvando] = useState(false);
+  /** Pendência com o "quem cuida disto?" aberto. */
+  const [trocandoDono, setTrocandoDono] = useState<InboxCommitment | null>(null);
+  const [novoDonoId, setNovoDonoId] = useState('');
 
   const nomePorId = useMemo(() => {
     const m: Record<string, string> = {};
@@ -122,13 +137,26 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
    * são calculadas sobre esta lista, então escolher um membro não pode zerar o
    * número dos outros — o filtro deixaria de mostrar para onde ir em seguida.
    */
-  const porBusca = useMemo(() => {
+  const casaBusca = useCallback((i: InboxCommitment) => {
     const termo = busca.trim().toLowerCase();
-    if (!termo) return items;
-    return items.filter((i) =>
-      `${i.title} ${i.lead_name || ''} ${i.phone || ''}`.toLowerCase().includes(termo)
-    );
-  }, [items, busca]);
+    if (!termo) return true;
+    return `${i.title} ${i.lead_name || ''} ${i.phone || ''}`.toLowerCase().includes(termo);
+  }, [busca]);
+
+  /**
+   * A fila de cobrança: o que ainda não virou atividade. As contagens do filtro
+   * saem SEMPRE daqui — se saíssem da lista exibida, entrar em "Viraram
+   * atividade" zeraria os números de todo mundo.
+   */
+  const porBusca = useMemo(
+    () => items.filter((i) => !isCommitmentConverted(i) && casaBusca(i)),
+    [items, casaBusca]
+  );
+
+  const convertidas = useMemo(
+    () => items.filter((i) => isCommitmentConverted(i) && casaBusca(i)),
+    [items, casaBusca]
+  );
 
   const contagemPorDono = useMemo(() => countByOwner(porBusca), [porBusca]);
 
@@ -162,10 +190,11 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
 
   /** Opções que não são pessoas — ficam fixas no topo do filtro. */
   const escoposFixos = useMemo(() => [
-    { value: 'todas', label: `Todas as pendências`, n: totalAberto },
-    { value: 'minhas', label: `Só as minhas`, n: nMinhas },
-    { value: 'sem_dono', label: `Sem responsável definido`, n: nSemDono },
-  ], [totalAberto, nMinhas, nSemDono]);
+    { value: 'todas', label: 'Todas as pendências', n: totalAberto },
+    { value: 'minhas', label: 'Só as minhas', n: nMinhas },
+    { value: 'sem_dono', label: 'Sem responsável definido', n: nSemDono },
+    { value: ESCOPO_CONVERTIDAS, label: 'Viraram atividade', n: convertidas.length },
+  ], [totalAberto, nMinhas, nSemDono, convertidas.length]);
 
   const rotuloEscopo = useMemo(() => {
     const fixo = escoposFixos.find((e) => e.value === escopo);
@@ -175,18 +204,23 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
     return `${nomeDoDono(id)} (${c?.total ?? 0})`;
   }, [escopo, escoposFixos, contagemPorDono, nomeDoDono]);
 
-  const filtradas = useMemo(() => porBusca.filter((i) => {
-    if (escopo === 'minhas') return i.owner_user_id === meExtId;
-    if (escopo === 'sem_dono') return !i.owner_user_id;
-    if (escopo.startsWith(MEMBRO_PREFIX)) {
-      return i.owner_user_id === escopo.slice(MEMBRO_PREFIX.length);
-    }
-    return true;
-  }), [porBusca, escopo, meExtId]);
+  const filtradas = useMemo(() => {
+    if (escopo === ESCOPO_CONVERTIDAS) return convertidas;
+    return porBusca.filter((i) => {
+      if (escopo === 'minhas') return i.owner_user_id === meExtId;
+      if (escopo === 'sem_dono') return !i.owner_user_id;
+      if (escopo.startsWith(MEMBRO_PREFIX)) {
+        return i.owner_user_id === escopo.slice(MEMBRO_PREFIX.length);
+      }
+      return true;
+    });
+  }, [porBusca, convertidas, escopo, meExtId]);
 
   const grupos = useMemo(() => groupByBucket(filtradas), [filtradas]);
   const porDia = useMemo(() => countByDay(filtradas), [filtradas]);
-  const vencidasN = useMemo(() => filtradas.filter((i) => isCommitmentOverdue(i)).length, [filtradas]);
+  // Sai da fila de cobrança, não da lista exibida: o selo do topo é a dívida
+  // com o cliente, e o que já virou atividade não está mais devendo cobrança.
+  const vencidasN = useMemo(() => porBusca.filter((i) => isCommitmentOverdue(i)).length, [porBusca]);
 
   const doDiaSelecionado = useMemo(
     () => (diaSelecionado ? filtradas.filter((i) => commitmentDate(i) === diaSelecionado) : []),
@@ -238,6 +272,36 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
       setResolvendo(null);
     } catch {
       toast.error('Não consegui salvar. Tente de novo.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const abrirTrocaDono = (item: InboxCommitment) => {
+    // O select lista IDs do Cloud; `assigned_to`/`owner_user_id` são do Externo.
+    const atualCloud = remapToCloudSync(item.assigned_to || item.owner_user_id);
+    setNovoDonoId(atualCloud && nomePorId[atualCloud] ? atualCloud : '');
+    setTrocandoDono(item);
+  };
+
+  /**
+   * Grava o responsável escolhido à mão. `cloudId` vazio devolve a pendência
+   * para o automático (dono do caso / da conversa / da linha).
+   */
+  const confirmarTrocaDono = async (cloudId: string) => {
+    if (!trocandoDono) return;
+    setSalvando(true);
+    try {
+      const extId = cloudId ? ((await remapToExternal(cloudId)) as string | null) : null;
+      await setAssignee(trocandoDono.id, extId);
+      toast.success(
+        cloudId
+          ? `Agora é responsabilidade de ${nomePorId[cloudId] || 'quem você escolheu'}`
+          : 'Responsável de volta ao automático (dono do caso/da conversa)'
+      );
+      setTrocandoDono(null);
+    } catch {
+      toast.error('Não consegui salvar o responsável.');
     } finally {
       setSalvando(false);
     }
@@ -388,9 +452,11 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
                 <p className="text-xs text-muted-foreground text-center py-6">
                   {escopo === 'minhas'
                     ? 'Nenhuma pendência de cliente nos seus casos. 👏'
-                    : escopo.startsWith(MEMBRO_PREFIX)
-                      ? 'Nenhuma pendência para este responsável.'
-                      : 'Nenhuma pendência em aberto.'}
+                    : escopo === ESCOPO_CONVERTIDAS
+                      ? 'Nenhuma pendência virou atividade ainda.'
+                      : escopo.startsWith(MEMBRO_PREFIX)
+                        ? 'Nenhuma pendência para este responsável.'
+                        : 'Nenhuma pendência em aberto.'}
                 </p>
               )}
 
@@ -410,6 +476,8 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
                       onAbrirConversa={abrirConversa}
                       onResolver={abrirResolver}
                       onCreateActivity={onCreateActivity}
+                      onOpenActivity={onOpenActivity}
+                      onTrocarDono={abrirTrocaDono}
                       onDismiss={async (id) => {
                         try { await dismiss(id); toast.success('Ok, não era pendência'); }
                         catch { toast.error('Não consegui salvar.'); }
@@ -476,6 +544,8 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
                           onAbrirConversa={abrirConversa}
                           onResolver={abrirResolver}
                           onCreateActivity={onCreateActivity}
+                          onOpenActivity={onOpenActivity}
+                          onTrocarDono={abrirTrocaDono}
                           onDismiss={async (id) => {
                             try { await dismiss(id); toast.success('Ok, não era pendência'); }
                             catch { toast.error('Não consegui salvar.'); }
@@ -543,12 +613,58 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={!!trocandoDono} onOpenChange={(v) => { if (!v) setTrocandoDono(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base">Quem cuida desta pendência?</DialogTitle>
+            <DialogDescription className="text-xs">
+              {trocandoDono?.title}
+              <br />
+              Sem escolha manual, o responsável sai automaticamente do caso, da conversa ou da
+              linha. Trocar aqui vale só para esta pendência.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Select value={novoDonoId} onValueChange={setNovoDonoId}>
+            <SelectTrigger className="h-9 text-sm">
+              <SelectValue placeholder="Escolha quem passa a cobrar este cliente" />
+            </SelectTrigger>
+            <SelectContent>
+              {teamOptions.filter((m) => m.full_name).map((m) => (
+                <SelectItem key={m.user_id} value={m.user_id} className="text-sm">
+                  {m.full_name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <DialogFooter className="gap-2 sm:justify-between">
+            {/* Sai da escolha manual e volta para a cascata — sem isso, um clique
+                errado deixaria a pendência presa numa pessoa para sempre. */}
+            <Button
+              variant="ghost" size="sm" disabled={salvando}
+              onClick={() => confirmarTrocaDono('')}
+            >
+              Voltar ao automático
+            </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={() => setTrocandoDono(null)}>Cancelar</Button>
+              <Button size="sm" disabled={!novoDonoId || salvando} onClick={() => confirmarTrocaDono(novoDonoId)}>
+                {salvando ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <UserCog className="h-3.5 w-3.5 mr-1" />}
+                Salvar responsável
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
 function InboxCard({
   item, donoNome, onAbrirConversa, onResolver, onDismiss, onCreateActivity,
+  onOpenActivity, onTrocarDono,
 }: {
   item: InboxCommitment;
   donoNome: string | null;
@@ -556,18 +672,29 @@ function InboxCard({
   onResolver: (i: InboxCommitment) => void;
   onDismiss: (id: string) => Promise<void>;
   onCreateActivity?: (i: InboxCommitment) => void;
+  onOpenActivity?: (activityId: string) => void;
+  onTrocarDono?: (i: InboxCommitment) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const vencida = isCommitmentOverdue(item);
   const data = commitmentDate(item);
+  const virouAtividade = isCommitmentConverted(item);
 
   return (
     <div className={cn(
       'rounded-lg border p-3 space-y-2',
-      vencida ? 'border-destructive/40 bg-destructive/5' : 'bg-card'
+      virouAtividade
+        ? 'border-primary/40 bg-primary/5'
+        : vencida ? 'border-destructive/40 bg-destructive/5' : 'bg-card'
     )}>
       <div className="min-w-0">
         <p className="text-sm font-medium break-words">{item.title}</p>
+
+        {virouAtividade && (
+          <p className="text-[11px] mt-0.5 inline-flex items-center gap-1 text-primary font-medium">
+            <CalendarPlus className="h-3 w-3" /> Virou atividade do escritório
+          </p>
+        )}
 
         <p className="text-[11px] text-muted-foreground mt-0.5 flex flex-wrap items-center gap-1">
           <span className="font-medium text-foreground/70">{item.lead_name || item.phone}</span>
@@ -578,10 +705,26 @@ function InboxCard({
           )}
           {/* Dono sem nome resolvido ≠ pendência órfã. Dizer "sem responsável"
               nesse caso mandava a equipe procurar dono que já existia. */}
+          {/* Clicar no responsável troca o responsável: é onde a pessoa já está
+              olhando quando percebe que a pendência caiu no nome errado. */}
           <span>
-            · {donoNome
-              ? `responsável: ${donoNome}`
-              : item.owner_user_id ? 'responsável não identificado' : 'sem responsável definido'}
+            · {onTrocarDono ? (
+              <button
+                type="button"
+                onClick={() => onTrocarDono(item)}
+                className="underline decoration-dotted underline-offset-2 hover:text-foreground"
+                title="Trocar quem cuida desta pendência"
+              >
+                {donoNome
+                  ? `responsável: ${donoNome}`
+                  : item.owner_user_id ? 'responsável não identificado' : 'sem responsável definido'}
+                {item.assigned_to ? ' (definido à mão)' : ''}
+              </button>
+            ) : (
+              donoNome
+                ? `responsável: ${donoNome}`
+                : item.owner_user_id ? 'responsável não identificado' : 'sem responsável definido'
+            )}
           </span>
           {item.reminder_count > 0 && <span>· cobrado {item.reminder_count}x</span>}
         </p>
@@ -604,13 +747,33 @@ function InboxCard({
         <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => onAbrirConversa(item)}>
           <MessageSquare className="h-3 w-3" /> Abrir conversa
         </Button>
-        {onCreateActivity && (
+        {/* Já tem atividade: o caminho passa a ser abrir a ficha dela, não
+            gerar outra — dois cards para a mesma promessa era o efeito antigo. */}
+        {virouAtividade && item.activity_id && onOpenActivity && (
+          <Button
+            size="sm" variant="default" className="h-7 text-[11px] gap-1"
+            title="Abrir a ficha da atividade em aba lateral"
+            onClick={() => onOpenActivity(item.activity_id!)}
+          >
+            <ExternalLink className="h-3 w-3" /> Ver atividade
+          </Button>
+        )}
+        {!virouAtividade && onCreateActivity && (
           <Button
             size="sm" variant="outline" className="h-7 text-[11px] gap-1"
             title="Abrir uma atividade do escritório para tratar desta pendência"
             onClick={() => onCreateActivity(item)}
           >
             <CalendarPlus className="h-3 w-3" /> Gerar atividade
+          </Button>
+        )}
+        {onTrocarDono && (
+          <Button
+            size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
+            title="Trocar quem cuida desta pendência"
+            onClick={() => onTrocarDono(item)}
+          >
+            <UserCog className="h-3 w-3" /> Responsável
           </Button>
         )}
         {item.origin === 'ia' && (

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   bucketOf, commitmentDate, groupByBucket, countByDay, countByOwner,
+  isCommitmentConverted,
   type InboxCommitment,
 } from '@/lib/clientCommitmentsInbox';
 
@@ -17,9 +18,26 @@ function item(over: Partial<InboxCommitment>): InboxCommitment {
     created_by_name: null, created_at: `${HOJE}T10:00:00Z`,
     origin: 'ia', ai_confidence: 0.9,
     owner_user_id: null, lead_name: null,
+    activity_id: null, converted_at: null, assigned_to: null,
     ...over,
   } as InboxCommitment;
 }
+
+describe('isCommitmentConverted', () => {
+  it('sem atividade vinculada, continua na fila de cobrança', () => {
+    expect(isCommitmentConverted(item({}))).toBe(false);
+  });
+
+  it('com atividade vinculada, sai da fila de cobrança', () => {
+    expect(isCommitmentConverted(item({
+      activity_id: 'a1', converted_at: `${HOJE}T11:00:00Z`,
+    }))).toBe(true);
+  });
+
+  it('vale pela data mesmo se a atividade tiver sido apagada (FK vira null)', () => {
+    expect(isCommitmentConverted(item({ activity_id: null, converted_at: `${HOJE}T11:00:00Z` }))).toBe(true);
+  });
+});
 
 describe('commitmentDate', () => {
   it('usa o prazo quando existe', () => {

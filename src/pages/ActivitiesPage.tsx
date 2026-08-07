@@ -33,6 +33,8 @@ import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
+import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { Button } from '@/components/ui/button';
@@ -257,6 +259,11 @@ const ActivitiesPage = () => {
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+  // Cadeia de continuidade da atividade aberta (aba Histórico). Só carrega em
+  // modo edição — no modo criar ainda não existe atividade nem sequência.
+  const activityChain = useActivityChain(sheetMode === 'edit' ? selectedActivity : null);
+  // Atividade da cadeia aberta ao lado, pela aba Histórico.
+  const [chainOpenId, setChainOpenId] = useState<string | null>(null);
   // Anexos/links adicionados no campo de notas antes da atividade ter id
   const pendingNoteAttachmentsRef = useRef<Attachment[]>([]);
   // Anexos adicionados nesta edição, inclusive os que já tentaram insert imediato.
@@ -451,6 +458,12 @@ const ActivitiesPage = () => {
   const [feedbackFunnelOpen, setFeedbackFunnelOpen] = useState(false);
   /** Caixa de pendências do cliente (o que ELE ficou de fazer, todas as conversas). */
   const [commitmentsInboxOpen, setCommitmentsInboxOpen] = useState(false);
+  /**
+   * Pendência do cliente que originou o formulário aberto. Ref, não state: o
+   * fluxo de criação é assíncrono e só precisa do valor na hora de gravar o
+   * vínculo — em state, um re-render no meio do salvamento perderia a origem.
+   */
+  const commitmentOriginRef = useRef<string | null>(null);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [nextStepsOpen, setNextStepsOpen] = useState(false);
@@ -797,6 +810,9 @@ const ActivitiesPage = () => {
   }, [getFilteredRaw]);
 
   const resetForm = () => {
+    // Limpar aqui (e não no fim do fluxo) garante que um formulário abandonado
+    // não faça a PRÓXIMA atividade criada ser marcada como a pendência.
+    commitmentOriginRef.current = null;
     setFormTitle('');
     setFormWhatWasDone('');
     setFormCurrentStatus('');
@@ -873,6 +889,8 @@ const ActivitiesPage = () => {
   // existia dentro da conversa; aqui evita redigitar quem varre a caixa por data.
   const openActivityFromCommitment = async (item: InboxCommitment) => {
     resetForm();
+    // Depois do resetForm, que limpa a origem anterior.
+    commitmentOriginRef.current = item.id;
     setCommitmentsInboxOpen(false);
     setFormTitle(`Pendência do cliente: ${item.title}`);
     if (item.lead_id) { setFormLeadId(item.lead_id); setFormLeadName(item.lead_name || ''); }
@@ -898,6 +916,51 @@ const ActivitiesPage = () => {
       item.notes ? `Observação da pendência: ${item.notes}` : '',
     ].filter(Boolean).join('\n')));
     setSheetMode('create');
+  };
+
+  /**
+   * Fecha o ciclo da pendência: grava qual atividade nasceu dela. A pendência
+   * do CLIENTE segue aberta (ele ainda não fez o que prometeu), mas sai da fila
+   * de cobrança — antes reaparecia amanhã para quem já tinha aberto a tarefa.
+   */
+  const linkCommitmentToActivity = async (commitmentId: string, activityId: string) => {
+    const { error } = await (externalSupabase as any)
+      .from('lead_client_commitments')
+      .update({ activity_id: activityId, converted_at: new Date().toISOString() })
+      .eq('id', commitmentId);
+
+    if (error) {
+      toast.error('Atividade criada, mas não consegui marcar a pendência como tratada.');
+      return;
+    }
+    toast.success('Pendência virou atividade e saiu da cobrança', {
+      description: 'Ela fica em "Viraram atividade", com atalho para esta ficha.',
+    });
+  };
+
+  /**
+   * Atalho da pendência que já virou atividade: abre a ficha em ABA LATERAL,
+   * sem redirecionar. A atividade pode não estar na lista carregada (filtro de
+   * outro responsável, outro mês), daí a busca direta no banco.
+   */
+  const openActivityById = async (activityId: string) => {
+    setCommitmentsInboxOpen(false);
+    const jaCarregada = activities.find((a) => a.id === activityId);
+    if (jaCarregada) {
+      handleOpenEdit(jaCarregada);
+      return;
+    }
+    const { data, error } = await (externalSupabase as any)
+      .from('lead_activities')
+      .select('*')
+      .eq('id', activityId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !data) {
+      toast.error('Esta atividade não existe mais ou foi excluída.');
+      return;
+    }
+    handleOpenEdit(data as LeadActivity);
   };
 
   // suggestActivityType moved below routineActivityTypes
@@ -1158,6 +1221,14 @@ const ActivitiesPage = () => {
         [formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes, formFeedback],
         [],
       );
+    }
+
+    // Nasceu de uma pendência do cliente → grava o vínculo antes de o
+    // fechamento do sheet limpar a origem.
+    const commitmentOrigemId = commitmentOriginRef.current;
+    if (createdActivityId && commitmentOrigemId) {
+      commitmentOriginRef.current = null;
+      await linkCommitmentToActivity(commitmentOrigemId, createdActivityId);
     }
 
     // If created for another assignee, add them to the filter so the activities are visible
@@ -1700,6 +1771,13 @@ const ActivitiesPage = () => {
         is_system: formIsSystem,
         is_management: formIsManagement,
         client_name_override: formClientNameOverride || null,
+        // Cadeia de continuidade: a próxima nasce apontando para a que está
+        // sendo concluída e para a raiz da sequência. Sem isso a atividade nova
+        // não tinha como dizer de onde veio, e a concluída não levava até a
+        // continuação — a ideia de "ainda falta uma etapa" morria no clique.
+        // A raiz fica com as duas colunas NULL; quem herda leva a raiz dela.
+        parent_activity_id: currentActivity.id,
+        chain_root_id: currentActivity.chain_root_id || currentActivity.id,
         ...buildAssigneesPayload(),
       };
 
@@ -1931,6 +2009,8 @@ const ActivitiesPage = () => {
     setSheetMode(null);
     setSelectedActivity(null);
     setSelectedActivityId(null);
+    // Fechar a ficha fecha junto a atividade da cadeia aberta ao lado.
+    setChainOpenId(null);
     setRightPanelTab('form');
     setLeadPreview(null);
     resetForm();
@@ -5478,7 +5558,39 @@ const ActivitiesPage = () => {
             {/* Form body - scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
               <div className="max-w-[1200px] mx-auto">
-                {activityFormContent}
+                <Tabs defaultValue="atividade">
+                  {/* Aba da cadeia de continuidade ("Concluir + próxima"): só em
+                      atividade já criada — no modo criar não há sequência ainda. */}
+                  {sheetMode === 'edit' && (
+                    <TabsList className="h-8 mb-3">
+                      <TabsTrigger value="atividade" className="h-6 text-xs">Atividade</TabsTrigger>
+                      <TabsTrigger value="historico" className="h-6 text-xs gap-1">
+                        Histórico
+                        {activityChain.items.length > 0 && (
+                          <Badge variant="secondary" className="h-4 px-1 text-[9px] font-normal">
+                            {activityChain.items.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {/* forceMount: o formulário não desmonta ao trocar de aba —
+                      desmontar perderia o que já foi digitado e não salvo. */}
+                  <TabsContent value="atividade" forceMount className="mt-0 data-[state=inactive]:hidden">
+                    {activityFormContent}
+                  </TabsContent>
+
+                  <TabsContent value="historico" className="mt-0">
+                    <ActivityChainPanel
+                      currentActivityId={selectedActivity?.id || null}
+                      items={activityChain.items}
+                      loading={activityChain.loading}
+                      unavailable={activityChain.unavailable}
+                      onOpenActivity={setChainOpenId}
+                    />
+                  </TabsContent>
+                </Tabs>
 
                 {sheetMode === 'edit' && selectedActivity?.completed_at && (
                   <p className="text-xs text-muted-foreground mt-3">
@@ -6009,6 +6121,7 @@ const ActivitiesPage = () => {
         onOpenChange={setCommitmentsInboxOpen}
         teamOptions={teamMembers}
         onCreateActivity={openActivityFromCommitment}
+        onOpenActivity={openActivityById}
       />
       <ActivityCreatedDialog
         open={createdDialog.open}
@@ -6030,6 +6143,20 @@ const ActivitiesPage = () => {
         }}
       />
       {linkedRecordSheets}
+
+      {/* Outra atividade da mesma cadeia, aberta pela aba Histórico. Abre à
+          esquerda pra ficar AO LADO da ficha, não por cima (skills
+          `ui-sem-redirecionar` + `ui-sem-sobreposicao`). Fechar devolve a pessoa
+          à ficha de onde saiu, sem perder o que ela estava editando. */}
+      {chainOpenId && (
+        <ActivityFullSheet
+          open
+          onOpenChange={(o) => { if (!o) setChainOpenId(null); }}
+          activityId={chainOpenId}
+          side="left"
+          onUpdated={() => { activityChain.reload(); fetchActivities(getFilterParams()); }}
+        />
+      )}
 
       <CompleteAndNotifyDialog
         open={completeNotifyOpen}

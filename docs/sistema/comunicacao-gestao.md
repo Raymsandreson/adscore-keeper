@@ -100,6 +100,19 @@ Os degraus novos entraram **depois** dos três antigos de propósito: nenhuma pe
 
 **Nome do responsável**: `owner_user_id` vem do Externo e a lista de nomes vem do Cloud. Sem passar pelo remap (`remapToCloudSync`), quem tem UUID diferente nos dois bancos aparecia como "sem responsável" **tendo dono**. Dono sem nome resolvido mostra "responsável não identificado" — não é o mesmo que órfã.
 
+##### Virou atividade + troca de responsável (desde 07/08/2026)
+
+Duas lacunas que a equipe apontou usando a caixa:
+
+- **"Gerar atividade" não fechava o ciclo.** O botão só pré-preenchia o formulário; nada registrava que aquela pendência já estava sendo tratada, então ela reaparecia no dia seguinte para quem tinha acabado de abrir a tarefa. Agora, ao **salvar** a atividade, `lead_client_commitments.activity_id` + `converted_at` são gravados (`linkCommitmentToActivity` em `ActivitiesPage.tsx`, origem guardada em ref porque o salvamento é assíncrono). A caixa avisa "Pendência virou atividade e saiu da cobrança", ela sai da fila e passa a viver no filtro **"Viraram atividade"**, com o botão **Ver atividade** abrindo a ficha em **aba lateral** (`openActivityById`, sem redirecionar; busca no banco quando a atividade não está na lista carregada).
+  - A pendência **não** é fechada: o cliente continua devendo o que prometeu. O que muda é que existe tarefa nossa cuidando disso — por isso sai da cobrança, e não da base.
+  - `activity_id` tem FK `ON DELETE SET NULL`; `isCommitmentConverted` olha `converted_at` também, senão apagar a atividade devolveria a pendência para a fila como se nada tivesse acontecido.
+
+- **Responsável era 100% derivado.** Dava para corrigir o dono do caso ou da linha, nunca o de UMA pendência. Entrou a coluna `assigned_to` (UUID do Externo, mesmo espaço de `lead_activities.assigned_to`) como **degrau 0** da cascata acima. Na UI, o texto "responsável: …" do card é clicável (e há o botão **Responsável**) → dialog com a equipe e **"Voltar ao automático"**, que zera `assigned_to` e devolve a pendência para a cascata. Escrita por `setAssignee`; o hook **relê a linha da view** depois de gravar, em vez de adivinhar o dono no JS — a cascata mora no banco e não pode ser repetida no front.
+  - Efeito visível: `tv_atividades_ranking` lê a view, então trocar o responsável move a contagem de pessoa no telão.
+
+Migration `20260807170000_pendencia_vira_atividade_e_responsavel.sql`. A view precisou de `DROP` + `CREATE` (ela expande `c.*`, e `CREATE OR REPLACE` recusa coluna nova no meio). Conferido depois de aplicar: 404 abertas / 267 sem dono, **idêntico ao antes** — nenhuma pendência mudou de dono ao subir.
+
 **Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Promessa do cliente ("vou avaliar", "vou gravar o vídeo") a IA já registra sozinha na barra "Cliente ficou de" — o assessor só marca **Feito**, **Cobra** ou corrige com **"Não era"**.
 
 ### Vincular grupo do WhatsApp ao lead — "Buscar grupos" (ago/2026)

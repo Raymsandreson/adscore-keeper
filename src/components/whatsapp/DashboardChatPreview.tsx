@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
-import { CommitmentItemCard } from './ClientCommitmentsPanel';
+import { CommitmentItemCard, type CommitmentCardItem } from './ClientCommitmentsPanel';
+import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -37,7 +39,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import type { Contact } from '@/hooks/useContacts';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
@@ -45,6 +47,11 @@ import { AITextActions } from '@/components/ui/AITextActions';
 import { WhatsAppMediaGallery } from '@/components/whatsapp/WhatsAppMediaGallery';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { WhatsAppActivitySheet } from '@/components/whatsapp/WhatsAppActivitySheet';
+// Import dinâmico de propósito: a ficha da atividade importa este painel de
+// volta (para abrir a conversa), e o lazy quebra o ciclo.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 import { bindDownload } from '@/lib/downloadFile';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
@@ -170,8 +177,44 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     contactId: linkedContact?.id || null,
     clientName: contactName || linkedLead?.lead_name || null,
   });
+  /** Pendência que está com o "quem cuida disto?" aberto. */
+  const [trocandoDono, setTrocandoDono] = useState<CommitmentCardItem | null>(null);
+  /** Pendência que originou a atividade em criação — fecha o ciclo ao salvar. */
+  const commitmentOriginRef = useRef<string | null>(null);
+  const [activityPrefillFields, setActivityPrefillFields] = useState<{
+    title?: string; notes?: string; deadline?: string; assignedTo?: string;
+  }>({});
+  /** Ficha da atividade gerada a partir de uma pendência, aberta em aba lateral. */
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+  const teamProfiles = useProfilesList();
+
+  const nomePorId = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of teamProfiles) if (p.full_name) m[p.user_id] = p.full_name;
+    return m;
+  }, [teamProfiles]);
+
+  // O remap precisa estar quente antes do primeiro render: `resolveDonoNome` é
+  // síncrono e, sem cache, não acha quem tem UUID diferente nos dois bancos.
+  useEffect(() => { if (open) void ensureRemapCache(); }, [open]);
+
+  /** `owner_user_id` vem do Externo; os perfis vêm do Cloud — daí o remap. */
+  const resolveDonoNome = (item: CommitmentCardItem) => {
+    const id = item.owner_user_id;
+    if (!id) return null;
+    if (nomePorId[id]) return nomePorId[id];
+    const cloudId = remapToCloudSync(id);
+    if (cloudId && cloudId !== id && nomePorId[cloudId]) return nomePorId[cloudId];
+    return null;
+  };
+
   const [groupName, setGroupName] = useState<string | null>(null);
+  /** Quantos leads distintos estão vinculados a este grupo (>1 = vínculo sujo, precisa aparecer). */
+  const [groupLeadCount, setGroupLeadCount] = useState(0);
+  /** Casos jurídicos já criados para o lead desta conversa. */
+  const [linkedCases, setLinkedCases] = useState<{ id: string; case_number: string | null; title: string | null }[]>([]);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
+  const [leadEditTab, setLeadEditTab] = useState<string | undefined>(undefined);
   const [showContactEdit, setShowContactEdit] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
@@ -253,6 +296,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     setLinkedLead(null);
     setLinkedContact(null);
     setGroupName(null);
+    setGroupLeadCount(0);
+    setLinkedCases([]);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
       // whatsapp_messages vive no Supabase EXTERNO. Usar `supabase` (Cloud) aqui
@@ -343,24 +388,32 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     fetchAvailableAgents();
 
     // Fetch linked lead & contact
-    const isGroup = phone.includes('@g.us');
+    // Grupo tem duas grafias no banco (JID bare "1203..." e "1203...@g.us") e o
+    // painel pode receber qualquer uma. Testar só `@g.us` fazia grupo bare cair
+    // no ramo de contato individual: o título virava o JID cru e o lead
+    // vinculado pelo grupo nunca aparecia.
+    const isGroup = isWhatsAppGroupId(phone);
+    const groupJids = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`]));
     const fetchLinkedData = async () => {
       const last8 = normalizedPhone.slice(-8);
       let leadData: any = null;
 
       if (isGroup) {
         // For group conversations, find lead via lead_whatsapp_groups or leads.whatsapp_group_id
-        const { data: groupLink } = await externalSupabase
+        const { data: groupLinks } = await externalSupabase
           .from('lead_whatsapp_groups')
-          .select('lead_id, group_name')
-          .eq('group_jid', phone)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .select('lead_id, group_name, created_at')
+          .in('group_jid', groupJids)
+          .order('created_at', { ascending: false });
 
-        if (groupLink) {
-          if (groupLink.group_name) setGroupName(groupLink.group_name);
-          const { data: ld } = await externalSupabase.from('leads').select('*').eq('id', groupLink.lead_id).maybeSingle();
+        const links = (groupLinks as any[]) || [];
+        const named = links.find((g) => g.group_name);
+        if (named?.group_name) setGroupName(named.group_name);
+        setGroupLeadCount(new Set(links.map((g) => g.lead_id).filter(Boolean)).size);
+
+        const linkWithLead = links.find((g) => g.lead_id);
+        if (linkWithLead) {
+          const { data: ld } = await externalSupabase.from('leads').select('*').eq('id', linkWithLead.lead_id).maybeSingle();
           if (ld) leadData = ld;
         }
 
@@ -368,12 +421,23 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           const { data: ld } = await externalSupabase
             .from('leads')
             .select('*')
-            .eq('whatsapp_group_id', phone)
+            .in('whatsapp_group_id', groupJids)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
           if (ld) leadData = ld;
         }
+
+        // Nome atual do grupo no WhatsApp: o cache é sincronizado da UazAPI e é
+        // mais confiável que o nome congelado no vínculo.
+        const { data: cached } = await externalSupabase
+          .from('whatsapp_groups_cache')
+          .select('group_name')
+          .in('group_jid', groupJids)
+          .not('group_name', 'is', null)
+          .limit(1)
+          .maybeSingle();
+        if ((cached as any)?.group_name) setGroupName((cached as any).group_name);
       } else {
         const { data: ld } = await externalSupabase
           .from('leads')
@@ -394,16 +458,21 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       }
 
       // Fetch contact: for groups, use linked lead's contacts; for individual, use phone
-      if (isGroup && leadData) {
-        const { data: contactLink } = await externalSupabase
-          .from('contact_leads')
-          .select('contact_id')
-          .eq('lead_id', leadData.id)
-          .limit(1)
-          .maybeSingle();
-        if (contactLink) {
-          const { data: cd } = await externalSupabase.from('contacts').select('*').eq('id', contactLink.contact_id).maybeSingle();
-          if (cd) setLinkedContact(cd as any);
+      if (isGroup) {
+        // Grupo nunca casa contato por telefone: o JID é numérico e o `ilike` dos
+        // últimos 8 dígitos colava um contato qualquer (ou o próprio "contato"
+        // criado com o JID no lugar do telefone) no cabeçalho da conversa.
+        if (leadData) {
+          const { data: contactLink } = await externalSupabase
+            .from('contact_leads')
+            .select('contact_id')
+            .eq('lead_id', leadData.id)
+            .limit(1)
+            .maybeSingle();
+          if (contactLink) {
+            const { data: cd } = await externalSupabase.from('contacts').select('*').eq('id', contactLink.contact_id).maybeSingle();
+            if (cd) setLinkedContact(cd as any);
+          }
         }
       } else {
         const { data: contactData } = await externalSupabase
@@ -435,6 +504,21 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     fetchConversationStatus();
 
   }, [open, phone]);
+
+  // Casos jurídicos do lead — o menu precisa dizer "já criado" em vez de
+  // oferecer criar de novo.
+  useEffect(() => {
+    if (!open || !linkedLead?.id) { setLinkedCases([]); return; }
+    let cancelled = false;
+    externalSupabase
+      .from('legal_cases')
+      .select('id, case_number, title')
+      .eq('lead_id', linkedLead.id)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => { if (!cancelled) setLinkedCases((data as any[]) || []); });
+    return () => { cancelled = true; };
+  }, [open, linkedLead?.id]);
 
   // Realtime — assinar no Externo, onde whatsapp_messages realmente mora.
   useEffect(() => {
@@ -862,6 +946,54 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       e.preventDefault();
       handleSend();
     }
+  };
+
+  /**
+   * Recarrega o contato do cabeçalho. Pelo id quando já sabemos qual é — em
+   * conversa de grupo o `phone` é o JID e casar por telefone traz contato errado.
+   */
+  const refreshLinkedContact = () => {
+    if (linkedContact?.id) {
+      externalSupabase.from('contacts').select('*').eq('id', linkedContact.id).maybeSingle()
+        .then(({ data }) => { if (data) setLinkedContact(data as any); });
+      return;
+    }
+    if (!phone || isWhatsAppGroupId(phone)) return;
+    const normalizedPhone = phone.replace(/\D/g, '');
+    const last8 = normalizedPhone.slice(-8);
+    externalSupabase.from('contacts').select('*')
+      .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
+      .limit(1)
+      .maybeSingle()
+      .then(({ data }) => { if (data) setLinkedContact(data as any); });
+  };
+
+  /**
+   * Abre o formulário de atividade já preenchido pela pendência — o mesmo
+   * caminho da caixa de pendências, agora sem sair da conversa.
+   */
+  const abrirAtividadeDaPendencia = (item: CommitmentCardItem) => {
+    commitmentOriginRef.current = item.id;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const donoCloud = item.owner_user_id ? remapToCloudSync(item.owner_user_id) : null;
+    setActivityPrefillFields({
+      title: `Pendência do cliente: ${item.title}`,
+      // Prazo: o combinado com o cliente, mas nunca no passado — atividade que
+      // nasce atrasada estraga o indicador.
+      deadline: item.due_date && item.due_date > hoje ? item.due_date : undefined,
+      assignedTo: donoCloud && nomePorId[donoCloud] ? donoCloud : undefined,
+      notes: [
+        'Atividade aberta a partir de uma pendência do cliente.',
+        `O cliente ficou de: ${item.title}`,
+        item.due_date
+          ? `Prazo combinado: ${format(parseISO(item.due_date), 'dd/MM/yyyy')}`
+          : `Sem prazo marcado — combinado em ${format(new Date(item.promised_at), 'dd/MM/yyyy')}`,
+        item.source_message_text ? `O cliente disse: "${item.source_message_text}"` : '',
+        item.notes ? `Observação da pendência: ${item.notes}` : '',
+      ].filter(Boolean).join('\n'),
+    });
+    setActivityPrefill('');
+    setShowActivitySheet(true);
   };
 
   const handleAction = (action: string) => {
@@ -1427,6 +1559,17 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   // enquanto números BR têm no máximo ~13 dígitos.
   const isGroupChat = !!phone && (phone.includes('@g.us') || /^\d{15,}$/.test(phone.replace(/\D/g, '')));
 
+  // Quem abre o painel às vezes passa o próprio JID como "nome" (a lista não
+  // resolveu o grupo). Nesse caso o JID não pode virar título.
+  const phoneDigits = (phone || '').replace(/\D/g, '');
+  const propNameIsJid = !!contactName && contactName.replace(/\D/g, '') === phoneDigits && !/[a-zA-Z]/.test(contactName.replace('@g.us', ''));
+  const displayContactName = propNameIsJid ? null : contactName;
+  const headerTitle = isGroupChat
+    ? (groupName || displayContactName || linkedLead?.lead_name || (phoneDigits ? `Grupo •••${phoneDigits.slice(-6)}` : 'Grupo WhatsApp'))
+    : (displayContactName || linkedContact?.full_name || linkedLead?.lead_name || phone);
+  const showLeadBadge = !!linkedLead || hasLead;
+  const showContactBadge = !!linkedContact || hasContact;
+
   return (
     <>
     <Drawer open={open} onOpenChange={(nextOpen) => {
@@ -1439,11 +1582,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
             <div className="min-w-0 flex-1">
               <DrawerTitle className="text-base truncate flex items-center gap-2">
                 {isGroupChat ? <Users className="h-4 w-4 text-muted-foreground shrink-0" /> : <User className="h-4 w-4 text-muted-foreground shrink-0" />}
-                {contactName || groupName || linkedLead?.lead_name || phone}
+                {headerTitle}
               </DrawerTitle>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                {isGroupChat && <span className="text-xs text-muted-foreground">Grupo WhatsApp{groupName ? '' : ''}</span>}
-                {phone && !isGroupChat && contactName && <span className="text-xs text-muted-foreground">{phone}</span>}
+                {isGroupChat && (
+                  <span className="text-xs text-muted-foreground">
+                    Grupo WhatsApp{linkedLead ? ` • ${linkedLead.lead_name}` : ' • sem lead vinculado'}
+                  </span>
+                )}
+                {phone && !isGroupChat && displayContactName && <span className="text-xs text-muted-foreground">{phone}</span>}
                 {instanceName && <span className="text-[10px] text-muted-foreground">• {instanceName}</span>}
               </div>
               {canTogglePrivate && (
@@ -1468,17 +1615,37 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 </div>
               )}
               <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                {hasLead && (
+                {showLeadBadge && (
                   <Badge
                     variant="default"
                     className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
-                    onClick={() => { if (linkedLead) setShowLeadEdit(true); }}
+                    onClick={() => { if (linkedLead) { setLeadEditTab(undefined); setShowLeadEdit(true); } }}
                     title={linkedLead ? `Abrir lead: ${linkedLead.lead_name}` : 'Lead'}
                   >
                     Lead {linkedLead?.lead_name ? `• ${linkedLead.lead_name.slice(0, 20)}` : ''}
                   </Badge>
                 )}
-                {hasContact && (
+                {groupLeadCount > 1 && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] px-1.5 py-0 h-4 bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 dark:border-amber-800"
+                    title="Este grupo está vinculado a mais de um lead — confira em Vincular Lead"
+                  >
+                    ⚠ {groupLeadCount} leads no grupo
+                  </Badge>
+                )}
+                {linkedCases.length > 0 && (
+                  <Badge
+                    variant="secondary"
+                    className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
+                    onClick={() => { if (linkedLead) { setLeadEditTab('casos'); setShowLeadEdit(true); } }}
+                    title="Abrir os casos jurídicos deste lead"
+                  >
+                    <Scale className="h-2.5 w-2.5 mr-1" />
+                    {linkedCases.length > 1 ? `${linkedCases.length} casos` : `Caso${linkedCases[0].case_number ? ` • ${linkedCases[0].case_number}` : ''}`}
+                  </Badge>
+                )}
+                {showContactBadge && (
                   <Badge
                     variant="secondary"
                     className="text-[10px] px-1.5 py-0 h-4 cursor-pointer hover:opacity-80"
@@ -1488,7 +1655,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                     Contato {linkedContact?.full_name ? `• ${linkedContact.full_name.slice(0, 20)}` : ''}
                   </Badge>
                 )}
-                {!hasLead && !hasContact && <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">Sem vínculo</Badge>}
+                {!showLeadBadge && !showContactBadge && (
+                  onOpenChat ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground cursor-pointer hover:text-foreground"
+                      onClick={() => handleAction('link')}
+                      title="Abrir a conversa completa para vincular um lead"
+                    >
+                      Sem vínculo • vincular
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 text-muted-foreground">Sem vínculo</Badge>
+                  )
+                )}
                 {wasResponded ? (
                   <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400 dark:border-emerald-800">
                     ✓ Respondido {responseTimeMinutes != null && responseTimeMinutes < 60 ? `em ${responseTimeMinutes}min` : responseTimeMinutes != null ? `em ${Math.floor(responseTimeMinutes / 60)}h` : ''}
@@ -1601,18 +1781,47 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
-                  <DropdownMenuItem onClick={() => handleAction('link')}>
-                    <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAction('create_lead')}>
-                    <Plus className="h-4 w-4 mr-2" /> {creatingLead ? 'Criando...' : 'Criar Lead + Contato'}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAction('create_contact')}>
-                    <UserPlus className="h-4 w-4 mr-2" /> Criar Contato
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => handleAction('create_case')}>
-                    <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
-                  </DropdownMenuItem>
+                  {/* O que já existe não vira "criar" de novo: o item passa a
+                      dizer que já foi criado e abre a ficha. */}
+                  {linkedLead ? (
+                    <DropdownMenuItem onClick={() => { setLeadEditTab(undefined); setShowLeadEdit(true); }}>
+                      <Link2 className="h-4 w-4 mr-2 text-emerald-600" />
+                      <span className="truncate">Lead já criado{linkedLead.lead_name ? ` • ${linkedLead.lead_name}` : ''}</span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <>
+                      <DropdownMenuItem onClick={() => handleAction('link')}>
+                        <Link2 className="h-4 w-4 mr-2" /> Vincular Lead
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleAction('create_lead')}>
+                        <Plus className="h-4 w-4 mr-2" /> {creatingLead ? 'Criando...' : 'Criar Lead + Contato'}
+                      </DropdownMenuItem>
+                    </>
+                  )}
+                  {linkedContact ? (
+                    <DropdownMenuItem onClick={() => setShowContactEdit(true)}>
+                      <UserPlus className="h-4 w-4 mr-2 text-emerald-600" />
+                      <span className="truncate">Contato já criado{linkedContact.full_name ? ` • ${linkedContact.full_name}` : ''}</span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => handleAction('create_contact')}>
+                      <UserPlus className="h-4 w-4 mr-2" /> Criar Contato
+                    </DropdownMenuItem>
+                  )}
+                  {linkedCases.length > 0 ? (
+                    <DropdownMenuItem onClick={() => { setLeadEditTab('casos'); setShowLeadEdit(true); }}>
+                      <Scale className="h-4 w-4 mr-2 text-emerald-600" />
+                      <span className="truncate">
+                        {linkedCases.length > 1
+                          ? `${linkedCases.length} casos já criados`
+                          : `Caso já criado${linkedCases[0].case_number ? ` • ${linkedCases[0].case_number}` : linkedCases[0].title ? ` • ${linkedCases[0].title}` : ''}`}
+                      </span>
+                    </DropdownMenuItem>
+                  ) : (
+                    <DropdownMenuItem onClick={() => handleAction('create_case')}>
+                      <Scale className="h-4 w-4 mr-2" /> Criar Caso Jurídico
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem onClick={() => { setActivityPrefill(''); setShowActivitySheet(true); }} className="text-green-600 dark:text-green-400">
                     <ClipboardList className="h-4 w-4 mr-2" /> Criar Atividade
                   </DropdownMenuItem>
@@ -1761,6 +1970,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 onRemind={commitments.registerReminder}
                 onRemove={commitments.remove}
                 onDraftMessage={(t) => setNewMessage(t)}
+                donoNome={resolveDonoNome(item)}
+                onTrocarDono={setTrocandoDono}
+                onCreateActivity={abrirAtividadeDaPendencia}
+                onOpenActivity={(activityId) => setOpenActivityId(activityId)}
               />
             ))}
           </div>
@@ -2222,7 +2435,13 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       onOpenChange={(open) => {
         setShowLeadEdit(open);
         if (!open && phone) {
-          // Refresh lead data
+          // Refresh lead data — pelo id quando já sabemos qual é o lead
+          // (conversa de grupo não casa por lead_phone).
+          if (linkedLead?.id) {
+            externalSupabase.from('leads').select('*').eq('id', linkedLead.id).maybeSingle()
+              .then(({ data }) => { if (data) setLinkedLead(data as any); });
+            return;
+          }
           const normalizedPhone = phone.replace(/\D/g, '');
           const last8 = normalizedPhone.slice(-8);
           externalSupabase.from('leads').select('*')
@@ -2233,6 +2452,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
             .then(({ data }) => { if (data) setLinkedLead(data as any); });
         }
       }}
+      initialTab={leadEditTab}
       lead={linkedLead}
       onSave={async (leadId, updates) => {
         const { error } = await externalSupabase.from('leads').update(updates as any).eq('id', leadId);
@@ -2251,28 +2471,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       open={showContactEdit}
       onOpenChange={(open) => {
         setShowContactEdit(open);
-        if (!open && phone) {
-          // Refresh contact data
-          const normalizedPhone = phone.replace(/\D/g, '');
-          const last8 = normalizedPhone.slice(-8);
-          externalSupabase.from('contacts').select('*')
-            .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
-            .limit(1)
-            .maybeSingle()
-            .then(({ data }) => { if (data) setLinkedContact(data as any); });
-        }
+        if (!open) refreshLinkedContact();
       }}
-      onContactUpdated={() => {
-        if (phone) {
-          const normalizedPhone = phone.replace(/\D/g, '');
-          const last8 = normalizedPhone.slice(-8);
-          externalSupabase.from('contacts').select('*')
-            .or(`phone.eq.${phone},phone.eq.${normalizedPhone},phone.ilike.%${last8}%`)
-            .limit(1)
-            .maybeSingle()
-            .then(({ data }) => { if (data) setLinkedContact(data as any); });
-        }
-      }}
+      onContactUpdated={refreshLinkedContact}
       mode="sheet"
     />
 
@@ -2307,13 +2508,57 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     {/* Criar atividade (mesmo formulário da aba WhatsApp) */}
     <WhatsAppActivitySheet
       open={showActivitySheet}
-      onOpenChange={(o) => { setShowActivitySheet(o); if (!o) setActivityPrefill(''); }}
+      onOpenChange={(o) => {
+        setShowActivitySheet(o);
+        if (!o) {
+          setActivityPrefill('');
+          setActivityPrefillFields({});
+          commitmentOriginRef.current = null;
+        }
+      }}
       defaultLeadId={linkedLead?.id}
       defaultLeadName={linkedLead?.lead_name || undefined}
       defaultContactId={linkedContact?.id}
       defaultContactName={linkedContact?.full_name || contactName || undefined}
       defaultDictationText={activityPrefill || undefined}
+      defaultTitle={activityPrefillFields.title}
+      defaultNotes={activityPrefillFields.notes}
+      defaultDeadline={activityPrefillFields.deadline}
+      defaultAssignedTo={activityPrefillFields.assignedTo}
+      onActivityCreated={async (_title, _type, _leadName, activityId) => {
+        // Fecha o ciclo da pendência: ela segue aberta com o cliente, mas sai
+        // da fila de cobrança porque já existe tarefa nossa cuidando disso.
+        const origem = commitmentOriginRef.current;
+        commitmentOriginRef.current = null;
+        if (!origem || !activityId) return;
+        try {
+          await commitments.markConverted(origem, activityId);
+          toast.success('Pendência marcada como tratada — virou atividade');
+        } catch {
+          toast.error('Atividade criada, mas não consegui marcar a pendência como tratada.');
+        }
+      }}
     />
+
+    {/* Quem cuida da pendência — mesma troca da caixa de pendências. */}
+    <CommitmentAssigneeDialog
+      item={trocandoDono}
+      onClose={() => setTrocandoDono(null)}
+      profiles={teamProfiles}
+      onSave={(extId) => commitments.setAssignee(trocandoDono!.id, extId)}
+    />
+
+    {/* Ficha da atividade gerada pela pendência — abre ao lado, sem sair da conversa. */}
+    {openActivityId && (
+      <Suspense fallback={null}>
+        <ActivityFullSheet
+          open
+          onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
+          activityId={openActivityId}
+          side="left"
+        />
+      </Suspense>
+    )}
     </>
   );
 }

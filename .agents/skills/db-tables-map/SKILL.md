@@ -29,6 +29,7 @@ Leia `references/known-reusables.md`. Casos clássicos:
 - Form layouts → `form_layout_tabs` + `form_layout_fields`. Não hardcode layout em componente novo.
 - Atribuição agente↔etapa → `agent_stage_assignments`.
 - Permissões por instância → `whatsapp_instance_users`. Permissões por módulo → `member_module_permissions`.
+- Continuidade entre atividades (atv que não acabou / gerou desdobramento) → `lead_activities.parent_activity_id` (a anterior) + `lead_activities.chain_root_id` (a raiz da sequência). Gravadas pelo "Concluir + próxima" e lidas na aba **Histórico** da ficha (`ActivityChainPanel`). NÃO crie tabela de "activity_links"/"activity_sequence": a cadeia é atividade→atividade e funciona sem lead/caso/processo. Não confundir com `assignment_group_id` (cópias da MESMA atv por responsável) nem com `workflow_id` (POP).
 
 ## Decisão antes de criar
 

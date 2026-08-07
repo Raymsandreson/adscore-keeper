@@ -8,6 +8,12 @@ import { isPwaBannerVisible, subscribeToPwaBanner } from '@/lib/pwaBannerVisibil
 const SNOOZE_KEY = 'push-prompt-snoozed-until';
 const SNOOZE_DAYS = 7;
 
+/** O modal de instalação só se declara depois de montado: no iPhone ele espera o
+ *  efeito que detecta o iOS, no Android espera o evento `beforeinstallprompt`.
+ *  Sem esta espera a faixa aparecia e era derrubada um instante depois, sem dar
+ *  tempo de tocar em nada. */
+const SETTLE_MS = 2000;
+
 /** Soneca em vez de "nunca mais": quem dispensa uma vez no celular voltava a
  *  nunca receber nada, e era exatamente esse o problema a resolver. */
 function snoozedNow() {
@@ -20,28 +26,41 @@ function snoozedNow() {
  * quando dá pra ativar e ainda não está ativo — inclusive quando a permissão já
  * foi concedida em OUTRO aparelho mas este não tem assinatura (celular novo, ou
  * service worker apagado por um force-refresh). No iPhone convida a instalar na
- * tela inicial, único caminho pelo qual o iOS entrega Web Push. Montada no App.
+ * tela inicial, único caminho pelo qual o iOS entrega Web Push.
+ *
+ * Uma vez na tela, a faixa NÃO se fecha sozinha: só sai por toque da pessoa ou
+ * quando a assinatura entra de fato. Fechar sozinha é o mesmo que não existir.
  */
 export function PushNotificationPrompt() {
   const push = usePushNotifications();
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(() => snoozedNow());
   const [pwaBanner, setPwaBanner] = useState(() => isPwaBannerVisible());
+  const [settled, setSettled] = useState(false);
+  const [visible, setVisible] = useState(false);
 
   useEffect(() => subscribeToPwaBanner(setPwaBanner), []);
 
-  if (pwaBanner) return null;  // o modal de instalação está na tela; não empilhar
-  if (dismissed) return null;
-  if (push.subscribed) return null;
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(true), SETTLE_MS);
+    return () => clearTimeout(t);
+  }, []);
 
   // iPhone/iPad fora da tela inicial: o caminho é instalar, não "ativar".
   const install = push.needsInstall;
+  const eligible = install
+    || (push.supported && push.checked && push.permission !== 'denied');
 
-  if (!install) {
-    if (!push.supported) return null;
-    if (!push.checked) return null;       // ainda verificando a assinatura
-    if (push.permission === 'denied') return null; // bloqueado no navegador
-  }
+  // Porta de mão única: abre quando dá, e daí em diante ignora o modal de
+  // instalação. Enquanto o modal estiver na tela ela nem chega a abrir, então
+  // não há sobreposição — e também não há mais o pisca-esconde.
+  useEffect(() => {
+    if (settled && !pwaBanner && eligible) setVisible(true);
+  }, [settled, pwaBanner, eligible]);
+
+  if (dismissed) return null;
+  if (push.subscribed) return null;
+  if (!visible) return null;
 
   const close = () => {
     localStorage.setItem(SNOOZE_KEY, String(Date.now() + SNOOZE_DAYS * 864e5));
