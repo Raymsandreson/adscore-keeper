@@ -16,12 +16,16 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
 import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import {
   ClipboardCheck, Check, MessageSquare, ThumbsDown, Loader2, RefreshCw,
   CalendarDays, ListChecks, ChevronLeft, ChevronRight, AlertTriangle, Sparkles, Search,
-  CalendarPlus, ExternalLink, UserCog,
+  CalendarPlus, ExternalLink, UserCog, ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -95,6 +99,7 @@ export function ClientCommitmentsInbox({
    * Conversa aberta no painel de baixo (Drawer), sem sair da caixa: quem está
    * limpando pendências não pode perder a lista a cada uma que abre.
    */
+  const [filtroAberto, setFiltroAberto] = useState(false);
   const [conversaAberta, setConversaAberta] = useState<InboxCommitment | null>(null);
   const [resolvendo, setResolvendo] = useState<InboxCommitment | null>(null);
   const [resolverId, setResolverId] = useState('');
@@ -186,6 +191,31 @@ export function ClientCommitmentsInbox({
     () => contagemPorDono.filter((c) => c.ownerId),
     [contagemPorDono]
   );
+
+  /**
+   * Nome do dono para o filtro. Sem nome resolvido, o sufixo do id evita fundir
+   * duas pessoas diferentes numa linha só.
+   */
+  const nomeDoDono = useCallback(
+    (id: string) => resolveNome(id) || `Não identificado #${id.slice(0, 4)}`,
+    [resolveNome]
+  );
+
+  /** Opções que não são pessoas — ficam fixas no topo do filtro. */
+  const escoposFixos = useMemo(() => [
+    { value: 'todas', label: 'Todas as pendências', n: totalAberto },
+    { value: 'minhas', label: 'Só as minhas', n: nMinhas },
+    { value: 'sem_dono', label: 'Sem responsável definido', n: nSemDono },
+    { value: ESCOPO_CONVERTIDAS, label: 'Viraram atividade', n: convertidas.length },
+  ], [totalAberto, nMinhas, nSemDono, convertidas.length]);
+
+  const rotuloEscopo = useMemo(() => {
+    const fixo = escoposFixos.find((e) => e.value === escopo);
+    if (fixo) return `${fixo.label} (${fixo.n})`;
+    const id = escopo.slice(MEMBRO_PREFIX.length);
+    const c = contagemPorDono.find((x) => x.ownerId === id);
+    return `${nomeDoDono(id)} (${c?.total ?? 0})`;
+  }, [escopo, escoposFixos, contagemPorDono, nomeDoDono]);
 
   const filtradas = useMemo(() => {
     if (escopo === ESCOPO_CONVERTIDAS) return convertidas;
@@ -328,49 +358,84 @@ export function ClientCommitmentsInbox({
                 </button>
               </div>
 
-              <Select value={escopo} onValueChange={setEscopo}>
-                <SelectTrigger className="h-7 w-[230px] text-[11px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-[320px]">
-                  <SelectItem value="todas" className="text-xs">
-                    Todas as pendências ({totalAberto})
-                  </SelectItem>
-                  <SelectItem value="minhas" className="text-xs">
-                    Só as minhas ({nMinhas})
-                  </SelectItem>
-                  <SelectItem value="sem_dono" className="text-xs">
-                    Sem responsável definido ({nSemDono})
-                  </SelectItem>
-                  <SelectItem value={ESCOPO_CONVERTIDAS} className="text-xs">
-                    Viraram atividade ({convertidas.length})
-                  </SelectItem>
+              {/* Combobox e não Select: com a equipe inteira na lista, rolar
+                  até o nome é mais lento que digitá-lo. */}
+              <Popover open={filtroAberto} onOpenChange={setFiltroAberto}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={filtroAberto}
+                    className="h-7 w-[230px] justify-between px-2 text-[11px] font-normal"
+                  >
+                    <span className="truncate">{rotuloEscopo}</span>
+                    <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[260px] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Filtrar por nome do membro…" className="text-xs" />
+                    <CommandList className="max-h-[300px]">
+                      <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">
+                        Ninguém com esse nome tem pendência.
+                      </CommandEmpty>
 
-                  {membrosComPendencia.length > 0 && (
-                    <>
-                      <Separator className="my-1" />
-                      <p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
-                        Por responsável
-                      </p>
-                      {membrosComPendencia.map((c) => {
-                        const nome = resolveNome(c.ownerId);
-                        return (
-                          <SelectItem
-                            key={c.ownerId!}
-                            value={`${MEMBRO_PREFIX}${c.ownerId}`}
+                      <CommandGroup>
+                        {escoposFixos.map((e) => (
+                          <CommandItem
+                            key={e.value}
+                            value={e.label}
                             className="text-xs"
+                            onSelect={() => { setEscopo(e.value); setFiltroAberto(false); }}
                           >
-                            {/* Sem nome resolvido, o sufixo do id evita fundir
-                                duas pessoas diferentes numa linha só. */}
-                            {nome || `Não identificado #${c.ownerId!.slice(0, 4)}`} ({c.total})
-                            {c.vencidas > 0 && ` · ${c.vencidas} vencida(s)`}
-                          </SelectItem>
-                        );
-                      })}
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
+                            <span className="truncate">{e.label}</span>
+                            <span className="ml-auto pl-2 tabular-nums text-muted-foreground">
+                              {e.n}
+                            </span>
+                            <Check className={cn(
+                              'ml-1 h-3 w-3 shrink-0',
+                              escopo === e.value ? 'opacity-100' : 'opacity-0'
+                            )} />
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+
+                      {membrosComPendencia.length > 0 && (
+                        <CommandGroup heading="Por responsável">
+                          {membrosComPendencia.map((c) => {
+                            const valor = `${MEMBRO_PREFIX}${c.ownerId}`;
+                            const nome = nomeDoDono(c.ownerId!);
+                            return (
+                              <CommandItem
+                                key={c.ownerId!}
+                                /* O id entra no value para a busca casar pelo
+                                   nome sem que dois homônimos virem um item só. */
+                                value={`${nome} ${c.ownerId}`}
+                                className="text-xs"
+                                onSelect={() => { setEscopo(valor); setFiltroAberto(false); }}
+                              >
+                                <span className="truncate">{nome}</span>
+                                <span className={cn(
+                                  'ml-auto pl-2 tabular-nums',
+                                  c.vencidas > 0 ? 'text-destructive' : 'text-muted-foreground'
+                                )}>
+                                  {c.total}
+                                  {c.vencidas > 0 && ` · ${c.vencidas} venc.`}
+                                </span>
+                                <Check className={cn(
+                                  'ml-1 h-3 w-3 shrink-0',
+                                  escopo === valor ? 'opacity-100' : 'opacity-0'
+                                )} />
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
 
               <div className="relative flex-1 min-w-[160px]">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground" />
