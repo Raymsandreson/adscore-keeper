@@ -29,6 +29,13 @@ export interface LeadActivity {
   observer_names?: string[] | null;
   /** Liga as N cópias criadas quando há N responsáveis. */
   assignment_group_id?: string | null;
+  /**
+   * Cadeia de continuidade ("Concluir + próxima"): atividade imediatamente
+   * anterior — a que foi concluída e gerou esta como desdobramento.
+   */
+  parent_activity_id?: string | null;
+  /** Primeira atividade da cadeia. NULL na própria raiz. */
+  chain_root_id?: string | null;
   /** Feedback preenchido pelo responsável na própria atividade. */
   feedback?: string | null;
   /** Data para a qual a atividade foi reagendada (status 'reagendada'). */
@@ -311,6 +318,10 @@ export function useLeadActivities() {
             observer_names: extObserverNames,
           } : {}),
           ...(activity.assignment_group_id ? { assignment_group_id: activity.assignment_group_id } : {}),
+          // Cadeia de continuidade: só entra no insert quando informado, pra
+          // banco sem a migration das colunas continuar criando atividade normal.
+          ...(activity.parent_activity_id ? { parent_activity_id: activity.parent_activity_id } : {}),
+          ...(activity.chain_root_id ? { chain_root_id: activity.chain_root_id } : {}),
           ...(activity.feedback !== undefined ? { feedback: activity.feedback } : {}),
           ...(activity.rescheduled_to !== undefined ? { rescheduled_to: activity.rescheduled_to } : {}),
         } as any)
