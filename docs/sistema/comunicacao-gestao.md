@@ -102,6 +102,19 @@ Os degraus novos entraram **depois** dos três antigos de propósito: nenhuma pe
 
 **Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Promessa do cliente ("vou avaliar", "vou gravar o vídeo") a IA já registra sozinha na barra "Cliente ficou de" — o assessor só marca **Feito**, **Cobra** ou corrige com **"Não era"**.
 
+### Vincular grupo do WhatsApp ao lead — "Buscar grupos" (ago/2026)
+
+Mesmo dialog (`LeadGroupSearchDialog`) na ficha do lead (campo "Grupos WhatsApp") e na tela de Atividades (botão "Vincular WA"). Dois modos:
+
+- **Por nome** — varre TODAS as instâncias conectadas via `whatsapp_groups_index`. **Não precisa de instância definida.**
+- **Por participante** (telefone do lead) — precisa de uma instância concreta, que é quem conhece os grupos daquele número.
+
+**A instância é resolvida pelo próprio dialog** (`resolveLeadSearchInstanceName`, `src/lib/leadSearchInstance.ts`), em cascata: instância que espelha o histórico do lead (cobre ~63% dos leads com atividade recente) → `default_instance_id` do perfil (**só 8 de 4.161 perfis têm o campo preenchido** — parar aqui não resolvia) → instância ativa agora, medida pelo espelho global mais recente e preferindo Atendimento Previdenciário 1/2. Nenhuma resolvida não bloqueia: a busca por nome segue funcionando.
+
+Isto é **leitura**. Para decidir por onde ENVIAR em grupo continua valendo `resolveGroupSenderInstanceName` (só quem tem espelho recente no próprio grupo) — nunca a instância pessoal de quem está logado.
+
+**Regressão corrigida em 07/08/2026**: a tela de Atividades montava o dialog com `instanceName={undefined}` fixo, então todo "Buscar" caía em *"Instância WhatsApp não definida para este lead"* (o Enter no campo disparava o erro mesmo com o botão desabilitado). A `find-contact-groups` também exigia `instance_name` na busca por nome, onde ele só serve de desempate; hoje ela roda no Externo (rota `external` no `functionRouter`, fallback → Cloud) e só exige instância na busca por participante.
+
 ---
 
 ## Agentes IA do WhatsApp (Configurações → aba "Agentes IA")
