@@ -14,6 +14,7 @@ import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFie
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { ClientCommitmentsInbox } from '@/components/activities/ClientCommitmentsInbox';
+import type { InboxCommitment } from '@/lib/clientCommitmentsInbox';
 import { FeedbackFunnel, type FeedbackFollowUp } from '@/components/activities/FeedbackFunnel';
 import { CobrarVaraSection } from '@/components/activities/CobrarVaraSection';
 import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
@@ -852,6 +853,38 @@ const ActivitiesPage = () => {
       `<p>👍 Ficou bom: ${praise || '—'}</p>` +
       `<p>🔧 Precisa melhorar: ${reason || '—'}</p>`
     );
+    setSheetMode('create');
+  };
+
+  // "Gerar atividade" na caixa de pendências dos clientes → abre o formulário
+  // normal já preenchido com o que o cliente ficou de fazer. Mesma saída que já
+  // existia dentro da conversa; aqui evita redigitar quem varre a caixa por data.
+  const openActivityFromCommitment = async (item: InboxCommitment) => {
+    resetForm();
+    setCommitmentsInboxOpen(false);
+    setFormTitle(`Pendência do cliente: ${item.title}`);
+    if (item.lead_id) { setFormLeadId(item.lead_id); setFormLeadName(item.lead_name || ''); }
+    if (item.contact_id) { setFormContactId(item.contact_id); setFormContactName(item.lead_name || item.phone || ''); }
+    // Prazo: o combinado com o cliente, mas nunca no passado — pendência vencida
+    // se trata hoje, e atividade nascer atrasada estraga o indicador.
+    const hoje = format(new Date(), 'yyyy-MM-dd');
+    if (item.due_date && item.due_date > hoje) setFormDeadline(item.due_date);
+    // Dono resolvido pela view vem em UUID do Externo → Cloud.
+    const cloud = item.owner_user_id ? ((await remapToCloud(item.owner_user_id)) as string) : '';
+    if (cloud) {
+      setFormAssignedTo(cloud);
+      setFormAssignedToName(teamMembers.find((m) => m.user_id === cloud)?.full_name || '');
+    }
+    setFormNotes(callFieldTextToHtml([
+      'Atividade aberta a partir de uma pendência do cliente.',
+      `O cliente ficou de: ${item.title}`,
+      `Cliente: ${item.lead_name || item.phone || '—'}`,
+      item.due_date
+        ? `Prazo combinado: ${format(parseISO(item.due_date), 'dd/MM/yyyy')}`
+        : `Sem prazo marcado — combinado em ${format(new Date(item.promised_at), 'dd/MM/yyyy')}`,
+      item.source_message_text ? `O cliente disse: "${item.source_message_text}"` : '',
+      item.notes ? `Observação da pendência: ${item.notes}` : '',
+    ].filter(Boolean).join('\n')));
     setSheetMode('create');
   };
 
@@ -5931,6 +5964,7 @@ const ActivitiesPage = () => {
         open={commitmentsInboxOpen}
         onOpenChange={setCommitmentsInboxOpen}
         teamOptions={teamMembers}
+        onCreateActivity={openActivityFromCommitment}
       />
       <ActivityCreatedDialog
         open={createdDialog.open}
