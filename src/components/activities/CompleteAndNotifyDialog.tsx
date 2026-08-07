@@ -7,7 +7,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Volume2, Send, MessageCircle, Sparkles, CheckCircle2 } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
@@ -53,13 +52,21 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
   // Fetch groups for the lead
   useEffect(() => {
     if (!open || !leadId) return;
+    // Zera antes de buscar: sem isso, os grupos do lead ANTERIOR continuam em
+    // memória enquanto a query está em voo (e ficam para sempre se ela falhar).
+    // Foi assim que a notificação de um cliente foi parar no grupo de outro em
+    // 13/07 e 30/07/2026.
+    setGroups([]);
+    setSelectedGroupId('');
+    setNotifyGroup('no');
     setLoading(true);
+    let cancelado = false;
     (async () => {
       const { data } = await externalSupabase
         .from('lead_whatsapp_groups')
         .select('id, label, group_jid, group_name')
         .eq('lead_id', leadId);
-      
+
       const groupOptions: GroupOption[] = (data || [])
         .filter((g: any) => g.group_jid)
         .map((g: any) => ({
@@ -71,7 +78,9 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
 
       // Also check legacy whatsapp_group_id on leads table
       if (groupOptions.length === 0) {
-        const { data: lead } = await supabase
+        // Externo: é onde os leads vivem. Lendo o legado do Cloud, o texto podia
+        // ir para um grupo diferente do que o áudio (que lê do externo) usa.
+        const { data: lead } = await externalSupabase
           .from('leads')
           .select('whatsapp_group_id, lead_name')
           .eq('id', leadId)
@@ -86,16 +95,24 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
         }
       }
 
+      // Resposta de um lead que não está mais aberto não pode virar destino.
+      if (cancelado) return;
       setGroups(groupOptions);
       if (groupOptions.length === 1) setSelectedGroupId(groupOptions[0].id);
       if (groupOptions.length > 0) setNotifyGroup('yes');
       setLoading(false);
-    })();
+    })().catch(() => {
+      if (cancelado) return;
+      setLoading(false);
+      toast.error('Não foi possível carregar os grupos do lead. Notificação desativada.');
+    });
+    return () => { cancelado = true; };
   }, [open, leadId]);
 
   // Reset on close
   useEffect(() => {
     if (!open) {
+      setGroups([]);
       setNotifyGroup('no');
       setSelectedGroupId('');
       setSendAudio(false);
