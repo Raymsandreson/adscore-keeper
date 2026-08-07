@@ -73,13 +73,18 @@ export const COLUNA_RESPONSAVEL: Record<PrevTrilha, string> = {
  * Extrai o número do PREV ("✅PREV 1984 - AMANDA…" → "1984"). O `case_number`
  * tem prioridade sobre o título porque é ele que carrega o prefixo do funil de
  * forma consistente; o título é renomeado à mão pela equipe.
+ *
+ * "LEAD" conta como prefixo válido: o board de BPC/LOAS passou a nomear os
+ * grupos como "✅LEAD <n>" (mesma sequência numérica do PREV) e frequentemente
+ * o `case_number` é digitado só com o número ("2005"), sobrando o título como
+ * única fonte do prefixo.
  */
 export function extractPrevNumber(
   caseNumber?: string | null,
   caseTitle?: string | null,
 ): string | null {
   for (const source of [caseNumber, caseTitle]) {
-    const m = String(source || '').match(/PREV[^0-9A-Za-z]{0,4}(\d{1,6})/i);
+    const m = String(source || '').match(/(?:PREV|LEAD)[^0-9A-Za-z]{0,4}(\d{1,6})/i);
     if (m) return m[1];
   }
   return null;
@@ -113,12 +118,31 @@ export const INSS_CASO_DEFAULT = {
   userName: 'Maria Clara',
 };
 
-/** `true` quando título ou número do caso identificam um caso do funil PREV. */
+/**
+ * `true` quando título ou número do caso identificam um caso do funil
+ * previdenciário.
+ *
+ * Esse funil sempre escreveu "PREV", mas desde 05/08/2026 o board de BPC/LOAS
+ * nomeia os grupos como "✅LEAD <n>" — mesma sequência numérica, mesmo rodízio.
+ * Enquanto isso não foi refletido aqui, todo caso "LEAD" nascia sem
+ * responsável e a atividade automática caía no criador (incidente 07/08/2026).
+ *
+ * "LEAD" sozinho não basta, e o cuidado é o ponto central desta função: 155
+ * casos do funil de indenização se chamam "LEAD 87 | Belo Horizonte/MG…" e
+ * seriam sequestrados pelo rodízio do PREV. Duas guardas os separam:
+ *   - "CASO" em qualquer lugar do nome derruba (154 dos 155 têm "CASO-0870" e
+ *     afins no número);
+ *   - "LEAD" precisa vir seguido de número, o que descarta "Novo Lead -
+ *     WhatsApp".
+ */
 export function isPrevCase(
   caseTitle?: string | null,
   caseNumber?: string | null,
 ): boolean {
-  return `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase().includes('PREV');
+  const haystack = `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase();
+  if (haystack.includes('PREV')) return true;
+  if (haystack.includes('CASO')) return false;
+  return /(^|[^A-Z])LEAD[^0-9A-Z]{0,4}\d/.test(haystack);
 }
 
 /**
@@ -207,7 +231,8 @@ export async function pickCaseAssigneeForNewCase(
  *
  * Ordem de precedência:
  *
- * 1. **Caso PREV** → o responsável mora no caso e vence tudo, **inclusive o
+ * 1. **Caso previdenciário** (PREV ou LEAD — ver `isPrevCase`) → o responsável
+ *    mora no caso e vence tudo, **inclusive o
  *    mapa fixo**: num caso PREV até a atividade automática de "Seguro de Vida"
  *    ou "Organizar docs" fica com o assessor do caso (decisão da firma,
  *    ago/2026). São **duas trilhas independentes**, porque um caso pode ter as
@@ -219,7 +244,8 @@ export async function pickCaseAssigneeForNewCase(
  *    sobrescreve a outra.
  * 2. Fora do PREV, mapa fixo (Natasha, João Vitor, Wanessa, Abderaman).
  * 3. "Benefício INSS" em caso "CASO" → Maria Clara.
- * 4. Nada disso → fallback no criador.
+ * 4. "Benefício INSS" em caso que não deu pra classificar → pergunta (item 1).
+ * 5. Nada disso → fallback no criador.
  */
 export async function resolveProcessAssignment(
   processTitle: string,
@@ -233,25 +259,7 @@ export async function resolveProcessAssignment(
   // sem "PREV"/"CASO" no título (ex: "✅Familia 384 Cocal...") mas o
   // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
   if (isPrevCase(caseTitle, caseNumber)) {
-    const judicial = isJudicialProcess(processType);
-    const trilha: PrevTrilha = judicial ? 'judicial' : 'administrativo';
-
-    // A trilha já tem dono: herda calado. Nunca olha a outra trilha.
-    const current = await getCaseAssignee(caseId, trilha);
-    if (current) return { extAssignedTo: current.extUuid, assignedName: current.name };
-
-    // Primeiro processo desta trilha no caso: pergunta e fixa o dono dela.
-    const choice = pickInssPrevAssignee(
-      extractPrevNumber(caseNumber, caseTitle),
-      judicial,
-      { kind: judicial ? 'primeiro-judicial' : 'sem-responsavel' },
-    );
-    if (choice) {
-      const ext = await remapToExternal(choice.userId);
-      await setCaseAssignee(caseId, ext, trilha);
-      return { extAssignedTo: ext, assignedName: choice.userName };
-    }
-    return fallbackNoCriador(currentUserId);
+    return resolvePrevTrilha(caseTitle, caseNumber, processType, caseId, currentUserId);
   }
 
   const mapped = CASO_PROCESS_ASSIGNMENTS[processTitle];
@@ -260,12 +268,53 @@ export async function resolveProcessAssignment(
     return { extAssignedTo: ext, assignedName: mapped.userName };
   }
 
-  if (processTitle === 'Benefício INSS'
-      && `${caseTitle || ''} ${caseNumber || ''}`.toUpperCase().includes('CASO')) {
-    const ext = await remapToExternal(INSS_CASO_DEFAULT.userId);
-    return { extAssignedTo: ext, assignedName: INSS_CASO_DEFAULT.userName };
+  if (processTitle === 'Benefício INSS') {
+    if (`${caseTitle || ''} ${caseNumber || ''}`.toUpperCase().includes('CASO')) {
+      const ext = await remapToExternal(INSS_CASO_DEFAULT.userId);
+      return { extAssignedTo: ext, assignedName: INSS_CASO_DEFAULT.userName };
+    }
+    // Rede de segurança: "Benefício INSS" é previdenciário por definição, então
+    // chegar aqui significa que o caso foi nomeado de um jeito que o
+    // `isPrevCase` não conhece. Perguntar é melhor do que atribuir calado a
+    // quem cadastrou — o fallback silencioso foi exatamente o que fez as
+    // atividades dos casos "LEAD" caírem no criador em 07/08/2026, sem que
+    // ninguém percebesse até alguém reclamar. Sem número reconhecível o prompt
+    // abre sem sugestão: a escolha é da pessoa, não um chute nosso.
+    return resolvePrevTrilha(caseTitle, caseNumber, processType, caseId, currentUserId);
   }
 
+  return fallbackNoCriador(currentUserId);
+}
+
+/**
+ * Trilha previdenciária: herda o dono da trilha se já houver, senão pergunta e
+ * fixa. As duas trilhas são independentes — uma nunca sobrescreve a outra.
+ */
+async function resolvePrevTrilha(
+  caseTitle: string | null | undefined,
+  caseNumber: string | null | undefined,
+  processType: string | null | undefined,
+  caseId: string | null | undefined,
+  currentUserId: string | undefined,
+): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
+  const judicial = isJudicialProcess(processType);
+  const trilha: PrevTrilha = judicial ? 'judicial' : 'administrativo';
+
+  // A trilha já tem dono: herda calado. Nunca olha a outra trilha.
+  const current = await getCaseAssignee(caseId, trilha);
+  if (current) return { extAssignedTo: current.extUuid, assignedName: current.name };
+
+  // Primeiro processo desta trilha no caso: pergunta e fixa o dono dela.
+  const choice = pickInssPrevAssignee(
+    extractPrevNumber(caseNumber, caseTitle),
+    judicial,
+    { kind: judicial ? 'primeiro-judicial' : 'sem-responsavel' },
+  );
+  if (choice) {
+    const ext = await remapToExternal(choice.userId);
+    await setCaseAssignee(caseId, ext, trilha);
+    return { extAssignedTo: ext, assignedName: choice.userName };
+  }
   return fallbackNoCriador(currentUserId);
 }
 

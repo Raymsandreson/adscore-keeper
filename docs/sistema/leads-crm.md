@@ -118,10 +118,29 @@ Um caso PREV pode ter frente **administrativa** e **judicial** ao mesmo tempo, e
 **As trilhas são independentes e nunca se sobrescrevem.** Cada processo e cada atividade herda
 do responsável da **sua própria** trilha (atividade sem `process_id` conta como administrativa).
 
+#### Que casos contam como previdenciário (`isPrevCase`)
+
+Não existe coluna de funil: a classificação sai do **nome** (título + `case_number`).
+
+| Nome | Conta? | Por quê |
+|---|---|---|
+| tem `PREV` | ✅ | nomenclatura histórica do funil |
+| tem `LEAD` seguido de número, **sem** `CASO` | ✅ | board de BPC/LOAS, renomeado pra `✅LEAD <n>` em 05/08/2026 — mesma sequência numérica |
+| tem `LEAD` **e** `CASO` | ❌ | 155 casos do funil de indenização (`LEAD 87 \| Belo Horizonte/MG`, nº `CASO-0870`) |
+| `Novo Lead - WhatsApp` | ❌ | `LEAD` sem número não conta |
+
+As duas guardas do `LEAD` não são detalhe: sem elas, os 155 casos de indenização entrariam no
+rodízio previdenciário.
+
+**Incidente 07/08/2026** — quando o board virou `✅LEAD`, esses casos deixaram de ser reconhecidos:
+nasciam sem responsável e a atividade automática caía calada em **quem cadastrou** (o
+`fallbackNoCriador`). 3 casos afetados, corrigidos à mão pelo próprio usuário — e a correção que
+ele fez bate exatamente com o rodízio, o que virou teste. Daí veio a rede de segurança abaixo.
+
 Onde a escolha aparece:
 
-1. **Na criação do caso** — número/título com `PREV` abre um `window.prompt` com os 7 assessores,
-   já preenchido com o sugerido pelo dígito. Define o responsável **administrativo**.
+1. **Na criação do caso** — número/título de caso previdenciário abre um `window.prompt` com os 7
+   assessores, já preenchido com o sugerido pelo dígito. Define o responsável **administrativo**.
 2. **No 1º processo judicial do caso** — prompt sugerindo Gisele/Isabela. Define o responsável
    **judicial** e não encosta no administrativo. Do 2º judicial em diante, herda calado.
 3. **Processo administrativo** — herda calado. Só pergunta se a trilha ainda não tem dono.
@@ -133,15 +152,21 @@ Detalhes que valem entender:
 - **O dono do caso vence o mapa fixo**: dentro de um caso PREV, até a atividade automática de
   "Seguro de Vida", "Organizar docs" ou "Onboarding" fica com o assessor da trilha — o mapa
   fixo (Natasha/Wanessa/João Vitor/Abderaman) só vale fora do PREV.
-- O número sai do `case_number` (`extractPrevNumber`), com o título do caso como segundo recurso —
-  o título é renomeado à mão pela equipe, o `case_number` não. Sem número legível, o prompt abre
-  sem pré-seleção em vez de chutar.
+- Sem número legível, o prompt abre sem pré-seleção em vez de chutar.
 - **Cancelar nunca apaga**: a trilha fica sem dono e o próximo processo dela pergunta de novo.
 - A **Keliane** da lista é a `Keliane Sousa Amorim Araújo`. `KEILANE DE LIMA TEIXEIRA` está na
   `ASSIGNEE_BLOCKLIST` e um teste garante que ela não entre aqui.
-- Caso **CASO** (não PREV) continua indo direto pra Maria Clara, sem prompt.
-- Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (rodízio) e
-  `caseAssignee.test.ts` (herança por trilha).
+- Caso **CASO** (não previdenciário) continua indo direto pra Maria Clara, sem prompt.
+- **Rede de segurança do "Benefício INSS"**: esse processo é previdenciário por definição, então
+  um caso que não é `PREV`, não é `LEAD` numerado e não é `CASO` significa **nomenclatura nova** —
+  e aí o prompt abre (sem pré-seleção) em vez de atribuir calado a quem cadastrou. É o que
+  transforma a próxima renomeação de board numa pergunta na tela, e não em outro incidente.
+- O número sai do `case_number` (`extractPrevNumber`), com o título como segundo recurso. Nos
+  casos `LEAD` o `case_number` costuma vir digitado só com o número (`2005`) e o prefixo sobra
+  no título — por isso o título não é opcional aqui.
+- Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (rodízio,
+  `extractPrevNumber`) e `caseAssignee.test.ts` (herança por trilha, `isPrevCase`, rede de
+  segurança).
 
 #### Onde o responsável aparece em `/casos`
 

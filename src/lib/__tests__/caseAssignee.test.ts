@@ -260,4 +260,84 @@ describe('isPrevCase', () => {
     expect(isPrevCase('CASO 384', 'CASO-0872')).toBe(false);
     expect(isPrevCase(null, null)).toBe(false);
   });
+
+  // Incidente 07/08/2026: o board de BPC/LOAS virou "✅LEAD <n>" em 05/08 e o
+  // funil deixou de ser reconhecido — caso nascia sem responsável e a atividade
+  // caía em quem cadastrou.
+  it('reconhece o LEAD numerado do board BPC/LOAS', () => {
+    expect(isPrevCase('✅LEAD 2005 - (BPC LOAS)', '2005')).toBe(true);
+    expect(isPrevCase('Lead 1999 ( BPC/LOAS )', '1999')).toBe(true);
+    expect(isPrevCase('Lead 1939 - BPC', 'Lead 1939')).toBe(true);
+  });
+
+  it('não sequestra os 155 LEAD do funil de indenização — "CASO" derruba', () => {
+    expect(isPrevCase('LEAD 87 | Belo Horizonte/MG', 'CASO-0870')).toBe(false);
+    expect(isPrevCase('✅CASO 404 (ANA) LEAD213/jul.26', 'CASO 404')).toBe(false);
+    expect(isPrevCase('LEAD 78 | Lead teste - INQUÉRITO POLICIAL', 'CASO-0822')).toBe(false);
+  });
+
+  it('LEAD sem número não conta', () => {
+    expect(isPrevCase('Novo Lead - WhatsApp', 'SM-0012')).toBe(false);
+    expect(isPrevCase('Lead WhatsApp', 'SM-0013')).toBe(false);
+  });
+});
+
+describe('caso LEAD do funil previdenciário', () => {
+  it('a criação pergunta e sugere pelo rodízio, como em qualquer PREV', async () => {
+    const r = await pickCaseAssigneeForNewCase('2005', '✅LEAD 2005 - (BPC LOAS)');
+
+    expect(aceitaSugestao).toHaveBeenCalledTimes(1);
+    // final 5 → José, exatamente o que foi corrigido à mão no incidente
+    expect(r).toEqual({ extAssignedTo: `ext:${JOSE.userId}`, assignedName: JOSE.userName });
+  });
+
+  it('o processo herda o dono do caso sem perguntar de novo', async () => {
+    state.caseAssignee = `ext:${JOSE.userId}`;
+
+    const r = await resolveProcessAssignment(
+      'Benefício INSS', '✅LEAD 2005 - (BPC LOAS)', 'cloud-user', '2005', 'administrativo', 'case-5',
+    );
+
+    expect(aceitaSugestao).not.toHaveBeenCalled();
+    expect(r.assignedName).toBe(JOSE.userName);
+  });
+
+  it('LEAD de indenização continua no mapa fixo, sem prompt', async () => {
+    const r = await resolveProcessAssignment(
+      'Seguro de Vida', 'LEAD 87 | Belo Horizonte/MG', 'cloud-user', 'CASO-0870', 'administrativo', 'case-6',
+    );
+
+    expect(aceitaSugestao).not.toHaveBeenCalled();
+    expect(r.assignedName).toBe('Natasha');
+  });
+});
+
+describe('rede de segurança do Benefício INSS', () => {
+  // Antes desta rede, um caso nomeado fora de todo padrão conhecido caía calado
+  // no criador. Como "Benefício INSS" é previdenciário por definição, chegar
+  // aqui significa nomenclatura nova — e perguntar deixa isso visível na hora.
+  it('caso sem marcador nenhum pergunta em vez de atribuir a quem cadastrou', async () => {
+    aceitaSugestao.mockReturnValueOnce('3' as any); // 3 = José na lista do prompt
+
+    const r = await resolveProcessAssignment(
+      'Benefício INSS', 'Juliane Carlesso', 'cloud-user', '1683', 'administrativo', 'case-9',
+    );
+
+    expect(aceitaSugestao).toHaveBeenCalledTimes(1);
+    expect(r.assignedName).toBe(JOSE.userName);
+    expect(state.updates).toEqual([
+      { id: 'case-9', coluna: 'assigned_to', valor: `ext:${JOSE.userId}` },
+    ]);
+  });
+
+  it('cancelar ainda cai no criador — mas agora foi uma escolha, não um silêncio', async () => {
+    aceitaSugestao.mockReturnValueOnce('' as any);
+
+    const r = await resolveProcessAssignment(
+      'Benefício INSS', 'Juliane Carlesso', 'cloud-user', '1683', 'administrativo', 'case-9',
+    );
+
+    expect(r.extAssignedTo).toBe('ext:cloud-user');
+    expect(state.updates).toHaveLength(0);
+  });
 });
