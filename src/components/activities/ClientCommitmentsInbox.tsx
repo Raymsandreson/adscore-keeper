@@ -21,6 +21,7 @@ import {
 import {
   ClipboardCheck, Check, MessageSquare, ThumbsDown, Loader2, RefreshCw,
   CalendarDays, ListChecks, ChevronLeft, ChevronRight, AlertTriangle, Sparkles, Search,
+  CalendarPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -47,9 +48,15 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   /** Equipe, para filtrar por dono e para dizer quem resolveu. */
   teamOptions?: TeamOption[];
+  /**
+   * Abre o formulário de atividade do escritório já preenchido a partir da
+   * pendência. Mesma saída que já existe no painel de dentro da conversa —
+   * sem ela, quem varre a caixa tem que redigitar a atividade do zero.
+   */
+  onCreateActivity?: (item: InboxCommitment) => void;
 }
 
-export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }: Props) {
+export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], onCreateActivity }: Props) {
   const navigate = useNavigate();
   const { items, loading, reload, markDone, dismiss, meExtId } = useClientCommitmentsInbox({ enabled: open });
 
@@ -240,6 +247,7 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
                       donoNome={item.owner_user_id ? nomePorId[item.owner_user_id] : null}
                       onAbrirConversa={abrirConversa}
                       onResolver={abrirResolver}
+                      onCreateActivity={onCreateActivity}
                       onDismiss={async (id) => {
                         try { await dismiss(id); toast.success('Ok, não era pendência'); }
                         catch { toast.error('Não consegui salvar.'); }
@@ -305,6 +313,7 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
                           donoNome={item.owner_user_id ? nomePorId[item.owner_user_id] : null}
                           onAbrirConversa={abrirConversa}
                           onResolver={abrirResolver}
+                          onCreateActivity={onCreateActivity}
                           onDismiss={async (id) => {
                             try { await dismiss(id); toast.success('Ok, não era pendência'); }
                             catch { toast.error('Não consegui salvar.'); }
@@ -377,13 +386,14 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [] }:
 }
 
 function InboxCard({
-  item, donoNome, onAbrirConversa, onResolver, onDismiss,
+  item, donoNome, onAbrirConversa, onResolver, onDismiss, onCreateActivity,
 }: {
   item: InboxCommitment;
   donoNome: string | null;
   onAbrirConversa: (i: InboxCommitment) => void;
   onResolver: (i: InboxCommitment) => void;
   onDismiss: (id: string) => Promise<void>;
+  onCreateActivity?: (i: InboxCommitment) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const vencida = isCommitmentOverdue(item);
@@ -426,6 +436,15 @@ function InboxCard({
         <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => onAbrirConversa(item)}>
           <MessageSquare className="h-3 w-3" /> Abrir conversa
         </Button>
+        {onCreateActivity && (
+          <Button
+            size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+            title="Abrir uma atividade do escritório para tratar desta pendência"
+            onClick={() => onCreateActivity(item)}
+          >
+            <CalendarPlus className="h-3 w-3" /> Gerar atividade
+          </Button>
+        )}
         {item.origin === 'ia' && (
           <Button
             size="sm" variant="ghost" className="h-7 text-[11px] gap-1 text-muted-foreground"
