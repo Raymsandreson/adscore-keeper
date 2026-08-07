@@ -90,6 +90,24 @@ bug:
 - `src/hooks/useAmbassadors.ts` → `contacts.created_by`
 - `src/utils/escavadorPartyUtils.ts` → `contacts.created_by`
 
+## Autoria no Externo: `auth.uid()` de lá não é a pessoa
+
+A sessão que o `externalSupabase` carrega é **anônima** (`auth.users.is_anonymous
+= true`, sem e-mail) — o login de verdade acontece no Cloud. Prova: dos 8.724
+registros `actor_kind='system'` do `lead_activity_audit_log`, **zero** resolvem
+nome, e os uuids que aparecem como `actor_id` são todos de usuários anônimos.
+
+Consequência prática: **nenhum trigger no Externo descobre sozinho quem alterou
+a linha.** O `coalesce(NEW.updated_by, auth.uid())` que os triggers usam só
+acerta quando o app mandou `updated_by` — o resto vira `system`. Toda escrita
+que precise registrar autoria (`updated_by`, `created_by`, `completed_by`) tem
+que carimbar o ext_uuid explicitamente; helper único em
+`src/lib/currentExtUser.ts` (`currentExtUserId()`).
+
+Isso descarta a solução que parece óbvia — "põe um trigger pra preencher
+`updated_by`". Ela grava uuid de sessão descartável e o nome continua não
+resolvendo. Ver o efeito na tela em `atividades.md` → Ficha da atividade.
+
 ## O que NÃO resolve
 
 **Mover os perfis para o Externo.** O login continua no Cloud (é onde o auth do
