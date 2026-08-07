@@ -37,6 +37,12 @@ interface WhatsAppActivitySheetProps {
   defaultContactId?: string;
   defaultContactName?: string;
   defaultDictationText?: string;
+  /** Campos já preenchidos — usado por quem abre a partir de outra coisa (ex.: pendência do cliente). */
+  defaultTitle?: string;
+  defaultNotes?: string;
+  defaultDeadline?: string;
+  /** Responsável sugerido (user_id do Cloud). Sem isso, cai no usuário logado. */
+  defaultAssignedTo?: string;
   /** `activityId`: id da atividade recém-criada (usado pra vincular às mensagens de origem). */
   onActivityCreated?: (title: string, type: string, leadName?: string, activityId?: string) => void;
 }
@@ -60,6 +66,10 @@ export function WhatsAppActivitySheet({
   defaultContactId,
   defaultContactName,
   defaultDictationText,
+  defaultTitle,
+  defaultNotes,
+  defaultDeadline,
+  defaultAssignedTo,
   onActivityCreated,
 }: WhatsAppActivitySheetProps) {
   const { createActivity } = useLeadActivities();
@@ -223,11 +233,11 @@ export function WhatsAppActivitySheet({
 
   useEffect(() => {
     if (open) {
-      setFormTitle('');
+      setFormTitle(defaultTitle || '');
       setFormType('tarefa');
       setFormStatus('pendente');
       setFormPriority('normal');
-      setFormDeadline('');
+      setFormDeadline(defaultDeadline || '');
       setFormNotificationDate('');
       setFormLeadId(defaultLeadId || '');
       setFormLeadName(defaultLeadName || '');
@@ -242,7 +252,7 @@ export function WhatsAppActivitySheet({
       setFormWhatWasDone('');
       setFormCurrentStatus('');
       setFormNextSteps('');
-      setFormNotes('');
+      setFormNotes(defaultNotes || '');
       setFormRepeatWeekDays([]);
       setLeadSearch('');
       setContactSearch('');
@@ -251,10 +261,11 @@ export function WhatsAppActivitySheet({
       setListening(false);
 
       fetchLeads();
-      fetchTeamMembers();
+      fetchTeamMembers(defaultAssignedTo);
       fetchContacts();
     }
-  }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName, defaultDictationText]);
+  }, [open, defaultLeadId, defaultLeadName, defaultContactId, defaultContactName, defaultDictationText,
+      defaultTitle, defaultNotes, defaultDeadline, defaultAssignedTo]);
 
   const fetchLeads = async (term?: string) => {
     const q = (term || '').trim();
@@ -271,9 +282,19 @@ export function WhatsAppActivitySheet({
     setLeads(data || []);
   };
 
-  const fetchTeamMembers = async () => {
+  const fetchTeamMembers = async (preferUserId?: string) => {
     const { data } = await supabase.from('profiles').select('user_id, full_name').order('full_name');
     setTeamMembers(data || []);
+    // Responsável sugerido por quem abriu o formulário ganha do usuário logado
+    // (ex.: pendência que já tem dono resolvido).
+    if (preferUserId) {
+      const preferido = (data || []).find((m: TeamMember) => m.user_id === preferUserId);
+      if (preferido) {
+        setFormAssignedTo(preferUserId);
+        setFormAssignedToName(preferido.full_name || '');
+        return;
+      }
+    }
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const me = (data || []).find((m: TeamMember) => m.user_id === user.id);

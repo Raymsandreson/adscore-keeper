@@ -1,10 +1,12 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
-import { CommitmentItemCard } from './ClientCommitmentsPanel';
+import { CommitmentItemCard, type CommitmentCardItem } from './ClientCommitmentsPanel';
+import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { useProfilesList } from '@/hooks/useProfilesList';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -37,7 +39,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import type { Contact } from '@/hooks/useContacts';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
@@ -45,6 +47,11 @@ import { AITextActions } from '@/components/ui/AITextActions';
 import { WhatsAppMediaGallery } from '@/components/whatsapp/WhatsAppMediaGallery';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { WhatsAppActivitySheet } from '@/components/whatsapp/WhatsAppActivitySheet';
+// Import dinâmico de propósito: a ficha da atividade importa este painel de
+// volta (para abrir a conversa), e o lazy quebra o ciclo.
+const ActivityFullSheet = lazy(() =>
+  import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
+);
 import { bindDownload } from '@/lib/downloadFile';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
@@ -170,6 +177,37 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     contactId: linkedContact?.id || null,
     clientName: contactName || linkedLead?.lead_name || null,
   });
+  /** Pendência que está com o "quem cuida disto?" aberto. */
+  const [trocandoDono, setTrocandoDono] = useState<CommitmentCardItem | null>(null);
+  /** Pendência que originou a atividade em criação — fecha o ciclo ao salvar. */
+  const commitmentOriginRef = useRef<string | null>(null);
+  const [activityPrefillFields, setActivityPrefillFields] = useState<{
+    title?: string; notes?: string; deadline?: string; assignedTo?: string;
+  }>({});
+  /** Ficha da atividade gerada a partir de uma pendência, aberta em aba lateral. */
+  const [openActivityId, setOpenActivityId] = useState<string | null>(null);
+  const teamProfiles = useProfilesList();
+
+  const nomePorId = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of teamProfiles) if (p.full_name) m[p.user_id] = p.full_name;
+    return m;
+  }, [teamProfiles]);
+
+  // O remap precisa estar quente antes do primeiro render: `resolveDonoNome` é
+  // síncrono e, sem cache, não acha quem tem UUID diferente nos dois bancos.
+  useEffect(() => { if (open) void ensureRemapCache(); }, [open]);
+
+  /** `owner_user_id` vem do Externo; os perfis vêm do Cloud — daí o remap. */
+  const resolveDonoNome = (item: CommitmentCardItem) => {
+    const id = item.owner_user_id;
+    if (!id) return null;
+    if (nomePorId[id]) return nomePorId[id];
+    const cloudId = remapToCloudSync(id);
+    if (cloudId && cloudId !== id && nomePorId[cloudId]) return nomePorId[cloudId];
+    return null;
+  };
+
   const [groupName, setGroupName] = useState<string | null>(null);
   /** Quantos leads distintos estão vinculados a este grupo (>1 = vínculo sujo, precisa aparecer). */
   const [groupLeadCount, setGroupLeadCount] = useState(0);
@@ -928,6 +966,34 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       .limit(1)
       .maybeSingle()
       .then(({ data }) => { if (data) setLinkedContact(data as any); });
+  };
+
+  /**
+   * Abre o formulário de atividade já preenchido pela pendência — o mesmo
+   * caminho da caixa de pendências, agora sem sair da conversa.
+   */
+  const abrirAtividadeDaPendencia = (item: CommitmentCardItem) => {
+    commitmentOriginRef.current = item.id;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const donoCloud = item.owner_user_id ? remapToCloudSync(item.owner_user_id) : null;
+    setActivityPrefillFields({
+      title: `Pendência do cliente: ${item.title}`,
+      // Prazo: o combinado com o cliente, mas nunca no passado — atividade que
+      // nasce atrasada estraga o indicador.
+      deadline: item.due_date && item.due_date > hoje ? item.due_date : undefined,
+      assignedTo: donoCloud && nomePorId[donoCloud] ? donoCloud : undefined,
+      notes: [
+        'Atividade aberta a partir de uma pendência do cliente.',
+        `O cliente ficou de: ${item.title}`,
+        item.due_date
+          ? `Prazo combinado: ${format(parseISO(item.due_date), 'dd/MM/yyyy')}`
+          : `Sem prazo marcado — combinado em ${format(new Date(item.promised_at), 'dd/MM/yyyy')}`,
+        item.source_message_text ? `O cliente disse: "${item.source_message_text}"` : '',
+        item.notes ? `Observação da pendência: ${item.notes}` : '',
+      ].filter(Boolean).join('\n'),
+    });
+    setActivityPrefill('');
+    setShowActivitySheet(true);
   };
 
   const handleAction = (action: string) => {
@@ -1904,6 +1970,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 onRemind={commitments.registerReminder}
                 onRemove={commitments.remove}
                 onDraftMessage={(t) => setNewMessage(t)}
+                donoNome={resolveDonoNome(item)}
+                onTrocarDono={setTrocandoDono}
+                onCreateActivity={abrirAtividadeDaPendencia}
+                onOpenActivity={(activityId) => setOpenActivityId(activityId)}
               />
             ))}
           </div>
@@ -2438,13 +2508,57 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     {/* Criar atividade (mesmo formulário da aba WhatsApp) */}
     <WhatsAppActivitySheet
       open={showActivitySheet}
-      onOpenChange={(o) => { setShowActivitySheet(o); if (!o) setActivityPrefill(''); }}
+      onOpenChange={(o) => {
+        setShowActivitySheet(o);
+        if (!o) {
+          setActivityPrefill('');
+          setActivityPrefillFields({});
+          commitmentOriginRef.current = null;
+        }
+      }}
       defaultLeadId={linkedLead?.id}
       defaultLeadName={linkedLead?.lead_name || undefined}
       defaultContactId={linkedContact?.id}
       defaultContactName={linkedContact?.full_name || contactName || undefined}
       defaultDictationText={activityPrefill || undefined}
+      defaultTitle={activityPrefillFields.title}
+      defaultNotes={activityPrefillFields.notes}
+      defaultDeadline={activityPrefillFields.deadline}
+      defaultAssignedTo={activityPrefillFields.assignedTo}
+      onActivityCreated={async (_title, _type, _leadName, activityId) => {
+        // Fecha o ciclo da pendência: ela segue aberta com o cliente, mas sai
+        // da fila de cobrança porque já existe tarefa nossa cuidando disso.
+        const origem = commitmentOriginRef.current;
+        commitmentOriginRef.current = null;
+        if (!origem || !activityId) return;
+        try {
+          await commitments.markConverted(origem, activityId);
+          toast.success('Pendência marcada como tratada — virou atividade');
+        } catch {
+          toast.error('Atividade criada, mas não consegui marcar a pendência como tratada.');
+        }
+      }}
     />
+
+    {/* Quem cuida da pendência — mesma troca da caixa de pendências. */}
+    <CommitmentAssigneeDialog
+      item={trocandoDono}
+      onClose={() => setTrocandoDono(null)}
+      profiles={teamProfiles}
+      onSave={(extId) => commitments.setAssignee(trocandoDono!.id, extId)}
+    />
+
+    {/* Ficha da atividade gerada pela pendência — abre ao lado, sem sair da conversa. */}
+    {openActivityId && (
+      <Suspense fallback={null}>
+        <ActivityFullSheet
+          open
+          onOpenChange={(o) => { if (!o) setOpenActivityId(null); }}
+          activityId={openActivityId}
+          side="left"
+        />
+      </Suspense>
+    )}
     </>
   );
 }

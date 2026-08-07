@@ -31,7 +31,8 @@ import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
-import { ClientCommitmentsPanel, type CommitmentDraft } from './ClientCommitmentsPanel';
+import { ClientCommitmentsPanel, type CommitmentDraft, type CommitmentCardItem } from './ClientCommitmentsPanel';
+import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
 import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -45,7 +46,7 @@ import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { invalidateGroupLeadCache } from '@/integrations/supabase/group-lead-links';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -1038,6 +1039,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     () => [...teamMembers].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')),
     [teamMembers]
   );
+
+  /** Pendência com o "quem cuida disto?" aberto (mesma troca da caixa de pendências). */
+  const [trocandoDonoPendencia, setTrocandoDonoPendencia] = useState<CommitmentCardItem | null>(null);
+  // O remap precisa estar quente antes do primeiro render: a resolução do nome
+  // é síncrona e, sem cache, não acha quem tem UUID diferente nos dois bancos.
+  useEffect(() => { void ensureRemapCache(); }, []);
+
+  /** `owner_user_id` vem do Externo; `teamMembers` vem do Cloud — daí o remap. */
+  const resolveDonoPendencia = useCallback((item: CommitmentCardItem) => {
+    const id = item.owner_user_id;
+    if (!id) return null;
+    const direto = teamMembers.find((m) => m.user_id === id);
+    if (direto) return direto.full_name || null;
+    const cloudId = remapToCloudSync(id);
+    const viaRemap = cloudId ? teamMembers.find((m) => m.user_id === cloudId) : null;
+    return viaRemap?.full_name || null;
+  }, [teamMembers]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   // Group @mention (WhatsApp native): picker over participants while composing
   const [groupMentionQuery, setGroupMentionQuery] = useState<string | null>(null); // null = picker closed
@@ -3470,6 +3488,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onAlertEnabledChange={toggleCommitmentAlert}
         teamOptions={commitmentTeamOptions}
         suggestedResolver={suggestedResolver}
+        resolveDonoNome={resolveDonoPendencia}
+        onTrocarDono={setTrocandoDonoPendencia}
+        onOpenActivity={(activityId) => { setShowCommitments(false); setOpenActivityId(activityId); }}
         onCreateActivity={onCreateActivity ? (item) => {
           // Reaproveita o mesmo formulário de "Criar atividade a partir desta
           // mensagem": a IA preenche o resto a partir deste texto.
@@ -3484,6 +3505,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           );
           setShowCommitments(false);
         } : undefined}
+      />
+
+      {/* Quem cuida da pendência — mesma troca da caixa de pendências. */}
+      <CommitmentAssigneeDialog
+        item={trocandoDonoPendencia}
+        onClose={() => setTrocandoDonoPendencia(null)}
+        profiles={commitmentTeamOptions}
+        onSave={(extId) => commitments.setAssignee(trocandoDonoPendencia!.id, extId)}
       />
 
       {/* AI Extraction Progress Banner */}
