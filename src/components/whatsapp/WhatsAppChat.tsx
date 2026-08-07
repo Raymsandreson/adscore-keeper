@@ -986,7 +986,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setRefreshingRoster(true);
     const t = toast.loading('Atualizando participantes...');
     try {
-      const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+      const { data: fnData } = await cloudFunctions.invoke<any>('get-group-participants', {
         body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: true },
       });
       const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
@@ -1642,7 +1642,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
     if (!groupJid) return;
     try {
-      const { data } = await supabase.functions.invoke('get-group-participants', {
+      const { data } = await cloudFunctions.invoke<any>('get-group-participants', {
         body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: false },
       });
       const resp = data as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;

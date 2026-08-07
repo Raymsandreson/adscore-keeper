@@ -3025,14 +3025,16 @@ const ActivitiesPage = () => {
         responseTimeMinutes={null}
       />
 
-      {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead) */}
+      {/* Busca de grupos do contato (mesmo dialog usado dentro do Lead).
+          `instanceName` fica de fora de propósito: o dialog resolve a instância
+          ativa sozinho pelo leadId. Passar undefined aqui era o que fazia todo
+          Buscar morrer em "Instância WhatsApp não definida para este lead". */}
       {formLeadId && (
         <LeadGroupSearchDialog
           open={groupSearchOpen}
           onOpenChange={setGroupSearchOpen}
           leadId={formLeadId}
           contactPhone={leadPreview?.lead_phone || undefined}
-          instanceName={undefined}
           leadName={formLeadName || ''}
           onGroupSelected={async (g) => {
             try {

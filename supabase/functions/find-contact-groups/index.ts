@@ -6,7 +6,13 @@
 // TTL de 6h. Suporta force_refresh=true para ignorar o cache.
 //
 // Body:
-//   { phone: string, instance_name: string, force_refresh?: boolean }
+//   { phone?: string, name_query?: string, instance_name?: string,
+//     force_refresh?: boolean }
+//
+// `instance_name` só é obrigatório na busca por PARTICIPANTE (phone) restrita a
+// uma instância. Na busca por NOME o padrão é varrer todas as instâncias e a
+// instância entra apenas como desempate (p_preferred_instance) — exigi-la ali
+// era o que produzia "Instância WhatsApp não definida para este lead".
 //
 // Resposta:
 //   { groups: [{ jid, name, invite_link, participants_count }],
@@ -110,9 +116,17 @@ Deno.serve(async (req) => {
         ? body.search_all_instances === true
         : !!name_query;
 
-    if (!instance_name || (!phone && !name_query)) {
+    if (!phone && !name_query) {
       return new Response(
-        JSON.stringify({ success: false, error: "instance_name and one of (phone | name_query) are required" }),
+        JSON.stringify({ success: false, error: "one of (phone | name_query) is required" }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    // Busca por participante precisa saber em qual instância procurar; a por
+    // nome não (search_all_instances cobre todas).
+    if (!instance_name && !search_all_instances) {
+      return new Response(
+        JSON.stringify({ success: false, error: "instance_name is required for participant search" }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -125,17 +139,19 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Cloud client (cache + whatsapp_instances vivem no Cloud)
-    const cloudUrl = Deno.env.get("SUPABASE_URL")!;
-    const cloudKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const cloud = createClient(cloudUrl, cloudKey);
+    // Projeto onde a função roda (cache + whatsapp_instances).
+    const selfUrl = Deno.env.get("SUPABASE_URL")!;
+    const selfKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const cloud = createClient(selfUrl, selfKey);
 
+    // Banco de negócio (whatsapp_groups_index). Rodando NO Externo não existe
+    // EXTERNAL_* — o próprio projeto já é o banco de negócio.
     const externalUrl = Deno.env.get("EXTERNAL_SUPABASE_URL") || "";
     const externalKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY") || "";
-    const external = externalUrl && externalKey ? createClient(externalUrl, externalKey) : null;
+    const external = externalUrl && externalKey ? createClient(externalUrl, externalKey) : cloud;
 
     // Determina instâncias a varrer
-    let targetInstances: string[] = [instance_name];
+    let targetInstances: string[] = instance_name ? [instance_name] : [];
     if (search_all_instances) {
       const { data: allInst } = await cloud
         .from("whatsapp_instances")
@@ -157,7 +173,7 @@ Deno.serve(async (req) => {
         {
           p_tokens: queryTokens,
           p_instance_names: search_all_instances ? null : [instance_name],
-          p_preferred_instance: instance_name,
+          p_preferred_instance: instance_name ?? null,
           p_limit: 200,
         },
       );

@@ -318,7 +318,6 @@ export function LeadEditDialog({
   // Conversa do grupo aberta pela ficha (mesmo drawer da página de atividades).
   const [groupChatPreview, setGroupChatPreview] = useState<{ phone: string; name: string | null; privatePhone: string | null } | null>(null);
   const [groupSearchOpen, setGroupSearchOpen] = useState(false);
-  const [groupSearchInstance, setGroupSearchInstance] = useState<string | undefined>(undefined);
   const [clientClassification, setClientClassification] = useState<string>('');
   const [expectedBirthDate, setExpectedBirthDate] = useState('');
   // Status do POP (por-POP, separado do "Resultado do Lead"/lead_status global) +
@@ -2571,47 +2570,17 @@ ${scrapeData.content || ''}
                       variant="outline"
                       size="sm"
                       className="gap-1 h-7"
-                      onClick={async () => {
+                      onClick={() => {
                         if (!currentLead?.id) {
                           toast.error('Salve o lead antes de buscar grupos.');
                           return;
                         }
-                        let instName: string | undefined;
-                        try {
-                          const { data: instMsg } = await externalSupabase
-                            .from('whatsapp_messages')
-                            .select('instance_name')
-                            .eq('lead_id', currentLead.id)
-                            .not('instance_name', 'is', null)
-                            .order('created_at', { ascending: false })
-                            .limit(1);
-                          instName = (instMsg?.[0] as any)?.instance_name || undefined;
-                        } catch {}
-                        if (!instName) {
-                          const { data: { user } } = await supabase.auth.getUser();
-                          if (user) {
-                            const { data: profile } = await supabase
-                              .from('profiles')
-                              .select('default_instance_id')
-                              .eq('user_id', user.id)
-                              .single();
-                            const defaultId = (profile as any)?.default_instance_id;
-                            if (defaultId) {
-                              const { data: inst } = await supabase
-                                .from('whatsapp_instances')
-                                .select('instance_name')
-                                .eq('id', defaultId)
-                                .maybeSingle();
-                              instName = (inst as any)?.instance_name || undefined;
-                            }
-                          }
-                        }
-                        if (!instName) {
-                          toast.error('Não consegui descobrir a instância WhatsApp deste lead.');
-                          return;
-                        }
-                        // Sem telefone: o dialog abre em modo "busca por nome do lead"
-                        setGroupSearchInstance(instName);
+                        // A instância é resolvida dentro do dialog (lead → perfil →
+                        // instância ativa). Antes era resolvida aqui lendo
+                        // profiles/whatsapp_instances no client Cloud — tabelas de
+                        // negócio que moram no Externo — e um miss abortava a
+                        // abertura, mesmo com a busca por nome funcionando sem
+                        // instância nenhuma.
                         setGroupSearchOpen(true);
                       }}
                     >
@@ -4090,7 +4059,6 @@ ${scrapeData.content || ''}
           onOpenChange={setGroupSearchOpen}
           leadId={currentLead.id}
           contactPhone={leadPhone}
-          instanceName={groupSearchInstance}
           leadName={currentLead.lead_name || ''}
           onGroupSelected={(g) => {
             setWhatsappGroups((prev) => {
