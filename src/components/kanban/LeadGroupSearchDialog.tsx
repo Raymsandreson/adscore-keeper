@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Loader2, Search, Users, RefreshCw, Crown, Mail, IdCard, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/functionRouter';
+import { resolveLeadSearchInstanceName } from '@/lib/leadSearchInstance';
 import { toast } from 'sonner';
 
 interface FoundGroup {
@@ -41,7 +43,9 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   leadId: string;
   contactPhone: string | undefined;
-  instanceName: string | undefined;
+  /** Instância a usar. Opcional: sem ela o dialog resolve sozinho pelo lead /
+   *  perfil / instância ativa (ver `resolveLeadSearchInstanceName`). */
+  instanceName?: string;
   /** Nome do lead — usado como fallback de busca quando não há telefone de contato. */
   leadName?: string;
   /** Callback when user picks a group (to write back into the form). */
@@ -78,6 +82,23 @@ export function LeadGroupSearchDialog({
       setNameQuery(leadName || '');
     }
   }, [open, leadName, leadId]);
+
+  // Instância resolvida no próprio dialog quando o chamador não passa uma.
+  // Sem isto, a tela de Atividades abria sempre sem instância e o Buscar morria
+  // em "Instância WhatsApp não definida para este lead".
+  const [autoInstance, setAutoInstance] = useState<string | undefined>(undefined);
+  const [resolvingInstance, setResolvingInstance] = useState(false);
+  const effectiveInstance = instanceName || autoInstance;
+
+  useEffect(() => {
+    if (!open || instanceName) return;
+    let cancelled = false;
+    setResolvingInstance(true);
+    resolveLeadSearchInstanceName(leadId)
+      .then((name) => { if (!cancelled) setAutoInstance(name); })
+      .finally(() => { if (!cancelled) setResolvingInstance(false); });
+    return () => { cancelled = true; };
+  }, [open, instanceName, leadId]);
   const [step, setStep] = useState<Step>('groups');
   const [loadingGroups, setLoadingGroups] = useState(false);
   const [groups, setGroups] = useState<FoundGroup[]>([]);
@@ -92,7 +113,7 @@ export function LeadGroupSearchDialog({
 
   const refreshParticipant = async (phone: string) => {
     if (!chosenGroup) return;
-    const useInstance = chosenGroup.instance_name || instanceName;
+    const useInstance = chosenGroup.instance_name || effectiveInstance;
     if (!useInstance) return;
     setRefreshingPhone(phone);
     try {
@@ -139,8 +160,14 @@ export function LeadGroupSearchDialog({
   };
 
   const handleSearch = async (forceRefresh = false) => {
-    if (!instanceName) {
-      toast.error('Instância WhatsApp não definida para este lead.');
+    if (resolvingInstance) {
+      toast.info('Ainda descobrindo a instância WhatsApp ativa. Tente de novo em um instante.');
+      return;
+    }
+    // Busca por participante exige uma instância concreta (é ela quem conhece
+    // os grupos daquele telefone). Busca por nome não: o backend varre todas.
+    if (!effectiveInstance && !nameQuery.trim()) {
+      toast.error('Nenhuma instância WhatsApp ativa encontrada. Digite o nome do grupo para buscar em todas.');
       return;
     }
     if (!hasPhone && !nameQuery.trim()) {
@@ -150,10 +177,10 @@ export function LeadGroupSearchDialog({
     setLoadingGroups(true);
     try {
       const body: Record<string, unknown> = {
-        instance_name: instanceName,
         force_refresh: forceRefresh,
       };
-      if (hasPhone) body.phone = contactPhone;
+      if (effectiveInstance) body.instance_name = effectiveInstance;
+      if (hasPhone && effectiveInstance) body.phone = contactPhone;
       // Remove emojis e símbolos — eles quebram o ILIKE no backend
       // (group_name e contact_name podem ou não ter o mesmo emoji).
       const cleanQuery = nameQuery
@@ -165,7 +192,7 @@ export function LeadGroupSearchDialog({
         .trim();
       if (cleanQuery) body.name_query = cleanQuery;
 
-      const { data, error } = await supabase.functions.invoke('find-contact-groups', { body });
+      const { data, error } = await cloudFunctions.invoke('find-contact-groups', { body });
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
       const found: FoundGroup[] = data?.groups || [];
@@ -189,7 +216,7 @@ export function LeadGroupSearchDialog({
   const handlePickGroup = async (g: FoundGroup, refreshParticipants = false) => {
     setChosenGroup(g);
     if (!refreshParticipants) onGroupSelected(g);
-    const useInstance = g.instance_name || instanceName;
+    const useInstance = g.instance_name || effectiveInstance;
     if (!useInstance) return;
     setStep('participants');
     setLoadingParticipants(true);
@@ -289,7 +316,7 @@ export function LeadGroupSearchDialog({
           </DialogTitle>
           <DialogDescription>
             {step === 'groups'
-              ? `Busca por nome varre TODAS as instâncias conectadas. Busca por participante usa a instância ${instanceName || '(?)'}${hasPhone ? ` (${contactPhone})` : ''}.`
+              ? `Busca por nome varre TODAS as instâncias conectadas. Busca por participante usa a instância ${resolvingInstance ? 'detectando…' : effectiveInstance || '(nenhuma ativa encontrada)'}${hasPhone ? ` (${contactPhone})` : ''}.`
               : 'Escolha quem deseja importar como contato e vincular ao lead. UF/cidade são preenchidos pelo DDD.'}
           </DialogDescription>
         </DialogHeader>
@@ -307,12 +334,12 @@ export function LeadGroupSearchDialog({
             <div className="flex gap-2">
               <Button
                 onClick={() => handleSearch(false)}
-                disabled={loadingGroups || !instanceName || (!hasPhone && !nameQuery.trim())}
+                disabled={loadingGroups || resolvingInstance || (!nameQuery.trim() && !(hasPhone && !!effectiveInstance))}
               >
-                {loadingGroups ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
+                {loadingGroups || resolvingInstance ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Search className="h-4 w-4 mr-2" />}
                 Buscar
               </Button>
-              <Button variant="outline" onClick={() => handleSearch(true)} disabled={loadingGroups}>
+              <Button variant="outline" onClick={() => handleSearch(true)} disabled={loadingGroups || resolvingInstance}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Forçar atualização
               </Button>
             </div>
