@@ -22,6 +22,20 @@ export type StepTiming = 'now' | 'before' | 'cancel';
 export function askStepTiming(count = 1): Promise<StepTiming> {
   return new Promise(resolve => {
     const host = document.createElement('div');
+    // O host é filho do BODY, fora do portal do Sheet/Dialog que está aberto por
+    // baixo. Sem os dois ajustes abaixo o clique nos botões não funciona e ainda
+    // fecha o painel da atividade:
+    //   1. pointerEvents: Radix modal zera o pointer-events do body (mesmo motivo
+    //      do toast do sonner virar decoração); sem 'auto' o clique atravessa.
+    //   2. stopPropagation: o DismissableLayer do Radix escuta pointerdown/focusin
+    //      no document e trata qualquer alvo fora do content como "clique fora" —
+    //      era isso que recolhia a aba da atividade ao responder a pergunta.
+    host.style.pointerEvents = 'auto';
+    host.dataset.stepTimingDialog = '';
+    const stopOutside = (e: Event) => e.stopPropagation();
+    for (const evt of ['pointerdown', 'mousedown', 'touchstart', 'click', 'focusin']) {
+      host.addEventListener(evt, stopOutside);
+    }
     document.body.appendChild(host);
     const root = createRoot(host);
 
@@ -29,6 +43,9 @@ export function askStepTiming(count = 1): Promise<StepTiming> {
       document.removeEventListener('keydown', onKeyDown);
       // unmount fora do ciclo de render atual pra evitar warning do React.
       setTimeout(() => {
+        for (const evt of ['pointerdown', 'mousedown', 'touchstart', 'click', 'focusin']) {
+          host.removeEventListener(evt, stopOutside);
+        }
         root.unmount();
         host.remove();
       }, 0);
