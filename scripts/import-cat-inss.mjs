@@ -83,11 +83,36 @@ const COL = {
   cnpj: 26,
 };
 
-const NULOS = new Set(['', '{ñ class}', '{n class}', 'Não Informado', '00/00/0000']);
+/**
+ * Sentinelas de ausencia que a origem escreve como texto. Comparados em minusculo
+ * porque a caixa varia entre competencias: janeiro manda "{ñ class}" e os arquivos
+ * de 202506+ mandam "{ñ Class}" — a primeira carga (619.529 linhas) deixou passar
+ * 170 municipios por causa disso.
+ *
+ * "Zerado" (UF) e "Ignorado" (municipio) so aparecem a partir de 202506 e sempre
+ * junto do IBGE "000000": 19.629 linhas com a tripla completa. Sem normalizar,
+ * "Zerado" entra num group by de UF como se fosse a 7a maior do pais.
+ */
+const NULOS = new Set([
+  '',
+  '{ñ class}',
+  '{n class}',
+  'não informado',
+  'nao informado',
+  '00/00/0000',
+  'zerado',
+  'ignorado',
+]);
 
 const txt = (v) => {
   const s = (v ?? '').trim();
-  return NULOS.has(s) ? null : s;
+  return !s || NULOS.has(s.toLowerCase()) ? null : s;
+};
+
+/** Codigo numerico em que so zeros significa "sem classificacao": "0000", "000000". */
+const codigo = (v) => {
+  const s = txt(v);
+  return !s || /^0+$/.test(s) ? null : s;
 };
 
 /**
@@ -99,17 +124,14 @@ const txt = (v) => {
  * entao extrair o prefixo valido descarta o lixo sem risco de cortar dado bom.
  */
 const cid = (v) => {
-  const s = (v ?? '').trim().toUpperCase();
-  if (!s || NULOS.has(s)) return null;
+  const s = txt(v)?.toUpperCase();
+  if (!s) return null;
   const m = /^([A-Z]\d{2,3})/.exec(s);
   return m ? m[1] : null;
 };
 
 /** CNAE "0000" e ausencia de classificacao, nao um setor. Aparece a partir de 202506. */
-const cnae = (v) => {
-  const s = txt(v);
-  return !s || /^0+$/.test(s) ? null : s;
-};
+const cnae = codigo;
 
 /** "01/01/2025" -> "2025-01-01"; "00/00/0000" e datas invalidas -> null */
 const data = (v) => {
@@ -131,13 +153,16 @@ const bool = (v) => {
   return null;
 };
 
-/** "316860-Teófilo Otoni" -> ["316860", "Teófilo Otoni"] */
+/**
+ * "316860-Teófilo Otoni" -> ["316860", "Teófilo Otoni"]
+ * "000000-Ignorado"      -> [null, null]
+ */
 const splitCodigo = (v) => {
   const s = txt(v);
   if (!s) return [null, null];
   const i = s.indexOf('-');
-  if (i < 0) return [null, s];
-  return [s.slice(0, i).trim() || null, s.slice(i + 1).trim() || null];
+  if (i < 0) return [null, txt(s)];
+  return [codigo(s.slice(0, i)), txt(s.slice(i + 1))];
 };
 
 /**
@@ -218,7 +243,7 @@ function normalizar(caminho, { semFiltro = false } = {}) {
     const r = linhas[i];
     if (r.length < 27) continue;
 
-    const cboCod = txt(r[COL.cboCod]);
+    const cboCod = codigo(r[COL.cboCod]);
     const cidCod = cid(r[COL.cidCod]);
     const cnaeCod = cnae(r[COL.cnaeCod]);
     const [ibge, municipio] = splitCodigo(r[COL.municEmpr]);

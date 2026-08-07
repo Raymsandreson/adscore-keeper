@@ -11,6 +11,7 @@ import { useSearchParams, useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal, remapToCloud } from '@/integrations/supabase/uuid-remap';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -735,7 +736,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       // Vincula as atividades que citavam esse processo ao registro criado
       if (saved?.id) {
         await externalSupabase.from('lead_activities')
-          .update({ process_id: saved.id } as any)
+          .update({ process_id: saved.id, updated_by: await currentExtUserId() } as any)
           .eq('case_id', legalCase.id)
           .eq('process_title', title)
           .is('process_id', null);
@@ -861,7 +862,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
         try {
           const [actRes, procRes] = await Promise.all([
             externalSupabase.from('lead_activities')
-              .update({ lead_id: editLeadId } as any)
+              .update({ lead_id: editLeadId, updated_by: await currentExtUserId() } as any)
               .eq('case_id', legalCase.id).is('lead_id', null).select('id'),
             externalSupabase.from('lead_processes')
               .update({ lead_id: editLeadId } as any)
@@ -957,7 +958,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             if (savedProcess?.id) {
               try {
                 await externalSupabase.from('lead_activities')
-                  .update({ process_id: savedProcess.id } as any)
+                  .update({ process_id: savedProcess.id, updated_by: await currentExtUserId() } as any)
                   .eq('case_id', legalCase.id)
                   .is('process_id', null)
                   .ilike('process_title', title);
