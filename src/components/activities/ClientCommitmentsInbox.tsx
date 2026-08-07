@@ -35,7 +35,7 @@ import { useClientCommitmentsInbox } from '@/hooks/useClientCommitmentsInbox';
 import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOverdue } from '@/lib/clientCommitments';
 import {
-  groupByBucket, countByDay, commitmentDate, BUCKET_LABEL,
+  groupByBucket, countByDay, countByOwner, commitmentDate, BUCKET_LABEL,
   type InboxCommitment,
 } from '@/lib/clientCommitmentsInbox';
 
@@ -57,6 +57,12 @@ interface Props {
   onCreateActivity?: (item: InboxCommitment) => void;
 }
 
+/**
+ * Prefixo do valor do filtro quando a escolha é uma pessoa da equipe. Sem ele,
+ * um UUID não se distingue dos escopos fixos ('todas', 'minhas', 'sem_dono').
+ */
+const MEMBRO_PREFIX = 'membro:';
+
 export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], onCreateActivity }: Props) {
   const navigate = useNavigate();
   const { items, loading, reload, markDone, dismiss, meExtId } = useClientCommitmentsInbox({ enabled: open });
@@ -64,7 +70,8 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
   // Calendário é o padrão: a pergunta que a equipe faz é "o que tem pra hoje",
   // e o mês inteiro mostra de cara onde está a dívida acumulada.
   const [view, setView] = useState<'lista' | 'calendario'>('calendario');
-  const [escopo, setEscopo] = useState<'todas' | 'minhas' | 'sem_dono'>('todas');
+  // 'todas' | 'minhas' | 'sem_dono' | `membro:<owner_user_id do Externo>`
+  const [escopo, setEscopo] = useState<string>('todas');
   const [busca, setBusca] = useState('');
   const [calMonth, setCalMonth] = useState(new Date());
   const [diaSelecionado, setDiaSelecionado] = useState<string | null>(
@@ -105,15 +112,48 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
     return null;
   }, [nomePorId]);
 
-  const filtradas = useMemo(() => {
+  /**
+   * A busca vem ANTES do filtro por pessoa de propósito: as contagens do filtro
+   * são calculadas sobre esta lista, então escolher um membro não pode zerar o
+   * número dos outros — o filtro deixaria de mostrar para onde ir em seguida.
+   */
+  const porBusca = useMemo(() => {
     const termo = busca.trim().toLowerCase();
-    return items.filter((i) => {
-      if (escopo === 'minhas' && i.owner_user_id !== meExtId) return false;
-      if (escopo === 'sem_dono' && i.owner_user_id) return false;
-      if (!termo) return true;
-      return `${i.title} ${i.lead_name || ''} ${i.phone || ''}`.toLowerCase().includes(termo);
-    });
-  }, [items, escopo, busca, meExtId]);
+    if (!termo) return items;
+    return items.filter((i) =>
+      `${i.title} ${i.lead_name || ''} ${i.phone || ''}`.toLowerCase().includes(termo)
+    );
+  }, [items, busca]);
+
+  const contagemPorDono = useMemo(() => countByOwner(porBusca), [porBusca]);
+
+  /** Quanto cada opção fixa do filtro tem, para o número aparecer já no menu. */
+  const totalAberto = useMemo(
+    () => contagemPorDono.reduce((s, c) => s + c.total, 0),
+    [contagemPorDono]
+  );
+  const nMinhas = useMemo(
+    () => (meExtId ? contagemPorDono.find((c) => c.ownerId === meExtId)?.total ?? 0 : 0),
+    [contagemPorDono, meExtId]
+  );
+  const nSemDono = useMemo(
+    () => contagemPorDono.find((c) => c.ownerId === null)?.total ?? 0,
+    [contagemPorDono]
+  );
+  /** Só quem TEM pendência aparece — listar a equipe inteira com zero é ruído. */
+  const membrosComPendencia = useMemo(
+    () => contagemPorDono.filter((c) => c.ownerId),
+    [contagemPorDono]
+  );
+
+  const filtradas = useMemo(() => porBusca.filter((i) => {
+    if (escopo === 'minhas') return i.owner_user_id === meExtId;
+    if (escopo === 'sem_dono') return !i.owner_user_id;
+    if (escopo.startsWith(MEMBRO_PREFIX)) {
+      return i.owner_user_id === escopo.slice(MEMBRO_PREFIX.length);
+    }
+    return true;
+  }), [porBusca, escopo, meExtId]);
 
   const grupos = useMemo(() => groupByBucket(filtradas), [filtradas]);
   const porDia = useMemo(() => countByDay(filtradas), [filtradas]);
@@ -212,14 +252,44 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
                 </button>
               </div>
 
-              <Select value={escopo} onValueChange={(v) => setEscopo(v as typeof escopo)}>
-                <SelectTrigger className="h-7 w-[190px] text-[11px]">
+              <Select value={escopo} onValueChange={setEscopo}>
+                <SelectTrigger className="h-7 w-[230px] text-[11px]">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todas" className="text-xs">Todas as pendências</SelectItem>
-                  <SelectItem value="minhas" className="text-xs">Só as minhas (sou responsável)</SelectItem>
-                  <SelectItem value="sem_dono" className="text-xs">Sem responsável definido</SelectItem>
+                <SelectContent className="max-h-[320px]">
+                  <SelectItem value="todas" className="text-xs">
+                    Todas as pendências ({totalAberto})
+                  </SelectItem>
+                  <SelectItem value="minhas" className="text-xs">
+                    Só as minhas ({nMinhas})
+                  </SelectItem>
+                  <SelectItem value="sem_dono" className="text-xs">
+                    Sem responsável definido ({nSemDono})
+                  </SelectItem>
+
+                  {membrosComPendencia.length > 0 && (
+                    <>
+                      <Separator className="my-1" />
+                      <p className="px-2 py-1 text-[10px] font-medium text-muted-foreground">
+                        Por responsável
+                      </p>
+                      {membrosComPendencia.map((c) => {
+                        const nome = resolveNome(c.ownerId);
+                        return (
+                          <SelectItem
+                            key={c.ownerId!}
+                            value={`${MEMBRO_PREFIX}${c.ownerId}`}
+                            className="text-xs"
+                          >
+                            {/* Sem nome resolvido, o sufixo do id evita fundir
+                                duas pessoas diferentes numa linha só. */}
+                            {nome || `Não identificado #${c.ownerId!.slice(0, 4)}`} ({c.total})
+                            {c.vencidas > 0 && ` · ${c.vencidas} vencida(s)`}
+                          </SelectItem>
+                        );
+                      })}
+                    </>
+                  )}
                 </SelectContent>
               </Select>
 
@@ -251,7 +321,9 @@ export function ClientCommitmentsInbox({ open, onOpenChange, teamOptions = [], o
                 <p className="text-xs text-muted-foreground text-center py-6">
                   {escopo === 'minhas'
                     ? 'Nenhuma pendência de cliente nos seus casos. 👏'
-                    : 'Nenhuma pendência em aberto.'}
+                    : escopo.startsWith(MEMBRO_PREFIX)
+                      ? 'Nenhuma pendência para este responsável.'
+                      : 'Nenhuma pendência em aberto.'}
                 </p>
               )}
 
