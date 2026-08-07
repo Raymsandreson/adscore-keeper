@@ -1,6 +1,7 @@
+import { Link } from 'react-router-dom';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { Button } from '@/components/ui/button';
-import { Bell, BellRing, BellOff, Loader2, Send, AlertCircle } from 'lucide-react';
+import { Bell, BellRing, BellOff, Loader2, Send, AlertCircle, Share } from 'lucide-react';
 
 /**
  * Cartão de configuração do Web Push (notificação nativa no dispositivo).
@@ -9,7 +10,9 @@ import { Bell, BellRing, BellOff, Loader2, Send, AlertCircle } from 'lucide-reac
 export function PushNotificationSettings() {
   const push = usePushNotifications();
 
-  const statusText = !push.supported
+  const statusText = push.needsInstall
+    ? 'No iPhone/iPad o alerta só chega com o WhatsJUD instalado na tela inicial — é assim que o iOS entrega Web Push.'
+    : !push.supported
     ? 'Não suportado neste navegador/dispositivo (ou aberto no preview do Lovable).'
     : push.permission === 'denied'
       ? 'Bloqueado no navegador. Libere a permissão de notificações do site para ativar.'
@@ -34,7 +37,11 @@ export function PushNotificationSettings() {
       <p className="text-xs text-muted-foreground">{statusText}</p>
 
       <div className="flex flex-wrap gap-2">
-        {push.supported && push.subscribed ? (
+        {push.needsInstall ? (
+          <Button size="sm" asChild className="gap-1.5">
+            <Link to="/install"><Share className="h-3.5 w-3.5" /> Instalar na tela inicial</Link>
+          </Button>
+        ) : push.supported && push.subscribed ? (
           <>
             <Button variant="outline" size="sm" disabled={push.busy} onClick={push.testNotification} className="gap-1.5">
               <Send className="h-3.5 w-3.5" /> Enviar teste

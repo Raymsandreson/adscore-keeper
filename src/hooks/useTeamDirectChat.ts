@@ -4,6 +4,7 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { TEAM_CHAT_PARAM } from '@/components/chat/TeamChatDeepLink';
 
 export interface TeamConversation {
   id: string;
@@ -496,7 +497,8 @@ export function useTeamDirectChat() {
             content: content.trim() || '📎 Anexo',
             is_urgent: !!options?.is_urgent,
             mentioned_user_ids: mentionedIds,
-            url: '/',
+            // Deep-link: o toque na notificação abre a conversa, não a home.
+            url: `/?${TEAM_CHAT_PARAM}=${encodeURIComponent(conversationId)}`,
           },
         }).catch(err => console.error('Falha ao enviar Web Push (chat direto):', err));
       }
@@ -523,21 +525,39 @@ export function useTeamDirectChat() {
       await ensureExternalSession();
 
       const alertAt = new Date().toISOString();
-      const { error } = await (externalSupabase.from('team_messages') as any)
+      const { data: updated, error } = await (externalSupabase.from('team_messages') as any)
         .update({ is_urgent: true, urgent_alert_at: alertAt })
-        .eq('id', messageId);
+        .eq('id', messageId)
+        .select('id, conversation_id, content, sender_id')
+        .maybeSingle();
 
       if (error) throw error;
 
       setMessages(prev => prev.map(m =>
         m.id === messageId ? { ...m, is_urgent: true, urgent_alert_at: alertAt } : m
       ));
+
+      // O popup vermelho só existe dentro do app aberto — quem estava com o
+      // WhatsJUD fechado nunca ficava sabendo do "urgente". O push resolve isso.
+      if (updated?.conversation_id) {
+        cloudFunctions.invoke('send-team-push', {
+          body: {
+            conversation_id: updated.conversation_id,
+            sender_id: updated.sender_id || user?.id,
+            sender_name: myNameRef.current || user?.email || 'Equipe',
+            content: updated.content || 'Mensagem urgente',
+            is_urgent: true,
+            url: `/?${TEAM_CHAT_PARAM}=${encodeURIComponent(updated.conversation_id)}`,
+          },
+        }).catch(err => console.error('Falha ao enviar Web Push (urgente):', err));
+      }
+
       toast.success('Alerta urgente reenviado');
     } catch (e) {
       console.error('Error re-alerting message:', e);
       toast.error('Não foi possível reenviar o alerta');
     }
-  }, []);
+  }, [user?.id, user?.email]);
 
   // "✓ Resolvido": dispensa a pendência (responder/aguardando) desta conversa
   // pro usuário atual. A pendência volta sozinha quando chegar mensagem nova.

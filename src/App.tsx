@@ -13,6 +13,7 @@ import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { TeamChatNotifications } from "@/components/chat/TeamChatNotifications";
 import { PushNotificationPrompt } from "@/components/chat/PushNotificationPrompt";
+import { TeamChatDeepLink } from "@/components/chat/TeamChatDeepLink";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
 import { PageTracker } from "@/components/PageTracker";
@@ -250,7 +251,6 @@ const App = () => (
                 <Sonner />
                 <OfflineBanner />
                 <TeamChatNotifications />
-                <PushNotificationPrompt />
                 <ActivityNotificationsListener />
                 <UserStatusGuard />
                 <OrgMetaSync />
@@ -318,6 +318,9 @@ function SidebarLayout() {
             <CallFieldSuggestionsBanner />
             <FloatingWhatsAppCall />
             <PWAInstallBanner />
+            {/* Dentro do Router: o convite do iPhone leva para /install. */}
+            <PushNotificationPrompt />
+            <TeamChatDeepLink />
             <ActivityTimerOverlay />
             {/* Sem expediente aberto o sistema fica bloqueado (tela cheia com o
                 POP de início de expediente). Diretoria e rotas públicas passam. */}

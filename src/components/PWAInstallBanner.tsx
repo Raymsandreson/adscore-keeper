@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Download, X, Share, MoreVertical } from 'lucide-react';
+import { setPwaBannerVisible } from '@/lib/pwaBannerVisibility';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -52,10 +53,17 @@ export function PWAInstallBanner() {
   };
 
   // Don't show if already installed, dismissed, or in standalone mode
-  if (isStandalone || dismissed) return null;
-
   // Don't show if no prompt available and not iOS
-  if (!deferredPrompt && !isIOS) return null;
+  const hidden = isStandalone || dismissed || (!deferredPrompt && !isIOS);
+
+  // Avisa o convite de notificações pra ele não empilhar em cima deste modal.
+  // Em efeito, não no render: notificar os assinantes mexe no estado deles.
+  useEffect(() => {
+    setPwaBannerVisible(!hidden);
+    return () => setPwaBannerVisible(false);
+  }, [hidden]);
+
+  if (hidden) return null;
 
   return (
     <>
