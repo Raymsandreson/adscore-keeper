@@ -991,6 +991,8 @@ export function LeadEditDialog({
       setVisitRegion(stateToRegion[data.visit_state] || '');
       fetchCities(data.visit_state);
     }
+    // Sem endereço da pessoa na notícia, o extrator manda o local do acidente.
+    if (data.visit_address) setVisitAddress(data.visit_address);
     
     // Companies
     if (data.contractor_company) setContractorCompany(data.contractor_company);

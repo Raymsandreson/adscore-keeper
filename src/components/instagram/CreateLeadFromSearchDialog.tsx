@@ -349,6 +349,7 @@ export function CreateLeadFromSearchDialog({
       legal_viability: data.legal_viability || prev.legal_viability,
       visit_city: data.visit_city || prev.visit_city,
       visit_state: data.visit_state || prev.visit_state,
+      visit_address: data.visit_address || prev.visit_address,
       // Preserve source and link
       source: 'instagram',
       news_link: postData.postUrl,

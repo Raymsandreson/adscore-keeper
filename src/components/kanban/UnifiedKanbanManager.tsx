@@ -67,6 +67,7 @@ import {
   type QuickChips,
 } from '@/hooks/useLeadListView';
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
+import { regionForUf } from '@/lib/leads/visitFromAccident';
 
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
@@ -728,6 +729,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       legal_viability: data.legal_viability || prev.legal_viability,
       visit_city: data.visit_city || prev.visit_city,
       visit_state: data.visit_state || prev.visit_state,
+      // Região é derivada da UF; o extrator já manda quando caiu no local do acidente.
+      visit_region: data.visit_region || regionForUf(data.visit_state) || prev.visit_region,
+      visit_address: data.visit_address || prev.visit_address,
       news_link: (data as any).news_link || prev.news_link,
       lead_name: generatedName || prev.lead_name || data.victim_name || '',
     }));

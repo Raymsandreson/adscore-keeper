@@ -486,6 +486,8 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
     if (extracted.legal_viability) updates.legal_viability = extracted.legal_viability;
     if (extracted.visit_city) updates.visit_city = extracted.visit_city;
     if (extracted.visit_state) updates.visit_state = extracted.visit_state;
+    if (extracted.visit_region) updates.visit_region = extracted.visit_region;
+    if (extracted.visit_address) updates.visit_address = extracted.visit_address;
     setLeadFormData(prev => {
       const updated = { ...prev, ...updates };
       const autoName = generateLeadName({ city: updated.visit_city, state: updated.visit_state, victim_name: updated.victim_name, main_company: updated.main_company, contractor_company: updated.contractor_company, accident_date: updated.accident_date, damage_description: updated.damage_description, case_type: updated.case_type });

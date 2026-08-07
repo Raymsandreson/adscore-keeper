@@ -36,6 +36,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { usePostMetadata } from '@/hooks/usePostMetadata';
+import {
+  deriveVisitFromAccident,
+  sanitizeExtractedRecord,
+  sanitizeExtractedText,
+} from '@/lib/leads/visitFromAccident';
 
 // Detect if URL belongs to a social network that Firecrawl cannot scrape
 const SOCIAL_HOST_REGEX = /(?:^|\.)(instagram\.com|facebook\.com|fb\.com|fb\.watch|threads\.net|tiktok\.com)$/i;
@@ -83,6 +88,8 @@ export interface ExtractedAccidentData {
   legal_viability?: string | null;
   visit_city?: string | null;
   visit_state?: string | null;
+  visit_region?: string | null;
+  visit_address?: string | null;
   news_link?: string | null;
 }
 
@@ -101,6 +108,8 @@ export interface CurrentLeadData {
   legal_viability?: string | null;
   visit_city?: string | null;
   visit_state?: string | null;
+  visit_region?: string | null;
+  visit_address?: string | null;
   news_link?: string | null;
 }
 
@@ -120,6 +129,8 @@ interface FieldComparisonResult {
   currentValue: string | number | null | undefined;
   status: FieldStatus;
   selected: boolean;
+  /** Veio do local do acidente, não da notícia dizendo onde a pessoa mora. */
+  fromAccident?: boolean;
 }
 
 interface CommentsAnalysis {
@@ -189,20 +200,35 @@ export function AccidentDataExtractor({
     legal_viability: 'Viabilidade Jurídica',
     visit_city: 'Cidade',
     visit_state: 'Estado',
+    visit_region: 'Região da Visita',
+    visit_address: 'Endereço da Visita',
     news_link: 'Link da Notícia',
   };
 
+  // Sem endereço da pessoa, o local da visita vira o local do acidente.
+  // O cru da IA fica no estado; o fallback é derivado, para o merge de
+  // comentários (que sabe onde a família mora) continuar tendo prioridade.
+  const { displayData, accidentDerivedKeys } = useMemo(() => {
+    if (!extractedData) return { displayData: null, accidentDerivedKeys: [] as string[] };
+    const { patch, derivedKeys } = deriveVisitFromAccident(extractedData);
+    return {
+      displayData: { ...extractedData, ...patch } as ExtractedAccidentData,
+      accidentDerivedKeys: derivedKeys as string[],
+    };
+  }, [extractedData]);
+
   const comparisons = useMemo<FieldComparisonResult[]>(() => {
-    if (!extractedData) return [];
+    if (!displayData) return [];
 
     const fields: (keyof ExtractedAccidentData)[] = [
       'victim_name', 'victim_age', 'accident_date', 'accident_address',
       'damage_description', 'contractor_company', 'main_company', 'sector',
-      'case_type', 'liability_type', 'visit_city', 'visit_state', 'legal_viability', 'news_link'
+      'case_type', 'liability_type', 'visit_city', 'visit_state', 'visit_region',
+      'visit_address', 'legal_viability', 'news_link'
     ];
 
     return fields.map(key => {
-      const extractedValue = extractedData[key];
+      const extractedValue = displayData[key];
       const currentValue = currentData?.[key];
 
       let status: FieldStatus;
@@ -226,9 +252,10 @@ export function AccidentDataExtractor({
         currentValue,
         status,
         selected,
+        fromAccident: accidentDerivedKeys.includes(key),
       };
     }).filter(f => f.status !== 'empty');
-  }, [extractedData, currentData, fieldSelections]);
+  }, [displayData, accidentDerivedKeys, currentData, fieldSelections]);
 
   const selectedCount = useMemo(
     () => comparisons.filter(f => f.selected).length,
@@ -301,6 +328,36 @@ export function AccidentDataExtractor({
     }
   };
 
+  // Aceita imagem vinda do clipboard (Ctrl+V) em qualquer aba do modal
+  const acceptImageFile = useCallback((file: File) => {
+    if (!file.type.startsWith('image/')) return false;
+    setUploadedImage(file);
+    setActiveTab('image');
+    toast.success('Imagem colada');
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const onPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.kind !== 'file' || !item.type.startsWith('image/')) continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+        // Só intercepta quando há de fato imagem — colar texto segue normal
+        e.preventDefault();
+        acceptImageFile(file);
+        return;
+      }
+    };
+
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [open, acceptImageFile]);
+
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -330,14 +387,22 @@ export function AccidentDataExtractor({
       ? null
       : Number.parseInt(String(ageRaw).replace(/\D+/g, ''), 10);
 
-    if (!nextData.victim_name && analysis.victim_info?.name) nextData.victim_name = analysis.victim_info.name;
-    if ((nextData.victim_age == null) && Number.isFinite(parsedAge) && parsedAge > 0) nextData.victim_age = parsedAge;
-    if (!nextData.accident_date && analysis.accident_info?.date) nextData.accident_date = analysis.accident_info.date;
-    if (!nextData.visit_city && analysis.accident_info?.location) nextData.visit_city = analysis.accident_info.location;
-    if (!nextData.visit_state && analysis.accident_info?.state) nextData.visit_state = analysis.accident_info.state;
-    if (!nextData.main_company && analysis.accident_info?.company) nextData.main_company = analysis.accident_info.company;
+    const name = sanitizeExtractedText(analysis.victim_info?.name);
+    const date = sanitizeExtractedText(analysis.accident_info?.date);
+    const location = sanitizeExtractedText(analysis.accident_info?.location);
+    const state = sanitizeExtractedText(analysis.accident_info?.state);
+    const company = sanitizeExtractedText(analysis.accident_info?.company);
 
-    const commentDescription = analysis.accident_info?.description || analysis.additional_details || null;
+    if (!nextData.victim_name && name) nextData.victim_name = name;
+    if ((nextData.victim_age == null) && Number.isFinite(parsedAge) && parsedAge > 0) nextData.victim_age = parsedAge;
+    if (!nextData.accident_date && date) nextData.accident_date = date;
+    if (!nextData.visit_city && location) nextData.visit_city = location;
+    if (!nextData.visit_state && state) nextData.visit_state = state;
+    if (!nextData.main_company && company) nextData.main_company = company;
+
+    const commentDescription = sanitizeExtractedText(
+      analysis.accident_info?.description || analysis.additional_details
+    );
     if (!nextData.damage_description && commentDescription) {
       nextData.damage_description = commentDescription;
     }
@@ -508,7 +573,7 @@ export function AccidentDataExtractor({
 
         // 3) Preservar URL e mesclar comentários (se houver)
         let merged: ExtractedAccidentData = {
-          ...(data.data || {}),
+          ...sanitizeExtractedRecord((data.data || {}) as ExtractedAccidentData),
           news_link: trimmedUrl,
         };
         if (commentsAnalysis) {
@@ -616,8 +681,8 @@ export function AccidentDataExtractor({
       }
 
       setExtractedData({
-        ...(data.data || {}),
-        news_link: activeTab === 'link' ? urlInput.trim() : data.data?.news_link,
+        ...sanitizeExtractedRecord((data.data || {}) as ExtractedAccidentData),
+        news_link: activeTab === 'link' ? urlInput.trim() : sanitizeExtractedText(data.data?.news_link),
       });
       advanceStep(5, 'Revisão dos dados extraídos');
       toast.success('Dados extraídos com sucesso!');
@@ -755,6 +820,12 @@ export function AccidentDataExtractor({
             ) : (
               <p className="text-sm text-foreground truncate">
                 {formatDisplayValue(field.key, field.extractedValue)}
+              </p>
+            )}
+
+            {field.fromAccident && (
+              <p className="text-[11px] text-muted-foreground mt-1">
+                Sem endereço da pessoa na notícia — veio do local do acidente.
               </p>
             )}
           </div>
@@ -1077,7 +1148,7 @@ export function AccidentDataExtractor({
                     className="flex-1"
                   >
                     <Upload className="h-4 w-4 mr-2" />
-                    {uploadedImage ? uploadedImage.name : 'Escolher imagem'}
+                    {uploadedImage ? uploadedImage.name : 'Escolher imagem ou colar com Ctrl+V'}
                   </Button>
                   {uploadedImage && (
                     <Button
@@ -1091,7 +1162,7 @@ export function AccidentDataExtractor({
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  A IA irá analisar a imagem e extrair os dados do acidente (OCR)
+                  A IA irá analisar a imagem e extrair os dados do acidente (OCR). Dá pra colar um print direto com Ctrl+V em qualquer aba.
                 </p>
               </div>
 
