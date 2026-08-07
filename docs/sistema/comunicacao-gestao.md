@@ -85,12 +85,12 @@ Botão no cabeçalho de **Atividades**, ao lado de "💬 Feedbacks", com deep-li
 
 - Duas visões: **Calendário** (padrão — mês com a contagem por dia, dia com pendência vencida em vermelho, hoje já vem selecionado) e **Lista** (agrupada por urgência: Vencidas, Hoje, Amanhã, Próximos 7 dias, Mais para frente, Sem data).
 - **Sem prazo marcado, a pendência entra pela data em que foi combinada** — a maioria das promessas de WhatsApp não tem data ("depois eu te mando"), e sem esse fallback a lista por data ficaria vazia.
-- Filtros: **Todas** / **Só as minhas** (sou responsável pelo caso) / **Sem responsável definido** (o balde que ninguém cobre hoje), mais busca por cliente ou pendência.
+- Filtros: **Todas** / **Só as minhas** (sou responsável pelo caso) / **Sem responsável definido** (o balde que ninguém cobre hoje) / **Viraram atividade**, **por pessoa da equipe** (ver abaixo), mais busca por cliente ou pendência.
 - Por item: **Feito** (pergunta quem resolveu, pré-selecionando o responsável do caso — fora da conversa não dá para saber quem falou por último), **Abrir conversa** (abre a conversa no **painel de baixo** — com as mesmas peças da conversa completa: progresso do POP, barra "Cliente ficou de" com a lista de pendências e o chat interno da equipe —, sem sair da caixa — a lista sai da frente e volta sozinha ao fechar; empilhar o Drawer sobre o Sheet deixaria dois modais disputando foco e trava de rolagem. Dentro dele, "abrir no WhatsApp" leva à inbox completa quando for preciso o resto das ferramentas) , **Gerar atividade** e **Não era** nas detectadas pela IA.
 - **"Gerar atividade" (desde 07/08/2026)** — mesma saída que já existia no painel de dentro da conversa, agora também na caixa: abre o formulário normal de atividade (`ActivityFormCompact`, sem subformulário paralelo) já preenchido — título `Pendência do cliente: …`, lead e contato vinculados, responsável = dono resolvido pela view (UUID do Externo → Cloud via `remapToCloud`) e observações com a pendência, a frase do cliente e o prazo combinado. **Prazo nunca nasce no passado**: usa o combinado só se for futuro, senão hoje — pendência vencida se trata hoje, e atividade nascer atrasada estraga o indicador. A caixa fecha ao abrir o formulário, como no funil de feedbacks (dois Sheets abertos disputam foco). Handler `openActivityFromCommitment` em `ActivitiesPage.tsx`.
 - **"Interna" agora aparece mesmo com cliente vinculado** — o botão vivia dentro do bloco que só renderiza quando NADA está vinculado (`ActivityFormCompact.tsx`), então toda atividade aberta a partir de um cliente (pendência, lead, conversa) ficava travada no **POP obrigatório** (`ActivitiesPage.tsx`: `!formWorkflowId && !formIsSystem && !formIsManagement` → "Selecione um POP para continuar") sem nenhuma saída na tela. "Interna" não é vínculo: é o que dispensa o POP. Lead/Caso/Contato continuam só quando nada está vinculado. Marcar interna com lead junto é aceito (`useLeadActivities`: a flag é **alternativa** ao vínculo, não exclusiva) e não filtra o telão — só acrescenta "Reunião" à lista de tipos.
 - Fonte: view `vw_client_commitments_owner` (Externo, `security_invoker`), que resolve o dono com a **mesma cascata do telão** — a regra deixou de ser duplicada dentro da função `tv_atividades_ranking`, que agora lê a view. Conferido na troca: números por pessoa idênticos.
-- Regras puras em `src/lib/clientCommitmentsInbox.ts` (11 testes); dados em `useClientCommitmentsInbox`; UI em `ClientCommitmentsInbox.tsx`. Migration `20260806220000`.
+- Regras puras em `src/lib/clientCommitmentsInbox.ts` (19 testes); dados em `useClientCommitmentsInbox`; UI em `ClientCommitmentsInbox.tsx`. Migration `20260806220000`.
 
 ##### De quem é a pendência — cascata de 5 degraus (desde 07/08/2026)
 
@@ -109,6 +109,21 @@ Os degraus novos entraram **depois** dos três antigos de propósito: nenhuma pe
 **Grupo fica de fora**: 193 das 207 sem dono são conversas de grupo (174 só na instância "Atendimento Previdenciário"). Grupo tem vários processos falando no mesmo lugar, então "dono do grupo" responde a pergunta errada — a atribuição em grupo precisa ser por pendência, não por conversa, e ainda não existe.
 
 **Nome do responsável**: `owner_user_id` vem do Externo e a lista de nomes vem do Cloud. Sem passar pelo remap (`remapToCloudSync`), quem tem UUID diferente nos dois bancos aparecia como "sem responsável" **tendo dono**. Dono sem nome resolvido mostra "responsável não identificado" — não é o mesmo que órfã.
+
+##### Filtrar por membro, com a conta de cada um (desde 07/08/2026)
+
+Dava para ver "as minhas" e "sem responsável", nunca **quanto cada pessoa está devendo** — a pergunta "quem está com o quê" só se respondia abrindo pendência por pendência.
+
+O filtro do topo virou **combobox com busca** (`Popover` + `Command`, mesmo padrão de `AcolhedorCombobox` e `HearingMemberPicker`), com as opções fixas no topo e, abaixo, **uma linha por pessoa que tem pendência**, com o total e as vencidas em vermelho. Digitar filtra pelo nome — com a equipe inteira na lista, rolar até o nome é mais lento que digitá-lo.
+
+- **Só quem tem pendência aparece**: listar a equipe inteira com zero é ruído.
+- **A contagem sai da fila de cobrança inteira, nunca da lista exibida** (`countByOwner` em `clientCommitmentsInbox.ts`, 5 testes). Se saísse do resultado do próprio filtro, escolher um membro zeraria o número de todos os outros — e o filtro deixa de mostrar para onde ir em seguida. Só a busca por texto afeta os números.
+- **O id entra no `value` do `CommandItem` junto do nome** (`"<nome> <uuid>"`): o cmdk filtra pelo `value`, então uuid puro não casaria com o nome digitado, e nome puro fundiria dois homônimos num item só.
+- Dono sem nome resolvido vira `Não identificado #<4 primeiros do id>` — sem o sufixo, várias pessoas diferentes viravam uma linha só.
+
+Medido na entrada (07/08/2026, 386 abertas): **266 (69%) sem responsável**; depois, Maria Lydia 36, Keliane 23, Analyne 13, Vanessa 12, João Manoel 11, Raym 7, Martin 5, e mais 8 pessoas com ≤3. O filtro por pessoa só alcança o terço com dono atribuído — o gargalo é a cascata, não a interface.
+
+**Os dois números de "vencida" da tela são definições diferentes, não bug**: o selo do topo conta prazo estourado (`due_date < hoje`, 58 na medição); o grupo "Vencidas" da lista conta pela data efetiva, que cai no dia em que foi combinada quando não há prazo (215). `isCommitmentOverdue` é a primeira; `bucketOf`/`commitmentDate`, a segunda.
 
 ##### Virou atividade + troca de responsável (desde 07/08/2026)
 
