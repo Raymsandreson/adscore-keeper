@@ -42,6 +42,54 @@ const BRAZILIAN_STATES: State[] = [
   { id: 17, sigla: 'TO', nome: 'Tocantins' },
 ];
 
+/**
+ * O DF tem um município só (Brasília, IBGE 5300108), então a API do IBGE
+ * devolve uma opção única e o usuário não consegue selecionar Samambaia,
+ * Ceilândia, Taguatinga etc. Estas são as 34 regiões administrativas
+ * restantes (RA II a RA XXXV) — Plano Piloto/Brasília já vem do IBGE.
+ *
+ * Os ids são sintéticos (9 dígitos, prefixo do código de Brasília) só para
+ * servir de `key` no select; não são códigos IBGE de município. Ao gravar,
+ * o valor é o nome da RA — `findMunicipality` em `src/lib/geo/municipalities.ts`
+ * já resolve qualquer RA do DF para Brasília no mapa e nos relatórios.
+ */
+const DF_ADMINISTRATIVE_REGIONS: City[] = [
+  'Água Quente',
+  'Águas Claras',
+  'Arapoanga',
+  'Arniqueira',
+  'Brazlândia',
+  'Candangolândia',
+  'Ceilândia',
+  'Cruzeiro',
+  'Fercal',
+  'Gama',
+  'Guará',
+  'Itapoã',
+  'Jardim Botânico',
+  'Lago Norte',
+  'Lago Sul',
+  'Núcleo Bandeirante',
+  'Paranoá',
+  'Park Way',
+  'Planaltina',
+  'Recanto das Emas',
+  'Riacho Fundo',
+  'Riacho Fundo II',
+  'Samambaia',
+  'Santa Maria',
+  'São Sebastião',
+  'SCIA/Estrutural',
+  'SIA',
+  'Sobradinho',
+  'Sobradinho II',
+  'Sol Nascente/Pôr do Sol',
+  'Sudoeste/Octogonal',
+  'Taguatinga',
+  'Varjão',
+  'Vicente Pires',
+].map((nome, i) => ({ id: 530010801 + i, nome }));
+
 export function useBrazilianLocations() {
   const [states] = useState<State[]>(BRAZILIAN_STATES);
   const [cities, setCities] = useState<City[]>([]);
@@ -65,7 +113,9 @@ export function useBrazilianLocations() {
         `https://servicodados.ibge.gov.br/api/v1/localidades/estados/${state.id}/municipios?orderBy=nome`
       );
       const data: City[] = await response.json();
-      setCities(data);
+      // No DF, Brasília (único município) fica no topo e as regiões
+      // administrativas vêm logo abaixo, em ordem alfabética.
+      setCities(stateAbbreviation === 'DF' ? [...data, ...DF_ADMINISTRATIVE_REGIONS] : data);
     } catch (error) {
       console.error('Erro ao buscar cidades:', error);
       setCities([]);
