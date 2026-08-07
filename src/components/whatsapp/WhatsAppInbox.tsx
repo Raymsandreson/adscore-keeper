@@ -25,6 +25,7 @@ import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { ConversationOwnerControl } from './ConversationOwnerControl';
 import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
 import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { format } from 'date-fns';
@@ -45,7 +46,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2, QrCode, ArrowLeft } from 'lucide-react';
 import { SharedConversationsPanel } from './SharedConversationsPanel';
@@ -66,7 +67,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 
 const FIELD_LABELS: Record<string, string> = {
@@ -193,7 +194,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     loading, instanceSwitching, switchProgress,
     instances: _allInstances,
     instanceStats: _allInstanceStats,
-    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
+    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, claimConversation, transferConversation, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
     loadMoreConversations, hasMoreConversations, loadOlderConversationMessages,
   } = useWhatsAppMessages(selectedInstanceId, lockInstanceName);
 
@@ -377,12 +378,166 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const [pickingInstanceId, setPickingInstanceId] = useState<string>('');
   const [savingDefault, setSavingDefault] = useState(false);
 
+  // Dono ("atendente atribuído") da conversa. Nasceu no cloud_gerencia, mas o
+  // claim vale para qualquer instância — é o que responde "de quem é este papo"
+  // quando a linha é compartilhada por várias pessoas.
+  // Map<phone, assigned_user_id>. O ID é do EXTERNO (mesmo espaço de
+  // `assigned_to`), não do Cloud. Recarrega no polling junto com as mensagens.
+  const [cloudAssignees, setCloudAssignees] = useState<Map<string, string>>(new Map());
+
+  // Meu ID no Externo — é nesse espaço que `whatsapp_cloud_assignees` guarda o
+  // dono, então comparar com `user.id` (Cloud) erraria para quem tem UUID
+  // diferente nos dois bancos.
+  const [meExtId, setMeExtId] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    // `ensureRemapCache` primeiro: `remapToCloudSync` (nome do dono no cabeçalho)
+    // é síncrono e devolveria o próprio id se o cache ainda não tivesse subido.
+    ensureRemapCache()
+      .then(() => remapToExternal(user?.id))
+      .then((id) => { if (alive) setMeExtId(id); });
+    return () => { alive = false; };
+  }, [user?.id]);
+
+  /** Equipe do escritório (Cloud), para "passar a conversa" no cabeçalho. */
+  const officeProfiles = useProfilesList();
+  const ownerTeamOptions = useMemo(
+    () => officeProfiles.map((p) => ({ user_id: p.user_id, full_name: p.full_name })),
+    [officeProfiles]
+  );
+  /**
+   * Dono da conversa em QUALQUER instância, chaveado por telefone+linha.
+   *
+   * `cloudAssignees` continua só com cloud_gerencia e chaveado por telefone
+   * porque é isso que a visibilidade daquela instância usa — mexer nele mudaria
+   * quem enxerga o quê. Este mapa é o novo: o mesmo telefone pode falar com
+   * duas linhas diferentes, e cada uma tem seu dono.
+   */
+  const [conversationOwners, setConversationOwners] = useState<Map<string, string>>(new Map());
+  const ownerKey = useCallback(
+    (phone: string, instanceName: string | null | undefined) => getConversationKey(phone, instanceName || ''),
+    []
+  );
+  const refreshCloudAssignees = useCallback(async () => {
+    // Tabela ainda não está em types.ts (criada via migration externa); cast segue o idioma do arquivo.
+    const { data } = await (externalSupabase as any)
+      .from('whatsapp_cloud_assignees')
+      .select('phone, instance_name, assigned_user_id');
+    const rows = (data || []) as Array<{ phone: string; instance_name: string; assigned_user_id: string }>;
+    setCloudAssignees(new Map(
+      rows.filter(r => (r.instance_name || '').toLowerCase() === 'cloud_gerencia')
+        .map(r => [r.phone, r.assigned_user_id])
+    ));
+    setConversationOwners(new Map(
+      rows.map(r => [getConversationKey(r.phone, r.instance_name), r.assigned_user_id])
+    ));
+  }, []);
+  useEffect(() => { refreshCloudAssignees(); }, [refreshCloudAssignees]);
+
+  // Recarrega os donos quando aparece/sai uma conversa do cloud_gerencia (atribuição só muda
+  // no primeiro contato — sticky). Assinatura estável pelos telefones cloud evita refetch a cada msg.
+  const cloudPhonesSig = useMemo(
+    () => conversations
+      .filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')
+      .map(c => c.phone)
+      .sort()
+      .join(','),
+    [conversations]
+  );
+  useEffect(() => {
+    if (cloudPhonesSig) refreshCloudAssignees();
+  }, [cloudPhonesSig, refreshCloudAssignees]);
+
+  // Realtime no dono da conversa. O webhook responde 200 ANTES de gravar o assignee
+  // (processamento async), então o refresh disparado pela conversa nova corre na frente
+  // da escrita e o Map fica sem a entrada → badge preso em "Sem dono". Assinar a tabela
+  // garante que, quando o webhook grava o dono ~1-2s depois, o Map atualiza na hora —
+  // sem depender de novo poll/mudança de telefone. (Fase 3: realtime > setInterval.)
+  useEffect(() => {
+    const channelName = `cloud-assignees-realtime-${Date.now()}`;
+    const ch = (externalSupabase as any)
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        // Sem filtro de instância: o dono da conversa agora vale para todas as
+        // linhas, não só cloud_gerencia. São dezenas de linhas na tabela, o
+        // volume de eventos é irrelevante.
+        { event: '*', schema: 'public', table: 'whatsapp_cloud_assignees' },
+        (payload: any) => {
+          const row = payload.new || payload.old || {};
+          const phone = row.phone as string | undefined;
+          if (!phone) return;
+          const instancia = (row.instance_name as string | undefined) || '';
+          const removeu = payload.eventType === 'DELETE' || !payload.new?.assigned_user_id;
+          const dono = payload.new?.assigned_user_id as string | undefined;
+
+          if (instancia.toLowerCase() === 'cloud_gerencia') {
+            setCloudAssignees((prev) => {
+              const next = new Map(prev);
+              if (removeu) next.delete(phone); else next.set(phone, dono as string);
+              return next;
+            });
+          }
+          setConversationOwners((prev) => {
+            const next = new Map(prev);
+            const chave = getConversationKey(phone, instancia);
+            if (removeu) next.delete(chave); else next.set(chave, dono as string);
+            return next;
+          });
+        }
+      )
+      .subscribe();
+    return () => {
+      (externalSupabase as any).removeChannel(ch);
+    };
+  }, []);
+
+
+  /**
+   * Conversas em que já perguntei "quer assumir?" nesta sessão. Sem isso o
+   * aviso voltaria a cada mensagem — quem está ajudando na conversa de um
+   * colega responde várias vezes seguidas.
+   */
+  const jaPerguntouAssumir = useRef<Set<string>>(new Set());
+  const [pedidoAssumir, setPedidoAssumir] = useState<
+    { phone: string; instanceName: string | null; ownerExtId: string } | null
+  >(null);
+
   // Envio é independente de instância padrão cadastrada — a conversa carrega o
   // instance_name correto (UazAPI ou cloud_gerencia) e o servidor resolve a rota.
   // Mantemos os wrappers como passthrough pra preservar a assinatura usada na árvore.
   const guardSendMessage = useCallback((fn: typeof sendMessage) => {
-    return ((...args: Parameters<typeof sendMessage>) => fn(...args)) as typeof sendMessage;
-  }, [sendMessage]);
+    return (async (...args: Parameters<typeof sendMessage>) => {
+      const ok = await fn(...args);
+      // Responder na conversa de outra pessoa NÃO rouba a conversa (o claim é
+      // sticky de propósito). Mas quem começou a atender precisa poder assumir,
+      // senão a pendência continua sendo cobrada de quem saiu do papo.
+      try {
+        const phone = args[0] as string;
+        const instanceName = (args[4] as string | null | undefined) ?? null;
+        const chave = ownerKey(phone, instanceName);
+        const dono = conversationOwners.get(chave);
+        if (
+          ok && dono && meExtId && dono !== meExtId &&
+          !isWhatsAppGroupId(phone) && !jaPerguntouAssumir.current.has(chave)
+        ) {
+          jaPerguntouAssumir.current.add(chave);
+          setPedidoAssumir({ phone, instanceName, ownerExtId: dono });
+        }
+      } catch { /* nunca atrapalhar o envio, que já deu certo */ }
+      return ok;
+    }) as typeof sendMessage;
+  }, [sendMessage, conversationOwners, ownerKey, meExtId]);
+
+  /** Transferência de dono; recarrega o mapa para o cabeçalho refletir na hora. */
+  const handleTransferConversation = useCallback(
+    async (phone: string, instanceName: string | null, toCloudUserId: string) => {
+      const ok = await transferConversation(phone, instanceName, toCloudUserId);
+      if (ok) await refreshCloudAssignees();
+      return ok;
+    },
+    [transferConversation, refreshCloudAssignees]
+  );
 
   const guardSendMedia = useCallback((...args: Parameters<typeof sendMedia>) => {
     return (sendMedia as any)(...args);
@@ -643,68 +798,6 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     fetchPrivate();
   }, []);
 
-  // Dono ("atendente atribuído") das conversas da WhatsApp API (cloud_gerencia).
-  // Só essa instância usa visibilidade por atendente; instâncias UazAPI não.
-  // Map<phone, assigned_user_id (ID Cloud)>. Recarrega no polling junto com as mensagens.
-  const [cloudAssignees, setCloudAssignees] = useState<Map<string, string>>(new Map());
-  const refreshCloudAssignees = useCallback(async () => {
-    // Tabela ainda não está em types.ts (criada via migration externa); cast segue o idioma do arquivo.
-    const { data } = await (externalSupabase as any)
-      .from('whatsapp_cloud_assignees')
-      .select('phone, assigned_user_id')
-      .eq('instance_name', 'cloud_gerencia');
-    const rows = (data || []) as Array<{ phone: string; assigned_user_id: string }>;
-    setCloudAssignees(new Map(rows.map(r => [r.phone, r.assigned_user_id])));
-  }, []);
-  useEffect(() => { refreshCloudAssignees(); }, [refreshCloudAssignees]);
-
-  // Recarrega os donos quando aparece/sai uma conversa do cloud_gerencia (atribuição só muda
-  // no primeiro contato — sticky). Assinatura estável pelos telefones cloud evita refetch a cada msg.
-  const cloudPhonesSig = useMemo(
-    () => conversations
-      .filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')
-      .map(c => c.phone)
-      .sort()
-      .join(','),
-    [conversations]
-  );
-  useEffect(() => {
-    if (cloudPhonesSig) refreshCloudAssignees();
-  }, [cloudPhonesSig, refreshCloudAssignees]);
-
-  // Realtime no dono da conversa. O webhook responde 200 ANTES de gravar o assignee
-  // (processamento async), então o refresh disparado pela conversa nova corre na frente
-  // da escrita e o Map fica sem a entrada → badge preso em "Sem dono". Assinar a tabela
-  // garante que, quando o webhook grava o dono ~1-2s depois, o Map atualiza na hora —
-  // sem depender de novo poll/mudança de telefone. (Fase 3: realtime > setInterval.)
-  useEffect(() => {
-    const channelName = `cloud-assignees-realtime-${Date.now()}`;
-    const ch = (externalSupabase as any)
-      .channel(channelName)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'whatsapp_cloud_assignees', filter: `instance_name=eq.cloud_gerencia` },
-        (payload: any) => {
-          const row = payload.new || payload.old || {};
-          const phone = row.phone as string | undefined;
-          if (!phone) return;
-          setCloudAssignees((prev) => {
-            const next = new Map(prev);
-            if (payload.eventType === 'DELETE' || !payload.new?.assigned_user_id) {
-              next.delete(phone);
-            } else {
-              next.set(phone, payload.new.assigned_user_id as string);
-            }
-            return next;
-          });
-        }
-      )
-      .subscribe();
-    return () => {
-      (externalSupabase as any).removeChannel(ch);
-    };
-  }, []);
-
   // Fetch shared conversation records for this user
   useEffect(() => {
     if (!user) return;
@@ -854,11 +947,25 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const totalUnread = visibleConversations.reduce((sum, c) => sum + c.unread_count, 0);
 
   const handleSelectConversation = (conv: WhatsAppConversation) => {
-    setSelectedPhone(normalizeWhatsAppConversationPhone(conv.phone));
+    const phoneNormalizado = normalizeWhatsAppConversationPhone(conv.phone);
+    setSelectedPhone(phoneNormalizado);
     setSelectedInstance(conv.instance_name);
     fetchFullConversation(conv.phone, conv.instance_name);
     if (conv.unread_count > 0) {
       markAsRead(conv.phone, conv.instance_name);
+    }
+
+    // Abrir uma conversa órfã já assume ela: era isso que faltava para "toda
+    // conversa tem alguém". O claim é sticky (insert), então abrir a conversa
+    // de outra pessoa não rouba nada — para isso existe o "Assumir" explícito.
+    //
+    // Duas exceções, as duas de propósito:
+    //   - grupo: dono de grupo é resposta errada, vários processos ali dentro;
+    //   - modo "Todas as conversas": quem está auditando o pool inteiro está
+    //     olhando, não atendendo — sem isso, uma passada de gestor no pool
+    //     viraria dono de tudo que abrisse.
+    if (!isWhatsAppGroupId(conv.phone) && !cloudShowAll && !conversationOwners.get(ownerKey(conv.phone, conv.instance_name))) {
+      void claimConversation(phoneNormalizado, conv.instance_name).then(refreshCloudAssignees);
     }
   };
 
@@ -2096,6 +2203,17 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
               {selectedConversation && (
                 <WhatsAppChat
                   conversation={selectedConversation}
+                  headerExtra={
+                    <ConversationOwnerControl
+                      phone={selectedConversation.phone}
+                      instanceName={selectedConversation.instance_name}
+                      ownerExtId={conversationOwners.get(ownerKey(selectedConversation.phone, selectedConversation.instance_name)) || null}
+                      meExtId={meExtId}
+                      teamOptions={ownerTeamOptions}
+                      isGroup={isWhatsAppGroupId(selectedConversation.phone)}
+                      onTransfer={handleTransferConversation}
+                    />
+                  }
                   onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
@@ -2179,6 +2297,17 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
             {selectedConversation ? (
                 <WhatsAppChat
                   conversation={selectedConversation}
+                  headerExtra={
+                    <ConversationOwnerControl
+                      phone={selectedConversation.phone}
+                      instanceName={selectedConversation.instance_name}
+                      ownerExtId={conversationOwners.get(ownerKey(selectedConversation.phone, selectedConversation.instance_name)) || null}
+                      meExtId={meExtId}
+                      teamOptions={ownerTeamOptions}
+                      isGroup={isWhatsAppGroupId(selectedConversation.phone)}
+                      onTransfer={handleTransferConversation}
+                    />
+                  }
                   onBack={() => { setSelectedPhone(null); setSelectedInstance(null); }}
                   onSendMessage={(() => {
                     const share = sharedConvs.find(s => s.phone === selectedConversation.phone && s.instance_name === selectedConversation.instance_name);
@@ -2502,6 +2631,46 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         boards={boards}
         onCreated={handleBulkCreated}
       />
+
+      {/* Respondi na conversa de outra pessoa: ofereço assumir, não tomo sozinho.
+          O claim é sticky; quem passou a atender precisa dizer que assumiu,
+          senão a pendência do cliente continua sendo cobrada de quem saiu. */}
+      <Dialog open={!!pedidoAssumir} onOpenChange={(o) => !o && setPedidoAssumir(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Assumir esta conversa?</DialogTitle>
+            <DialogDescription>
+              {(() => {
+                const dono = pedidoAssumir?.ownerExtId;
+                const nome = dono
+                  ? (ownerTeamOptions.find((t) => t.user_id === dono)?.full_name
+                     || ownerTeamOptions.find((t) => t.user_id === remapToCloudSync(dono))?.full_name)
+                  : null;
+                return nome
+                  ? `Hoje está com ${nome}. Você respondeu agora — quer passar para você?`
+                  : 'Esta conversa está com outra pessoa. Você respondeu agora — quer passar para você?';
+              })()}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPedidoAssumir(null)}>
+              Manter como está
+            </Button>
+            <Button
+              onClick={async () => {
+                const alvo = pedidoAssumir;
+                setPedidoAssumir(null);
+                if (!alvo || !user?.id) return;
+                const ok = await handleTransferConversation(alvo.phone, alvo.instanceName, user.id);
+                if (ok) toast.success('Conversa é sua agora');
+                else toast.error('Não consegui assumir. Tente pelo botão no topo da conversa.');
+              }}
+            >
+              Assumir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {reconnectInstance && (
         <WhatsAppReconnectDialog

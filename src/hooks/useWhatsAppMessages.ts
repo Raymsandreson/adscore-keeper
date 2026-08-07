@@ -714,6 +714,45 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     }
   }, [user?.id]);
 
+  /**
+   * Passa a conversa adiante — handoff explícito, não é o claim.
+   *
+   * O claim é `insert` e só pega conversa órfã de propósito. Transferir é
+   * `upsert`: sobrescreve o dono atual, porque aqui alguém decidiu que a
+   * conversa muda de mão. Serve tanto para "assumir a conversa de outro"
+   * quanto para "passar a minha para fulano".
+   *
+   * Diferente do claim, este NÃO é silencioso: quem clicou precisa saber se
+   * a transferência valeu, senão duas pessoas acham que a conversa é sua.
+   */
+  const transferConversation = useCallback(async (
+    phone: string,
+    instanceName: string | null,
+    /** ID do usuário no CLOUD — a lista da equipe vem de lá. */
+    toCloudUserId: string,
+  ): Promise<boolean> => {
+    if (!phone || !instanceName || !toCloudUserId) return false;
+    try {
+      await ensureExternalSession();
+      const extUserId = await remapToExternal(toCloudUserId);
+      if (!extUserId) return false;
+      const { error } = await (db as any)
+        .from('whatsapp_cloud_assignees')
+        .upsert(
+          { phone, instance_name: instanceName, assigned_user_id: extUserId, updated_at: new Date().toISOString() },
+          { onConflict: 'phone,instance_name' },
+        );
+      if (error) {
+        console.warn('[assignee] transferência recusada:', error.code, error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('[assignee] falha ao transferir a conversa:', e);
+      return false;
+    }
+  }, []);
+
   const sendMessage = async (
     phone: string,
     message: string,
@@ -1920,6 +1959,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     deleteMessage,
     clearConversation,
     markAsRead,
+    claimConversation,
+    transferConversation,
     linkToLead,
     linkToContact,
     refetchInstances: fetchInstances,
