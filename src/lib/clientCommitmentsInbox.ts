@@ -6,7 +6,7 @@
  *
  * Puro de propósito — sem banco e sem React, para poder testar.
  */
-import { isCommitmentOpen, type ClientCommitment } from './clientCommitments';
+import { isCommitmentOpen, isCommitmentOverdue, type ClientCommitment } from './clientCommitments';
 
 export interface InboxCommitment extends ClientCommitment {
   /** Dono resolvido pela view `vw_client_commitments_owner`. */
@@ -84,6 +84,45 @@ export function groupByBucket(
       // Dentro do grupo, a mais antiga primeiro: é a que está esperando há mais tempo.
       items: (mapa.get(b) || []).sort((x, y) => commitmentDate(x).localeCompare(commitmentDate(y))),
     }));
+}
+
+export interface OwnerCount {
+  /** `owner_user_id` do Externo. `null` = pendência sem responsável definido. */
+  ownerId: string | null;
+  total: number;
+  vencidas: number;
+}
+
+/**
+ * Quantas pendências em aberto cada responsável tem — alimenta o filtro por
+ * membro e responde "quem está devendo o quê" sem abrir uma a uma.
+ *
+ * Conta sempre sobre a lista INTEIRA (só a busca por texto deve afetar), nunca
+ * sobre o resultado do próprio filtro: senão, ao escolher um membro, todos os
+ * outros apareceriam com zero.
+ *
+ * Ordem: quem tem mais pendências primeiro, empate resolvido pelo id para a
+ * lista não dançar entre renders.
+ */
+export function countByOwner(
+  items: InboxCommitment[],
+  today = new Date().toISOString().slice(0, 10)
+): OwnerCount[] {
+  const mapa = new Map<string | null, OwnerCount>();
+  for (const i of items) {
+    if (!isCommitmentOpen(i.status)) continue;
+    const key = i.owner_user_id || null;
+    let atual = mapa.get(key);
+    if (!atual) {
+      atual = { ownerId: key, total: 0, vencidas: 0 };
+      mapa.set(key, atual);
+    }
+    atual.total++;
+    if (isCommitmentOverdue(i, today)) atual.vencidas++;
+  }
+  return [...mapa.values()].sort(
+    (a, b) => b.total - a.total || (a.ownerId || '').localeCompare(b.ownerId || '')
+  );
 }
 
 /** Quantas pendências em aberto caem em cada dia — alimenta o calendário. */

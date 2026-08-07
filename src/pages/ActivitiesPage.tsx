@@ -24,6 +24,7 @@ import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/a
 import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
+import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
@@ -32,6 +33,8 @@ import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
+import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
+import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
 import { Button } from '@/components/ui/button';
@@ -256,6 +259,11 @@ const ActivitiesPage = () => {
   const [sheetMode, setSheetMode] = usePageState<'create' | 'edit' | null>('activities_sheetMode', null);
   const [selectedActivityId, setSelectedActivityId] = usePageState<string | null>('activities_selectedId', null);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
+  // Cadeia de continuidade da atividade aberta (aba Histórico). Só carrega em
+  // modo edição — no modo criar ainda não existe atividade nem sequência.
+  const activityChain = useActivityChain(sheetMode === 'edit' ? selectedActivity : null);
+  // Atividade da cadeia aberta ao lado, pela aba Histórico.
+  const [chainOpenId, setChainOpenId] = useState<string | null>(null);
   // Anexos/links adicionados no campo de notas antes da atividade ter id
   const pendingNoteAttachmentsRef = useRef<Attachment[]>([]);
   // Anexos adicionados nesta edição, inclusive os que já tentaram insert imediato.
@@ -476,7 +484,12 @@ const ActivitiesPage = () => {
   const [countdownRemaining, setCountdownRemaining] = useState(0);
   // Map: leadId -> activityType derived from workflow step (used in blocks view)
   const [leadWorkflowActivityTypes, setLeadWorkflowActivityTypes] = useState<Record<string, string>>({});
-  const [leadPreview, setLeadPreview] = useState<{
+  // `lead_id` carimba de qual lead veio este preview. Sem ele, uma resposta
+  // atrasada (ou uma query que falhou e caiu no catch) deixava o preview do lead
+  // ANTERIOR na tela da atividade nova — foi assim que o áudio do
+  // "CG 90- Inventário Isaías" foi parar no grupo do "CASO 244" em 06/08/2026.
+  const [leadPreviewRaw, setLeadPreview] = useState<{
+    lead_id?: string | null;
     case_type?: string | null;
     damage_description?: string | null;
     accident_date?: string | null;
@@ -487,6 +500,12 @@ const ActivitiesPage = () => {
     whatsapp_group_id?: string | null;
     lead_phone?: string | null;
   } | null>(null);
+  // Preview só vale se for do lead que está aberto agora. Preview de outro lead
+  // vira `null` (some da tela) em vez de virar destino de mensagem.
+  const leadPreview = useMemo(
+    () => (leadPreviewRaw && leadPreviewRaw.lead_id === formLeadId ? leadPreviewRaw : null),
+    [leadPreviewRaw, formLeadId],
+  );
 
   const getFilterParams = () => ({
     // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
@@ -1345,7 +1364,7 @@ const ActivitiesPage = () => {
             const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
             boardName = boardData?.name || null;
           }
-          setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
+          setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, lead_id: activity.lead_id, board_name: boardName } : null);
 
           // Contacts
           if (linkedRes.data && linkedRes.data.length > 0) {
@@ -1688,6 +1707,13 @@ const ActivitiesPage = () => {
         is_system: formIsSystem,
         is_management: formIsManagement,
         client_name_override: formClientNameOverride || null,
+        // Cadeia de continuidade: a próxima nasce apontando para a que está
+        // sendo concluída e para a raiz da sequência. Sem isso a atividade nova
+        // não tinha como dizer de onde veio, e a concluída não levava até a
+        // continuação — a ideia de "ainda falta uma etapa" morria no clique.
+        // A raiz fica com as duas colunas NULL; quem herda leva a raiz dela.
+        parent_activity_id: currentActivity.id,
+        chain_root_id: currentActivity.chain_root_id || currentActivity.id,
         ...buildAssigneesPayload(),
       };
 
@@ -1919,6 +1945,8 @@ const ActivitiesPage = () => {
     setSheetMode(null);
     setSelectedActivity(null);
     setSelectedActivityId(null);
+    // Fechar a ficha fecha junto a atividade da cadeia aberta ao lado.
+    setChainOpenId(null);
     setRightPanelTab('form');
     setLeadPreview(null);
     resetForm();
@@ -2009,7 +2037,7 @@ const ActivitiesPage = () => {
           const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', leadPreviewRes.data.board_id).maybeSingle();
           boardName = boardData?.name || null;
         }
-        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, board_name: boardName } : null);
+        setLeadPreview(leadPreviewRes.data ? { ...leadPreviewRes.data, lead_id: activity.lead_id, board_name: boardName } : null);
         if (linkedData.data && linkedData.data.length > 0) {
           const contactIds = linkedData.data.map(cl => cl.contact_id);
           const { data: contactsData } = await externalSupabase
@@ -2152,7 +2180,7 @@ const ActivitiesPage = () => {
           const { data: boardData } = await externalSupabase.from('kanban_boards').select('name').eq('id', data.board_id).maybeSingle();
           boardName = boardData?.name || null;
         }
-        setLeadPreview({ ...data, board_name: boardName });
+        setLeadPreview({ ...data, lead_id: leadId, board_name: boardName });
       });
     // Auto-set activity type based on lead's workflow step
     const workflowType = leadWorkflowActivityTypes[leadId];
@@ -5466,7 +5494,39 @@ const ActivitiesPage = () => {
             {/* Form body - scrollable */}
             <div className="flex-1 overflow-y-auto p-4">
               <div className="max-w-[1200px] mx-auto">
-                {activityFormContent}
+                <Tabs defaultValue="atividade">
+                  {/* Aba da cadeia de continuidade ("Concluir + próxima"): só em
+                      atividade já criada — no modo criar não há sequência ainda. */}
+                  {sheetMode === 'edit' && (
+                    <TabsList className="h-8 mb-3">
+                      <TabsTrigger value="atividade" className="h-6 text-xs">Atividade</TabsTrigger>
+                      <TabsTrigger value="historico" className="h-6 text-xs gap-1">
+                        Histórico
+                        {activityChain.items.length > 0 && (
+                          <Badge variant="secondary" className="h-4 px-1 text-[9px] font-normal">
+                            {activityChain.items.length}
+                          </Badge>
+                        )}
+                      </TabsTrigger>
+                    </TabsList>
+                  )}
+
+                  {/* forceMount: o formulário não desmonta ao trocar de aba —
+                      desmontar perderia o que já foi digitado e não salvo. */}
+                  <TabsContent value="atividade" forceMount className="mt-0 data-[state=inactive]:hidden">
+                    {activityFormContent}
+                  </TabsContent>
+
+                  <TabsContent value="historico" className="mt-0">
+                    <ActivityChainPanel
+                      currentActivityId={selectedActivity?.id || null}
+                      items={activityChain.items}
+                      loading={activityChain.loading}
+                      unavailable={activityChain.unavailable}
+                      onOpenActivity={setChainOpenId}
+                    />
+                  </TabsContent>
+                </Tabs>
 
                 {sheetMode === 'edit' && selectedActivity?.completed_at && (
                   <p className="text-xs text-muted-foreground mt-3">
@@ -5547,8 +5607,18 @@ const ActivitiesPage = () => {
                           if (!target || !pendingAudio) return;
                           setSendingPendingAudio(true);
                           try {
-                            await sendVoiceToWa(pendingAudio.url, target, formLeadId);
-                            toast.success(`Áudio enviado ao ${label} do WhatsApp!`);
+                            // Grupo: confirma o destino no banco, pelo lead da atividade
+                            // aberta (nunca pelo state da tela — incidente 06/08/2026).
+                            let dest = target;
+                            let destLabel = label;
+                            if (leadPreview?.whatsapp_group_id) {
+                              const resolved = await resolveLeadAudioTarget(formLeadId);
+                              if (!resolved.jid) { toast.error(resolved.error); return; }
+                              dest = resolved.jid;
+                              destLabel = resolved.name ? `grupo ${resolved.name}` : 'grupo';
+                            }
+                            await sendVoiceToWa(pendingAudio.url, dest, formLeadId);
+                            toast.success(`Áudio enviado ao ${destLabel} do WhatsApp!`);
                             setPendingAudio(null);
                           } catch (e: any) {
                             toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
@@ -5680,9 +5750,18 @@ const ActivitiesPage = () => {
                                     if (!pendingAudio || !audioTarget) return;
                                     setSendingPendingAudio(true);
                                     try {
-                                      await sendVoiceToWa(pendingAudio.url, audioTarget, formLeadId);
-                                      toast.success('Áudio enviado ao grupo do WhatsApp!');
-                                      setPendingAudio(null);
+                                      // Destino vem do banco, pelo lead desta atividade. Foi
+                                      // aqui que o áudio do "CG 90- Inventário Isaías" saiu
+                                      // pro grupo do "CASO 244" em 06/08/2026: o state
+                                      // `leadPreview` ainda era do lead anterior.
+                                      const resolved = await resolveLeadAudioTarget(formLeadId);
+                                      if (!resolved.jid) {
+                                        toast.error(resolved.error);
+                                      } else {
+                                        await sendVoiceToWa(pendingAudio.url, resolved.jid, formLeadId);
+                                        toast.success(`Áudio enviado ao grupo ${resolved.name || 'do WhatsApp'}!`);
+                                        setPendingAudio(null);
+                                      }
                                     } catch (e: any) {
                                       toast.error(e?.message || 'Erro ao enviar áudio no WhatsApp');
                                     } finally {
@@ -5999,6 +6078,20 @@ const ActivitiesPage = () => {
         }}
       />
       {linkedRecordSheets}
+
+      {/* Outra atividade da mesma cadeia, aberta pela aba Histórico. Abre à
+          esquerda pra ficar AO LADO da ficha, não por cima (skills
+          `ui-sem-redirecionar` + `ui-sem-sobreposicao`). Fechar devolve a pessoa
+          à ficha de onde saiu, sem perder o que ela estava editando. */}
+      {chainOpenId && (
+        <ActivityFullSheet
+          open
+          onOpenChange={(o) => { if (!o) setChainOpenId(null); }}
+          activityId={chainOpenId}
+          side="left"
+          onUpdated={() => { activityChain.reload(); fetchActivities(getFilterParams()); }}
+        />
+      )}
 
       <CompleteAndNotifyDialog
         open={completeNotifyOpen}

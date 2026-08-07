@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  bucketOf, commitmentDate, groupByBucket, countByDay,
+  bucketOf, commitmentDate, groupByBucket, countByDay, countByOwner,
   type InboxCommitment,
 } from '@/lib/clientCommitmentsInbox';
 
@@ -84,6 +84,44 @@ describe('groupByBucket', () => {
 
   it('lista vazia não gera grupo', () => {
     expect(groupByBucket([], HOJE)).toEqual([]);
+  });
+});
+
+describe('countByOwner', () => {
+  it('conta por responsável, do maior para o menor', () => {
+    const c = countByOwner([
+      item({ owner_user_id: 'ana' }),
+      item({ owner_user_id: 'ana' }),
+      item({ owner_user_id: 'bia' }),
+    ], HOJE);
+    expect(c.map((x) => [x.ownerId, x.total])).toEqual([['ana', 2], ['bia', 1]]);
+  });
+
+  it('pendência sem dono vira uma linha própria (ownerId null)', () => {
+    const c = countByOwner([item({ owner_user_id: null })], HOJE);
+    expect(c).toEqual([{ ownerId: null, total: 1, vencidas: 0 }]);
+  });
+
+  it('ignora o que não está em aberto — resolvida não é pendência de ninguém', () => {
+    const c = countByOwner([
+      item({ owner_user_id: 'ana' }),
+      item({ owner_user_id: 'ana', status: 'feito' }),
+      item({ owner_user_id: 'ana', status: 'descartada' }),
+    ], HOJE);
+    expect(c[0].total).toBe(1);
+  });
+
+  it('vencidas conta só quem tem prazo estourado (sem prazo nunca vence)', () => {
+    const c = countByOwner([
+      item({ owner_user_id: 'ana', due_date: '2026-08-01' }),
+      item({ owner_user_id: 'ana', due_date: '2026-08-20' }),
+      item({ owner_user_id: 'ana', due_date: null, promised_at: '2026-01-01T10:00:00Z' }),
+    ], HOJE);
+    expect(c[0]).toEqual({ ownerId: 'ana', total: 3, vencidas: 1 });
+  });
+
+  it('lista vazia não gera linha', () => {
+    expect(countByOwner([], HOJE)).toEqual([]);
   });
 });
 
