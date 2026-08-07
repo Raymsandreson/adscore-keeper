@@ -458,6 +458,12 @@ const ActivitiesPage = () => {
   const [feedbackFunnelOpen, setFeedbackFunnelOpen] = useState(false);
   /** Caixa de pendências do cliente (o que ELE ficou de fazer, todas as conversas). */
   const [commitmentsInboxOpen, setCommitmentsInboxOpen] = useState(false);
+  /**
+   * Pendência do cliente que originou o formulário aberto. Ref, não state: o
+   * fluxo de criação é assíncrono e só precisa do valor na hora de gravar o
+   * vínculo — em state, um re-render no meio do salvamento perderia a origem.
+   */
+  const commitmentOriginRef = useRef<string | null>(null);
   const [callRecorderOpen, setCallRecorderOpen] = useState(false);
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [nextStepsOpen, setNextStepsOpen] = useState(false);
@@ -804,6 +810,9 @@ const ActivitiesPage = () => {
   }, [getFilteredRaw]);
 
   const resetForm = () => {
+    // Limpar aqui (e não no fim do fluxo) garante que um formulário abandonado
+    // não faça a PRÓXIMA atividade criada ser marcada como a pendência.
+    commitmentOriginRef.current = null;
     setFormTitle('');
     setFormWhatWasDone('');
     setFormCurrentStatus('');
@@ -880,6 +889,8 @@ const ActivitiesPage = () => {
   // existia dentro da conversa; aqui evita redigitar quem varre a caixa por data.
   const openActivityFromCommitment = async (item: InboxCommitment) => {
     resetForm();
+    // Depois do resetForm, que limpa a origem anterior.
+    commitmentOriginRef.current = item.id;
     setCommitmentsInboxOpen(false);
     setFormTitle(`Pendência do cliente: ${item.title}`);
     if (item.lead_id) { setFormLeadId(item.lead_id); setFormLeadName(item.lead_name || ''); }
@@ -905,6 +916,51 @@ const ActivitiesPage = () => {
       item.notes ? `Observação da pendência: ${item.notes}` : '',
     ].filter(Boolean).join('\n')));
     setSheetMode('create');
+  };
+
+  /**
+   * Fecha o ciclo da pendência: grava qual atividade nasceu dela. A pendência
+   * do CLIENTE segue aberta (ele ainda não fez o que prometeu), mas sai da fila
+   * de cobrança — antes reaparecia amanhã para quem já tinha aberto a tarefa.
+   */
+  const linkCommitmentToActivity = async (commitmentId: string, activityId: string) => {
+    const { error } = await (externalSupabase as any)
+      .from('lead_client_commitments')
+      .update({ activity_id: activityId, converted_at: new Date().toISOString() })
+      .eq('id', commitmentId);
+
+    if (error) {
+      toast.error('Atividade criada, mas não consegui marcar a pendência como tratada.');
+      return;
+    }
+    toast.success('Pendência virou atividade e saiu da cobrança', {
+      description: 'Ela fica em "Viraram atividade", com atalho para esta ficha.',
+    });
+  };
+
+  /**
+   * Atalho da pendência que já virou atividade: abre a ficha em ABA LATERAL,
+   * sem redirecionar. A atividade pode não estar na lista carregada (filtro de
+   * outro responsável, outro mês), daí a busca direta no banco.
+   */
+  const openActivityById = async (activityId: string) => {
+    setCommitmentsInboxOpen(false);
+    const jaCarregada = activities.find((a) => a.id === activityId);
+    if (jaCarregada) {
+      handleOpenEdit(jaCarregada);
+      return;
+    }
+    const { data, error } = await (externalSupabase as any)
+      .from('lead_activities')
+      .select('*')
+      .eq('id', activityId)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !data) {
+      toast.error('Esta atividade não existe mais ou foi excluída.');
+      return;
+    }
+    handleOpenEdit(data as LeadActivity);
   };
 
   // suggestActivityType moved below routineActivityTypes
@@ -1165,6 +1221,14 @@ const ActivitiesPage = () => {
         [formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes, formFeedback],
         [],
       );
+    }
+
+    // Nasceu de uma pendência do cliente → grava o vínculo antes de o
+    // fechamento do sheet limpar a origem.
+    const commitmentOrigemId = commitmentOriginRef.current;
+    if (createdActivityId && commitmentOrigemId) {
+      commitmentOriginRef.current = null;
+      await linkCommitmentToActivity(commitmentOrigemId, createdActivityId);
     }
 
     // If created for another assignee, add them to the filter so the activities are visible
@@ -6057,6 +6121,7 @@ const ActivitiesPage = () => {
         onOpenChange={setCommitmentsInboxOpen}
         teamOptions={teamMembers}
         onCreateActivity={openActivityFromCommitment}
+        onOpenActivity={openActivityById}
       />
       <ActivityCreatedDialog
         open={createdDialog.open}
