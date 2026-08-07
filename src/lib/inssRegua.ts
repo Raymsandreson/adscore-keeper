@@ -140,6 +140,39 @@ export function ehNumeroCnj(n: string | null | undefined): boolean {
   return !!n && /^\d{7}-?\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/.test(n.trim());
 }
 
+/**
+ * Em que forma o número foi cadastrado. Serve para explicar POR QUE um processo
+ * não tem marco, em vez de culpar sempre a mesma fonte.
+ *
+ * Medido no Externo em 07/08/2026, sobre os 863 processos que têm número:
+ *   cnj  626 → 409 com movimentação do Escavador
+ *   nb   194 → 156 casam com requerimento do INSS
+ *   nup   10 → 0 casam, e nunca vão casar (ver abaixo)
+ *   indefinido 33 → CNPJ, CEP, data, "Não protocolado", "." — campo livre
+ *
+ * 'nb'  — requerimento/benefício do INSS. inss_admin_processes.requerimento_number
+ *         guarda SÓ isto: 848/848 linhas têm de 7 a 12 dígitos puros. É a única
+ *         forma que a régua administrativa consegue casar. Exigir dígito puro não
+ *         é preciosismo: dos 199 na faixa de 7-12 dígitos, os 5 que têm separador
+ *         (datas, CNPJ) casam 0 vezes; dos 194 sem separador, casam 156.
+ * 'nup' — Número Único de Protocolo da administração federal (NNNNN.NNNNNN/AAAA-DD).
+ *         NÃO é requerimento de benefício: nenhum dos 10 aparece no details dos
+ *         requerimentos nem nos 2.719 processual_emails capturados. 9 dos 10 estão
+ *         em itens chamados "Relatório de Acidente" — de 39 desses itens, 29 não
+ *         têm número nenhum. Esperar e-mail do INSS para eles é esperar o que não vem.
+ */
+export type FormaNumero = "cnj" | "nb" | "nup" | "indefinido";
+
+export function classificarNumeroProcesso(n: string | null | undefined): FormaNumero {
+  const s = (n ?? "").trim();
+  if (!s) return "indefinido";
+  const d = s.replace(/\D/g, "");
+  if (ehNumeroCnj(s) || d.length === 20) return "cnj";
+  if (d.length === 17) return "nup";
+  if (d.length >= 7 && d.length <= 12 && d.length === s.replace(/\s/g, "").length) return "nb";
+  return "indefinido";
+}
+
 /** Busca o requerimento administrativo por número. null = não capturado. */
 export async function fetchRequerimentoPorNumero(
   numero: string,

@@ -18,11 +18,12 @@
 // =============================================================================
 import { useEffect, useState } from 'react';
 import {
-  fetchRequerimentoPorNumero, MARCO_INSS_LABEL, DIAS_EXIGENCIA_CRITICA,
-  type RequerimentoInss, type MarcoInss,
+  fetchRequerimentoPorNumero, classificarNumeroProcesso, MARCO_INSS_LABEL,
+  DIAS_EXIGENCIA_CRITICA,
+  type RequerimentoInss, type MarcoInss, type FormaNumero,
 } from '@/lib/inssRegua';
 import { Badge } from '@/components/ui/badge';
-import { TriangleAlert, HelpCircle, Landmark } from 'lucide-react';
+import { TriangleAlert, HelpCircle, Landmark, FileQuestion, Mailbox } from 'lucide-react';
 
 const ETAPAS: { chave: MarcoInss | 'desfecho'; rotulo: string }[] = [
   { chave: 'protocolado', rotulo: 'Protocolado' },
@@ -40,6 +41,62 @@ function fmt(v: string | null): string {
   if (!v) return '—';
   const d = new Date(v.length <= 10 ? `${v}T00:00:00` : v);
   return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('pt-BR');
+}
+
+/**
+ * Sem requerimento capturado — mas o motivo NÃO é o mesmo para todo mundo, e a
+ * ação que cada caso pede é oposta:
+ *
+ *   nb  → o número é de requerimento e o e-mail não chegou. Acionável: cobrar a
+ *         caixa monitorada. 38 processos em 07/08/2026.
+ *   nup → protocolo federal (NNNNN.NNNNNN/AAAA-DD). Não é requerimento de
+ *         benefício; nenhum e-mail do INSS jamais o cita. Mandar conferir a caixa
+ *         aqui é mandar esperar o que não vem. 10 processos, 9 deles em itens
+ *         "Relatório de Acidente".
+ *   indefinido → o campo não guarda número de processo (CNPJ, CEP, data,
+ *         "reprotocolar-cliente nao foi p perícia"). 33 processos. Só o cadastro
+ *         conserta.
+ */
+function SemRequerimento({ numero, forma }: { numero: string; forma: FormaNumero }) {
+  const conteudo: Record<FormaNumero, { Icone: typeof Landmark; titulo: string; corpo: string; acao: string }> = {
+    nb: {
+      Icone: Mailbox,
+      titulo: 'Requerimento ainda não capturado',
+      corpo: 'O número tem forma de requerimento do INSS, mas nenhum e-mail dele foi processado até agora — por isso a régua está vazia.',
+      acao: 'Confira se o e-mail do INSS chegou na caixa monitorada.',
+    },
+    nup: {
+      Icone: Landmark,
+      titulo: 'Protocolo administrativo — fora do acompanhamento',
+      corpo: 'Este é um protocolo da administração federal, não um requerimento de benefício. Ele não gera e-mail do INSS nem movimentação no Escavador, então nunca terá régua automática.',
+      acao: 'O andamento precisa ser consultado no órgão onde foi protocolado.',
+    },
+    indefinido: {
+      Icone: FileQuestion,
+      titulo: 'O campo não contém um número de processo',
+      corpo: 'O conteúdo cadastrado não tem forma de CNJ, de requerimento do INSS nem de protocolo administrativo — sem um número válido não há o que acompanhar.',
+      acao: 'Corrija o número no cadastro do processo.',
+    },
+    // Não chega aqui: número CNJ é roteado para a régua do Escavador antes.
+    cnj: {
+      Icone: FileQuestion,
+      titulo: 'Sem marcos',
+      corpo: 'Número em formato judicial sem movimentação capturada.',
+      acao: 'Atualize o processo para buscar no Escavador.',
+    },
+  };
+  const { Icone, titulo, corpo, acao } = conteudo[forma];
+
+  return (
+    <div className="border rounded-lg p-4 bg-muted/20 text-center space-y-1.5">
+      <Icone className="h-5 w-5 mx-auto text-muted-foreground" />
+      <p className="text-sm font-medium">{titulo}</p>
+      <p className="text-xs text-muted-foreground max-w-md mx-auto">
+        <span className="font-mono">{numero}</span> — {corpo}
+      </p>
+      <p className="text-[11px] text-muted-foreground">{acao}</p>
+    </div>
+  );
 }
 
 export default function InssMarcosProcesso({ processNumber }: { processNumber: string }) {
@@ -65,22 +122,11 @@ export default function InssMarcosProcesso({ processNumber }: { processNumber: s
     return <p className="text-xs text-rose-600 py-4 text-center">{erro}</p>;
   }
 
-  // Existe no sistema como administrativo, mas o e-mail do INSS nunca chegou.
+  // Sem requerimento capturado. O motivo depende da FORMA do número — mandar
+  // todo mundo conferir a caixa do INSS acerta em 38 casos e mente em 43.
   if (!req) {
-    return (
-      <div className="border rounded-lg p-4 bg-muted/20 text-center space-y-1.5">
-        <Landmark className="h-5 w-5 mx-auto text-muted-foreground" />
-        <p className="text-sm font-medium">Processo administrativo — sem requerimento capturado</p>
-        <p className="text-xs text-muted-foreground max-w-md mx-auto">
-          O número <span className="font-mono">{processNumber}</span> não é um CNJ, então este
-          processo não tem movimentação no Escavador — e nunca terá. Os marcos dele viriam do
-          e-mail do INSS, mas nenhum e-mail deste requerimento foi processado até agora.
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          Confira se o número está correto e se o e-mail do INSS chegou na caixa monitorada.
-        </p>
-      </div>
-    );
+    const forma = classificarNumeroProcesso(processNumber);
+    return <SemRequerimento numero={processNumber} forma={forma} />;
   }
 
   const critico = req.emExigencia && (req.diasEmExigencia ?? 0) > DIAS_EXIGENCIA_CRITICA;
