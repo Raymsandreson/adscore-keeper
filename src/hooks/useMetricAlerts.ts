@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import { MetricData } from './useMetaAPI';
+import { showNativeNotification } from '@/lib/nativeNotification';
 
 export interface AlertThresholds {
   cpcMax: number;
@@ -62,16 +63,11 @@ export const useMetricAlerts = (metrics: MetricData, isConnected: boolean) => {
     return false;
   }, []);
 
-  // Send browser push notification
+  // Notificação nativa do sistema (via service worker — o construtor Notification
+  // não funciona no Chrome do Android).
   const sendPushNotification = useCallback((title: string, body: string) => {
-    if (permissionRef.current === 'granted' && 'Notification' in window) {
-      new Notification(title, {
-        body,
-        icon: '/favicon.ico',
-        tag: title,
-        requireInteraction: true,
-      });
-    }
+    if (permissionRef.current !== 'granted') return;
+    void showNativeNotification(title, { body, tag: title, requireInteraction: true });
   }, []);
 
   // Check metrics and send alerts

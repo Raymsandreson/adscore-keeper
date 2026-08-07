@@ -32,6 +32,19 @@ function isPreview() {
   return inIframe || h.includes('id-preview--') || h.includes('lovableproject.com');
 }
 
+function isIOS() {
+  if (typeof navigator === 'undefined') return false;
+  // iPadOS 13+ se apresenta como Mac; o toque é o que denuncia.
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isStandalone() {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches
+    || (navigator as unknown as { standalone?: boolean }).standalone === true;
+}
+
 async function waitActive(reg: ServiceWorkerRegistration) {
   if (reg.active) return;
   const sw = reg.installing || reg.waiting;
@@ -51,11 +64,19 @@ async function waitActive(reg: ServiceWorkerRegistration) {
 export function usePushNotifications() {
   const { user } = useAuthContext();
   const supported = pushSupported() && !isPreview();
+  // iOS só entrega Web Push para app instalado na tela inicial (16.4+). Fora do
+  // standalone o Safari nem expõe PushManager, então `supported` é false — mas o
+  // caminho existe: instalar. Sem esta distinção a UI dizia "não suportado" e a
+  // pessoa não tinha o que fazer (0 iPhones inscritos em 22 assinaturas).
+  const needsInstall = !supported && !isPreview() && isIOS() && !isStandalone();
   const [permission, setPermission] = useState<NotificationPermission>(
     pushSupported() ? Notification.permission : 'denied'
   );
   const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
+  // A auto-assinatura abaixo é assíncrona. Sem este flag a UI trata "ainda não
+  // verifiquei" como "não assinado" e pisca um convite pra quem já está ativo.
+  const [checked, setChecked] = useState(false);
 
   const saveSubscription = useCallback(async (sub: PushSubscription) => {
     if (!user?.id) return;
@@ -83,6 +104,10 @@ export function usePushNotifications() {
   }, []);
 
   const subscribeAndSave = useCallback(async () => {
+    // Sem usuário não há onde gravar a assinatura (a chave é user_id). Acontece
+    // em /install, que é rota pública — sem isso a UI dizia "ativado" e nada era
+    // salvo, deixando o aparelho mudo com cara de configurado.
+    if (!user?.id) throw new Error('NO_USER');
     const reg = await getRegistration();
     let sub = await reg.pushManager.getSubscription();
     if (!sub) {
@@ -93,10 +118,11 @@ export function usePushNotifications() {
     }
     await saveSubscription(sub);
     setSubscribed(true);
-  }, [getRegistration, saveSubscription]);
+  }, [user?.id, getRegistration, saveSubscription]);
 
   const enable = useCallback(async () => {
     if (!supported) { toast.error('Notificações não suportadas neste navegador'); return; }
+    if (!user?.id) { toast.error('Entre na sua conta antes de ativar as notificações'); return; }
     setBusy(true);
     try {
       const perm = await Notification.requestPermission();
@@ -111,7 +137,7 @@ export function usePushNotifications() {
     } finally {
       setBusy(false);
     }
-  }, [supported, subscribeAndSave]);
+  }, [supported, user?.id, subscribeAndSave]);
 
   const disable = useCallback(async () => {
     setBusy(true);
@@ -158,11 +184,15 @@ export function usePushNotifications() {
   // Auto-garante a assinatura se a permissão já foi concedida e o usuário não
   // optou por sair (self-heal se o SW tiver sido removido por um force-refresh).
   useEffect(() => {
-    if (!supported || !user?.id) return;
-    if (Notification.permission !== 'granted') return;
-    if (localStorage.getItem(OPTOUT_KEY) === '1') return;
-    subscribeAndSave().catch(() => { /* ignora */ });
+    if (!supported || !user?.id) { setChecked(true); return; }
+    if (Notification.permission !== 'granted' || localStorage.getItem(OPTOUT_KEY) === '1') {
+      setChecked(true);
+      return;
+    }
+    subscribeAndSave()
+      .catch(() => { /* ignora */ })
+      .finally(() => setChecked(true));
   }, [supported, user?.id, subscribeAndSave]);
 
-  return { supported, permission, subscribed, busy, enable, disable, testNotification };
+  return { supported, needsInstall, checked, permission, subscribed, busy, enable, disable, testNotification };
 }
