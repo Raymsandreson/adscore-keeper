@@ -78,6 +78,7 @@ import { handler as nearbyEstablishments } from './functions/nearby-establishmen
 import { handler as dailyTeamReport } from './functions/daily-team-report';
 import { handler as reportQuery } from './functions/report-query';
 import { handler as performanceCoach } from './functions/performance-coach';
+import { handler as extractAcordoFromAta } from './functions/extract-acordo-from-ata';
 import { handler as telaoNarrar } from './functions/telao-narrar';
 
 
@@ -151,6 +152,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'daily-team-report': dailyTeamReport,
   'report-query': reportQuery,
   'performance-coach': performanceCoach,
+  'extract-acordo-from-ata': extractAcordoFromAta,
   'telao-narrar': telaoNarrar,
 };
 
