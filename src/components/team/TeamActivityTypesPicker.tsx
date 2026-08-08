@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -160,7 +161,7 @@ export function TeamActivityTypesPicker({ teamId }: Props) {
     try {
       await externalSupabase
         .from('lead_activities')
-        .update({ activity_type: migrateToKey } as any)
+        .update({ activity_type: migrateToKey, updated_by: await currentExtUserId() } as any)
         .eq('activity_type', deleteConfirm.type.key);
       await cloudSupabase
         .from('user_timeblock_settings')

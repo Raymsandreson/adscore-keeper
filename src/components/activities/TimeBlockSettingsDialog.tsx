@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from '@/components/ui/sheet';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -377,7 +378,7 @@ export function TimeBlockSettingsDialog({ open, onOpenChange, configs, onSave, t
     setDeletingType(true);
     try {
       // Migrate activities
-      await externalSupabase.from('lead_activities').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
+      await externalSupabase.from('lead_activities').update({ activity_type: migrateToKey, updated_by: await currentExtUserId() } as any).eq('activity_type', deleteConfirm.type.key);
       // Migrate routine blocks
       await supabase.from('user_timeblock_settings').update({ activity_type: migrateToKey } as any).eq('activity_type', deleteConfirm.type.key);
       // Delete the type

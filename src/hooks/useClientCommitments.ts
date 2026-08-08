@@ -17,6 +17,7 @@ import {
   isCommitmentOpen, isCommitmentOverdue, isCommitmentDismissed,
   type ClientCommitment, type CommitmentKind, type CommitmentStatus,
 } from '@/lib/clientCommitments';
+import type { InboxCommitment } from '@/lib/clientCommitmentsInbox';
 
 export type {
   ClientCommitment, CommitmentKind, CommitmentStatus, CommitmentOrigin,
@@ -32,15 +33,24 @@ interface Params {
   autoAnalyze?: boolean;
 }
 
+/** Colunas que existem na TABELA — usadas em insert/update. */
 const SELECT = `id, lead_id, process_id, contact_id, phone, instance_name, title, kind, status,
   due_date, promised_at, source_message_id, source_message_text, notes, last_reminded_at,
-  reminder_count, done_at, done_by_name, created_by_name, created_at, origin, ai_confidence`;
+  reminder_count, done_at, done_by_name, created_by_name, created_at, origin, ai_confidence,
+  activity_id, converted_at, assigned_to`;
+
+/**
+ * Leitura sai da view, que resolve o dono pela mesma cascata do telão. Sem
+ * isso a conversa não sabia de quem era a pendência — e as ações "Responsável"
+ * e "Gerar atividade" só existiam na caixa de pendências.
+ */
+const SELECT_VIEW = `${SELECT}, owner_user_id, lead_name`;
 
 export function useClientCommitments({
   leadId, phone, instanceName, contactId, clientName, autoAnalyze = true,
 }: Params) {
   const { profile, user } = useAuthContext();
-  const [items, setItems] = useState<ClientCommitment[]>([]);
+  const [items, setItems] = useState<InboxCommitment[]>([]);
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
@@ -71,13 +81,13 @@ export function useClientCommitments({
       }
 
       const { data, error } = await (db as any)
-        .from('lead_client_commitments')
-        .select(SELECT)
+        .from('vw_client_commitments_owner')
+        .select(SELECT_VIEW)
         .or(filters.join(','))
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setItems((data as ClientCommitment[]) || []);
+      setItems((data as InboxCommitment[]) || []);
     } catch (e) {
       console.warn('[useClientCommitments] falha ao carregar pendências');
       setItems([]);
@@ -247,13 +257,15 @@ export function useClientCommitments({
         .single();
 
       if (error) throw error;
-      setItems((prev) => [data as ClientCommitment, ...prev]);
+      setItems((prev) => [data as InboxCommitment, ...prev]);
       return data as ClientCommitment;
     },
     [leadId, phone, instanceName, contactId, user?.id, profile?.full_name]
   );
 
   const patch = useCallback(async (id: string, changes: Record<string, unknown>) => {
+    // Escrita sempre na TABELA (a view é só leitura). O merge preserva os
+    // campos que só a view devolve (`owner_user_id`, `lead_name`).
     const { data, error } = await (db as any)
       .from('lead_client_commitments')
       .update(changes)
@@ -261,9 +273,45 @@ export function useClientCommitments({
       .select(SELECT)
       .single();
     if (error) throw error;
-    setItems((prev) => prev.map((i) => (i.id === id ? (data as ClientCommitment) : i)));
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...(data as InboxCommitment) } : i)));
     return data as ClientCommitment;
   }, []);
+
+  /** Relê UMA linha da view — necessário quando o dono resolvido muda. */
+  const reloadOne = useCallback(async (id: string) => {
+    const { data } = await (db as any)
+      .from('vw_client_commitments_owner')
+      .select(SELECT_VIEW)
+      .eq('id', id)
+      .maybeSingle();
+    if (data) setItems((prev) => prev.map((i) => (i.id === id ? (data as InboxCommitment) : i)));
+  }, []);
+
+  /**
+   * Registra que a pendência virou atividade do escritório. Não fecha a
+   * pendência: o cliente continua devendo o que prometeu — o que muda é que já
+   * existe tarefa nossa cuidando disso, então ela sai da fila de cobrança.
+   */
+  const markConverted = useCallback(
+    (id: string, activityId: string) =>
+      patch(id, { activity_id: activityId, converted_at: new Date().toISOString() }),
+    [patch]
+  );
+
+  /**
+   * Troca à mão quem cuida da pendência. `null` devolve para o automático
+   * (a cascata do caso / da conversa / da linha).
+   */
+  const setAssignee = useCallback(
+    async (id: string, extUserId: string | null) => {
+      await patch(id, {
+        assigned_to: extUserId,
+        assigned_at: extUserId ? new Date().toISOString() : null,
+      });
+      await reloadOne(id);
+    },
+    [patch, reloadOne]
+  );
 
   /**
    * Conclui a pendência creditando QUEM resolveu — não necessariamente quem
@@ -320,5 +368,6 @@ export function useClientCommitments({
     summary, analyzeError,
     reload: load, analyze,
     create, patch, markDone, markGivenUp, dismiss, reopen, registerReminder, remove,
+    markConverted, setAssignee,
   };
 }

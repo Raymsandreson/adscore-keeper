@@ -53,6 +53,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'activity-from-movement': 'railway',
   'generate-activity-title': 'railway', // gera título curto ("o que fazer") no concluir-e-próxima e no botão renomear
   'suggest-step-actions': 'railway',
+  'suggest-step-completion': 'railway', // POP: IA lê movimentações + comando ("já foi feito acordo") e sugere os passos a marcar
   'edit-workflow': 'railway', // POP: editar com IA (agora inclui status/resultados do POP, não só passos)
   'suggest-revision-reason': 'railway', // POP: IA sugere motivo+categoria da revisão a partir do diff
   'wipe-instance-agent-labels': 'railway',
@@ -73,6 +74,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'sync-process-compromissos': 'external', // detector de compromissos + feed do sino (dados 100% no Externo)
   'facebook-capi': 'external', // CAPI Purchase/Lead — migrada do Cloud (Lovable) p/ controle total de deploy+secrets; fallback → Cloud
   'create-whatsapp-group': 'external', // v12 com tokens de nome (lead_name_upper etc.); cópia do Cloud está desatualizada e criava grupo sem template
+  'find-contact-groups': 'external', // instance_name deixou de ser obrigatório na busca por nome; lê instâncias/cache no Externo (onde de fato moram). Fallback → Cloud mantém a versão antiga.
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

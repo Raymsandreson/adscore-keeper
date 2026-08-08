@@ -31,7 +31,8 @@ import { CopyableText } from '@/components/ui/copyable-text';
 import { WhatsAppLeadPreview } from './WhatsAppLeadPreview';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
-import { ClientCommitmentsPanel, type CommitmentDraft } from './ClientCommitmentsPanel';
+import { ClientCommitmentsPanel, type CommitmentDraft, type CommitmentCardItem } from './ClientCommitmentsPanel';
+import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
 import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -39,12 +40,13 @@ import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
+import { WhatsAppChatSearchPanel, HighlightedText, type ChatSearchHit } from './WhatsAppChatSearchPanel';
 import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
-import { remapToExternal } from '@/integrations/supabase/uuid-remap';
+import { remapToExternal, ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { invalidateGroupLeadCache } from '@/integrations/supabase/group-lead-links';
 import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -130,8 +132,14 @@ interface Props {
   onClearConversation?: (phone: string, instanceName?: string) => Promise<boolean>;
   /** Busca no servidor mensagens mais antigas que as já carregadas. Retorna quantas adicionou (0 = fim do histórico). */
   onLoadOlderMessages?: (phone: string, instanceName?: string | null) => Promise<number>;
+  /** Baixa o trecho em volta de um instante (busca dentro da conversa aponta pra fora do que está em memória). */
+  onLoadMessagesAround?: (phone: string, instanceName: string | null | undefined, anchorIso: string) => Promise<number>;
+  /** Continua a partir de um instante — fecha o vão entre o trecho antigo e o que já estava carregado. */
+  onLoadMessagesForward?: (phone: string, instanceName: string | null | undefined, afterIso: string) => Promise<number>;
   /** Mensagem a destacar ao abrir (deep link vindo da ficha da atividade). */
   highlightMessageId?: string | null;
+  /** Controle de dono da conversa, injetado pela inbox (que é quem conhece a equipe). */
+  headerExtra?: React.ReactNode;
 }
 
 function parseParticipants(raw: Array<Record<string, unknown>>) {
@@ -157,7 +165,7 @@ function parseParticipants(raw: Array<Record<string, unknown>>) {
   return { mapped, lidMap, phoneNameMap };
 }
 
-export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages, highlightMessageId }: Props) {
+export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia, onSendLocation, onDeleteMessage, onLinkToLead, onLinkToContact, onCreateLead, onCreateContact, onCreateCase, extractingData, extractionStep, onCreateActivity, onNavigateToLead, onViewContact, onPrivacyChanged, shareInfo, onUpdateWithAI, onOpenChat, onClearConversation, onLoadOlderMessages, onLoadMessagesAround, onLoadMessagesForward, highlightMessageId, headerExtra }: Props) {
   const { profile, user } = useAuthContext();
   const { isAdmin } = useUserRole();
   const { boards: kanbanBoards } = useKanbanBoards();
@@ -984,7 +992,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setRefreshingRoster(true);
     const t = toast.loading('Atualizando participantes...');
     try {
-      const { data: fnData } = await supabase.functions.invoke('get-group-participants', {
+      const { data: fnData } = await cloudFunctions.invoke<any>('get-group-participants', {
         body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: true },
       });
       const resp = fnData as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
@@ -1031,6 +1039,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     () => [...teamMembers].sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')),
     [teamMembers]
   );
+
+  /** Pendência com o "quem cuida disto?" aberto (mesma troca da caixa de pendências). */
+  const [trocandoDonoPendencia, setTrocandoDonoPendencia] = useState<CommitmentCardItem | null>(null);
+  // O remap precisa estar quente antes do primeiro render: a resolução do nome
+  // é síncrona e, sem cache, não acha quem tem UUID diferente nos dois bancos.
+  useEffect(() => { void ensureRemapCache(); }, []);
+
+  /** `owner_user_id` vem do Externo; `teamMembers` vem do Cloud — daí o remap. */
+  const resolveDonoPendencia = useCallback((item: CommitmentCardItem) => {
+    const id = item.owner_user_id;
+    if (!id) return null;
+    const direto = teamMembers.find((m) => m.user_id === id);
+    if (direto) return direto.full_name || null;
+    const cloudId = remapToCloudSync(id);
+    const viaRemap = cloudId ? teamMembers.find((m) => m.user_id === cloudId) : null;
+    return viaRemap?.full_name || null;
+  }, [teamMembers]);
   const [showMentionPicker, setShowMentionPicker] = useState(false);
   // Group @mention (WhatsApp native): picker over participants while composing
   const [groupMentionQuery, setGroupMentionQuery] = useState<string | null>(null); // null = picker closed
@@ -1063,6 +1088,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const serverHistoryExhaustedRef = useRef(false);
   const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const stickBottomRef = useRef<boolean>(true);
+  // Busca dentro da conversa (lupa do header). `anchor` liga o "modo âncora":
+  // a timeline passa a renderizar uma janela em volta da mensagem encontrada,
+  // em vez de tudo desde ela até a mais recente — conversa de 20k mensagens
+  // travaria o navegador se renderizasse o intervalo inteiro.
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [anchor, setAnchor] = useState<{ msgId: string; created_at: string; before: number; after: number } | null>(null);
+  const [jumpingToMessage, setJumpingToMessage] = useState(false);
+  const [loadingNewerFromServer, setLoadingNewerFromServer] = useState(false);
+  const loadingNewerFromServerRef = useRef(false);
+  const anchorRef = useRef<typeof anchor>(null);
+  const windowBoundsRef = useRef({ start: 0, end: 0, total: 0 });
+  const allTimelineItemsRef = useRef<Array<{ type: string; timestamp: string }>>([]);
+  const pendingAnchorScrollRef = useRef<string | null>(null);
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -1640,7 +1679,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.messages.find(m => (m.metadata?.message?.chatid || '').includes('@g.us'))?.metadata?.message?.chatid;
     if (!groupJid) return;
     try {
-      const { data } = await supabase.functions.invoke('get-group-participants', {
+      const { data } = await cloudFunctions.invoke<any>('get-group-participants', {
         body: { group_jid: groupJid, instance_name: conversation.instance_name, refresh: false },
       });
       const resp = data as { success?: boolean; participants?: Array<Record<string, unknown>> } | null;
@@ -2130,22 +2169,148 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   // Paginação client-side: mostramos apenas as `visibleCount` mais recentes.
   // Ao arrastar pro topo, carregamos +50 mantendo a posição visual.
-  const timelineItems = allTimelineItems.slice(Math.max(0, allTimelineItems.length - visibleCount));
-  const hasOlderMessages = allTimelineItems.length > timelineItems.length;
+  // Com a busca ativa (modo âncora), a janela passa a ser em volta do resultado.
+  const totalTimelineItems = allTimelineItems.length;
+  const anchorIndex = anchor
+    ? allTimelineItems.findIndex(i => i.type === 'message' && (i.data as { id?: string }).id === anchor.msgId)
+    : -1;
+  const windowStart = anchorIndex >= 0
+    ? Math.max(0, anchorIndex - anchor!.before)
+    : Math.max(0, totalTimelineItems - visibleCount);
+  const windowEnd = anchorIndex >= 0
+    ? Math.min(totalTimelineItems, anchorIndex + anchor!.after)
+    : totalTimelineItems;
+  const timelineItems = allTimelineItems.slice(windowStart, windowEnd);
+  const hasOlderMessages = windowStart > 0;
+  const hasNewerHidden = windowEnd < totalTimelineItems;
+  const anchorActive = anchorIndex >= 0;
+
+  anchorRef.current = anchor;
+  windowBoundsRef.current = { start: windowStart, end: windowEnd, total: totalTimelineItems };
+  allTimelineItemsRef.current = allTimelineItems;
 
   // Reset da paginação quando troca de conversa
   useEffect(() => {
     setVisibleCount(MESSAGES_PAGE_SIZE);
     stickBottomRef.current = true;
     serverHistoryExhaustedRef.current = false;
+    setAnchor(null);
+    setSearchOpen(false);
+    setSearchTerm('');
   }, [conversation.phone, conversation.instance_name]);
+
+  // Volta pro fim da conversa (sai do modo âncora).
+  const exitAnchorMode = useCallback(() => {
+    setAnchor(null);
+    setVisibleCount(MESSAGES_PAGE_SIZE);
+    stickBottomRef.current = true;
+    requestAnimationFrame(() => {
+      const container = messagesContainerRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+  }, []);
+
+  // Pula até uma mensagem da busca: garante o trecho em memória, abre a janela
+  // em volta dela e destaca a bolha por 2s (mesmo flash do deep link).
+  const jumpToSearchHit = useCallback(async (hit: ChatSearchHit) => {
+    // Clicou de novo no mesmo resultado: só reposiciona, sem remontar a janela.
+    if (anchorRef.current?.msgId === hit.id) {
+      const el = document.querySelector(`[data-msg-id="${hit.id}"]`) as HTMLElement | null;
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setFlashMsgId(hit.id);
+        setTimeout(() => setFlashMsgId(null), 2000);
+        return;
+      }
+    }
+    const jaEmMemoria = conversation.messages.some(m => m.id === hit.id);
+    if (!jaEmMemoria) {
+      if (!onLoadMessagesAround) {
+        toast.error('Não consegui abrir esse trecho da conversa aqui.');
+        return;
+      }
+      setJumpingToMessage(true);
+      try {
+        await onLoadMessagesAround(conversation.phone, conversation.instance_name, hit.created_at);
+      } finally {
+        setJumpingToMessage(false);
+      }
+    }
+    preserveScrollRef.current = null;
+    stickBottomRef.current = false;
+    pendingAnchorScrollRef.current = hit.id;
+    setAnchor({ msgId: hit.id, created_at: hit.created_at, before: 25, after: 40 });
+  }, [conversation.messages, conversation.phone, conversation.instance_name, onLoadMessagesAround]);
+
+  // Depois que a janela renderiza, leva a bolha alvo pro centro e pisca.
+  useLayoutEffect(() => {
+    const target = pendingAnchorScrollRef.current;
+    if (!target) return;
+    const el = document.querySelector(`[data-msg-id="${target}"]`) as HTMLElement | null;
+    if (!el) return;
+    pendingAnchorScrollRef.current = null;
+    el.scrollIntoView({ behavior: 'auto', block: 'center' });
+    setFlashMsgId(target);
+    const t = setTimeout(() => setFlashMsgId(null), 2000);
+    return () => clearTimeout(t);
+  }, [timelineItems.length, anchor?.msgId]);
 
   const handleMessagesScroll = useCallback(() => {
     const container = messagesContainerRef.current;
     if (!container) return;
-    // Atualiza flag de "grudado no fim" (tolerância 80px)
+    // Atualiza flag de "grudado no fim" (tolerância 80px). No modo âncora nunca
+    // gruda: o usuário está lendo um trecho antigo, mensagem nova não pode puxar.
     const distanceFromBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
-    stickBottomRef.current = distanceFromBottom <= 80;
+    stickBottomRef.current = !anchorRef.current && distanceFromBottom <= 80;
+
+    // Modo âncora: a janela cresce pros dois lados conforme o usuário rola.
+    if (anchorRef.current) {
+      const { start, end, total } = windowBoundsRef.current;
+      if (container.scrollTop <= 80) {
+        if (start > 0) {
+          preserveScrollRef.current = { prevHeight: container.scrollHeight, prevTop: container.scrollTop };
+          setAnchor(a => (a ? { ...a, before: a.before + MESSAGES_PAGE_SIZE } : a));
+        } else if (onLoadOlderMessages && !serverHistoryExhaustedRef.current && !loadingOlderFromServerRef.current) {
+          loadingOlderFromServerRef.current = true;
+          setLoadingOlderFromServer(true);
+          preserveScrollRef.current = { prevHeight: container.scrollHeight, prevTop: container.scrollTop };
+          onLoadOlderMessages(conversation.phone, conversation.instance_name)
+            .then((added) => {
+              if (added > 0) setAnchor(a => (a ? { ...a, before: a.before + added } : a));
+              else { serverHistoryExhaustedRef.current = true; preserveScrollRef.current = null; }
+            })
+            .catch(() => { preserveScrollRef.current = null; })
+            .finally(() => { loadingOlderFromServerRef.current = false; setLoadingOlderFromServer(false); });
+        }
+        return;
+      }
+      if (distanceFromBottom <= 80) {
+        const itens = allTimelineItemsRef.current;
+        const borda = itens[end - 1];
+        const seguinte = end < total ? itens[end] : null;
+        // O trecho baixado pela busca é uma ilha: entre ele e o que já estava em
+        // memória pode faltar um pedaço. Salto de mais de 1h entre a borda e o
+        // próximo item = provável vão; pede a continuação ao servidor antes de
+        // avançar, senão a conversa pularia de data sem explicação.
+        const vaoProvavel = !!borda && !!seguinte &&
+          new Date(seguinte.timestamp).getTime() - new Date(borda.timestamp).getTime() > 3_600_000;
+        const precisaServidor = !seguinte || vaoProvavel;
+        if (precisaServidor && onLoadMessagesForward && borda && !loadingNewerFromServerRef.current) {
+          loadingNewerFromServerRef.current = true;
+          setLoadingNewerFromServer(true);
+          onLoadMessagesForward(conversation.phone, conversation.instance_name, borda.timestamp)
+            .then((added) => {
+              if (added > 0) setAnchor(a => (a ? { ...a, after: a.after + added } : a));
+              else if (!seguinte) exitAnchorMode(); // contínuo até a mensagem mais recente
+              else setAnchor(a => (a ? { ...a, after: a.after + MESSAGES_PAGE_SIZE } : a)); // vão real (dias sem mensagem)
+            })
+            .finally(() => { loadingNewerFromServerRef.current = false; setLoadingNewerFromServer(false); });
+        } else if (seguinte) {
+          setAnchor(a => (a ? { ...a, after: a.after + MESSAGES_PAGE_SIZE } : a));
+        }
+      }
+      return;
+    }
 
     if (container.scrollTop <= 80 && hasOlderMessages) {
       preserveScrollRef.current = {
@@ -2185,7 +2350,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           setLoadingOlderFromServer(false);
         });
     }
-  }, [hasOlderMessages, onLoadOlderMessages, conversation.phone, conversation.instance_name]);
+  }, [hasOlderMessages, onLoadOlderMessages, onLoadMessagesForward, exitAnchorMode, conversation.phone, conversation.instance_name]);
 
   // Preserva posição visual após carregar mensagens antigas
   useLayoutEffect(() => {
@@ -2196,7 +2361,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       container.scrollTop = saved.prevTop + delta;
       preserveScrollRef.current = null;
     }
-  }, [visibleCount]);
+  }, [visibleCount, anchor?.before]);
 
   const prevItemsCountRef = useRef(0);
   useEffect(() => {
@@ -2207,6 +2372,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const isInitialLoad = isConversationSwitch || prevItemsCountRef.current === 0;
     conversationKeyRef.current = currentKey;
     prevItemsCountRef.current = timelineItems.length;
+    // Lendo um trecho antigo pela busca: nada rola sozinho pro fim.
+    if (anchorRef.current && !isConversationSwitch) return;
 
     const jumpToBottom = (smooth = false) => {
       const container = messagesContainerRef.current;
@@ -2832,6 +2999,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             {conversation.contact_name || formatPhone(conversation.phone)}
           </CopyableText>
           <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            {headerExtra}
             <a
               href={`https://wa.me/${whatsappPhone}`}
               target="_blank"
@@ -2954,6 +3122,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <FastForward className="h-3 w-3" />
             </Badge>
           )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant={searchOpen ? 'secondary' : 'ghost'}
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => setSearchOpen(o => !o)}
+                data-tour="chat-search"
+              >
+                <Search className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Buscar nesta conversa (texto ou data)</TooltipContent>
+          </Tooltip>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="h-8 w-8" data-tour="chat-menu">
@@ -3306,6 +3488,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onAlertEnabledChange={toggleCommitmentAlert}
         teamOptions={commitmentTeamOptions}
         suggestedResolver={suggestedResolver}
+        resolveDonoNome={resolveDonoPendencia}
+        onTrocarDono={setTrocandoDonoPendencia}
+        onOpenActivity={(activityId) => { setShowCommitments(false); setOpenActivityId(activityId); }}
         onCreateActivity={onCreateActivity ? (item) => {
           // Reaproveita o mesmo formulário de "Criar atividade a partir desta
           // mensagem": a IA preenche o resto a partir deste texto.
@@ -3320,6 +3505,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           );
           setShowCommitments(false);
         } : undefined}
+      />
+
+      {/* Quem cuida da pendência — mesma troca da caixa de pendências. */}
+      <CommitmentAssigneeDialog
+        item={trocandoDonoPendencia}
+        onClose={() => setTrocandoDonoPendencia(null)}
+        profiles={commitmentTeamOptions}
+        onSave={(extId) => commitments.setAssignee(trocandoDonoPendencia!.id, extId)}
       />
 
       {/* AI Extraction Progress Banner */}
@@ -3767,6 +3960,30 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           initialTab="basic"
           boards={kanbanBoards as any}
         />
+      )}
+
+      {/* Busca dentro da conversa (texto + calendário) — empurra a lista, não cobre nada */}
+      {searchOpen && (
+        <WhatsAppChatSearchPanel
+          phone={conversation.phone}
+          instanceName={conversation.instance_name}
+          onJump={jumpToSearchHit}
+          onClose={() => { setSearchOpen(false); setSearchTerm(''); }}
+          onTermChange={setSearchTerm}
+        />
+      )}
+
+      {/* Trecho antigo aberto pela busca: fica claro onde a pessoa está e como voltar */}
+      {anchorActive && (
+        <div className="flex items-center gap-2 px-3 py-1.5 border-b bg-amber-50 dark:bg-amber-950/30 text-[11px] shrink-0">
+          {(jumpingToMessage || loadingNewerFromServer) && <Loader2 className="h-3 w-3 animate-spin shrink-0" />}
+          <span className="truncate text-amber-900 dark:text-amber-200">
+            Você está em {format(new Date(anchor!.created_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-[11px] ml-auto shrink-0" onClick={exitAnchorMode}>
+            Voltar ao fim da conversa
+          </Button>
+        </div>
       )}
 
       {/* Messages + Call Records Timeline */}
@@ -4264,7 +4481,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       {msg.message_type === 'audio' && (
                         <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
                       )}
-                      {displayMessageText(msg.message_text)}
+                      {searchTerm
+                        ? <HighlightedText text={displayMessageText(msg.message_text)} term={searchTerm} />
+                        : displayMessageText(msg.message_text)}
                     </p>
                     <div className={cn(
                       "flex items-center gap-1 mt-1 transition-opacity",
@@ -4460,6 +4679,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </div>
           );
         })}
+        {anchorActive && (hasNewerHidden || loadingNewerFromServer) && (
+          <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-muted-foreground">
+            {loadingNewerFromServer && <Loader2 className="h-3 w-3 animate-spin" />}
+            Role para baixo para continuar a conversa…
+          </div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 

@@ -30,6 +30,19 @@ describe('extractPrevNumber', () => {
     expect(extractPrevNumber(null, null)).toBeNull();
     expect(extractPrevNumber('PREV sem número', null)).toBeNull();
   });
+
+  it('aceita LEAD como prefixo — board BPC/LOAS desde 05/08/2026', () => {
+    // O case_number costuma vir digitado só com o número; o prefixo sobra no título.
+    expect(extractPrevNumber('2005', '✅LEAD 2005 - (BPC LOAS)')).toBe('2005');
+    expect(extractPrevNumber('1999', 'Lead 1999 ( BPC/LOAS )')).toBe('1999');
+    expect(extractPrevNumber('Lead 1939', null)).toBe('1939');
+  });
+
+  it('o rodízio dos casos LEAD do incidente 07/08/2026 bate com a correção manual', () => {
+    // João corrigiu à mão para José e Vanessa; é o que a regra devolve sozinha.
+    expect(short(extractPrevNumber('2005', '✅LEAD 2005 - (BPC LOAS)'))).toBe('José');
+    expect(short(extractPrevNumber('1999', 'Lead 1999 ( BPC/LOAS )'))).toBe('Vanessa');
+  });
 });
 
 describe('isJudicialProcess', () => {

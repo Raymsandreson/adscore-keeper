@@ -29,6 +29,20 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
   - Vêm da IA: assunto, tipo, prioridade, "O que foi feito", "Como está" e "Próximo passo" (este nunca fica vazio — no mínimo descreve a própria tarefa). A conversa de origem fica nas observações sob "— Origem: conversa do WhatsApp —".
   - **Assessor**: o sugerido pela conversa vence ("fulano, faz isso"); sem sugestão, fica **quem está criando**. **Prazo**: o citado na conversa vence; sem citação, **hoje**.
   - O formulário reduzido (`WhatsAppActivitySheet`) continua nos caminhos **sem** mensagem de origem — menu do topo da conversa, preview do lead — e como rede de segurança se a IA falhar (aí abre com o texto no ditado, como antes).
+- **Dono da conversa** (desde 07/08/2026): no cabeçalho, ao lado do nome, aparece "sua conversa" / "com {primeiro nome}" / "sem dono", com **Assumir** e **Passar** (escolhe outra pessoa da equipe). Existe porque a linha compartilhada não dizia de quem era o papo — e sem isso a pendência do cliente caía em "sem responsável definido" mesmo com alguém claramente atendendo.
+  - **Abrir uma conversa órfã já assume ela.** O claim é `insert` (sticky): abrir a conversa de outra pessoa **não rouba** nada. Duas exceções de propósito: **grupo** (dono de grupo é resposta errada — vários processos ali dentro) e o modo **"Todas as conversas"** (quem audita o pool está olhando, não atendendo; sem isso uma passada de gestor viraria dono de tudo que abrisse).
+  - **Respondeu na conversa de outra pessoa** → pop-up "Assumir esta conversa?", **uma vez por conversa por sessão**. Responder não transfere sozinho; quem passou a atender precisa dizer que assumiu, senão a pendência continua sendo cobrada de quem saiu do papo.
+  - Tabela `whatsapp_cloud_assignees` (PK `phone` + `instance_name`, IDs do **Externo**). Nasceu só no `cloud_gerencia`; desde 07/08/2026 vale para **todas as instâncias** — o mapa do front passou a ser chaveado por telefone+linha (o mesmo telefone pode falar com duas linhas, cada uma com seu dono) e o realtime perdeu o filtro de instância. `ConversationOwnerControl.tsx`; `claimConversation`/`transferConversation` em `useWhatsAppMessages`.
+- **Buscar dentro da conversa — texto e data** (desde 07/08/2026): a **lupa** no topo da conversa abre uma barra logo abaixo do cabeçalho (empurra a lista de mensagens, não cobre nada) com campo de texto, botão de **calendário**, setas ↑/↓ para andar entre os resultados e contador ("3 de 12"). `Enter` vai pro próximo, `Shift+Enter` pro anterior, `Esc` fecha.
+  - A busca roda no **Externo, filtrada pela própria conversa** (`instance_name` + `phone`, que caem no índice `idx_wam_inst_phone_created`), então **alcança o histórico inteiro** — não só as mensagens já carregadas em memória. Medido no grupo mais pesado do banco (26k mensagens): ~95ms com cache quente. O termo sai realçado nos resultados e também nas bolhas do chat.
+  - **Calendário**: escolhido o dia, a lista abre pelas **primeiras mensagens daquele dia**. Com termo digitado junto, filtra o termo dentro do dia.
+  - Clicar num resultado **centraliza a bolha e a destaca por 2s** (mesmo flash do deep link da atividade). Uma faixa âmbar mostra "Você está em {data} às {hora}" com **"Voltar ao fim da conversa"**.
+  - **Modo âncora** (por que existe): pular pra uma mensagem de meses atrás **não** renderiza tudo desde ela até a mais recente — conversa de 20k mensagens travaria o navegador. A timeline passa a desenhar uma **janela em volta da mensagem**, que cresce conforme se rola pra cima ou pra baixo, buscando no servidor o que falta. Enquanto a âncora está ativa, mensagem nova **não puxa a tela pro fim**. Ao rolar pra baixo, salto de mais de 1h entre a borda da janela e o item seguinte faz pedir a continuação ao servidor antes de avançar — a conversa não pula de data em silêncio.
+  - `WhatsAppChatSearchPanel.tsx`; `searchConversationMessages` / `getConversationMessagesAround` / `getConversationMessagesForward` em `external-rpc.ts`; `loadConversationMessagesAround` / `loadConversationMessagesForward` em `useWhatsAppMessages`.
+- **Cabeçalho do painel de baixo (`DashboardChatPreview`) mostra nome, não JID** (desde 07/08/2026): grupo é detectado por `isWhatsAppGroupId` — testar só `@g.us` fazia o grupo com **JID bare** (`1203…`, como vem em `whatsapp_messages.phone`) cair no ramo de conversa individual: o título virava o número e o lead vinculado pelo grupo nunca aparecia. O nome sai do `whatsapp_groups_cache` (nome atual, sincronizado da UazAPI) → nome guardado em `lead_whatsapp_groups` → nome do lead → `Grupo •••771767`. A linha de baixo diz "Grupo WhatsApp • {lead}" ou "sem lead vinculado".
+  - **Grupo não casa mais contato por telefone**: o `ilike` dos últimos 8 dígitos do JID colava um contato qualquer (ou o próprio "contato" criado com o JID no campo telefone) no cabeçalho. Agora o contato vem só do `contact_leads` do lead.
+  - **Menu de criação avisa o que já existe**: com lead vinculado, "Vincular Lead"/"Criar Lead + Contato" dão lugar a **"Lead já criado • {nome}"** (abre a ficha); idem "Contato já criado" e "Caso já criado • {nº}" (abre o lead na aba Casos). Sem vínculo, os itens de criar seguem como eram.
+  - Selo **"⚠ N leads no grupo"** quando o mesmo JID está vinculado a mais de um lead (acontece: as duas grafias do `group_jid` podem apontar para leads diferentes). É aviso, não correção automática.
 - Mídia: baixar e "Salvar na pasta do lead no Google Drive" (com classificação por IA).
 - Criação de caso pelo WhatsApp: "Preencher com IA a partir da conversa" → "Criar Caso" (cria lead fechado + contato + caso + processos detectados + atividades).
 
@@ -71,12 +85,93 @@ Botão no cabeçalho de **Atividades**, ao lado de "💬 Feedbacks", com deep-li
 
 - Duas visões: **Calendário** (padrão — mês com a contagem por dia, dia com pendência vencida em vermelho, hoje já vem selecionado) e **Lista** (agrupada por urgência: Vencidas, Hoje, Amanhã, Próximos 7 dias, Mais para frente, Sem data).
 - **Sem prazo marcado, a pendência entra pela data em que foi combinada** — a maioria das promessas de WhatsApp não tem data ("depois eu te mando"), e sem esse fallback a lista por data ficaria vazia.
-- Filtros: **Todas** / **Só as minhas** (sou responsável pelo caso) / **Sem responsável definido** (o balde que ninguém cobre hoje), mais busca por cliente ou pendência.
-- Por item: **Feito** (pergunta quem resolveu, pré-selecionando o responsável do caso — fora da conversa não dá para saber quem falou por último), **Abrir conversa** (abre a conversa no **painel de baixo** — com as mesmas peças da conversa completa: progresso do POP, barra "Cliente ficou de" com a lista de pendências e o chat interno da equipe —, sem sair da caixa — a lista sai da frente e volta sozinha ao fechar; empilhar o Drawer sobre o Sheet deixaria dois modais disputando foco e trava de rolagem. Dentro dele, "abrir no WhatsApp" leva à inbox completa quando for preciso o resto das ferramentas) e **Não era** nas detectadas pela IA.
+- Filtros: **Todas** / **Só as minhas** (sou responsável pelo caso) / **Sem responsável definido** (o balde que ninguém cobre hoje) / **Viraram atividade**, **por pessoa da equipe** (ver abaixo), mais busca por cliente ou pendência.
+- Por item: **Feito** (pergunta quem resolveu, pré-selecionando o responsável do caso — fora da conversa não dá para saber quem falou por último), **Abrir conversa** (abre a conversa no **painel de baixo** — com as mesmas peças da conversa completa: progresso do POP, barra "Cliente ficou de" com a lista de pendências e o chat interno da equipe —, sem sair da caixa — a lista sai da frente e volta sozinha ao fechar; empilhar o Drawer sobre o Sheet deixaria dois modais disputando foco e trava de rolagem. Dentro dele, "abrir no WhatsApp" leva à inbox completa quando for preciso o resto das ferramentas) , **Gerar atividade** e **Não era** nas detectadas pela IA.
+- **"Gerar atividade" (desde 07/08/2026)** — mesma saída que já existia no painel de dentro da conversa, agora também na caixa: abre o formulário normal de atividade (`ActivityFormCompact`, sem subformulário paralelo) já preenchido — título `Pendência do cliente: …`, lead e contato vinculados, responsável = dono resolvido pela view (UUID do Externo → Cloud via `remapToCloud`) e observações com a pendência, a frase do cliente e o prazo combinado. **Prazo nunca nasce no passado**: usa o combinado só se for futuro, senão hoje — pendência vencida se trata hoje, e atividade nascer atrasada estraga o indicador. A caixa fecha ao abrir o formulário, como no funil de feedbacks (dois Sheets abertos disputam foco). Handler `openActivityFromCommitment` em `ActivitiesPage.tsx`.
+- **"Interna" agora aparece mesmo com cliente vinculado** — o botão vivia dentro do bloco que só renderiza quando NADA está vinculado (`ActivityFormCompact.tsx`), então toda atividade aberta a partir de um cliente (pendência, lead, conversa) ficava travada no **POP obrigatório** (`ActivitiesPage.tsx`: `!formWorkflowId && !formIsSystem && !formIsManagement` → "Selecione um POP para continuar") sem nenhuma saída na tela. "Interna" não é vínculo: é o que dispensa o POP. Lead/Caso/Contato continuam só quando nada está vinculado. Marcar interna com lead junto é aceito (`useLeadActivities`: a flag é **alternativa** ao vínculo, não exclusiva) e não filtra o telão — só acrescenta "Reunião" à lista de tipos.
 - Fonte: view `vw_client_commitments_owner` (Externo, `security_invoker`), que resolve o dono com a **mesma cascata do telão** — a regra deixou de ser duplicada dentro da função `tv_atividades_ranking`, que agora lê a view. Conferido na troca: números por pessoa idênticos.
-- Regras puras em `src/lib/clientCommitmentsInbox.ts` (11 testes); dados em `useClientCommitmentsInbox`; UI em `ClientCommitmentsInbox.tsx`. Migration `20260806220000`.
+- Regras puras em `src/lib/clientCommitmentsInbox.ts` (19 testes); dados em `useClientCommitmentsInbox`; UI em `ClientCommitmentsInbox.tsx`. Migration `20260806220000`.
+
+##### De quem é a pendência — cascata de 5 degraus (desde 07/08/2026)
+
+Em 07/08/2026, 207 das 256 pendências abertas apareciam como "sem responsável definido": a cascata só olhava lead/processo, e quem é **parceiro/acolhedor** não tem processo nem assessor atribuído — sumia da cobrança mesmo com a conversa rodando numa linha com dono conhecido.
+
+Ordem atual (o primeiro que existir), em `20260807120000_owner_por_conversa_e_instancia.sql`:
+
+1. responsável do processo mais recente do lead
+2. responsável processual do lead
+3. último assessor que trabalhou o lead
+4. **dono da conversa** (`whatsapp_cloud_assignees`, por telefone+linha)
+5. **dono da instância** (`whatsapp_instances.owner_user_id`)
+
+Os degraus novos entraram **depois** dos três antigos de propósito: nenhuma pendência que já tinha dono mudou de dono (os 8 donos anteriores mantiveram contagem idêntica). Resultado medido: 207 → 176 sem dono. Os IDs das duas tabelas são do **auth Externo** (mesmo espaço de `assigned_to`) — não passam por `auth_uuid_mapping`.
+
+**Grupo fica de fora**: 193 das 207 sem dono são conversas de grupo (174 só na instância "Atendimento Previdenciário"). Grupo tem vários processos falando no mesmo lugar, então "dono do grupo" responde a pergunta errada — a atribuição em grupo precisa ser por pendência, não por conversa, e ainda não existe.
+
+**Nome do responsável**: `owner_user_id` vem do Externo e a lista de nomes vem do Cloud. Sem passar pelo remap (`remapToCloudSync`), quem tem UUID diferente nos dois bancos aparecia como "sem responsável" **tendo dono**. Dono sem nome resolvido mostra "responsável não identificado" — não é o mesmo que órfã.
+
+##### Filtrar por membro, com a conta de cada um (desde 07/08/2026)
+
+Dava para ver "as minhas" e "sem responsável", nunca **quanto cada pessoa está devendo** — a pergunta "quem está com o quê" só se respondia abrindo pendência por pendência.
+
+O filtro do topo virou **combobox com busca** (`Popover` + `Command`, mesmo padrão de `AcolhedorCombobox` e `HearingMemberPicker`), com as opções fixas no topo e, abaixo, **uma linha por pessoa que tem pendência**, com o total e as vencidas em vermelho. Digitar filtra pelo nome — com a equipe inteira na lista, rolar até o nome é mais lento que digitá-lo.
+
+- **Só quem tem pendência aparece**: listar a equipe inteira com zero é ruído.
+- **A contagem sai da fila de cobrança inteira, nunca da lista exibida** (`countByOwner` em `clientCommitmentsInbox.ts`, 5 testes). Se saísse do resultado do próprio filtro, escolher um membro zeraria o número de todos os outros — e o filtro deixa de mostrar para onde ir em seguida. Só a busca por texto afeta os números.
+- **O id entra no `value` do `CommandItem` junto do nome** (`"<nome> <uuid>"`): o cmdk filtra pelo `value`, então uuid puro não casaria com o nome digitado, e nome puro fundiria dois homônimos num item só.
+- Dono sem nome resolvido vira `Não identificado #<4 primeiros do id>` — sem o sufixo, várias pessoas diferentes viravam uma linha só.
+
+Medido na entrada (07/08/2026, 386 abertas): **266 (69%) sem responsável**; depois, Maria Lydia 36, Keliane 23, Analyne 13, Vanessa 12, João Manoel 11, Raym 7, Martin 5, e mais 8 pessoas com ≤3. O filtro por pessoa só alcança o terço com dono atribuído — o gargalo é a cascata, não a interface.
+
+**Os dois números de "vencida" da tela são definições diferentes, não bug**: o selo do topo conta prazo estourado (`due_date < hoje`, 58 na medição); o grupo "Vencidas" da lista conta pela data efetiva, que cai no dia em que foi combinada quando não há prazo (215). `isCommitmentOverdue` é a primeira; `bucketOf`/`commitmentDate`, a segunda.
+
+##### Virou atividade + troca de responsável (desde 07/08/2026)
+
+Duas lacunas que a equipe apontou usando a caixa:
+
+- **"Gerar atividade" não fechava o ciclo.** O botão só pré-preenchia o formulário; nada registrava que aquela pendência já estava sendo tratada, então ela reaparecia no dia seguinte para quem tinha acabado de abrir a tarefa. Agora, ao **salvar** a atividade, `lead_client_commitments.activity_id` + `converted_at` são gravados (`linkCommitmentToActivity` em `ActivitiesPage.tsx`, origem guardada em ref porque o salvamento é assíncrono). A caixa avisa "Pendência virou atividade e saiu da cobrança", ela sai da fila e passa a viver no filtro **"Viraram atividade"**, com o botão **Ver atividade** abrindo a ficha em **aba lateral** (`openActivityById`, sem redirecionar; busca no banco quando a atividade não está na lista carregada).
+  - A pendência **não** é fechada: o cliente continua devendo o que prometeu. O que muda é que existe tarefa nossa cuidando disso — por isso sai da cobrança, e não da base.
+  - `activity_id` tem FK `ON DELETE SET NULL`; `isCommitmentConverted` olha `converted_at` também, senão apagar a atividade devolveria a pendência para a fila como se nada tivesse acontecido.
+
+- **Responsável era 100% derivado.** Dava para corrigir o dono do caso ou da linha, nunca o de UMA pendência. Entrou a coluna `assigned_to` (UUID do Externo, mesmo espaço de `lead_activities.assigned_to`) como **degrau 0** da cascata acima. Na UI, o texto "responsável: …" do card é clicável (e há o botão **Responsável**) → dialog com a equipe e **"Voltar ao automático"**, que zera `assigned_to` e devolve a pendência para a cascata. Escrita por `setAssignee`; o hook **relê a linha da view** depois de gravar, em vez de adivinhar o dono no JS — a cascata mora no banco e não pode ser repetida no front.
+  - Efeito visível: `tv_atividades_ranking` lê a view, então trocar o responsável move a contagem de pessoa no telão.
+
+Migration `20260807170000_pendencia_vira_atividade_e_responsavel.sql`. A view precisou de `DROP` + `CREATE` (ela expande `c.*`, e `CREATE OR REPLACE` recusa coluna nova no meio). Conferido depois de aplicar: 404 abertas / 267 sem dono, **idêntico ao antes** — nenhuma pendência mudou de dono ao subir.
+
+##### Mesmas ações dentro da conversa + nome da conversa na lista (desde 07/08/2026)
+
+- **A pendência tem as mesmas ações nos dois lugares.** Pelo chat só havia Feito / Cobrar / Desistiu / Não era: quem percebia o dono errado ou queria abrir a tarefa tinha que sair da conversa e ir na caixa. O `useClientCommitments` (da conversa) passou a ler a **mesma view** `vw_client_commitments_owner` da caixa — daí vêm `owner_user_id`, `activity_id` e `converted_at`, que a leitura crua da tabela não tinha. Escrita continua na tabela (a view é só leitura) e o patch faz **merge** para não perder as colunas que só a view devolve.
+  - Card do chat agora tem: **responsável clicável**, botão **Responsável**, **Gerar atividade**, selo **"Virou atividade do escritório"** e **Ver atividade** (aí "Gerar atividade" some — duas tarefas para a mesma promessa era o efeito antigo).
+  - "Gerar atividade" pelo painel de baixo abre o formulário já preenchido (título `Pendência do cliente: …`, prazo combinado só se for futuro, responsável = dono resolvido, contexto nas observações) e, ao **salvar**, grava `activity_id` + `converted_at` — mesmo fechamento de ciclo da caixa. `WhatsAppActivitySheet` ganhou `defaultTitle` / `defaultNotes` / `defaultDeadline` / `defaultAssignedTo`; o responsável sugerido vence o usuário logado.
+  - A troca de responsável virou peça única (`CommitmentAssigneeDialog.tsx`), usada pelo painel de baixo e pelo chat completo. `markConverted` / `setAssignee` em `useClientCommitments`.
+
+- **A lista mostra o nome do grupo/contato, não o JID.** Sem lead vinculado a caixa exibia `120363412904771767` como cliente. `useConversationDisplayNames` resolve **em lote** (uma query por fonte): cache de grupos da UazAPI → nome no vínculo → contato; sem nada, `Grupo •••771767`. Casa por dígitos, então serve para as duas grafias do JID. Medido em 07/08/2026: das 171 conversas com pendência aberta, 133 já tinham `lead_name`, 29 eram grupo sem nome (**28 resolvidos pelo cache**) e 9 individuais (todos casaram em `contacts` por telefone exato). O nome resolvido também entra na **busca** — dá para procurar pelo nome do grupo.
+  - Regra pura `conversationDisplayName` em `src/hooks/useConversationDisplayNames.ts` (6 testes, incluindo "nunca contém o JID").
 
 **Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Promessa do cliente ("vou avaliar", "vou gravar o vídeo") a IA já registra sozinha na barra "Cliente ficou de" — o assessor só marca **Feito**, **Cobra** ou corrige com **"Não era"**.
+
+### Vincular grupo do WhatsApp ao lead — "Buscar grupos" (ago/2026)
+
+Mesmo dialog (`LeadGroupSearchDialog`) na ficha do lead (campo "Grupos WhatsApp") e na tela de Atividades (botão "Vincular WA"). Dois modos:
+
+- **Por nome** — varre TODAS as instâncias conectadas via `whatsapp_groups_index`. **Não precisa de instância definida.**
+- **Por participante** (telefone do lead) — precisa de uma instância concreta, que é quem conhece os grupos daquele número.
+
+**A instância é resolvida pelo próprio dialog** (`resolveLeadSearchInstanceName`, `src/lib/leadSearchInstance.ts`), em cascata: instância que espelha o histórico do lead (cobre ~63% dos leads com atividade recente) → `default_instance_id` do perfil (**só 8 de 4.161 perfis têm o campo preenchido** — parar aqui não resolvia) → instância ativa agora, medida pelo espelho global mais recente e preferindo Atendimento Previdenciário 1/2. Nenhuma resolvida não bloqueia: a busca por nome segue funcionando.
+
+Isto é **leitura**. Para decidir por onde ENVIAR em grupo continua valendo `resolveGroupSenderInstanceName` (só quem tem espelho recente no próprio grupo) — nunca a instância pessoal de quem está logado.
+
+**Regressão corrigida em 07/08/2026**: a tela de Atividades montava o dialog com `instanceName={undefined}` fixo, então todo "Buscar" caía em *"Instância WhatsApp não definida para este lead"* (o Enter no campo disparava o erro mesmo com o botão desabilitado). A `find-contact-groups` também exigia `instance_name` na busca por nome, onde ele só serve de desempate; hoje ela roda no Externo (rota `external` no `functionRouter`, fallback → Cloud) e só exige instância na busca por participante.
+
+#### Instância morta no índice de grupos (07/08/2026)
+
+`whatsapp_groups_index` identifica quem viu cada grupo pelo **nome** da instância (`instance_name` é parte da PK), e nome de instância removida ou renomeada fica lá para sempre: eram **504 de 27.924 linhas** — "BRUNO DANTAS" (345, congeladas em 24/05) e "Auxílio Maternidade" (159, ainda regravadas pelo webhook). Escolher um desses grupos na busca levava a `instance not found` e roster vazio.
+
+- `get-group-participants` (Railway) **não aborta mais** quando a instância pedida não está cadastrada: segue sem preferida e usa a varredura entre instâncias que já existia ali. Cache e `chat_details` passam a ser gravados sob quem de fato respondeu — grupo com índice desatualizado refaz a varredura, em vez de espalhar o nome fóssil.
+- `whatsapp_groups_index.instance_id` (FK para `whatsapp_instances`) é preenchido por trigger case-insensitive; nem a sync nem o webhook precisaram mudar. **`instance_id IS NULL` é a medida do problema** — 504 linhas hoje.
+- `search_whatsapp_groups_by_tokens` devolve o nome **vivo** da instância quando o id resolve, e só cai no texto histórico quando ela não existe mais.
+
+Renomear as linhas órfãs para a instância atual **não** é a correção: "Bruno Wenner" (mesma pessoa, instância recriada em 31/07) não alcança aqueles grupos — quem alcança é "Raym". Quem resolve é a varredura, não o nome.
 
 ---
 
@@ -133,6 +228,23 @@ O que existia só na conversa do WhatsApp passou a existir **em todo chat intern
 - **O que NÃO foi replicado**: o botão "Pendência" do WhatsApp registra compromisso **do cliente** (`lead_client_commitments`) — no chat interno a pendência é a própria atividade, então não existe botão equivalente.
 - **Pendente**: selo "Virou atividade" na bolha **do chat de ficha**. O vínculo mora em `team_message_activities`, cuja FK aponta para `team_messages` (chat direto), enquanto o chat de ficha grava em `team_chat_messages` — marcar a bolha lá exige migration no Externo. No chat direto o selo já funciona.
 - Código: `src/components/chat/TeamChatPanel.tsx` e `TeamDirectChatPanel.tsx`; componentes de IA em `src/components/ui/AITextActions.tsx` e `AISuggestReply.tsx`; citação em `src/lib/teamChatQuoteEvents.ts` (`formatQuotedMessages`).
+
+### Notificação nativa no celular (Web Push) — sem app de loja (07/08/2026)
+
+O alerta que aparece na barra de notificações do celular e **fica lá até ser tocado** é Web Push, não app nativo. Não existe app na App Store/Play Store e não precisa existir.
+
+**Como funciona**: `usePushNotifications` assina o aparelho e grava em `push_subscriptions` (Externo); o service worker `public/push-sw.js` exibe a notificação e trata o toque; `railway-server/src/functions/send-team-push.ts` envia com a chave privada VAPID. Mensagem de WhatsApp tem caminho próprio (`railway-server/src/lib/whatsapp-push.ts`).
+
+**Regra por sistema operacional** — é aqui que mora quase toda a confusão:
+- **Android**: funciona no Chrome **sem instalar nada**. Basta ativar uma vez naquele aparelho.
+- **iPhone/iPad**: o iOS **só** entrega Web Push para app **instalado na tela inicial** (Compartilhar → Adicionar à Tela de Início, iOS 16.4+). Fora do standalone o Safari nem expõe `PushManager`. O hook devolve `needsInstall: true` nesse caso e a interface convida a instalar em vez de mentir "não suportado neste navegador" — que era o texto antigo, sem saída nenhuma.
+- **Assinatura é por aparelho**: ativar no computador não ativa no celular. Em 07/08/2026 havia 22 assinaturas, 20 delas em desktop, 1 Android e **nenhum iPhone** — era esse o motivo real de "no celular não abre", não falha de envio.
+
+**Onde a pessoa ativa**: faixa `PushNotificationPrompt` no topo (aparece também quando a permissão já foi dada mas **este** aparelho não tem assinatura; dispensar adia 7 dias, não some pra sempre) e o cartão `PushNotificationSettings`, que vive em Configurações → Notificações **e** na página `/install`. Para a equipe, mandar só o link `/install`: ele ensina a instalar e ativa a notificação no mesmo lugar.
+
+**Toque na notificação**: cai na conversa certa via `?openTeamChat=<id>`, lido por `TeamChatDeepLink`. "Reenviar como urgente" também dispara push — antes só gravava no banco e quem estava com o app fechado nunca ficava sabendo.
+
+**Alertas que NÃO chegam com o app fechado**: metas (`useGoalNotifications`), métricas (`useMetricAlerts`), conversão (`useConversionAlerts`) e outbound (`useOutboundNotifications`) são calculados **na aba aberta**. Eles agora aparecem no celular com o app aberto — antes nem isso, porque usavam `new Notification(...)`, que **não é construível no Chrome do Android** (`TypeError: Illegal constructor`). Todos passaram a usar `showNativeNotification` (`src/lib/nativeNotification.ts`), que exibe pelo service worker. Para alcançar celular com o app **fechado**, o cálculo teria que sair da aba e virar rotina no servidor — não foi feito.
 
 ---
 

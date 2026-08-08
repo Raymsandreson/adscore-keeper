@@ -15,6 +15,7 @@ import {
 import { ArrowRightLeft, Loader2 } from 'lucide-react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { ensureRemapCache, remapToExternalSync } from '@/integrations/supabase/uuid-remap';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { logAudit } from '@/hooks/useAuditLog';
 import { toast } from 'sonner';
 
@@ -302,6 +303,8 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
       };
 
       const now = new Date().toISOString();
+      // Quem está redistribuindo — sem isso o lote fica "atualizado por —"
+      const actorExt = await currentExtUserId();
       const bulk = new Map<string, { patch: Record<string, any>; ids: string[] }>();
       const individual: { id: string; patch: Record<string, any> }[] = [];
       const perTargetCount = new Map<string, number>();
@@ -332,6 +335,7 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
                   ...(hasArray ? { assigned_to_ids: [t.extId], assigned_to_names: [t.name] } : {}),
                   ...deadlinePatch,
                   updated_at: now,
+                  updated_by: actorExt,
                 },
                 ids: [],
               });
@@ -353,7 +357,7 @@ export function RedistributeActivitiesDialog({ people, inactiveIds, open: openPr
                 newNames[idx] = t.name;
               }
             }
-            const patch: Record<string, any> = { ...deadlinePatch, updated_at: now };
+            const patch: Record<string, any> = { ...deadlinePatch, updated_at: now, updated_by: actorExt };
             if (ids.length > 0) {
               patch.assigned_to_ids = newIds;
               patch.assigned_to_names = newNames;

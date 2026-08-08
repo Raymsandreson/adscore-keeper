@@ -261,9 +261,14 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [addedContactNames, setAddedContactNames] = useState<Set<string>>(new Set());
   // Cria/vincula as partes do processo como contatos do lead (contacts + contact_leads no Externo).
   // Dedup por nome; ignora vínculo duplicado (23505). Não toca no campo Polo Ativo/Passivo.
-  const addPartesAsContacts = useCallback(async (partes: ParteProcesso[]) => {
-    if (!process?.lead_id) { toast.error('Vincule o processo a um lead antes de adicionar as partes como contatos'); return; }
-    if (!partes.length) return;
+  // `auto`: chamada pelo vínculo automático ao abrir o processo — erro não vira toast
+  // de erro na cara do usuário e o sucesso avisa que foi automático.
+  const addPartesAsContacts = useCallback(async (partes: ParteProcesso[], opts?: { auto?: boolean }) => {
+    if (!process?.lead_id) {
+      if (!opts?.auto) toast.error('Vincule o processo a um lead antes de adicionar as partes como contatos');
+      return 0;
+    }
+    if (!partes.length) return 0;
     setAddingContacts(true);
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
@@ -300,14 +305,68 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         return next;
       });
       invalidateLeadLinkedContactsCache(process.lead_id);
-      toast.success(vinculados === 1 ? '1 parte adicionada aos contatos do lead' : `${vinculados} partes adicionadas aos contatos do lead`);
+      if (vinculados > 0) {
+        const sufixo = opts?.auto ? ' (automático)' : '';
+        toast.success(vinculados === 1
+          ? `1 parte adicionada aos contatos do lead${sufixo}`
+          : `${vinculados} partes adicionadas aos contatos do lead${sufixo}`);
+      }
+      return vinculados;
     } catch (e) {
       console.error('Erro ao adicionar partes como contatos:', e);
-      toast.error('Erro ao adicionar contatos');
+      if (!opts?.auto) toast.error('Erro ao adicionar contatos');
+      return 0;
     } finally {
       setAddingContacts(false);
     }
   }, [process?.lead_id, form.process_number]);
+
+  // Partes → contatos do lead, automático. Ao abrir o processo lê quem já está
+  // vinculado (contact_leads → contacts) para marcar o selo "Contato" — antes o
+  // selo era só estado local e sumia ao reabrir — e vincula sozinho o que faltar.
+  // Chave do guard inclui a quantidade de partes: se o Escavador trouxer partes
+  // novas no "Atualizar", roda de novo.
+  const autoLinkKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) { autoLinkKeyRef.current = null; return; }
+    const leadId = process?.lead_id;
+    const processId = process?.id;
+    if (!leadId || !processId) return;
+    const partes = derivePartes(Array.isArray(form.envolvidos) ? form.envolvidos : []);
+    if (!partes.length) return;
+    const key = `${processId}:${partes.length}`;
+    if (autoLinkKeyRef.current === key) return;
+    autoLinkKeyRef.current = key;
+    let cancelled = false;
+    (async () => {
+      // RLS do Externo exige `authenticated`: sem a sessão anônima pronta o
+      // select volta 0 linhas em silêncio e tudo pareceria "não vinculado".
+      await ensureExternalSession().catch(() => {});
+      const { data: links, error: linksErr } = await (externalSupabase as any)
+        .from('contact_leads').select('contact_id').eq('lead_id', leadId);
+      if (linksErr) { console.error('Erro ao ler contatos vinculados do lead:', linksErr); return; }
+      const contactIds = [...new Set((links || []).map((l: any) => l.contact_id).filter(Boolean))];
+      const { data: rows } = contactIds.length
+        ? await (externalSupabase as any).from('contacts').select('full_name').in('id', contactIds)
+        : { data: [] as any[] };
+      if (cancelled) return;
+      const jaVinculados = new Set(
+        (rows || []).map((c: any) => String(c.full_name || '').trim().toLowerCase()).filter(Boolean)
+      );
+      const existentes = partes.filter(p => jaVinculados.has(p.nome.toLowerCase()));
+      if (existentes.length) {
+        setAddedContactNames(prev => {
+          const next = new Set(prev);
+          existentes.forEach(p => next.add(p.nome.toLowerCase()));
+          return next;
+        });
+      }
+      const faltantes = partes.filter(p => !jaVinculados.has(p.nome.toLowerCase()));
+      if (!faltantes.length || cancelled) return;
+      await addPartesAsContacts(faltantes, { auto: true });
+    })();
+    return () => { cancelled = true; };
+  }, [open, process?.id, process?.lead_id, form.envolvidos, addPartesAsContacts]);
   const [activities, setActivities] = useState<ProcessActivity[]>([]);
   const [loadingActivities, setLoadingActivities] = useState(false);
   const [documents, setDocuments] = useState<ProcessDocument[]>([]);
@@ -819,6 +878,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const effectiveClientePolo = form.cliente_polo || detectedClientePolo || '';
   // Partes com nome completo (o campo titulo_polo_* traz só as iniciais abreviadas).
   const partesProcesso = derivePartes(envolvidos);
+  // Partes que ainda não viraram contato do lead (o vínculo automático costuma zerar isso).
+  const partesPendentes = partesProcesso.filter(p => !addedContactNames.has(p.nome.toLowerCase()));
   const audiencias = Array.isArray(form.audiencias) ? form.audiencias : [];
   const processosRelacionados = Array.isArray(form.processos_relacionados) ? form.processos_relacionados : [];
   // Movimentações: a coluna `movimentacoes` só é gravada no cadastro. Em processos
@@ -975,15 +1036,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                       </label>
                       <Button
                         type="button" variant="outline" size="sm" className="h-7 text-xs"
-                        disabled={!process?.lead_id || addingContacts}
-                        onClick={() => addPartesAsContacts(partesProcesso)}
+                        disabled={!process?.lead_id || addingContacts || partesPendentes.length === 0}
+                        onClick={() => addPartesAsContacts(partesPendentes)}
                       >
-                        {addingContacts ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <UserPlus className="h-3 w-3 mr-1" />}
-                        Adicionar todos como contatos
+                        {addingContacts
+                          ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                          : partesPendentes.length === 0
+                            ? <CheckCircle2 className="h-3 w-3 mr-1 text-green-600" />
+                            : <UserPlus className="h-3 w-3 mr-1" />}
+                        {partesPendentes.length === 0 ? 'Todas já são contatos' : 'Adicionar todos como contatos'}
                       </Button>
                     </div>
                     <p className="text-[10px] text-muted-foreground">
                       Nomes completos das partes (o campo acima traz só as iniciais abreviadas da API).
+                      As partes viram contatos do lead automaticamente ao abrir o processo.
                     </p>
                     {!process?.lead_id && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400">

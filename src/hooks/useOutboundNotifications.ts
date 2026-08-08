@@ -1,6 +1,9 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { showNativeNotification } from '@/lib/nativeNotification';
+
+const FUNNEL_URL = '/dashboard?tab=automation&subtab=funnel';
 
 interface OutboundReply {
   id: string;
@@ -75,28 +78,22 @@ export function useOutboundNotifications() {
       ? `@${reply.author_username} respondeu: ${reply.comment_text?.slice(0, 100) || 'Novo comentário'}`
       : reply.comment_text?.slice(0, 100) || 'Novo comentário em seu post';
     
-    const notification = new Notification(title, {
+    // Via service worker: o construtor Notification não funciona no Chrome do
+    // Android. O clique é tratado pelo push-sw, que foca a aba e navega até a
+    // `url` — por isso não há mais `onclick` aqui.
+    void showNativeNotification(title, {
       body,
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
       tag: `outbound-${reply.id}`,
       requireInteraction: true,
-      data: { url: reply.post_url }
+      url: FUNNEL_URL,
     });
-
-    notification.onclick = () => {
-      window.focus();
-      notification.close();
-      // Navigate to prospecting funnel
-      window.location.href = '/dashboard?tab=automation&subtab=funnel';
-    };
 
     // Also show in-app toast
     toast.success(`Nova resposta outbound de @${reply.author_username || 'prospect'}`, {
       action: {
         label: 'Ver',
         onClick: () => {
-          window.location.href = '/dashboard?tab=automation&subtab=funnel';
+          window.location.href = FUNNEL_URL;
         }
       }
     });

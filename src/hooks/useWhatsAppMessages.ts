@@ -10,6 +10,8 @@ import {
   searchConversationSummaries,
   getConversationMessages,
   getConversationMessagesSince,
+  getConversationMessagesAround,
+  getConversationMessagesForward,
   markMessagesAsRead,
   linkMessagesToLead,
   linkConversationContactToLead,
@@ -713,6 +715,45 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       console.warn('[assignee] falha ao assumir a conversa:', e);
     }
   }, [user?.id]);
+
+  /**
+   * Passa a conversa adiante — handoff explícito, não é o claim.
+   *
+   * O claim é `insert` e só pega conversa órfã de propósito. Transferir é
+   * `upsert`: sobrescreve o dono atual, porque aqui alguém decidiu que a
+   * conversa muda de mão. Serve tanto para "assumir a conversa de outro"
+   * quanto para "passar a minha para fulano".
+   *
+   * Diferente do claim, este NÃO é silencioso: quem clicou precisa saber se
+   * a transferência valeu, senão duas pessoas acham que a conversa é sua.
+   */
+  const transferConversation = useCallback(async (
+    phone: string,
+    instanceName: string | null,
+    /** ID do usuário no CLOUD — a lista da equipe vem de lá. */
+    toCloudUserId: string,
+  ): Promise<boolean> => {
+    if (!phone || !instanceName || !toCloudUserId) return false;
+    try {
+      await ensureExternalSession();
+      const extUserId = await remapToExternal(toCloudUserId);
+      if (!extUserId) return false;
+      const { error } = await (db as any)
+        .from('whatsapp_cloud_assignees')
+        .upsert(
+          { phone, instance_name: instanceName, assigned_user_id: extUserId, updated_at: new Date().toISOString() },
+          { onConflict: 'phone,instance_name' },
+        );
+      if (error) {
+        console.warn('[assignee] transferência recusada:', error.code, error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('[assignee] falha ao transferir a conversa:', e);
+      return false;
+    }
+  }, []);
 
   const sendMessage = async (
     phone: string,
@@ -1739,6 +1780,81 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     }
   }, [getCanonicalInstanceName]);
 
+  // Mescla um lote arbitrário de mensagens no cache da conversa (usado pela
+  // busca dentro do chat, que pode trazer um trecho antigo fora da janela já
+  // carregada). Mantém a ordem DESC do cache e o mesmo dedupe por
+  // external_message_id usado no fetch normal. Retorna quantas entraram.
+  const mergeConversationMessages = useCallback((
+    phone: string,
+    instanceName: string | null | undefined,
+    incoming: WhatsAppMessage[]
+  ): number => {
+    if (!instanceName || incoming.length === 0) return 0;
+    const targetInstanceName = getCanonicalInstanceName(instanceName);
+    const key = getConversationKey(phone, targetInstanceName);
+    const cached = fullConvCacheRef.current[key] || [];
+    const existingIds = new Set(cached.map(m => m.id));
+    const seenExtIds = new Set(
+      cached.map(m => m.external_message_id?.split(':').pop()).filter(Boolean)
+    );
+    const fresh = incoming
+      .map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) }))
+      .filter(m => {
+        if (existingIds.has(m.id)) return false;
+        existingIds.add(m.id);
+        const extId = m.external_message_id?.split(':').pop();
+        if (extId) {
+          if (seenExtIds.has(extId)) return false;
+          seenExtIds.add(extId);
+        }
+        return true;
+      });
+    if (fresh.length === 0) return 0;
+    const merged = [...cached, ...fresh].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    fullConvCacheRef.current[key] = merged;
+    setConversations(prev => prev.map(c =>
+      getConversationKey(c.phone, c.instance_name) === key ? { ...c, messages: merged } : c
+    ));
+    return fresh.length;
+  }, [getCanonicalInstanceName]);
+
+  // Trecho em volta de um instante (resultado de busca / pular pra data).
+  const loadConversationMessagesAround = useCallback(async (
+    phone: string,
+    instanceName: string | null | undefined,
+    anchorIso: string
+  ): Promise<number> => {
+    if (!instanceName) return 0;
+    try {
+      await ensureExternalSession().catch(() => {});
+      const raw = (await getConversationMessagesAround(phone, instanceName, anchorIso)) as unknown as WhatsAppMessage[];
+      return mergeConversationMessages(phone, instanceName, raw);
+    } catch (error) {
+      console.error('Error loading conversation messages around anchor:', error);
+      return 0;
+    }
+  }, [mergeConversationMessages]);
+
+  // Continuação cronológica a partir de um instante — fecha o vão entre o
+  // trecho antigo aberto pela busca e o que já estava em memória.
+  const loadConversationMessagesForward = useCallback(async (
+    phone: string,
+    instanceName: string | null | undefined,
+    afterIso: string
+  ): Promise<number> => {
+    if (!instanceName) return 0;
+    try {
+      await ensureExternalSession().catch(() => {});
+      const raw = (await getConversationMessagesForward(phone, instanceName, afterIso)) as unknown as WhatsAppMessage[];
+      return mergeConversationMessages(phone, instanceName, raw);
+    } catch (error) {
+      console.error('Error loading forward conversation messages:', error);
+      return 0;
+    }
+  }, [mergeConversationMessages]);
+
   const clearActivePhone = useCallback(() => {
     activeConversationKeyRef.current = null;
   }, []);
@@ -1920,6 +2036,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     deleteMessage,
     clearConversation,
     markAsRead,
+    claimConversation,
+    transferConversation,
     linkToLead,
     linkToContact,
     refetchInstances: fetchInstances,
@@ -1931,5 +2049,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     loadMoreConversations,
     hasMoreConversations,
     loadOlderConversationMessages,
+    loadConversationMessagesAround,
+    loadConversationMessagesForward,
   };
 }

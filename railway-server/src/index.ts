@@ -62,6 +62,7 @@ import { handler as recoverLeadsPhone55 } from './functions/recover-leads-phone-
 import { handler as transcribeActivityCall } from './functions/transcribe-activity-call';
 import { handler as transcribeTeamAudio } from './functions/transcribe-team-audio';
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
+import { handler as suggestStepCompletion } from './functions/suggest-step-completion';
 import { handler as editWorkflow } from './functions/edit-workflow';
 import { handler as suggestRevisionReason } from './functions/suggest-revision-reason';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
@@ -131,6 +132,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'transcribe-activity-call': transcribeActivityCall,
   'transcribe-team-audio': transcribeTeamAudio,
   'suggest-step-actions': suggestStepActions,
+  'suggest-step-completion': suggestStepCompletion,
   'edit-workflow': editWorkflow,
   'suggest-revision-reason': suggestRevisionReason,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
