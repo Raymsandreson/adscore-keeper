@@ -235,7 +235,12 @@ export const handler: RequestHandler = async (req, res) => {
     else if (processo_cnj) q = q.eq('processo_cnj', processo_cnj);
 
     const teto = Math.min(Number(limit) || DEFAULT_LIMIT, 100);
-    const { data: atas, error } = await q.order('data_documento', { ascending: false }).limit(teto * 3);
+    // Universo inteiro, não teto*3: com uma janela curta, assim que os primeiros
+    // N documentos já estão extraídos a fila volta vazia e os seguintes nunca
+    // são vistos — foi o que aconteceu ao parar em 210 de 336. São poucas
+    // centenas de linhas leves (id, cnj, título, data, path); o corte real é o
+    // .slice(0, teto) depois de tirar o que já foi feito.
+    const { data: atas, error } = await q.order('data_documento', { ascending: false }).limit(5000);
     if (error) throw error;
     if (!atas?.length) return ok({ success: true, lidas: 0, detalhe: 'nenhuma ata com PDF encontrada' });
 
