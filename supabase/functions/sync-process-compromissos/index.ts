@@ -75,6 +75,19 @@ function ramoFromCnj(processNumber: string | null): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * O endpoint /processos/numero_cnj/{X}/movimentacoes só aceita número CNJ.
+ * `lead_processes.process_number` guarda três coisas diferentes: CNJ (634),
+ * requerimento do INSS em dígitos puros (213) e lixo de cadastro (CNPJ, data,
+ * recado). Sem esta guarda, todo requerimento do INSS virava uma chamada ao
+ * Escavador que volta 422 — medido em 08/08/2026: 255 chamadas inúteis por dia
+ * contra 33 legítimas, 89% do consumo deste cron. As 5 últimas requisições no
+ * painel do Escavador eram todas "Benefício INSS" com zero movimentações.
+ */
+function isCnj(processNumber: string | null | undefined): boolean {
+  return /^\d{7}-?\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}$/.test((processNumber || '').trim());
+}
+
 /** Hoje em Brasília (UTC-3), ISO YYYY-MM-DD. */
 function hojeBrasilia(): string {
   return new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
@@ -362,8 +375,8 @@ async function syncProcess(
   const counts: SyncCounts = { extraidos: 0, criados: 0, duplicados: 0, vencidos: 0, sem_responsavel: 0, feed: 0 };
 
   let movs: unknown[] = Array.isArray(movsIn) && movsIn.length ? movsIn : (process.movimentacoes || []);
-  if (!movs.length && process.process_number) {
-    movs = await fetchMovsFromEscavador(process.process_number);
+  if (!movs.length && isCnj(process.process_number)) {
+    movs = await fetchMovsFromEscavador(process.process_number!);
   }
   if (!movs.length) return counts;
 
