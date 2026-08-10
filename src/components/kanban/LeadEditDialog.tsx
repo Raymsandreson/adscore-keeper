@@ -1472,13 +1472,8 @@ ${scrapeData.content || ''}
       return;
     }
 
-    // CEP da visita: obrigatório quando há cidade da visita — é o que o Marketing
-    // usa para segmentar anúncio de captação de parceiros naquela região.
-    if (visitCity && isFieldVisible('visit_cep') && visitCep.replace(/\D/g, '').length !== 8) {
-      toast.error('Informe o CEP da visita (8 dígitos) — obrigatório quando a cidade da visita está preenchida.');
-      setActiveTab('location');
-      return;
-    }
+    // CEP da visita é opcional em todos os funis (ago/2026): quem pede o CEP é o
+    // dialog da tarefa de Marketing, não o salvamento do lead.
 
     // Validação obrigatória: resultado do lead é obrigatório quando o lead está/vai para etapa de fechamento.
     {
@@ -3431,7 +3426,7 @@ ${scrapeData.content || ''}
               <div className="grid grid-cols-2 gap-4">
                 {isFieldVisible('visit_cep') && (<div>
                   <Label className="flex items-center gap-2">
-                    CEP da Visita {visitCity && <span className="text-destructive">*</span>}
+                    CEP da Visita
                     {loadingCep && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                   </Label>
                   <Input
