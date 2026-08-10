@@ -108,6 +108,43 @@ Isso descarta a solução que parece óbvia — "põe um trigger pra preencher
 `updated_by`". Ela grava uuid de sessão descartável e o nome continua não
 resolvendo. Ver o efeito na tela em `atividades.md` → Ficha da atividade.
 
+## Gravar em `profiles` pelo navegador: não dá (medido em 10/08/2026)
+
+A policy de UPDATE de `public.profiles` no Externo é
+`auth.uid() = user_id OR is_admin(auth.uid())`. Parece que o front atende — mas
+não atende, e a razão é a seção acima levada às últimas consequências:
+
+- `public.profiles` tem **4.308 linhas para 52 e-mails**. A diferença são
+  **4.258 perfis de usuários anônimos**: existe um perfil por sessão anônima
+  criada, e hoje 100% dos anônimos têm linha lá.
+- Logo `auth.uid() = user_id` **casa** — com o perfil descartável da própria
+  sessão anônima, nunca com o perfil da pessoa que está logada no Cloud.
+- A outra perna da policy também não salva: `is_admin` é
+  `has_role(uid,'admin')` e **nenhum** usuário anônimo tem role admin (0 de 4.258).
+
+Resultado: `db.from('profiles').update(...).eq('user_id', extUserId)` disparado
+do front **não afeta linha nenhuma**, e o PostgREST devolve sucesso com 0 linhas
+— falha silenciosa, sem erro no console.
+
+Quem grava perfil é sempre um backend com service role:
+
+| o quê | onde | como resolve a pessoa |
+|---|---|---|
+| foto de perfil | `railway-server/src/functions/update-profile-avatar.ts` | JWT do Cloud → `/auth/v1/user` → `auth_uuid_mapping` → ext_uuid |
+| nome / e-mail / telefone | edge `sync-user-to-external` (`action: 'update_profile'`), usada pela tela Equipe | recebe o `user_id` no body |
+
+Na leitura vale o inverso do de sempre: SELECT é liberado para qualquer sessão
+autenticada (`Authenticated users can view all profiles`), então ler pelo
+ext_uuid funciona direto do front — é o que `src/hooks/useMyAvatar.ts` faz. Ler
+o avatar pelo `profile` do `AuthContext` seria pior: aquele objeto vem da edge
+`sync-user-to-external`, que busca a linha pelo uuid do **Cloud**.
+
+> **Pendência conhecida:** o seletor "Instância de WhatsApp padrão" da tela Meu
+> Perfil (`src/pages/ProfilePage.tsx`) grava direto pelo front e cai exatamente
+> nessa armadilha — o `toast` diz "Perfil atualizado" e o banco não muda.
+> `default_instance_id` está preenchido em 8 dos 52 perfis, todos com origem
+> anterior a essa tela.
+
 ## O que NÃO resolve
 
 **Mover os perfis para o Externo.** O login continua no Cloud (é onde o auth do
