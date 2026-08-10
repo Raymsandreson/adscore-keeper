@@ -8,13 +8,15 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy, ChevronLeft, ChevronRight, CalendarDays, Columns3 } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy, ChevronLeft, ChevronRight, CalendarDays, Columns3, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfDay, differenceInCalendarDays, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useNavigate } from 'react-router-dom';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
+import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { validarAvaliacao, salvarAvaliacao, type FeedbackOutcome } from '@/lib/feedbackEvaluation';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
@@ -62,6 +64,9 @@ interface LateRow {
   lead_name: string | null;
   case_title: string | null;
   process_title: string | null;
+  // Retorno já dado trava a exclusão — feedback registrado é histórico, não se apaga daqui.
+  feedback: string | null;
+  feedback_outcome: string | null;
 }
 
 const COLUMNS: { key: string; label: string; icon: string; className: string }[] = [
@@ -152,6 +157,8 @@ interface Props {
 export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) {
   const { user } = useAuthContext();
   const navigate = useNavigate();
+  // Mesma exclusão do resto do sistema: soft delete + auditoria + limpeza do cronômetro.
+  const { deleteActivity } = useLeadActivities();
   const [extId, setExtId] = useState<string | null>(null);
   const [rows, setRows] = useState<FeedbackRow[]>([]);
   const [lateRows, setLateRows] = useState<LateRow[]>([]);
@@ -174,6 +181,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [savingId, setSavingId] = useState<string | null>(null);
   const [listeningId, setListeningId] = useState<string | null>(null);
   const [nudgingId, setNudgingId] = useState<string | null>(null);
+  // Exclusão de atrasada/reagendada sem retorno: card escolhido + trava de duplo clique.
+  const [confirmDelete, setConfirmDelete] = useState<LateRow | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   // Última cobrança por atividade (persistida): quando foi dada e se já foi vista pelo responsável.
   const [cobrancas, setCobrancas] = useState<Record<string, { created_at: string; read_at: string | null; level: 'importante' | 'urgente' }>>({});
   // Última abertura da atividade pelo responsável (type='abertura') — início do cronômetro.
@@ -215,7 +225,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
       todayStart.setHours(0, 0, 0, 0);
       let lq = (externalSupabase as any)
         .from('lead_activities')
-        .select('id, title, status, deadline, rescheduled_to, assigned_to, assigned_to_name, lead_name, case_title, process_title')
+        .select('id, title, status, deadline, rescheduled_to, assigned_to, assigned_to_name, lead_name, case_title, process_title, feedback, feedback_outcome')
         .is('deleted_at', null)
         .or(`observer_ids.cs.{${eid}},created_by.eq.${eid}`)
         .or(`status.eq.reagendada,and(status.neq.concluida,deadline.lt.${todayStart.toISOString()})`);
@@ -387,6 +397,26 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     }
   };
 
+  // Só dá pra excluir enquanto a atividade não tem retorno: uma vez que o
+  // responsável escreveu o feedback (ou o observador já avaliou), o card vira
+  // histórico de avaliação e não pode mais sumir do painel.
+  const podeExcluir = (row: LateRow) => !(row.feedback || '').trim() && !row.feedback_outcome;
+
+  const excluirAtrasada = async (row: LateRow) => {
+    if (!podeExcluir(row)) {
+      toast.error('Esta atividade já recebeu feedback — não pode ser excluída.');
+      return;
+    }
+    setDeletingId(row.id);
+    try {
+      await deleteActivity(row.id);
+      setConfirmDelete(null);
+      await load();
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
   // Validação + gravação + aviso vivem em src/lib/feedbackEvaluation.ts — a
   // MESMA regra que o telão usa pra avaliar direto do painel "Feedbacks sem
   // avaliar". Aqui fica só o que é desta tela: o rascunho, a lista e a
@@ -497,14 +527,33 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
             </button>
             <p className="text-[10px] text-muted-foreground truncate">{row.lead_name || row.case_title || row.process_title || ''}</p>
           </div>
-          <button
-            type="button"
-            onClick={() => setOpenActivityId(row.id)}
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-            title="Abrir atividade na aba lateral"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-          </button>
+          <div className="shrink-0 flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setOpenActivityId(row.id)}
+              className="text-muted-foreground hover:text-foreground"
+              title="Abrir atividade na aba lateral"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+            </button>
+            {/* Tirar a atividade do painel: só enquanto ninguém deu retorno nela. */}
+            <button
+              type="button"
+              disabled={!podeExcluir(row) || deletingId === row.id}
+              onClick={() => setConfirmDelete(row)}
+              className={cn(
+                'text-muted-foreground',
+                podeExcluir(row) ? 'hover:text-red-600 dark:hover:text-red-400' : 'opacity-40 cursor-not-allowed'
+              )}
+              title={podeExcluir(row)
+                ? 'Excluir esta atividade'
+                : 'Já recebeu feedback — não pode ser excluída'}
+            >
+              {deletingId === row.id
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Trash2 className="h-3.5 w-3.5" />}
+            </button>
+          </div>
         </div>
         <p className="text-[10px] text-muted-foreground">
           Responsável: <strong>{row.assigned_to_name || '—'}</strong>
@@ -883,6 +932,34 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         activityId={openActivityId}
         onUpdated={load}
       />
+
+      <AlertDialog open={!!confirmDelete} onOpenChange={(v) => { if (!v) setConfirmDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir atividade?</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <span className="block">
+                “{confirmDelete?.title}” sai do painel de feedbacks e da agenda de
+                <strong> {confirmDelete?.assigned_to_name || 'o responsável'}</strong>.
+              </span>
+              <span className="block text-xs">
+                A atividade fica arquivada (dá pra restaurar em Arquivados), mas o tempo cronometrado nela é apagado.
+              </span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={!!deletingId}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700 text-white"
+              disabled={!!deletingId}
+              onClick={(e) => { e.preventDefault(); if (confirmDelete) excluirAtrasada(confirmDelete); }}
+            >
+              {deletingId ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <Trash2 className="h-3.5 w-3.5 mr-1" />}
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
