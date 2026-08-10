@@ -177,6 +177,7 @@ const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPag
 const ProcessTrackingPage = lazyRetry(() => import("./pages/ProcessTrackingPage"), "ProcessTrackingPage");
 const ProcessesPage = lazyRetry(() => import("./pages/ProcessesPage"), "ProcessesPage");
 const HearingsPage = lazyRetry(() => import("./pages/HearingsPage"), "HearingsPage");
+const VisitasPage = lazyRetry(() => import("./pages/VisitasPage"), "VisitasPage");
 const BpcAutistaPage = lazyRetry(() => import("./pages/BpcAutistaPage"), "BpcAutistaPage");
 const AcompanhamentoProcessualPage = lazyRetry(() => import("./pages/AcompanhamentoProcessualPage"), "AcompanhamentoProcessualPage");
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
@@ -378,6 +379,7 @@ function SidebarLayout() {
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
         <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
         <Route path="/hearings" element={<ProtectedRoute><HearingsPage /></ProtectedRoute>} />
+        <Route path="/visitas" element={<ProtectedRoute><VisitasPage /></ProtectedRoute>} />
         <Route path="/processual/bpc-autista" element={<ProtectedRoute><BpcAutistaPage /></ProtectedRoute>} />
         <Route path="/processual/acompanhamento" element={<ProtectedRoute><AcompanhamentoProcessualPage /></ProtectedRoute>} />
                 <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />

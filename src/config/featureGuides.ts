@@ -213,6 +213,21 @@ export const featureGuides: FeatureGuideDef[] = [
     tip: "Visão Semana → clique no dia → preencha processo/hora/responsável → salve e já clique em \"Criar atividade\" pra gerar a tarefa de preparação.",
   },
   {
+    id: "visitas",
+    paths: ["/visitas"],
+    title: "Visitas das assistentes sociais",
+    intro: "Calendário das visitas domiciliares: data e horário, lead visitado e assistente social responsável.",
+    items: [
+      { label: "Agendar visita", description: "abre o formulário; o + no dia (ou a célula do mês) já cria com a data preenchida" },
+      { label: "Semana / Mês / Lista", anchor: "Semana", description: "a semana vai de segunda a domingo — visita de fim de semana também aparece" },
+      { label: "Filtros", anchor: "Todas as assistentes", description: "assistente social, status e UF + busca por lead, assistente ou cidade" },
+      { label: "Cores", description: "cada assistente social tem uma cor fixa em todas as visões, pra ler a semana por pessoa" },
+      { label: "abrir lead", anchor: "abrir lead", description: "abre o lead em painel lateral por cima da agenda, já na aba Visitas" },
+      { label: "‹ › e Hoje", anchor: "Hoje", description: "navegação de período" },
+    ],
+    tip: "Assistente social que ainda não está em Contatos pode ser agendada digitando o nome (\"Usar '<nome>'\"). Depois da visita, abra o card e mude o status para Realizada.",
+  },
+  {
     id: "acompanhamento",
     paths: ["/processual/acompanhamento"],
     title: "Acompanhamento Processual",

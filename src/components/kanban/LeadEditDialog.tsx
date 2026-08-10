@@ -147,6 +147,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
+const LeadVisitsTab = lazy(() => import('@/components/leads/LeadVisitsTab').then(m => ({ default: m.LeadVisitsTab })));
 import { OpenWhatsAppLeadButton } from '@/components/leads/OpenWhatsAppLeadButton';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
@@ -2340,6 +2341,10 @@ ${scrapeData.content || ''}
                   {tab.label}
                 </TabsTrigger>
               ))}
+              <TabsTrigger value="visitas" className="text-xs py-1.5 px-2.5">
+                <Calendar className="h-3 w-3 mr-1" />
+                Visitas
+              </TabsTrigger>
               <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
                 <FileText className="h-3 w-3 mr-1" />
                 Documentos
@@ -3767,6 +3772,20 @@ ${scrapeData.content || ''}
               {activeTab === 'financeiro' && (
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
                   <LeadFinancialsTab leadId={lead.id} />
+                </Suspense>
+              )}
+            </TabsContent>
+
+            <TabsContent value="visitas" className="mt-0">
+              {activeTab === 'visitas' && lead && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadVisitsTab
+                    leadId={lead.id}
+                    leadName={(currentLead as any)?.lead_name || lead.lead_name || null}
+                    visitAddress={visitAddress}
+                    visitCity={visitCity}
+                    visitState={visitState}
+                  />
                 </Suspense>
               )}
             </TabsContent>
