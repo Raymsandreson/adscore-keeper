@@ -97,7 +97,8 @@ export function useTeamMembers() {
     role: 'admin' | 'member' = 'member',
     modulePermissions?: Array<{ module_key: string; access_level: string }>,
     whatsappInstanceIds?: string[],
-  ) => {
+    accessProfileId?: string | null,
+  ): Promise<{ emailSent: boolean; emailError?: string }> => {
     if (!isAdmin) {
       throw new Error('Only admins can invite members');
     }
