@@ -707,6 +707,14 @@ export function TeamManagement() {
           if (removeTarget) await handleRemove(removeTarget.user_id);
         }}
       />
+
+      <TempPasswordDialog
+        open={!!passwordResult}
+        onOpenChange={(o) => { if (!o) setPasswordResult(null); }}
+        email={passwordResult?.email || ''}
+        password={passwordResult?.password || ''}
+        title="Senha provisória definida"
+      />
     </div>
   );
 }
