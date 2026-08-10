@@ -19,8 +19,15 @@ Deno.serve(async (req) => {
     });
   }
 
-  const r = await fetch('https://api.resend.com/domains', {
-    headers: { Authorization: `Bearer ${key}` },
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'Equipe <noreply@familiaabraci.com.br>',
+      to: ['delivered@resend.dev'],
+      subject: 'Diagnostico de envio',
+      html: '<p>diagnostico</p>',
+    }),
   });
   const body = await r.text();
   return new Response(JSON.stringify({ success: r.ok, status: r.status, body: body.slice(0, 2000) }), {
