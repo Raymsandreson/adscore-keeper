@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,12 +11,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
+import { useMyAvatar } from '@/hooks/useMyAvatar';
 import { toast } from 'sonner';
 import { LogOut, User, Settings, KeyRound } from 'lucide-react';
 
 export const UserMenu = () => {
   const navigate = useNavigate();
   const { user, profile, signOut } = useAuth();
+  const avatarUrl = useMyAvatar(user?.id);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSignOut = async () => {
@@ -48,6 +50,7 @@ export const UserMenu = () => {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10">
+            {avatarUrl ? <AvatarImage src={avatarUrl} alt={profile?.full_name || 'Foto de perfil'} /> : null}
             <AvatarFallback className="bg-primary text-primary-foreground">
               {getInitials()}
             </AvatarFallback>

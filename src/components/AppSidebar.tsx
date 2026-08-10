@@ -8,7 +8,8 @@ import {
   MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Clock,
   FileBarChart,
 } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useMyAvatar } from "@/hooks/useMyAvatar";
 import {
   Sidebar,
   SidebarContent,
@@ -81,6 +82,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, profile, signOut } = useAuthContext();
+  const myAvatarUrl = useMyAvatar(user?.id);
   const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const unreadMentions = useUnreadMentionsCount();
@@ -402,6 +404,7 @@ export function AppSidebar() {
                 tooltip={profile?.full_name || user?.email || 'Perfil'}
               >
                 <Avatar className="h-5 w-5">
+                  {myAvatarUrl ? <AvatarImage src={myAvatarUrl} alt={profile?.full_name || 'Foto de perfil'} /> : null}
                   <AvatarFallback className="bg-primary text-primary-foreground text-[10px] font-bold">
                     {profile?.full_name
                       ? profile.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)

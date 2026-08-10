@@ -1,87 +1,121 @@
 // Integração Open Finance / Celcoin Financial Data — substitui a Pluggy na conciliação.
 //
-// POR QUE AQUI E NÃO NUMA EDGE FUNCTION: a Celcoin exige certificado mTLS em produção
-// ("em sandbox a ausência do certificado mTLS não bloqueia as requisições"). O fetch do
-// Supabase Edge Runtime (Deno) não faz client certificate; o módulo https do Node faz.
-// Por isso todo request sai daqui via https.request com um Agent que carrega cert+key.
-// A edge `celcoin-gateway` que existe no Externo desde 29/04/2026 é código morto — ver
-// supabase/functions/celcoin-gateway/README.md.
+// A arquitetura aqui NÃO veio da doc pública da Celcoin: veio do
+// celcoin-data-gateway do Quitepay, que já roda contra a Celcoin em produção
+// (validações datadas de 28/07 e 07/08/2026 contra BB, Bradesco PJ e Nubank).
+// A doc aberta descreve a stack Baas (/baas/v1/open/dat/...), que é outra coisa.
+// O que vale é a stack smartkeys/openkeys abaixo.
 //
-// FLUXO (doc: developers.celcoin.com.br, índice em /llms.txt):
-//   1. POST /baas/v1/open/dat/consents           -> devolve consent id + authorizationUrl
-//   2. titular é redirecionado à authorizationUrl, autentica no banco e aprova
-//   3. volta na nossa redirectUrl com o interactionId; consentimento vira AUTHORISED
-//   4. GET  /baas/v1/open/dat/resources          -> obrigatório em todo consentimento
-//   5. GET  /baas/v1/open/dat/accounts|credit-cards-accounts/... -> os dados
+// SÃO DOIS TOKENS, em hosts diferentes, que não se substituem:
+//   admin  POST {onboard}/api/portal/onboard/v2/token
+//          Authorization: Basic base64(client_id:client_secret), SEM body. ~1h.
+//          Serve só para criar/ler/revogar consentimento. Nunca lê dados.
+//   rpt    POST {data}/api/open-keys/token
+//          form-urlencoded, client_id + client_secret + scope=consent:<id>. ~5min.
+//          Serve só para ler dados. A Celcoin só o emite depois que o consent
+//          está AUTHORISED no banco detentor. Nunca cria consent.
 //
-// TRÊS PONTOS NÃO PUBLICADOS na doc aberta, isolados em env var para ajuste rápido quando
-// a credencial de sandbox chegar (NÃO chutar: confirmar com o suporte da Celcoin):
-//   - CELCOIN_AUTH_PATH      : caminho do token OAuth (a doc só diz "POST para a URL base")
-//   - CELCOIN_CONSENT_HEADER : como o consentimento viaja nas chamadas de dados
-//   - se o consumo usa o token de client_credentials ou um token trocado por consentimento
+// O consentimento NÃO viaja em header nas chamadas de dados: ele está embutido
+// no escopo do rpt_token. Os GETs levam só Accept e Authorization: Bearer.
+//
+// mTLS: a doc genérica da Celcoin diz que é obrigatório em produção, mas o
+// gateway do Quitepay roda numa edge Deno (que não faz client certificate) e
+// está validado em produção nesta mesma stack — ou seja, aqui a Celcoin absorve
+// o mTLS com o ecossistema. O suporte a cert continua abaixo, opcional, para o
+// caso de exigirem; é uma das razões de isto viver no Railway e não numa edge.
 //
 // Env (Railway):
 //   CELCOIN_CLIENT_ID, CELCOIN_CLIENT_SECRET   obrigatórios
 //   CELCOIN_ENV                                'sandbox' (default) | 'production'
-//   CELCOIN_BASE_URL                           override da base (opcional)
-//   CELCOIN_AUTH_PATH                          default '/token'
-//   CELCOIN_CERT_PEM, CELCOIN_KEY_PEM          mTLS — obrigatórios em produção
+//   CELCOIN_HOST_ONBOARD / _SMARTKEYS / _DATA  override por host (ver aviso de sandbox)
+//   CELCOIN_CERT_PEM, CELCOIN_KEY_PEM          mTLS opcional
 //   CELCOIN_CA_PEM, CELCOIN_KEY_PASSPHRASE     opcionais
-//   CELCOIN_CONSENT_HEADER                     default 'consentId'
 //   CELCOIN_REDIRECT_URL                       callback pós-autorização no app
 import type { RequestHandler } from 'express';
 import https from 'node:https';
 import { supabase as ext } from '../lib/supabase';
 
-const DAT = '/baas/v1/open/dat';
 const REQUEST_TIMEOUT_MS = 30_000;
-const PAGE_SIZE = 1000; // máximo aceito pela API
-const MAX_PAGES = 100; // trava anti-loop, igual à que a integração Pluggy usa
+const PAGE_SIZE = 1000;
+const MAX_PAGES = 100;
+const DATA_RETRIES = 3; // ingestão assíncrona — ver comentário em fetchData()
 
-// Permissões mínimas para conciliação: extrato de conta + fatura de cartão.
-const DEFAULT_PERMISSIONS = [
+// ATENÇÃO: só os hosts de produção são conhecidos. Os de sandbox são derivados
+// do padrão de nome (production -> sandbox) e NUNCA foram testados — é a mesma
+// ressalva que o gateway do Quitepay carrega. Confirmar com a Celcoin junto com
+// a credencial de sandbox, e corrigir por CELCOIN_HOST_* se divergir.
+function endpoints() {
+  const production = ['production', 'prod'].includes((process.env.CELCOIN_ENV || 'sandbox').toLowerCase());
+  const tier = production ? 'production' : 'sandbox';
+  return {
+    onboard: process.env.CELCOIN_HOST_ONBOARD || `https://onboard-ui.smartkeys.celcoin.${tier}.fsapps.app`,
+    smartkeys: process.env.CELCOIN_HOST_SMARTKEYS || `https://api-smartkeys.celcoin.${tier}.fsapps.app`,
+    data: process.env.CELCOIN_HOST_DATA || `https://api.v3.celcoin.${tier}.fsapps.app`,
+    tier,
+  };
+}
+
+// Núcleo validado em produção pelo Quitepay. Conciliação não lê operações de
+// crédito nem investimentos: cada permissão a mais é outra linha na tela do
+// banco para o titular aprovar.
+const CORE_PERMISSIONS = [
+  'ACCOUNTS_READ',
+  'ACCOUNTS_BALANCES_READ',
+  'ACCOUNTS_TRANSACTIONS_READ',
+  'ACCOUNTS_OVERDRAFT_LIMITS_READ',
+  'CREDIT_CARDS_ACCOUNTS_READ',
+  'CREDIT_CARDS_ACCOUNTS_BILLS_READ',
+  'CREDIT_CARDS_ACCOUNTS_BILLS_TRANSACTIONS_READ',
+  'CREDIT_CARDS_ACCOUNTS_LIMITS_READ',
+  'CREDIT_CARDS_ACCOUNTS_TRANSACTIONS_READ',
+  'CUSTOMERS_PERSONAL_IDENTIFICATIONS_READ',
+  'CUSTOMERS_PERSONAL_ADITTIONALINFO_READ',
+  'RESOURCES_READ',
+];
+// Degrau de baixo: só o que a conciliação precisa de fato. Se a transmissora
+// recusar o conjunto de cima, desce para cá em vez de devolver erro.
+const MINIMAL_PERMISSIONS = [
   'ACCOUNTS_READ',
   'ACCOUNTS_BALANCES_READ',
   'ACCOUNTS_TRANSACTIONS_READ',
   'CREDIT_CARDS_ACCOUNTS_READ',
   'CREDIT_CARDS_ACCOUNTS_BILLS_READ',
   'CREDIT_CARDS_ACCOUNTS_BILLS_TRANSACTIONS_READ',
+  'CREDIT_CARDS_ACCOUNTS_TRANSACTIONS_READ',
+  'RESOURCES_READ',
 ];
+const PERMISSION_LADDER = [CORE_PERMISSIONS, MINIMAL_PERMISSIONS];
 
-function baseUrl(): string {
-  const override = process.env.CELCOIN_BASE_URL;
-  if (override) return override.replace(/\/+$/, '');
-  const env = (process.env.CELCOIN_ENV || 'sandbox').toLowerCase();
-  return env === 'production' || env === 'prod'
-    ? 'https://api.openfinance.celcoin.com.br'
-    : 'https://tpp-sandbox.openfinance.celcoin.dev';
-}
+// Grupo de recurso -> prefixo da permissão. Serve para separar 404 transitório
+// (ingestão em andamento) de 404 permanente (grupo fora do consentimento).
+const GROUP_PERM: Record<string, string> = {
+  accounts: 'ACCOUNTS',
+  'credit-cards-accounts': 'CREDIT_CARDS',
+  resources: 'RESOURCES',
+  customers: 'CUSTOMERS',
+};
 
-// Env var não guarda quebra de linha real: o PEM chega com \n literal.
 function normalizePem(value: string): string {
   return value.includes('\\n') ? value.replace(/\\n/g, '\n') : value;
 }
 
-// Um Agent só para o processo todo — criar por request derruba o keep-alive e
-// reprocessa o certificado a cada chamada.
 let agentCache: https.Agent | null = null;
 function getAgent(): https.Agent {
   if (agentCache) return agentCache;
   const cert = process.env.CELCOIN_CERT_PEM;
   const key = process.env.CELCOIN_KEY_PEM;
   const ca = process.env.CELCOIN_CA_PEM;
-  const passphrase = process.env.CELCOIN_KEY_PASSPHRASE;
   agentCache = new https.Agent({
     keepAlive: true,
     cert: cert ? normalizePem(cert) : undefined,
     key: key ? normalizePem(key) : undefined,
     ca: ca ? normalizePem(ca) : undefined,
-    passphrase: passphrase || undefined,
+    passphrase: process.env.CELCOIN_KEY_PASSPHRASE || undefined,
   });
   return agentCache;
 }
 
-interface CelcoinResponse<T = any> {
+interface Result<T = any> {
   ok: boolean;
   status: number;
   body: T;
@@ -91,7 +125,7 @@ function request(
   method: string,
   url: string,
   opts: { headers?: Record<string, string>; body?: unknown; form?: URLSearchParams } = {},
-): Promise<CelcoinResponse> {
+): Promise<Result> {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
     const headers: Record<string, string> = { Accept: 'application/json', ...(opts.headers || {}) };
@@ -125,9 +159,12 @@ function request(
           try {
             parsed = raw ? JSON.parse(raw) : null;
           } catch {
-            /* resposta não-JSON: devolve texto cru */
+            /* mantém texto cru */
           }
           const status = res.statusCode || 0;
+          // Corpo nunca vai pro log: são dados Open Finance regulados (CPF/CNPJ,
+          // saldos, transações). Só formato e tamanho.
+          console.log(`[celcoin] ${method} ${u.pathname} -> ${status} (${raw.length}b)`);
           resolve({ ok: status >= 200 && status < 300, status, body: parsed });
         });
       },
@@ -140,105 +177,159 @@ function request(
   });
 }
 
-// Token de client_credentials, cacheado até 60s antes de expirar.
-let tokenCache: { token: string; expiresAt: number } | null = null;
-async function getToken(): Promise<string> {
-  if (tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.token;
-
+function credentials() {
   const clientId = process.env.CELCOIN_CLIENT_ID;
   const clientSecret = process.env.CELCOIN_CLIENT_SECRET;
-  if (!clientId || !clientSecret) {
-    throw new Error('Missing CELCOIN_CLIENT_ID or CELCOIN_CLIENT_SECRET');
-  }
+  if (!clientId || !clientSecret) throw new Error('Missing CELCOIN_CLIENT_ID or CELCOIN_CLIENT_SECRET');
+  return { clientId: clientId.trim(), clientSecret: clientSecret.trim() };
+}
 
-  const authPath = process.env.CELCOIN_AUTH_PATH || '/token';
-  const res = await request('POST', `${baseUrl()}${authPath}`, {
-    form: new URLSearchParams({ grant_type: 'client_credentials', client_id: clientId, client_secret: clientSecret }),
+// --- Token admin: Basic, sem body. Só mexe em consentimento. ---
+let adminToken: { token: string; expiresAt: number } | null = null;
+async function getAdminToken(): Promise<string> {
+  if (adminToken && Date.now() < adminToken.expiresAt) return adminToken.token;
+  const { clientId, clientSecret } = credentials();
+  const basic = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+
+  const r = await request('POST', `${endpoints().onboard}/api/portal/onboard/v2/token`, {
+    headers: { Authorization: `Basic ${basic}` },
   });
+  if (!r.ok) throw new Error(`Celcoin onboard token falhou (HTTP ${r.status})`);
+  const token = r.body?.access_token || r.body?.token;
+  if (!token) throw new Error('onboard token: resposta sem access_token');
 
-  if (!res.ok) {
-    // Nunca ecoar o corpo inteiro: pode devolver o client_secret enviado.
-    throw new Error(`Celcoin auth falhou (HTTP ${res.status}) em ${authPath}. Confirme CELCOIN_AUTH_PATH com o suporte.`);
-  }
-  const token = res.body?.access_token;
-  if (!token) throw new Error('Resposta de token sem access_token');
-
-  const ttl = Number(res.body?.expires_in || 300);
-  tokenCache = { token, expiresAt: Date.now() + Math.max(30, ttl - 60) * 1000 };
+  adminToken = { token, expiresAt: Date.now() + Math.max(30, Number(r.body?.expires_in || 3600) - 30) * 1000 };
   return token;
 }
 
-// Chamada autenticada à API de dados. `consentId` viaja no header cujo nome é configurável.
-async function api(
-  method: string,
-  path: string,
-  opts: { query?: Record<string, string | number | undefined>; body?: unknown; consentId?: string } = {},
-): Promise<CelcoinResponse> {
-  const token = await getToken();
-  const url = new URL(`${baseUrl()}${path}`);
-  for (const [k, v] of Object.entries(opts.query || {})) {
+// --- rpt_token: escopo preso a um consentimento. Só lê dados. ---
+const rptTokens = new Map<string, { token: string; expiresAt: number }>();
+async function getRptToken(consentId: string): Promise<string> {
+  const cached = rptTokens.get(consentId);
+  if (cached && Date.now() < cached.expiresAt) return cached.token;
+  const { clientId, clientSecret } = credentials();
+
+  const r = await request('POST', `${endpoints().data}/api/open-keys/token`, {
+    form: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, scope: `consent:${consentId}` }),
+  });
+  if (!r.ok) throw new Error(`Celcoin open-keys token falhou (HTTP ${r.status}) consent=${consentId}`);
+  const token = r.body?.access_token;
+  if (!token) throw new Error('open-keys token: resposta sem access_token');
+
+  rptTokens.set(consentId, {
+    token,
+    expiresAt: Date.now() + Math.max(30, Number(r.body?.expires_in || 300) - 30) * 1000,
+  });
+  return token;
+}
+
+function consentUrl(consentId?: string): string {
+  const base = `${endpoints().smartkeys}/api/smart-keys/data-reception/v1/consents`;
+  return consentId ? `${base}/${encodeURIComponent(consentId)}` : base;
+}
+
+// A transmissora recusa conjuntos de permissão com códigos variados
+// (COMBINACAO_PERMISSOES_INCORRETA, PERMISSAO/PERMISSION_*). Ambos degradam:
+// descer um degrau resolve. Erro de outra natureza (brand inválido, auth) não.
+function isPermissionSetError(r: Result): boolean {
+  const errors = r.body?.errors;
+  if (!Array.isArray(errors)) return false;
+  return errors.some((e: any) => {
+    const code = `${e?.code ?? ''} ${e?.title ?? ''}`.toUpperCase();
+    return code.includes('COMBINACAO') || code.includes('PERMISS');
+  });
+}
+
+// A primeira leitura de um recurso costuma vir 404 (corpo vazio ou
+// LINK_NAO_ENCONTRADO) enquanto a Celcoin ainda busca no detentor. Retentar com
+// rpt_token novo re-dispara a busca. Sem isso o extrato volta vazio e parece
+// conta sem movimento. O mesmo 404 é PERMANENTE quando o grupo não está no
+// consentimento ou quando o path não existe (code NOT_FOUND) — daí a distinção.
+async function fetchData(
+  consentId: string,
+  resourcePath: string,
+  query: Record<string, string | number | undefined> = {},
+  consentPermissions: string[] | null = null,
+): Promise<Result> {
+  const group = resourcePath.split('/')[0];
+  const permPrefix = GROUP_PERM[group];
+  const groupNotConsented =
+    consentPermissions !== null && permPrefix !== undefined && !consentPermissions.some((p) => p.startsWith(permPrefix));
+
+  const url = new URL(`${endpoints().data}/api/open-keys/${resourcePath}`);
+  for (const [k, v] of Object.entries(query)) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, String(v));
   }
 
-  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
-  if (opts.consentId) headers[process.env.CELCOIN_CONSENT_HEADER || 'consentId'] = opts.consentId;
+  let result: Result | null = null;
+  for (let attempt = 0; attempt <= DATA_RETRIES; attempt++) {
+    const token = await getRptToken(consentId);
+    result = await request('GET', url.toString(), { headers: { Authorization: `Bearer ${token}` } });
 
-  return request(method, url.toString(), { headers, body: opts.body });
+    const errors = Array.isArray(result.body?.errors) ? result.body.errors : null;
+    const wrongPath = !!errors?.some((e: any) => (e?.code ?? '') === 'NOT_FOUND');
+    const retriable = result.status === 404 && !wrongPath && !groupNotConsented;
+
+    if (!retriable || attempt === DATA_RETRIES) break;
+    console.warn(`[celcoin] ${resourcePath}: 404 de ingestão, tentativa ${attempt + 1}/${DATA_RETRIES}`);
+    await new Promise((r) => setTimeout(r, 1200 * (attempt + 1)));
+  }
+  return result!;
 }
 
-// Percorre a paginação (page / page-size / pagination-key) e devolve tudo junto.
-async function apiPaged(path: string, consentId: string, query: Record<string, string | number | undefined> = {}) {
+async function fetchPaged(
+  consentId: string,
+  resourcePath: string,
+  query: Record<string, string | number | undefined> = {},
+  permissions: string[] | null = null,
+): Promise<any[]> {
   const out: any[] = [];
   let page = 1;
-  let paginationKey: string | undefined;
-
   while (page <= MAX_PAGES) {
-    const res = await api('GET', path, {
-      consentId,
-      query: { ...query, page, 'page-size': PAGE_SIZE, 'pagination-key': paginationKey },
-    });
-    if (!res.ok) throw new Error(`GET ${path} falhou (HTTP ${res.status})`);
-
-    const data = res.body?.data;
+    const r = await fetchData(consentId, resourcePath, { ...query, page, 'page-size': PAGE_SIZE }, permissions);
+    if (!r.ok) {
+      if (r.status === 404) return out; // recurso ausente/não consentido: não é erro fatal do sync
+      throw new Error(`GET ${resourcePath} falhou (HTTP ${r.status})`);
+    }
+    const data = r.body?.data;
     if (Array.isArray(data)) out.push(...data);
     else if (data) out.push(data);
 
-    const next = res.body?.links?.next;
-    if (!next) break;
-    paginationKey = res.body?.meta?.paginationKey || undefined;
+    if (!r.body?.links?.next) break;
     page += 1;
   }
-
-  if (page > MAX_PAGES) console.warn(`[celcoin] ${path}: parou em ${MAX_PAGES} páginas (trava anti-loop)`);
+  if (page > MAX_PAGES) console.warn(`[celcoin] ${resourcePath}: parou em ${MAX_PAGES} páginas`);
   return out;
 }
 
-// CPF/CNPJ nunca vai cru para log.
 function maskDoc(doc: string): string {
-  const clean = String(doc || '').replace(/\D/g, '');
-  if (clean.length < 4) return '***';
-  return `***${clean.slice(-4)}`;
+  const d = String(doc || '').replace(/\D/g, '');
+  if (d.length === 11) return `${d.slice(0, 3)}.***.***-${d.slice(9)}`;
+  if (d.length === 14) return `**.***.***/${d.slice(8, 12)}-**`;
+  return '***';
 }
 
-function toDateOnly(value: unknown): string | null {
-  if (!value) return null;
-  const s = String(value);
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/);
+function expirationFromMonths(months?: number): string {
+  const m = Math.min(Math.max(Number(months) || 12, 1), 12); // teto regulatório: 1 ano
+  const d = new Date();
+  d.setMonth(d.getMonth() + m);
+  return d.toISOString();
+}
+
+function toDateOnly(v: unknown): string | null {
+  const m = String(v ?? '').match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : null;
+}
+function toTimeOnly(v: unknown): string | null {
+  const m = String(v ?? '').match(/T(\d{2}:\d{2}:\d{2})/);
   return m ? m[1] : null;
 }
 
-function toTimeOnly(value: unknown): string | null {
-  if (!value) return null;
-  const m = String(value).match(/T(\d{2}:\d{2}:\d{2})/);
-  return m ? m[1] : null;
-}
-
-// No Open Finance o sinal vem em creditDebitType (CREDITO/DEBITO), não no valor.
+// No Open Finance o sinal vem em creditDebitType, não no valor.
 function signedAmount(tx: any): number {
   const raw = Number(tx?.transactionAmount?.amount ?? tx?.amount?.amount ?? tx?.amount ?? 0);
   const type = String(tx?.creditDebitType || tx?.creditDebitIndicator || '').toUpperCase();
-  const magnitude = Math.abs(raw);
-  return type.startsWith('DEB') ? -magnitude : magnitude;
+  return type.startsWith('DEB') ? -Math.abs(raw) : Math.abs(raw);
 }
 
 export const handler: RequestHandler = async (req, res) => {
@@ -247,129 +338,137 @@ export const handler: RequestHandler = async (req, res) => {
 
   try {
     switch (action) {
-      // Diagnóstico de configuração — diz o que existe, nunca o valor.
       case 'health': {
+        const eps = endpoints();
         res.json({
           success: true,
-          env: (process.env.CELCOIN_ENV || 'sandbox').toLowerCase(),
-          base_url: baseUrl(),
-          auth_path: process.env.CELCOIN_AUTH_PATH || '/token',
+          env: eps.tier,
+          hosts: { onboard: eps.onboard, smartkeys: eps.smartkeys, data: eps.data },
+          sandbox_hosts_sao_inferidos: eps.tier === 'sandbox',
           has_client_id: !!process.env.CELCOIN_CLIENT_ID,
           has_client_secret: !!process.env.CELCOIN_CLIENT_SECRET,
           has_mtls_cert: !!process.env.CELCOIN_CERT_PEM && !!process.env.CELCOIN_KEY_PEM,
-          consent_header: process.env.CELCOIN_CONSENT_HEADER || 'consentId',
           redirect_url: process.env.CELCOIN_REDIRECT_URL || null,
         });
         return;
       }
 
-      // Marcas/instituições disponíveis, para o usuário escolher o banco.
-      case 'list_brands': {
-        const r = await api('GET', '/open-keys/itp/api/v2/participants/brands');
-        res.json({ success: r.ok, status: r.status, brands: r.body?.data ?? r.body });
-        return;
-      }
-
-      // Passo 1: cria a intenção de compartilhamento. Devolve a URL para onde o
-      // titular precisa ser mandado (site do banco — é a exceção de terceiros da
-      // regra de não-redirecionar; o callback tem que devolver a pessoa ao ponto de partida).
+      // Cria o consentimento e devolve a URL do banco para o titular autorizar.
+      // Sobe a escada de permissões: se a transmissora recusar o conjunto, desce um degrau.
       case 'create_consent': {
         const userId = String(body.user_id || '').trim();
-        const document = String(body.document || '').replace(/\D/g, '');
+        const cpf = String(body.cpf || '').replace(/\D/g, '');
+        const cnpj = String(body.cnpj || '').replace(/\D/g, '');
         const brandId = String(body.brand_id || '').trim();
-        if (!userId || !document || !brandId) {
-          res.status(400).json({ success: false, error: 'user_id, document e brand_id são obrigatórios' });
+
+        if (!userId || !brandId || !cpf) {
+          res.status(400).json({
+            success: false,
+            // O loggedUser do Open Finance é SEMPRE pessoa física, mesmo em conta PJ:
+            // quem autoriza é o representante legal. O CNPJ entra como businessEntity.
+            error: 'user_id, brand_id e cpf (do representante legal) são obrigatórios',
+          });
+          return;
+        }
+        if (cpf.length !== 11) {
+          res.status(400).json({ success: false, error: 'cpf inválido' });
           return;
         }
 
-        const permissions: string[] = Array.isArray(body.permissions) && body.permissions.length
-          ? body.permissions
-          : DEFAULT_PERMISSIONS;
-        const redirectUrl = body.redirect_url || process.env.CELCOIN_REDIRECT_URL;
-        if (!redirectUrl) {
-          res.status(400).json({ success: false, error: 'redirect_url ausente (defina CELCOIN_REDIRECT_URL)' });
+        const isPJ = cnpj.length === 14;
+        console.log(`[celcoin] create_consent brand=${brandId} cpf=${maskDoc(cpf)}${isPJ ? ` cnpj=${maskDoc(cnpj)}` : ''}`);
+
+        const token = await getAdminToken();
+        const expirationDateTime = expirationFromMonths(body.expiration_months);
+        let result: Result | null = null;
+        let used: string[] = [];
+
+        for (const rung of PERMISSION_LADDER) {
+          // Consent PJ usa os agrupamentos de cadastro CUSTOMERS_BUSINESS_*.
+          // Mandar os PERSONAL_* junto com businessEntity toma 422
+          // PERMISSOES_PJ_INCORRETAS (visto no Bradesco PJ em produção).
+          used = isPJ
+            ? [...new Set(rung.map((p) => p.replace('CUSTOMERS_PERSONAL_', 'CUSTOMERS_BUSINESS_')))]
+            : rung;
+
+          const payload: Record<string, unknown> = {
+            brandId,
+            redirectUrl: body.redirect_url || process.env.CELCOIN_REDIRECT_URL,
+            data: {
+              loggedUser: { document: { identification: cpf, rel: 'CPF' } },
+              permissions: used,
+              expirationDateTime,
+              ...(isPJ ? { businessEntity: { document: { identification: cnpj, rel: 'CNPJ' } } } : {}),
+            },
+          };
+
+          result = await request('POST', consentUrl(), {
+            headers: { Authorization: `Bearer ${token}` },
+            body: payload,
+          });
+
+          if (result.ok || !isPermissionSetError(result)) break;
+          console.warn('[celcoin] transmissora recusou o conjunto de permissões, descendo um degrau');
+        }
+
+        if (!result || !result.ok) {
+          res.status(502).json({ success: false, status: result?.status, error: result?.body?.errors ?? result?.body });
           return;
         }
 
-        console.log(`[celcoin] create_consent brand=${brandId} doc=${maskDoc(document)}`);
-
-        const payload: Record<string, unknown> = {
-          brandId,
-          redirectUrl,
-          data: {
-            loggedUser: { document: { identification: document, rel: document.length > 11 ? 'CNPJ' : 'CPF' } },
-            permissions,
-          },
-        };
-        // A API recusa (422) data de expiração no passado e não aceita mais de 1 ano.
-        if (body.expiration_date_time) {
-          (payload.data as any).expirationDateTime = body.expiration_date_time;
-        }
-
-        const r = await api('POST', `${DAT}/consents`, { body: payload });
-        if (!r.ok) {
-          res.status(502).json({ success: false, status: r.status, error: r.body?.errors ?? r.body });
-          return;
-        }
-
-        const consentId = r.body?.data?.consentId || r.body?.consentId || r.body?.data?.id || r.body?.id;
-        const authorizationUrl = r.body?.data?.authorizationUrl || r.body?.authorizationUrl;
+        const r = result.body || {};
+        const consentId = r.consentId ?? r.id ?? r.data?.consentId ?? null;
+        const authorizationUrl = r.authorizationUrl ?? r.redirectUrl ?? r.data?.authorizationUrl ?? null;
 
         const { error: dbErr } = await ext.from('celcoin_consents').upsert(
           {
             user_id: userId,
             consent_id: consentId,
             brand_id: brandId,
-            status: r.body?.data?.status || 'AWAITING_AUTHORISATION',
-            permissions,
-            expires_at: r.body?.data?.expirationDateTime || null,
-            celcoin_env: (process.env.CELCOIN_ENV || 'sandbox').toLowerCase(),
+            status: r.status ?? r.data?.status ?? 'AWAITING_AUTHORISATION',
+            permissions: used,
+            expires_at: expirationDateTime,
+            celcoin_env: endpoints().tier,
           },
           { onConflict: 'consent_id' },
         );
         if (dbErr) console.error('[celcoin] falha ao gravar consentimento:', dbErr.message);
 
-        res.json({ success: true, consent_id: consentId, authorization_url: authorizationUrl });
+        res.json({ success: true, consent_id: consentId, authorization_url: authorizationUrl, permissions: used });
         return;
       }
 
-      // Passo 3: relê o estado no provedor e carimba localmente. AUTHORISED libera o consumo;
-      // REJECTED significa expirado, vencido ou revogado — e a conciliação para até renovar.
       case 'consent_status': {
         const consentId = String(body.consent_id || '').trim();
         if (!consentId) {
           res.status(400).json({ success: false, error: 'consent_id é obrigatório' });
           return;
         }
-
-        const r = await api('GET', `${DAT}/consents/${encodeURIComponent(consentId)}`, { consentId });
-        const status = r.body?.data?.status || r.body?.status || null;
+        const token = await getAdminToken();
+        const r = await request('GET', consentUrl(consentId), { headers: { Authorization: `Bearer ${token}` } });
+        const status = r.body?.status ?? r.body?.data?.status ?? null;
 
         if (status) {
           await ext
             .from('celcoin_consents')
             .update({
               status,
-              expires_at: r.body?.data?.expirationDateTime || null,
               authorized_at: status === 'AUTHORISED' ? new Date().toISOString() : null,
               updated_at: new Date().toISOString(),
             })
             .eq('consent_id', consentId);
         }
-
-        res.json({ success: r.ok, status: r.status, consent_status: status, detail: r.body?.data ?? r.body });
+        res.json({ success: r.ok, consent_status: status, detail: r.body });
         return;
       }
 
-      // Obrigatório em todo consentimento antes de consumir dados.
       case 'list_resources': {
         const consentId = String(body.consent_id || '').trim();
         if (!consentId) {
           res.status(400).json({ success: false, error: 'consent_id é obrigatório' });
           return;
         }
-        const resources = await apiPaged(`${DAT}/resources`, consentId);
-        res.json({ success: true, resources });
+        res.json({ success: true, resources: await fetchPaged(consentId, 'resources') });
         return;
       }
 
@@ -379,14 +478,16 @@ export const handler: RequestHandler = async (req, res) => {
           res.status(400).json({ success: false, error: 'consent_id é obrigatório' });
           return;
         }
-        const accounts = await apiPaged(`${DAT}/accounts`, consentId);
-        const cards = await apiPaged(`${DAT}/credit-cards-accounts/accounts`, consentId);
-        res.json({ success: true, accounts, credit_cards: cards });
+        res.json({
+          success: true,
+          accounts: await fetchPaged(consentId, 'accounts'),
+          credit_cards: await fetchPaged(consentId, 'credit-cards-accounts/accounts'),
+        });
         return;
       }
 
-      // Puxa extrato de conta + transações de fatura de cartão e grava com provider='celcoin'.
-      // As tabelas são as mesmas da Pluggy: a coluna provider é o que deixa as duas conviverem.
+      // Extrato de conta + transações de fatura, gravados com provider='celcoin'.
+      // Mesmas tabelas da Pluggy: a coluna provider é o que deixa as duas conviverem.
       case 'sync_transactions': {
         const consentId = String(body.consent_id || '').trim();
         const userId = String(body.user_id || '').trim();
@@ -395,28 +496,45 @@ export const handler: RequestHandler = async (req, res) => {
           return;
         }
 
+        const { data: consentRow } = await ext
+          .from('celcoin_consents')
+          .select('permissions, status')
+          .eq('consent_id', consentId)
+          .maybeSingle();
+
+        if (consentRow && consentRow.status !== 'AUTHORISED') {
+          res.status(409).json({
+            success: false,
+            error: `Consentimento está ${consentRow.status}, não AUTHORISED — a Celcoin não emite rpt_token nesse estado.`,
+          });
+          return;
+        }
+        const permissions: string[] | null = Array.isArray(consentRow?.permissions)
+          ? (consentRow!.permissions as string[])
+          : null;
+
         const from = body.from ? String(body.from) : undefined;
         const to = body.to ? String(body.to) : undefined;
         let bankCount = 0;
         let cardCount = 0;
 
-        // --- Contas: extrato ---
-        const accounts = await apiPaged(`${DAT}/accounts`, consentId);
-        for (const acc of accounts) {
+        for (const acc of await fetchPaged(consentId, 'accounts', {}, permissions)) {
           const accountId = acc?.accountId;
           if (!accountId) continue;
 
-          const txs = await apiPaged(`${DAT}/accounts/${encodeURIComponent(accountId)}/transactions`, consentId, {
-            fromBookingDate: from,
-            toBookingDate: to,
-          });
+          const txs = await fetchPaged(
+            consentId,
+            `accounts/${encodeURIComponent(accountId)}/transactions`,
+            { fromBookingDate: from, toBookingDate: to },
+            permissions,
+          );
 
           const rows = txs
             .filter((t: any) => t?.transactionId)
             .map((t: any) => ({
               user_id: userId,
               provider: 'celcoin',
-              pluggy_account_id: accountId, // coluna herdada da Pluggy = id da conta no provedor
+              pluggy_account_id: accountId, // coluna herdada = id da conta na origem
               pluggy_transaction_id: t.transactionId,
               pluggy_item_id: consentId, // agrupador da conexão = consentimento
               description: t.transactionName || t.typeAdditionalInfo || null,
@@ -425,8 +543,8 @@ export const handler: RequestHandler = async (req, res) => {
               transaction_date: toDateOnly(t.transactionDateTime) || toDateOnly(t.bookingDate),
               transaction_time: toTimeOnly(t.transactionDateTime),
               transaction_type: t.type || null,
-              // O Open Finance NÃO devolve categoria — fica nulo e a categorização
-              // passa a ser responsabilidade nossa (MCC/IA). Ver categoryTranslations.ts.
+              // O Open Finance não devolve categoria: a categorização passa a ser
+              // nossa (MCC/IA). Ver src/utils/categoryTranslations.ts.
               category: null,
               payment_data: {
                 completedAuthorisedPaymentType: t.completedAuthorisedPaymentType ?? null,
@@ -448,25 +566,27 @@ export const handler: RequestHandler = async (req, res) => {
           }
         }
 
-        // --- Cartões: conta -> fatura -> transações (a Pluggy entregava direto na conta) ---
-        const cards = await apiPaged(`${DAT}/credit-cards-accounts/accounts`, consentId);
-        for (const card of cards) {
+        // Cartão é hierárquico: conta -> fatura -> transações.
+        for (const card of await fetchPaged(consentId, 'credit-cards-accounts/accounts', {}, permissions)) {
           const cardId = card?.creditCardAccountId;
           if (!cardId) continue;
 
-          const bills = await apiPaged(
-            `${DAT}/credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills`,
+          const bills = await fetchPaged(
             consentId,
+            `credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills`,
             { fromDueDate: from, toDueDate: to },
+            permissions,
           );
 
           for (const bill of bills) {
             const billId = bill?.billId;
             if (!billId) continue;
 
-            const txs = await apiPaged(
-              `${DAT}/credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
+            const txs = await fetchPaged(
               consentId,
+              `credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
+              {},
+              permissions,
             );
 
             const rows = txs
@@ -488,8 +608,7 @@ export const handler: RequestHandler = async (req, res) => {
                   transactionType: t.transactionType ?? null,
                   paymentType: t.paymentType ?? null,
                   feeType: t.feeType ?? null,
-                  // MCC é o que sobra para categorizar automaticamente no cartão.
-                  payeeMCC: t.payeeMCC ?? null,
+                  payeeMCC: t.payeeMCC ?? null, // única matéria-prima p/ categorizar cartão
                 },
                 merchant_name: t.transactionName || null,
                 installment_number: t.instalmentNumber ?? null,
@@ -533,7 +652,6 @@ export const handler: RequestHandler = async (req, res) => {
           error: `Ação desconhecida: '${action}'`,
           available: [
             'health',
-            'list_brands',
             'create_consent',
             'consent_status',
             'list_resources',
