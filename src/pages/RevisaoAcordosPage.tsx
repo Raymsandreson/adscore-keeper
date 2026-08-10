@@ -93,7 +93,7 @@ function Lista({ itens, vazio, onAbrir }: {
 }
 
 export default function RevisaoAcordosPage() {
-  const { pendentes, aprovados, rejeitados, loading, erro, recarregar, revisar } = useAcordoExtracoes();
+  const { pendentes, aprovados, rejeitados, semPop, loading, erro, recarregar, revisar } = useAcordoExtracoes();
   const [aberto, setAberto] = useState<AcordoProcesso | null>(null);
 
   return (
@@ -105,9 +105,18 @@ export default function RevisaoAcordosPage() {
               <Handshake className="h-5 w-5" /> Acordos lidos nas atas
             </CardTitle>
             <CardDescription>
-              A IA leu as atas de audiência e apontou acordo homologado nestes processos.
-              Nada vira marco antes da sua conferência — um acordo errado move o processo
-              de fase e reclassifica dinheiro no relatório.
+              Todos os acordos lidos nas atas, de qualquer POP. O caminho normal é o
+              editor do POP, na seção <b>Marcos do POP</b> — esta tela existe para ver
+              tudo de uma vez, inclusive processo que não está em POP nenhum.
+              {semPop > 0 ? (
+                <>
+                  {' '}
+                  <span className="text-amber-600 dark:text-amber-500">
+                    {semPop} processo(s) com acordo não estão cadastrados no CRM e por isso
+                    não aparecem em nenhum POP.
+                  </span>
+                </>
+              ) : null}
             </CardDescription>
           </div>
           <Button variant="outline" size="sm" className="shrink-0 gap-2" onClick={() => void recarregar()}>

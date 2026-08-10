@@ -94,6 +94,7 @@ import {
   useSortable,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { PopMarcosSection } from './PopMarcosSection';
 
 // Wrapper de drag-and-drop sortable com suporte a mouse E toque (celular).
 // Usa render-prop para não reestruturar o JSX aninhado existente: injeta
@@ -2202,6 +2203,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     </Button>
                   </div>
                 </div>
+
+                {/* Marcos do POP — só faz sentido em POP já salvo: a régua é
+                    gravada por board_id em pop_marcos. Fica aqui, junto de fase,
+                    objetivo e passo, porque marco é do POP: um lado diz onde o
+                    processo está (automático), o outro o que a equipe faz. */}
+                {editingBoardId ? (
+                  <PopMarcosSection
+                    boardId={editingBoardId}
+                    faseLabel={Object.fromEntries(phases.map(p => [p.stageId, p.stageName]))}
+                  />
+                ) : null}
 
                 {/* Padrão de Nome do Processo — disponível nos dois tipos: funil
                     (comercial) e POP (processual) têm as mesmas funcionalidades,

@@ -78,8 +78,13 @@ function agrupar(linhas: AcordoExtracao[]): AcordoProcesso[] {
   });
 }
 
-export function useAcordoExtracoes() {
+/**
+ * @param boardId quando informado, traz só os acordos dos processos daquele POP.
+ *        Sem ele, traz todos — inclusive os que não pertencem a POP nenhum.
+ */
+export function useAcordoExtracoes(boardId?: string) {
   const [processos, setProcessos] = useState<AcordoProcesso[]>([]);
+  const [semPop, setSemPop] = useState(0);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -87,24 +92,39 @@ export function useAcordoExtracoes() {
     setLoading(true);
     setErro(null);
     try {
-      // `as any`: pop_marco_extracoes é nova e ainda não está em
-      // integrations/supabase/types.ts. Mesmo padrão de useAcolhedores.
-      const { data, error } = await (db as any)
-        .from('pop_marco_extracoes')
-        .select('id, documento_id, processo_cnj, data_extraida, dados, confianca, motivo, trecho, revisado, aprovado, criado_em')
-        .eq('marco_chave', 'acordo_homologado')
-        .eq('houve', true)
-        .order('data_extraida', { ascending: false });
+      // `as any`: a view é nova e ainda não está em integrations/supabase/types.ts.
+      // Mesmo padrão de useAcolhedores.
+      let q = (db as any)
+        .from('vw_pop_acordos_revisao')
+        .select('id, documento_id, processo_cnj, data_extraida, dados, confianca, motivo, trecho, revisado, aprovado, criado_em, board_id, process_id')
+        .eq('marco_chave', 'acordo_homologado');
 
+      if (boardId) q = q.eq('board_id', boardId);
+
+      const { data, error } = await q.order('data_extraida', { ascending: false });
       if (error) throw error;
-      setProcessos(agrupar((data || []) as unknown as AcordoExtracao[]));
+
+      const linhas = (data || []) as unknown as (AcordoExtracao & { board_id: string | null })[];
+      setProcessos(agrupar(linhas));
+
+      // Acordo lido num processo que não está em lead_processes não pertence a
+      // POP nenhum — e some se ninguém contar. Em 08/08/2026 eram 26 dos 27:
+      // a carteira da jurimetria só coincide parcialmente com o CRM.
+      if (!boardId) {
+        const orfaos = new Set(
+          linhas.filter((l) => !l.board_id).map((l) => l.processo_cnj),
+        );
+        setSemPop(orfaos.size);
+      } else {
+        setSemPop(0);
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
       setProcessos([]);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [boardId]);
 
   useEffect(() => { void carregar(); }, [carregar]);
 
@@ -134,5 +154,5 @@ export function useAcordoExtracoes() {
   const aprovados = processos.filter((p) => p.revisado && p.aprovado === true);
   const rejeitados = processos.filter((p) => p.revisado && p.aprovado === false);
 
-  return { processos, pendentes, aprovados, rejeitados, loading, erro, recarregar: carregar, revisar };
+  return { processos, pendentes, aprovados, rejeitados, semPop, loading, erro, recarregar: carregar, revisar };
 }
