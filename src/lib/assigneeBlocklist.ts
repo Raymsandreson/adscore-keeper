@@ -40,6 +40,12 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   // 23 co-assessorias, 8 notificações, 3 menções, 1 processo) foram migradas
   // para a conta real fdb5c9af em 10/08/2026.
   '2dbfb8c2-debc-4995-ada8-f3c2b217f1fc', // Maria Lydia Ribeiro (marialydia.nr@mail.com)
+  // Segunda conta da Maria Clara Nunes, nunca usada para logar (0 created_by,
+  // 0 updated_by). Era o alvo do INSS_CASO_DEFAULT em processAssignment.ts, então
+  // recebia as atividades automáticas de "Benefício INSS" de caso CASO sem que
+  // ninguém as visse — 10 pendentes de 05/05 a 10/08, migradas para o José
+  // Francisco em 10/08/2026 junto com a troca do UUID padrão.
+  '1e488175-be0a-4726-a80f-1b00cf89cfb3', // Maria Clara Nunes (mariclaramilanex@gmail.com)
 ]);
 
 export function filterAssignableMembers<T extends { user_id: string }>(members: T[]): T[] {

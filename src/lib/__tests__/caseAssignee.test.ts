@@ -227,11 +227,11 @@ describe('precedência: o dono do caso PREV vence o mapa fixo', () => {
     expect(r.assignedName).toBe('Natasha');
   });
 
-  it('Benefício INSS em caso CASO segue com Maria Clara', async () => {
+  it('Benefício INSS em caso CASO vai para José Francisco', async () => {
     const r = await resolveProcessAssignment(
       'Benefício INSS', 'CASO 384 - Camila', 'cloud-user', 'CASO-0384', 'administrativo', 'case-2',
     );
-    expect(r.assignedName).toBe('Maria Clara');
+    expect(r.assignedName).toBe('Jose Francisco Campos de Oliveira');
   });
 });
 
