@@ -91,6 +91,9 @@ export function TeamManagement() {
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [inviteMode, setInviteMode] = useState<'invite' | 'direct'>('invite');
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [passwordResult, setPasswordResult] = useState<{ email: string; password: string } | null>(null);
 
   // Access profiles
   const [accessProfiles, setAccessProfiles] = useState<Array<{
