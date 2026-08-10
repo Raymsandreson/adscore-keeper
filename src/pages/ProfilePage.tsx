@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone, KeyRound } from "lucide-react";
 import { db, authClient } from "@/integrations/supabase";
 import { remapToExternal } from "@/integrations/supabase/uuid-remap";
 import { getMyAllowedInstanceIds } from "@/integrations/supabase/permissions";
@@ -342,6 +342,20 @@ const ProfilePage = () => {
                   Salvar alterações
                 </>
               )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Security */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Segurança</CardTitle>
+            <CardDescription>Gerencie o acesso à sua conta</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => navigate('/reset-password')}>
+              <KeyRound className="h-4 w-4 mr-2" />
+              Alterar senha
             </Button>
           </CardContent>
         </Card>
