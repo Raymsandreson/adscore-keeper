@@ -508,6 +508,8 @@ export function TeamManagement() {
               )}
             </div>
           )}
+          </>
+          )}
         </CardContent>
       </Card>
 
