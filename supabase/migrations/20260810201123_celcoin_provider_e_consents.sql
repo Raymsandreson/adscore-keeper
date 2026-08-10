@@ -1,5 +1,7 @@
 -- Celcoin Open Finance — convivência com a Pluggy + ciclo de vida do consentimento.
 -- Projeto alvo: Supabase Externo (kmedldlepwiityjsdahz), onde já vivem as 3 tabelas financeiras.
+-- APLICADA em 10/08/2026 (version 20260810201123): 2.583 bank_transactions e 5.524
+-- credit_card_transactions carimbadas como provider='pluggy', celcoin_consents criada com RLS.
 --
 -- Contexto: a integração financeira migra de Pluggy para Celcoin Financial Data. Os dados
 -- históricos da Pluggy (5.524 transações de cartão, 2.583 bancárias em 10/08/2026) continuam
