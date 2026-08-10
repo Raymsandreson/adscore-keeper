@@ -46,12 +46,16 @@ import {
   Send,
   Eye,
   MessageSquare,
+  KeyRound,
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MODULE_DEFINITIONS, AccessLevel, useModulePermissions } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
 import { ReassignActivitiesDialog } from './ReassignActivitiesDialog';
+import { DirectAccessForm } from './DirectAccessForm';
+import { TempPasswordDialog } from './TempPasswordDialog';
+import { generateTempPassword } from '@/lib/tempPassword';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
