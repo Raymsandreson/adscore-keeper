@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { LogOut, User, Settings } from 'lucide-react';
+import { LogOut, User, Settings, KeyRound } from 'lucide-react';
 
 export const UserMenu = () => {
   const navigate = useNavigate();
@@ -69,6 +69,10 @@ export const UserMenu = () => {
         <DropdownMenuItem onClick={() => navigate('/profile')}>
           <User className="mr-2 h-4 w-4" />
           <span>Perfil</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => navigate('/reset-password')}>
+          <KeyRound className="mr-2 h-4 w-4" />
+          <span>Alterar senha</span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => navigate('/settings')}>
           <Settings className="mr-2 h-4 w-4" />
