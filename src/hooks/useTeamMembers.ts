@@ -142,6 +142,7 @@ export function useTeamMembers() {
         email: normalizedEmail,
         role,
         invited_by: user.user?.id,
+        access_profile_id: accessProfileId || null,
         module_permissions: modulePermissions || [],
         whatsapp_instance_ids: whatsappInstanceIds || [],
       } as any);
@@ -161,6 +162,8 @@ export function useTeamMembers() {
       .single();
 
     // Send invitation email via edge function
+    let emailSent = false;
+    let emailErrorMessage: string | undefined;
     try {
       const appUrl = window.location.origin;
       const response = await cloudFunctions.invoke('send-team-invitation', {
@@ -174,15 +177,21 @@ export function useTeamMembers() {
 
       if (response.error) {
         console.error('Error sending invitation email:', response.error);
+        emailErrorMessage = (response.error as any)?.message || 'Erro no envio do e-mail';
+      } else if ((response.data as any)?.success === false) {
+        emailErrorMessage = (response.data as any)?.error || 'Erro no envio do e-mail';
       } else {
-        console.log('Invitation email sent successfully');
+        emailSent = true;
       }
-    } catch (emailError) {
+    } catch (emailError: any) {
       console.error('Failed to send invitation email:', emailError);
+      emailErrorMessage = emailError?.message || 'Erro no envio do e-mail';
     }
 
     await fetchMembers();
+    return { emailSent, emailError: emailErrorMessage };
   }, [isAdmin, fetchMembers]);
+
 
   const cancelInvitation = useCallback(async (invitationId: string) => {
     if (!isAdmin) {
