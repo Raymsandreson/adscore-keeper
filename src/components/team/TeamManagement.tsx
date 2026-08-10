@@ -367,14 +367,45 @@ export function TeamManagement() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
-            Convidar Membro
+            {inviteMode === 'invite' ? 'Convidar Membro' : 'Criar acesso direto'}
           </CardTitle>
           <CardDescription>
-            Envie um convite por email. O novo membro receberá acesso ao fazer cadastro.
+            {inviteMode === 'invite'
+              ? 'Envie um convite por email. O novo membro receberá acesso ao fazer cadastro.'
+              : 'Cria a conta na hora, com senha provisória — sem depender de e-mail.'}
           </CardDescription>
+          <div className="flex items-center gap-1.5 pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={inviteMode === 'invite' ? 'default' : 'outline'}
+              onClick={() => setInviteMode('invite')}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Convite por e-mail
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={inviteMode === 'direct' ? 'default' : 'outline'}
+              onClick={() => setInviteMode('direct')}
+            >
+              <KeyRound className="h-4 w-4 mr-2" />
+              Criar acesso direto
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
+          {inviteMode === 'direct' ? (
+            <DirectAccessForm
+              accessProfiles={accessProfiles as any}
+              whatsappInstances={whatsappInstances}
+              onCreated={refetch}
+            />
+          ) : (
+          <>
           <div className="flex flex-col sm:flex-row gap-4">
+
             <div className="flex-1">
               <Label>Email</Label>
               <Input
