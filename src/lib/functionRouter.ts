@@ -63,6 +63,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'telao-narrar': 'railway', // narração do telão com voz de locutor (ElevenLabs + cache no storage)
   'sync-hearings-from-sheet': 'railway', // credenciais do Google Sheets (gateway Lovable) só existem no Railway
   'nearby-establishments': 'railway', // pontes por proximidade — gateway Google Maps (LOVABLE_API_KEY no Railway)
+  'celcoin-open-finance': 'railway', // Open Finance/Celcoin: exige mTLS em produção, que o Deno das edges não faz
 
   // --- Consolidação no Supabase Externo (kmedldlepwiityjsdahz) ---
   // Deploy: supabase functions deploy <slug> --project-ref kmedldlepwiityjsdahz --no-verify-jwt

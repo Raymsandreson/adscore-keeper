@@ -80,6 +80,7 @@ import { handler as reportQuery } from './functions/report-query';
 import { handler as performanceCoach } from './functions/performance-coach';
 import { handler as extractAcordoFromAta } from './functions/extract-acordo-from-ata';
 import { handler as telaoNarrar } from './functions/telao-narrar';
+import { handler as celcoinOpenFinance } from './functions/celcoin-open-finance';
 
 
 
@@ -154,6 +155,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'performance-coach': performanceCoach,
   'extract-acordo-from-ata': extractAcordoFromAta,
   'telao-narrar': telaoNarrar,
+  'celcoin-open-finance': celcoinOpenFinance, // Open Finance/Celcoin — aqui e não em edge por causa do mTLS
 };
 
 const app = express();
