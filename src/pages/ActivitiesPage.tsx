@@ -4648,9 +4648,10 @@ const ActivitiesPage = () => {
                       <div className="max-h-[400px] overflow-y-auto p-2">
                         {(() => {
                           const baseActivities = displayedActivities;
+                          const assignable = filterAssignableMembers(teamMembers);
                           const selectedMembers = filterAssignee.length > 0
-                            ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
-                            : teamMembers.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
+                            ? assignable.filter(m => filterAssignee.includes(m.user_id))
+                            : assignable.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
 
                           if (selectedMembers.length === 0) {
                             return <div className="text-xs text-muted-foreground p-2">Nenhuma atividade para o filtro atual.</div>;
