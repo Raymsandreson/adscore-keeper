@@ -156,6 +156,7 @@ const BpcFunnelDetailPage = lazyRetry(() => import("./pages/BpcFunnelDetailPage"
 const WorkflowProgressPage = lazyRetry(() => import("./pages/WorkflowProgressPage"), "WorkflowProgressPage");
 const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"), "ProfilePage");
 const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage");
+const OpenFinanceCallbackPage = lazyRetry(() => import("./pages/OpenFinanceCallbackPage"), "OpenFinanceCallbackPage");
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const ServiceRatingsPage = lazyRetry(() => import("./pages/ServiceRatingsPage"), "ServiceRatingsPage");
@@ -350,6 +351,8 @@ function SidebarLayout() {
                 <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
+                {/* Retorno do banco no Open Finance — tela de passagem, devolve pra origem */}
+                <Route path="/openfinance/callback" element={<ProtectedRoute><OpenFinanceCallbackPage /></ProtectedRoute>} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/avaliacoes" element={<ProtectedRoute><ServiceRatingsPage /></ProtectedRoute>} />
                 <Route path="/banco-horas" element={<ProtectedRoute><BancoHorasPage /></ProtectedRoute>} />

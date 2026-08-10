@@ -54,6 +54,7 @@ import { useCategoryApiMappings } from "@/hooks/useCategoryApiMappings";
 import { useCostAccounts } from "@/hooks/useCostAccounts";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
+import { CelcoinConnectDialog } from "@/components/finance/CelcoinConnectDialog";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
 import { CardPermissionsManager } from "@/components/finance/CardPermissionsManager";
 import { TransactionsAggregatedView } from "@/components/finance/TransactionsAggregatedView";
@@ -135,6 +136,7 @@ export default function FinancePage() {
   const [aggregationType, setAggregationType] = useState<AggregationType>('card');
   
   const [isConnecting, setIsConnecting] = useState(false);
+  const [celcoinDialogOpen, setCelcoinDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
@@ -710,6 +712,17 @@ export default function FinancePage() {
               <Button size="sm" onClick={handleConnect} disabled={isConnecting} className="h-8">
                 <Link2 className="h-4 w-4 mr-2" />
                 Conectar
+              </Button>
+              {/* Open Finance (Celcoin) — sucessor da Pluggy. Convivem enquanto a
+                  migração não é validada; a coluna provider separa a origem. */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCelcoinDialogOpen(true)}
+                className="h-8"
+              >
+                <Landmark className="h-4 w-4 mr-2" />
+                Open Finance
               </Button>
               <Button 
                 variant="outline" 
@@ -1514,6 +1527,9 @@ export default function FinancePage() {
           onOpenChange={setEntryFormOpen}
           onSaved={() => {}}
         />
+
+        {/* Conexão por Open Finance (Celcoin) */}
+        <CelcoinConnectDialog open={celcoinDialogOpen} onOpenChange={setCelcoinDialogOpen} />
       </div>
       <ConfirmDeleteDialog />
     </div>

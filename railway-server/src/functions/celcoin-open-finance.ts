@@ -27,7 +27,7 @@
 // Env (Railway):
 //   CELCOIN_CLIENT_ID, CELCOIN_CLIENT_SECRET   obrigatórios
 //   CELCOIN_ENV                                'sandbox' (default) | 'production'
-//   CELCOIN_HOST_ONBOARD / _SMARTKEYS / _DATA  override por host (ver aviso de sandbox)
+//   CELCOIN_HOST_ONBOARD / _SMARTKEYS / _OPENKEYS / _DATA   override por host (ver aviso de sandbox)
 //   CELCOIN_CERT_PEM, CELCOIN_KEY_PEM          mTLS opcional
 //   CELCOIN_CA_PEM, CELCOIN_KEY_PASSPHRASE     opcionais
 //   CELCOIN_REDIRECT_URL                       callback pós-autorização no app
@@ -50,9 +50,39 @@ function endpoints() {
   return {
     onboard: process.env.CELCOIN_HOST_ONBOARD || `https://onboard-ui.smartkeys.celcoin.${tier}.fsapps.app`,
     smartkeys: process.env.CELCOIN_HOST_SMARTKEYS || `https://api-smartkeys.celcoin.${tier}.fsapps.app`,
+    openkeys: process.env.CELCOIN_HOST_OPENKEYS || `https://api-openkeys.celcoin.${tier}.fsapps.app`,
     data: process.env.CELCOIN_HOST_DATA || `https://api.v3.celcoin.${tier}.fsapps.app`,
     tier,
   };
+}
+
+// Lista de bancos participantes. Fica no host openkeys (compartilhado com ITP) e
+// usa o token admin. A criação de consent não devolve brandName, então o nome
+// amigável sai daqui — falha silenciosa, é cosmético e não pode derrubar o consent.
+async function fetchBrands(): Promise<any[]> {
+  const token = await getAdminToken();
+  const r = await request('GET', `${endpoints().openkeys}/open-keys-itp/api/brands/v1/brands?type=DATA`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(`Celcoin brands falhou (HTTP ${r.status})`);
+  const raw = r.body;
+  return Array.isArray(raw) ? raw : raw?.content ?? raw?.items ?? raw?.data ?? [];
+}
+
+function brandLabel(b: any): string | null {
+  return b?.CustomerFriendlyName ?? b?.name ?? null;
+}
+function brandKey(b: any): string | null {
+  return b?.AuthorisationServerId ?? b?.brandId ?? b?.id ?? null;
+}
+
+async function resolveBrandName(brandId: string): Promise<string | null> {
+  try {
+    const hit = (await fetchBrands()).find((b) => brandKey(b) === brandId);
+    return hit ? brandLabel(hit) : null;
+  } catch {
+    return null;
+  }
 }
 
 // Núcleo validado em produção pelo Quitepay. Conciliação não lê operações de
@@ -343,13 +373,23 @@ export const handler: RequestHandler = async (req, res) => {
         res.json({
           success: true,
           env: eps.tier,
-          hosts: { onboard: eps.onboard, smartkeys: eps.smartkeys, data: eps.data },
+          hosts: { onboard: eps.onboard, smartkeys: eps.smartkeys, openkeys: eps.openkeys, data: eps.data },
           sandbox_hosts_sao_inferidos: eps.tier === 'sandbox',
           has_client_id: !!process.env.CELCOIN_CLIENT_ID,
           has_client_secret: !!process.env.CELCOIN_CLIENT_SECRET,
           has_mtls_cert: !!process.env.CELCOIN_CERT_PEM && !!process.env.CELCOIN_KEY_PEM,
           redirect_url: process.env.CELCOIN_REDIRECT_URL || null,
         });
+        return;
+      }
+
+      // Bancos participantes, para o titular escolher onde autorizar.
+      case 'list_brands': {
+        const brands = (await fetchBrands())
+          .map((b) => ({ brand_id: brandKey(b), name: brandLabel(b) }))
+          .filter((b) => b.brand_id && b.name)
+          .sort((a, b) => a.name!.localeCompare(b.name!, 'pt-BR'));
+        res.json({ success: true, brands });
         return;
       }
 
@@ -425,6 +465,7 @@ export const handler: RequestHandler = async (req, res) => {
             user_id: userId,
             consent_id: consentId,
             brand_id: brandId,
+            brand_name: await resolveBrandName(brandId),
             status: r.status ?? r.data?.status ?? 'AWAITING_AUTHORISATION',
             permissions: used,
             expires_at: expirationDateTime,
@@ -652,6 +693,7 @@ export const handler: RequestHandler = async (req, res) => {
           error: `Ação desconhecida: '${action}'`,
           available: [
             'health',
+            'list_brands',
             'create_consent',
             'consent_status',
             'list_resources',
