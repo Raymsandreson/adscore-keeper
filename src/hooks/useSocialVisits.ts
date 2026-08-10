@@ -47,25 +47,34 @@ interface UseSocialVisitsOptions {
   to?: string;
   /** Só as visitas deste lead (aba dentro do lead). */
   leadId?: string | null;
+  /** Só as visitas de leads deste board (calendário dentro do funil). */
+  boardId?: string | null;
   enabled?: boolean;
 }
 
 export const SOCIAL_VISITS_KEY = 'social_visits';
 
 export function useSocialVisits(options: UseSocialVisitsOptions = {}) {
-  const { from, to, leadId, enabled = true } = options;
+  const { from, to, leadId, boardId, enabled = true } = options;
   const qc = useQueryClient();
 
   const list = useQuery({
-    queryKey: [SOCIAL_VISITS_KEY, { from: from ?? null, to: to ?? null, leadId: leadId ?? null }],
+    queryKey: [
+      SOCIAL_VISITS_KEY,
+      { from: from ?? null, to: to ?? null, leadId: leadId ?? null, boardId: boardId ?? null },
+    ],
     staleTime: 30_000,
     enabled,
     queryFn: async (): Promise<SocialVisit[]> => {
+      // O recorte por funil sai do banco, não da memória: o board "Acidente de
+      // Trabalho" tem milhares de leads e mandar a lista de ids no `in()`
+      // estouraria a URL. O inner join resolve em uma query só.
       let query = (db as any)
         .from('social_visits')
-        .select('*')
+        .select(boardId ? '*, leads!inner(board_id)' : '*')
         .is('deleted_at', null);
 
+      if (boardId) query = query.eq('leads.board_id', boardId);
       if (leadId) query = query.eq('lead_id', leadId);
       if (from) query = query.gte('visit_date', from);
       if (to) query = query.lte('visit_date', to);
@@ -75,7 +84,9 @@ export function useSocialVisits(options: UseSocialVisitsOptions = {}) {
         .order('visit_time', { ascending: true, nullsFirst: true });
 
       if (error) throw error;
-      return (data || []) as SocialVisit[];
+      // O embed vem junto na resposta; some com ele pro objeto continuar sendo
+      // uma SocialVisit limpa (o formulário faz spread do que recebe).
+      return ((data || []) as any[]).map(({ leads: _joined, ...visit }) => visit) as SocialVisit[];
     },
   });
 

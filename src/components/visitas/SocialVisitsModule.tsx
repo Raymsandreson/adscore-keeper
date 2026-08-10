@@ -41,7 +41,14 @@ type ViewMode = 'semana' | 'mes' | 'lista';
 
 const iso = (date: Date) => format(date, 'yyyy-MM-dd');
 
-export default function SocialVisitsModule() {
+interface SocialVisitsModuleProps {
+  /** Recorta a agenda pelos leads deste funil. Sem board, mostra tudo. */
+  boardId?: string | null;
+  /** Dentro do board: o cabeçalho da página já existe, então some com o título. */
+  embedded?: boolean;
+}
+
+export default function SocialVisitsModule({ boardId, embedded }: SocialVisitsModuleProps = {}) {
   const qc = useQueryClient();
   const [view, setView] = useState<ViewMode>('semana');
   const [referenceDate, setReferenceDate] = useState(new Date());
@@ -75,7 +82,7 @@ export default function SocialVisitsModule() {
     return { from: iso(addDays(new Date(), -90)), to: iso(addDays(new Date(), 365)) };
   }, [view, referenceDate]);
 
-  const { data: visits = [], isLoading } = useSocialVisits(range);
+  const { data: visits = [], isLoading } = useSocialVisits({ ...range, boardId });
 
   const workers = useMemo(() => {
     const map = new Map<string, string>();
@@ -160,7 +167,7 @@ export default function SocialVisitsModule() {
     <div className="space-y-4">
       <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:justify-between">
         <div>
-          <h1 className="text-xl font-bold">Visitas das assistentes sociais</h1>
+          {!embedded && <h1 className="text-xl font-bold">Visitas das assistentes sociais</h1>}
           <p className="text-sm text-muted-foreground">
             {isLoading
               ? 'Carregando agenda...'

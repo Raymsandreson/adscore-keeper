@@ -6,7 +6,7 @@ import {
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
   MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Clock,
-  FileBarChart, HeartHandshake,
+  FileBarChart,
 } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -156,7 +156,9 @@ export function AppSidebar() {
         { id: "acompanhamento-processual", label: "Acompanhamento Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/processual/acompanhamento", color: "text-indigo-500" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
         { id: "hearings", label: "Audiências", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
-        { id: "visitas", label: "Visitas", icon: <HeartHandshake className="h-3.5 w-3.5" />, path: "/visitas", color: "text-teal-500" },
+        // Visitas das assistentes sociais moram dentro de Leads Trabalhista
+        // (botão de visão ao lado de kanban/lista). A rota /visitas segue viva
+        // para link direto, mas fora do menu para não haver dois caminhos.
         { id: "bpc-autista", label: "Aux. Acidente", icon: <Accessibility className="h-3.5 w-3.5" />, path: "/processual/bpc-autista", color: "text-sky-500" },
         { id: "workflow-progress", label: "POP", icon: <Zap className="h-3.5 w-3.5" />, path: "/workflow-progress", color: "text-purple-500" },
       ],

@@ -95,6 +95,7 @@ export const featureGuides: FeatureGuideDef[] = [
       { label: "Relatório", description: "relatório do funil selecionado" },
       { label: "Métricas e Funil de Conversão", description: "expande gráficos de conversão e tempo por etapa" },
       { label: "Filtro de acolhedor", anchor: "Todos os acolhedores", description: "mostra só os cards de um acolhedor" },
+      { label: "Visitas", description: "no Trabalhista, terceiro botão de visão: calendário das visitas das assistentes sociais aos leads deste funil" },
     ],
     tip: "Trabalhe arrastando os cards — o fechamento é automático: soltar em \"✅ Fechado\" já gera número de caso, cria o caso jurídico e sincroniza a etiqueta do WhatsApp. Pra lead novo, use o extrator de IA no \"Adicionar Lead\".",
   },
@@ -216,7 +217,7 @@ export const featureGuides: FeatureGuideDef[] = [
     id: "visitas",
     paths: ["/visitas"],
     title: "Visitas das assistentes sociais",
-    intro: "Calendário das visitas domiciliares: data e horário, lead visitado e assistente social responsável.",
+    intro: "Calendário das visitas domiciliares: data e horário, lead visitado e assistente social responsável. O caminho do dia a dia é Leads Trabalhista → botão Visitas, que recorta a agenda pelo funil aberto; esta rota direta mostra todos os funis.",
     items: [
       { label: "Agendar visita", description: "abre o formulário; o + no dia (ou a célula do mês) já cria com a data preenchida" },
       { label: "Semana / Mês / Lista", anchor: "Semana", description: "a semana vai de segunda a domingo — visita de fim de semana também aparece" },
