@@ -374,6 +374,7 @@ export function TeamManagement() {
               ? 'Envie um convite por email. O novo membro receberá acesso ao fazer cadastro.'
               : 'Cria a conta na hora, com senha provisória — sem depender de e-mail.'}
           </CardDescription>
+          {isAdmin && (
           <div className="flex items-center gap-1.5 pt-2">
             <Button
               type="button"
@@ -394,9 +395,10 @@ export function TeamManagement() {
               Criar acesso direto
             </Button>
           </div>
+          )}
         </CardHeader>
         <CardContent>
-          {inviteMode === 'direct' ? (
+          {isAdmin && inviteMode === 'direct' ? (
             <DirectAccessForm
               accessProfiles={accessProfiles as any}
               whatsappInstances={whatsappInstances}
