@@ -208,8 +208,29 @@ export function TeamManagement() {
 
       const instanceIds = role === 'admin' ? [] : selectedInstances;
 
-      await inviteMember(email, role, modulePerms, instanceIds);
-      toast.success('Convite enviado com permissões configuradas!');
+      const invitedEmail = email.toLowerCase().trim();
+      const { emailSent, emailError } = await inviteMember(
+        email,
+        role,
+        modulePerms,
+        instanceIds,
+        selectedProfileId,
+      );
+      if (emailSent) {
+        toast.success('Convite enviado com permissões configuradas!');
+      } else {
+        toast.warning('Convite criado, mas o e-mail NÃO foi enviado', {
+          description: `${emailError || 'Falha no serviço de e-mail'}. Avise ${invitedEmail} por outro canal.`,
+          duration: 15000,
+          action: {
+            label: 'Copiar e-mail',
+            onClick: () => {
+              navigator.clipboard.writeText(invitedEmail);
+              toast.success('E-mail copiado');
+            },
+          },
+        });
+      }
       setEmail('');
       setSelectedProfileId('');
       setShowPermissions(false);
@@ -221,6 +242,32 @@ export function TeamManagement() {
       toast.error(error.message || 'Erro ao enviar convite');
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleResetPassword = async (member: TeamMember) => {
+    if (!member.email) {
+      toast.error('Membro sem e-mail cadastrado');
+      return;
+    }
+    setResettingUserId(member.user_id);
+    try {
+      const newPassword = generateTempPassword();
+      const { data, error } = await cloudFunctions.invoke('create-cloud-user', {
+        body: {
+          email: member.email,
+          password: newPassword,
+          full_name: member.full_name || '',
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setPasswordResult({ email: member.email, password: newPassword });
+      toast.success('Senha provisória definida e login liberado');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao definir senha provisória');
+    } finally {
+      setResettingUserId(null);
     }
   };
 
