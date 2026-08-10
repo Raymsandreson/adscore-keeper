@@ -60,6 +60,8 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'bpc-sheet-sync': 'railway',
   'report-query': 'railway', // gerador de relatórios por IA (NL→SQL read-only)
   'performance-coach': 'railway', // coach do telão /tv/atividades (análise + mensagem Corrida Maluca)
+  'extract-acordo-from-ata': 'railway', // IA lê ata de audiência e extrai o acordo homologado
+  'jm-documento-url': 'railway', // URL assinada de peça dos autos (bucket privado jm-autos)
   'telao-narrar': 'railway', // narração do telão com voz de locutor (ElevenLabs + cache no storage)
   'sync-hearings-from-sheet': 'railway', // credenciais do Google Sheets (gateway Lovable) só existem no Railway
   'nearby-establishments': 'railway', // pontes por proximidade — gateway Google Maps (LOVABLE_API_KEY no Railway)

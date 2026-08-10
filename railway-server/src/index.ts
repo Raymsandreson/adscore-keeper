@@ -79,6 +79,7 @@ import { handler as dailyTeamReport } from './functions/daily-team-report';
 import { handler as reportQuery } from './functions/report-query';
 import { handler as performanceCoach } from './functions/performance-coach';
 import { handler as extractAcordoFromAta } from './functions/extract-acordo-from-ata';
+import { handler as jmDocumentoUrl } from './functions/jm-documento-url';
 import { handler as telaoNarrar } from './functions/telao-narrar';
 
 
@@ -153,6 +154,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'report-query': reportQuery,
   'performance-coach': performanceCoach,
   'extract-acordo-from-ata': extractAcordoFromAta,
+  'jm-documento-url': jmDocumentoUrl,
   'telao-narrar': telaoNarrar,
 };
 
