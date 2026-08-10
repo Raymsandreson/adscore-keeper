@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { usePageState } from '@/hooks/usePageState';
 import { generateLeadName } from '@/utils/generateLeadName';
@@ -38,6 +38,7 @@ import {
   ChevronRight,
   Columns3,
   List,
+  HeartHandshake,
 } from 'lucide-react';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
@@ -69,6 +70,10 @@ import {
 import { normalizeDateInput } from '@/utils/normalizeDateInput';
 import { regionForUf } from '@/lib/leads/visitFromAccident';
 
+// Calendário das visitas das assistentes sociais — carrega só quando a visão é
+// aberta, para não pesar no bundle de quem só usa o kanban.
+const SocialVisitsModule = lazy(() => import('@/components/visitas/SocialVisitsModule'));
+
 interface UnifiedKanbanManagerProps {
   adAccountId?: string;
   category?: 'trabalhista' | 'previdenciario';
@@ -91,13 +96,13 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   // Visualização kanban|lista. Última escolha em localStorage (usePageState);
   // URL (?view=list&sort=tempo_estagio.desc) tem prioridade ao abrir e é
   // mantida atualizada para permitir compartilhar o link.
-  const [viewMode, setViewMode] = usePageState<'kanban' | 'list'>('kanban_viewMode', 'kanban');
+  const [viewMode, setViewMode] = usePageState<'kanban' | 'list' | 'visitas'>('kanban_viewMode', 'kanban');
   const [listSort, setListSort] = usePageState<ListSort>('kanban_listSort', DEFAULT_LIST_SORT);
   const [listChips, setListChips] = usePageState<QuickChips>('kanban_listChips', emptyChips);
 
   useEffect(() => {
     const view = searchParams.get('view');
-    if (view === 'list' || view === 'kanban') setViewMode(view);
+    if (view === 'list' || view === 'kanban' || view === 'visitas') setViewMode(view);
     const sortParam = searchParams.get('sort');
     if (sortParam) {
       const [key, dir] = sortParam.split('.');
@@ -116,6 +121,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       if (viewMode === 'list') {
         next.set('view', 'list');
         next.set('sort', `${listSort.key}.${listSort.dir}`);
+      } else if (viewMode === 'visitas') {
+        next.set('view', 'visitas');
+        next.delete('sort');
       } else {
         next.delete('view');
         next.delete('sort');
@@ -123,6 +131,14 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       return next;
     }, { replace: true });
   }, [viewMode, listSort, setSearchParams]);
+
+  // A visão de visitas só existe no Trabalhista, mas `viewMode` é lembrado em
+  // localStorage e vale para os dois menus: sem esta guarda, quem saísse dela
+  // para o Previdenciário cairia numa tela sem botão para voltar.
+  const visitsViewAvailable = category === 'trabalhista';
+  useEffect(() => {
+    if (viewMode === 'visitas' && !visitsViewAvailable) setViewMode('kanban');
+  }, [viewMode, visitsViewAvailable, setViewMode]);
 
   // Handle URL param to auto-open a lead
   const [initialLeadTab, setInitialLeadTab] = useState<string | undefined>();
@@ -578,13 +594,8 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       return;
     }
 
-    // CEP da visita: obrigatório quando há cidade da visita — é o que o Marketing
-    // usa para segmentar anúncio de captação de parceiros naquela região.
-    if (newLeadFormData.visit_city && (newLeadFormData.visit_cep || '').replace(/\D/g, '').length !== 8) {
-      toast.error('Informe o CEP da visita (8 dígitos) — obrigatório quando a cidade da visita está preenchida.');
-      return;
-    }
-
+    // CEP da visita é opcional em todos os funis (ago/2026): quem pede o CEP é o
+    // dialog da tarefa de Marketing, não o salvamento do lead.
     const targetBoardId = selectedBoardForNewLead || selectedBoardId;
     if (!targetBoardId) {
       toast.error('Selecione um funil');
@@ -781,77 +792,109 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
             >
               <List className="h-4 w-4" />
             </Button>
+            {visitsViewAvailable && (
+              <Button
+                variant={viewMode === 'visitas' ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-8 px-2 gap-1.5"
+                aria-pressed={viewMode === 'visitas'}
+                title="Calendário das visitas das assistentes sociais"
+                onClick={() => setViewMode('visitas')}
+              >
+                <HeartHandshake className="h-4 w-4" />
+                <span className="hidden lg:inline text-xs">Visitas</span>
+              </Button>
+            )}
           </div>
 
-          <div className="relative flex-1 min-w-[150px] max-w-[250px]">
-            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar leads..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 w-full"
-            />
-          </div>
+          {/* Filtros de lead nao valem para o calendario de visitas. */}
+          {viewMode !== 'visitas' && (
+            <>
+            <div className="relative flex-1 min-w-[150px] max-w-[250px]">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar leads..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 w-full"
+              />
+            </div>
           
-          <Select
-            value={acolhedorFilter || '__all__'}
-            onValueChange={(v) => setAcolhedorFilter(v === '__all__' ? '' : v)}
-          >
-            <SelectTrigger className="w-[180px] h-9" title="Filtrar por acolhedor">
-              <SelectValue placeholder="Acolhedor" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all__">Todos os acolhedores</SelectItem>
-              {acolhedorOptions.map((name) => (
-                <SelectItem key={name} value={name}>
-                  {name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            <Select
+              value={acolhedorFilter || '__all__'}
+              onValueChange={(v) => setAcolhedorFilter(v === '__all__' ? '' : v)}
+            >
+              <SelectTrigger className="w-[180px] h-9" title="Filtrar por acolhedor">
+                <SelectValue placeholder="Acolhedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all__">Todos os acolhedores</SelectItem>
+                {acolhedorOptions.map((name) => (
+                  <SelectItem key={name} value={name}>
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-          <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-
-          {selectedBoard && (
-            <Button variant="outline" onClick={() => setShowReport(true)}>
-              <FileText className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Relatório</span>
+            <Button variant="outline" size="icon" onClick={() => fetchLeads()}>
+              <RefreshCw className="h-4 w-4" />
             </Button>
-          )}
+
+            {selectedBoard && (
+              <Button variant="outline" onClick={() => setShowReport(true)}>
+                <FileText className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Relatório</span>
+              </Button>
+            )}
           
-          {selectedBoard && (
-            <ChecklistFilter
-              boardId={selectedBoardId}
-              leadIds={boardLeads.map(l => l.id)}
-              onFilteredLeadIds={setChecklistFilteredIds}
-            />
-          )}
+            {selectedBoard && (
+              <ChecklistFilter
+                boardId={selectedBoardId}
+                leadIds={boardLeads.map(l => l.id)}
+                onFilteredLeadIds={setChecklistFilteredIds}
+              />
+            )}
           
-          <Button onClick={() => setShowAddLeadDialog(true)} size="sm">
-            <Plus className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Adicionar Lead</span>
-          </Button>
+            <Button onClick={() => setShowAddLeadDialog(true)} size="sm">
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Adicionar Lead</span>
+            </Button>
+            </>
+          )}
         </div>
       </div>
 
       {/* Advanced Filters */}
-      <LeadAdvancedFilters
-        filters={advancedFilters}
-        onChange={setAdvancedFilters}
-        profiles={teamProfiles}
-        availableStates={filterOptions.states}
-        availableCities={filterOptions.cities}
-        availableRegions={filterOptions.regions}
-        availableCaseTypes={filterOptions.caseTypes}
-        availableAcolhedores={filterOptions.acolhedores}
-      />
+      {viewMode !== 'visitas' && (
+        <LeadAdvancedFilters
+          filters={advancedFilters}
+          onChange={setAdvancedFilters}
+          profiles={teamProfiles}
+          availableStates={filterOptions.states}
+          availableCities={filterOptions.cities}
+          availableRegions={filterOptions.regions}
+          availableCaseTypes={filterOptions.caseTypes}
+          availableAcolhedores={filterOptions.acolhedores}
+        />
+      )}
 
-
+      {/* Calendário das visitas dos leads deste funil */}
+      {viewMode === 'visitas' && (
+        selectedBoardId ? (
+          <Suspense fallback={<div className="text-center py-12 text-muted-foreground">Carregando agenda de visitas...</div>}>
+            <SocialVisitsModule boardId={selectedBoardId} embedded />
+          </Suspense>
+        ) : (
+          // Sem funil não há recorte: melhor pedir a escolha do que despejar a agenda inteira.
+          <div className="text-center py-12 text-sm text-muted-foreground">
+            Escolha um funil acima para ver as visitas dos leads dele.
+          </div>
+        )
+      )}
 
       {/* Analytics: Funnel Chart and Stage Time Metrics - Collapsible */}
-      {selectedBoard && boardLeads.length > 0 && (
+      {viewMode !== 'visitas' && selectedBoard && boardLeads.length > 0 && (
         <details className="group">
           <summary className="flex items-center gap-2 cursor-pointer text-xs text-muted-foreground hover:text-foreground transition-colors py-1 px-1 select-none">
             <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
@@ -894,7 +937,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       )}
 
       {/* Kanban Board */}
-      {selectedBoard && viewMode === 'list' ? null : selectedBoard ? (
+      {selectedBoard && viewMode !== 'kanban' ? null : selectedBoard ? (
         <DynamicKanbanBoard
           board={selectedBoard}
           leads={filteredLeads}

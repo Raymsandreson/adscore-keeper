@@ -3578,7 +3578,7 @@ const ActivitiesPage = () => {
                     const c = countByField('assigned_to', m.user_id);
                     const isSelected = filterAssignee.includes(m.user_id);
                     return (
-                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => viewMode === 'blocks' ? setFilterAssignee(isSelected ? [] : [m.user_id]) : toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
+                      <CommandItem key={m.user_id} value={`${m.full_name || 'Sem nome'} ${m.user_id}`} onSelect={() => viewMode === 'blocks' ? setFilterAssignee(isSelected ? [] : [m.user_id]) : toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
                         <span className="ml-2 flex gap-1 text-[10px]">
@@ -3633,7 +3633,7 @@ const ActivitiesPage = () => {
                     const c = countByField('created_by', remapToExternalSync(m.user_id) || m.user_id);
                     const isSelected = filterCreatedBy.includes(m.user_id);
                     return (
-                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterCreatedBy, filterCreatedBy, m.user_id)}>
+                      <CommandItem key={m.user_id} value={`${m.full_name || 'Sem nome'} ${m.user_id}`} onSelect={() => toggleFilter(setFilterCreatedBy, filterCreatedBy, m.user_id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
                         <span className="ml-2 flex gap-1 text-[10px]">
@@ -3887,7 +3887,7 @@ const ActivitiesPage = () => {
                     const ct = countByField('contact_id', c.id);
                     const isSelected = filterContact.includes(c.id);
                     return (
-                      <CommandItem key={c.id} value={c.full_name} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
+                      <CommandItem key={c.id} value={`${c.full_name} ${c.id}`} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{c.full_name}</span>
                         {(ct.open > 0 || ct.done > 0) && (
@@ -4648,9 +4648,10 @@ const ActivitiesPage = () => {
                       <div className="max-h-[400px] overflow-y-auto p-2">
                         {(() => {
                           const baseActivities = displayedActivities;
+                          const assignable = filterAssignableMembers(teamMembers);
                           const selectedMembers = filterAssignee.length > 0
-                            ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
-                            : teamMembers.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
+                            ? assignable.filter(m => filterAssignee.includes(m.user_id))
+                            : assignable.filter(m => baseActivities.some(a => a.assigned_to === m.user_id));
 
                           if (selectedMembers.length === 0) {
                             return <div className="text-xs text-muted-foreground p-2">Nenhuma atividade para o filtro atual.</div>;

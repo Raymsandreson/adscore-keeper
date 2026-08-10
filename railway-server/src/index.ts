@@ -81,6 +81,8 @@ import { handler as performanceCoach } from './functions/performance-coach';
 import { handler as extractAcordoFromAta } from './functions/extract-acordo-from-ata';
 import { handler as jmDocumentoUrl } from './functions/jm-documento-url';
 import { handler as telaoNarrar } from './functions/telao-narrar';
+import { handler as celcoinOpenFinance } from './functions/celcoin-open-finance';
+import { handler as updateProfileAvatar } from './functions/update-profile-avatar';
 
 
 
@@ -156,6 +158,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'extract-acordo-from-ata': extractAcordoFromAta,
   'jm-documento-url': jmDocumentoUrl,
   'telao-narrar': telaoNarrar,
+  'celcoin-open-finance': celcoinOpenFinance, // Open Finance/Celcoin — aqui e não em edge por causa do mTLS
+  'update-profile-avatar': updateProfileAvatar, // foto de perfil — RLS do Externo barra o navegador, precisa de service role
 };
 
 const app = express();

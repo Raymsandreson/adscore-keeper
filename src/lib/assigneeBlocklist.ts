@@ -32,6 +32,20 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   // fazia a equipe atribuir atividade na pessoa errada — 20 atividades pararam
   // aí, 2 delas com as DUAS como co-responsáveis. Removida em 06/08/2026.
   'f0a5dad8-5c5e-44f2-82b9-d8b9f022bb0c', // KEILANE DE LIMA TEIXEIRA
+  // Conta duplicada da Maria Lydia, criada 2 dias antes da real e nunca usada
+  // para logar (0 created_by, 0 updated_by). Existe só no Cloud — nem profile
+  // no Externo, nem linha no auth_uuid_mapping. Estava em org_user_status com
+  // active=false desde 24/07/2026 e mesmo assim recebeu mais 5 atividades: quem
+  // tira do seletor é esta lista, não o active. As 42 referências (7 atividades,
+  // 23 co-assessorias, 8 notificações, 3 menções, 1 processo) foram migradas
+  // para a conta real fdb5c9af em 10/08/2026.
+  '2dbfb8c2-debc-4995-ada8-f3c2b217f1fc', // Maria Lydia Ribeiro (marialydia.nr@mail.com)
+  // Segunda conta da Maria Clara Nunes, nunca usada para logar (0 created_by,
+  // 0 updated_by). Era o alvo do INSS_CASO_DEFAULT em processAssignment.ts, então
+  // recebia as atividades automáticas de "Benefício INSS" de caso CASO sem que
+  // ninguém as visse — 10 pendentes de 05/05 a 10/08, migradas para o José
+  // Francisco em 10/08/2026 junto com a troca do UUID padrão.
+  '1e488175-be0a-4726-a80f-1b00cf89cfb3', // Maria Clara Nunes (mariclaramilanex@gmail.com)
 ]);
 
 export function filterAssignableMembers<T extends { user_id: string }>(members: T[]): T[] {

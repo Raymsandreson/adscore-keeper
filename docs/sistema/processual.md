@@ -132,6 +132,36 @@ Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparand
 
 ---
 
+## Visitas das assistentes sociais — Leads Trabalhista → visão **Visitas**
+
+**Onde fica**: menu **Leads Trabalhista** (`/leads?cat=trabalhista`), terceiro botão do alternador de visão, ao lado de kanban e lista (`?view=visitas`). O calendário respeita o **funil selecionado** — mostra só as visitas dos leads daquele board, igual ao kanban e à lista ao lado. O botão só aparece no Trabalhista; no Previdenciário a visão nem existe (e quem chegar nela por estado salvo cai de volta no kanban).
+
+A rota `/visitas` continua respondendo para link direto e, sem board, mostra a agenda de todos os funis. Ela não está no menu: o caminho do dia a dia é o botão dentro do Trabalhista.
+
+**Propósito**: calendário das visitas domiciliares feitas pelas assistentes sociais parceiras. Cada agendamento mostra **data e horário**, o **lead a ser visitado** e a **assistente social responsável**, além de local (endereço/cidade/UF), status e observações.
+
+Antes desta tela (ago/2026) a visita só existia como texto em atividade ("direcionar casos para as ass. sociais", "alinhar as visitas do Renan no Paraná"): não havia como ver a semana, saber quem visita quem, nem o que já foi realizado.
+
+- Visões **Semana** (segunda a domingo — visita em fim de semana é comum e não pode ficar fora da grade), **Mês** e **Lista**.
+- Cada assistente social recebe uma **cor fixa**, derivada do nome, repetida em todas as visões: a semana é lida por pessoa.
+- Busca por lead, assistente social ou cidade. Filtros: assistente social, status e UF.
+- Status: Agendada, Confirmada, Realizada, Remarcada, Cancelada. Cancelada aparece riscada, sem sumir da agenda.
+- "Agendar visita" abre o formulário; clicar no `+` de um dia (ou na célula do mês) já vem com a data preenchida.
+- Clique no card — edita o agendamento. "abrir lead" — abre o lead em painel lateral por cima da agenda, direto na aba Visitas.
+- Setas ‹ › e "Hoje" — navegação de período (semana a semana ou mês a mês).
+
+**Assistente social**: são parceiras **externas**, sem perfil no sistema. O seletor busca em Contatos (mostrando primeiro quem tem profissão de serviço social ou classificação de parceira) e grava o vínculo; quem ainda não está cadastrada é agendada digitando o nome ("Usar '<nome>'"), sem travar a operação. O nome fica gravado nos dois casos.
+
+**Dentro do lead**: aba **Visitas** no cadastro do lead lista as visitas daquele lead (mais recente primeiro) e usa o mesmo formulário — o que se edita lá aparece no calendário e vice-versa. O endereço da visita já cadastrado no lead (aba Local) entra pré-preenchido no primeiro agendamento e pode ser trocado.
+
+**Onde ficam os dados**: tabela `social_visits` no Supabase externo (RLS habilitado, acesso só autenticado). Exclusão é soft delete — visita realizada não some do histórico por engano.
+
+**Recorte por funil**: o filtro de board é feito **no banco**, via `select('*, leads!inner(board_id)')` + `eq('leads.board_id', …)`. Não dá para mandar a lista de ids no `in()`: só o board "Acidente de Trabalho" tem ~4,4 mil leads e a URL estouraria.
+
+**Fluxo recomendado**: visão Semana → `+` no dia → escolher lead e assistente social → salvar. Depois da visita, abrir o card e mudar o status para Realizada.
+
+---
+
 ## Acompanhamento Processual — `/processual/acompanhamento`
 
 **Propósito**: dashboard de eficiência do fluxo jurídico (dados do WhatsJUD): SLAs de tramitação por fase, latência de atualizações, transições de status, gargalo fechamento→protocolo e atividades atrasadas do dia.

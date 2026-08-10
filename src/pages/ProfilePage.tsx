@@ -1,17 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthContext } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone } from "lucide-react";
+import { ArrowLeft, User, Mail, Save, Loader2, Scale, Phone, Smartphone, KeyRound, Camera, Trash2 } from "lucide-react";
 import { db, authClient } from "@/integrations/supabase";
 import { remapToExternal } from "@/integrations/supabase/uuid-remap";
 import { getMyAllowedInstanceIds } from "@/integrations/supabase/permissions";
+import { cloudFunctions } from "@/lib/functionRouter";
+import { useMyAvatar, setMyAvatarUrl } from "@/hooks/useMyAvatar";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
@@ -28,6 +30,45 @@ const GENDER_OPTIONS = [
   { value: 'female', label: 'Feminino' },
 ];
 
+// Foto de perfil: o servidor grava 512px, então mandar mais que 1024 é só
+// tráfego. Foto de celular passa de 5MB e estouraria o limite do Railway (10MB
+// com o base64 inflando ~33%) — por isso a redução acontece antes do envio.
+const AVATAR_MAX_UPLOAD_PX = 1024;
+const AVATAR_MAX_FILE_BYTES = 15 * 1024 * 1024;
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(reader.error || new Error('Falha ao ler o arquivo'));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
+ * Reduz a imagem no navegador. Se o browser não tiver createImageBitmap (ou a
+ * imagem não decodificar), devolve o arquivo original — o servidor redimensiona
+ * de qualquer jeito; aqui é só economia de banda.
+ */
+async function downscaleImage(file: File, maxPx: number): Promise<string> {
+  try {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as any);
+    const scale = Math.min(1, maxPx / Math.max(bitmap.width, bitmap.height));
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('canvas indisponível');
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close?.();
+    return canvas.toDataURL('image/jpeg', 0.9);
+  } catch {
+    return fileToDataUrl(file);
+  }
+}
+
 const ProfilePage = () => {
   const navigate = useNavigate();
   const { user, profile, updateProfile, loading } = useAuthContext();
@@ -41,6 +82,9 @@ const ProfilePage = () => {
   const [instances, setInstances] = useState<Array<{ id: string; instance_name: string }>>([]);
   const [loadingInstances, setLoadingInstances] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const avatarUrl = useMyAvatar(user?.id);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadInstances = async () => {
@@ -101,6 +145,58 @@ const ProfilePage = () => {
         .slice(0, 2);
     }
     return user?.email?.slice(0, 2).toUpperCase() || 'U';
+  };
+
+  const handleAvatarPick = async (file: File | undefined | null) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecione uma imagem (JPG, PNG ou WEBP)');
+      return;
+    }
+    if (file.size > AVATAR_MAX_FILE_BYTES) {
+      toast.error('Imagem muito grande', { description: 'O limite é 15MB.' });
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const image_base64 = await downscaleImage(file, AVATAR_MAX_UPLOAD_PX);
+      const { data, error } = await cloudFunctions.invoke<{ success: boolean; avatar_url: string | null; error?: string }>(
+        'update-profile-avatar',
+        { body: { image_base64 } },
+      );
+      if (error || !data?.success) {
+        toast.error('Não foi possível salvar a foto', { description: data?.error || error?.message });
+        return;
+      }
+      setMyAvatarUrl(data.avatar_url);
+      toast.success('Foto de perfil atualizada');
+    } catch (e: any) {
+      toast.error('Não foi possível salvar a foto', { description: e?.message });
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const handleAvatarRemove = async () => {
+    setIsUploadingAvatar(true);
+    try {
+      const { data, error } = await cloudFunctions.invoke<{ success: boolean; error?: string }>(
+        'update-profile-avatar',
+        { body: { remove: true } },
+      );
+      if (error || !data?.success) {
+        toast.error('Não foi possível remover a foto', { description: data?.error || error?.message });
+        return;
+      }
+      setMyAvatarUrl(null);
+      toast.success('Foto removida');
+    } catch (e: any) {
+      toast.error('Não foi possível remover a foto', { description: e?.message });
+    } finally {
+      setIsUploadingAvatar(false);
+    }
   };
 
   const handleSave = async () => {
@@ -167,12 +263,61 @@ const ProfilePage = () => {
         {/* Profile Card */}
         <Card>
           <CardHeader className="text-center pb-2">
-            <div className="flex justify-center mb-4">
-              <Avatar className="h-24 w-24">
-                <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
-                  {getInitials()}
-                </AvatarFallback>
-              </Avatar>
+            <div className="flex flex-col items-center gap-3 mb-4">
+              {/* Sem overlay em cima do avatar: os controles ficam abaixo, pra
+                  não cobrir nada (princípio de interface "nada sobreposto"). */}
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={isUploadingAvatar}
+                className="rounded-full ring-offset-2 ring-offset-background transition hover:ring-2 hover:ring-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-60"
+                aria-label="Alterar foto de perfil"
+              >
+                <Avatar className="h-24 w-24">
+                  {avatarUrl ? <AvatarImage src={avatarUrl} alt={profile?.full_name || 'Foto de perfil'} /> : null}
+                  <AvatarFallback className="bg-primary text-primary-foreground text-2xl">
+                    {isUploadingAvatar ? <Loader2 className="h-6 w-6 animate-spin" /> : getInitials()}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+
+              <input
+                ref={avatarInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                className="hidden"
+                onChange={(e) => handleAvatarPick(e.target.files?.[0])}
+              />
+
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => avatarInputRef.current?.click()}
+                  disabled={isUploadingAvatar}
+                >
+                  {isUploadingAvatar ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4 mr-2" />
+                  )}
+                  {avatarUrl ? 'Trocar foto' : 'Adicionar foto'}
+                </Button>
+                {avatarUrl ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleAvatarRemove}
+                    disabled={isUploadingAvatar}
+                    className="text-muted-foreground"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    Remover
+                  </Button>
+                ) : null}
+              </div>
             </div>
             <CardTitle>{profile?.full_name || "Usuário"}</CardTitle>
             <CardDescription>{user?.email}</CardDescription>
@@ -342,6 +487,20 @@ const ProfilePage = () => {
                   Salvar alterações
                 </>
               )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Security */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Segurança</CardTitle>
+            <CardDescription>Gerencie o acesso à sua conta</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" onClick={() => navigate('/reset-password')}>
+              <KeyRound className="h-4 w-4 mr-2" />
+              Alterar senha
             </Button>
           </CardContent>
         </Card>

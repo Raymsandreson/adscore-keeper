@@ -46,12 +46,16 @@ import {
   Send,
   Eye,
   MessageSquare,
+  KeyRound,
 } from 'lucide-react';
 import { useTeamMembers } from '@/hooks/useTeamMembers';
 import { useUserRole } from '@/hooks/useUserRole';
 import { MODULE_DEFINITIONS, AccessLevel, useModulePermissions } from '@/hooks/useModulePermissions';
 import { MemberDetailSheet } from './MemberDetailSheet';
 import { ReassignActivitiesDialog } from './ReassignActivitiesDialog';
+import { DirectAccessForm } from './DirectAccessForm';
+import { TempPasswordDialog } from './TempPasswordDialog';
+import { generateTempPassword } from '@/lib/tempPassword';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -87,6 +91,9 @@ export function TeamManagement() {
   const [sendingNotifUserId, setSendingNotifUserId] = useState<string | null>(null);
   const [showPermissions, setShowPermissions] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<string>('');
+  const [inviteMode, setInviteMode] = useState<'invite' | 'direct'>('invite');
+  const [resettingUserId, setResettingUserId] = useState<string | null>(null);
+  const [passwordResult, setPasswordResult] = useState<{ email: string; password: string } | null>(null);
 
   // Access profiles
   const [accessProfiles, setAccessProfiles] = useState<Array<{
@@ -201,8 +208,29 @@ export function TeamManagement() {
 
       const instanceIds = role === 'admin' ? [] : selectedInstances;
 
-      await inviteMember(email, role, modulePerms, instanceIds);
-      toast.success('Convite enviado com permissões configuradas!');
+      const invitedEmail = email.toLowerCase().trim();
+      const { emailSent, emailError } = await inviteMember(
+        email,
+        role,
+        modulePerms,
+        instanceIds,
+        selectedProfileId,
+      );
+      if (emailSent) {
+        toast.success('Convite enviado com permissões configuradas!');
+      } else {
+        toast.warning('Convite criado, mas o e-mail NÃO foi enviado', {
+          description: `${emailError || 'Falha no serviço de e-mail'}. Avise ${invitedEmail} por outro canal.`,
+          duration: 15000,
+          action: {
+            label: 'Copiar e-mail',
+            onClick: () => {
+              navigator.clipboard.writeText(invitedEmail);
+              toast.success('E-mail copiado');
+            },
+          },
+        });
+      }
       setEmail('');
       setSelectedProfileId('');
       setShowPermissions(false);
@@ -214,6 +242,32 @@ export function TeamManagement() {
       toast.error(error.message || 'Erro ao enviar convite');
     } finally {
       setInviting(false);
+    }
+  };
+
+  const handleResetPassword = async (member: TeamMember) => {
+    if (!member.email) {
+      toast.error('Membro sem e-mail cadastrado');
+      return;
+    }
+    setResettingUserId(member.user_id);
+    try {
+      const newPassword = generateTempPassword();
+      const { data, error } = await cloudFunctions.invoke('create-cloud-user', {
+        body: {
+          email: member.email,
+          password: newPassword,
+          full_name: member.full_name || '',
+        },
+      });
+      if (error) throw error;
+      if ((data as any)?.error) throw new Error((data as any).error);
+      setPasswordResult({ email: member.email, password: newPassword });
+      toast.success('Senha provisória definida e login liberado');
+    } catch (e: any) {
+      toast.error(e?.message || 'Erro ao definir senha provisória');
+    } finally {
+      setResettingUserId(null);
     }
   };
 
@@ -313,14 +367,47 @@ export function TeamManagement() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <UserPlus className="h-5 w-5" />
-            Convidar Membro
+            {inviteMode === 'invite' ? 'Convidar Membro' : 'Criar acesso direto'}
           </CardTitle>
           <CardDescription>
-            Envie um convite por email. O novo membro receberá acesso ao fazer cadastro.
+            {inviteMode === 'invite'
+              ? 'Envie um convite por email. O novo membro receberá acesso ao fazer cadastro.'
+              : 'Cria a conta na hora, com senha provisória — sem depender de e-mail.'}
           </CardDescription>
+          {isAdmin && (
+          <div className="flex items-center gap-1.5 pt-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={inviteMode === 'invite' ? 'default' : 'outline'}
+              onClick={() => setInviteMode('invite')}
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Convite por e-mail
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={inviteMode === 'direct' ? 'default' : 'outline'}
+              onClick={() => setInviteMode('direct')}
+            >
+              <KeyRound className="h-4 w-4 mr-2" />
+              Criar acesso direto
+            </Button>
+          </div>
+          )}
         </CardHeader>
         <CardContent>
+          {isAdmin && inviteMode === 'direct' ? (
+            <DirectAccessForm
+              accessProfiles={accessProfiles as any}
+              whatsappInstances={whatsappInstances}
+              onCreated={refetch}
+            />
+          ) : (
+          <>
           <div className="flex flex-col sm:flex-row gap-4">
+
             <div className="flex-1">
               <Label>Email</Label>
               <Input
@@ -422,6 +509,8 @@ export function TeamManagement() {
                 </div>
               )}
             </div>
+          )}
+          </>
           )}
         </CardContent>
       </Card>
@@ -562,6 +651,21 @@ export function TeamManagement() {
                           <MessageSquare className="h-4 w-4" />
                         )}
                       </Button>
+                      {isAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          title="Definir senha provisória / liberar login"
+                          disabled={resettingUserId === member.user_id}
+                          onClick={() => handleResetPassword(member)}
+                        >
+                          {resettingUserId === member.user_id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <KeyRound className="h-4 w-4" />
+                          )}
+                        </Button>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
@@ -604,6 +708,14 @@ export function TeamManagement() {
         onConfirm={async () => {
           if (removeTarget) await handleRemove(removeTarget.user_id);
         }}
+      />
+
+      <TempPasswordDialog
+        open={!!passwordResult}
+        onOpenChange={(o) => { if (!o) setPasswordResult(null); }}
+        email={passwordResult?.email || ''}
+        password={passwordResult?.password || ''}
+        title="Senha provisória definida"
       />
     </div>
   );

@@ -103,8 +103,10 @@ export const LEAD_FIELD_REGISTRY: LeadFieldDef[] = [
   // ===== LOCATION =====
   { key: '__auto_location', label: 'Botão: Detectar localização', defaultTab: 'location', defaultOrder: 1, fullWidth: true,
     render: (c) => (<Button type="button" variant="outline" size="sm" onClick={c.onAutoLocation} disabled={c.geoLoading} className="w-full gap-2 border-dashed">{c.geoLoading ? <Loader2 className="h-4 w-4 animate-spin"/> : <LocateFixed className="h-4 w-4"/>}{c.geoLoading ? 'Detectando localização...' : 'Usar minha localização atual'}</Button>) },
+  // CEP da visita é opcional em todos os funis (ago/2026) — quem pede o CEP é o
+  // dialog da tarefa de Marketing, não o salvamento do lead.
   { key: 'visit_cep', label: 'CEP da Visita', defaultTab: 'location', defaultOrder: 2,
-    render: (c) => (<div><Label>CEP da Visita {c.formData.visit_city && <span className="text-destructive">*</span>}</Label><Input value={c.formData.visit_cep || ''} onChange={(e)=>u('visit_cep',c)(e.target.value)} placeholder="00000-000" inputMode="numeric" maxLength={9}/></div>) },
+    render: (c) => (<div><Label>CEP da Visita</Label><Input value={c.formData.visit_cep || ''} onChange={(e)=>u('visit_cep',c)(e.target.value)} placeholder="00000-000" inputMode="numeric" maxLength={9}/></div>) },
   { key: 'visit_state', label: 'Estado da Visita', defaultTab: 'location', defaultOrder: 3,
     render: (c) => (<div><Label>Estado da Visita</Label><Select value={c.formData.visit_state} onValueChange={c.onStateChange}><SelectTrigger><SelectValue placeholder="Selecione..."/></SelectTrigger><SelectContent>{c.states.map(s=>(<SelectItem key={s.sigla} value={s.sigla}>{s.sigla} - {s.nome}</SelectItem>))}</SelectContent></Select></div>) },
   { key: 'visit_city', label: 'Cidade da Visita', defaultTab: 'location', defaultOrder: 4,

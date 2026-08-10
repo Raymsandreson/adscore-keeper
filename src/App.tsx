@@ -156,6 +156,7 @@ const BpcFunnelDetailPage = lazyRetry(() => import("./pages/BpcFunnelDetailPage"
 const WorkflowProgressPage = lazyRetry(() => import("./pages/WorkflowProgressPage"), "WorkflowProgressPage");
 const ProfilePage = lazyRetry(() => import("./pages/ProfilePage"), "ProfilePage");
 const FinancePage = lazyRetry(() => import("./pages/FinancePage"), "FinancePage");
+const OpenFinanceCallbackPage = lazyRetry(() => import("./pages/OpenFinanceCallbackPage"), "OpenFinanceCallbackPage");
 const ExpenseFormPage = lazyRetry(() => import("./pages/ExpenseFormPage"), "ExpenseFormPage");
 const CallsPage = lazyRetry(() => import("./pages/CallsPage"), "CallsPage");
 const ServiceRatingsPage = lazyRetry(() => import("./pages/ServiceRatingsPage"), "ServiceRatingsPage");
@@ -177,6 +178,7 @@ const CostOrganizationPage = lazyRetry(() => import("./pages/CostOrganizationPag
 const ProcessTrackingPage = lazyRetry(() => import("./pages/ProcessTrackingPage"), "ProcessTrackingPage");
 const ProcessesPage = lazyRetry(() => import("./pages/ProcessesPage"), "ProcessesPage");
 const HearingsPage = lazyRetry(() => import("./pages/HearingsPage"), "HearingsPage");
+const VisitasPage = lazyRetry(() => import("./pages/VisitasPage"), "VisitasPage");
 const BpcAutistaPage = lazyRetry(() => import("./pages/BpcAutistaPage"), "BpcAutistaPage");
 const AcompanhamentoProcessualPage = lazyRetry(() => import("./pages/AcompanhamentoProcessualPage"), "AcompanhamentoProcessualPage");
 const RevisaoAcordosPage = lazyRetry(() => import("./pages/RevisaoAcordosPage"), "RevisaoAcordosPage");
@@ -350,6 +352,8 @@ function SidebarLayout() {
                 <Route path="/workflow-progress" element={<ProtectedRoute><WorkflowProgressPage /></ProtectedRoute>} />
                 <Route path="/profile" element={<ProtectedRoute><ProfilePage /></ProtectedRoute>} />
                 <Route path="/finance" element={<ProtectedRoute><FinancePage /></ProtectedRoute>} />
+                {/* Retorno do banco no Open Finance — tela de passagem, devolve pra origem */}
+                <Route path="/openfinance/callback" element={<ProtectedRoute><OpenFinanceCallbackPage /></ProtectedRoute>} />
                 <Route path="/calls" element={<ProtectedRoute><CallsPage /></ProtectedRoute>} />
                 <Route path="/avaliacoes" element={<ProtectedRoute><ServiceRatingsPage /></ProtectedRoute>} />
                 <Route path="/banco-horas" element={<ProtectedRoute><BancoHorasPage /></ProtectedRoute>} />
@@ -379,6 +383,7 @@ function SidebarLayout() {
                 <Route path="/cost-organization" element={<ProtectedRoute><CostOrganizationPage /></ProtectedRoute>} />
         <Route path="/process-tracking" element={<ProtectedRoute><ProcessTrackingPage /></ProtectedRoute>} />
         <Route path="/hearings" element={<ProtectedRoute><HearingsPage /></ProtectedRoute>} />
+        <Route path="/visitas" element={<ProtectedRoute><VisitasPage /></ProtectedRoute>} />
         <Route path="/processual/bpc-autista" element={<ProtectedRoute><BpcAutistaPage /></ProtectedRoute>} />
         <Route path="/processual/acompanhamento" element={<ProtectedRoute><AcompanhamentoProcessualPage /></ProtectedRoute>} />
         <Route path="/processual/revisao-acordos" element={<ProtectedRoute><RevisaoAcordosPage /></ProtectedRoute>} />

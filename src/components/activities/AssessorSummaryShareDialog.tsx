@@ -7,6 +7,7 @@ import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import html2canvas from 'html2canvas';
 import { LeadActivity } from '@/hooks/useLeadActivities';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 
 interface TeamMember {
   user_id: string;
@@ -64,9 +65,12 @@ export function AssessorSummaryShareDialog({
   }, [selectedCalDays]);
 
   const rows: AssessorRow[] = useMemo(() => {
+    // Sem o blocklist, contas duplicadas/inativas viram linha própria no resumo
+    // e a mesma pessoa aparece duas vezes com o nome idêntico.
+    const assignable = filterAssignableMembers(teamMembers);
     const selectedMembers = filterAssignee.length > 0
-      ? teamMembers.filter(m => filterAssignee.includes(m.user_id))
-      : teamMembers.filter(m => activities.some(a => a.assigned_to === m.user_id));
+      ? assignable.filter(m => filterAssignee.includes(m.user_id))
+      : assignable.filter(m => activities.some(a => a.assigned_to === m.user_id));
 
     return selectedMembers
       .map(member => {

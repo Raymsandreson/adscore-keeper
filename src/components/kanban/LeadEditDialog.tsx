@@ -147,6 +147,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import LeadDocumentsTab from '@/components/leads/LeadDocumentsTab';
+const LeadVisitsTab = lazy(() => import('@/components/leads/LeadVisitsTab').then(m => ({ default: m.LeadVisitsTab })));
 import { OpenWhatsAppLeadButton } from '@/components/leads/OpenWhatsAppLeadButton';
 import { GroupContactSyncDialog } from '@/components/kanban/GroupContactSyncDialog';
 import { LeadGroupSearchDialog } from '@/components/kanban/LeadGroupSearchDialog';
@@ -1472,13 +1473,8 @@ ${scrapeData.content || ''}
       return;
     }
 
-    // CEP da visita: obrigatório quando há cidade da visita — é o que o Marketing
-    // usa para segmentar anúncio de captação de parceiros naquela região.
-    if (visitCity && isFieldVisible('visit_cep') && visitCep.replace(/\D/g, '').length !== 8) {
-      toast.error('Informe o CEP da visita (8 dígitos) — obrigatório quando a cidade da visita está preenchida.');
-      setActiveTab('location');
-      return;
-    }
+    // CEP da visita é opcional em todos os funis (ago/2026): quem pede o CEP é o
+    // dialog da tarefa de Marketing, não o salvamento do lead.
 
     // Validação obrigatória: resultado do lead é obrigatório quando o lead está/vai para etapa de fechamento.
     {
@@ -2345,6 +2341,10 @@ ${scrapeData.content || ''}
                   {tab.label}
                 </TabsTrigger>
               ))}
+              <TabsTrigger value="visitas" className="text-xs py-1.5 px-2.5">
+                <Calendar className="h-3 w-3 mr-1" />
+                Visitas
+              </TabsTrigger>
               <TabsTrigger value="documents" className="text-xs py-1.5 px-2.5">
                 <FileText className="h-3 w-3 mr-1" />
                 Documentos
@@ -3431,7 +3431,7 @@ ${scrapeData.content || ''}
               <div className="grid grid-cols-2 gap-4">
                 {isFieldVisible('visit_cep') && (<div>
                   <Label className="flex items-center gap-2">
-                    CEP da Visita {visitCity && <span className="text-destructive">*</span>}
+                    CEP da Visita
                     {loadingCep && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
                   </Label>
                   <Input
@@ -3772,6 +3772,20 @@ ${scrapeData.content || ''}
               {activeTab === 'financeiro' && (
                 <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
                   <LeadFinancialsTab leadId={lead.id} />
+                </Suspense>
+              )}
+            </TabsContent>
+
+            <TabsContent value="visitas" className="mt-0">
+              {activeTab === 'visitas' && lead && (
+                <Suspense fallback={<div className="flex items-center justify-center p-8"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
+                  <LeadVisitsTab
+                    leadId={lead.id}
+                    leadName={(currentLead as any)?.lead_name || lead.lead_name || null}
+                    visitAddress={visitAddress}
+                    visitCity={visitCity}
+                    visitState={visitState}
+                  />
                 </Suspense>
               )}
             </TabsContent>

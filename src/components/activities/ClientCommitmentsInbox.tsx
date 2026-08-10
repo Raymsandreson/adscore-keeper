@@ -39,6 +39,7 @@ import { useClientCommitmentsInbox } from '@/hooks/useClientCommitmentsInbox';
 import { useConversationDisplayNames, conversationDisplayName } from '@/hooks/useConversationDisplayNames';
 import { ensureRemapCache, remapToCloudSync, remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOverdue } from '@/lib/clientCommitments';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import {
   groupByBucket, countByDay, countByOwner, commitmentDate, isCommitmentConverted, BUCKET_LABEL,
   type InboxCommitment,
@@ -610,7 +611,7 @@ export function ClientCommitmentsInbox({
               <SelectValue placeholder="Escolha quem tratou com o cliente" />
             </SelectTrigger>
             <SelectContent>
-              {teamOptions.filter((m) => m.full_name).map((m) => (
+              {filterAssignableMembers(teamOptions).filter((m) => m.full_name).map((m) => (
                 <SelectItem key={m.user_id} value={m.user_id} className="text-sm">
                   {m.full_name}
                   {resolvendo?.owner_user_id === m.user_id ? ' · responsável pelo caso' : ''}
@@ -646,7 +647,7 @@ export function ClientCommitmentsInbox({
               <SelectValue placeholder="Escolha quem passa a cobrar este cliente" />
             </SelectTrigger>
             <SelectContent>
-              {teamOptions.filter((m) => m.full_name).map((m) => (
+              {filterAssignableMembers(teamOptions).filter((m) => m.full_name).map((m) => (
                 <SelectItem key={m.user_id} value={m.user_id} className="text-sm">
                   {m.full_name}
                 </SelectItem>

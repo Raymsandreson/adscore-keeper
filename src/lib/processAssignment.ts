@@ -112,10 +112,16 @@ export function suggestPrevAssignee(
   return INSS_PREV_OPTIONS[idx] ?? null;
 }
 
-// Maria Clara (Cloud UUID) — atribuição padrão de INSS para títulos de CASO.
+// José Francisco (Cloud UUID) — atribuição padrão de INSS para títulos de CASO.
+//
+// Até 10/08/2026 apontava para '1e488175-be0a-4726-a80f-1b00cf89cfb3', a SEGUNDA
+// conta da Maria Clara Nunes Milanez Araújo — a que ela nunca usou para logar
+// (0 created_by, 0 updated_by). Toda atividade automática de INSS caía lá e
+// ninguém via: 10 pendentes empilharam de 05/05 a 10/08. Ao trocar este UUID,
+// conferir antes se a conta escolhida tem histórico próprio de uso.
 export const INSS_CASO_DEFAULT = {
-  userId: '1e488175-be0a-4726-a80f-1b00cf89cfb3',
-  userName: 'Maria Clara',
+  userId: 'e1849012-7d6b-49b9-a5e5-36a2332e6eb8',
+  userName: 'Jose Francisco Campos de Oliveira',
 };
 
 /**
@@ -243,7 +249,7 @@ export async function pickCaseAssigneeForNewCase(
  *    diante todo processo daquela trilha herda calado. Uma trilha nunca
  *    sobrescreve a outra.
  * 2. Fora do PREV, mapa fixo (Natasha, João Vitor, Wanessa, Abderaman).
- * 3. "Benefício INSS" em caso "CASO" → Maria Clara.
+ * 3. "Benefício INSS" em caso "CASO" → José Francisco.
  * 4. "Benefício INSS" em caso que não deu pra classificar → pergunta (item 1).
  * 5. Nada disso → fallback no criador.
  */
