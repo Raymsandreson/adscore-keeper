@@ -3578,7 +3578,7 @@ const ActivitiesPage = () => {
                     const c = countByField('assigned_to', m.user_id);
                     const isSelected = filterAssignee.includes(m.user_id);
                     return (
-                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => viewMode === 'blocks' ? setFilterAssignee(isSelected ? [] : [m.user_id]) : toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
+                      <CommandItem key={m.user_id} value={`${m.full_name || 'Sem nome'} ${m.user_id}`} onSelect={() => viewMode === 'blocks' ? setFilterAssignee(isSelected ? [] : [m.user_id]) : toggleFilter(setFilterAssignee, filterAssignee, m.user_id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
                         <span className="ml-2 flex gap-1 text-[10px]">
@@ -3633,7 +3633,7 @@ const ActivitiesPage = () => {
                     const c = countByField('created_by', remapToExternalSync(m.user_id) || m.user_id);
                     const isSelected = filterCreatedBy.includes(m.user_id);
                     return (
-                      <CommandItem key={m.user_id} value={m.full_name || m.user_id} onSelect={() => toggleFilter(setFilterCreatedBy, filterCreatedBy, m.user_id)}>
+                      <CommandItem key={m.user_id} value={`${m.full_name || 'Sem nome'} ${m.user_id}`} onSelect={() => toggleFilter(setFilterCreatedBy, filterCreatedBy, m.user_id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{m.full_name || 'Sem nome'}</span>
                         <span className="ml-2 flex gap-1 text-[10px]">
@@ -3887,7 +3887,7 @@ const ActivitiesPage = () => {
                     const ct = countByField('contact_id', c.id);
                     const isSelected = filterContact.includes(c.id);
                     return (
-                      <CommandItem key={c.id} value={c.full_name} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
+                      <CommandItem key={c.id} value={`${c.full_name} ${c.id}`} onSelect={() => toggleFilter(setFilterContact, filterContact, c.id)}>
                         <Check className={cn("mr-2 h-3.5 w-3.5", isSelected ? "opacity-100" : "opacity-0")} />
                         <span className="flex-1 truncate">{c.full_name}</span>
                         {(ct.open > 0 || ct.done > 0) && (
