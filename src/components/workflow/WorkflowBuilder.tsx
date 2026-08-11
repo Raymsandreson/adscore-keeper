@@ -95,6 +95,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PopMarcosSection } from './PopMarcosSection';
+import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 
 // Wrapper de drag-and-drop sortable com suporte a mouse E toque (celular).
 // Usa render-prop para não reestruturar o JSX aninhado existente: injeta
@@ -213,6 +214,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
+  // Marcos do POP em edição: alimentam o seletor de marco de cada resultado e o
+  // selo do estágio financeiro que aquele resultado implica. É a ponte
+  // resultado → marco → estágio, para não haver duas medições do mesmo eixo.
+  const { marcos: popMarcos, estagioPorMarco } = usePopMarcos(editingBoardId);
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
@@ -2117,12 +2122,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
 
                 {/* Resultados possíveis do POP (tipo status) + qual é o ESPERADO (sucesso). */}
                 <div className="mt-4 rounded-lg border p-3 space-y-3">
-                  <div className="text-sm font-semibold">🎯 Status possíveis do POP</div>
+                  <div className="text-sm font-semibold">🎯 Resultados possíveis do POP</div>
                   <p className="text-xs text-muted-foreground">
-                    Cadastre os status que um lead deste funil/POP pode ter (ex.: <em>Em andamento</em>,
-                    <em> Fechado</em>, <em>Recusado</em>). Marque o(s) <b>esperado(s)</b> — pode ser
-                    <b> mais de um</b> (ex.: <em>Acordo</em> ou <em>Procedência</em> ambos contam como
-                    sucesso). É o "sucesso"/objetivo final e vira o 1º critério do ranking do telão.
+                    Cadastre os resultados que um lead deste funil/POP pode ter (ex.:
+                    <em> Deferido</em>, <em>Acordo</em>, <em>Indeferido</em>). Marque o(s)
+                    <b> esperado(s)</b> — pode ser <b>mais de um</b> (ex.: <em>Acordo</em> ou
+                    <em> Procedência</em> ambos contam como sucesso). É o "sucesso"/objetivo final
+                    e vira o 1º critério do ranking do telão.
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    O resultado diz <b>como terminou juridicamente</b>. Ligando-o a um marco, o
+                    sistema deriva sozinho <b>onde está o dinheiro</b> — você não preenche estágio
+                    financeiro em lugar nenhum, ele é consequência.
                   </p>
 
                   <div className="space-y-2">
@@ -2152,14 +2163,23 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="__none__">Sem marco gatilho</SelectItem>
-                            <SelectItem value="sentenca_1grau">Sentença (1º grau)</SelectItem>
-                            <SelectItem value="acordo">Acordo homologado</SelectItem>
-                            <SelectItem value="acordao_2grau">Acórdão (2º grau)</SelectItem>
-                            <SelectItem value="acordao_superior">Acórdão (Superior)</SelectItem>
-                            <SelectItem value="transito_julgado">Trânsito em julgado</SelectItem>
-                            <SelectItem value="pagamento">Pagamento</SelectItem>
+                            {/* Lista os marcos DESTE POP. Antes era fixa em código e
+                                não acompanhava a régua — um POP com marcos próprios
+                                não tinha como apontar para eles. */}
+                            {popMarcos.map(m => (
+                              <SelectItem key={m.id} value={m.chave}>{m.rotulo}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
+                        {/* Estágio financeiro derivado do marco — informação, não campo. */}
+                        {r.marco && estagioPorMarco[r.marco] ? (
+                          <span
+                            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                            title="Estágio financeiro que este resultado implica, derivado do marco"
+                          >
+                            {ESTAGIO_LABEL[estagioPorMarco[r.marco]] || estagioPorMarco[r.marco]}
+                          </span>
+                        ) : null}
                         {formResultadoEsperadoIds.includes(r.id) && (
                           <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-emerald-500">esperado</span>
                         )}
@@ -2182,7 +2202,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     <Input
                       value={newResultadoLabel}
                       onChange={e => setNewResultadoLabel(e.target.value)}
-                      placeholder="Novo status (ex.: Em andamento, Fechado)"
+                      placeholder="Novo resultado (ex.: Deferido, Acordo, Indeferido)"
                       className="flex-1"
                       onKeyDown={e => {
                         if (e.key === 'Enter' && newResultadoLabel.trim()) {

@@ -2,44 +2,24 @@
 // Seção "Marcos do POP" dentro do editor do POP.
 //
 // POR QUE AQUI E NÃO NUMA TELA PRÓPRIA (decisão do usuário, 08/08/2026):
-// marco pertence ao POP, do mesmo jeito que fase, objetivo e passo. Ter uma
-// tela solta no menu para revisar acordo separava em dois lugares o que é uma
-// coisa só — o POP diz o que a equipe faz (fases, objetivos, passos) e o marco
-// diz onde o processo está (automático, via fonte). Os dois lados ficam juntos.
+// marco pertence ao POP, do mesmo jeito que fase, objetivo e passo. Mais que
+// isso — no desenho novo, cada FASE É UM MARCO: a fase diz onde o processo
+// está, e os objetivos e passos dentro dela dizem o que a equipe faz para
+// chegar lá. Um lado é automático (vem da fonte cadastrada), o outro é o
+// procedimento.
 //
-// A seção mostra a régua daquele POP e traz a revisão do que a IA leu nos
-// documentos dos processos DESTE POP.
+// O acordo é a exceção deliberada: ele acontece em qualquer ponto — antes da
+// audiência, depois do acórdão, no TST. Virar fase obrigaria a representar um
+// acordo no TST como passo atrás no fluxo. Por isso é RESULTADO do POP e marco
+// que atravessa a régua (pop_marcos.atravessa_fases).
 // =============================================================================
-import { useCallback, useEffect, useState } from 'react';
-import { db } from '@/integrations/supabase';
+import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AcordoRevisaoSheet } from '@/components/processual/AcordoRevisaoSheet';
 import { useAcordoExtracoes, type AcordoProcesso } from '@/hooks/useAcordoExtracoes';
-import { AlertTriangle, PanelRightOpen, Handshake } from 'lucide-react';
-
-interface PopMarco {
-  id: string;
-  chave: string;
-  rotulo: string;
-  ordem: number;
-  stage_id: string | null;
-  terminal: boolean;
-  eventual: boolean;
-  estagio_financeiro_sugerido: string | null;
-}
-
-const ESTAGIO_LABEL: Record<string, string> = {
-  PROJETADO: 'Projetado',
-  CONDENACAO: 'Condenação',
-  A_RECEBER: 'A receber',
-  VENCIDO: 'Vencido',
-  EM_EXECUCAO: 'Em execução',
-  DEPOSITADO_EM_JUIZO: 'Depositado em juízo',
-  PAGO: 'Pago',
-  INDEFERIDO: 'Indeferido',
-};
+import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
+import { AlertTriangle, PanelRightOpen, Handshake, FileText, Radio } from 'lucide-react';
 
 interface Props {
   boardId: string;
@@ -48,45 +28,9 @@ interface Props {
 }
 
 export function PopMarcosSection({ boardId, faseLabel }: Props) {
-  const [marcos, setMarcos] = useState<PopMarco[]>([]);
-  const [sinais, setSinais] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-  const [aberto, setAberto] = useState<AcordoProcesso | null>(null);
-
+  const { fases, atravessam, sinais, loading } = usePopMarcos(boardId);
   const { pendentes, aprovados, semPop, revisar, recarregar } = useAcordoExtracoes(boardId);
-
-  const carregar = useCallback(async () => {
-    setLoading(true);
-    try {
-      // `as any`: pop_marcos/pop_marco_sinais ainda não estão nos tipos gerados.
-      const { data: ms } = await (db as any)
-        .from('pop_marcos')
-        .select('id, chave, rotulo, ordem, stage_id, terminal, eventual, estagio_financeiro_sugerido')
-        .eq('board_id', boardId)
-        .order('ordem');
-
-      const lista = (ms || []) as PopMarco[];
-      setMarcos(lista);
-
-      if (lista.length) {
-        const { data: ss } = await (db as any)
-          .from('pop_marco_sinais')
-          .select('pop_marco_id')
-          .in('pop_marco_id', lista.map((m) => m.id));
-        const contagem: Record<string, number> = {};
-        for (const s of (ss || []) as { pop_marco_id: string }[]) {
-          contagem[s.pop_marco_id] = (contagem[s.pop_marco_id] || 0) + 1;
-        }
-        setSinais(contagem);
-      } else {
-        setSinais({});
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [boardId]);
-
-  useEffect(() => { void carregar(); }, [carregar]);
+  const [aberto, setAberto] = useState<AcordoProcesso | null>(null);
 
   if (loading) {
     return (
@@ -97,48 +41,77 @@ export function PopMarcosSection({ boardId, faseLabel }: Props) {
     );
   }
 
+  const linhaMarco = (m: (typeof fases)[number]) => {
+    const s = sinais[m.id] || { tpu: 0, documento: 0 };
+    const total = s.tpu + s.documento;
+    return (
+      <div key={m.id} className="flex items-start gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-sm">
+        <span className="mt-0.5 w-5 shrink-0 text-xs text-muted-foreground">{m.ordem}</span>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-medium">{m.rotulo}</span>
+            {m.terminal ? <Badge variant="secondary" className="text-[10px]">encerra</Badge> : null}
+            {m.atravessa_fases ? <Badge variant="outline" className="text-[10px]">atravessa as fases</Badge> : null}
+            {m.estagio_financeiro_sugerido ? (
+              <Badge className="text-[10px]">
+                {ESTAGIO_LABEL[m.estagio_financeiro_sugerido] || m.estagio_financeiro_sugerido}
+              </Badge>
+            ) : null}
+          </div>
+          <p className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+            {m.stage_id ? (faseLabel?.[m.stage_id] || m.stage_id) : 'sem fase'}
+            <span>·</span>
+            {total === 0 ? (
+              <span className="text-amber-600 dark:text-amber-500">
+                sem sinal — nunca vai disparar sozinho
+              </span>
+            ) : (
+              <>
+                {s.tpu > 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    <Radio className="h-3 w-3" /> {s.tpu} movimentação
+                  </span>
+                ) : null}
+                {s.documento > 0 ? (
+                  <span className="inline-flex items-center gap-1">
+                    <FileText className="h-3 w-3" /> {s.documento} documento
+                  </span>
+                ) : null}
+              </>
+            )}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="mt-4 rounded-lg border p-3 space-y-3">
       <div className="text-sm font-semibold">🚩 Marcos do POP</div>
       <p className="text-xs text-muted-foreground">
-        O marco diz <b>onde o processo está</b> — vem sozinho da fonte cadastrada
-        (movimentação, documento ou e-mail). A fase, os objetivos e os passos acima
-        dizem <b>o que a equipe faz</b> para chegar até ele. Marco <em>eventual</em> só
-        aparece na linha do processo se acontecer de fato.
+        Cada fase acima <b>é um marco</b>: ela diz <b>onde o processo está</b>, e vem
+        sozinha da fonte cadastrada (movimentação, documento ou e-mail). Os objetivos e
+        passos dentro da fase dizem <b>o que a equipe faz</b> para chegar até ela.
       </p>
 
-      {marcos.length === 0 ? (
+      {fases.length === 0 ? (
         <p className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
           Este POP ainda não tem régua de marcos cadastrada.
         </p>
       ) : (
-        <div className="space-y-1.5">
-          {marcos.map((m) => (
-            <div key={m.id} className="flex items-start gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-sm">
-              <span className="mt-0.5 w-5 shrink-0 text-xs text-muted-foreground">{m.ordem}</span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="font-medium">{m.rotulo}</span>
-                  {m.eventual ? <Badge variant="outline" className="text-[10px]">eventual</Badge> : null}
-                  {m.terminal ? <Badge variant="secondary" className="text-[10px]">encerra</Badge> : null}
-                  {m.estagio_financeiro_sugerido ? (
-                    <Badge className="text-[10px]">
-                      {ESTAGIO_LABEL[m.estagio_financeiro_sugerido] || m.estagio_financeiro_sugerido}
-                    </Badge>
-                  ) : null}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {m.stage_id ? (faseLabel?.[m.stage_id] || m.stage_id) : 'sem fase'}
-                  {' · '}
-                  {sinais[m.id]
-                    ? `${sinais[m.id]} sinal(is) de reconhecimento`
-                    : 'sem sinal — nunca vai disparar sozinho'}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <div className="space-y-1.5">{fases.map(linhaMarco)}</div>
       )}
+
+      {atravessam.length > 0 ? (
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium">Marcos que atravessam as fases</p>
+          <p className="text-xs text-muted-foreground">
+            Podem acontecer em qualquer ponto da régua, por isso não são fase —
+            aparecem como <b>resultado</b> do POP.
+          </p>
+          {atravessam.map(linhaMarco)}
+        </div>
+      ) : null}
 
       {/* Revisão do que a IA leu nos documentos dos processos DESTE POP. */}
       {(pendentes.length > 0 || aprovados.length > 0) && (
