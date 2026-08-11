@@ -14,10 +14,10 @@ import { useCallback, useEffect, useState } from 'react';
 import { db } from '@/integrations/supabase';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
-import { RefreshCw, FileText, Radio, AlertTriangle } from 'lucide-react';
+import { RefreshCw, FileText, Radio, AlertTriangle, Mail } from 'lucide-react';
 
 interface CapturaStatus {
-  fonte: 'escavador' | 'datajud';
+  fonte: 'escavador' | 'datajud' | 'email';
   descricao: string;
   total: number;
   concluidos: number;
@@ -88,10 +88,12 @@ export function CapturaStatusPanel() {
           <div key={l.fonte} className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="flex items-center gap-1.5 font-medium">
-                {l.fonte === 'escavador'
-                  ? <FileText className="h-3.5 w-3.5" />
+                {l.fonte === 'escavador' ? <FileText className="h-3.5 w-3.5" />
+                  : l.fonte === 'email' ? <Mail className="h-3.5 w-3.5" />
                   : <Radio className="h-3.5 w-3.5" />}
-                {l.fonte === 'escavador' ? 'Documentos (Escavador)' : 'Movimentações (DataJud)'}
+                {l.fonte === 'escavador' ? 'Documentos (Escavador)'
+                  : l.fonte === 'email' ? 'Avisos por e-mail'
+                  : 'Movimentações (DataJud)'}
               </span>
               <span className="tabular-nums text-muted-foreground">
                 {l.concluidos} de {l.total} · {l.pct}%
@@ -124,6 +126,9 @@ export function CapturaStatusPanel() {
                 </>
               ) : (
                 <>
+                  {/* No e-mail, a descrição diz DE QUAL CAIXA vem — é o que se
+                      quer saber ao olhar: tribunal ou INSS. */}
+                  {l.fonte === 'email' ? <span>{l.descricao}</span> : null}
                   <span>última entrega {hora(l.ultimo_concluido)}</span>
                   <span>sem custo</span>
                 </>
