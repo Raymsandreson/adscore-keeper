@@ -1751,18 +1751,124 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   // For in-app display: rewrite "@<number>" tokens back to "@Name" in group messages
-  // (the wire format carries the number; WhatsApp itself shows the name to recipients).
-  const mentionPhoneToName = (() => {
+  // (the wire format carries the number — telefone ou @lid; WhatsApp mostra o nome ao destinatário).
+  // Indexado pelo número cheio e pelos últimos 8 dígitos (tolerância ao "9" do BR).
+  const mentionNameByDigits = (() => {
     const m = new Map<string, string>();
-    for (const c of mentionCandidates) if (c.name && c.name !== c.phone) m.set(c.phone, c.name);
+    const add = (phone: string, name: string) => {
+      if (!phone || !name || name === phone) return;
+      if (!m.has(phone)) m.set(phone, name);
+      const suffix = phone.slice(-8);
+      if (suffix.length === 8 && !m.has(suffix)) m.set(suffix, name);
+    };
+    for (const c of mentionCandidates) add(c.phone, c.name);
+    for (const [phone, name] of Object.entries(groupPhoneNameMap)) add(phone, name);
     return m;
   })();
-  const displayMessageText = (text: string | null | undefined): string => {
-    if (!text || !isGroup || mentionPhoneToName.size === 0) return text || '';
-    return text.replace(/@(\d{8,15})/g, (full, num) => {
-      const name = mentionPhoneToName.get(num);
-      return name ? `@${name}` : full;
-    });
+
+  /**
+   * Resolve o número cru de uma menção (@telefone ou @lid) para nome + telefone real.
+   * Retorna null quando o roster ainda não conhece esse participante — aí o token fica
+   * como veio, porque inventar telefone a partir de um @lid criaria contato fantasma.
+   */
+  const resolveMention = (digits: string): { name: string | null; phone: string } | null => {
+    const viaLid = groupLidMap[digits];
+    if (viaLid?.phone) {
+      return { name: viaLid.name && viaLid.name !== viaLid.phone ? viaLid.name : null, phone: viaLid.phone };
+    }
+    const name = mentionNameByDigits.get(digits) || mentionNameByDigits.get(digits.slice(-8)) || null;
+    if (name) return { name, phone: digits };
+    return null;
+  };
+
+  /** Abre (ou cria, se ainda não existir) o contato de um participante no painel lateral. */
+  const openContactForPhone = async (phone: string, fallbackName?: string | null) => {
+    const normalizedPhone = phone.replace(/\D/g, '');
+    if (!normalizedPhone) return;
+    const last8 = normalizedPhone.slice(-8);
+
+    // Contatos vivem no banco Externo — usar `db`, não o Cloud `supabase`.
+    // É como procurar um cliente na agenda certa: estava abrindo a gaveta errada.
+    const { data: contact } = await db
+      .from('contacts')
+      .select('id')
+      .or(`phone.eq.${normalizedPhone},phone.ilike.%${last8}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (contact) {
+      onViewContact?.(contact.id);
+      return;
+    }
+
+    // Auto-cria contato já enriquecido com o nome do participante do grupo
+    const contactName = fallbackName && fallbackName !== normalizedPhone
+      ? fallbackName
+      : `Contato ${normalizedPhone}`;
+
+    const { data: { user: creator } } = await supabase.auth.getUser();
+    const { data: newContact, error } = await db
+      .from('contacts')
+      .insert({
+        full_name: contactName,
+        phone: normalizedPhone,
+        created_by: await remapToExternal(creator?.id),
+        action_source: 'whatsapp',
+        action_source_detail: 'Participante de grupo',
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('[group-contact] create contact failed:', error);
+      toast.error('Erro ao criar contato: ' + (error.message || ''));
+      return;
+    }
+
+    toast.success(`Contato "${contactName}" criado!`);
+    onViewContact?.(newContact.id);
+  };
+
+  /**
+   * Renderiza o corpo da mensagem trocando "@<número>" por "@Nome" clicável,
+   * que abre a aba lateral do formulário do contato. Mantém o realce da busca
+   * nos trechos de texto comum.
+   */
+  const renderMessageText = (text: string | null | undefined, outbound: boolean): React.ReactNode => {
+    const raw = text || '';
+    if (!raw) return null;
+    const plain = (chunk: string, key: string) =>
+      searchTerm ? <HighlightedText key={key} text={chunk} term={searchTerm} /> : <span key={key}>{chunk}</span>;
+    if (!isGroup) return plain(raw, 'all');
+
+    const nodes: React.ReactNode[] = [];
+    const re = /@(\d{8,20})/g;
+    let last = 0;
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(raw)) !== null) {
+      const resolved = resolveMention(match[1]);
+      if (!resolved) continue;
+      if (match.index > last) nodes.push(plain(raw.slice(last, match.index), `t${last}`));
+      const label = resolved.name || formatPhone(resolved.phone);
+      nodes.push(
+        <button
+          key={`m${match.index}`}
+          type="button"
+          className={cn(
+            "inline font-semibold hover:underline",
+            outbound ? "text-white underline decoration-white/50" : "text-blue-600 dark:text-blue-400"
+          )}
+          title={`Abrir contato · ${formatPhone(resolved.phone)}`}
+          onClick={(e) => { e.stopPropagation(); void openContactForPhone(resolved.phone, resolved.name); }}
+        >
+          @{label}
+        </button>
+      );
+      last = match.index + match[0].length;
+    }
+    if (nodes.length === 0) return plain(raw, 'all');
+    if (last < raw.length) nodes.push(plain(raw.slice(last), `t${last}`));
+    return nodes;
   };
 
   // Color assignment for group senders
@@ -4138,49 +4244,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   if (!sender.phone && !sender.name) return null;
                   const handleSenderClick = async () => {
                     if (!sender.phone) return;
-                    const normalizedPhone = sender.phone.replace(/\D/g, '');
-                    const last8 = normalizedPhone.slice(-8);
-
-                    // Contatos vivem no banco Externo — usar `db`, não o Cloud `supabase`.
-                    // É como procurar um cliente na agenda certa: estava abrindo a gaveta errada.
-                    const { data: contact } = await db
-                      .from('contacts')
-                      .select('id')
-                      .or(`phone.eq.${normalizedPhone},phone.ilike.%${last8}`)
-                      .limit(1)
-                      .maybeSingle();
-
-                    if (contact) {
-                      onViewContact?.(contact.id);
-                      return;
-                    }
-
-                    // Auto-cria contato já enriquecido com o nome do participante do grupo
-                    const contactName = sender.name && sender.name !== normalizedPhone
-                      ? sender.name
-                      : `Contato ${normalizedPhone}`;
-
-                    const { data: { user: creator } } = await supabase.auth.getUser();
-                    const { data: newContact, error } = await db
-                      .from('contacts')
-                      .insert({
-                        full_name: contactName,
-                        phone: normalizedPhone,
-                        created_by: await remapToExternal(creator?.id),
-                        action_source: 'whatsapp',
-                        action_source_detail: 'Participante de grupo',
-                      })
-                      .select('id')
-                      .single();
-
-                    if (error) {
-                      console.error('[group-sender] create contact failed:', error);
-                      toast.error('Erro ao criar contato: ' + (error.message || ''));
-                      return;
-                    }
-
-                    toast.success(`Contato "${contactName}" criado!`);
-                    onViewContact?.(newContact.id);
+                    await openContactForPhone(sender.phone, sender.name);
                   };
                   const isUnresolved = !sender.phone;
                   return (
@@ -4481,9 +4545,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       {msg.message_type === 'audio' && (
                         <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
                       )}
-                      {searchTerm
-                        ? <HighlightedText text={displayMessageText(msg.message_text)} term={searchTerm} />
-                        : displayMessageText(msg.message_text)}
+                      {renderMessageText(msg.message_text, msg.direction === 'outbound')}
                     </p>
                     <div className={cn(
                       "flex items-center gap-1 mt-1 transition-opacity",
