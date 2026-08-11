@@ -1,21 +1,28 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
-import { AlarmClock, ArrowLeftRight, CheckCircle2, Coffee, Hourglass, ListChecks, LogOut, Play } from 'lucide-react';
+import { AlarmClock, ArrowLeftRight, CheckCircle2, Coffee, Hourglass, ListChecks, LogOut, Play, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useTeamLeadership } from '@/hooks/useTeamLeadership';
 
 /**
- * Porteiro do expediente (ponto).
+ * Aviso de expediente (ponto) — NÃO é porteiro.
  *
- * Sem expediente aberto o sistema NÃO é utilizável: uma tela cheia bloqueia
- * tudo e mostra o POP de início de expediente. O único caminho para dentro é
- * bater o ponto (startShift), que já abre a contagem do dia no cronômetro.
+ * Sem expediente aberto, a tela cheia com o POP de início de expediente aparece
+ * uma vez e pode ser fechada no X. Foi porteiro até 11/08/2026: travava tudo e
+ * prendia quem só ia gerar uma procuração pelo WhatsApp fora de hora. Agora
+ * lembra e sai da frente — fechado, o sistema fica utilizável e o botão
+ * flutuante "Iniciar expediente" do cronômetro (canto inferior esquerdo,
+ * ActivityTimerOverlay) segue à mão pra bater o ponto a qualquer momento.
+ * O que NÃO mudou: fora do expediente nada é cronometrado.
  *
- * Quem NÃO é bloqueado:
- * - visitante sem sessão (senão a própria tela de login ficaria travada);
+ * O aviso dispensado não volta enquanto a aba viver (o componente mora no
+ * SidebarLayout e não desmonta na navegação); ao recarregar, aparece de novo.
+ *
+ * Quem NÃO vê o aviso:
+ * - visitante sem sessão (senão a própria tela de login ficaria coberta);
  * - diretoria (org_directors, via useTeamLeadership);
  * - quem JÁ ENCERROU o expediente hoje (saída batida) — depois do expediente a
  *   pessoa pode voltar só para consultar; nada é cronometrado e o cronômetro
@@ -24,18 +31,17 @@ import { useTeamLeadership } from '@/hooks/useTeamLeadership';
  *   ficam fora do SidebarLayout, onde este componente é montado;
  * - as rotas de SHIFT_FREE_PATHS (ver abaixo).
  *
- * Enquanto o ponto ou a liderança ainda estão carregando, nada é bloqueado —
- * evita um flash de tela cheia em quem tem passe livre.
+ * Enquanto o ponto ou a liderança ainda estão carregando, nada aparece — evita
+ * um flash de tela cheia em quem tem passe livre.
  */
 
 /**
- * Rotas liberadas mesmo sem ponto batido.
+ * Rotas em que o aviso nem chega a aparecer.
  *
  * Procuração é trabalho pontual e fora de hora: o operador recebe o link
  * `/gerar-procuracao?phone=…` (disparado pela etiqueta, ver
  * railway-server/src/functions/prepare-label-document-trigger.ts) e precisa
- * mandar o documento pra assinatura na hora, sem abrir expediente só pra isso.
- * O gate continua valendo pro resto do sistema — sair desta rota trava de novo.
+ * mandar o documento pra assinatura na hora, sem nem um lembrete no caminho.
  */
 const SHIFT_FREE_PATHS = ['/gerar-procuracao'];
 
@@ -45,45 +51,61 @@ export function ShiftGate() {
   const { isDirector, loading: leadershipLoading } = useTeamLeadership();
   const { pathname } = useLocation();
   const [starting, setStarting] = useState(false);
+  // Fechou no X: some até o próximo carregamento da aba. Daí em diante o ponto
+  // fica só no botão flutuante do cronômetro.
+  const [dismissed, setDismissed] = useState(false);
 
   const shiftFree = SHIFT_FREE_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
   );
 
-  const blocked =
+  const showNotice =
     !!user && !authLoading && !leadershipLoading && !isDirector &&
-    onShift === false && !shiftEndedToday && !shiftFree;
+    onShift === false && !shiftEndedToday && !shiftFree && !dismissed;
 
-  // Trava o scroll do documento enquanto a tela está bloqueada.
+  // Trava o scroll do documento só enquanto o aviso está na tela.
   useEffect(() => {
-    if (!blocked) return;
+    if (!showNotice) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.body.style.overflow = previous; };
-  }, [blocked]);
+  }, [showNotice]);
 
   const handleStart = useCallback(async () => {
     setStarting(true);
     try { await startShift(); } finally { setStarting(false); }
   }, [startShift]);
 
-  if (!blocked) return null;
+  if (!showNotice) return null;
   if (typeof document === 'undefined') return null;
 
   return createPortal(
-    // z acima do cronômetro flutuante (z-[9990]) e dos diálogos do Radix:
-    // enquanto o ponto não é batido, nada do sistema fica alcançável.
+    // z acima do cronômetro flutuante (z-[9990]) e dos diálogos do Radix — o
+    // aviso fica por cima até ser fechado no X; fechado, some e libera a tela.
     <div className="fixed inset-0 z-[9995] overflow-y-auto bg-background/98 backdrop-blur-sm">
       <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center gap-5 px-4 py-8">
         <header className="space-y-2">
-          <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-            <AlarmClock className="h-6 w-6 shrink-0" />
-            <h1 className="text-xl font-bold sm:text-2xl">Expediente não iniciado</h1>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+              <AlarmClock className="h-6 w-6 shrink-0" />
+              <h1 className="text-xl font-bold sm:text-2xl">Expediente não iniciado</h1>
+            </div>
+            <button
+              type="button"
+              onClick={() => setDismissed(true)}
+              aria-label="Fechar e usar o sistema sem bater o ponto"
+              title="Fechar — o botão “Iniciar expediente” continua no canto inferior esquerdo"
+              className="-mr-1 -mt-1 shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
           <p className="text-sm text-muted-foreground">
-            O sistema só abre com o ponto batido. Fora do expediente nada é
-            cronometrado — nem tempo produtivo, nem ocioso, nem pausas — e o seu
-            dia ficaria sem registro nenhum.
+            Fora do expediente nada é cronometrado — nem tempo produtivo, nem
+            ocioso, nem pausas — e o seu dia fica sem registro nenhum. Se você
+            entrou só pra uma coisa pontual (gerar uma procuração, por exemplo),
+            feche no X: o botão “Iniciar expediente” fica no canto inferior
+            esquerdo pra quando você começar de fato.
           </p>
         </header>
 
@@ -106,7 +128,7 @@ const POP_STEPS: { icon: typeof Play; title: string; detail: string }[] = [
     icon: Play,
     title: 'Bata o ponto (entrada)',
     detail:
-      'Clique em "Iniciar expediente" abaixo. A partir daí o cronômetro passa a registrar o seu dia e o sistema é liberado.',
+      'Clique em "Iniciar expediente" abaixo. A partir daí o cronômetro passa a registrar o seu dia.',
   },
   {
     icon: ListChecks,
@@ -187,7 +209,7 @@ function PopCard({ onStart, starting }: { onStart: () => void; starting: boolean
   );
 }
 
-/** Saída da conta — único caminho alternativo (ex.: logou na máquina errada). */
+/** Saída da conta — atalho pra quem logou na máquina/conta errada. */
 function SignOutButton() {
   const { signOut } = useAuthContext();
   return (
