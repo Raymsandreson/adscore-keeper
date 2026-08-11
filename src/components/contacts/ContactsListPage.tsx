@@ -1436,6 +1436,7 @@ export function ContactsListPage() {
                 )
               }
               selectedProfession={professionFilter}
+              partialList={contacts.length < totalCount}
               className="pb-3"
             />
           )}
