@@ -1,22 +1,25 @@
 // =============================================================================
-// O que sobra de "Marcos do POP" depois que a fase VIROU o marco.
+// Revisão dos acordos que a IA leu nas atas dos processos deste POP.
 //
-// A seção antiga listava os marcos um a um — e isso repetia, logo abaixo, a
-// mesma lista de fases que já está acima no editor (correção do usuário,
-// 08/08/2026: "não precisa ter essa parte de marcos separada da fase, agora
-// marco é a mesma fase"). O estágio financeiro e o sinal de reconhecimento
-// passaram para a própria linha da fase, no WorkflowBuilder.
+// Já se chamou "Marcos do POP" e listava a régua inteira — o que repetia, logo
+// abaixo, a mesma lista de fases que está acima no editor. Duas correções do
+// usuário (08/08/2026) esvaziaram a seção até sobrar só isto:
 //
-// Aqui fica só o que NÃO é fase e por isso não teria onde aparecer:
-//   1. marcos que atravessam a régua (acordo, suspensão);
-//   2. a revisão do que a IA leu nos documentos dos processos deste POP.
+//   1. "não precisa ter essa parte de marcos separada da fase, agora marco é a
+//      mesma fase" — o estágio financeiro e o sinal foram para a linha da fase;
+//   2. "marco pela etimologia da palavra não pode ser um estado" — acordo e
+//      suspensão deixaram de ser exibidos como marco e vivem onde sempre
+//      deveriam: na lista de RESULTADOS do POP. Continuam em pop_marcos apenas
+//      como regra de detecção, que é assunto de máquina, não de tela.
+//
+// Sobrou o que não cabe em nenhum dos dois lugares: conferir o que a IA leu
+// dentro dos documentos.
 // =============================================================================
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AcordoRevisaoSheet } from '@/components/processual/AcordoRevisaoSheet';
 import { useAcordoExtracoes, type AcordoProcesso } from '@/hooks/useAcordoExtracoes';
-import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { AlertTriangle, PanelRightOpen, Handshake } from 'lucide-react';
 
 interface Props {
@@ -24,8 +27,7 @@ interface Props {
 }
 
 export function PopMarcosSection({ boardId }: Props) {
-  const { atravessam, sinais, loading } = usePopMarcos(boardId);
-  const { pendentes, aprovados, semPop, revisar, recarregar } = useAcordoExtracoes(boardId);
+  const { pendentes, aprovados, semPop, loading, revisar, recarregar } = useAcordoExtracoes(boardId);
   const [aberto, setAberto] = useState<AcordoProcesso | null>(null);
 
   if (loading) {
@@ -37,48 +39,10 @@ export function PopMarcosSection({ boardId }: Props) {
   }
 
   const temRevisao = pendentes.length > 0 || aprovados.length > 0;
-  if (atravessam.length === 0 && !temRevisao && semPop === 0) return null;
+  if (!temRevisao && semPop === 0) return null;
 
   return (
     <div className="mt-4 rounded-lg border p-3 space-y-3">
-      {atravessam.length > 0 ? (
-        <>
-          <div className="text-sm font-semibold">🚩 Marcos que atravessam as fases</div>
-          <p className="text-xs text-muted-foreground">
-            Cada fase acima <b>é um marco</b>. Estes aqui são a exceção: acontecem em
-            qualquer ponto da régua — um acordo pode ser homologado antes da audiência
-            ou já no TST — então não viram fase e aparecem como <b>resultado</b> do POP.
-          </p>
-          <div className="space-y-1.5">
-            {atravessam.map((m) => {
-              const s = sinais[m.id] || { tpu: 0, documento: 0 };
-              const total = s.tpu + s.documento;
-              return (
-                <div key={m.id} className="flex items-start gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-medium">{m.rotulo}</span>
-                      {m.estagio_financeiro_sugerido ? (
-                        <Badge className="text-[10px]">
-                          {ESTAGIO_LABEL[m.estagio_financeiro_sugerido] || m.estagio_financeiro_sugerido}
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-[10px]">herda o estágio anterior</Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {total === 0
-                        ? 'sem sinal — nunca vai disparar sozinho'
-                        : `${s.tpu} movimentação · ${s.documento} documento`}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </>
-      ) : null}
-
       {temRevisao ? (
         <div className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-2.5">
           <div className="flex items-center gap-1.5 text-sm font-medium">

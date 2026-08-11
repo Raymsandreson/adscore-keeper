@@ -96,6 +96,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { PopMarcosSection } from './PopMarcosSection';
 import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
+import { ResponsavelSelect } from './ResponsavelSelect';
+import { useProfilesList } from '@/hooks/useProfilesList';
 
 // Wrapper de drag-and-drop sortable com suporte a mouse E toque (celular).
 // Usa render-prop para não reestruturar o JSX aninhado existente: injeta
@@ -180,6 +182,8 @@ interface PhaseObjective {
   is_mandatory: boolean;
   items: ChecklistItem[];
   isExpanded: boolean;
+  /** Responsável do objetivo. Herda para os passos sem responsável próprio. */
+  assigneeId?: string | null;
 }
 
 interface PhaseConfig {
@@ -189,6 +193,12 @@ interface PhaseConfig {
   stagnationDays?: number;
   objectives: PhaseObjective[];
   isExpanded: boolean;
+  /**
+   * Responsável da fase. Alcança todos os objetivos e passos dela que não
+   * tiverem responsável próprio — é o nível que resolve o problema de escala:
+   * este POP tem 24 fases e ~200 passos, e ninguém preencheria um a um.
+   */
+  assigneeId?: string | null;
 }
 
 type ViewMode = 'list' | 'edit';
@@ -218,6 +228,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // selo do estágio financeiro que aquele resultado implica. É a ponte
   // resultado → marco → estágio, para não haver duas medições do mesmo eixo.
   const { marcos: popMarcos, estagioPorMarco, sinais: sinaisPorMarco } = usePopMarcos(editingBoardId);
+  /** Nome de quem herda, para o seletor do nível de baixo mostrar de onde vem. */
+  const profilesParaHeranca = useProfilesList();
+  const nomeDoResponsavel = (id?: string | null): string | null => {
+    if (!id) return null;
+    const p = profilesParaHeranca.find(x => x.user_id === id || x.id === id);
+    return p?.full_name || p?.email || null;
+  };
+
   /** stage_id → marco. A fase é o marco, então a linha da fase mostra os dois. */
   const marcoPorStage = useMemo(() => {
     const mapa: Record<string, (typeof popMarcos)[number]> = {};
@@ -604,6 +622,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           is_mandatory: tmpl?.is_mandatory || false,
           items: tmpl?.items || [],
           isExpanded: false,
+          assigneeId: link.assignee_id || null,
         };
       });
       return {
@@ -611,6 +630,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         stageName: stage.name,
         stageColor: stage.color,
         stagnationDays: stage.stagnationDays,
+        assigneeId: stage.assigneeId || null,
         objectives,
         isExpanded: false,
       };
@@ -870,6 +890,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
+  // Responsável do passo. null = herda do objetivo, depois da fase
+  // (src/lib/popResponsavel.ts).
+  const updateStepAssignee = (phaseIdx: number, objIdx: number, stepId: string, assigneeId: string | null) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, assigneeId } : s),
+    });
+  };
+
   // Ao concluir o passo, define o STATUS do POP do lead (id em settings.resultados).
   const updateStepSetStatus = (phaseIdx: number, objIdx: number, stepId: string, setStatusId: string) => {
     updateObjective(phaseIdx, objIdx, {
@@ -1081,12 +1109,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         name: p.stageName,
         color: p.stageColor,
         stagnationDays: p.stagnationDays,
+        assigneeId: p.assigneeId || null,
       }));
 
       let boardId: string;
       if (editingBoardId) {
         const existingSettings = (boards.find(b => b.id === editingBoardId) as { settings?: Record<string, unknown> } | undefined)?.settings || {};
-        const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim(), marco: r.marco || null })).filter(r => r.label);
+        // `estagio` precisa ser preservado: reconstruir o objeto só com
+        // id/label/marco apagaria o estágio financeiro dos resultados que têm
+        // um próprio (Indeferido, Extinto, Desistido → INDEFERIDO).
+        const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim(), marco: r.marco || null, ...(r.estagio ? { estagio: r.estagio } : {}) })).filter(r => r.label);
         const espIds = formResultadoEsperadoIds.filter(id => cleanResultados.some(r => r.id === id));
         await updateBoard(editingBoardId, {
           name: latestName.trim(),
@@ -1141,7 +1173,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             wantedTemplateIds.add(templateId);
             const existingLink = phaseLinks.find(l => l.checklist_template_id === templateId);
             if (!existingLink) {
-              await linkChecklistToStage(templateId, boardId, phase.stageId, { silent: true, displayOrder: objIdx });
+              await linkChecklistToStage(templateId, boardId, phase.stageId, { silent: true, displayOrder: objIdx, assigneeId: obj.assigneeId || null });
             } else if (existingLink.display_order !== objIdx) {
               await updateStageLinkOrder(existingLink.id, objIdx);
             }
@@ -1776,6 +1808,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                            </>
                          );
                        })()}
+                       <div className="w-[150px] shrink-0" onClick={e => e.stopPropagation()}>
+                         <ResponsavelSelect
+                           compact
+                           value={phase.assigneeId}
+                           onChange={(id) => setPhases(prev => prev.map((p, i) => i === phaseIdx ? { ...p, assigneeId: id } : p))}
+                         />
+                       </div>
                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                          {phase.objectives.length} obj.
                        </span>
@@ -1835,6 +1874,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                      ) : null}
                                    </div>
                                </Collapsible>
+                               <div className="w-[150px] shrink-0" onClick={e => e.stopPropagation()}>
+                                 <ResponsavelSelect
+                                   compact
+                                   value={obj.assigneeId}
+                                   herdadoDe={nomeDoResponsavel(phase.assigneeId)
+                                     ? { nome: nomeDoResponsavel(phase.assigneeId)!, nivel: 'da fase' }
+                                     : null}
+                                   onChange={(id) => setPhases(prev => prev.map((p, i) => i === phaseIdx
+                                     ? { ...p, objectives: p.objectives.map((o, j) => j === objIdx ? { ...o, assigneeId: id } : o) }
+                                     : p))}
+                                 />
+                               </div>
                                <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                                  {obj.items.length} passo(s)
                                </span>
@@ -2052,6 +2103,24 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                                 <Edit3 className="h-3 w-3" />
                                               </button>
                                             )}
+                                          </div>
+
+                                          {/* Responsável do passo. Vazio herda do
+                                              objetivo, depois da fase. */}
+                                          <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Responsável:</Label>
+                                            <ResponsavelSelect
+                                              compact
+                                              className="flex-1"
+                                              value={step.assigneeId}
+                                              herdadoDe={(() => {
+                                                const herdado = obj.assigneeId || phase.assigneeId;
+                                                const nome = nomeDoResponsavel(herdado);
+                                                if (!nome) return null;
+                                                return { nome, nivel: obj.assigneeId ? 'do objetivo' : 'da fase' };
+                                              })()}
+                                              onChange={(id) => updateStepAssignee(phaseIdx, objIdx, step.id, id)}
+                                            />
                                           </div>
 
                                           {/* Ramificação condicional - mover para fase */}

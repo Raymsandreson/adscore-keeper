@@ -70,6 +70,11 @@ export interface ChecklistItem {
   selectedAnswerId?: string; // resposta escolhida na instância do lead
   docChecklist?: DocChecklistItem[]; // checklist de documentação
   /**
+   * Responsável deste passo. Vazio = herda do objetivo, depois da fase, depois
+   * do responsável processual do lead (src/lib/popResponsavel.ts).
+   */
+  assigneeId?: string | null;
+  /**
    * Registro do que foi feito antes de o POP mudar: guarda o id do passo
    * ATUAL que substituiu este. Persiste no banco. Item com supersededBy é
    * histórico — não é marcável e não entra em progresso/conclusão.
@@ -145,6 +150,8 @@ export interface ChecklistStageLink {
   stage_id: string;
   display_order: number;
   created_at: string;
+  /** Responsável do objetivo nesta fase deste POP; herda para os passos. */
+  assignee_id?: string | null;
 }
 
 export interface LeadChecklistInstance {
@@ -271,7 +278,7 @@ export const useChecklists = () => {
     return (data || []) as ChecklistStageLink[];
   };
 
-  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string, { silent = false, displayOrder }: { silent?: boolean; displayOrder?: number } = {}) => {
+  const linkChecklistToStage = async (templateId: string, boardId: string, stageId: string, { silent = false, displayOrder, assigneeId }: { silent?: boolean; displayOrder?: number; assigneeId?: string | null } = {}) => {
     try {
       const { error } = await supabase
         .from('checklist_stage_links')
@@ -280,7 +287,10 @@ export const useChecklists = () => {
           board_id: boardId,
           stage_id: stageId,
           ...(displayOrder !== undefined ? { display_order: displayOrder } : {}),
-        });
+          // Responsável do objetivo NESTA fase deste POP. O template é
+          // reaproveitável entre POPs, então o responsável mora no vínculo.
+          ...(assigneeId !== undefined ? { assignee_id: assigneeId } : {}),
+        } as never);
 
       if (error) {
         if (error.code === '23505') {
