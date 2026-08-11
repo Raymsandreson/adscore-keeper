@@ -22,6 +22,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useProcessUpdates, type UpdateCategoria, type ProcessUpdate } from '@/hooks/useProcessUpdates';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { CATEGORIAS } from '@/lib/processUpdateCategorias';
+import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPanel';
 
 const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
   'todas', 'decisao_merito', 'audiencia', 'pericia', 'prazo', 'despacho', 'movimentacao',
@@ -320,6 +321,10 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
             )}
           </div>
         </SheetHeader>
+        {/* Quanto da atualização já foi feita, quanto falta e quanto custou.
+            Fica acima da lista porque a pergunta "o que ainda não chegou?" é a
+            mesma do sino pelo avesso — e fila parada não avisa sozinha. */}
+        <CapturaStatusPanel />
         <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0">
           {FILTER_ORDER.map((cat) => {
             const active = filtro === cat;
