@@ -10,6 +10,7 @@ import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
 import { ContactPendencyBadge } from './ContactPendencyBadge';
 import { ContactActivityBadge } from './ContactActivityBadge';
 import { ContactsDistributionDonuts } from './ContactsDistributionDonuts';
+import { ContactsCreationTrendBars } from './ContactsCreationTrendBars';
 import { ClassificationContactsSheet } from './ClassificationContactsSheet';
 import { useContactsPendencies } from '@/hooks/useContactsPendencies';
 import { useContactsActivities } from '@/hooks/useContactsActivities';
@@ -1048,6 +1049,21 @@ export function ContactsListPage() {
 
   const selectableContacts = filteredContacts.filter(c => c.phone);
 
+  // O card de cadastros por período conta no banco (a lista aqui é só a 1ª
+  // página), então precisa dos filtros — inclusive busca e profissão, que são
+  // aplicados no cliente logo acima.
+  const creationSeriesFilters = useMemo(() => ({
+    state: stateFilter,
+    city: cityFilter,
+    actionSource: sourceFilter,
+    createdBy: createdByFilter,
+    classification: classificationFilter,
+    groupFilter: (groupFilter !== 'all' ? groupFilter : 'without_group') as 'with_group' | 'without_group',
+    leadLinked: leadLinkedFilter,
+    profession: professionFilter,
+    search,
+  }), [stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter, professionFilter, search]);
+
   // Etiquetas só das linhas de cima quando a lista é enorme (ver ENRICH_LIMIT),
   // e só na aba de contatos — nas outras nada disso está em tela.
   const enrichedContacts = useMemo(
@@ -1436,7 +1452,7 @@ export function ContactsListPage() {
                 )
               }
               selectedProfession={professionFilter}
-              partialList={contacts.length < totalCount}
+              trendSlot={<ContactsCreationTrendBars filters={creationSeriesFilters} />}
               className="pb-3"
             />
           )}

@@ -1,155 +1,190 @@
 /**
- * Cadastros por dia nos últimos 7 dias, separados entre com e sem lead.
+ * Cadastros por período (5 últimos dias / semanas / meses / anos), separados
+ * entre com e sem lead.
  *
- * As roscas ao lado dizem "de que tipo é essa gente"; faltava o "quanto entrou
- * esta semana" — a pergunta de quem filtra por quem cadastrou (ou por cidade) e
- * quer medir ritmo. Cada barra é um dia; a parte azul é contato que já virou
- * lead, a cinza é contato parado no cadastro.
+ * As roscas ao lado dizem "de que tipo é essa gente"; faltava o "quanto entrou",
+ * a pergunta de quem filtra por quem cadastrou (ou por cidade) e quer medir
+ * ritmo. Cada barra é um período; a parte azul é contato que já virou lead, a
+ * cinza é contato parado no cadastro.
  *
- * A contagem lê os MESMOS contatos que estão na lista (respeita os filtros em
- * tela). O vínculo com lead vem de `contact_leads` — a mesma fonte do filtro
- * "Com Lead" — com `contacts.lead_id` (legado) como reforço, e só é consultado
- * para os contatos que caem na janela de 7 dias.
+ * Por que a conta vem do banco e não da lista em tela (como as roscas): a lista
+ * carrega no máximo 1000 contatos. Em "dia" isso quase sempre cobre a janela,
+ * mas julho/2026 sozinho teve 8.632 cadastros — contar no browser mostraria um
+ * mês pela metade sem avisar. A RPC `contacts_creation_series` recebe os mesmos
+ * filtros da tela e devolve 5 linhas prontas.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { CalendarDays } from 'lucide-react';
-import { format, startOfDay, subDays } from 'date-fns';
+import { CalendarDays, Loader2 } from 'lucide-react';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
 import { cn } from '@/lib/utils';
 
-const DAYS = 7;
+const BUCKETS = 5;
 const WITH_LEAD = '#3b82f6';
 const WITHOUT_LEAD = '#94a3b8';
-/** `.in()` com lista gigante estoura a URL — vai em pedaços. */
-const ID_CHUNK = 200;
 
-/** Contato do jeito que o gráfico precisa — a lista passa o registro inteiro. */
-export interface TrendContact {
-  id: string;
-  created_at: string;
-  lead_id?: string | null;
+type Period = 'day' | 'week' | 'month' | 'year';
+
+const PERIODS: { value: Period; label: string; title: string }[] = [
+  { value: 'day', label: 'Dia', title: 'Últimos 5 dias' },
+  { value: 'week', label: 'Semana', title: 'Últimas 5 semanas' },
+  { value: 'month', label: 'Mês', title: 'Últimos 5 meses' },
+  { value: 'year', label: 'Ano', title: 'Últimos 5 anos' },
+];
+
+/** Filtros da tela, do jeito que a RPC espera (mesmos nomes do `fetchContacts`). */
+export interface CreationSeriesFilters {
+  state?: string;
+  city?: string;
+  actionSource?: string;
+  createdBy?: string;
+  classification?: string;
+  groupFilter?: 'all' | 'with_group' | 'without_group';
+  leadLinked?: 'all' | 'linked' | 'not_linked';
+  /** `null` = "sem profissão"; `undefined` = não filtrado. */
+  profession?: string | null;
+  search?: string;
 }
 
 interface Props {
-  contacts: TrendContact[];
-  /** A lista em tela é um recorte do total (paginação): avisa que dias antigos podem faltar. */
-  partialList?: boolean;
+  filters: CreationSeriesFilters;
   className?: string;
 }
 
-/** Chave do dia no fuso de quem olha — agrupar por UTC jogaria a madrugada pro dia errado. */
-function dayKey(date: Date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+interface Row {
+  label: string;
+  full: string;
+  comLead: number;
+  semLead: number;
+  total: number;
 }
 
-export function ContactsCreationTrendBars({ contacts, partialList, className }: Props) {
-  const [linkedIds, setLinkedIds] = useState<Set<string>>(new Set());
+/** Rótulo curto — eixo apertado não comporta "quarta 05/08" em 5 barras. */
+function labelFor(period: Period, start: Date) {
+  if (period === 'day') return format(start, 'dd/MM', { locale: ptBR });
+  if (period === 'week') return format(start, "'sem' dd/MM", { locale: ptBR });
+  if (period === 'month') return format(start, 'MMM/yy', { locale: ptBR });
+  return format(start, 'yyyy', { locale: ptBR });
+}
 
-  const { windowContacts, windowStart, oldestLoaded } = useMemo(() => {
-    const start = startOfDay(subDays(new Date(), DAYS - 1));
-    let oldest: number | null = null;
-    const inWindow: TrendContact[] = [];
+/** Rótulo por extenso do tooltip. */
+function fullLabelFor(period: Period, start: Date) {
+  if (period === 'day') return format(start, "EEEE, dd 'de' MMMM", { locale: ptBR });
+  if (period === 'week') return `Semana de ${format(start, "dd 'de' MMMM", { locale: ptBR })}`;
+  if (period === 'month') return format(start, "MMMM 'de' yyyy", { locale: ptBR });
+  return format(start, 'yyyy', { locale: ptBR });
+}
 
-    for (const c of contacts) {
-      const ts = c.created_at ? new Date(c.created_at).getTime() : NaN;
-      if (Number.isNaN(ts)) continue;
-      if (oldest === null || ts < oldest) oldest = ts;
-      if (ts >= start.getTime()) inWindow.push(c);
-    }
+export function ContactsCreationTrendBars({ filters, className }: Props) {
+  const [period, setPeriod] = useState<Period>('day');
+  const [rows, setRows] = useState<Row[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
 
-    return { windowContacts: inWindow, windowStart: start, oldestLoaded: oldest };
-  }, [contacts]);
+  const {
+    state, city, actionSource, createdBy, classification,
+    groupFilter, leadLinked, profession, search,
+  } = filters;
 
-  const windowKey = useMemo(
-    () => windowContacts.map((c) => c.id).sort().join(','),
-    [windowContacts]
-  );
-
-  // Vínculo com lead só dos contatos da janela — é um punhado, não a lista toda.
   useEffect(() => {
-    if (!windowKey) {
-      setLinkedIds(new Set());
-      return;
-    }
-    const ids = windowKey.split(',');
     let cancelled = false;
+    setLoading(true);
 
     (async () => {
       try {
-        const found = new Set<string>();
-        for (let i = 0; i < ids.length; i += ID_CHUNK) {
-          const { data } = await (db as any)
-            .from('contact_leads')
-            .select('contact_id')
-            .in('contact_id', ids.slice(i, i + ID_CHUNK));
-          for (const row of ((data || []) as { contact_id: string }[])) {
-            if (row.contact_id) found.add(row.contact_id);
-          }
+        const { data, error } = await (db as any).rpc('contacts_creation_series', {
+          p_bucket: period,
+          p_buckets: BUCKETS,
+          p_tz: Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo',
+          p_state: state && state !== 'all' ? state : null,
+          p_city: city && city !== 'all' ? city : null,
+          p_source: actionSource && actionSource !== 'all' ? actionSource : null,
+          p_created_by: createdBy && createdBy !== 'all' ? createdBy : null,
+          p_classification: classification && classification !== 'all' ? classification : null,
+          p_group: groupFilter && groupFilter !== 'all' ? groupFilter : null,
+          p_lead_linked: leadLinked && leadLinked !== 'all' ? leadLinked : null,
+          p_profession: profession === undefined ? null : (profession === null ? '__none__' : profession),
+          p_search: search?.trim() || null,
+        });
+        if (error) throw error;
+        if (cancelled) return;
+
+        setRows(((data || []) as any[]).map((r) => {
+          const start = new Date(r.bucket_start);
+          const total = Number(r.total) || 0;
+          const comLead = Number(r.with_lead) || 0;
+          return {
+            label: labelFor(period, start),
+            full: fullLabelFor(period, start),
+            comLead,
+            semLead: total - comLead,
+            total,
+          };
+        }));
+        setFailed(false);
+      } catch (err) {
+        console.warn('[ContactsCreationTrendBars] falha ao carregar a série de cadastros', err);
+        if (!cancelled) {
+          setRows([]);
+          setFailed(true);
         }
-        if (!cancelled) setLinkedIds(found);
-      } catch {
-        console.warn('[ContactsCreationTrendBars] falha ao carregar vínculos de lead');
-        if (!cancelled) setLinkedIds(new Set());
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [windowKey]);
+  }, [period, state, city, actionSource, createdBy, classification, groupFilter, leadLinked, profession, search]);
 
-  const { data, total, withLead } = useMemo(() => {
-    const buckets = new Map<string, { withLead: number; withoutLead: number }>();
-    const base = startOfDay(new Date());
-    const days: { key: string; label: string; full: string }[] = [];
+  const { total, withLead } = useMemo(() => ({
+    total: rows.reduce((s, r) => s + r.total, 0),
+    withLead: rows.reduce((s, r) => s + r.comLead, 0),
+  }), [rows]);
 
-    for (let i = DAYS - 1; i >= 0; i--) {
-      const d = subDays(base, i);
-      const key = dayKey(d);
-      buckets.set(key, { withLead: 0, withoutLead: 0 });
-      days.push({
-        key,
-        label: format(d, 'EEE dd/MM', { locale: ptBR }),
-        full: format(d, "dd 'de' MMMM", { locale: ptBR }),
-      });
-    }
-
-    for (const c of windowContacts) {
-      const bucket = buckets.get(dayKey(new Date(c.created_at)));
-      if (!bucket) continue;
-      if (c.lead_id || linkedIds.has(c.id)) bucket.withLead += 1;
-      else bucket.withoutLead += 1;
-    }
-
-    const rows = days.map((d) => {
-      const b = buckets.get(d.key)!;
-      return { ...d, comLead: b.withLead, semLead: b.withoutLead, total: b.withLead + b.withoutLead };
-    });
-
-    return {
-      data: rows,
-      total: rows.reduce((s, r) => s + r.total, 0),
-      withLead: rows.reduce((s, r) => s + r.comLead, 0),
-    };
-  }, [windowContacts, linkedIds]);
-
-  // A lista vem cortada pela paginação e o corte entrou na janela: os dias mais
-  // antigos do gráfico podem ter mais cadastros do que o que está carregado.
-  const cutHidesDays = !!partialList && oldestLoaded !== null && oldestLoaded > windowStart.getTime();
+  const periodTitle = PERIODS.find((p) => p.value === period)?.title ?? '';
 
   return (
     <div className={cn('rounded-lg border bg-card p-3 min-w-0', className)}>
       <div className="flex items-center gap-1.5 mb-2 text-xs font-medium text-muted-foreground">
         <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-        <span className="truncate">Cadastros por dia (7 dias)</span>
-        <span className="ml-auto shrink-0 tabular-nums">{total}</span>
+        <span className="truncate">Cadastros por período</span>
+        {loading ? (
+          <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin" />
+        ) : (
+          <span className="ml-auto shrink-0 tabular-nums">{total}</span>
+        )}
       </div>
 
-      {total === 0 ? (
+      <div className="flex items-center gap-0.5 mb-2 rounded-md bg-muted/60 p-0.5">
+        {PERIODS.map((p) => (
+          <button
+            key={p.value}
+            type="button"
+            title={p.title}
+            onClick={() => setPeriod(p.value)}
+            className={cn(
+              'flex-1 rounded px-1.5 py-0.5 text-[11px] transition-colors',
+              period === p.value
+                ? 'bg-background font-medium text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            )}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      {failed ? (
         <p className="text-xs text-muted-foreground py-6 text-center">
-          Nenhum contato cadastrado nos últimos 7 dias
+          Não consegui carregar a série de cadastros
+        </p>
+      ) : total === 0 && !loading ? (
+        <p className="text-xs text-muted-foreground py-6 text-center">
+          Nenhum contato cadastrado no período
         </p>
       ) : (
         <>
@@ -166,16 +201,16 @@ export function ContactsCreationTrendBars({ contacts, partialList, className }: 
 
           <div className="h-[132px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} margin={{ top: 12, right: 4, left: 0, bottom: 0 }}>
+              <BarChart data={rows} margin={{ top: 12, right: 4, left: 0, bottom: 0 }}>
                 <XAxis
                   dataKey="label"
-                  tick={{ fontSize: 9 }}
+                  tick={{ fontSize: 10 }}
                   tickLine={false}
                   axisLine={false}
                   interval={0}
                 />
                 <YAxis
-                  width={22}
+                  width={30}
                   tick={{ fontSize: 9 }}
                   tickLine={false}
                   axisLine={false}
@@ -184,14 +219,13 @@ export function ContactsCreationTrendBars({ contacts, partialList, className }: 
                 <Tooltip
                   cursor={{ fill: 'hsl(var(--muted))', opacity: 0.4 }}
                   labelFormatter={(_label, payload) => payload?.[0]?.payload?.full || ''}
-                  formatter={(value: number | string, name: string) => [value, name]}
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
-                <Bar dataKey="comLead" name="Com lead" stackId="dia" fill={WITH_LEAD} isAnimationActive={false} />
+                <Bar dataKey="comLead" name="Com lead" stackId="p" fill={WITH_LEAD} isAnimationActive={false} />
                 <Bar
                   dataKey="semLead"
                   name="Sem lead"
-                  stackId="dia"
+                  stackId="p"
                   fill={WITHOUT_LEAD}
                   radius={[3, 3, 0, 0]}
                   isAnimationActive={false}
@@ -210,9 +244,7 @@ export function ContactsCreationTrendBars({ contacts, partialList, className }: 
       )}
 
       <p className="text-[10px] text-muted-foreground mt-2">
-        {cutHidesDays
-          ? `Só os ${contacts.length} contatos carregados entram na conta — os dias mais antigos podem estar incompletos.`
-          : 'Cadastros dos contatos em tela. "Com lead" = já vinculado a um lead.'}
+        {periodTitle}, com os filtros da tela. "Com lead" = já vinculado a um lead.
       </p>
     </div>
   );

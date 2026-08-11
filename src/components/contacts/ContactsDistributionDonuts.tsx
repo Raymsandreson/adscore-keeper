@@ -17,13 +17,9 @@ import { Briefcase, ChevronDown, ChevronUp, Users2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { classificationLabel } from '@/hooks/useContactClassifications';
-import { ContactsCreationTrendBars } from './ContactsCreationTrendBars';
 
 /** Contato do jeito que a rosca precisa — a lista passa o registro inteiro. */
 interface DonutContact {
-  id: string;
-  created_at: string;
-  lead_id?: string | null;
   classifications?: string[] | null;
   classification?: string | null;
   profession?: string | null;
@@ -39,8 +35,8 @@ interface Props {
   onSelectProfession: (profession: string | null) => void;
   /** Profissão em foco no momento (destaca a fatia). `undefined` = nenhuma. */
   selectedProfession?: string | null;
-  /** A lista veio cortada pela paginação — o gráfico de 7 dias avisa quando isso o afeta. */
-  partialList?: boolean;
+  /** Terceiro card do painel (cadastros por período) — quem monta é a página, que tem os filtros. */
+  trendSlot?: React.ReactNode;
   className?: string;
 }
 
@@ -198,7 +194,7 @@ export function ContactsDistributionDonuts({
   onSelectClassification,
   onSelectProfession,
   selectedProfession,
-  partialList,
+  trendSlot,
   className,
 }: Props) {
   const [open, setOpen] = useState(true);
@@ -299,7 +295,7 @@ export function ContactsDistributionDonuts({
             onSlice={(s) => onSelectProfession(s.key === NONE_KEY ? null : s.key)}
             footer="Clique numa fatia para filtrar a lista por profissão."
           />
-          <ContactsCreationTrendBars contacts={contacts} partialList={partialList} />
+          {trendSlot}
         </div>
       )}
     </div>
