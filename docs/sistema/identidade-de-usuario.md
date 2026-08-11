@@ -170,6 +170,38 @@ o avatar mudar nas outras telas sem esperar o TTL de 30s do `sharedFetch`. O
 casamento é por nome exato normalizado — se `assigned_to_name` divergir do
 `full_name` do perfil (apelido, nome antigo), volta para as iniciais.
 
+## Tirar o acesso de alguém (checklist, ago/2026)
+
+A remoção também é meio no Cloud, meio no Externo. Nesta ordem:
+
+1. **Bloquear o acesso** — `org_user_status` no Externo, `active = false`
+   (chaveado pelo **uuid do Cloud**). O `UserStatusGuard` (`App.tsx`, montado em
+   todo app logado) lê essa coluna na abertura, mostra o toast e força
+   `signOut()`. É o bloqueio real; o toggle da tela é
+   `TeamsManager.toggleActive`. Pessoa sem linha na tabela **não está bloqueada**
+   — o `maybeSingle()` volta `null` e o guard não faz nada.
+2. **Redistribuir as pendentes** — `lead_activities.assigned_to` + o snapshot
+   `assigned_to_name` (e `assigned_to_ids`/`assigned_to_names` se houver
+   co-assessoria). Cuidado com o namespace: para quem tem uuid diferente nos
+   dois lados, o `assigned_to` costuma ser o **id do Externo**. Confira contando
+   os dois antes de escolher o destino. A tela tem o
+   `RedistributeActivitiesDialog`, que só enxerga quem já está inativo.
+3. **Cortar as integrações** — `whatsapp_instance_users` (Externo é o canônico;
+   a edge `get-my-instance-accesses` lê de lá, e o espelho do Cloud só entra
+   como fallback), `profiles.default_instance_id`, `push_subscriptions`,
+   `user_roles` do Externo (nenhuma policy do Externo referencia essa tabela).
+4. **Fechar o relógio** — `work_shifts.ended_at` e `activity_time_entries` em
+   `running`. Sem isso a pessoa fica "trabalhando" para sempre no painel de
+   timers e na produtividade.
+5. **Sumir dos seletores** — `ASSIGNEE_BLOCKLIST` (`src/lib/assigneeBlocklist.ts`).
+   O `profiles` continua existindo de propósito, para o histórico não degradar
+   para uuid cru.
+6. **Sumir da listagem de usuários** — a lista da tela Equipe é `user_roles` +
+   `profiles` do **Cloud** (`useTeamMembers.ts`), fora do alcance do MCP. Quem
+   apaga é o botão "Remover membro" da própria tela.
+7. **Matar o login** — só pelo dashboard do Cloud (deletar/banir em `auth.users`).
+   Enquanto existir, a pessoa autentica e o guard do passo 1 derruba em seguida.
+
 ## O que NÃO resolve
 
 **Mover os perfis para o Externo.** O login continua no Cloud (é onde o auth do
