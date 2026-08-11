@@ -42,7 +42,14 @@ with ctx as (
       coalesce(p.area, '') || ' ' ||
       array_to_string(coalesce(p.assuntos, '{}'), ' ') || ' ' ||
       coalesce(p.classe, '') || ' ' ||
-      coalesce(l.case_type, '')
+      coalesce(l.case_type, '') || ' ' ||
+      -- Título e partes: medido em 11/08/2026, 199 dos 207 feeds da Justiça
+      -- Federal tinham área/assuntos/classe/case_type vazios, e o que revelava
+      -- previdenciário era o título ou o INSS no polo passivo.
+      coalesce(p.title, '') || ' ' ||
+      coalesce(u.processo_titulo, '') || ' ' ||
+      coalesce(p.polo_ativo, '') || ' ' ||
+      coalesce(p.polo_passivo, '')
     ) as materia
   from public.process_updates u
   left join public.lead_processes p on p.id = u.process_id
@@ -52,12 +59,12 @@ update public.process_updates u
 set esfera = case
   when c.ramo = '5' then 'trabalhista'
   when c.ramo = '4' then
-    case when c.materia ~ 'previdenc|bpc|loas|auxilio|auxílio|aposentad|pensao|pensão|incapacidade|maternidade|inss|rural'
+    case when c.materia ~ 'previdenc|bpc|loas|auxilio|auxílio|aposentad|pensao|pensão|incapacidade|maternidade|inss|seguro social|beneficio|benefício|assistencial|deficien|rural'
       then 'federal_prev' else 'federal_civel' end
   when c.ramo = '8' then 'comum'
   when c.ramo is not null then 'outros'
   when c.process_type = 'administrativo' then
-    case when c.materia ~ 'previdenc|bpc|loas|auxilio|auxílio|aposentad|pensao|pensão|incapacidade|maternidade|inss|rural'
+    case when c.materia ~ 'previdenc|bpc|loas|auxilio|auxílio|aposentad|pensao|pensão|incapacidade|maternidade|inss|seguro social|beneficio|benefício|assistencial|deficien|rural'
       then 'administrativo_prev' else 'administrativo' end
   else 'outros'
 end

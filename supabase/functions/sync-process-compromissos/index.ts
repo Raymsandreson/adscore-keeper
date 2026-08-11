@@ -114,6 +114,8 @@ interface ProcessRow {
   area: string | null;
   assuntos: string[] | null;
   classe: string | null;
+  polo_ativo: string | null;
+  polo_passivo: string | null;
   leads: { lead_name: string | null; case_type: string | null } | null;
   legal_cases: { title: string | null } | null;
 }
@@ -268,6 +270,12 @@ async function syncFeed(
     assuntos: process.assuntos,
     classe: process.classe,
     caseType: process.leads?.case_type ?? null,
+    // Área/assuntos vêm vazios na maioria dos processos — título e polos são,
+    // na prática, o que revela previdenciário na Justiça Federal (o INSS
+    // aparece no polo passivo).
+    titulo: process.title,
+    poloAtivo: process.polo_ativo,
+    poloPassivo: process.polo_passivo,
   });
 
   const rows = updates.map((u) => ({
@@ -456,7 +464,7 @@ async function syncProcess(
   return counts;
 }
 
-const PROCESS_SELECT = 'id, process_number, title, lead_id, case_id, responsible_user_id, movimentacoes, audiencias, process_type, area, assuntos, classe, leads(lead_name, case_type), legal_cases(title)';
+const PROCESS_SELECT = 'id, process_number, title, lead_id, case_id, responsible_user_id, movimentacoes, audiencias, process_type, area, assuntos, classe, polo_ativo, polo_passivo, leads(lead_name, case_type), legal_cases(title)';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

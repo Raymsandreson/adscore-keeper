@@ -22,7 +22,8 @@ function normalize(s: string | null | undefined): string {
   return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
-const PREV_RE = /previdenc|bpc|loas|auxilio|aposentad|pensao|incapacidade|maternidade|inss|beneficio assistencial|rural/;
+// "deficien" cobre o BPC/LOAS ("Pessoa com Deficiência" nos assuntos do Escavador).
+const PREV_RE = /previdenc|bpc|loas|auxilio|aposentad|pensao|incapacidade|maternidade|inss|seguro social|beneficio|assistencial|deficien|rural/;
 
 export function ramoFromCnj(numeroCnj: string | null | undefined): string | null {
   const m = (numeroCnj || '').match(/\d{7}-?\d{2}\.\d{4}\.(\d)\./);
@@ -36,6 +37,10 @@ export interface EsferaInput {
   assuntos?: string[] | null;
   classe?: string | null;
   caseType?: string | null;
+  /** Título e partes — área/assuntos vêm vazios na maioria dos processos. */
+  titulo?: string | null;
+  poloAtivo?: string | null;
+  poloPassivo?: string | null;
 }
 
 export function classificarEsfera(input: EsferaInput): Esfera {
@@ -44,6 +49,9 @@ export function classificarEsfera(input: EsferaInput): Esfera {
     (input.assuntos || []).join(' '),
     input.classe,
     input.caseType,
+    input.titulo,
+    input.poloAtivo,
+    input.poloPassivo,
   ].filter(Boolean).join(' ')));
   const ramo = ramoFromCnj(input.numeroCnj);
 

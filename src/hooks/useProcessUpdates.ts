@@ -79,7 +79,7 @@ export const useProcessUpdates = () => {
       // o filtro por ramo já valer sem esperar o backfill.
       const rows = ((data || []) as ProcessUpdate[]).map((r) => ({
         ...r,
-        esfera: r.esfera || classificarEsfera({ numeroCnj: r.numero_cnj }),
+        esfera: r.esfera || classificarEsfera({ numeroCnj: r.numero_cnj, titulo: r.processo_titulo }),
       }));
       setUpdates(rows);
 
@@ -121,7 +121,10 @@ export const useProcessUpdates = () => {
         { event: 'INSERT', schema: 'public', table: 'process_updates' },
         (payload) => {
           const bruto = payload.new as ProcessUpdate;
-          const novo = { ...bruto, esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj }) };
+          const novo = {
+            ...bruto,
+            esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj, titulo: bruto.processo_titulo }),
+          };
           setUpdates((prev) => [novo, ...prev].slice(0, FETCH_LIMIT));
         },
       )

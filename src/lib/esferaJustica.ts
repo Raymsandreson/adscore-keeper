@@ -47,7 +47,9 @@ export function ramoFromCnj(numeroCnj: string | null | undefined): string | null
   return m ? m[1] : null;
 }
 
-const PREV_RE = /previdenc|bpc|loas|auxilio|aposentad|pensao|incapacidade|maternidade|inss|beneficio assistencial|rural/;
+// "deficien" entra por causa do BPC/LOAS, que o Escavador devolve como assunto
+// "Pessoa com Deficiência" — sem isso, 5 processos assistenciais caíam em cível.
+const PREV_RE = /previdenc|bpc|loas|auxilio|aposentad|pensao|incapacidade|maternidade|inss|seguro social|beneficio|assistencial|deficien|rural/;
 
 /** Matéria previdenciária a partir de área/assuntos/classe/tipo do caso. */
 function ehPrevidenciario(...campos: Array<string | null | undefined>): boolean {
@@ -63,6 +65,16 @@ export interface EsferaInput {
   classe?: string | null;
   /** case_type do lead — melhor sinal de matéria quando o processo veio sem área. */
   caseType?: string | null;
+  /**
+   * Título do processo e partes. Medido em 11/08/2026 no Externo: dos 207
+   * feeds da Justiça Federal, 199 estavam com área, assuntos, classe E
+   * case_type vazios — e 138 deles se revelavam previdenciários pelo título ou
+   * pelo polo ("INSTITUTO NACIONAL DO SEGURO SOCIAL" no passivo). Sem estes
+   * campos a régua decide no escuro e joga previdenciário JF em "Federal".
+   */
+  titulo?: string | null;
+  poloAtivo?: string | null;
+  poloPassivo?: string | null;
 }
 
 /**
@@ -87,6 +99,9 @@ export function classificarEsfera(input: EsferaInput): Esfera {
     (input.assuntos || []).join(' '),
     input.classe,
     input.caseType,
+    input.titulo,
+    input.poloAtivo,
+    input.poloPassivo,
   );
   const ramo = ramoFromCnj(input.numeroCnj);
 
