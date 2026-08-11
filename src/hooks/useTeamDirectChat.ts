@@ -5,6 +5,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { TEAM_CHAT_PARAM } from '@/components/chat/TeamChatDeepLink';
+import { sendTeamDirectMessage, startDirectConversationWith } from '@/lib/teamDirectMessages';
 
 export interface TeamConversation {
   id: string;
@@ -432,79 +433,21 @@ export function useTeamDirectChat() {
     if (!content.trim() && !options?.file_url) return;
 
     setSendingMessage(true);
-
     try {
-      await ensureExternalSession();
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-      const { data: inserted, error } = await (externalSupabase.from('team_messages') as any).insert({
-        conversation_id: conversationId,
-        sender_id: user.id,
-        sender_name: profile?.full_name || user.email || 'Anônimo',
-        content: content.trim() || null,
-        message_type: options?.message_type || 'text',
-        file_url: options?.file_url || null,
-        file_name: options?.file_name || null,
-        file_size: options?.file_size || null,
-        file_type: options?.file_type || null,
-        audio_duration: options?.audio_duration || null,
-        transcription: options?.transcription || null,
-        reply_to_id: options?.reply_to_id || null,
-        // Só envia a coluna quando true, pra não quebrar caso a migration ainda não tenha sido aplicada
-        ...(options?.is_urgent ? { is_urgent: true } : {}),
-      }).select().single();
-
-      if (error) {
-        console.error('Error sending team message:', error);
-        toast.error('Não foi possível enviar a mensagem.');
-        return;
-      }
+      // A escrita em si vive em lib/teamDirectMessages — o chat interno da ficha
+      // e o do WhatsApp encaminham/respondem no privado pelo mesmo caminho.
+      const inserted = await sendTeamDirectMessage(
+        conversationId,
+        user.id,
+        user.email,
+        content,
+        { ...options, senderName: myNameRef.current }
+      );
 
       // Optimistic: não esperar Realtime (só se a conversa de destino é a que está aberta)
       if (inserted && conversationId === activeConversationId) {
         setMessages((prev) => prev.some(m => m.id === (inserted as TeamMessage).id) ? prev : [...prev, inserted as TeamMessage]);
       }
-
-      // Insert mentions (if any)
-      const mentionedIds = (options?.mentionedUserIds || []).filter(uid => uid && uid !== user.id);
-      if (inserted && mentionedIds.length > 0) {
-        const rows = mentionedIds.map(uid => ({
-          message_id: (inserted as any).id,
-          mentioned_user_id: uid,
-          conversation_id: conversationId,
-        }));
-        await (externalSupabase.from('team_chat_mentions') as any).insert(rows);
-      }
-
-      await externalSupabase
-        .from('team_conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversationId);
-
-      // Web Push nativo para os membros da conversa (celular/notebook, mesmo com
-      // a aba fechada). Não bloqueia o envio.
-      if (inserted) {
-        cloudFunctions.invoke('send-team-push', {
-          body: {
-            conversation_id: conversationId,
-            sender_id: user.id,
-            sender_name: profile?.full_name || user.email || 'Equipe',
-            content: content.trim() || '📎 Anexo',
-            is_urgent: !!options?.is_urgent,
-            mentioned_user_ids: mentionedIds,
-            // Deep-link: o toque na notificação abre a conversa, não a home.
-            url: `/?${TEAM_CHAT_PARAM}=${encodeURIComponent(conversationId)}`,
-          },
-        }).catch(err => console.error('Falha ao enviar Web Push (chat direto):', err));
-      }
-    } catch (e) {
-      console.error('Error sending team message:', e);
-      toast.error('Não foi possível enviar a mensagem.');
     } finally {
       setSendingMessage(false);
     }
@@ -598,28 +541,12 @@ export function useTeamDirectChat() {
       return existing.id;
     }
 
-    try {
-      await ensureExternalSession();
+    const conversationId = await startDirectConversationWith(otherUserId, user.id);
+    if (!conversationId) return null;
 
-      const { data: conversationId, error } = await (externalSupabase.rpc as any)('start_team_direct_conversation', {
-        _other_user_id: otherUserId,
-        _self_user_id: user.id,
-      });
-
-      if (error || !conversationId) {
-        console.error('Error starting direct chat:', error);
-        toast.error('Não foi possível abrir a conversa.');
-        return null;
-      }
-
-      await fetchConversations();
-      setActiveConversationId(conversationId as string);
-      return conversationId as string;
-    } catch (e) {
-      console.error('Error starting direct chat:', e);
-      toast.error('Não foi possível abrir a conversa.');
-      return null;
-    }
+    await fetchConversations();
+    setActiveConversationId(conversationId);
+    return conversationId;
   }, [user?.id, conversations, fetchConversations]);
 
   const ensureGeneralChat = useCallback(async () => {

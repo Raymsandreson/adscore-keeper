@@ -1,7 +1,24 @@
+/**
+ * Contexto do "responder no privado" vindo de outro chat (grupo, ficha ou
+ * conversa do WhatsApp). O cabeçalho entra no content na hora de enviar — aqui
+ * ele só alimenta a tarja acima do campo de digitação.
+ */
+export interface TeamChatContextReply {
+  /** Linha "↩️ Em resposta no …" já montada (teamChatMessageContext). */
+  header: string;
+  /** Onde a mensagem foi escrita: "grupo Financeiro", "chat interno de X". */
+  scopeLabel: string;
+  /** Quem escreveu a mensagem original. */
+  senderName?: string | null;
+  /** Trecho citado, para a tarja. */
+  excerpt: string;
+}
+
 export interface TeamChatOpenIntent {
   conversationId: string;
   draft?: string;
   focusComposer?: boolean;
+  contextReply?: TeamChatContextReply;
   nonce: string;
 }
 
