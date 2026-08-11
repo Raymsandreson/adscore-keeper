@@ -179,9 +179,17 @@ Antes desta tela (ago/2026) a visita só existia como texto em atividade ("direc
 
 ## Protocolos administrativos INSS do dia
 
-**Onde aparece**: card na Visão Geral (`/`), bloco em `/processual/acompanhamento`, e vista própria no telão (`/tv/atividades`, item "Protocolos do Dia" no rodízio).
+**Onde aparece**: card na Visão Geral (`/`) e bloco em `/processual/acompanhamento`. Saiu do telão em 05/08/2026 (`/tv/atividades` é sobre marcos, não sobre volume de protocolo) — o valor legado `?team=protocolos` na URL é neutralizado no `TvAtividadesPage`.
 
 **Fonte**: RPC `tv_protocolos_dia(p_dias)` no Externo, sobre `inss_admin_processes`. Agregada, sem PII.
+
+**Lista por trás do número** (11/08/2026): o botão "Ver protocolos" no card abre `ProtocolosListaSheet` — painel lateral, por cima da tela atual, sem redirecionar. Traz filtro por período (presets Hoje / 7 / 30 dias / Este mês / Tudo + duas datas), 25 por página, e cada linha mostra data do protocolo, nº do requerimento, segurado, serviço e status, com o caso ou lead vinculado.
+
+- Ordena e filtra por **data de protocolo** (`protocol_date`), do mais recente pro mais antigo. Consequência a dizer em voz alta: **só entram as linhas que têm essa data** — 417 de 891 vivas em 11/08/2026. O resto nasceu de e-mail de status puro, sem data no corpo; aparece na aba Processos INSS, mas não tem onde cair numa linha do tempo de protocolo. O rodapé do painel avisa.
+- Por isso os totais do painel **não batem** com "na semana"/"no mês" do card: o card conta `registrados` (chegada do e-mail), o painel conta `protocolados`.
+- Lê a tabela direto, não a RPC: a RPC devolve só contagens de propósito. Como aqui aparece nome de segurado, o painel fica atrás de um clique e nunca é montado enquanto fechado.
+- RLS de `inss_admin_processes`: policy única `TO authenticated` (`qual = true`) — a leitura depende da sessão anônima do Externo (`ensureExternalSession`), não é aberta a `anon`.
+- Teto de 500 linhas por consulta, com aviso na tela quando bate no teto. Sem índice em `protocol_date`: com 891 linhas o planner faz seq scan de qualquer jeito; se a tabela crescer uma ordem de grandeza, criar `idx` parcial (`WHERE deleted_at IS NULL`) com `CONCURRENTLY`.
 
 **Os dois números, e por que não se somam** (levantado em 03/08/2026):
 

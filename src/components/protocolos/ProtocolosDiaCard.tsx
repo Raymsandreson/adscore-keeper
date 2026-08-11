@@ -11,10 +11,12 @@
 // é quase sempre 0 no próprio dia; se fosse ele em destaque, o painel diria
 // que a equipe não protocolou nada.
 
-import { useMemo } from "react";
-import { FileCheck2, AlertTriangle, Clock } from "lucide-react";
+import { useMemo, useState } from "react";
+import { FileCheck2, AlertTriangle, Clock, ListFilter } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import ProtocolosListaSheet from "@/components/protocolos/ProtocolosListaSheet";
 import { cn } from "@/lib/utils";
 import {
   useProtocolosDia,
@@ -97,6 +99,9 @@ function SerieBarras({ data }: { data: ProtocolosDiaData }) {
 export default function ProtocolosDiaCard({ variant = "compact", className }: Props) {
   const { data, loading, error } = useProtocolosDia(14);
   const atrasado = syncEstaAtrasado(data.ultimoSync);
+  // A lista fica atrás de um clique de propósito: ela mostra nome de segurado,
+  // o card não. Nada de PII aparece sem alguém pedir.
+  const [listaAberta, setListaAberta] = useState(false);
 
   if (error) {
     return (
@@ -110,6 +115,7 @@ export default function ProtocolosDiaCard({ variant = "compact", className }: Pr
   }
 
   return (
+    <>
     <Card className={className}>
       <CardContent className={cn("p-4", variant === "full" && "p-5 space-y-4")}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -145,6 +151,16 @@ export default function ProtocolosDiaCard({ variant = "compact", className }: Pr
               <div className="font-semibold tabular-nums">{loading ? "—" : data.hoje.protocolados}</div>
               <div className="text-xs text-muted-foreground">com data de hoje</div>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={() => setListaAberta(true)}
+              title="Abrir a lista de protocolos, com filtro por data"
+            >
+              <ListFilter className="h-3.5 w-3.5" />
+              Ver protocolos
+            </Button>
           </div>
         </div>
 
@@ -181,5 +197,8 @@ export default function ProtocolosDiaCard({ variant = "compact", className }: Pr
         )}
       </CardContent>
     </Card>
+
+    <ProtocolosListaSheet open={listaAberta} onOpenChange={setListaAberta} />
+    </>
   );
 }
