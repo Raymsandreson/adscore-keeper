@@ -31,6 +31,7 @@ import { buildActivityMessage } from '@/components/activities/buildActivityMessa
 import { fetchLeadSteps } from '@/lib/leadStepContext';
 import { fetchFaseProcessual } from '@/lib/processFaseAtual';
 import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
+import { ASSUNTO_SIMPLES, EXPLICACAO, blocoTextoDoTribunal } from '@/lib/linguagemSimples';
 import { CATEGORIAS } from '@/lib/processUpdateCategorias';
 import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPanel';
 
@@ -62,35 +63,24 @@ function fmtData(iso: string | null): string | null {
 }
 
 /**
- * "Como está?" e "Próximo passo" quando o caso não tem POP pra ditar o passo.
- * Frases genéricas por categoria — nunca inventam data nem promessa.
+ * Conteúdo dos três campos que o cliente lê ("Como está?", "O que foi feito?",
+ * "Próximo passo"), em linguagem de quem não é da área — o texto vive em
+ * src/lib/linguagemSimples.ts.
+ *
+ * O passo do POP entra entre parênteses no fim do próximo passo: ele é escrito
+ * pra equipe ("Redação da Petição"), então não pode ser a frase principal
+ * endereçada ao cliente, mas some da mensagem se for descartado.
  */
-const SITUACAO_POR_CATEGORIA: Record<UpdateCategoria, { comoEsta: string; proximo: string }> = {
-  decisao_merito: {
-    comoEsta: 'O juízo proferiu decisão sobre o mérito do processo.',
-    proximo: 'Analisar a decisão e definir o próximo ato (recurso ou cumprimento).',
-  },
-  audiencia: {
-    comoEsta: 'Foi designada audiência no processo.',
-    proximo: 'Preparar o cliente e a documentação para a audiência.',
-  },
-  pericia: {
-    comoEsta: 'Foi determinada perícia no processo.',
-    proximo: 'Orientar o cliente sobre a perícia e reunir os documentos médicos.',
-  },
-  prazo: {
-    comoEsta: 'Fomos intimados e há prazo em curso no processo.',
-    proximo: 'Cumprir o prazo dentro do período legal.',
-  },
-  despacho: {
-    comoEsta: 'O juízo proferiu despacho no processo.',
-    proximo: 'Analisar o despacho e providenciar o que foi determinado.',
-  },
-  movimentacao: {
-    comoEsta: 'Houve nova movimentação no processo.',
-    proximo: 'Acompanhar o andamento e retornar com novidades.',
-  },
-};
+function camposDaMensagem(u: ProcessUpdate, passoPop: string | null) {
+  const explicacao = EXPLICACAO[u.categoria] || EXPLICACAO.movimentacao;
+  return {
+    comoEsta: explicacao.comoEsta,
+    oQueFoiFeito: blocoTextoDoTribunal(u.descricao),
+    proximo: passoPop
+      ? `${explicacao.proximo}\n_(Na nossa lista de tarefas, o passo em andamento é: ${passoPop}.)_`
+      : explicacao.proximo,
+  };
+}
 
 interface EnvioPendente {
   update: ProcessUpdate;
@@ -354,10 +344,11 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     }
     if (existente) return existente as LeadActivity;
 
-    const style = CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao;
-    const padrao = SITUACAO_POR_CATEGORIA[u.categoria] || SITUACAO_POR_CATEGORIA.movimentacao;
+    const campos = camposDaMensagem(u, ctx.passoAtual?.stepLabel || null);
     return await createActivity({
-      title: `${style.label} — ${u.processo_titulo || u.numero_cnj || 'processo'}`,
+      // Assunto sem jargão: o título entra na mensagem como "Assunto da
+      // atividade", e "Decisão de mérito" não diz nada pra quem é leigo.
+      title: `${ASSUNTO_SIMPLES[u.categoria]} — ${u.processo_titulo || u.numero_cnj || 'processo'}`,
       description: [
         u.descricao,
         u.data_movimentacao ? `📌 Movimentação de ${fmtData(u.data_movimentacao)}.` : null,
@@ -366,9 +357,9 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
       activity_type: TIPO_ATV[u.categoria] || 'tarefa',
       priority: u.categoria === 'movimentacao' ? 'normal' : 'alta',
       // Campos da mensagem padrão: o que foi feito / como está / próximo passo.
-      what_was_done: u.descricao || style.label,
-      current_status_notes: padrao.comoEsta,
-      next_steps: ctx.passoAtual?.stepLabel || padrao.proximo,
+      what_was_done: campos.oQueFoiFeito,
+      current_status_notes: campos.comoEsta,
+      next_steps: campos.proximo,
       process_id: u.process_id,
       process_title: u.processo_titulo || u.numero_cnj || null,
       lead_id: u.lead_id,
@@ -386,15 +377,15 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     ctx: ContextoUpdate,
     atividade: LeadActivity | null,
   ): string => {
-    const padrao = SITUACAO_POR_CATEGORIA[u.categoria] || SITUACAO_POR_CATEGORIA.movimentacao;
+    const campos = camposDaMensagem(u, ctx.passoAtual?.stepLabel || null);
     const p = ctx.passoAtual;
     return buildActivityMessage({
-      formTitle: atividade?.title || `${(CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao).label} — ${u.processo_titulo || ''}`,
+      formTitle: atividade?.title || `${ASSUNTO_SIMPLES[u.categoria]} — ${u.processo_titulo || ''}`,
       formDeadline: atividade?.deadline || '',
       formNotificationDate: atividade?.notification_date || '',
-      formWhatWasDone: atividade?.what_was_done || u.descricao || '',
-      formCurrentStatus: atividade?.current_status_notes || padrao.comoEsta,
-      formNextSteps: atividade?.next_steps || ctx.passoAtual?.stepLabel || padrao.proximo,
+      formWhatWasDone: atividade?.what_was_done || campos.oQueFoiFeito,
+      formCurrentStatus: atividade?.current_status_notes || campos.comoEsta,
+      formNextSteps: atividade?.next_steps || campos.proximo,
       formSolicitacao: '',
       formRespostaJuizo: '',
       formNotes: '',

@@ -255,7 +255,11 @@ export function buildActivityMessage(
       const objSteps = phaseSteps.filter((s) => s.templateId === curObj);
       const objStepsDone = objSteps.filter((s) => s.checked).length;
 
-      const headline = `*📊 Progresso do caso: ${overallPct}% concluído*`;
+      // "0% concluído" logo abaixo da saudação soa a caso parado. É o começo do
+      // caminho, e o cliente merece ler isso em vez de um zero seco.
+      const headline = overallPct === 0
+        ? '*📊 Progresso do caso: estamos no comecinho (0% concluído)*'
+        : `*📊 Progresso do caso: ${overallPct}% concluído*`;
       const full = [
         headline,
         `• Fases: ${pct(phasesDone, phaseIds.length)}% (${phasesDone}/${phaseIds.length})`,
