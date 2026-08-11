@@ -36,6 +36,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
@@ -222,6 +223,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { boards: allBoards } = useKanbanBoards();
   const workflowOptions = allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
+  // Desativados na aba Times somem do seletor de assessor (filterAssignableMembers).
+  useInactiveUserIds();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();

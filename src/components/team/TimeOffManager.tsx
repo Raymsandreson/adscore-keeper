@@ -30,6 +30,7 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import {
   TIME_OFF_TYPE_LABELS,
   formatBrDate,
@@ -61,8 +62,9 @@ export function TimeOffManager() {
   const [entries, setEntries] = useState<TimeOffEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  // Desativados (org_user_status.active = false no Externo) somem do seletor.
-  const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
+  // Desativados (org_user_status.active = false no Externo) somem do seletor —
+  // filterAssignableMembers já os descarta assim que o hook carrega a lista.
+  const inactiveIds = useInactiveUserIds();
 
   // Form
   const [formUserId, setFormUserId] = useState('');
@@ -75,7 +77,6 @@ export function TimeOffManager() {
 
   const people = useMemo(
     () => filterAssignableMembers(profilesList.map(p => ({ user_id: p.user_id, full_name: p.full_name, email: p.email })))
-      .filter(p => !inactiveIds.has(p.user_id))
       .sort((a, b) => (a.full_name || a.email || '').localeCompare(b.full_name || b.email || '', 'pt-BR', { sensitivity: 'base' })),
     [profilesList, inactiveIds],
   );
@@ -94,16 +95,11 @@ export function TimeOffManager() {
   const fetchEntries = useCallback(async () => {
     try {
       await ensureExternalSession();
-      const [{ data, error }, { data: statusRows }] = await Promise.all([
-        (externalSupabase as any)
-          .from('member_time_off')
-          .select('*')
-          .order('start_date', { ascending: true }),
-        ((externalSupabase as any).from('org_user_status') as any)
-          .select('user_id').eq('active', false),
-      ]);
+      const { data, error } = await (externalSupabase as any)
+        .from('member_time_off')
+        .select('*')
+        .order('start_date', { ascending: true });
       if (error) throw error;
-      setInactiveIds(new Set(((statusRows as any[]) || []).map(r => r.user_id)));
       setEntries((data || []) as TimeOffEntry[]);
     } catch (e) {
       console.error('[TimeOffManager] Falha ao carregar ausências:', e);

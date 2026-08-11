@@ -45,6 +45,12 @@ export function getFunnelSheetConfig(boardName: string | undefined | null): Funn
   return null;
 }
 
+/** Link direto pra planilha do funil no Google Sheets. */
+export function getFunnelSheetUrl(spreadsheetId: string | undefined | null): string | null {
+  if (!spreadsheetId) return null;
+  return `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+}
+
 /** Compat: mantém a checagem antiga (`isBpcFunnel`) apenas quando quisermos algo BPC-específico. */
 export function isBpcFunnel(boardName: string): boolean {
   return getFunnelSheetConfig(boardName)?.kind === "bpc";

@@ -8,6 +8,7 @@ import { ptBR } from 'date-fns/locale';
 import html2canvas from 'html2canvas';
 import { LeadActivity } from '@/hooks/useLeadActivities';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 
 interface TeamMember {
   user_id: string;
@@ -50,6 +51,8 @@ export function AssessorSummaryShareDialog({
   allKnownActivityTypes,
 }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
+  // Desativados na aba Times não viram linha do resumo (filterAssignableMembers).
+  const inactiveIds = useInactiveUserIds();
   const [generating, setGenerating] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -101,7 +104,7 @@ export function AssessorSummaryShareDialog({
       })
       .filter((r): r is AssessorRow => r !== null)
       .sort((a, b) => (b.totalOpen + b.totalDone) - (a.totalOpen + a.totalDone));
-  }, [activities, teamMembers, filterAssignee, allKnownActivityTypes]);
+  }, [activities, teamMembers, filterAssignee, allKnownActivityTypes, inactiveIds]);
 
   const totals = useMemo(() => ({
     open: rows.reduce((s, r) => s + r.totalOpen, 0),

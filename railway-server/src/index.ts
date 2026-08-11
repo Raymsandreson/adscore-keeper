@@ -72,6 +72,7 @@ import { handler as extractActivityFromDocument } from './functions/extract-acti
 import { handler as dictateActivity } from './functions/dictate-activity';
 import { handler as chatToActivity } from './functions/chat-to-activity';
 import { handler as detectClientCommitments } from './functions/detect-client-commitments';
+import { handler as detectGroupCaseReports } from './functions/detect-group-case-reports';
 import { handler as callToActivities } from './functions/call-to-activities';
 import { handler as activityFromMovement } from './functions/activity-from-movement';
 import { handler as generateActivityTitle } from './functions/generate-activity-title';
@@ -149,6 +150,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'dictate-activity': dictateActivity,
   'chat-to-activity': chatToActivity,
   'detect-client-commitments': detectClientCommitments,
+  'detect-group-case-reports': detectGroupCaseReports, // IA lê grupos marcados e acha gente relatando acidente
   'call-to-activities': callToActivities,
   'activity-from-movement': activityFromMovement,
   'generate-activity-title': generateActivityTitle,
@@ -509,3 +511,38 @@ async function runInssSync() {
 // Escalonado do orphan scan (60s) pra não competirem no boot.
 setTimeout(runInssSync, 120_000);
 setInterval(runInssSync, INSS_SYNC_INTERVAL_MS);
+
+// ============================================================
+// CRON: relatos de acidente nos grupos marcados — a cada
+// GROUP_REPORTS_INTERVAL_MIN (padrão 10).
+//
+// Precisa ser cron, e não gatilho no webhook: relato quase nunca
+// cabe numa mensagem só ("caiu do andaime" / "quebrou a coluna" /
+// "foi pro João XXIII"), então a IA tem que ler o pedaço de
+// conversa, não a linha solta. E chamar IA por mensagem de grupo
+// custaria uma fortuna à toa.
+//
+// Barato por construção: o handler pula sozinho todo grupo sem
+// mensagem nova desde a última leitura (whatsapp_group_report_scans),
+// então rodada em grupo parado não gasta chamada de IA.
+// ============================================================
+const GROUP_REPORTS_INTERVAL_MS = Number(process.env.GROUP_REPORTS_INTERVAL_MIN || 10) * 60 * 1000;
+async function runGroupCaseReports() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/detect-group-case-reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: '{}',
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    // Rodada sem relato novo é o caso comum — só loga novidade ou erro.
+    if (json?.created > 0 || json?.success === false) {
+      console.log(`[cron:detect-group-case-reports] grupos=${json?.groups_scanned} relatos=${json?.created} erro=${json?.error || 'nenhum'}`);
+    }
+  } catch (err) {
+    console.warn('[cron:detect-group-case-reports] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Escalonado dos outros crons de boot (60s, 120s).
+setTimeout(runGroupCaseReports, 180_000);
+setInterval(runGroupCaseReports, GROUP_REPORTS_INTERVAL_MS);

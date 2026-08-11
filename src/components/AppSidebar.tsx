@@ -5,7 +5,7 @@ import {
   MessageCircle, CreditCard, Filter, Bot, Target, Heart, Megaphone,
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
-  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Clock,
+  MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Ear, Clock,
   FileBarChart, Wallet,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -114,6 +114,7 @@ export function AppSidebar() {
   const leadsSubItems: NavItem[] = [
     { id: "leads-previdenciario", label: "Leads Previdenciário", icon: <Users className="h-3.5 w-3.5" />, path: "/leads?cat=previdenciario" },
     { id: "leads-trabalhista", label: "Leads Trabalhista", icon: <Users className="h-3.5 w-3.5" />, path: "/leads?cat=trabalhista" },
+    { id: "relatos-grupos", label: "Relatos nos grupos", icon: <Ear className="h-3.5 w-3.5" />, path: "/leads/relatos-grupos", color: "text-emerald-500" },
   ];
 
   const quickLinks: NavItem[] = [

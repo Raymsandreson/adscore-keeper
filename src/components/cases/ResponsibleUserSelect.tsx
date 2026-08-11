@@ -6,6 +6,8 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useSharedFetch } from '@/lib/sharedFetch';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { fetchInactiveUserIds } from '@/lib/inactiveUsers';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { cn } from '@/lib/utils';
 import { Check, ChevronDown, UserCheck } from 'lucide-react';
 
@@ -41,6 +43,9 @@ function useAssignableTeam(): TeamOption[] {
   const { data } = useSharedFetch<TeamOption[]>(
     'responsible_team_options',
     async () => {
+      // Desativados na aba Times antes do filtro — aqui não há render pra
+      // esperar a lista chegar depois.
+      await fetchInactiveUserIds().catch(() => {});
       const { data: mapping, error } = await (externalSupabase as any)
         .from('auth_uuid_mapping')
         .select('cloud_uuid, ext_uuid');
@@ -82,6 +87,7 @@ export function ResponsibleUserSelect({ value, onChange, className, placeholder,
   const [open, setOpen] = useState(false);
   const team = useAssignableTeam();
   const cloudProfiles = useProfilesList();
+  const inactiveIds = useInactiveUserIds();
 
   const options = useMemo(() => {
     const mappedByCloud = new Map(team.map(m => [m.user_id, m]));
@@ -99,7 +105,7 @@ export function ResponsibleUserSelect({ value, onChange, className, placeholder,
       opts.push({ ext_uuid: m.ext_uuid, name: m.ext_name || m.ext_uuid.slice(0, 8) });
     }
     return opts.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
-  }, [team, cloudProfiles]);
+  }, [team, cloudProfiles, inactiveIds]);
 
   const selected = value ? options.find(o => o.ext_uuid === value) : undefined;
 

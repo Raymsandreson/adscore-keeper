@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -65,7 +65,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
-  const [onlyUnread, setOnlyUnread] = useState(false);
+  // Mesmo vocabulário da aba Chat: a bola está com você (responder) ou com o
+  // outro (aguardando). "Não lidas" continua sendo só o que você ainda não abriu.
+  const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'responder' | 'aguardando'>('all');
 
   useEffect(() => {
     return subscribeToTeamChatConversation((intent) => {
@@ -196,6 +198,8 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   };
 
   const unreadCount = mentions.filter(m => !m.is_read).length;
+  const responderCount = mentions.filter(m => m.status === 'responder').length;
+  const aguardandoCount = mentions.filter(m => m.status === 'aguardando').length;
 
   // Tipos que realmente aparecem nas menções — não adianta oferecer filtro vazio.
   const availableTypes = useMemo(() => {
@@ -208,13 +212,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const visibleMentions = useMemo(() => {
     const term = search.trim().toLowerCase();
     return mentions.filter(m => {
-      if (onlyUnread && m.is_read) return false;
+      if (statusFilter === 'unread' && m.is_read) return false;
+      if ((statusFilter === 'responder' || statusFilter === 'aguardando') && m.status !== statusFilter) return false;
       if (typeFilter !== 'all' && (m.entity_type || 'team_chat') !== typeFilter) return false;
       if (!term) return true;
       const haystack = [
         m.message?.sender_name,
         m.message?.content,
         m.entity_name,
+        m.reply?.content,
         entityLabels[m.entity_type || 'team_chat'],
       ]
         .filter(Boolean)
@@ -222,9 +228,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [mentions, search, typeFilter, onlyUnread]);
+  }, [mentions, search, typeFilter, statusFilter]);
 
-  const hasActiveFilter = search.trim() !== '' || typeFilter !== 'all' || onlyUnread;
+  const hasActiveFilter = search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all';
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -321,10 +327,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
             <div className="flex gap-1">
               <button
                 type="button"
-                onClick={() => setOnlyUnread(false)}
+                onClick={() => setStatusFilter('all')}
                 className={cn(
                   'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
-                  !onlyUnread
+                  statusFilter === 'all'
                     ? 'bg-primary text-primary-foreground border-primary'
                     : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
                 )}
@@ -333,16 +339,44 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
               </button>
               <button
                 type="button"
-                onClick={() => setOnlyUnread(v => !v)}
+                onClick={() => setStatusFilter(v => (v === 'unread' ? 'all' : 'unread'))}
                 title="Menções que você ainda não abriu"
                 className={cn(
                   'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors',
-                  onlyUnread
+                  statusFilter === 'unread'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-primary/10 text-primary border-primary/40 hover:bg-primary/20'
+                )}
+              >
+                Não lidas{unreadCount > 0 ? ` (${unreadCount})` : ''}
+              </button>
+            </div>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setStatusFilter(v => (v === 'responder' ? 'all' : 'responder'))}
+                title="Marcaram você e você ainda não escreveu nada nessa conversa"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors inline-flex items-center justify-center gap-1',
+                  statusFilter === 'responder'
                     ? 'bg-amber-500 text-white border-amber-500'
                     : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/40 hover:bg-amber-500/20'
                 )}
               >
-                Não lidas{unreadCount > 0 ? ` (${unreadCount})` : ''}
+                <Timer className="h-3 w-3" /> Responder{responderCount > 0 ? ` (${responderCount})` : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatusFilter(v => (v === 'aguardando' ? 'all' : 'aguardando'))}
+                title="Você marcou alguém e ninguém respondeu depois"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-semibold border transition-colors inline-flex items-center justify-center gap-1',
+                  statusFilter === 'aguardando'
+                    ? 'bg-sky-500 text-white border-sky-500'
+                    : 'bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-500/40 hover:bg-sky-500/20'
+                )}
+              >
+                <Reply className="h-3 w-3" /> Aguardando{aguardandoCount > 0 ? ` (${aguardandoCount})` : ''}
               </button>
             </div>
           </div>
@@ -365,18 +399,24 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
             ) : mentions.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-xs text-center gap-2 px-6">
                 <AtSign className="h-8 w-8 opacity-30" />
-                <p>Nenhuma menção ainda.<br/>Quando alguém marcar você com <span className="font-medium text-primary">@seu_nome</span>, aparecerá aqui.</p>
+                <p>Nenhuma menção ainda.<br/>Quando alguém marcar você com <span className="font-medium text-primary">@seu_nome</span> — ou quando você marcar alguém no chat de uma ficha — aparecerá aqui.</p>
               </div>
             ) : visibleMentions.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-xs text-center gap-2 px-6">
                 <Search className="h-8 w-8 opacity-30" />
-                <p>Nenhuma menção com esse filtro.</p>
+                <p>
+                  {statusFilter === 'responder'
+                    ? 'Nada pendente de resposta sua. 🎉'
+                    : statusFilter === 'aguardando'
+                      ? 'Ninguém te devendo resposta.'
+                      : 'Nenhuma menção com esse filtro.'}
+                </p>
                 {hasActiveFilter && (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => { setSearch(''); setTypeFilter('all'); setOnlyUnread(false); }}
+                    onClick={() => { setSearch(''); setTypeFilter('all'); setStatusFilter('all'); }}
                   >
                     Limpar filtros
                   </Button>
@@ -390,7 +430,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                     onClick={() => handleMentionClick(mention)}
                     className={cn(
                       "w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors",
-                      !mention.is_read && "bg-primary/5"
+                      !mention.is_read && "bg-primary/5",
+                      mention.status === 'responder' && "border-l-2 border-l-amber-500",
+                      mention.status === 'aguardando' && "border-l-2 border-l-sky-500/70"
                     )}
                   >
                     <div className="flex items-start gap-3">
@@ -400,9 +442,11 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-0.5">
                           <span className="text-xs font-semibold truncate">
-                            {mention.message?.sender_name || 'Alguém'}
+                            {mention.direction === 'out' ? 'Você' : (mention.message?.sender_name || 'Alguém')}
                           </span>
-                          <span className="text-[10px] text-muted-foreground">mencionou você</span>
+                          <span className="text-[10px] text-muted-foreground shrink-0">
+                            {mention.direction === 'out' ? 'marcou a equipe' : 'mencionou você'}
+                          </span>
                           {!mention.is_read && (
                             <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
                           )}
@@ -410,6 +454,27 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                         <p className="text-[12px] text-muted-foreground line-clamp-2 mb-1">
                           {mention.message?.content}
                         </p>
+                        {mention.status && (
+                          <div className="mb-1">
+                            {mention.status === 'respondido' && mention.reply ? (
+                              <p className="text-[11px] text-emerald-600 dark:text-emerald-400 line-clamp-1 flex items-start gap-1">
+                                <CornerDownRight className="h-3 w-3 mt-[1px] shrink-0" />
+                                <span className="truncate">
+                                  <b className="font-medium">{mention.reply.sender_name || 'Alguém'}:</b>{' '}
+                                  {mention.reply.content}
+                                </span>
+                              </p>
+                            ) : mention.status === 'responder' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                <Timer className="h-3 w-3" /> Esperando você responder
+                              </span>
+                            ) : mention.status === 'aguardando' ? (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-600 dark:text-sky-400">
+                                <Reply className="h-3 w-3" /> Aguardando resposta
+                              </span>
+                            ) : null}
+                          </div>
+                        )}
                         <div className="flex items-center gap-2">
                           <Badge variant="outline" className={cn("text-[9px] h-4 px-1.5", entityColors[mention.entity_type || 'team_chat'])}>
                             {entityIcons[mention.entity_type || 'team_chat']}
