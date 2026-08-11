@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bell, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2,
+  Bell, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2, BadgeCheck, AlertTriangle,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
@@ -15,12 +15,22 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format, parseISO } from 'date-fns';
 import { db } from '@/integrations/supabase';
+import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useProcessUpdates, type UpdateCategoria, type ProcessUpdate } from '@/hooks/useProcessUpdates';
-import { useLeadActivities } from '@/hooks/useLeadActivities';
+import { useProcessUpdates, type UpdateCategoria, type ProcessUpdate, type UpdateNotificacao } from '@/hooks/useProcessUpdates';
+import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
+import { useProfilesList } from '@/hooks/useProfilesList';
+import { useSystemOabs } from '@/hooks/useSystemOabs';
+import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
+import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
+import { fetchLeadSteps } from '@/lib/leadStepContext';
+import { fetchFaseProcessual } from '@/lib/processFaseAtual';
+import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
 import { CATEGORIAS } from '@/lib/processUpdateCategorias';
 
 const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
@@ -50,37 +60,55 @@ function fmtData(iso: string | null): string | null {
   }
 }
 
-/** Mensagem no formato das notificações de atividade: saudação + corpo + assinatura. */
-function buildGroupMessage(u: ProcessUpdate, clienteNome: string | null, remetenteNome: string | null): string {
-  const style = CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao;
-  const primeiroNome = (clienteNome || '').trim().split(' ')[0] || null;
-  const linhas = [
-    primeiroNome ? `Olá, ${primeiroNome}! 😊` : 'Olá! 😊',
-    '',
-    '⚖️ *Atualização no seu processo*',
-    u.numero_cnj ? `📌 Processo: ${u.numero_cnj}` : null,
-    `🗂️ ${style.label}${u.data_movimentacao ? ` — ${fmtData(u.data_movimentacao)}` : ''}`,
-    u.descricao ? `\n${u.descricao}` : null,
-    '',
-    'Qualquer dúvida, estamos à disposição.',
-    '',
-    `Com carinho, ${(remetenteNome || '').trim().split(' ')[0] || 'Equipe'} 💚`,
-  ];
-  return linhas.filter((l) => l !== null).join('\n');
-}
+/**
+ * "Como está?" e "Próximo passo" quando o caso não tem POP pra ditar o passo.
+ * Frases genéricas por categoria — nunca inventam data nem promessa.
+ */
+const SITUACAO_POR_CATEGORIA: Record<UpdateCategoria, { comoEsta: string; proximo: string }> = {
+  decisao_merito: {
+    comoEsta: 'O juízo proferiu decisão sobre o mérito do processo.',
+    proximo: 'Analisar a decisão e definir o próximo ato (recurso ou cumprimento).',
+  },
+  audiencia: {
+    comoEsta: 'Foi designada audiência no processo.',
+    proximo: 'Preparar o cliente e a documentação para a audiência.',
+  },
+  pericia: {
+    comoEsta: 'Foi determinada perícia no processo.',
+    proximo: 'Orientar o cliente sobre a perícia e reunir os documentos médicos.',
+  },
+  prazo: {
+    comoEsta: 'Fomos intimados e há prazo em curso no processo.',
+    proximo: 'Cumprir o prazo dentro do período legal.',
+  },
+  despacho: {
+    comoEsta: 'O juízo proferiu despacho no processo.',
+    proximo: 'Analisar o despacho e providenciar o que foi determinado.',
+  },
+  movimentacao: {
+    comoEsta: 'Houve nova movimentação no processo.',
+    proximo: 'Acompanhar o andamento e retornar com novidades.',
+  },
+};
 
 interface EnvioPendente {
   update: ProcessUpdate;
   groupJid: string;
   leadName: string | null;
   message: string;
+  /** Atividade do próximo passo criada (ou reaproveitada) junto com o aviso. */
+  activityId: string | null;
+  /** Caso sem POP e sem marco: mensagem sai reduzida, sem fase nem progresso. */
+  semContexto: boolean;
+  reenvio: boolean;
 }
 
 function UpdateRow({
-  update, unread, onOpenLead, onCreateActivity, onSendGroup, onMarkRead, sending,
+  update, unread, notificacao, onOpenLead, onCreateActivity, onSendGroup, onMarkRead, sending,
 }: {
   update: ProcessUpdate;
   unread: boolean;
+  notificacao: UpdateNotificacao | undefined;
   onOpenLead: (u: ProcessUpdate) => void;
   onCreateActivity: (u: ProcessUpdate) => void;
   onSendGroup: (u: ProcessUpdate) => void;
@@ -111,6 +139,23 @@ function UpdateRow({
             </Badge>
             {dataMov && <span className="text-[10px] text-muted-foreground">{dataMov}</span>}
             {unread && <span className="text-[9px] font-semibold text-primary uppercase">novo</span>}
+            {update.esfera && update.esfera !== 'outros' && (
+              <span className="text-[9px] text-muted-foreground uppercase tracking-wide">
+                {ESFERAS[update.esfera].curto}
+              </span>
+            )}
+            {/* Etiqueta global: o CLIENTE já foi avisado desta movimentação. */}
+            {notificacao && (
+              <Badge
+                variant="outline"
+                className="text-[10px] px-1.5 py-0 gap-1 font-medium border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                title={notificacao.notified_by_name ? `Notificado por ${notificacao.notified_by_name}` : 'Cliente notificado'}
+              >
+                <BadgeCheck className="h-3 w-3" />
+                Notificado {fmtData(notificacao.notified_at.slice(0, 10))}
+                {notificacao.notified_by_name ? ` · ${notificacao.notified_by_name.split(' ')[0]}` : ''}
+              </Badge>
+            )}
           </div>
           <p className="text-xs font-medium mt-1 truncate">
             {update.processo_titulo || update.numero_cnj || 'Processo'}
@@ -145,9 +190,10 @@ function UpdateRow({
               variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
               disabled={sending}
               onClick={(e) => { e.stopPropagation(); onSendGroup(update); }}
+              title={notificacao ? 'Já notificado — reenviar mensagem ao grupo' : 'Notificar o cliente no grupo (cria a atividade do próximo passo)'}
             >
               {sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageCircle className="h-3 w-3" />}
-              Msg grupo
+              {notificacao ? 'Reenviar' : 'Notificar'}
             </Button>
           </div>
         </div>
@@ -156,19 +202,55 @@ function UpdateRow({
   );
 }
 
+const ESFERA_STORAGE_KEY = 'process_updates_esfera_filtro';
+
 export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
-  const { updates, loading, unreadCount, readIds, markRead, markAllRead } = useProcessUpdates();
+  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified } = useProcessUpdates();
   const { createActivity } = useLeadActivities();
-  const { profile } = useAuthContext();
+  const { profile, user } = useAuthContext();
   const navigate = useNavigate();
   const [filtro, setFiltro] = useState<UpdateCategoria | 'todas'>('todas');
+  // A equipe trabalhista não quer ver movimentação de INSS (e vice-versa), então
+  // a escolha do ramo fica guardada entre sessões.
+  const [esferaFiltro, setEsferaFiltro] = useState<Esfera | 'todas'>(
+    () => (localStorage.getItem(ESFERA_STORAGE_KEY) as Esfera | 'todas') || 'todas',
+  );
+  const [soNaoNotificadas, setSoNaoNotificadas] = useState(false);
   const [periodo, setPeriodo] = useState<Periodo>('30d');
   const [open, setOpen] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
 
+  // ---- Insumos da mensagem padrão da atividade (mesma função da ficha) ----
+  const { fields: fieldSettings } = useActivityFieldSettings();
+  const { getTemplateForContext } = useActivityMessageTemplates();
+  const systemOabs = useSystemOabs();
+  const profiles = useProfilesList();
+  const teamMembers = useMemo(
+    () => filterAssignableMembers(profiles).map((p) => ({ user_id: p.user_id, full_name: p.full_name })),
+    [profiles],
+  );
+  const resolveUserName = useCallback((userId: string | null) => {
+    if (!userId) return null;
+    const direct = teamMembers.find((m) => m.user_id === userId)?.full_name;
+    if (direct) return direct;
+    const cloudId = remapToCloudSync(userId);
+    if (cloudId && cloudId !== userId) {
+      const viaRemap = teamMembers.find((m) => m.user_id === cloudId)?.full_name;
+      if (viaRemap) return viaRemap;
+    }
+    return null;
+  }, [teamMembers]);
+
+  const escolherEsfera = (e: Esfera | 'todas') => {
+    setEsferaFiltro(e);
+    localStorage.setItem(ESFERA_STORAGE_KEY, e);
+  };
+
   const filtered = useMemo(() => {
     let list = filtro === 'todas' ? updates : updates.filter((u) => u.categoria === filtro);
+    if (esferaFiltro !== 'todas') list = list.filter((u) => (u.esfera || 'outros') === esferaFiltro);
+    if (soNaoNotificadas) list = list.filter((u) => !notificadas.has(u.id));
     const dias = PERIODOS.find((p) => p.value === periodo)?.dias;
     if (dias !== null && dias !== undefined) {
       const cutoff = new Date();
@@ -177,13 +259,31 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
       list = list.filter((u) => (u.data_movimentacao || u.created_at).slice(0, 10) >= cutoffIso);
     }
     return list;
-  }, [updates, filtro, periodo]);
+  }, [updates, filtro, esferaFiltro, soNaoNotificadas, notificadas, periodo]);
 
   const countByCategoria = useMemo(() => {
     const acc = {} as Record<string, number>;
-    for (const u of updates) acc[u.categoria] = (acc[u.categoria] || 0) + 1;
+    // Contagem da linha de categorias respeita o ramo já escolhido — senão o
+    // chip mostra 40 e a lista abre com 3.
+    const base = esferaFiltro === 'todas' ? updates : updates.filter((u) => (u.esfera || 'outros') === esferaFiltro);
+    for (const u of base) acc[u.categoria] = (acc[u.categoria] || 0) + 1;
+    acc.todas = base.length;
+    return acc;
+  }, [updates, esferaFiltro]);
+
+  const countByEsfera = useMemo(() => {
+    const acc = {} as Record<string, number>;
+    for (const u of updates) {
+      const e = u.esfera || 'outros';
+      acc[e] = (acc[e] || 0) + 1;
+    }
     return acc;
   }, [updates]);
+
+  const naoNotificadasCount = useMemo(
+    () => updates.filter((u) => !notificadas.has(u.id)).length,
+    [updates, notificadas],
+  );
 
   const handleOpenLead = (u: ProcessUpdate) => {
     markRead(u.id);
@@ -196,58 +296,188 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     }
   };
 
-  const handleCreateActivity = async (u: ProcessUpdate) => {
+  /**
+   * Contexto da movimentação: lead, processo, POP do lead e — quando não há POP —
+   * a fase da linha do trem. É o que permite mandar a mensagem no mesmo padrão
+   * da atividade (etapa / objetivo / passo atual / progresso).
+   */
+  const carregarContexto = useCallback(async (u: ProcessUpdate) => {
+    const [leadRes, procRes] = await Promise.all([
+      u.lead_id
+        ? db.from('leads').select('lead_name, whatsapp_group_id, board_id, case_type').eq('id', u.lead_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      db.from('lead_processes').select('*').eq('id', u.process_id).maybeSingle(),
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lead = (leadRes as any).data as
+      { lead_name: string | null; whatsapp_group_id: string | null; board_id: string | null; case_type: string | null } | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const processo = (procRes as any).data as Record<string, any> | null;
+
+    const boardId = processo?.workflow_id || lead?.board_id || null;
+    const { steps, defaultStepId } = await fetchLeadSteps(u.lead_id, boardId);
+    const passoAtual = steps.find((s) => s.stepId === defaultStepId) || null;
+
+    // Sem POP: cai na régua de marcos do processo. Com POP, nem consulta.
+    const fase = steps.length === 0
+      ? await fetchFaseProcessual(u.process_id, {
+          processNumber: processo?.process_number || u.numero_cnj,
+          caseType: lead?.case_type || null,
+          periciaPrevista: processo?.pericia_prevista ?? null,
+        })
+      : null;
+
+    return { lead, processo, boardId, steps, passoAtual, fase };
+  }, []);
+
+  type ContextoUpdate = Awaited<ReturnType<typeof carregarContexto>>;
+
+  /**
+   * Atividade do próximo passo. Uma movimentação gera no máximo UMA — reenvio e
+   * o botão "Criar atv" reaproveitam a mesma (lead_activities.process_update_id).
+   */
+  const buscarOuCriarAtividade = useCallback(async (
+    u: ProcessUpdate,
+    ctx: ContextoUpdate,
+  ): Promise<LeadActivity | null> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const client = db as any;
+    const { data: existente, error } = await client
+      .from('lead_activities')
+      .select('*')
+      .eq('process_update_id', u.id)
+      .maybeSingle();
+    if (error) {
+      // Banco sem a migration: segue criando (sem o vínculo), não trava o aviso.
+      console.warn('[ProcessUpdatesBell] process_update_id indisponível:', error.message);
+    }
+    if (existente) return existente as LeadActivity;
+
     const style = CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao;
+    const padrao = SITUACAO_POR_CATEGORIA[u.categoria] || SITUACAO_POR_CATEGORIA.movimentacao;
+    return await createActivity({
+      title: `${style.label} — ${u.processo_titulo || u.numero_cnj || 'processo'}`,
+      description: [
+        u.descricao,
+        u.data_movimentacao ? `📌 Movimentação de ${fmtData(u.data_movimentacao)}.` : null,
+        u.numero_cnj ? `⚖️ Processo ${u.numero_cnj}.` : null,
+      ].filter(Boolean).join('\n\n'),
+      activity_type: TIPO_ATV[u.categoria] || 'tarefa',
+      priority: u.categoria === 'movimentacao' ? 'normal' : 'alta',
+      // Campos da mensagem padrão: o que foi feito / como está / próximo passo.
+      what_was_done: u.descricao || style.label,
+      current_status_notes: padrao.comoEsta,
+      next_steps: ctx.passoAtual?.stepLabel || padrao.proximo,
+      process_id: u.process_id,
+      process_title: u.processo_titulo || u.numero_cnj || null,
+      lead_id: u.lead_id,
+      lead_name: ctx.lead?.lead_name || null,
+      case_id: u.case_id,
+      workflow_id: ctx.boardId,
+      process_update_id: u.id,
+      assigned_to_name: profile?.full_name || null,
+    });
+  }, [createActivity, profile?.full_name]);
+
+  /** Mensagem no padrão da atividade — mesma função da ficha (uma implementação só). */
+  const montarMensagem = useCallback((
+    u: ProcessUpdate,
+    ctx: ContextoUpdate,
+    atividade: LeadActivity | null,
+  ): string => {
+    const padrao = SITUACAO_POR_CATEGORIA[u.categoria] || SITUACAO_POR_CATEGORIA.movimentacao;
+    const p = ctx.passoAtual;
+    return buildActivityMessage({
+      formTitle: atividade?.title || `${(CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao).label} — ${u.processo_titulo || ''}`,
+      formDeadline: atividade?.deadline || '',
+      formNotificationDate: atividade?.notification_date || '',
+      formWhatWasDone: atividade?.what_was_done || u.descricao || '',
+      formCurrentStatus: atividade?.current_status_notes || padrao.comoEsta,
+      formNextSteps: atividade?.next_steps || ctx.passoAtual?.stepLabel || padrao.proximo,
+      formSolicitacao: '',
+      formRespostaJuizo: '',
+      formNotes: '',
+      formAssignedToName: atividade?.assigned_to_name || profile?.full_name || '',
+      formCoAssignees: [],
+      formIsSystem: false,
+      formClientNameOverride: '',
+      formLeadName: ctx.lead?.lead_name || '',
+      formCaseTitle: '',
+      formProcessId: u.process_id,
+      formProcessTitle: u.processo_titulo || u.numero_cnj || '',
+      fieldSettings,
+      selectedActivity: atividade,
+      caseProcesses: ctx.processo ? [ctx.processo] : [],
+      stepContext: p
+        ? {
+            stageId: p.phaseId,
+            templateId: p.templateId,
+            stepId: p.stepId,
+            stepLabel: p.stepLabel,
+            phaseLabel: p.phaseLabel,
+            objectiveLabel: p.objectiveLabel,
+            allSteps: ctx.steps,
+          }
+        : null,
+      faseProcessual: ctx.fase,
+      leadPreview: { board_id: ctx.boardId },
+      systemOabs,
+      currentUserId: user?.id || null,
+      resolveUserName,
+      getTemplateForContext,
+    }, 'client');
+  }, [fieldSettings, systemOabs, user?.id, resolveUserName, getTemplateForContext, profile?.full_name]);
+
+  const handleCreateActivity = async (u: ProcessUpdate) => {
     try {
-      const created = await createActivity({
-        title: `${style.label} — ${u.processo_titulo || u.numero_cnj || 'processo'}`,
-        description: [
-          u.descricao,
-          u.data_movimentacao ? `📌 Movimentação de ${fmtData(u.data_movimentacao)}.` : null,
-          u.numero_cnj ? `⚖️ Processo ${u.numero_cnj}.` : null,
-        ].filter(Boolean).join('\n\n'),
-        activity_type: TIPO_ATV[u.categoria] || 'tarefa',
-        priority: u.categoria === 'movimentacao' ? 'normal' : 'alta',
-        process_id: u.process_id,
-        process_title: u.processo_titulo || u.numero_cnj || null,
-        lead_id: u.lead_id,
-        case_id: u.case_id,
-      });
+      const ctx = await carregarContexto(u);
+      const created = await buscarOuCriarAtividade(u, ctx);
       if (created) {
         markRead(u.id);
         toast.success('Atividade criada a partir da atualização');
       }
     } catch (err) {
       console.error('Error creating activity from update:', err);
+      toast.error('Erro ao criar atividade a partir da atualização');
     }
   };
 
-  /** Prepara o envio pro grupo do lead: busca grupo + nome e abre a confirmação. */
+  /**
+   * Prepara a notificação: cria (ou reaproveita) a atividade do próximo passo,
+   * monta a mensagem no padrão e abre a confirmação.
+   */
   const handleSendGroup = async (u: ProcessUpdate) => {
-    if (!u.lead_id) {
-      const ok = await copyTextToClipboard(buildGroupMessage(u, null, profile?.full_name || null));
-      toast.info(ok ? 'Sem lead vinculado — mensagem copiada pra envio manual' : 'Atualização sem lead vinculado');
-      return;
-    }
     setSendingId(u.id);
     try {
-      const { data: lead, error } = await db
-        .from('leads')
-        .select('lead_name, whatsapp_group_id')
-        .eq('id', u.lead_id)
-        .maybeSingle();
-      if (error) throw error;
+      const ctx = await carregarContexto(u);
+      const atividade = u.lead_id || u.case_id || u.process_id
+        ? await buscarOuCriarAtividade(u, ctx)
+        : null;
+      const message = montarMensagem(u, ctx, atividade);
+      // Sem POP e sem marco: o bloco de fase/progresso sai da mensagem inteiro.
+      const semContexto = ctx.steps.length === 0 && !ctx.fase;
 
-      const message = buildGroupMessage(u, lead?.lead_name || null, profile?.full_name || null);
-      if (!lead?.whatsapp_group_id) {
+      if (!ctx.lead?.whatsapp_group_id) {
         const ok = await copyTextToClipboard(message);
-        toast.info(ok ? 'Lead sem grupo vinculado — mensagem copiada pra envio manual' : 'Lead sem grupo de WhatsApp vinculado');
+        toast.info(
+          ok
+            ? `${u.lead_id ? 'Lead sem grupo vinculado' : 'Atualização sem lead vinculado'} — mensagem copiada pra envio manual`
+            : 'Sem grupo de WhatsApp vinculado',
+        );
         return;
       }
-      setEnvioPendente({ update: u, groupJid: lead.whatsapp_group_id, leadName: lead.lead_name || null, message });
+      setEnvioPendente({
+        update: u,
+        groupJid: ctx.lead.whatsapp_group_id,
+        leadName: ctx.lead.lead_name || null,
+        message,
+        activityId: atividade?.id || null,
+        semContexto,
+        reenvio: notificadas.has(u.id),
+      });
     } catch (err) {
       console.error('Error preparing group message:', err);
-      toast.error('Erro ao buscar o grupo do lead');
+      toast.error('Erro ao preparar a notificação');
     } finally {
       setSendingId(null);
     }
@@ -279,7 +509,21 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
         toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
       } else {
         markRead(pending.update.id);
-        toast.success(`Mensagem enviada ao grupo${pending.leadName ? ` de ${pending.leadName}` : ''}!`);
+        // Etiqueta só depois do envio confirmado — "notificado" tem que
+        // significar que a mensagem saiu, não que alguém clicou no botão.
+        await markNotified(pending.update.id, {
+          activityId: pending.activityId,
+          groupJid: pending.groupJid,
+          notifiedByName: profile?.full_name || null,
+        });
+        toast.success(`Cliente notificado${pending.leadName ? ` no grupo de ${pending.leadName}` : ''}!`, {
+          action: pending.activityId
+            ? {
+                label: 'Abrir atv',
+                onClick: () => { setOpen(false); navigate(`/?openActivity=${pending.activityId}`); },
+              }
+            : undefined,
+        });
       }
     } catch (err) {
       console.error('Error sending group message:', err);
@@ -320,11 +564,42 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
             )}
           </div>
         </SheetHeader>
+        {/* Ramo da Justiça — separa o que é da equipe trabalhista do resto. */}
+        <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0 items-center">
+          <span className="text-[10px] text-muted-foreground pr-1 shrink-0">Ramo:</span>
+          {(['todas', ...ESFERA_ORDER] as Array<Esfera | 'todas'>).map((e) => {
+            const count = e === 'todas' ? updates.length : (countByEsfera[e] || 0);
+            if (e !== 'todas' && count === 0) return null;
+            return (
+              <button
+                key={e}
+                onClick={() => escolherEsfera(e)}
+                title={e === 'todas' ? 'Todos os ramos' : ESFERAS[e].label}
+                className={cn(
+                  'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors',
+                  esferaFiltro === e ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent',
+                )}
+              >
+                {e === 'todas' ? 'Todos' : ESFERAS[e].curto} <span className="opacity-70">({count})</span>
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setSoNaoNotificadas((v) => !v)}
+            title="Só as movimentações em que o cliente ainda não foi avisado"
+            className={cn(
+              'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors ml-auto shrink-0',
+              soNaoNotificadas ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-background hover:bg-accent',
+            )}
+          >
+            Não notificados ({naoNotificadasCount})
+          </button>
+        </div>
         <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0">
           {FILTER_ORDER.map((cat) => {
             const active = filtro === cat;
             const label = cat === 'todas' ? 'Todas' : CATEGORIAS[cat].label;
-            const count = cat === 'todas' ? updates.length : (countByCategoria[cat] || 0);
+            const count = cat === 'todas' ? countByCategoria.todas : (countByCategoria[cat] || 0);
             if (cat !== 'todas' && count === 0) return null;
             return (
               <button
@@ -368,6 +643,7 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
                 key={u.id}
                 update={u}
                 unread={!readIds.has(u.id)}
+                notificacao={notificadas.get(u.id)}
                 onOpenLead={handleOpenLead}
                 onCreateActivity={handleCreateActivity}
                 onSendGroup={handleSendGroup}
@@ -383,16 +659,40 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     <AlertDialog open={!!envioPendente} onOpenChange={(o) => !o && setEnvioPendente(null)}>
       <AlertDialogContent className="max-w-md">
         <AlertDialogHeader>
-          <AlertDialogTitle>Enviar ao grupo{envioPendente?.leadName ? ` de ${envioPendente.leadName}` : ''}?</AlertDialogTitle>
+          <AlertDialogTitle>
+            {envioPendente?.reenvio ? 'Reenviar ao grupo' : 'Enviar ao grupo'}
+            {envioPendente?.leadName ? ` de ${envioPendente.leadName}` : ''}?
+          </AlertDialogTitle>
           <AlertDialogDescription asChild>
-            <div className="text-xs whitespace-pre-wrap bg-muted rounded-md p-3 max-h-64 overflow-y-auto text-left">
-              {envioPendente?.message}
+            <div className="space-y-2 text-left">
+              {envioPendente?.reenvio && (
+                <p className="text-[11px] flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  Este cliente já foi notificado desta movimentação — vai receber de novo.
+                </p>
+              )}
+              {envioPendente?.semContexto && (
+                <p className="text-[11px] flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  Caso sem POP e sem marco no processo — a mensagem vai sem fase e sem progresso.
+                </p>
+              )}
+              <div className="text-xs whitespace-pre-wrap bg-muted rounded-md p-3 max-h-64 overflow-y-auto">
+                {envioPendente?.message}
+              </div>
+              {envioPendente?.activityId && (
+                <p className="text-[11px] text-muted-foreground">
+                  Uma atividade com o próximo passo foi criada e ficará com você.
+                </p>
+              )}
             </div>
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={confirmSendGroup}>Enviar</AlertDialogAction>
+          <AlertDialogAction onClick={confirmSendGroup}>
+            {envioPendente?.reenvio ? 'Reenviar' : 'Enviar'}
+          </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
