@@ -145,6 +145,31 @@ o avatar pelo `profile` do `AuthContext` seria pior: aquele objeto vem da edge
 > `default_instance_id` está preenchido em 8 dos 52 perfis, todos com origem
 > anterior a essa tela.
 
+### As três fontes de foto de pessoa (ago/2026)
+
+O avatar do menu do usuário lê `profiles.avatar_url` pelo ext_uuid, mas os
+avatares espalhados pelo app resolvem a pessoa **pelo nome** — o responsável da
+atividade guarda `assigned_to_name`, o card do lead guarda `leads.acolhedor`.
+Até 11/08/2026 esse caminho por nome só olhava a tabela `acolhedores` (6 linhas,
+nenhuma com `foto_url`) e os assets locais de `src/lib/acolhedorPhotos.ts`, então
+quem trocava a foto em Meu Perfil aparecia com foto no topo e com iniciais na
+atividade.
+
+Hoje `buildPersonAvatar` (`src/hooks/useAcolhedores.ts`) tenta nesta ordem:
+
+1. `profiles.avatar_url` casando `full_name` normalizado — via
+   `src/hooks/useProfileAvatars.ts`, que carrega só quem tem foto
+   (`avatar_url not null`, hoje 1 de 4.328 linhas);
+2. `acolhedores.foto_url` (curadoria manual, ainda vazia);
+3. asset local de `acolhedorPhotos.ts` (6 pessoas, legado);
+4. iniciais com cor determinística por hash do nome.
+
+Consequências práticas: quem não tem linha em `acolhedores` passa a ter foto
+mesmo assim, e trocar a foto em Meu Perfil chama `setProfileAvatarInCache` para
+o avatar mudar nas outras telas sem esperar o TTL de 30s do `sharedFetch`. O
+casamento é por nome exato normalizado — se `assigned_to_name` divergir do
+`full_name` do perfil (apelido, nome antigo), volta para as iniciais.
+
 ## O que NÃO resolve
 
 **Mover os perfis para o Externo.** O login continua no Cloud (é onde o auth do
