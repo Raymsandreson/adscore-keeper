@@ -1,7 +1,16 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { authorizeFunctionRequest, AUTH_ENFORCE, LOOPBACK_TOKEN, recordAuth, authStats } from './lib/functionAuth';
+import {
+  authorizeFunctionRequest,
+  AUTH_ENFORCE,
+  LOOPBACK_TOKEN,
+  recordAuth,
+  recordPublicWebhook,
+  authStats,
+  WEBHOOK_PUBLIC_FUNCTIONS,
+} from './lib/functionAuth';
+import { observeUazapiOriginAsync, uazapiOriginStats } from './lib/webhookOrigin';
 
 dotenv.config();
 
@@ -182,8 +191,19 @@ app.use(express.json({
 // estado de produção — ela pulava a verificação inteira e todo o /functions/*
 // aceitava POST anônimo, com o handler rodando sob service role no Externo.
 app.use('/functions', async (req, res, next) => {
+  const fnName = req.path.replace(/^\//, '');
+
+  // Ponto de entrada de webhook: quem chama é serviço externo, não carrega
+  // credencial nossa e não deve ser barrado por ela. A proteção certa aqui é
+  // verificação de origem — medida por webhookOrigin.ts antes de virar exigência.
+  if (WEBHOOK_PUBLIC_FUNCTIONS.has(fnName)) {
+    recordPublicWebhook();
+    observeUazapiOriginAsync(req.body);
+    return next();
+  }
+
   const verdict = await authorizeFunctionRequest(req);
-  recordAuth(verdict, req.path.replace(/^\//, ''));
+  recordAuth(verdict, fnName);
 
   if (verdict.ok) {
     if (verdict.userId) (req as any).authUserId = verdict.userId;
@@ -230,6 +250,10 @@ app.get('/health', (_req, res) => {
       // estar vazia antes de ligar o enforce.
       observado: authStats(),
     },
+    // Webhook da UazAPI: entra sem credencial de proposito (servico externo).
+    // Aqui se mede se da pra exigir o instance_token como prova de origem —
+    // `sem_token_por_evento` e a lista que precisa esvaziar antes disso.
+    origem_webhook: uazapiOriginStats(),
     functions: Object.keys(functionHandlers),
     gmailKeys,
   });
@@ -240,6 +264,7 @@ app.get('/health', (_req, res) => {
 // não trouxer esse campo.
 app.post('/webhooks/uazapi/:instance_name', async (req, res) => {
   const instanceName = req.params.instance_name;
+  observeUazapiOriginAsync(req.body);
   req.body = {
     ...(req.body || {}),
     instanceName: req.body?.instanceName || req.body?.InstanceName || req.body?.instance_name || req.body?.instance || instanceName,
@@ -509,3 +534,41 @@ async function runInssSync() {
 // Escalonado do orphan scan (60s) pra não competirem no boot.
 setTimeout(runInssSync, 120_000);
 setInterval(runInssSync, INSS_SYNC_INTERVAL_MS);
+
+// ============================================================
+// CRON: sync de status do funil Aux. Acidente (planilha → CRM),
+// a cada 10 min. Substitui o pg_cron `sync-funnel-status-aux-acidente`
+// do Externo (migration 20260730193000), que batia nesta mesma função
+// pela URL pública SEM credencial nenhuma — era o segundo chamador
+// anônimo do /functions/*, e o único que sobrava depois do webhook.
+//
+// Trazendo o disparo pra dentro do processo, ele passa a se autenticar
+// com o LOOPBACK_TOKEN do boot e deixa de depender de secret: a função
+// pode ser fechada sem quebrar o sync.
+//
+// Idempotente por construção (carimbo leads.capi_purchase_sent_at), então
+// rodar em paralelo com o pg_cron durante a transição não duplica Purchase
+// nem reimporta lead. Desligar o pg_cron é passo separado:
+//   select cron.unschedule('sync-funnel-status-aux-acidente');
+// ============================================================
+const FUNNEL_SYNC_INTERVAL_MS = 10 * 60 * 1000;
+async function runFunnelStatusSync() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/sync-funnel-status-from-sheet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({ dry_run: false }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.status_updated > 0 || json?.imported_closed > 0 || json?.purchases_fired > 0 || json?.error) {
+      console.log(
+        `[cron:sync-funnel-status] updated=${json.status_updated ?? 0} imported=${json.imported_closed ?? 0} purchases=${json.purchases_fired ?? 0}${json.error ? ` error=${json.error}` : ''}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:sync-funnel-status] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Escalonado dos demais (60s/120s) pra não competirem no boot.
+setTimeout(runFunnelStatusSync, 180_000);
+setInterval(runFunnelStatusSync, FUNNEL_SYNC_INTERVAL_MS);
