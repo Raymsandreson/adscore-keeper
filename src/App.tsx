@@ -325,8 +325,8 @@ function SidebarLayout() {
             <PushNotificationPrompt />
             <TeamChatDeepLink />
             <ActivityTimerOverlay />
-            {/* Sem expediente aberto o sistema fica bloqueado (tela cheia com o
-                POP de início de expediente). Diretoria e rotas públicas passam. */}
+            {/* Sem expediente aberto, aviso em tela cheia com o POP de início de
+                expediente — fechável no X. Diretoria e rotas públicas nem veem. */}
             <ShiftGate />
             <CallOverlay />
             <CallSummaryDialog />

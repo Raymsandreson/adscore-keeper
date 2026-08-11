@@ -141,19 +141,24 @@ Quem bateu o ponto e já encerrou **não** entra em "Não iniciou" — aparece c
 - `activity_timer_alerts` (Externo) → Realtime toca o prompt 🚨 na tela dele, se a aba estiver aberta; quem está fora vê ao entrar;
 - **Web Push nativo** via `send-team-push` (Railway), que passou a aceitar `user_ids` direto, sem thread de chat. É o único canal que alcança quem não iniciou o expediente. Chega só a quem ativou notificações — o toast diz qual dos dois casos aconteceu.
 
-### Bloqueio sem expediente aberto (ShiftGate)
+### Aviso sem expediente aberto (ShiftGate)
 
-Sem ponto batido o sistema **não é utilizável**: `src/components/activities/ShiftGate.tsx` cobre a tela inteira (montado no `SidebarLayout`, em `App.tsx`) com o **POP "Início de expediente"** — os 6 passos do procedimento — e o botão "Iniciar expediente", que chama o mesmo `startShift()` do cronômetro. Só há duas saídas: bater o ponto ou "Sair da conta".
+Sem ponto batido, `src/components/activities/ShiftGate.tsx` cobre a tela (montado no `SidebarLayout`, em `App.tsx`) com o **POP "Início de expediente"** — os 6 passos do procedimento — e o botão "Iniciar expediente", que chama o mesmo `startShift()` do cronômetro.
 
-Quem **não** é bloqueado:
-- **quem já encerrou o expediente hoje** (`shiftEndedToday`) — depois da saída batida a pessoa volta livremente para uma consulta pontual. Nada é cronometrado nesse estado, e o cronômetro flutuante segue mostrando "Iniciar expediente" se ela for retomar o trabalho (o clique reabre um `work_shifts` novo). O bloqueio vale só para **quem ainda não bateu a entrada** no dia;
-- **diretoria** (`org_directors`, via `useTeamLeadership`) — gestores continuam bloqueados;
-- **visitante sem sessão** — senão a própria tela de login travaria;
-- **telão `/tv/atividades` e páginas públicas** (booking, revisar, avaliar, landing) — ficam fora do `SidebarLayout`.
+**Desde 11/08/2026 é aviso, não bloqueio**: o POP tem um **X** no canto superior direito e, fechado, o sistema fica utilizável sem o ponto batido — o botão flutuante "Iniciar expediente" do `ActivityTimerOverlay` (canto inferior esquerdo, arrastável) segue à mão. Era porteiro absoluto até então, e isso prendia quem entrava fora de hora só pra uma coisa pontual — gerar procuração pelo WhatsApp era o caso real: a rota `/gerar-procuracao` é isenta desde 04/08, mas **não há item de menu pra ela**, então quem abria o app pela home ficava preso na tela cheia e nem chegava lá; só passava quem clicava no link da etiqueta. O que **não** mudou: fora do expediente nada é cronometrado — nem produtivo, nem ocioso, nem pausas.
+
+O dispensar vale enquanto a aba viver (estado local; o componente não desmonta na navegação). Recarregou a página, o aviso volta.
+
+Quem **não** vê o aviso:
+- **quem já encerrou o expediente hoje** (`shiftEndedToday`) — depois da saída batida a pessoa volta livremente para uma consulta pontual. Nada é cronometrado nesse estado, e o cronômetro flutuante segue mostrando "Iniciar expediente" se ela for retomar o trabalho (o clique reabre um `work_shifts` novo). O aviso vale só para **quem ainda não bateu a entrada** no dia;
+- **diretoria** (`org_directors`, via `useTeamLeadership`) — gestores continuam vendo;
+- **visitante sem sessão** — senão a própria tela de login ficaria coberta;
+- **telão `/tv/atividades` e páginas públicas** (booking, revisar, avaliar, landing) — ficam fora do `SidebarLayout`;
+- **`/gerar-procuracao`** (`SHIFT_FREE_PATHS`) — trabalho pontual e fora de hora, chega pelo link `?phone=…&instance=…` que a etiqueta dispara (`railway-server/src/functions/prepare-label-document-trigger.ts`).
 
 `shiftEndedToday` vem do `ActivityTimerContext`: na carga ele lê o **último** `work_shifts` de hoje (antes filtrava só `ended_at IS NULL`, e por isso não distinguia "não iniciou" de "já encerrou") — com `ended_at` preenchido, o dia está encerrado. `endShift()` liga a flag, `startShift()` desliga. O encerramento remoto da gestão (`command = 'end_shift'`) passa pelo mesmo `endShift()`, então quem foi encerrado à distância também não fica trancado.
 
-Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada é bloqueado — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (6 casos).
+Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada aparece — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (9 casos, incluindo o fechar no X).
 
 ---
 

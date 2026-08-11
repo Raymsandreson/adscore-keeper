@@ -1,17 +1,16 @@
 /**
- * Porteiro do expediente: sem ponto batido o sistema fica bloqueado.
+ * Aviso de expediente: sem ponto batido o POP aparece, mas fecha no X.
  *
- * Cobre as decisões do gate — bloqueia o membro fora do expediente, libera
- * diretoria, libera quem já bateu o ponto, libera quem já encerrou o dia,
- * libera as rotas de SHIFT_FREE_PATHS e não trava a tela de login (sem
- * sessão). Uma regressão em qualquer uma delas ou deixa o sistema aberto sem
- * registro de ponto, ou tranca alguém que deveria passar.
+ * Cobre as decisões do aviso — aparece para o membro fora do expediente e some
+ * ao ser fechado (senão quem só vai gerar uma procuração fica preso de novo),
+ * não aparece para diretoria, para quem já bateu o ponto, para quem já
+ * encerrou o dia, nas rotas de SHIFT_FREE_PATHS, nem sobre a tela de login.
  *
  * O componente lê a rota (useLocation), então precisa de Router no teste —
  * em produção ele é montado dentro do SidebarLayout, já sob o BrowserRouter.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { ShiftGate } from '../ShiftGate';
 
@@ -54,11 +53,18 @@ beforeEach(() => {
 });
 
 describe('ShiftGate', () => {
-  it('bloqueia o membro sem expediente aberto e mostra o POP', () => {
+  it('mostra o POP para o membro sem expediente aberto', () => {
     renderAt();
     expect(screen.getByText('Expediente não iniciado')).toBeTruthy();
     expect(screen.getByText('Início de expediente')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Iniciar expediente/i })).toBeTruthy();
+  });
+
+  it('fecha no X e não prende quem não vai bater o ponto', () => {
+    renderAt();
+    fireEvent.click(screen.getByRole('button', { name: /Fechar e usar o sistema/i }));
+    expect(screen.queryByText('Expediente não iniciado')).toBeNull();
+    expect(screen.queryByText('Início de expediente')).toBeNull();
   });
 
   it('libera quem já bateu o ponto', () => {
@@ -99,7 +105,7 @@ describe('ShiftGate', () => {
     expect(screen.queryByText('Expediente não iniciado')).toBeNull();
   });
 
-  it('volta a bloquear ao sair da rota liberada', () => {
+  it('volta a avisar ao sair da rota liberada', () => {
     renderAt('/casos');
     expect(screen.getByText('Expediente não iniciado')).toBeTruthy();
   });
