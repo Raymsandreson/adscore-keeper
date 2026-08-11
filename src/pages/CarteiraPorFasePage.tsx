@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCarteiraPorFase, type Periodo, type GrupoFase } from '@/hooks/useCarteiraPorFase';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { Wallet, RefreshCw, PanelRightOpen, Handshake, PauseCircle } from 'lucide-react';
@@ -46,7 +47,8 @@ function moeda(v: number): string {
 
 export default function CarteiraPorFasePage() {
   const [periodo, setPeriodo] = useState<Periodo>('tudo');
-  const { linhas, grupos, totais, loading, erro, recarregar } = useCarteiraPorFase(periodo);
+  const [pop, setPop] = useState<string>('todos');
+  const { linhas, grupos, totais, pops, loading, erro, recarregar } = useCarteiraPorFase(periodo, pop);
   const [aberta, setAberta] = useState<GrupoFase | null>(null);
 
   const doGrupo = aberta
@@ -59,7 +61,7 @@ export default function CarteiraPorFasePage() {
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
-              <Wallet className="h-5 w-5" /> Carteira por fase do POP
+              <Wallet className="h-5 w-5" /> Jurimetria — carteira por fase
             </CardTitle>
             <CardDescription>
               Onde cada processo está hoje e quanto vale ali. O valor é a condenação
@@ -73,7 +75,7 @@ export default function CarteiraPorFasePage() {
         </CardHeader>
 
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             {PERIODOS.map((p) => (
               <button
                 key={p.v}
@@ -86,6 +88,23 @@ export default function CarteiraPorFasePage() {
                 {p.label}
               </button>
             ))}
+
+            <span className="mx-1 h-4 w-px bg-border" />
+
+            <Select value={pop} onValueChange={setPop}>
+              <SelectTrigger className="h-7 w-[230px] text-xs" title="Filtrar por POP">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="todos">Todos os POPs</SelectItem>
+                {pops.lista.map((p) => (
+                  <SelectItem key={p} value={p}>{p}</SelectItem>
+                ))}
+                {pops.semPop > 0 ? (
+                  <SelectItem value="sem_pop">Sem POP ({pops.semPop})</SelectItem>
+                ) : null}
+              </SelectContent>
+            </Select>
           </div>
 
           {erro ? (
@@ -206,6 +225,14 @@ export default function CarteiraPorFasePage() {
                   {l.cliente || 'sem cliente vinculado'}
                   {l.valor_condenacao ? ` · ${moeda(Number(l.valor_condenacao))}` : ''}
                   {Number(l.valor_pago) > 0 ? ` · recebido ${moeda(Number(l.valor_pago))}` : ''}
+                </p>
+                <p className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
+                  {l.pop_nome ? <span>POP: {l.pop_nome}</span> : <span>sem POP</span>}
+                  {l.advogado_nome ? (
+                    <span>Adv.: {l.advogado_nome}{l.advogado_oab ? ` (${l.advogado_oab})` : ''}</span>
+                  ) : null}
+                  {l.responsavel_nome ? <span>Resp.: {l.responsavel_nome}</span> : null}
+                  {l.empresa ? <span>vs {l.empresa.replace(/\s+/g, ' ')}</span> : null}
                 </p>
               </div>
             ))}

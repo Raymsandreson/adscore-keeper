@@ -25,6 +25,15 @@ export interface CarteiraLinha {
   suspenso: boolean;
   data_decisao: string | null;
   estagio_financeiro: string;
+  pop_nome: string | null;
+  advogado_nome: string | null;
+  advogado_oab: string | null;
+  responsavel_nome: string | null;
+  empresa: string | null;
+  /** Fase/objetivo/passo digitados à mão em jm_processos, antes da régua automática. */
+  fase_digitada: string | null;
+  objetivo_digitado: string | null;
+  passo_digitado: string | null;
 }
 
 export interface GrupoFase {
@@ -43,7 +52,7 @@ export type Periodo = 'tudo' | '30d' | '90d' | '12m';
 
 const DIAS: Record<Periodo, number | null> = { tudo: null, '30d': 30, '90d': 90, '12m': 365 };
 
-export function useCarteiraPorFase(periodo: Periodo = 'tudo') {
+export function useCarteiraPorFase(periodo: Periodo = 'tudo', pop: string = 'todos') {
   const [linhas, setLinhas] = useState<CarteiraLinha[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -73,13 +82,34 @@ export function useCarteiraPorFase(periodo: Periodo = 'tudo') {
    * outra pergunta (quando o valor foi fixado), e processo sem decisão sumiria.
    */
   const filtradas = useMemo(() => {
+    let base = linhas;
+
+    if (pop !== 'todos') {
+      // 'sem_pop' é filtro legítimo: processo da jurimetria que não está
+      // cadastrado no sistema não pertence a POP nenhum, e são muitos.
+      base = pop === 'sem_pop'
+        ? base.filter((l) => !l.pop_nome)
+        : base.filter((l) => l.pop_nome === pop);
+    }
+
     const dias = DIAS[periodo];
-    if (!dias) return linhas;
+    if (!dias) return base;
     const corte = new Date();
     corte.setDate(corte.getDate() - dias);
     const corteIso = corte.toISOString().slice(0, 10);
-    return linhas.filter((l) => (l.marco_em || '') >= corteIso);
-  }, [linhas, periodo]);
+    return base.filter((l) => (l.marco_em || '') >= corteIso);
+  }, [linhas, periodo, pop]);
+
+  /** POPs presentes na carteira, para o seletor. */
+  const pops = useMemo(() => {
+    const set = new Set<string>();
+    let semPop = 0;
+    for (const l of linhas) {
+      if (l.pop_nome) set.add(l.pop_nome);
+      else semPop += 1;
+    }
+    return { lista: [...set].sort(), semPop };
+  }, [linhas]);
 
   const grupos = useMemo<GrupoFase[]>(() => {
     const mapa = new Map<string, GrupoFase & { _cnjs: Set<string> }>();
@@ -117,5 +147,5 @@ export function useCarteiraPorFase(periodo: Periodo = 'tudo') {
     return { processos: cnjs.size, valor, pago, porEstagio };
   }, [filtradas]);
 
-  return { linhas: filtradas, grupos, totais, loading, erro, recarregar: carregar };
+  return { linhas: filtradas, grupos, totais, pops, loading, erro, recarregar: carregar };
 }

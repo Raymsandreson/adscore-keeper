@@ -28,6 +28,9 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'regenerate-lead-name': 'railway',
   'lead-close-sequence-info': 'railway',
   'whatsapp-download-media': 'railway',
+  // Só existe no Railway. Sem esta linha caía no default 'cloud', onde não há
+  // handler — e o chamador driblava o router com fetch cru, sem JWT nenhum.
+  'match-orphans-for-lead': 'railway',
   'whatsapp-backfill-media': 'railway',
   'extract-conversation-data': 'railway',
   'list-uazapi-labels': 'railway',

@@ -326,7 +326,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       if (error) {
         const retry = await externalSupabase
           .from('team_chat_messages')
-          .update({ is_urgent: true })
+          .update({ is_urgent: true } as never)
           .eq('id', messageId);
         error = retry.error;
       }
