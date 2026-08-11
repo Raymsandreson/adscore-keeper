@@ -209,7 +209,10 @@ A remoção também é meio no Cloud, meio no Externo. Nesta ordem:
    de verdade no projeto que guarda os dados de cliente. Feche com
    `update auth.users set banned_until = '2099-12-31'` — **não** apague a linha,
    porque `profiles.user_id → auth.users` é CASCADE e leva o perfil junto.
-   Em 11/08/2026 havia 22 contas de gente já desativada com senha viva e sem ban.
+   Em 11/08/2026 eram 23 contas de gente já desativada com senha viva: 22 foram
+   fechadas com ban nesse dia (rollback em
+   `scratchpad/rollback-ban-contas-inativas-20260811.sql`) e ficou de fora, a
+   pedido, só a conta real da Maria Clara Nunes (`claramilanex@`, 16 pendentes).
    Para achá-las, junte `org_user_status` (chaveada pelo uuid do **Cloud**) com
    `auth.users` do Externo (uuid do **Externo**) **passando pelo
    `auth_uuid_mapping`** — o join direto perde 8 das 22.
