@@ -14,6 +14,8 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { TeamChatNotifications } from "@/components/chat/TeamChatNotifications";
 import { PushNotificationPrompt } from "@/components/chat/PushNotificationPrompt";
 import { TeamChatDeepLink } from "@/components/chat/TeamChatDeepLink";
+import { PushNotificationBridge } from "@/components/notifications/PushNotificationBridge";
+import { WhatsAppChatSheetHost } from "@/components/whatsapp/WhatsAppChatSheetHost";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
 import { PageTracker } from "@/components/PageTracker";
@@ -324,6 +326,11 @@ function SidebarLayout() {
             {/* Dentro do Router: o convite do iPhone leva para /install. */}
             <PushNotificationPrompt />
             <TeamChatDeepLink />
+            {/* Clique na notificação do sistema: o push-sw manda a URL por
+                postMessage e a ponte decide o destino. Conversa do WhatsApp
+                abre na folha, sem tirar a pessoa da página em que está. */}
+            <PushNotificationBridge />
+            <WhatsAppChatSheetHost />
             <ActivityTimerOverlay />
             {/* Sem expediente aberto, aviso em tela cheia com o POP de início de
                 expediente — fechável no X. Diretoria e rotas públicas nem veem. */}

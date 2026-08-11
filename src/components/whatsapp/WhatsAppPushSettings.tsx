@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
+import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -71,11 +72,18 @@ export function WhatsAppPushSettings() {
       setLoading(true);
       try {
         await ensureExternalSession();
+        // Tudo aqui vive no EXTERNO e é chaveado pelo id de LÁ: a RLS de
+        // whatsapp_push_prefs compara `auth.uid() = user_id`, e owner_user_id
+        // guarda o id do Externo. Gravar com o id do Cloud fazia o save ser
+        // recusado pela RLS (tabela estava vazia) e a tela dizer que a pessoa
+        // não é dona de instância nenhuma — vale para os 26 cadastros em que os
+        // dois ids diferem.
+        const extUserId = (await remapToExternal(user.id)) || user.id;
         // `as any`: whatsapp_push_prefs e whatsapp_instances.owner_user_id nasceram
         // na migration 20260804213000 e ainda não estão no types.ts gerado.
         const [prefsRes, instRes] = await Promise.all([
-          (db as any).from('whatsapp_push_prefs').select('*').eq('user_id', user.id).maybeSingle(),
-          (db as any).from('whatsapp_instances').select('instance_name').eq('owner_user_id', user.id),
+          (db as any).from('whatsapp_push_prefs').select('*').eq('user_id', extUserId).maybeSingle(),
+          (db as any).from('whatsapp_instances').select('instance_name').eq('owner_user_id', extUserId),
         ]);
         if (cancelled) return;
 
@@ -101,9 +109,11 @@ export function WhatsAppPushSettings() {
     setSaving(true);
     try {
       await ensureExternalSession();
+      // Id do Externo — é o que a RLS e o servidor de push enxergam.
+      const extUserId = (await remapToExternal(user.id)) || user.id;
       const { error } = await (db as any)
         .from('whatsapp_push_prefs')
-        .upsert({ user_id: user.id, ...prefs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
+        .upsert({ user_id: extUserId, ...prefs, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
       if (error) throw error;
       toast.success('Preferências salvas');
     } catch (e) {
