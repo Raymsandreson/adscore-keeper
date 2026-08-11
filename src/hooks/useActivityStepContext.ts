@@ -1,7 +1,7 @@
-import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
+import { fetchLeadSteps, type StepOption } from '@/lib/leadStepContext';
 import {
   ChecklistItem,
   DocChecklistItem,
@@ -10,16 +10,7 @@ import {
   serializeMessageTemplates,
 } from './useChecklists';
 
-export interface StepOption {
-  stepId: string;
-  stepLabel: string;
-  phaseId: string;
-  phaseLabel: string | null;
-  objectiveLabel: string | null;
-  templateId: string;
-  instanceId: string;
-  checked: boolean;
-}
+export type { StepOption };
 
 export interface ActivityStepContext {
   stepId: string;
@@ -60,69 +51,7 @@ export function useActivityStepContext(
     (async () => {
       setLoading(true);
       try {
-        // Carrega o board (para nomes de fases) e todas as instâncias do lead nesse board
-        const [boardRes, instancesRes, leadRes] = await Promise.all([
-          externalSupabase.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
-          supabase
-            .from('lead_checklist_instances')
-            .select('items, checklist_template_id, stage_id, id')
-            .eq('lead_id', leadId)
-            .eq('board_id', boardId)
-            .order('created_at', { ascending: true }),
-          externalSupabase.from('leads').select('status').eq('id', leadId).maybeSingle(),
-        ]);
-
-        const stages = ((boardRes.data as any)?.stages || []) as Array<{ id: string; name: string }>;
-        const stageNameById: Record<string, string> = {};
-        stages.forEach(s => { stageNameById[s.id] = s.name; });
-        const currentStageId = (leadRes.data as any)?.status || null;
-
-        const instances = (instancesRes.data || []) as any[];
-        if (instances.length === 0) {
-          if (!cancelled) {
-            setAllSteps([]);
-            setDefaultStepId(null);
-          }
-          return;
-        }
-
-        // Resolve nomes dos templates (objetivos)
-        const templateIds = [...new Set(instances.map(i => i.checklist_template_id).filter(Boolean))];
-        let templateNames: Record<string, string> = {};
-        if (templateIds.length > 0) {
-          const { data: tpls } = await supabase
-            .from('checklist_templates')
-            .select('id, name')
-            .in('id', templateIds);
-          (tpls || []).forEach((t: any) => { templateNames[t.id] = t.name; });
-        }
-
-        // Achata todos os passos
-        const steps: StepOption[] = [];
-        for (const inst of instances) {
-          const items = ((inst.items as ChecklistItem[]) || []);
-          for (const it of items) {
-            steps.push({
-              stepId: it.id,
-              stepLabel: it.label,
-              phaseId: inst.stage_id,
-              phaseLabel: stageNameById[inst.stage_id] || null,
-              objectiveLabel: templateNames[inst.checklist_template_id] || null,
-              templateId: inst.checklist_template_id,
-              instanceId: inst.id,
-              checked: !!it.checked,
-            });
-          }
-        }
-
-        // Default = primeiro não-concluído da fase atual; senão primeiro não-concluído geral; senão último
-        let defId: string | null = null;
-        if (currentStageId) {
-          defId = steps.find(s => s.phaseId === currentStageId && !s.checked)?.stepId || null;
-        }
-        if (!defId) defId = steps.find(s => !s.checked)?.stepId || null;
-        if (!defId && steps.length > 0) defId = steps[steps.length - 1].stepId;
-
+        const { steps, defaultStepId: defId } = await fetchLeadSteps(leadId, boardId);
         if (!cancelled) {
           setAllSteps(steps);
           setDefaultStepId(defId);

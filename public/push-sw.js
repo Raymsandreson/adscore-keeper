@@ -65,7 +65,9 @@ self.addEventListener('notificationclick', (event) => {
       // NÃO são controladas por este SW (escopo /push-sw/), então a chamada
       // rejeita com TypeError. O catch engolia o erro e sobrava só o focus() —
       // era exatamente o "clico na notificação e não acontece nada".
-      tell(target, { type: 'push-notification-click', url });
+      // O título é o nome do contato/grupo — o drawer da conversa mostra ele no
+      // cabeçalho enquanto as mensagens carregam.
+      tell(target, { type: 'push-notification-click', url, title: event.notification.title });
       return target.focus();
     }
 

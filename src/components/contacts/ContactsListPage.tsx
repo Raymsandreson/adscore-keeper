@@ -1485,15 +1485,40 @@ export function ContactsListPage() {
                     />
                     <div className="flex-1 min-w-0 space-y-1">
                       <p className="font-medium text-sm truncate">{contact.full_name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {contact.phone || 'Sem telefone'}
+                      {/* Telefone, lugar e profissão na mesma linha: são o que
+                          identifica a pessoa antes de abrir qualquer coisa. A
+                          profissão vem do próprio registro, então aparece em
+                          toda linha — não depende do teto das etiquetas. */}
+                      <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                        <span className="flex items-center gap-1 min-w-0">
+                          <Phone className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{contact.phone || 'Sem telefone'}</span>
+                        </span>
                         {(contact.city || contact.state) && (
-                          <span className="ml-2 text-muted-foreground/70">
-                            📍 {[contact.city, contact.state].filter(Boolean).join(', ')}
+                          <span className="flex items-center gap-1 min-w-0 text-muted-foreground/70">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">
+                              {[contact.city, contact.state].filter(Boolean).join(', ')}
+                            </span>
                           </span>
                         )}
-                      </p>
+                        {contact.profession && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProfessionFilter(prev => prev === contact.profession ? undefined : contact.profession);
+                            }}
+                            title={`Filtrar a lista por ${contact.profession}`}
+                            className={`flex items-center gap-1 min-w-0 rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                              professionFilter === contact.profession ? 'text-primary font-medium' : 'text-muted-foreground/70'
+                            }`}
+                          >
+                            <Briefcase className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{contact.profession}</span>
+                          </button>
+                        )}
+                      </div>
 
                       {/* Etiquetas com atalho: o que está em aberto com essa
                           pessoa e de onde ela veio, sem precisar abrir a ficha. */}
@@ -1543,25 +1568,6 @@ export function ContactsListPage() {
                               </Badge>
                             </button>
                           ))}
-                          {contact.profession && (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setProfessionFilter(prev => prev === contact.profession ? undefined : contact.profession);
-                              }}
-                              title={`Filtrar a lista por ${contact.profession}`}
-                              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] gap-1 px-1.5 py-0 font-normal max-w-[180px] ${professionFilter === contact.profession ? 'border-primary/50 bg-primary/10 text-primary' : ''}`}
-                              >
-                                <Briefcase className="h-3 w-3 shrink-0" />
-                                <span className="truncate">{contact.profession}</span>
-                              </Badge>
-                            </button>
-                          )}
                         </div>
                       )}
                     </div>
