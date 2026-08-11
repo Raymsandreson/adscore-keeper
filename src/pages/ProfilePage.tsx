@@ -14,6 +14,7 @@ import { remapToExternal } from "@/integrations/supabase/uuid-remap";
 import { getMyAllowedInstanceIds } from "@/integrations/supabase/permissions";
 import { cloudFunctions } from "@/lib/functionRouter";
 import { useMyAvatar, setMyAvatarUrl } from "@/hooks/useMyAvatar";
+import { setProfileAvatarInCache } from "@/hooks/useProfileAvatars";
 
 const TREATMENT_OPTIONS = [
   { value: 'none', label: 'Nenhum' },
@@ -170,6 +171,9 @@ const ProfilePage = () => {
         return;
       }
       setMyAvatarUrl(data.avatar_url);
+      // Avatares resolvidos por nome (responsável da atividade, acolhedor do
+      // lead) leem outro cache; sem isto só mudariam depois do TTL.
+      setProfileAvatarInCache(user?.id, profile?.full_name, data.avatar_url);
       toast.success('Foto de perfil atualizada');
     } catch (e: any) {
       toast.error('Não foi possível salvar a foto', { description: e?.message });
@@ -191,6 +195,7 @@ const ProfilePage = () => {
         return;
       }
       setMyAvatarUrl(null);
+      setProfileAvatarInCache(user?.id, profile?.full_name, null);
       toast.success('Foto removida');
     } catch (e: any) {
       toast.error('Não foi possível remover a foto', { description: e?.message });

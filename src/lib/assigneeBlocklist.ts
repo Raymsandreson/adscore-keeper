@@ -46,6 +46,12 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   // ninguém as visse — 10 pendentes de 05/05 a 10/08, migradas para o José
   // Francisco em 10/08/2026 junto com a troca do UUID padrão.
   '1e488175-be0a-4726-a80f-1b00cf89cfb3', // Maria Clara Nunes (mariclaramilanex@gmail.com)
+  // Entrou em 10/08/2026 e saiu em 11/08/2026. Acesso cortado no Externo:
+  // org_user_status.active=false (o UserStatusGuard desloga na abertura do app),
+  // 3 instâncias de WhatsApp, user_roles e push_subscriptions apagados. As 6
+  // atividades pendentes dela foram para a Luana Barros. Rollback em
+  // scratchpad/rollback-maria-clara-mendes-20260811.sql.
+  'a4eab7b5-8bcc-473e-804c-c412348b2aa1', // Maria Clara Mendes (mariaclaramendeso2014@gmail.com)
 ]);
 
 export function filterAssignableMembers<T extends { user_id: string }>(members: T[]): T[] {
