@@ -44,6 +44,8 @@ vi.mock('@/hooks/useTeamLeadership', () => ({
 }));
 
 beforeEach(() => {
+  // O "fechei hoje" mora no localStorage — sem limpar, um caso contamina o outro.
+  try { localStorage.clear(); } catch { /* ignora */ }
   timer.onShift = false;
   timer.shiftEndedToday = false;
   auth.user = { id: 'u1', email: 'membro@rprudencioadv.com' };
@@ -65,6 +67,22 @@ describe('ShiftGate', () => {
     fireEvent.click(screen.getByRole('button', { name: /Fechar e usar o sistema/i }));
     expect(screen.queryByText('Expediente não iniciado')).toBeNull();
     expect(screen.queryByText('Início de expediente')).toBeNull();
+  });
+
+  it('fechado, não volta no mesmo dia nem depois de recarregar', () => {
+    const first = renderAt();
+    fireEvent.click(screen.getByRole('button', { name: /Fechar e usar o sistema/i }));
+    first.unmount();
+
+    // Nova montagem = recarga da página: a marca do dia segura o aviso.
+    renderAt();
+    expect(screen.queryByText('Expediente não iniciado')).toBeNull();
+  });
+
+  it('volta a aparecer quando a marca é de outro dia', () => {
+    localStorage.setItem('shiftGate:dismissedOn', '2020-01-01');
+    renderAt();
+    expect(screen.getByText('Expediente não iniciado')).toBeTruthy();
   });
 
   it('libera quem já bateu o ponto', () => {

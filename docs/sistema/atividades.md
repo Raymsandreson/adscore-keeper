@@ -147,7 +147,7 @@ Sem ponto batido, `src/components/activities/ShiftGate.tsx` cobre a tela (montad
 
 **Desde 11/08/2026 é aviso, não bloqueio**: o POP tem um **X** no canto superior direito e, fechado, o sistema fica utilizável sem o ponto batido — o botão flutuante "Iniciar expediente" do `ActivityTimerOverlay` (canto inferior esquerdo, arrastável) segue à mão. Era porteiro absoluto até então, e isso prendia quem entrava fora de hora só pra uma coisa pontual — gerar procuração pelo WhatsApp era o caso real: a rota `/gerar-procuracao` é isenta desde 04/08, mas **não há item de menu pra ela**, então quem abria o app pela home ficava preso na tela cheia e nem chegava lá; só passava quem clicava no link da etiqueta. O que **não** mudou: fora do expediente nada é cronometrado — nem produtivo, nem ocioso, nem pausas.
 
-O dispensar vale enquanto a aba viver (estado local; o componente não desmonta na navegação). Recarregou a página, o aviso volta.
+O dispensar vale **pelo resto do dia**: o X grava a data local em `localStorage` (`shiftGate:dismissedOn`) e a montagem seguinte compara com hoje — recarregar a página ou abrir outra aba não traz o aviso de volta. No dia seguinte a chave não bate mais e o POP aparece uma vez, pedindo o ponto de novo. Guardar a data (e não um booleano) faz a marca expirar sozinha, sem precisar de limpeza.
 
 Quem **não** vê o aviso:
 - **quem já encerrou o expediente hoje** (`shiftEndedToday`) — depois da saída batida a pessoa volta livremente para uma consulta pontual. Nada é cronometrado nesse estado, e o cronômetro flutuante segue mostrando "Iniciar expediente" se ela for retomar o trabalho (o clique reabre um `work_shifts` novo). O aviso vale só para **quem ainda não bateu a entrada** no dia;
@@ -158,7 +158,7 @@ Quem **não** vê o aviso:
 
 `shiftEndedToday` vem do `ActivityTimerContext`: na carga ele lê o **último** `work_shifts` de hoje (antes filtrava só `ended_at IS NULL`, e por isso não distinguia "não iniciou" de "já encerrou") — com `ended_at` preenchido, o dia está encerrado. `endShift()` liga a flag, `startShift()` desliga. O encerramento remoto da gestão (`command = 'end_shift'`) passa pelo mesmo `endShift()`, então quem foi encerrado à distância também não fica trancado.
 
-Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada aparece — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (9 casos, incluindo o fechar no X).
+Enquanto o ponto (`onShift === null`) ou a liderança ainda carregam, nada aparece — evita flash de tela cheia em quem tem passe livre. Regressão coberta em `src/components/activities/__tests__/ShiftGate.test.tsx` (11 casos, incluindo o fechar no X e a marca do dia).
 
 ---
 
