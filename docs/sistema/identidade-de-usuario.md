@@ -201,6 +201,18 @@ A remoção também é meio no Cloud, meio no Externo. Nesta ordem:
    apaga é o botão "Remover membro" da própria tela.
 7. **Matar o login** — só pelo dashboard do Cloud (deletar/banir em `auth.users`).
    Enquanto existir, a pessoa autentica e o guard do passo 1 derruba em seguida.
+8. **Fechar a credencial do espelho** — o Externo tem um `auth.users` **próprio**,
+   e a linha nasce com e-mail confirmado e **senha utilizável**. Apagar a conta no
+   Cloud não encosta nela. O app nunca usa essa porta (a sessão do Externo é
+   `signInAnonymously`, `external-client.ts:31`), mas o endpoint de auth é público
+   e a anon key está no bundle: e-mail + senha ali devolve um JWT `authenticated`
+   de verdade no projeto que guarda os dados de cliente. Feche com
+   `update auth.users set banned_until = '2099-12-31'` — **não** apague a linha,
+   porque `profiles.user_id → auth.users` é CASCADE e leva o perfil junto.
+   Em 11/08/2026 havia 22 contas de gente já desativada com senha viva e sem ban.
+   Para achá-las, junte `org_user_status` (chaveada pelo uuid do **Cloud**) com
+   `auth.users` do Externo (uuid do **Externo**) **passando pelo
+   `auth_uuid_mapping`** — o join direto perde 8 das 22.
 
 ## O que NÃO resolve
 
