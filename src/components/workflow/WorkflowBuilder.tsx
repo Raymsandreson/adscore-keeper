@@ -217,7 +217,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Marcos do POP em edição: alimentam o seletor de marco de cada resultado e o
   // selo do estágio financeiro que aquele resultado implica. É a ponte
   // resultado → marco → estágio, para não haver duas medições do mesmo eixo.
-  const { marcos: popMarcos, estagioPorMarco } = usePopMarcos(editingBoardId);
+  const { marcos: popMarcos, estagioPorMarco, sinais: sinaisPorMarco } = usePopMarcos(editingBoardId);
+  /** stage_id → marco. A fase é o marco, então a linha da fase mostra os dois. */
+  const marcoPorStage = useMemo(() => {
+    const mapa: Record<string, (typeof popMarcos)[number]> = {};
+    for (const m of popMarcos) if (m.stage_id) mapa[m.stage_id] = m;
+    return mapa;
+  }, [popMarcos]);
   const [formName, setFormName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
@@ -1741,6 +1747,35 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                             ) : null}
                           </div>
                        </Collapsible>
+                       {/* A fase É o marco: o que antes vivia numa seção separada
+                           (estágio financeiro e sinal de reconhecimento) mora aqui,
+                           na própria linha. Seção à parte repetia a mesma lista. */}
+                       {(() => {
+                         const marco = marcoPorStage[phase.stageId];
+                         if (!marco) return null;
+                         const s = sinaisPorMarco[marco.id] || { tpu: 0, documento: 0 };
+                         const total = s.tpu + s.documento;
+                         return (
+                           <>
+                             {marco.estagio_financeiro_sugerido ? (
+                               <span
+                                 className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground whitespace-nowrap"
+                                 title="Estágio financeiro que este marco implica"
+                               >
+                                 {ESTAGIO_LABEL[marco.estagio_financeiro_sugerido] || marco.estagio_financeiro_sugerido}
+                               </span>
+                             ) : null}
+                             <span
+                               className={`shrink-0 text-[10px] whitespace-nowrap ${total === 0 ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground'}`}
+                               title={total === 0
+                                 ? 'Nenhum sinal cadastrado: este marco nunca vai ser detectado sozinho'
+                                 : `${s.tpu} movimentação(ões) e ${s.documento} documento(s) reconhecem este marco`}
+                             >
+                               {total === 0 ? 'sem sinal' : `${total} sinal${total > 1 ? 'is' : ''}`}
+                             </span>
+                           </>
+                         );
+                       })()}
                        <span className="text-xs text-muted-foreground whitespace-nowrap flex-shrink-0">
                          {phase.objectives.length} obj.
                        </span>
@@ -2242,12 +2277,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     gravada por board_id em pop_marcos. Fica aqui, junto de fase,
                     objetivo e passo, porque marco é do POP: um lado diz onde o
                     processo está (automático), o outro o que a equipe faz. */}
-                {editingBoardId ? (
-                  <PopMarcosSection
-                    boardId={editingBoardId}
-                    faseLabel={Object.fromEntries(phases.map(p => [p.stageId, p.stageName]))}
-                  />
-                ) : null}
+                {editingBoardId ? <PopMarcosSection boardId={editingBoardId} /> : null}
 
                 {/* Padrão de Nome do Processo — disponível nos dois tipos: funil
                     (comercial) e POP (processual) têm as mesmas funcionalidades,
