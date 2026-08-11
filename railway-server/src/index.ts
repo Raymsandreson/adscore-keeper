@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import { authorizeFunctionRequest, AUTH_ENFORCE, LOOPBACK_TOKEN } from './lib/functionAuth';
+import { authorizeFunctionRequest, AUTH_ENFORCE, LOOPBACK_TOKEN, recordAuth, authStats } from './lib/functionAuth';
 
 dotenv.config();
 
@@ -183,6 +183,7 @@ app.use(express.json({
 // aceitava POST anônimo, com o handler rodando sob service role no Externo.
 app.use('/functions', async (req, res, next) => {
   const verdict = await authorizeFunctionRequest(req);
+  recordAuth(verdict, req.path.replace(/^\//, ''));
 
   if (verdict.ok) {
     if (verdict.userId) (req as any).authUserId = verdict.userId;
@@ -225,6 +226,9 @@ app.get('/health', (_req, res) => {
       internal_key: !!process.env.RAILWAY_INTERNAL_KEY,
       api_key: !!API_KEY,
       cloud_jwt_ready: !!(process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY),
+      // Placar desde o ultimo deploy. `missing_por_funcao` e a lista que precisa
+      // estar vazia antes de ligar o enforce.
+      observado: authStats(),
     },
     functions: Object.keys(functionHandlers),
     gmailKeys,
