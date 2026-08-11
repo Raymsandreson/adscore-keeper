@@ -35,10 +35,6 @@
 -- Granularidade (processo x cliente), como manda a régua v4: litisconsórcio tem
 -- um valor por pessoa. Ao agrupar, PROCESSOS contam distintos e VALORES somam.
 -- =============================================================================
--- v3 (11/08): + POP, advogado (envolvidos[].advogados[] do polo ATIVO) e
--- responsavel (leads.processual_responsible_id). O join com lead_processes usa
--- DISTINCT ON porque 26 numeros aparecem repetidos la — sem isso a carteira
--- inteira multiplica (a primeira medicao deu 11.304 linhas para 344 processos).
 create or replace view public.vw_pop_carteira_por_fase as
 with board as (
   select id from public.kanban_boards
