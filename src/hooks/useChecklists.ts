@@ -75,6 +75,13 @@ export interface ChecklistItem {
    */
   assigneeId?: string | null;
   /**
+   * Prazo esperado para executar o passo — usado para medir quem está dentro do
+   * prazo. Unidade separada porque prazo processual corre em DIAS ÚTEIS
+   * (src/lib/popPrazo.ts); guardar tudo em corridos erraria 2 dias por semana.
+   */
+  prazoValor?: number | null;
+  prazoUnidade?: 'dias_uteis' | 'dias' | 'meses' | null;
+  /**
    * Registro do que foi feito antes de o POP mudar: guarda o id do passo
    * ATUAL que substituiu este. Persiste no banco. Item com supersededBy é
    * histórico — não é marcável e não entra em progresso/conclusão.

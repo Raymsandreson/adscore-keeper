@@ -898,6 +898,22 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
+  // Prazo esperado do passo (src/lib/popPrazo.ts). Valor e unidade andam juntos:
+  // limpar o valor tem que limpar a unidade, senão sobra "úteis" sem número.
+  const updateStepPrazo = (
+    phaseIdx: number, objIdx: number, stepId: string,
+    patch: { valor?: number | null; unidade?: ChecklistItem['prazoUnidade'] },
+  ) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => {
+        if (s.id !== stepId) return s;
+        const valor = patch.valor !== undefined ? patch.valor : s.prazoValor;
+        const unidade = patch.unidade !== undefined ? patch.unidade : (s.prazoUnidade || 'dias_uteis');
+        return valor ? { ...s, prazoValor: valor, prazoUnidade: unidade } : { ...s, prazoValor: null, prazoUnidade: null };
+      }),
+    });
+  };
+
   // Ao concluir o passo, define o STATUS do POP do lead (id em settings.resultados).
   const updateStepSetStatus = (phaseIdx: number, objIdx: number, stepId: string, setStatusId: string) => {
     updateObjective(phaseIdx, objIdx, {
@@ -2121,6 +2137,45 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                               })()}
                                               onChange={(id) => updateStepAssignee(phaseIdx, objIdx, step.id, id)}
                                             />
+                                          </div>
+
+                                          {/* Prazo esperado do passo: mede quem está
+                                              dentro e quem não está. Unidade separada
+                                              porque prazo processual corre em dias úteis. */}
+                                          <div className="flex items-center gap-2">
+                                            <Label className="text-[10px] text-muted-foreground whitespace-nowrap w-20 flex-shrink-0">Prazo:</Label>
+                                            <Input
+                                              type="number"
+                                              min={1}
+                                              inputMode="numeric"
+                                              value={step.prazoValor ?? ''}
+                                              placeholder="—"
+                                              className="h-7 w-16 text-xs"
+                                              onChange={e => {
+                                                const n = parseInt(e.target.value, 10);
+                                                updateStepPrazo(phaseIdx, objIdx, step.id, { valor: Number.isFinite(n) && n > 0 ? n : null });
+                                              }}
+                                              onKeyDown={stopSpacePropagation}
+                                              onKeyUp={stopSpacePropagation}
+                                            />
+                                            <Select
+                                              value={step.prazoUnidade || 'dias_uteis'}
+                                              onValueChange={v => updateStepPrazo(phaseIdx, objIdx, step.id, { unidade: v as ChecklistItem['prazoUnidade'] })}
+                                            >
+                                              <SelectTrigger className="h-7 w-[130px] text-xs">
+                                                <SelectValue />
+                                              </SelectTrigger>
+                                              <SelectContent>
+                                                <SelectItem value="dias_uteis">dias úteis</SelectItem>
+                                                <SelectItem value="dias">dias corridos</SelectItem>
+                                                <SelectItem value="meses">meses</SelectItem>
+                                              </SelectContent>
+                                            </Select>
+                                            {step.prazoValor ? (
+                                              <span className="text-[10px] text-muted-foreground">
+                                                a contar da abertura do passo
+                                              </span>
+                                            ) : null}
                                           </div>
 
                                           {/* Ramificação condicional - mover para fase */}
