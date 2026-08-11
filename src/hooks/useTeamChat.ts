@@ -25,6 +25,7 @@ export interface TeamMessage {
   audio_duration?: number | null;
   transcription?: string | null;
   is_urgent?: boolean | null;
+  urgent_alert_at?: string | null;
 }
 
 /** Campos extras (mídia/urgente) opcionais ao enviar uma mensagem de equipe. */
@@ -37,6 +38,18 @@ export interface TeamMessageExtra {
   audio_duration?: number;
   transcription?: string;
   is_urgent?: boolean;
+  /** Responder uma mensagem do próprio thread (mesma semântica do chat direto). */
+  reply_to_id?: string | null;
+}
+
+/** Deep-link da ficha por trás do chat — usado no push e nas notificações. */
+export function entityChatUrl(entityType: string, entityId: string): string {
+  return entityType === 'activity' ? `/?openActivity=${entityId}`
+    : entityType === 'lead' ? `/leads?openLead=${entityId}`
+    : entityType === 'contact' ? `/leads?openContact=${entityId}`
+    : entityType === 'whatsapp' ? `/whatsapp?openChat=${encodeURIComponent(entityId)}`
+    : entityType === 'case' ? `/cases/${entityId}`
+    : '/';
 }
 
 export interface TeamMention {
@@ -200,6 +213,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
         ...(extra?.audio_duration ? { audio_duration: extra.audio_duration } : {}),
         ...(extra?.transcription ? { transcription: extra.transcription } : {}),
         ...(extra?.is_urgent ? { is_urgent: true } : {}),
+        ...(extra?.reply_to_id ? { reply_to_id: extra.reply_to_id } : {}),
       })
       .select()
       .single();
@@ -243,13 +257,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     // Web Push nativo para os participantes do thread (celular/notebook, mesmo com
     // a aba fechada). Não bloqueia o envio.
     if (msg) {
-      const url =
-        entityType === 'activity' ? `/?openActivity=${entityId}`
-        : entityType === 'lead' ? `/leads?openLead=${entityId}`
-        : entityType === 'contact' ? `/leads?openContact=${entityId}`
-        : entityType === 'whatsapp' ? `/whatsapp?openChat=${encodeURIComponent(entityId)}`
-        : entityType === 'case' ? `/cases/${entityId}`
-        : '/';
+      const url = entityChatUrl(entityType, entityId);
       cloudFunctions.invoke('send-team-push', {
         body: {
           entity_type: entityType,
@@ -274,7 +282,55 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     setMessages(prev => prev.map(m => (m.id === id ? { ...m, ...patch } : m)));
   }, [setMessages]);
 
-  return { messages, loading, sendMessage, updateMessage };
+  /**
+   * Reenvia uma mensagem já enviada como urgente — mesma ação do chat direto.
+   * Quem está com o sistema fechado é alcançado pelo Web Push (o popup vermelho
+   * só existe dentro do app aberto).
+   */
+  const alertMessageAgain = useCallback(async (messageId: string) => {
+    const msg = messages.find(m => m.id === messageId);
+    try {
+      await ensureExternalSession();
+      const alertAt = new Date().toISOString();
+
+      let { error } = await externalSupabase
+        .from('team_chat_messages')
+        .update({ is_urgent: true, urgent_alert_at: alertAt } as never)
+        .eq('id', messageId);
+
+      // Base sem a migration do urgent_alert_at: o alerta ainda vale, só não
+      // guarda o carimbo do reenvio.
+      if (error) {
+        const retry = await externalSupabase
+          .from('team_chat_messages')
+          .update({ is_urgent: true })
+          .eq('id', messageId);
+        error = retry.error;
+      }
+      if (error) throw error;
+
+      setMessages(prev => prev.map(m => (m.id === messageId ? { ...m, is_urgent: true } : m)));
+
+      cloudFunctions.invoke('send-team-push', {
+        body: {
+          entity_type: entityType,
+          entity_id: entityId,
+          sender_id: user?.id,
+          sender_name: msg?.sender_name || user?.email || 'Equipe',
+          content: msg?.content || 'Mensagem urgente',
+          is_urgent: true,
+          url: entityChatUrl(entityType, entityId),
+        },
+      }).catch(err => console.error('Falha ao enviar Web Push (urgente):', err));
+
+      toast.success('Alerta urgente reenviado');
+    } catch (e) {
+      console.error('[useTeamChat] erro ao reenviar alerta urgente:', e);
+      toast.error('Não foi possível reenviar o alerta');
+    }
+  }, [messages, setMessages, entityType, entityId, user?.id, user?.email]);
+
+  return { messages, loading, sendMessage, updateMessage, alertMessageAgain };
 }
 
 export function useUnreadMentionsCount() {
