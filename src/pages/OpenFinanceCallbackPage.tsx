@@ -33,9 +33,12 @@ export default function OpenFinanceCallbackPage() {
     ranRef.current = true;
 
     const returnTo = popCelcoinReturnTo();
-    // A Celcoin devolve o interactionId na URL; o consentimento em si foi guardado
-    // antes do redirect, porque nem toda transmissora repassa o consentId de volta.
-    const consentId = searchParams.get('consentId') || popCelcoinPendingConsent();
+    // A Celcoin devolve o consentimento em `state` (junto de um `ticket` JWT que
+    // não usamos). O sessionStorage é só rede de proteção: se o titular autorizar
+    // no celular e voltar noutra aba, não há sessionStorage — e aí `state` é a
+    // única fonte. Por isso ele vem primeiro.
+    const consentId =
+      searchParams.get('state') || searchParams.get('consentId') || popCelcoinPendingConsent();
 
     if (!consentId) {
       setPhase('error');

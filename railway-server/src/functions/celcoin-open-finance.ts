@@ -355,6 +355,36 @@ function toTimeOnly(v: unknown): string | null {
   return m ? m[1] : null;
 }
 
+// Piso da janela de sincronização.
+//
+// A Pluggy parou em 18/03/2026, mas os ~8 mil lançamentos dela continuam nestas
+// mesmas tabelas, e a tela de conciliação NÃO filtra por provider
+// (BankTransactionsView lê o período inteiro). Como a UNIQUE é
+// (provider, pluggy_transaction_id), a mesma despesa vinda da Celcoin entra como
+// linha nova em vez de atualizar a da Pluggy — o financeiro veria tudo em dobro
+// no intervalo coberto pelos dois. Daí a janela começar no dia seguinte ao
+// último lançamento já gravado, que também torna as sincronizações seguintes
+// incrementais em vez de repuxar um ano toda vez.
+async function syncFloor(table: 'bank_transactions' | 'credit_card_transactions', userId: string): Promise<string> {
+  const { data } = await ext
+    .from(table)
+    .select('transaction_date')
+    .eq('user_id', userId)
+    .order('transaction_date', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const last = toDateOnly(data?.transaction_date);
+  const d = new Date();
+  if (last) {
+    d.setTime(Date.parse(`${last}T00:00:00Z`));
+    d.setUTCDate(d.getUTCDate() + 1);
+  } else {
+    d.setUTCMonth(d.getUTCMonth() - 12); // sem histórico: 12 meses, teto usual das transmissoras
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 // No Open Finance o sinal vem em creditDebitType, não no valor.
 function signedAmount(tx: any): number {
   const raw = Number(tx?.transactionAmount?.amount ?? tx?.amount?.amount ?? tx?.amount ?? 0);
@@ -431,9 +461,14 @@ export const handler: RequestHandler = async (req, res) => {
             ? [...new Set(rung.map((p) => p.replace('CUSTOMERS_PERSONAL_', 'CUSTOMERS_BUSINESS_')))]
             : rung;
 
+          // NÃO vai redirectUrl aqui. O endereço de volta é cadastrado na Celcoin,
+          // amarrado à credencial — o gateway do Quitepay, validado em produção em
+          // 3 bancos, não manda esse campo e recebe o cliente de volta em rota
+          // própria com ?ticket=<jwt>&state=<consentId>. Mandar um campo que a API
+          // não espera arrisca 422 na primeira chamada real. CELCOIN_REDIRECT_URL
+          // continua existindo só como registro do que foi cadastrado lá.
           const payload: Record<string, unknown> = {
             brandId,
-            redirectUrl: body.redirect_url || process.env.CELCOIN_REDIRECT_URL,
             data: {
               loggedUser: { document: { identification: cpf, rel: 'CPF' } },
               permissions: used,
@@ -554,8 +589,10 @@ export const handler: RequestHandler = async (req, res) => {
           ? (consentRow!.permissions as string[])
           : null;
 
-        const from = body.from ? String(body.from) : undefined;
         const to = body.to ? String(body.to) : undefined;
+        // Sem `from` explícito, cada tabela retoma de onde parou (ver syncFloor).
+        const bankFrom = body.from ? String(body.from) : await syncFloor('bank_transactions', userId);
+        const cardFrom = body.from ? String(body.from) : await syncFloor('credit_card_transactions', userId);
         let bankCount = 0;
         let cardCount = 0;
 
@@ -566,7 +603,7 @@ export const handler: RequestHandler = async (req, res) => {
           const txs = await fetchPaged(
             consentId,
             `accounts/${encodeURIComponent(accountId)}/transactions`,
-            { fromBookingDate: from, toBookingDate: to },
+            { fromBookingDate: bankFrom, toBookingDate: to },
             permissions,
           );
 
@@ -596,7 +633,7 @@ export const handler: RequestHandler = async (req, res) => {
               merchant_name: t.partieName || null,
               merchant_cnpj: t.partieCnpjCpf || null,
             }))
-            .filter((r) => r.transaction_date);
+            .filter((r) => r.transaction_date && r.transaction_date >= bankFrom);
 
           if (rows.length) {
             const { error } = await ext
@@ -615,7 +652,10 @@ export const handler: RequestHandler = async (req, res) => {
           const bills = await fetchPaged(
             consentId,
             `credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills`,
-            { fromDueDate: from, toDueDate: to },
+            // Aqui a data é do VENCIMENTO da fatura, não da compra: uma fatura de
+            // abril carrega compras de março. O recorte por data de compra é o
+            // filtro lá embaixo, não este — este só evita puxar fatura à toa.
+            { fromDueDate: cardFrom, toDueDate: to },
             permissions,
           );
 
@@ -655,7 +695,7 @@ export const handler: RequestHandler = async (req, res) => {
                 installment_number: t.instalmentNumber ?? null,
                 total_installments: t.totalInstalments ?? null,
               }))
-              .filter((r) => r.transaction_date);
+              .filter((r) => r.transaction_date && r.transaction_date >= cardFrom);
 
             if (rows.length) {
               const { error } = await ext
@@ -672,8 +712,17 @@ export const handler: RequestHandler = async (req, res) => {
           .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
           .eq('consent_id', consentId);
 
-        console.log(`[celcoin] sync consent=${consentId}: ${bankCount} bancárias, ${cardCount} de cartão`);
-        res.json({ success: true, bank_transactions: bankCount, credit_card_transactions: cardCount });
+        console.log(
+          `[celcoin] sync consent=${consentId}: ${bankCount} bancárias (desde ${bankFrom}), ${cardCount} de cartão (desde ${cardFrom})`,
+        );
+        res.json({
+          success: true,
+          bank_transactions: bankCount,
+          credit_card_transactions: cardCount,
+          // Explícito na resposta porque a janela é calculada, não informada: sem
+          // isto, um sync que traz 0 linhas é indistinguível de conta sem movimento.
+          janela: { bank_from: bankFrom, card_from: cardFrom, to: to ?? null },
+        });
         return;
       }
 
