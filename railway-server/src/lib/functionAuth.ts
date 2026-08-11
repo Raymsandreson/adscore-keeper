@@ -25,6 +25,17 @@ const CLOUD_ANON_KEY = process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_K
 
 export const AUTH_ENFORCE = /^(1|true|on|yes)$/i.test(process.env.RAILWAY_AUTH_ENFORCE || '');
 
+// Funções que são PONTO DE ENTRADA DE WEBHOOK: quem chama é um serviço externo
+// que não tem como carregar credencial nossa. Medido em produção (11/08/2026):
+// a UazAPI aponta para `/functions/whatsapp-webhook` — 109 chamadas em 5 min —
+// e não manda header nenhum. Exigir credencial aqui não fecharia buraco, apenas
+// cortaria a entrada de mensagens da firma inteira.
+//
+// Estar nesta lista NÃO quer dizer "seguro": quer dizer que a proteção certa é
+// verificação de origem, não credencial. É o que webhookOrigin.ts está medindo.
+// Elas são contadas à parte no /health justamente para não sumirem de vista.
+export const WEBHOOK_PUBLIC_FUNCTIONS = new Set<string>(['whatsapp-webhook']);
+
 export interface AuthVerdict {
   ok: boolean;
   via: 'internal_key' | 'api_key' | 'cloud_jwt' | null;
@@ -88,9 +99,15 @@ export async function verifyCloudJwt(authHeader: string | undefined): Promise<Au
 // decidir se liga o enforce nem sempre tem acesso a ele — e sem um número
 // visível de fora a decisão vira palpite. Mantido em memória (zera a cada
 // deploy) e exposto em /health.
-const seen = { total: 0, internal_key: 0, api_key: 0, cloud_jwt: 0, missing: 0 };
+const seen = { total: 0, internal_key: 0, api_key: 0, cloud_jwt: 0, webhook_publico: 0, missing: 0 };
 const missingByFn = new Map<string, number>();
 const MISSING_FN_CAP = 40; // teto: o mapa é alimentado por path de request
+
+/** Entrada de webhook: passa sem credencial de propósito, mas fica visível no placar. */
+export function recordPublicWebhook(): void {
+  seen.total += 1;
+  seen.webhook_publico += 1;
+}
 
 export function recordAuth(verdict: AuthVerdict, fn: string): void {
   seen.total += 1;
