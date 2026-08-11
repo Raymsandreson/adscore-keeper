@@ -1,12 +1,24 @@
 import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useTeamChat, useTeamMembers, TeamMember, TeamMessage } from '@/hooks/useTeamChat';
+import { ChatMessageActions } from './ChatMessageActions';
+import { ForwardMessagePicker } from './ForwardMessagePicker';
+import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
+import { startDirectConversationWith, sendTeamDirectMessage } from '@/lib/teamDirectMessages';
+import {
+  buildForwardContent,
+  buildPrivateReplyHeader,
+  msgPreviewText,
+  parseForward,
+  parsePrivateReply,
+  splitQuotedLines,
+} from '@/lib/teamChatMessageContext';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Button } from '@/components/ui/button';
 import { AutoResizeTextarea } from '@/components/ui/auto-resize-textarea';
-import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Image as ImageIcon, Sparkles, Bell, BellRing, Copy, Reply, ClipboardList, MessageSquarePlus } from 'lucide-react';
+import { Send, Loader2, AtSign, Users, UserRound, Paperclip, Mic, Square, AlertTriangle, Play, Pause, FileText, Sparkles, Bell, BellRing, Reply, MessageSquarePlus, Forward, MessageCircleReply, X } from 'lucide-react';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
@@ -68,19 +80,6 @@ function playUrgentBeep() {
   }
 }
 
-/** Separa o bloco citado ("> …") do texto que a pessoa escreveu. */
-function splitQuotedLines(content: string) {
-  const lines = (content || '').split('\n');
-  const quotedLines: string[] = [];
-  const bodyLines: string[] = [];
-  for (const line of lines) {
-    if (line.startsWith('>')) quotedLines.push(line.replace(/^>\s?/, ''));
-    else bodyLines.push(line);
-  }
-  if (quotedLines.length === 0) return { quoted: '', body: content };
-  return { quoted: quotedLines.join('\n').trim(), body: bodyLines.join('\n').trim() };
-}
-
 function formatDuration(seconds?: number | null) {
   const s = Math.max(0, Math.floor(seconds || 0));
   const m = Math.floor(s / 60);
@@ -89,7 +88,7 @@ function formatDuration(seconds?: number | null) {
 
 export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId, onMentionUsers, footerNote }: TeamChatPanelProps) {
   const { user } = useAuthContext();
-  const { messages, loading, sendMessage, updateMessage } = useTeamChat(entityType, entityId, entityName);
+  const { messages, loading, sendMessage, updateMessage, alertMessageAgain } = useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
   const navigate = useNavigate();
   const push = usePushNotifications();
@@ -102,6 +101,10 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const [mentionStartIndex, setMentionStartIndex] = useState(-1);
   // Recursos ricos (paridade com o chat direto).
   const [urgent, setUrgent] = useState(false);
+  // Responder (vira reply_to_id) e encaminhar — mesmas ações do Chat da Equipe.
+  const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
+  const [forwardingMsg, setForwardingMsg] = useState<TeamMessage | null>(null);
+  const [forwardSending, setForwardSending] = useState(false);
   // Imagem sempre abre no visualizador interno — nunca em outra página.
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [showEntityMention, setShowEntityMention] = useState(false);
@@ -315,11 +318,15 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
         console.error('[TeamChatPanel] falha ao liberar acesso aos mencionados:', e);
       }
     }
-    await sendMessage(text, mentionedIds, urgent ? { is_urgent: true } : undefined);
+    await sendMessage(text, mentionedIds, {
+      ...(urgent ? { is_urgent: true } : {}),
+      ...(replyingTo ? { reply_to_id: replyingTo.id } : {}),
+    });
     setInputText('');
     sessionStorage.removeItem(draftKey);
     setSelectedMentions([]);
     setUrgent(false);
+    setReplyingTo(null);
     setSending(false);
   };
 
@@ -551,13 +558,84 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
   // ===== Ações a partir de uma mensagem (paridade com a bolha do WhatsApp) =====
 
-  /** Texto útil da bolha: sem o bloco citado, com a transcrição no caso do áudio. */
+  /** Texto útil da bolha: sem cabeçalho de contexto nem bloco citado. */
   const msgPlainText = useCallback((msg: TeamMessage) => {
     if (msg.message_type === 'audio') return msg.transcription?.trim() || '';
-    if (msg.message_type === 'image') return msg.content && msg.content !== '📷 Imagem' ? msg.content : '';
     if (msg.message_type === 'file') return `📎 ${msg.file_name || 'Arquivo'}`;
-    return splitQuotedLines(msg.content || '').body || (msg.content || '');
+    const bare = parsePrivateReply(parseForward(msg.content || '').body).body;
+    if (msg.message_type === 'image') return bare && bare !== '📷 Imagem' ? bare : '';
+    return splitQuotedLines(bare).body || bare;
   }, []);
+
+  /**
+   * Onde esta conversa acontece, do ponto de vista de quem recebe a resposta no
+   * privado ("↩️ Em resposta no chat interno de …").
+   */
+  const scopeLabel = useMemo(() => {
+    const name = entityName || 'este item';
+    return entityType === 'whatsapp'
+      ? `chat interno da conversa de ${name}`
+      : `chat interno de ${name}`;
+  }, [entityType, entityName]);
+
+  /**
+   * Responder no privado: abre (ou reaproveita) a conversa direta com quem
+   * escreveu e leva o contexto junto — o Chat da Equipe mostra a tarja e
+   * carimba o cabeçalho no envio.
+   */
+  const startPrivateReply = useCallback(async (msg: TeamMessage) => {
+    if (!user?.id || !msg.sender_id || msg.sender_id === user.id) return;
+    const convId = await startDirectConversationWith(msg.sender_id, user.id);
+    if (!convId) return;
+    const excerpt = (msgPlainText(msg) || msgPreviewText(msg)).replace(/\s+/g, ' ').trim().slice(0, 120);
+    openTeamChatConversation({
+      conversationId: convId,
+      focusComposer: true,
+      contextReply: {
+        header: buildPrivateReplyHeader(scopeLabel, excerpt),
+        scopeLabel,
+        senderName: msg.sender_name,
+        excerpt,
+      },
+    });
+  }, [user?.id, msgPlainText, scopeLabel]);
+
+  /** Encaminha a mensagem para uma conversa do Chat da Equipe. */
+  const forwardToConversation = useCallback(async (conversationId: string) => {
+    if (!forwardingMsg || !user?.id || forwardSending) return;
+    setForwardSending(true);
+    try {
+      const myName = members.find(m => m.user_id === user.id)?.full_name || user.email || 'Alguém';
+      const sent = await sendTeamDirectMessage(
+        conversationId,
+        user.id,
+        user.email,
+        buildForwardContent(forwardingMsg, myName),
+        {
+          senderName: myName,
+          message_type: forwardingMsg.message_type || 'text',
+          file_url: forwardingMsg.file_url,
+          file_name: forwardingMsg.file_name,
+          file_size: forwardingMsg.file_size,
+          file_type: forwardingMsg.file_type,
+          audio_duration: forwardingMsg.audio_duration,
+          transcription: forwardingMsg.transcription,
+        }
+      );
+      if (!sent) return;
+      toast.success('Mensagem encaminhada');
+      setForwardingMsg(null);
+      openTeamChatConversation({ conversationId, focusComposer: true });
+    } finally {
+      setForwardSending(false);
+    }
+  }, [forwardingMsg, forwardSending, user?.id, user?.email, members]);
+
+  const forwardToUser = useCallback(async (otherUserId: string) => {
+    if (!user?.id) return;
+    const convId = await startDirectConversationWith(otherUserId, user.id);
+    if (convId) await forwardToConversation(convId);
+  }, [user?.id, forwardToConversation]);
 
   const copyMessage = useCallback(async (msg: TeamMessage) => {
     const text = msgPlainText(msg);
@@ -780,7 +858,21 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const hasAttachment = (t?: string | null) => t === 'audio' || t === 'image' || t === 'file';
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="relative flex flex-col h-full">
+      {/* Encaminhar: cobre o painel enquanto o destino é escolhido (mesmo
+          seletor do Chat da Equipe). */}
+      {forwardingMsg && (
+        <ForwardMessagePicker
+          className="absolute inset-0 z-20"
+          preview={msgPreviewText(forwardingMsg)}
+          senderName={forwardingMsg.sender_name}
+          sending={forwardSending}
+          onCancel={() => setForwardingMsg(null)}
+          onPickConversation={forwardToConversation}
+          onPickUser={forwardToUser}
+        />
+      )}
+
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
         {messages.length === 0 && loading ? (
@@ -797,9 +889,13 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           messages.map(msg => {
             const isMe = msg.sender_id === user?.id;
             const isHighlighted = msg.id === highlightMessageId;
+            const repliedMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null;
+            const fwdHeader = parseForward(msg.content || '').header;
+            const pvtHeader = parsePrivateReply(parseForward(msg.content || '').body).header;
             return (
               <div
                 key={msg.id}
+                data-team-msg-id={msg.id}
                 ref={isHighlighted ? highlightRef : undefined}
                 className={cn('group flex', isMe ? 'justify-end' : 'justify-start')}
               >
@@ -819,12 +915,48 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                       <AlertTriangle className="h-3 w-3" /> URGENTE
                     </div>
                   )}
+                  {/* Contexto de outro chat: encaminhada / resposta no privado. */}
+                  {fwdHeader && (
+                    <div className="flex items-center gap-1 text-[10px] italic opacity-70 mb-0.5">
+                      <Forward className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{fwdHeader.replace('↪️ ', '')}</span>
+                    </div>
+                  )}
+                  {pvtHeader && (
+                    <div className={cn(
+                      'flex items-start gap-1 mb-1 pl-2 pr-2 py-1 border-l-2 rounded text-[11px] italic opacity-80',
+                      isMe ? 'border-primary-foreground/60 bg-primary-foreground/10' : 'border-primary bg-background/60'
+                    )}>
+                      <MessageCircleReply className="h-3 w-3 shrink-0 mt-0.5" />
+                      <span className="break-words">{pvtHeader.replace('↩️ ', '')}</span>
+                    </div>
+                  )}
+                  {/* Mensagem respondida (reply_to_id) — clicar leva até ela. */}
+                  {repliedMsg && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        document.querySelector(`[data-team-msg-id="${repliedMsg.id}"]`)
+                          ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      }}
+                      className={cn(
+                        'w-full text-left mb-1 pl-2 pr-2 py-1 border-l-2 rounded text-[11px] hover:opacity-80 transition-opacity',
+                        isMe ? 'border-primary-foreground/60 bg-primary-foreground/10' : 'border-primary bg-background/60'
+                      )}
+                    >
+                      <div className="font-semibold opacity-80 truncate">
+                        {repliedMsg.sender_name || 'Mensagem'}
+                      </div>
+                      <div className="opacity-70 truncate">{msgPreviewText(repliedMsg)}</div>
+                    </button>
+                  )}
                   {hasAttachment(msg.message_type) ? (
                     renderAttachment(msg, isMe)
                   ) : (() => {
                     // Linhas iniciadas por ">" são mensagem citada — vão para um
                     // bloco próprio, como no WhatsApp, para não virar texto solto.
-                    const { quoted, body } = splitQuotedLines(msg.content);
+                    const bare = parsePrivateReply(parseForward(msg.content || '').body).body;
+                    const { quoted, body } = splitQuotedLines(bare);
                     return (
                       <>
                         {quoted && (
@@ -845,42 +977,27 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                       </>
                     );
                   })()}
-                  {/* Ações a partir da mensagem — mesmas da bolha do WhatsApp.
-                      Ficam abaixo do conteúdo (nunca por cima do texto). */}
+                  {/* Ações da mensagem — as mesmas do Chat da Equipe
+                      (ChatMessageActions). Ficam abaixo do conteúdo, nunca por
+                      cima do texto: aqui o painel é estreito. */}
                   {!msg.deleted_at && (
-                    <div className={cn(
-                      'flex flex-wrap items-center gap-0.5 mt-1 transition-opacity',
-                      'opacity-0 group-hover:opacity-100 focus-within:opacity-100'
-                    )}>
-                      {[
-                        { key: 'copy', icon: Copy, label: 'Copiar', title: 'Copiar o texto da mensagem', run: () => copyMessage(msg) },
-                        { key: 'ai', icon: Sparkles, label: 'Responder c/ IA', title: 'Sugerir resposta a esta mensagem com IA', run: () => replyWithAI(msg) },
-                        { key: 'quote', icon: Reply, label: 'Citar', title: 'Responder citando esta mensagem', run: () => quoteMessage(msg) },
-                        {
-                          key: 'activity',
-                          icon: creatingActivityFromMsgId === msg.id ? Loader2 : ClipboardList,
-                          label: 'Criar atividade',
-                          title: 'Criar atividade a partir desta mensagem (a IA preenche, você revisa)',
-                          run: () => createActivityFromMessage(msg),
-                        },
-                      ].map(({ key, icon: Icon, label, title, run }) => (
-                        <button
-                          key={key}
-                          type="button"
-                          title={title}
-                          disabled={key === 'activity' && creatingActivityFromMsgId === msg.id}
-                          onClick={(e) => { e.stopPropagation(); run(); }}
-                          className={cn(
-                            'inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded transition-colors',
-                            'hover:bg-black/10 dark:hover:bg-white/10',
-                            isMe ? 'text-primary-foreground/80' : 'text-muted-foreground'
-                          )}
-                        >
-                          <Icon className={cn('h-3 w-3', key === 'activity' && creatingActivityFromMsgId === msg.id && 'animate-spin')} />
-                          {label}
-                        </button>
-                      ))}
-                    </div>
+                    <ChatMessageActions
+                      placement="inside"
+                      isMe={isMe}
+                      onAlertAgain={() => alertMessageAgain(msg.id)}
+                      onReply={() => {
+                        setReplyingTo(msg);
+                        requestAnimationFrame(() => inputRef.current?.focus());
+                      }}
+                      onPrivateReply={!isMe && msg.sender_id ? () => startPrivateReply(msg) : undefined}
+                      privateReplyTitle={`Responder no privado (abre a conversa direta com ${msg.sender_name || 'quem escreveu'})`}
+                      onQuote={() => quoteMessage(msg)}
+                      onCopy={() => copyMessage(msg)}
+                      onAI={() => replyWithAI(msg)}
+                      onForward={() => setForwardingMsg(msg)}
+                      onCreateActivity={() => createActivityFromMessage(msg)}
+                      creatingActivity={creatingActivityFromMsgId === msg.id}
+                    />
                   )}
                   <div className={cn('text-[9px] mt-0.5', isMe ? 'text-primary-foreground/60 text-right' : 'text-muted-foreground')}>
                     {format(new Date(msg.created_at), 'HH:mm', { locale: ptBR })}
@@ -992,6 +1109,26 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       <div className="shrink-0 border-t bg-muted/30">
         {footerNote && (
           <div className="px-3 pt-1.5 text-[10px] leading-snug text-muted-foreground">{footerNote}</div>
+        )}
+        {/* Respondendo uma mensagem — mesma tarja do Chat da Equipe. */}
+        {replyingTo && (
+          <div className="flex items-start gap-2 px-3 py-1.5 border-b bg-primary/5">
+            <Reply className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-medium text-primary truncate">
+                Respondendo {replyingTo.sender_id === user?.id ? 'você mesmo' : (replyingTo.sender_name || 'mensagem')}
+              </p>
+              <p className="text-[11px] text-muted-foreground truncate">{msgPreviewText(replyingTo)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setReplyingTo(null)}
+              className="p-1 rounded hover:bg-accent text-muted-foreground shrink-0"
+              title="Cancelar resposta"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         )}
         {isRecording && (
           <div className="flex items-center justify-between px-3 py-1.5 text-xs text-destructive">

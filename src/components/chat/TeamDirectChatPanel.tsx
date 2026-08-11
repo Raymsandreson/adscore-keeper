@@ -21,7 +21,7 @@ import {
   Send, Users, MessageCircle, ArrowLeft, Loader2, Plus, Hash,
   Mic, Square, Paperclip, Image, FileText, Briefcase, ClipboardList,
   Play, Pause, Check, CheckCheck, Reply, X, AlertTriangle, Search, Timer, Forward, Phone,
-  MessageCircleReply, Copy,
+  MessageCircleReply,
 } from 'lucide-react';
 import { useCall } from '@/contexts/CallContext';
 import { setActiveTeamChatConversation } from '@/lib/teamChatActiveConversation';
@@ -40,11 +40,22 @@ import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
+import { ChatMessageActions } from './ChatMessageActions';
+import { ForwardMessagePicker } from './ForwardMessagePicker';
+import {
+  buildForwardContent,
+  buildPrivateReplyHeader,
+  msgPlainText,
+  msgPreviewText,
+  parseForward,
+  parsePrivateReply,
+} from '@/lib/teamChatMessageContext';
+import { formatQuotedMessages } from '@/lib/teamChatQuoteEvents';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Sparkles } from 'lucide-react';
-import type { TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
+import type { TeamChatOpenIntent, TeamChatContextReply } from '@/lib/teamChatPanelEvents';
 
 interface TeamDirectChatPanelProps {
   intent?: TeamChatOpenIntent | null;
@@ -102,10 +113,13 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [mentionIndex, setMentionIndex] = useState(0);
   const [replyingTo, setReplyingTo] = useState<TeamMessage | null>(null);
-  // "Responder no privado": mensagem de grupo respondida na conversa direta com o autor
-  const [privateReply, setPrivateReply] = useState<{ msg: TeamMessage; groupName: string; targetConvId: string } | null>(null);
+  // "Responder no privado": mensagem de outro chat (grupo, ficha ou conversa do
+  // WhatsApp) respondida na conversa direta com quem escreveu. O contexto pode
+  // nascer aqui ou chegar de outro painel pelo intent.
+  const [privateReply, setPrivateReply] = useState<
+    (TeamChatContextReply & { targetConvId: string }) | null
+  >(null);
   const [forwardingMsg, setForwardingMsg] = useState<TeamMessage | null>(null);
-  const [forwardSearch, setForwardSearch] = useState('');
   const [forwardSending, setForwardSending] = useState(false);
   // "Criar atividade a partir do chat": seleção de mensagens + rascunho da IA
   const [activitySelectMode, setActivitySelectMode] = useState(false);
@@ -237,6 +251,12 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       setMessageText(intent.draft);
     }
 
+    // "Responder no privado" disparado de outro chat (grupo, ficha, WhatsApp):
+    // a tarja aparece aqui e o cabeçalho entra no content só no envio.
+    if (intent.contextReply) {
+      setReplyingTo(null);
+      setPrivateReply({ ...intent.contextReply, targetConvId: intent.conversationId });
+    }
 
     if (intent.focusComposer) {
       requestAnimationFrame(() => {
@@ -380,32 +400,22 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   }, [typingPeers]);
 
   // ===== Responder no privado (mensagem de grupo → conversa direta) =====
-  // Como no "Encaminhar", o contexto vai no próprio content (cabeçalho + trecho
-  // citado): fica legível no preview, no push e pra IA, sem mudança de schema.
-  const PVT_PREFIX = '↩️ Em resposta no grupo';
-  const parsePrivateReply = (content: string | null): { header: string | null; body: string } => {
-    const m = (content || '').match(/^(↩️ Em resposta no grupo[^\n]*)\n?([\s\S]*)$/);
-    if (!m) return { header: null, body: content || '' };
-    return { header: m[1], body: m[2] || '' };
-  };
-
-  const msgPreviewText = (msg: TeamMessage): string =>
-    msg.content
-    || (msg.message_type === 'image' ? '📷 Imagem'
-      : msg.message_type === 'audio' ? '🎤 Áudio'
-      : msg.message_type === 'file' ? `📎 ${msg.file_name || 'Arquivo'}` : '...');
-
-  const buildPrivateReplyHeader = (pr: { msg: TeamMessage; groupName: string }): string => {
-    const excerpt = msgPreviewText(pr.msg).replace(/\s+/g, ' ').trim().slice(0, 120);
-    return `${PVT_PREFIX} ${pr.groupName}: “${excerpt}”`;
-  };
-
+  // O contexto vai no próprio content (cabeçalho + trecho citado), montado em
+  // teamChatMessageContext — o mesmo formato usado pelo chat interno da ficha.
   const startPrivateReply = async (msg: TeamMessage, groupName: string) => {
     if (!msg.sender_id || msg.sender_id === user?.id) return;
     const convId = await startDirectChat(msg.sender_id);
     if (!convId) return;
+    const scopeLabel = `grupo ${groupName}`;
+    const excerpt = msgPreviewText(msg).replace(/\s+/g, ' ').trim().slice(0, 120);
     setReplyingTo(null);
-    setPrivateReply({ msg, groupName, targetConvId: convId });
+    setPrivateReply({
+      header: buildPrivateReplyHeader(scopeLabel, excerpt),
+      scopeLabel,
+      senderName: msg.sender_name,
+      excerpt,
+      targetConvId: convId,
+    });
     requestAnimationFrame(() => messageInputRef.current?.focus());
   };
 
@@ -422,7 +432,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     stopTyping();
     const mentionedIds = resolveMentionedUserIds(messageText);
     const content = privateReply
-      ? `${buildPrivateReplyHeader(privateReply)}\n${messageText}`
+      ? `${privateReply.header}\n${messageText}`
       : messageText;
     await sendMessage(content, {
       mentionedUserIds: mentionedIds,
@@ -437,32 +447,19 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   };
 
   // ===== Encaminhar mensagem =====
-  // O cabeçalho "↪️ Encaminhada de X por Y" vai no próprio content: fica legível
-  // no preview da conversa, no push e no contexto da IA, sem mudança de schema.
-  const FWD_PREFIX = '↪️ Encaminhada';
-  const parseForward = (content: string | null): { header: string | null; body: string } => {
-    const m = (content || '').match(/^(↪️ Encaminhada[^\n]*)(?:\n([\s\S]*))?$/);
-    if (!m) return { header: null, body: content || '' };
-    return { header: m[1], body: m[2] || '' };
-  };
-
-  const buildForwardContent = (msg: TeamMessage): string => {
-    const myName = profiles.find(p => p.user_id === user?.id)?.full_name || user?.email || 'Alguém';
-    const origName = msg.sender_id === user?.id ? myName : (msg.sender_name || 'Alguém');
-    const header = origName === myName
-      ? `${FWD_PREFIX} por ${myName}`
-      : `${FWD_PREFIX} de ${origName} por ${myName}`;
-    // Se a mensagem já era encaminhada, mantém só o conteúdo original (não empilha cabeçalhos)
-    const body = parseForward(msg.content).header ? parseForward(msg.content).body : (msg.content || '');
-    return body.trim() ? `${header}\n${body}` : header;
-  };
+  // O cabeçalho "↪️ Encaminhada de X por Y" vai no próprio content
+  // (teamChatMessageContext): fica legível no preview da conversa, no push e no
+  // contexto da IA, sem mudança de schema.
+  const myDisplayName = profiles.find(p => p.user_id === user?.id)?.full_name || user?.email || 'Alguém';
 
   const doForward = async (targetConversationId: string) => {
     if (!forwardingMsg || forwardSending) return;
     setForwardSending(true);
     try {
       const msg = forwardingMsg;
-      await sendMessageTo(targetConversationId, buildForwardContent(msg), {
+      // Mensagem própria não vira "encaminhada de mim mesmo".
+      const origin = msg.sender_id === user?.id ? { ...msg, sender_name: myDisplayName } : msg;
+      await sendMessageTo(targetConversationId, buildForwardContent(origin, myDisplayName), {
         message_type: msg.message_type || 'text',
         file_url: msg.file_url || undefined,
         file_name: msg.file_name || undefined,
@@ -473,7 +470,6 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       });
       toast.success('Mensagem encaminhada');
       setForwardingMsg(null);
-      setForwardSearch('');
       setActiveConversationId(targetConversationId);
     } catch (e) {
       console.error('[TeamDirectChatPanel] Erro ao encaminhar:', e);
@@ -515,6 +511,26 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     if (m.message_type === 'image') return m.content && m.content !== '📷 Imagem' ? m.content : '📷 Imagem';
     if (m.message_type === 'file') return `📎 Arquivo: ${m.file_name || 'sem nome'}`;
     return m.content || '';
+  };
+
+  /** Cita o texto no rascunho ("> …") — mesma ação do chat interno da ficha. */
+  const quoteMessage = (m: TeamMessage) => {
+    const text = msgPlainText(m);
+    if (!text.trim()) { toast.error('Essa mensagem não tem texto para citar.'); return; }
+    let when = '';
+    try { when = format(new Date(m.created_at), 'dd/MM HH:mm', { locale: ptBR }); } catch { /* sem data */ }
+    const quote = formatQuotedMessages([{
+      who: m.sender_id === user?.id ? 'Eu' : (m.sender_name || 'Colega'),
+      when,
+      text,
+    }]);
+    setMessageText(prev => (prev.trim() ? `${prev.replace(/\s+$/, '')}\n\n${quote}\n` : `${quote}\n`));
+    requestAnimationFrame(() => {
+      const el = messageInputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
   };
 
   /** Copia o texto da bolha (áudio usa a transcrição). */
@@ -1025,96 +1041,19 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     );
   };
 
-  // Forward target picker
+  // Forward target picker — o mesmo seletor usado pelo chat interno da ficha.
   if (forwardingMsg) {
-    const fq = forwardSearch.trim().toLowerCase();
-    const fwdPreview = forwardingMsg.content
-      || (forwardingMsg.message_type === 'image' ? '📷 Imagem'
-        : forwardingMsg.message_type === 'audio' ? '🎤 Áudio'
-        : forwardingMsg.message_type === 'file' ? `📎 ${forwardingMsg.file_name || 'Arquivo'}` : '...');
-    const groupConvs = conversations
-      .filter(c => c.type === 'group')
-      .filter(c => !fq || (c.name || '').toLowerCase().includes(fq));
-    const fwdProfiles = profiles
-      .filter(p => p.user_id !== user?.id && !isGoneUser(p.user_id))
-      .filter(p => !fq
-        || (p.full_name || '').toLowerCase().includes(fq)
-        || (p.email || '').toLowerCase().includes(fq));
     return (
-      <div className="flex flex-col h-full">
-        <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-          <Button
-            variant="ghost" size="icon" className="h-7 w-7"
-            onClick={() => { setForwardingMsg(null); setForwardSearch(''); }}
-            disabled={forwardSending}
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <Forward className="h-4 w-4 text-primary" />
-          <span className="text-sm font-medium">Encaminhar para...</span>
-          {forwardSending && <Loader2 className="h-4 w-4 animate-spin ml-auto" />}
-        </div>
-        <div className="shrink-0 px-3 py-1.5 border-b bg-muted/20">
-          <p className="text-[11px] text-muted-foreground truncate">
-            <b>{forwardingMsg.sender_name || 'Mensagem'}:</b> {fwdPreview}
-          </p>
-        </div>
-        <div className="shrink-0 px-3 py-2 border-b">
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={forwardSearch}
-              onChange={e => setForwardSearch(e.target.value)}
-              placeholder="Buscar pessoa ou grupo..."
-              className="h-8 pl-8 text-sm"
-              autoFocus
-            />
-          </div>
-        </div>
-        <ScrollArea className="flex-1">
-          <div className="divide-y">
-            {groupConvs.length === 0 && fwdProfiles.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-6">Ninguém encontrado com esse nome.</p>
-            )}
-            {groupConvs.map(c => (
-              <button
-                key={c.id}
-                disabled={forwardSending}
-                onClick={() => doForward(c.id)}
-                className="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3 disabled:opacity-50"
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="text-xs bg-primary/20 text-primary">
-                    <Hash className="h-3.5 w-3.5" />
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm font-medium truncate flex-1">{c.name || 'Grupo'}</span>
-                <Badge variant="secondary" className="text-[9px] h-4 px-1 shrink-0">grupo</Badge>
-              </button>
-            ))}
-            {fwdProfiles.map(p => (
-              <button
-                key={p.user_id}
-                disabled={forwardSending}
-                onClick={() => handleForwardToUser(p.user_id)}
-                className="w-full text-left px-4 py-2.5 hover:bg-accent/50 transition-colors flex items-center gap-3 disabled:opacity-50"
-              >
-                <Avatar className="h-8 w-8">
-                  <AvatarFallback className="text-xs bg-primary/20 text-primary">
-                    {getInitials(p.full_name || p.email || '?')}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium truncate">{p.full_name || p.email}</div>
-                  {p.email && p.full_name && (
-                    <div className="text-[10px] text-muted-foreground truncate">{p.email}</div>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
-      </div>
+      <ForwardMessagePicker
+        preview={msgPreviewText(forwardingMsg)}
+        senderName={forwardingMsg.sender_name}
+        sending={forwardSending}
+        groups={conversations.filter(c => c.type === 'group').map(c => ({ id: c.id, name: c.name }))}
+        excludeUserIds={inactiveIds}
+        onCancel={() => setForwardingMsg(null)}
+        onPickConversation={doForward}
+        onPickUser={handleForwardToUser}
+      />
     );
   }
 
@@ -1189,56 +1128,16 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                     </span>
                   )}
                   {isMe && !activitySelectMode && (
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
-                      <button
-                        type="button"
-                        onClick={() => alertMessageAgain(msg.id)}
-                        className="p-1 rounded hover:bg-accent text-destructive"
-                        title="Reenviar como urgente (alerta o destinatário de novo)"
-                      >
-                        <AlertTriangle className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setReplyingTo(msg)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Responder"
-                      >
-                        <Reply className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => copyMessageText(msg)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Copiar o texto da mensagem"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => replyWithAI(msg)}
-                        className="p-1 rounded hover:bg-accent text-primary"
-                        title="Sugerir resposta a esta mensagem com IA"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Encaminhar para outra pessoa ou grupo"
-                      >
-                        <Forward className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => startActivitySelection(msg)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Criar atividade a partir desta mensagem (dá pra selecionar mais)"
-                      >
-                        <ClipboardList className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    <ChatMessageActions
+                      isMe
+                      onAlertAgain={() => alertMessageAgain(msg.id)}
+                      onReply={() => setReplyingTo(msg)}
+                      onQuote={() => quoteMessage(msg)}
+                      onCopy={() => copyMessageText(msg)}
+                      onAI={() => replyWithAI(msg)}
+                      onForward={() => setForwardingMsg(msg)}
+                      onCreateActivity={() => startActivitySelection(msg)}
+                    />
                   )}
                   <div className={cn(
                     'max-w-[85%] rounded-xl px-3 py-1.5 transition-shadow',
@@ -1312,58 +1211,21 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                     </div>
                   </div>
                   {!isMe && !activitySelectMode && (
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
-                      <button
-                        type="button"
-                        onClick={() => setReplyingTo(msg)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Responder"
-                      >
-                        <Reply className="h-3.5 w-3.5" />
-                      </button>
-                      {activeConv?.type === 'group' && !isGoneUser(msg.sender_id) && (
-                        <button
-                          type="button"
-                          onClick={() => startPrivateReply(msg, activeConv?.name || 'grupo')}
-                          className="p-1 rounded hover:bg-accent text-muted-foreground"
-                          title={`Responder no privado (abre a conversa direta com ${msg.sender_name || 'o autor'})`}
-                        >
-                          <MessageCircleReply className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => copyMessageText(msg)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Copiar o texto da mensagem"
-                      >
-                        <Copy className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => replyWithAI(msg)}
-                        className="p-1 rounded hover:bg-accent text-primary"
-                        title="Sugerir resposta a esta mensagem com IA"
-                      >
-                        <Sparkles className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => { setForwardingMsg(msg); setForwardSearch(''); }}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Encaminhar para outra pessoa ou grupo"
-                      >
-                        <Forward className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => startActivitySelection(msg)}
-                        className="p-1 rounded hover:bg-accent text-muted-foreground"
-                        title="Criar atividade a partir desta mensagem (dá pra selecionar mais)"
-                      >
-                        <ClipboardList className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                    <ChatMessageActions
+                      isMe={false}
+                      onReply={() => setReplyingTo(msg)}
+                      onPrivateReply={
+                        activeConv?.type === 'group' && !isGoneUser(msg.sender_id)
+                          ? () => startPrivateReply(msg, activeConv?.name || 'grupo')
+                          : undefined
+                      }
+                      privateReplyTitle={`Responder no privado (abre a conversa direta com ${msg.sender_name || 'o autor'})`}
+                      onQuote={() => quoteMessage(msg)}
+                      onCopy={() => copyMessageText(msg)}
+                      onAI={() => replyWithAI(msg)}
+                      onForward={() => setForwardingMsg(msg)}
+                      onCreateActivity={() => startActivitySelection(msg)}
+                    />
                   )}
                   {activitySelectMode && isMe && (
                     <span className={cn(
@@ -1465,10 +1327,10 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
               <MessageCircleReply className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
               <div className="min-w-0 flex-1">
                 <div className="text-[10px] font-semibold text-primary">
-                  Respondendo no privado — {privateReply.msg.sender_name || 'mensagem'} no grupo {privateReply.groupName}
+                  Respondendo no privado — {privateReply.senderName || 'mensagem'} no {privateReply.scopeLabel}
                 </div>
                 <div className="text-[11px] text-muted-foreground truncate">
-                  {msgPreviewText(privateReply.msg)}
+                  {privateReply.excerpt}
                 </div>
               </div>
               <button
