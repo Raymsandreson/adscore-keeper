@@ -382,14 +382,19 @@ function TeamPanelButton({ className, onOpenActivity }: { className?: string; on
 }
 
 /** Linha de totais do dia (produtivo x ocioso) no topo do badge. */
-function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
+function DayTotalsRow({ active, idle, usage }: { active: number; idle: number; usage?: number }) {
   return (
     <div className="flex items-center justify-center gap-2 text-[11px] leading-none border-b pb-1 mb-0.5">
       <span className="text-muted-foreground uppercase tracking-wide">Hoje</span>
       <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold tabular-nums" title="Tempo produtivo do dia">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />{formatHMS(active)}
       </span>
-      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-bold tabular-nums" title="Tempo ocioso do dia">
+      {!!usage && usage > 0 && (
+        <span className="flex items-center gap-1 text-indigo-700 dark:text-indigo-300 font-bold tabular-nums" title="Uso do sistema (sem atividade vinculada) — não conta como produtivo">
+          <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />{formatHMS(usage)}
+        </span>
+      )}
+      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-bold tabular-nums" title="Tempo ocioso do dia (parado)">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />{formatHMS(idle)}
       </span>
     </div>
@@ -403,7 +408,7 @@ function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
  */
 export function ActivityTimerOverlay() {
   const {
-    current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, lastActivity, resumeLast, dayTotals, usage, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
     extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
@@ -422,9 +427,17 @@ export function ActivityTimerOverlay() {
     : -1;
   const isOver = over >= 0;
   // Gap com interação recente: a pessoa mexe no sistema mas SEM atividade
-  // vinculada — o tempo conta como ocioso do mesmo jeito; só muda a mensagem
-  // (cobrar o vínculo em vez de perguntar se vai se ausentar).
+  // vinculada. O tempo NÃO é ocioso — vai para "uso do sistema" por área
+  // (não conta como produtivo); o badge mostra a área e cobra o vínculo.
   const gapWorking = current?.kind === 'gap' && current.gapWorking !== false;
+  // Paleta do badge sem atividade: índigo enquanto é uso do sistema (a pessoa
+  // está trabalhando), âmbar quando é ociosidade de verdade.
+  const gapIconBtn = gapWorking
+    ? 'rounded-full p-1 hover:bg-indigo-200/50 dark:hover:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300'
+    : 'rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300';
+  const gapPillBtn = gapWorking
+    ? 'ml-1 flex items-center gap-1 rounded-full border border-indigo-300/60 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60'
+    : 'ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60';
 
   // Tick só para re-renderizar o badge a cada segundo.
   const [, force] = useState(0);
@@ -514,11 +527,17 @@ export function ActivityTimerOverlay() {
           na vertical — clique desliza o cronômetro pra direita; arrastar sobe/desce
           a aba. Recolhida ela não cobre conteúdo. (skill: ui-sem-sobreposicao) */}
       {current && hidden && (() => {
-        const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
+        // Navegando sem atividade: a aba fina mostra o tempo de USO da área
+        // (índigo), não o ocioso — que nesse caso nem está correndo.
+        const seconds = current.kind === 'activity'
+          ? current.activeSeconds
+          : (gapWorking ? (usage?.seconds || 0) : current.idleSeconds);
         const palette = current.kind === 'activity'
           ? `border bg-background/95 ${isOver ? 'text-red-600 dark:text-red-400' : ''}`
           : current.kind === 'gap'
-            ? 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
+            ? (gapWorking
+              ? 'border border-indigo-300/50 bg-indigo-50/95 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200'
+              : 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200')
             : 'border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200';
         // Clique fica no contêiner (não num botão interno): o drag faz
         // setPointerCapture no pointerdown e o click é reentregue ao próprio
@@ -554,7 +573,7 @@ export function ActivityTimerOverlay() {
           className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
           title="Arraste para mover · clique no tempo para abrir a atividade"
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} usage={usage?.dayTotal} />
           <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="relative flex h-2.5 w-2.5">
@@ -639,21 +658,23 @@ export function ActivityTimerOverlay() {
       {current && current.kind === 'gap' && !hidden && dock(
         <div
           {...dragAttrs}
-          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
+          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border ${gapWorking ? 'border-indigo-300/50 bg-indigo-50/95 dark:bg-indigo-950/60' : 'border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60'} px-2 py-1.5 select-none ${grab}`}
           title={gapWorking
-            ? 'Sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
+            ? `Uso do sistema em ${usage?.areaLabel || 'tela'} — registrado, mas NÃO conta como produtivo; vincule uma atividade`
             : 'Tempo ocioso entre atividades'}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} usage={usage?.dayTotal} />
           <div className="flex items-center gap-1.5">
-          <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
+          <GripVertical className={`h-3.5 w-3.5 ${gapWorking ? 'text-indigo-700/50 dark:text-indigo-300/50' : 'text-amber-700/50 dark:text-amber-300/50'}`} />
           {gapWorking ? (
             <>
-              <Clock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-              <span className="font-mono text-sm tabular-nums font-bold text-amber-800 dark:text-amber-200">
-                {formatHMS(current.idleSeconds)}
+              <Clock className="h-3.5 w-3.5 text-indigo-700 dark:text-indigo-300" />
+              <span className="font-mono text-sm tabular-nums font-bold text-indigo-800 dark:text-indigo-200">
+                {formatHMS(usage?.seconds || 0)}
               </span>
-              <span className="text-xs font-medium text-amber-800 dark:text-amber-200 hidden sm:inline">sem atividade · não conta</span>
+              <span className="text-xs font-medium text-indigo-800 dark:text-indigo-200 hidden sm:inline">
+                {usage?.areaLabel || 'Sistema'} · não conta
+              </span>
             </>
           ) : (
             <>
@@ -677,22 +698,22 @@ export function ActivityTimerOverlay() {
               <span className="sm:hidden">Retomar</span>
             </button>
           )}
-          <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} onEndShift={endShift} />
+          <BreakMenu className={`ml-1 ${gapIconBtn}`} onStart={startBreak} onEndShift={endShift} />
           <VoiceActivityButton
-            className="ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
+            className={`${gapPillBtn} text-[11px] font-medium`}
             onClick={() => setVoiceOpen(true)}
             label="O que faço?"
           />
           <SwitchActivityButton
-            className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            className={`ml-1 ${gapIconBtn}`}
             onClick={() => setSwitchOpen(true)}
           />
-          <TeamPanelButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onOpenActivity={setTeamViewActivityId} />
+          <TeamPanelButton className={gapIconBtn} onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
-            className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            className={gapIconBtn}
             title="Recolher para a aba lateral"
           >
             <Minimize2 className="h-3.5 w-3.5" />
@@ -708,7 +729,7 @@ export function ActivityTimerOverlay() {
           className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
           title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} usage={usage?.dayTotal} />
           <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />
           <UtensilsCrossed className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />

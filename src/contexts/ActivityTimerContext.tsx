@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
+import { areaFromLocation, type SystemArea } from '@/lib/systemAreas';
 
 // activity_time_entries ainda não está nos types gerados — acesso destipado.
 const dbAny = db as unknown as SupabaseClient;
@@ -25,16 +26,30 @@ const dbAny = db as unknown as SupabaseClient;
  *   no prompt devolve esse período pro tempo ativo.
  * - CONCLUIR encerra o cronômetro da atv (igual pausar).
  * - O tempo ENTRE atividades (nenhuma aberta) cai na linha de gap
- *   (activity_id null) e conta SEMPRE como OCIOSO: sem atividade vinculada não
- *   há como justificar o tempo pela natureza do trabalho. Interação recente só
- *   muda a mensagem (trabalhando sem vínculo x parado) e o prompt que abre —
- *   quem está trabalhando é cobrado a vincular/criar a atividade.
+ *   (activity_id null). Aí valem DUAS contas distintas:
+ *     • sem interação (parado, tela bloqueada, PC suspenso) → OCIOSO de verdade,
+ *       em idle_seconds da linha de gap;
+ *     • interagindo com o sistema → USO DO SISTEMA, contado por ÁREA do menu em
+ *       system_usage_entries (WhatsApp, Leads, Processual, Financeiro...).
+ *   Uso do sistema NÃO é tempo produtivo: não entra em active_seconds e não
+ *   pontua no ranking — quem quer pontuar segue tendo que vincular atividade.
+ *   Serve para o membro não ser marcado como ocioso enquanto trabalha e para a
+ *   gestão ver onde o tempo sem vínculo está indo.
  * - Persiste no Externo (activity_time_entries), flush absoluto a cada 30s.
  */
 
 const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 min sem interação
 const FLUSH_INTERVAL_MS = 30 * 1000;
 const GAP_TITLE = 'Ocioso (entre atividades)';
+/** Gravação do uso por área (upsert absoluto), mesma cadência do cronômetro. */
+const USAGE_FLUSH_MS = 30 * 1000;
+/**
+ * Cobrança de vínculo para quem está NAVEGANDO (não ocioso): a cada 15 min de
+ * uso do sistema abre o seletor "qual atividade você está fazendo?" — sem
+ * alarme sonoro. O apito fica reservado ao ocioso de verdade (5 min), que
+ * continua como era.
+ */
+const NAV_NUDGE_SEC = 15 * 60;
 // Coordenação entre abas: só UMA aba comanda o cronômetro por vez.
 const TAB_ID = Math.random().toString(36).slice(2);
 const OWNER_CHANNEL = 'activity-timer-owner';
@@ -104,6 +119,12 @@ interface ActivityTimerCtx {
   resumeLast: () => Promise<void>;
   /** Totais do dia (do membro): produtivo (ativo) e ocioso, ao vivo. */
   dayTotals: { active: number; idle: number };
+  /**
+   * Uso do sistema sem atividade vinculada (3ª categoria). `seconds` é o tempo
+   * de HOJE na área atual; `dayTotal`, a soma de todas as áreas do dia. Null
+   * enquanto não houver nada contabilizado.
+   */
+  usage: { areaKey: string; areaLabel: string; seconds: number; dayTotal: number } | null;
   hidden: boolean;
   idlePrompt: boolean;
   leavePrompt: boolean;
@@ -172,10 +193,10 @@ export function formatHMS(totalSeconds: number): string {
 
 /**
  * Sem atividade aberta (linha de gap), decide se a pessoa está INTERAGINDO com
- * o sistema. NÃO muda a contagem — sem atividade vinculada todo segundo do gap
- * é ocioso — só a mensagem do badge (trabalhando sem vínculo x parado) e o
- * prompt que abre (vincular atividade x registrar pausa). Mesmos critérios do
- * ramo 'activity' (tela bloqueada e máquina suspensa = não interagindo).
+ * o sistema. É o divisor de águas da contagem: true → o segundo vai para USO DO
+ * SISTEMA (por área, em system_usage_entries); false → OCIOSO de verdade
+ * (idle_seconds da linha de gap). Mesmos critérios do ramo 'activity' (tela
+ * bloqueada e máquina suspensa = não interagindo).
  */
 export function isGapWorking(opts: { idleFor: number; locked: boolean; deltaSec: number }): boolean {
   const suspended = opts.deltaSec >= 120; // gap grande entre ticks = PC dormiu
@@ -272,6 +293,20 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const [breakOverdue, setBreakOverdue] = useState(false);
   const breakOverNotifiedRef = useRef<boolean>(false);
   const lastGapNudgeRef = useRef<number>(0);
+  // ---- Uso do sistema por área (3ª categoria: nem produtivo, nem ocioso) ----
+  // `seconds` já inclui o acumulado de HOJE nessa área (carregado do banco em
+  // loadUsageBase) — o flush grava valor ABSOLUTO, igual ao do cronômetro.
+  const usageRef = useRef<{ key: string; label: string; seconds: number; loaded: boolean } | null>(null);
+  const usageDayBaseRef = useRef<number>(0); // soma do dia nas OUTRAS áreas
+  const usageFlushRef = useRef<number>(0);
+  const usageBusyRef = useRef<boolean>(false);
+  const navNudgeRef = useRef<number>(0);     // último nudge de "vincule a atividade"
+  // Rede de segurança: se system_usage_entries não existir/não gravar (ex.: o
+  // front publicado antes da migration no Externo), o tempo NÃO pode sumir —
+  // volta a cair em idle_seconds, como era antes desta feature.
+  const usageUnavailableRef = useRef<boolean>(false);
+  const usageFailRef = useRef<number>(0);
+  const [usage, setUsage] = useState<{ areaKey: string; areaLabel: string; seconds: number; dayTotal: number } | null>(null);
   const shiftIdRef = useRef<string | null>(null);
   const ownerChRef = useRef<BroadcastChannel | null>(null);
   const otherOwnerRef = useRef<boolean>(false); // outra aba comanda o cronômetro
@@ -333,6 +368,108 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     if (u) userRef.current = u;
     return u;
   }, []);
+
+  /**
+   * Grava o tempo da área (upsert ABSOLUTO — mesma semântica do flush do
+   * cronômetro). Só grava área já carregada: gravar antes de conhecer o
+   * acumulado do dia sobrescreveria o total com um valor menor.
+   */
+  const flushUsage = useCallback(async (snapshot?: { key: string; label: string; seconds: number; loaded: boolean }) => {
+    const u = userRef.current;
+    const cur = snapshot || usageRef.current;
+    if (!u || !cur || !cur.loaded || cur.seconds <= 0) return;
+    usageFlushRef.current = Date.now();
+    try {
+      const { error } = await dbAny.from('system_usage_entries').upsert({
+        user_id: u.userId,
+        user_name: u.userName,
+        work_date: brasiliaToday(),
+        area_key: cur.key,
+        area_label: cur.label,
+        active_seconds: cur.seconds,
+      }, { onConflict: 'user_id,work_date,area_key' });
+      if (error) throw error;
+      usageFailRef.current = 0;
+    } catch (err) {
+      const code = (err as { code?: string })?.code || '';
+      // 42P01 (relação inexistente) / PGRST205 (tabela fora do schema cache):
+      // a migration não está aplicada — desliga a categoria na hora.
+      if (code === '42P01' || code === 'PGRST205' || ++usageFailRef.current >= 2) {
+        usageUnavailableRef.current = true;
+        console.warn('[activity-timer] uso do sistema indisponível — o tempo sem atividade volta a contar como ocioso', err);
+      } else {
+        console.warn('[activity-timer] uso do sistema: gravação falhou', err);
+      }
+    }
+  }, []);
+
+  /** Carrega o acumulado de hoje da área (base do contador absoluto). */
+  const loadUsageBase = useCallback(async (key: string) => {
+    if (usageBusyRef.current) return;
+    usageBusyRef.current = true;
+    try {
+      await ensureExternalSession().catch(() => {});
+      const u = await getUser();
+      if (!u) return;
+      const { data } = await dbAny.from('system_usage_entries')
+        .select('active_seconds')
+        .eq('user_id', u.userId).eq('work_date', brasiliaToday()).eq('area_key', key)
+        .maybeSingle();
+      const base = (data as { active_seconds: number } | null)?.active_seconds || 0;
+      const cur = usageRef.current;
+      if (cur && cur.key === key && !cur.loaded) { cur.seconds += base; cur.loaded = true; }
+    } catch {
+      // Sem base (offline/RLS): marca como carregada para não travar a gravação —
+      // o pior caso é o upsert regravar o dia a partir do que esta sessão contou.
+      const cur = usageRef.current;
+      if (cur && cur.key === key) cur.loaded = true;
+    } finally {
+      usageBusyRef.current = false;
+    }
+  }, [getUser]);
+
+  /** Soma do dia nas OUTRAS áreas (a atual entra ao vivo, como em dayTotals). */
+  const refreshUsageDay = useCallback(async () => {
+    const u = userRef.current;
+    if (!u) return;
+    try {
+      const { data } = await dbAny.from('system_usage_entries')
+        .select('area_key, active_seconds')
+        .eq('user_id', u.userId).eq('work_date', brasiliaToday());
+      const curKey = usageRef.current?.key;
+      let total = 0;
+      for (const r of ((data as { area_key: string; active_seconds: number }[]) || [])) {
+        if (r.area_key === curKey) continue;
+        total += r.active_seconds || 0;
+      }
+      usageDayBaseRef.current = total;
+    } catch { /* mantém o valor atual */ }
+  }, []);
+
+  /**
+   * Um tick de uso do sistema: acumula na área da URL atual. Trocar de área
+   * fecha a anterior (flush) e abre a nova. Chamado só quando NÃO há atividade
+   * aberta e há interação real.
+   */
+  const accumulateUsage = useCallback((area: SystemArea, deltaSec: number) => {
+    const prev = usageRef.current;
+    if (!prev || prev.key !== area.key) {
+      if (prev) flushUsage({ ...prev });
+      if (prev?.loaded) usageDayBaseRef.current += prev.seconds;
+      usageRef.current = { key: area.key, label: area.label, seconds: 0, loaded: false };
+      // Recalcula a base do dia depois que o flush da área anterior tiver
+      // chegado ao banco (sem o atraso, o total exibido oscilaria pra baixo).
+      setTimeout(() => { refreshUsageDay(); }, 3000);
+    }
+    const cur = usageRef.current!;
+    cur.seconds += deltaSec;
+    if (!cur.loaded) loadUsageBase(cur.key);
+    setUsage({
+      areaKey: cur.key, areaLabel: cur.label, seconds: cur.seconds,
+      dayTotal: usageDayBaseRef.current + cur.seconds,
+    });
+    if (cur.loaded && Date.now() - usageFlushRef.current >= USAGE_FLUSH_MS) flushUsage();
+  }, [flushUsage, loadUsageBase, refreshUsageDay]);
 
   const sync = useCallback((e: TimerEntry | null) => {
     entryRef.current = e;
@@ -439,9 +576,10 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   // Atualiza a base do dia ao mudar de sessão e periodicamente.
   useEffect(() => {
     refreshDayBase();
-    const id = setInterval(refreshDayBase, 60000);
+    refreshUsageDay();
+    const id = setInterval(() => { refreshDayBase(); refreshUsageDay(); }, 60000);
     return () => clearInterval(id);
-  }, [current?.entryId, refreshDayBase]);
+  }, [current?.entryId, refreshDayBase, refreshUsageDay]);
 
   // ---- Coordenação entre abas: só uma aba conta por vez ----
   useEffect(() => {
@@ -520,25 +658,47 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       }
 
       if (e.kind === 'gap') {
-        // Sem atividade vinculada NADA conta como produtivo — sem uma atv
-        // aberta não dá pra justificar o tempo pela natureza do trabalho.
-        // Interação recente só muda a mensagem do badge e qual prompt abre.
-        const gapWorking = isGapWorking({ idleFor, locked: lockedRef.current, deltaSec });
-        next.idleSeconds += deltaSec;
-        next.gapWorking = gapWorking; // o badge alterna "sem atividade" x "ocioso"
+        // Sem atividade vinculada nada conta como PRODUTIVO — mas o tempo se
+        // divide em dois: interagindo com o sistema vira USO DO SISTEMA (por
+        // área, tabela própria); parado de fato vira OCIOSO (idle_seconds).
+        const interacting = isGapWorking({ idleFor, locked: lockedRef.current, deltaSec });
+        // Sem a tabela de uso (migration não aplicada), o badge volta a dizer
+        // "ocioso" — a UI não pode anunciar uma contagem que não está rodando.
+        const gapWorking = interacting && !usageUnavailableRef.current;
+        next.gapWorking = gapWorking; // o badge alterna "usando X" x "ocioso"
 
-        // Nudge a cada 5 min de gap: trabalhando sem vínculo → seletor "qual
-        // atividade você está fazendo?"; parado de fato → "vai se ausentar?".
-        if (next.idleSeconds - lastGapNudgeRef.current >= 300) {
-          lastGapNudgeRef.current = next.idleSeconds;
-          if (gapWorking) {
+        if (gapWorking) {
+          const area = areaFromLocation(window.location.pathname, window.location.search);
+          accumulateUsage(area, deltaSec);
+          // Cobrança de vínculo a cada NAV_NUDGE_SEC de uso — sem apito: quem
+          // está navegando está trabalhando, só não vinculou a atividade.
+          // Contador próprio (segundos desde o último nudge): usar o acumulado
+          // do dia dispararia a cobrança já no primeiro tick da retomada.
+          navNudgeRef.current += deltaSec;
+          if (navNudgeRef.current >= NAV_NUDGE_SEC) {
+            navNudgeRef.current = 0;
             setSwitchPrompt(true);
-            playAlarmSound();
-            notifyDesktop('⏱️ Sem atividade vinculada', 'Esse tempo NÃO está contando como produtivo. Vincule a atividade que você está fazendo ou crie uma por voz.');
-          } else {
-            setAwayPrompt(true);
-            playAlarmSound();
-            notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min. Vai se ausentar? Registre uma pausa ou retome uma atividade.`);
+            notifyDesktop(
+              `⏱️ ${area.label} · sem atividade vinculada`,
+              'Esse tempo está registrado como uso do sistema, mas NÃO conta como produtivo. Vincule a atividade que você está fazendo ou crie uma por voz.',
+            );
+          }
+        } else {
+          next.idleSeconds += deltaSec;
+          navNudgeRef.current = 0; // parou de navegar: a próxima cobrança recomeça
+          if (next.idleSeconds - lastGapNudgeRef.current >= 300) {
+            lastGapNudgeRef.current = next.idleSeconds;
+            if (interacting) {
+              // Fallback (sem a tabela de uso): comportamento anterior — cobra o
+              // vínculo, sem apito, já que a pessoa está mexendo no sistema.
+              setSwitchPrompt(true);
+              notifyDesktop('⏱️ Sem atividade vinculada', 'Esse tempo NÃO está contando como produtivo. Vincule a atividade que você está fazendo ou crie uma por voz.');
+            } else {
+              // Ocioso de verdade: mantém o apito a cada 5 min.
+              setAwayPrompt(true);
+              playAlarmSound();
+              notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min. Vai se ausentar? Registre uma pausa ou retome uma atividade.`);
+            }
           }
         }
         sync(next);
@@ -636,7 +796,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (now - lastFlushRef.current >= FLUSH_INTERVAL_MS) flush();
     }, 1000);
     return () => clearInterval(id);
-  }, [sync, flush]);
+  }, [sync, flush, accumulateUsage]);
 
   // ---- Alertas e comandos da gestão via realtime ----
   useEffect(() => {
@@ -688,11 +848,15 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
   // ---- Flush ao esconder a aba + registro de congela do navegador ----
   useEffect(() => {
-    const onHide = () => { if (document.visibilityState === 'hidden' && entryRef.current) flush(); };
+    const onHide = () => {
+      if (document.visibilityState !== 'hidden') return;
+      if (entryRef.current) flush();
+      flushUsage(); // o tempo de uso da área também não pode ficar só na memória
+    };
     // 'freeze' (Page Lifecycle, Chrome/Edge): o navegador vai congelar a aba em
     // segundo plano. Registra o momento (o loop usa pra diferenciar de PC
     // suspenso) e persiste o estado antes de os timers pararem.
-    const onFreeze = () => { frozeAtRef.current = Date.now(); if (entryRef.current) flush(); };
+    const onFreeze = () => { frozeAtRef.current = Date.now(); if (entryRef.current) flush(); flushUsage(); };
     document.addEventListener('visibilitychange', onHide);
     window.addEventListener('pagehide', onHide);
     document.addEventListener('freeze', onFreeze);
@@ -701,7 +865,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       window.removeEventListener('pagehide', onHide);
       document.removeEventListener('freeze', onFreeze);
     };
-  }, [flush]);
+  }, [flush, flushUsage]);
 
   // Inicia (ou retoma) o rastreador de ociosidade entre atividades.
   // Só conta ocioso DENTRO do expediente (ponto aberto).
@@ -1051,6 +1215,105 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   // Mantém a ponte do listener de realtime apontando para as versões atuais.
   useEffect(() => { remoteRef.current = { forceIdle, endShift }; }, [forceIdle, endShift]);
 
+  /**
+   * Assume a sessão com status='running' do banco (atividade/pausa/gap) nesta
+   * aba. Usada no reload (não parar por causa de um F5) e na tomada de posse
+   * por foco. `force` ignora o fato de outra aba ter se anunciado dona — é
+   * exatamente o caso de quem acabou de clicar nesta aba.
+   * Retorna true se esta aba passou a comandar o cronômetro.
+   */
+  const hydrateRunning = useCallback(async (force = false): Promise<boolean> => {
+    const u = await getUser();
+    if (!u) return false;
+    try {
+      const { data: running } = await dbAny.from('activity_time_entries')
+        .select('id, activity_id, activity_type, activity_title, lead_name, active_seconds, idle_seconds, estimated_minutes, break_type, break_note, started_at, work_date')
+        .eq('user_id', u.userId).eq('status', 'running')
+        .order('started_at', { ascending: false }).limit(1).maybeSingle();
+      type R = { id: string; activity_id: string | null; activity_type: string | null; activity_title: string | null; lead_name: string | null; active_seconds: number | null; idle_seconds: number | null; estimated_minutes: number | null; break_type: BreakType | null; break_note: string | null; work_date: string | null };
+      const row = running as R | null;
+      // Sessão 'running' de um dia anterior (a pessoa não fechou o cronômetro):
+      // não retoma acumulando no dia velho — pausa e deixa o expediente de hoje
+      // começar limpo no gap. Sem isto, o tempo de ontem vazaria pro dia de hoje.
+      if (row && row.work_date && row.work_date !== brasiliaToday()) {
+        try {
+          await dbAny.from('activity_time_entries')
+            .update({ status: 'paused', ended_at: new Date().toISOString() }).eq('id', row.id);
+        } catch { /* melhor esforço */ }
+        return false;
+      }
+      if (!row || entryRef.current || (otherOwnerRef.current && !force)) return false;
+
+      const kind: TimerEntry['kind'] = row.activity_id ? 'activity' : (row.break_type ? 'break' : 'gap');
+      lastFlushRef.current = Date.now();
+      lastInteractionRef.current = Date.now();
+      lastGapNudgeRef.current = row.idle_seconds || 0;
+      sync({
+        kind,
+        entryId: row.id,
+        activityId: row.activity_id,
+        activityType: row.activity_type || '',
+        activityTitle: row.activity_title || (kind === 'gap' ? GAP_TITLE : 'Atividade'),
+        leadName: row.lead_name,
+        userId: u.userId,
+        userName: u.userName,
+        activeSeconds: row.active_seconds || 0,
+        idleSeconds: row.idle_seconds || 0,
+        status: 'running',
+        estimateMinutes: row.estimated_minutes,
+        breakType: row.break_type,
+        breakNote: row.break_note,
+      });
+      if (kind === 'activity' && row.activity_id) {
+        const la: TimerActivityRef = {
+          id: row.activity_id,
+          activity_type: row.activity_type,
+          title: row.activity_title,
+          lead_name: row.lead_name,
+          estimated_minutes: row.estimated_minutes,
+        };
+        lastActivityRef.current = la;
+        setLastActivity(la);
+      }
+      announceTakeover();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [getUser, sync, announceTakeover]);
+
+  /**
+   * POSSE SEGUE O FOCO. Só uma aba comanda o cronômetro; antes, a posse ficava
+   * presa na aba que iniciou a atividade — as outras abas do sistema ficavam
+   * SEM cronômetro na tela (nem badge) enquanto a aba esquecida seguia
+   * contando. Agora, ao voltar o foco para uma aba sem posse, ela avisa as
+   * demais (que salvam e soltam), espera o flush e assume a sessão do banco.
+   */
+  useEffect(() => {
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const claim = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (entryRef.current || !otherOwnerRef.current) return; // já sou dono
+      if (pending) return;
+      announceTakeover(); // as outras abas flushiam e soltam
+      pending = setTimeout(async () => {
+        pending = null;
+        if (entryRef.current || document.visibilityState !== 'visible') return;
+        const took = await hydrateRunning(true);
+        // Nada rodando no banco (a outra aba fechou a sessão): se o expediente
+        // está aberto, esta aba reabre a linha de ociosidade.
+        if (!took && !entryRef.current && shiftIdRef.current) startGap();
+      }, 1200); // dá tempo do flush('paused') da aba anterior chegar ao banco
+    };
+    document.addEventListener('visibilitychange', claim);
+    window.addEventListener('focus', claim);
+    return () => {
+      if (pending) clearTimeout(pending);
+      document.removeEventListener('visibilitychange', claim);
+      window.removeEventListener('focus', claim);
+    };
+  }, [announceTakeover, hydrateRunning, startGap]);
+
   // Ao abrir o app: recupera o ponto aberto de hoje e REIDRATA qualquer
   // sessão com status='running' no banco (atividade/pausa/gap). Antes um F5
   // resetava para "ocioso" e gerava falsa ociosidade.
@@ -1078,58 +1341,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       } catch { setOnShift(false); }
 
       // Reidrata a sessão running (activity > break > gap) para não parar no reload.
-      try {
-        const { data: running } = await dbAny.from('activity_time_entries')
-          .select('id, activity_id, activity_type, activity_title, lead_name, active_seconds, idle_seconds, estimated_minutes, break_type, break_note, started_at, work_date')
-          .eq('user_id', u.userId).eq('status', 'running')
-          .order('started_at', { ascending: false }).limit(1).maybeSingle();
-        type R = { id: string; activity_id: string | null; activity_type: string | null; activity_title: string | null; lead_name: string | null; active_seconds: number | null; idle_seconds: number | null; estimated_minutes: number | null; break_type: BreakType | null; break_note: string | null; work_date: string | null };
-        const row = running as R | null;
-        // Sessão 'running' de um dia anterior (a pessoa não fechou o cronômetro):
-        // não retoma acumulando no dia velho — pausa e deixa o expediente de hoje
-        // começar limpo no gap. Sem isto, o tempo de ontem vazaria pro dia de hoje.
-        if (row && row.work_date && row.work_date !== brasiliaToday()) {
-          try {
-            await dbAny.from('activity_time_entries')
-              .update({ status: 'paused', ended_at: new Date().toISOString() }).eq('id', row.id);
-          } catch { /* melhor esforço */ }
-        } else if (row && !entryRef.current && !otherOwnerRef.current) {
-          const kind: TimerEntry['kind'] = row.activity_id ? 'activity' : (row.break_type ? 'break' : 'gap');
-          lastFlushRef.current = Date.now();
-          lastInteractionRef.current = Date.now();
-          lastGapNudgeRef.current = row.idle_seconds || 0;
-          const ref: TimerEntry = {
-            kind,
-            entryId: row.id,
-            activityId: row.activity_id,
-            activityType: row.activity_type || '',
-            activityTitle: row.activity_title || (kind === 'gap' ? GAP_TITLE : 'Atividade'),
-            leadName: row.lead_name,
-            userId: u.userId,
-            userName: u.userName,
-            activeSeconds: row.active_seconds || 0,
-            idleSeconds: row.idle_seconds || 0,
-            status: 'running',
-            estimateMinutes: row.estimated_minutes,
-            breakType: row.break_type,
-            breakNote: row.break_note,
-          };
-          sync(ref);
-          if (kind === 'activity' && row.activity_id) {
-            const la: TimerActivityRef = {
-              id: row.activity_id,
-              activity_type: row.activity_type,
-              title: row.activity_title,
-              lead_name: row.lead_name,
-              estimated_minutes: row.estimated_minutes,
-            };
-            lastActivityRef.current = la;
-            setLastActivity(la);
-          }
-          announceTakeover();
-          return;
-        }
-      } catch { /* segue para gap */ }
+      if (await hydrateRunning()) return;
 
       // Sem sessão rodando prévia: se em expediente, começa o gap.
       if (shiftIdRef.current) {
@@ -1164,7 +1376,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   };
 
   const value: ActivityTimerCtx = {
-    current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, lastActivity, resumeLast, dayTotals, usage, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
