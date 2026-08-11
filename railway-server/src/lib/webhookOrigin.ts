@@ -19,26 +19,34 @@
 // Sem esse número, exigir o token é palpite.
 import { supabase as ext } from './supabase';
 
-type Verdict = 'token_ok' | 'token_desconhecido' | 'sem_token';
+type Verdict = 'token_ok' | 'token_desconhecido' | 'sem_token' | 'indeterminado';
 
 const stats = {
   total: 0,
   token_ok: 0,
   token_desconhecido: 0,
   sem_token: 0,
+  // Não deu pra carregar a lista de tokens ativos (falha de leitura no Externo).
+  // Contado à parte de propósito: chamar isso de "desconhecido" transformaria
+  // indisponibilidade do banco em suspeita de fraude, e foi o que aconteceu na
+  // primeira versão deste arquivo.
+  indeterminado: 0,
 };
 // Que tipo de evento chega sem token válido — é a lista que precisa ficar vazia
 // antes de transformar o token em exigência.
-const semTokenPorEvento = new Map<string, number>();
+const pendenciasPorEvento = new Map<string, number>();
 const EVENT_CAP = 30;
+const amostraDesconhecidos: { evento: string; instancia: string; token_sufixo: string }[] = [];
+const AMOSTRA_CAP = 10;
 
 // O conjunto de tokens ativos muda raramente (dezenas de instâncias), e uma
 // consulta por mensagem colocaria o banco no caminho quente da ingestão.
 const TOKEN_TTL_MS = 5 * 60_000;
 let tokenCache: { tokens: Set<string>; expiresAt: number } | null = null;
-let inFlight: Promise<Set<string>> | null = null;
+let inFlight: Promise<Set<string> | null> | null = null;
 
-async function activeInstanceTokens(): Promise<Set<string>> {
+/** Devolve null quando a lista não pôde ser carregada — nunca um conjunto vazio. */
+async function activeInstanceTokens(): Promise<Set<string> | null> {
   const now = Date.now();
   if (tokenCache && now < tokenCache.expiresAt) return tokenCache.tokens;
   if (inFlight) return inFlight;
@@ -50,11 +58,14 @@ async function activeInstanceTokens(): Promise<Set<string>> {
       .eq('is_active', true)
       .not('instance_token', 'is', null);
     if (error) {
-      // Falha de leitura não pode virar veredito: mantém o cache velho (ou um
-      // conjunto vazio de vida curta) e tenta de novo no próximo evento.
-      const fallback = tokenCache?.tokens ?? new Set<string>();
-      tokenCache = { tokens: fallback, expiresAt: Date.now() + 30_000 };
-      return fallback;
+      // Falha de leitura não pode virar veredito. Se há cache velho, ele ainda
+      // é a melhor informação disponível; se não há, devolve null e o evento vira
+      // 'indeterminado' em vez de acusar um remetente legítimo.
+      if (tokenCache) {
+        tokenCache = { tokens: tokenCache.tokens, expiresAt: Date.now() + 30_000 };
+        return tokenCache.tokens;
+      }
+      return null;
     }
     const tokens = new Set<string>(
       (data ?? []).map((r: any) => String(r.instance_token || '')).filter(Boolean),
@@ -87,14 +98,25 @@ export async function observeUazapiOrigin(body: any): Promise<Verdict> {
     verdict = 'sem_token';
   } else {
     const tokens = await activeInstanceTokens();
-    verdict = tokens.has(token) ? 'token_ok' : 'token_desconhecido';
+    if (!tokens) verdict = 'indeterminado';
+    else verdict = tokens.has(token) ? 'token_ok' : 'token_desconhecido';
   }
 
   stats[verdict] += 1;
-  if (verdict !== 'token_ok') {
+  if (verdict !== 'token_ok' && verdict !== 'indeterminado') {
     const key = `${verdict}:${eventLabel(body)}`;
-    if (semTokenPorEvento.has(key)) semTokenPorEvento.set(key, semTokenPorEvento.get(key)! + 1);
-    else if (semTokenPorEvento.size < EVENT_CAP) semTokenPorEvento.set(key, 1);
+    if (pendenciasPorEvento.has(key)) pendenciasPorEvento.set(key, pendenciasPorEvento.get(key)! + 1);
+    else if (pendenciasPorEvento.size < EVENT_CAP) pendenciasPorEvento.set(key, 1);
+  }
+  // Amostra do que não casou: sem isso não dá pra saber se é instância que
+  // saiu da tabela ou remetente forjado — as duas contam igual no placar.
+  // Token só pelo sufixo: é credencial, não vai inteiro pra lugar nenhum.
+  if (verdict === 'token_desconhecido' && amostraDesconhecidos.length < AMOSTRA_CAP) {
+    amostraDesconhecidos.push({
+      evento: eventLabel(body),
+      instancia: String(body?.instanceName || body?.chat?.instanceName || body?.instance_name || '?').slice(0, 60),
+      token_sufixo: `…${token.slice(-6)}`,
+    });
   }
   return verdict;
 }
@@ -108,8 +130,9 @@ export function uazapiOriginStats() {
   return {
     ...stats,
     // Enquanto isto não estiver vazio, exigir o token derrubaria esses eventos.
-    sem_token_por_evento: Object.fromEntries(
-      [...semTokenPorEvento.entries()].sort((a, b) => b[1] - a[1]),
+    pendencias_por_evento: Object.fromEntries(
+      [...pendenciasPorEvento.entries()].sort((a, b) => b[1] - a[1]),
     ),
+    amostra_desconhecidos: amostraDesconhecidos,
   };
 }
