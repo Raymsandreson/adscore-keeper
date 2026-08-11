@@ -158,7 +158,7 @@ export function AppSidebar() {
         { id: "acompanhamento-processual", label: "Acompanhamento Processual", icon: <ClipboardList className="h-3.5 w-3.5" />, path: "/processual/acompanhamento", color: "text-indigo-500" },
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
         { id: "hearings", label: "Audiências", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
-        { id: "carteira-fase", label: "Carteira por fase", icon: <Wallet className="h-3.5 w-3.5" />, path: "/processual/carteira", color: "text-teal-500" },
+        { id: "carteira-fase", label: "Jurimetria", icon: <Wallet className="h-3.5 w-3.5" />, path: "/processual/carteira", color: "text-teal-500" },
         // A revisão dos acordos lidos nas atas mora DENTRO do POP (seção "Marcos
         // do POP", em WorkflowBuilder) — marco é do POP, como fase e passo. A
         // rota /processual/revisao-acordos segue viva para ver todos de uma vez,
