@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { useSharedFetch } from '@/lib/sharedFetch';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { getAcolhedorPhoto } from '@/lib/acolhedorPhotos';
+import { useProfileAvatars } from '@/hooks/useProfileAvatars';
 
 export interface Acolhedor {
   id: string;
@@ -14,7 +15,11 @@ export interface Acolhedor {
 export interface AcolhedorAvatar {
   /** Registro da tabela acolhedores, se o nome casou por nome_canonico/alias. */
   acolhedor: Acolhedor | null;
-  /** foto_url do banco, senão foto local legada (acolhedorPhotos.ts). */
+  /**
+   * Nesta ordem: foto de perfil que a própria pessoa subiu em "Meu Perfil"
+   * (profiles.avatar_url), foto_url curada em `acolhedores`, foto local legada
+   * (acolhedorPhotos.ts). A do perfil vem primeiro por ser sempre a mais nova.
+   */
   fotoUrl: string | null;
   initials: string;
   /** Cor de fundo determinística (hash do nome) para avatar de iniciais. */
@@ -69,6 +74,33 @@ async function fetchAcolhedores(): Promise<Acolhedor[]> {
   return (data || []) as Acolhedor[];
 }
 
+/**
+ * Monta o avatar de uma pessoa a partir das três fontes de foto.
+ * Exportada pura para teste; `resolveProfileFoto` casa nome → profiles.avatar_url.
+ */
+export function buildPersonAvatar(
+  name: string | null | undefined,
+  acolhedores: Acolhedor[],
+  resolveProfileFoto: (name: string | null | undefined) => string | null,
+): AcolhedorAvatar | null {
+  if (!name || !name.trim()) return null;
+  const n = normalize(name);
+  const record =
+    acolhedores.find(a => normalize(a.nome_canonico) === n) ||
+    acolhedores.find(a => (a.aliases || []).some(al => normalize(al) === n)) ||
+    null;
+  // Tenta o nome recebido e o canônico: o responsável da atividade vem com o
+  // full_name do profile, mas o acolhedor do lead pode vir por alias.
+  const profileFoto =
+    resolveProfileFoto(name) || (record ? resolveProfileFoto(record.nome_canonico) : null);
+  return {
+    acolhedor: record,
+    fotoUrl: profileFoto || record?.foto_url || getAcolhedorPhoto(name),
+    initials: initialsOf(record?.nome_canonico || name),
+    bgColor: acolhedorAvatarColor(record?.nome_canonico || name),
+  };
+}
+
 export function useAcolhedores() {
   const { data: acolhedores, loading, refetch } = useSharedFetch<Acolhedor[]>(
     'acolhedores',
@@ -77,23 +109,12 @@ export function useAcolhedores() {
   );
 
   const ativos = acolhedores.filter(a => a.ativo);
+  const { resolve: resolveProfileAvatar } = useProfileAvatars();
 
   const resolve = useCallback(
-    (name: string | null | undefined): AcolhedorAvatar | null => {
-      if (!name || !name.trim()) return null;
-      const n = normalize(name);
-      const record =
-        acolhedores.find(a => normalize(a.nome_canonico) === n) ||
-        acolhedores.find(a => (a.aliases || []).some(al => normalize(al) === n)) ||
-        null;
-      return {
-        acolhedor: record,
-        fotoUrl: record?.foto_url || getAcolhedorPhoto(name),
-        initials: initialsOf(record?.nome_canonico || name),
-        bgColor: acolhedorAvatarColor(record?.nome_canonico || name),
-      };
-    },
-    [acolhedores],
+    (name: string | null | undefined): AcolhedorAvatar | null =>
+      buildPersonAvatar(name, acolhedores, resolveProfileAvatar),
+    [acolhedores, resolveProfileAvatar],
   );
 
   return { acolhedores, ativos, loading, refetch, resolve };
