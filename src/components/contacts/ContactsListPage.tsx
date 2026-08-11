@@ -10,7 +10,7 @@ import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
 import { ContactPendencyBadge } from './ContactPendencyBadge';
 import { ContactActivityBadge } from './ContactActivityBadge';
 import { ContactsDistributionDonuts } from './ContactsDistributionDonuts';
-import { ContactsCreationTrendBars } from './ContactsCreationTrendBars';
+import { ContactsCreationTrendBars, type CreationPeriodSelection } from './ContactsCreationTrendBars';
 import { ClassificationContactsSheet } from './ClassificationContactsSheet';
 import { useContactsPendencies } from '@/hooks/useContactsPendencies';
 import { useContactsActivities } from '@/hooks/useContactsActivities';
@@ -39,7 +39,7 @@ import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
   SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw,
-  Briefcase, Scale
+  Briefcase, Scale, CalendarDays
 } from 'lucide-react';
 
 import { cloudFunctions } from '@/lib/functionRouter';
@@ -338,6 +338,8 @@ export function ContactsListPage() {
   const [classificationFilter, setClassificationFilter] = useState('all');
   const [groupFilter, setGroupFilter] = useState<'all' | 'with_group' | 'without_group'>('all');
   const [leadLinkedFilter, setLeadLinkedFilter] = useState<'all' | 'linked' | 'not_linked'>('all');
+  // Recorte vindo do clique numa barra de "Cadastros por período".
+  const [periodFilter, setPeriodFilter] = useState<CreationPeriodSelection | null>(null);
   const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
@@ -995,8 +997,9 @@ export function ContactsListPage() {
       ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
       groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
       ...(leadLinkedFilter !== 'all' ? { leadLinked: leadLinkedFilter } : {}),
+      ...(periodFilter ? { createdFrom: periodFilter.from, createdTo: periodFilter.to } : {}),
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter, periodFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
@@ -1059,10 +1062,13 @@ export function ContactsListPage() {
     createdBy: createdByFilter,
     classification: classificationFilter,
     groupFilter: (groupFilter !== 'all' ? groupFilter : 'without_group') as 'with_group' | 'without_group',
-    leadLinked: leadLinkedFilter,
+    // Com um período escolhido no próprio gráfico, o filtro de lead veio do
+    // clique: devolvê-lo ao gráfico zeraria a metade não escolhida de TODAS as
+    // barras e apagaria a comparação que fez a pessoa clicar.
+    leadLinked: periodFilter ? 'all' as const : leadLinkedFilter,
     profession: professionFilter,
     search,
-  }), [stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter, professionFilter, search]);
+  }), [stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter, periodFilter, professionFilter, search]);
 
   // Etiquetas só das linhas de cima quando a lista é enorme (ver ENRICH_LIMIT),
   // e só na aba de contatos — nas outras nada disso está em tela.
@@ -1339,9 +1345,9 @@ export function ContactsListPage() {
             <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)}>
               <Filter className="h-3.5 w-3.5 mr-1" />
               Filtros
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all' || periodFilter) && (
                 <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter].filter(v => v !== 'all').length}
+                  {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter].filter(v => v !== 'all').length + (periodFilter ? 1 : 0)}
                 </Badge>
               )}
             </Button>
@@ -1422,7 +1428,7 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
+              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all' || periodFilter) && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
@@ -1431,6 +1437,7 @@ export function ContactsListPage() {
                   setClassificationFilter('all');
                   setGroupFilter('all');
                   setLeadLinkedFilter('all');
+                  setPeriodFilter(null);
                 }}>
                   <X className="h-3 w-3 mr-1" />
                   Limpar
@@ -1446,26 +1453,56 @@ export function ContactsListPage() {
               onSelectClassification={(name) =>
                 setClassificationSheet({ name, color: classificationConfig[name]?.color })
               }
+              onFilterClassification={(name) =>
+                setClassificationFilter(prev => (prev === name ? 'all' : name))
+              }
+              selectedClassification={classificationFilter}
               onSelectProfession={(prof) =>
                 setProfessionFilter(prev =>
                   prev !== undefined && prev === prof ? undefined : prof
                 )
               }
               selectedProfession={professionFilter}
-              trendSlot={<ContactsCreationTrendBars filters={creationSeriesFilters} />}
+              trendSlot={
+                <ContactsCreationTrendBars
+                  filters={creationSeriesFilters}
+                  selected={periodFilter}
+                  onSelectPeriod={(sel) => {
+                    setPeriodFilter(sel);
+                    // O pedaço clicado JÁ diz a situação de lead — o filtro da
+                    // barra de cima acompanha, senão a lista mostraria os dois.
+                    setLeadLinkedFilter(sel ? sel.lead : 'all');
+                  }}
+                />
+              }
               className="pb-3"
             />
           )}
 
-          {professionFilter !== undefined && (
-            <div className="flex items-center gap-1.5 pb-2 shrink-0">
-              <Badge variant="secondary" className="text-xs gap-1">
-                <Briefcase className="h-3 w-3" />
-                {professionFilter === null ? 'Sem profissão' : professionFilter}
-                <button type="button" onClick={() => setProfessionFilter(undefined)} className="shrink-0">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
+          {(professionFilter !== undefined || periodFilter) && (
+            <div className="flex items-center gap-1.5 pb-2 shrink-0 flex-wrap">
+              {professionFilter !== undefined && (
+                <Badge variant="secondary" className="text-xs gap-1">
+                  <Briefcase className="h-3 w-3" />
+                  {professionFilter === null ? 'Sem profissão' : professionFilter}
+                  <button type="button" onClick={() => setProfessionFilter(undefined)} className="shrink-0">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {periodFilter && (
+                <Badge variant="secondary" className="text-xs gap-1">
+                  <CalendarDays className="h-3 w-3" />
+                  {periodFilter.label} · {periodFilter.lead === 'linked' ? 'com lead' : 'sem lead'}
+                  <button
+                    type="button"
+                    onClick={() => { setPeriodFilter(null); setLeadLinkedFilter('all'); }}
+                    className="shrink-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
             </div>
           )}
 

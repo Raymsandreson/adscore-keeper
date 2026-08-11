@@ -67,6 +67,9 @@ export const useContacts = () => {
     professions?: string[];
     dateFrom?: string;
     dateTo?: string;
+    /** Janela exata em ISO (usada pelo clique no gráfico de cadastros): [de, até). */
+    createdFrom?: string;
+    createdTo?: string;
     leadLinked?: 'all' | 'linked' | 'not_linked';
     city?: string;
     state?: string;
@@ -76,13 +79,24 @@ export const useContacts = () => {
   }) => {
     setLoading(true);
     try {
+      // Filtro de lead: a view `contacts_lead_flag` é `contacts` + a coluna
+      // `has_lead` (junção OU coluna legada). Antes isso era feito baixando os
+      // contact_ids de `contact_leads` e mandando de volta num `.in(...)` — só
+      // que o PostgREST corta em 1000 linhas e a tabela tem 9.629: quem tinha
+      // lead a partir dali era listado como "Sem Lead".
+      const leadFiltered = !!filters?.leadLinked && filters.leadLinked !== 'all';
+
       // Helper to build a query with filters (without pagination)
       const buildQuery = () => {
-        let query = db
-          .from('contacts')
+        let query: any = (db as any)
+          .from(leadFiltered ? 'contacts_lead_flag' : 'contacts')
           .select('*', { count: 'exact' })
           .is('deleted_at', null)
           .order('created_at', { ascending: false });
+
+        if (leadFiltered) {
+          query = query.eq('has_lead', filters!.leadLinked === 'linked');
+        }
 
         if (filters?.search) {
           const search = `%${filters.search}%`;
@@ -113,6 +127,15 @@ export const useContacts = () => {
         if (filters?.dateTo) {
           query = query.lte('created_at', `${filters.dateTo}T23:59:59.999Z`);
         }
+        // Fim exclusivo: a janela vem do gráfico como [início do período, início
+        // do próximo), já no fuso de quem olha — com `lte` o contato cravado na
+        // virada cairia nos dois períodos.
+        if (filters?.createdFrom) {
+          query = query.gte('created_at', filters.createdFrom);
+        }
+        if (filters?.createdTo) {
+          query = query.lt('created_at', filters.createdTo);
+        }
         if (filters?.city && filters.city !== 'all') {
           query = query.eq('city', filters.city);
         }
@@ -133,34 +156,11 @@ export const useContacts = () => {
         return query;
       };
 
-      // Handle lead linkage filters separately (needs pre-query)
-      let linkedIds: string[] | null = null;
-      let notLinkedIds: string[] | null = null;
-      if (filters?.leadLinked === 'linked') {
-        const { data: linkedData } = await db.from('contact_leads').select('contact_id');
-        linkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
-        if (linkedIds.length === 0) {
-          setContacts([]);
-          setTotalCount(0);
-          setLoading(false);
-          return;
-        }
-      } else if (filters?.leadLinked === 'not_linked') {
-        const { data: linkedData } = await db.from('contact_leads').select('contact_id');
-        notLinkedIds = [...new Set((linkedData || []).map((d: any) => d.contact_id))];
-      }
-
       // Server-side pagination: only fetch the current page
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      let query = buildQuery();
-      if (linkedIds) query = query.in('id', linkedIds);
-      if (notLinkedIds) {
-        // Limit neq filters to avoid query explosion - use NOT IN via filter
-        query = query.not('id', 'in', `(${notLinkedIds.join(',')})`);
-      }
-      const { data, error, count } = await query.range(from, to);
+      const { data, error, count } = await buildQuery().range(from, to);
       if (error) throw error;
 
       setContacts((data || []) as Contact[]);
