@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import { authorizeFunctionRequest, AUTH_ENFORCE, LOOPBACK_TOKEN } from './lib/functionAuth';
 
 dotenv.config();
 
@@ -173,15 +174,36 @@ app.use(express.json({
   verify: (req, _res, buf) => { (req as any).rawBody = buf; },
 }));
 
-// Autenticação via API key — protege apenas /functions/*
-app.use('/functions', (req, res, next) => {
-  if (API_KEY) {
-    const providedKey = req.headers['x-api-key'];
-    if (providedKey !== API_KEY) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+// Autenticação de /functions/* — aceita chave interna, chave legada ou JWT do
+// Cloud. Ver railway-server/src/lib/functionAuth.ts para o porquê de cada uma e
+// para a explicação do modo observação.
+//
+// A guarda anterior era `if (API_KEY) { ... }`: com a variável vazia — que é o
+// estado de produção — ela pulava a verificação inteira e todo o /functions/*
+// aceitava POST anônimo, com o handler rodando sob service role no Externo.
+app.use('/functions', async (req, res, next) => {
+  const verdict = await authorizeFunctionRequest(req);
+
+  if (verdict.ok) {
+    if (verdict.userId) (req as any).authUserId = verdict.userId;
+    return next();
   }
-  next();
+
+  // Sem credencial. Em modo observação isto passa e vira log; o log é o insumo
+  // para ligar o RAILWAY_AUTH_ENFORCE sabendo quem quebra.
+  console.warn(
+    JSON.stringify({
+      event: 'functions.auth_missing',
+      enforced: AUTH_ENFORCE,
+      fn: req.path.replace(/^\//, ''),
+      reason: verdict.reason,
+      token: verdict.tokenSuffix ?? null, // só o sufixo: JWT não vai pra log
+      rid: req.headers['x-request-id'] ?? null,
+    }),
+  );
+
+  if (!AUTH_ENFORCE) return next();
+  return res.status(401).json({ error: 'Unauthorized', reason: verdict.reason });
 });
 
 // Health check
@@ -195,6 +217,15 @@ app.get('/health', (_req, res) => {
     timestamp: new Date().toISOString(),
     // Qual commit está no ar — sem isso não dá pra distinguir deploy de restart/crash.
     commit: process.env.RAILWAY_GIT_COMMIT_SHA || null,
+    // Só booleanos: diz se a porta do /functions/* está fechada e se cada
+    // credencial está configurada, sem revelar nenhuma delas. É o que permite
+    // conferir o estado de fora, sem acesso ao log do Railway.
+    auth: {
+      enforced: AUTH_ENFORCE,
+      internal_key: !!process.env.RAILWAY_INTERNAL_KEY,
+      api_key: !!API_KEY,
+      cloud_jwt_ready: !!(process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY),
+    },
     functions: Object.keys(functionHandlers),
     gmailKeys,
   });
@@ -341,7 +372,11 @@ app.post('/webhooks/whatsapp-cloud', (req, res) => whatsappCloudWebhook(req, res
 app.listen(PORT, () => {
   console.log(`🚀 RMP Functions Server running on port ${PORT}`);
   console.log(`📋 Registered functions: ${Object.keys(functionHandlers).join(', ') || 'none yet'}`);
-  console.log(`🔐 API Key protection on /functions/*: ${API_KEY ? 'enabled' : 'DISABLED'}`);
+  console.log(
+    `🔐 /functions/* auth: ${AUTH_ENFORCE ? 'ENFORCED' : 'modo observação (passa e loga)'}` +
+      ` | internal_key:${process.env.RAILWAY_INTERNAL_KEY ? 'set' : 'unset'}` +
+      ` api_key:${API_KEY ? 'set' : 'unset'} jwt_cloud:${process.env.CLOUD_ANON_KEY || process.env.SUPABASE_ANON_KEY ? 'ok' : 'SEM ANON KEY'}`,
+  );
 });
 
 // ============================================================
@@ -357,6 +392,9 @@ async function runOrphanScan() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        // Auto-chamada: o processo se autentica com o token efêmero do boot,
+        // então o cron interno sobrevive ao enforce sem secret configurado.
+        'x-internal-key': LOOPBACK_TOKEN,
         'x-api-key': API_KEY,
       },
       body: '{}',
@@ -390,7 +428,7 @@ async function runDailyTeamReport() {
 
     const resp = await fetch(`http://127.0.0.1:${PORT}/functions/daily-team-report`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
       body: '{}',
     });
     const json: any = await resp.json().catch(() => ({}));
@@ -420,7 +458,7 @@ async function runInssReport() {
 
     const resp = await fetch(`http://127.0.0.1:${PORT}/functions/inss-report`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
       body: JSON.stringify({ send: true }),
     });
     const json: any = await resp.json().catch(() => ({}));
@@ -451,7 +489,7 @@ async function runInssSync() {
   try {
     const resp = await fetch(`http://127.0.0.1:${PORT}/functions/gmail-inss-sync`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': API_KEY },
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
       body: JSON.stringify({ lookback_hours: 6 }),
     });
     const json: any = await resp.json().catch(() => ({}));
