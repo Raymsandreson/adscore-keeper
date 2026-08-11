@@ -330,6 +330,14 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     }
   };
 
+  /**
+   * O envio de mídia termina fora do render — depois do upload, ou no `onstop`
+   * do gravador. Ler o toggle por ref evita congelar o valor de quando a ação
+   * começou: quem liga o ⚠ com a gravação em curso ainda manda como urgente.
+   */
+  const urgentRef = useRef(urgent);
+  useEffect(() => { urgentRef.current = urgent; }, [urgent]);
+
   // ---- Anexo (arquivo/imagem) ----
   const uploadAndSendFile = useCallback(async (file: File) => {
     if (!user?.id) return;
@@ -350,6 +358,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
         file_name: file.name,
         file_size: file.size,
         file_type: file.type,
+        ...(urgentRef.current ? { is_urgent: true } : {}),
       });
     } catch {
       toast.error('Erro ao enviar arquivo');
@@ -360,7 +369,11 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) await uploadAndSendFile(file);
+    if (file) {
+      await uploadAndSendFile(file);
+      // Urgência vale por mensagem, como no texto — não sobra para a próxima.
+      setUrgent(false);
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [uploadAndSendFile]);
 
@@ -394,6 +407,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           : new File([file], `colado_${Date.now()}.${(file.type.split('/')[1] || 'png')}`, { type: file.type });
         await uploadAndSendFile(named);
       }
+      // Uma colagem com vários arquivos é um envio só: todos saem urgentes e o
+      // ⚠ desliga no fim, não no primeiro arquivo.
+      setUrgent(false);
     })();
   }, [uploadAndSendFile]);
 
@@ -427,7 +443,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             file_size: blob.size,
             file_type: 'audio/webm',
             audio_duration: duration,
+            ...(urgentRef.current ? { is_urgent: true } : {}),
           });
+          setUrgent(false);
           // Transcrição automática (best-effort — não bloqueia o envio)
           if (created?.id) {
             try {
@@ -1030,7 +1048,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           <Button
             type="button" size="icon" variant="ghost"
             className={cn('h-8 w-8 shrink-0', urgent ? 'text-destructive bg-destructive/10' : 'text-muted-foreground')}
-            title={urgent ? 'Urgente ativado — a próxima mensagem alerta a equipe' : 'Marcar próxima mensagem como urgente'}
+            title={urgent ? 'Urgente ativado — o próximo envio (texto, imagem ou áudio) alerta a equipe' : 'Marcar próximo envio como urgente (vale para texto, imagem e áudio)'}
             onClick={() => setUrgent(v => !v)}
           >
             <AlertTriangle className="h-4 w-4" />
