@@ -364,6 +364,39 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, [uploadAndSendFile]);
 
+  /**
+   * Colar mídia (Ctrl+V): print da tela ou arquivo copiado do explorador vira
+   * anexo direto, sem passar pelo clipe. Texto sempre ganha — copiar de Word/
+   * Excel também carrega uma imagem na área de transferência, e ali o que a
+   * pessoa quer colar é o texto.
+   */
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const dt = e.clipboardData;
+    if (!dt) return;
+    if ((dt.getData('text/plain') || '').trim()) return;
+
+    const files = Array.from(dt.files || []);
+    if (files.length === 0) {
+      for (const item of Array.from(dt.items || [])) {
+        if (item.kind !== 'file') continue;
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length === 0) return;
+
+    e.preventDefault();
+    void (async () => {
+      for (const file of files) {
+        // Print colado chega sem nome — dar um para o anexo não ficar anônimo.
+        const named = file.name
+          ? file
+          : new File([file], `colado_${Date.now()}.${(file.type.split('/')[1] || 'png')}`, { type: file.type });
+        await uploadAndSendFile(named);
+      }
+    })();
+  }, [uploadAndSendFile]);
+
   // ---- Áudio (grava, envia e transcreve automaticamente) ----
   const startRecording = useCallback(async () => {
     try {
@@ -988,7 +1021,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
           <Button
             type="button" size="icon" variant="ghost"
             className="h-8 w-8 shrink-0 text-muted-foreground"
-            title="Anexar arquivo ou imagem"
+            title="Anexar arquivo ou imagem (ou cole com Ctrl+V no campo de texto)"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -1034,7 +1067,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             value={inputText}
             onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={urgent ? 'Mensagem URGENTE… use @nome' : 'Mensagem... use @nome para mencionar'}
+            onPaste={handlePaste}
+            placeholder={urgent ? 'Mensagem URGENTE… use @nome' : 'Mensagem... use @nome ou cole (Ctrl+V) uma imagem'}
             className={cn('flex-1 min-w-0 min-h-[36px] py-2 text-sm', urgent && 'ring-1 ring-destructive/50')}
           />
           <Button
