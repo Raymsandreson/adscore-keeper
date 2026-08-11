@@ -224,7 +224,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Resultados possíveis do POP (cadastráveis, tipo status — NÃO são as fases) +
   // qual é o ESPERADO (= sucesso / objetivo final). Guardado em
   // kanban_boards.settings.{resultados, resultado_esperado_id}.
-  const [formResultados, setFormResultados] = useState<{ id: string; label: string; marco?: string | null }[]>([]);
+  // `estagio` opcional: o estágio financeiro normalmente vem do marco, mas há
+  // resultados que compartilham marco e separam dinheiro. Deferido, Indeferido,
+  // Extinto e Desistido têm todos o mesmo marco (trânsito em julgado) — e no
+  // primeiro o recebível vira CONDENACAO, nos outros três ele morre
+  // (INDEFERIDO). Quando presente aqui, vence o do marco.
+  const [formResultados, setFormResultados] = useState<{ id: string; label: string; marco?: string | null; estagio?: string | null }[]>([]);
   // Status esperado(s) do POP — podem ser MAIS DE UM (ex.: "Acordo" ou "Procedência"
   // ambos contam como sucesso). Guardado em settings.resultado_esperado_ids (array);
   // settings.resultado_esperado_id segue gravado (= primeiro) por compat do ranking.
@@ -2171,15 +2176,24 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                             ))}
                           </SelectContent>
                         </Select>
-                        {/* Estágio financeiro derivado do marco — informação, não campo. */}
-                        {r.marco && estagioPorMarco[r.marco] ? (
-                          <span
-                            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                            title="Estágio financeiro que este resultado implica, derivado do marco"
-                          >
-                            {ESTAGIO_LABEL[estagioPorMarco[r.marco]] || estagioPorMarco[r.marco]}
-                          </span>
-                        ) : null}
+                        {/* Estágio financeiro derivado — informação, não campo.
+                            O do resultado vence o do marco: quatro resultados
+                            compartilham "trânsito em julgado" e só no Deferido o
+                            recebível sobrevive. */}
+                        {(() => {
+                          const estagio = r.estagio || (r.marco ? estagioPorMarco[r.marco] : null);
+                          if (!estagio) return null;
+                          return (
+                            <span
+                              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                              title={r.estagio
+                                ? 'Estágio financeiro definido neste resultado (vence o do marco)'
+                                : 'Estágio financeiro derivado do marco'}
+                            >
+                              {ESTAGIO_LABEL[estagio] || estagio}
+                            </span>
+                          );
+                        })()}
                         {formResultadoEsperadoIds.includes(r.id) && (
                           <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-emerald-500">esperado</span>
                         )}
