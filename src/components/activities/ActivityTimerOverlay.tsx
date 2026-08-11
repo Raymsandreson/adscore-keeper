@@ -265,35 +265,52 @@ function contentLeftEdge(): number {
 }
 
 /**
- * Posição da aba do cronômetro. O X é SEMPRE a borda do conteúdo (logo depois do
- * menu lateral) — a aba mora colada nessa borda e o painel desliza dela para a
- * direita. Só o Y é arrastável: assim o cronômetro nunca "descansa" no meio da
- * tela nem cobre o menu, e recolhido ocupa uma tira de ~26px.
+ * Posição da aba do cronômetro — arrastável nos DOIS eixos.
+ *
+ * O X já foi travado na borda do conteúdo (só o Y se movia), para o cronômetro
+ * nunca descansar por cima do menu lateral. Só que ele passou a ficar preso em
+ * cima da coluna da esquerda das telas (a lista de conversas do WhatsApp, por
+ * exemplo) sem jeito de tirar dali: subir e descer não resolve quando a coluna
+ * inteira é útil. Agora o X anda também, com a borda do conteúdo como LIMITE
+ * ESQUERDO (`contentLeftEdge`) — some a prisão sem voltar a cobrir o menu.
  * (skill: ui-sem-sobreposicao)
  */
 function useDraggablePosition() {
-  const [y, setY] = useState<number | null>(() => {
+  const [pos, setPos] = useState<{ x: number | null; y: number | null }>(() => {
     try {
       const raw = localStorage.getItem(POS_STORAGE_KEY);
-      // Formato antigo era { x, y } — só o y sobrevive.
-      if (raw) { const p = JSON.parse(raw); if (typeof p?.y === 'number') return p.y; }
+      if (raw) {
+        const p = JSON.parse(raw);
+        return {
+          x: typeof p?.x === 'number' ? p.x : null,
+          y: typeof p?.y === 'number' ? p.y : null,
+        };
+      }
     } catch { /* ignora */ }
-    return null;
+    return { x: null, y: null };
   });
   const draggingRef = useRef(false);
   const movedRef = useRef(false);
-  const offsetRef = useRef(0);
+  const offsetRef = useRef({ x: 0, y: 0 });
   const elRef = useRef<HTMLElement | null>(null);
 
   const clampY = (v: number) => {
     const h = elRef.current?.offsetHeight ?? 40;
     return Math.max(EDGE_GUTTER, Math.min(v, window.innerHeight - h - EDGE_GUTTER));
   };
+  // Piso = borda do conteúdo (o menu lateral é parede). Teto = borda direita da
+  // janela menos a largura do badge, para ele não sair pela direita.
+  const clampX = (v: number) => {
+    const w = elRef.current?.offsetWidth ?? 160;
+    const min = contentLeftEdge();
+    return Math.max(min, Math.min(v, Math.max(min, window.innerWidth - w - EDGE_GUTTER)));
+  };
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
     const el = e.currentTarget;
     elRef.current = el;
-    offsetRef.current = e.clientY - el.getBoundingClientRect().top;
+    const r = el.getBoundingClientRect();
+    offsetRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
     draggingRef.current = true;
     movedRef.current = false;
     el.setPointerCapture(e.pointerId);
@@ -302,7 +319,10 @@ function useDraggablePosition() {
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLElement>) => {
     if (!draggingRef.current) return;
     if (!movedRef.current && Math.abs(e.movementX) + Math.abs(e.movementY) > 3) movedRef.current = true;
-    setY(clampY(e.clientY - offsetRef.current));
+    setPos({
+      x: clampX(e.clientX - offsetRef.current.x),
+      y: clampY(e.clientY - offsetRef.current.y),
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -311,33 +331,46 @@ function useDraggablePosition() {
     draggingRef.current = false;
     try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* noop */ }
     if (movedRef.current) {
-      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify({ y })); } catch { /* ignora */ }
+      try { localStorage.setItem(POS_STORAGE_KEY, JSON.stringify(pos)); } catch { /* ignora */ }
     }
-  }, [y]);
+  }, [pos]);
 
-  // Reajusta se a janela encolher.
+  // Reajusta se a janela encolher (ou o menu lateral mudar de largura).
   useEffect(() => {
-    const onResize = () => setY((v) => (v == null ? v : clampY(v)));
+    const onResize = () => setPos((p) => ({
+      x: p.x == null ? p.x : clampX(p.x),
+      y: p.y == null ? p.y : clampY(p.y),
+    }));
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // O ref só chega depois da 1ª posição: reclampa com a altura real (o fallback
-  // de 40px deixaria a aba estourando a borda de baixo).
+  // O ref só chega depois da 1ª posição: reclampa com o tamanho real (os
+  // fallbacks deixariam a aba estourando as bordas de baixo/direita).
   const setElRef = useCallback((el: HTMLElement | null) => {
     elRef.current = el;
-    if (el) setY((v) => (v == null ? v : clampY(v)));
+    if (el) setPos((p) => ({
+      x: p.x == null ? p.x : clampX(p.x),
+      y: p.y == null ? p.y : clampY(p.y),
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const wasDragged = () => movedRef.current;
+  // Reclampa na leitura: com o menu expandido/recolhido entre uma sessão e
+  // outra, um x salvo pode ter ficado atrás do menu.
+  const edge = contentLeftEdge();
+  const left = pos.x == null ? edge : Math.max(edge, pos.x);
+  // Encostado na borda do conteúdo, o badge é a "aba" que sai do menu (canto
+  // esquerdo reto); solto no meio da tela vira um cartão arredondado.
+  const docked = left <= edge + 2;
   // Sem posição salva: rodapé da área livre, já depois do menu lateral.
-  const style: React.CSSProperties = y == null
-    ? { left: contentLeftEdge(), bottom: 16, top: 'auto', right: 'auto' }
-    : { left: contentLeftEdge(), top: y, bottom: 'auto', right: 'auto' };
+  const style: React.CSSProperties = pos.y == null
+    ? { left, bottom: 16, top: 'auto', right: 'auto' }
+    : { left, top: pos.y, bottom: 'auto', right: 'auto' };
 
-  return { style, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef };
+  return { style, docked, onPointerDown, onPointerMove, onPointerUp, wasDragged, setElRef };
 }
 
 /** Botão que expande o painel "Time agora" a partir do badge do cronômetro. */
@@ -382,14 +415,19 @@ function TeamPanelButton({ className, onOpenActivity }: { className?: string; on
 }
 
 /** Linha de totais do dia (produtivo x ocioso) no topo do badge. */
-function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
+function DayTotalsRow({ active, idle, usage }: { active: number; idle: number; usage?: number }) {
   return (
     <div className="flex items-center justify-center gap-2 text-[11px] leading-none border-b pb-1 mb-0.5">
       <span className="text-muted-foreground uppercase tracking-wide">Hoje</span>
       <span className="flex items-center gap-1 text-emerald-700 dark:text-emerald-300 font-bold tabular-nums" title="Tempo produtivo do dia">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />{formatHMS(active)}
       </span>
-      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-bold tabular-nums" title="Tempo ocioso do dia">
+      {!!usage && usage > 0 && (
+        <span className="flex items-center gap-1 text-indigo-700 dark:text-indigo-300 font-bold tabular-nums" title="Uso do sistema (sem atividade vinculada) — não conta como produtivo">
+          <span className="h-1.5 w-1.5 rounded-full bg-indigo-600" />{formatHMS(usage)}
+        </span>
+      )}
+      <span className="flex items-center gap-1 text-amber-700 dark:text-amber-300 font-bold tabular-nums" title="Tempo ocioso do dia (parado)">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-600" />{formatHMS(idle)}
       </span>
     </div>
@@ -403,7 +441,7 @@ function DayTotalsRow({ active, idle }: { active: number; idle: number }) {
  */
 export function ActivityTimerOverlay() {
   const {
-    current, lastActivity, resumeLast, dayTotals, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, lastActivity, resumeLast, reclaimTimer, dayTotals, usage, hidden, idlePrompt, leavePrompt, switchPrompt,
     keepRunning, pauseAndClose, hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch, startBreak, endBreak,
     extendBreak, awayPrompt, dismissAwayPrompt, breakOverdue,
@@ -422,9 +460,17 @@ export function ActivityTimerOverlay() {
     : -1;
   const isOver = over >= 0;
   // Gap com interação recente: a pessoa mexe no sistema mas SEM atividade
-  // vinculada — o tempo conta como ocioso do mesmo jeito; só muda a mensagem
-  // (cobrar o vínculo em vez de perguntar se vai se ausentar).
+  // vinculada. O tempo NÃO é ocioso — vai para "uso do sistema" por área
+  // (não conta como produtivo); o badge mostra a área e cobra o vínculo.
   const gapWorking = current?.kind === 'gap' && current.gapWorking !== false;
+  // Paleta do badge sem atividade: índigo enquanto é uso do sistema (a pessoa
+  // está trabalhando), âmbar quando é ociosidade de verdade.
+  const gapIconBtn = gapWorking
+    ? 'rounded-full p-1 hover:bg-indigo-200/50 dark:hover:bg-indigo-800/50 text-indigo-700 dark:text-indigo-300'
+    : 'rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300';
+  const gapPillBtn = gapWorking
+    ? 'ml-1 flex items-center gap-1 rounded-full border border-indigo-300/60 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60'
+    : 'ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60';
 
   // Tick só para re-renderizar o badge a cada segundo.
   const [, force] = useState(0);
@@ -510,15 +556,42 @@ export function ActivityTimerOverlay() {
         </button>
       )}
 
+      {/* Expediente ABERTO mas sem sessão nesta aba (outra janela assumiu, ou a
+          contagem caiu): antes não era renderizado NADA — o cronômetro
+          simplesmente sumia da tela e só voltava com F5. Agora fica esta aba de
+          retomada, que reassume a contagem aqui. (skill: ui-sem-sobreposicao) */}
+      {onShift === true && !current && dock(
+        <button
+          type="button"
+          {...dragAttrs}
+          onClick={() => { if (!drag.wasDragged()) reclaimTimer(); }}
+          className={`${floatWrap}flex items-center gap-1.5 ${drag.docked ? 'rounded-l-none rounded-r-xl border-l-0' : 'rounded-xl'} border border-amber-300/60 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-2 text-xs font-semibold text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/60 select-none ${grab}`}
+          title="Cronômetro parado nesta aba (outra janela assumiu ou a contagem caiu) — clique para retomar aqui · arraste para mover"
+        >
+          <Play className="h-3.5 w-3.5" />
+          Retomar cronômetro
+        </button>
+      )}
+
       {/* Recolhido: aba fina em pé colada na borda do conteúdo. Mostra só o tempo
           na vertical — clique desliza o cronômetro pra direita; arrastar sobe/desce
           a aba. Recolhida ela não cobre conteúdo. (skill: ui-sem-sobreposicao) */}
       {current && hidden && (() => {
-        const seconds = current.kind === 'activity' ? current.activeSeconds : current.idleSeconds;
+        // Navegando sem atividade: a aba fina mostra o tempo de USO da área
+        // (índigo), não o ocioso — que nesse caso nem está correndo.
+        // `usage &&` em vez de `usage?.seconds || 0`: enquanto a área de uso não
+        // carregou (loadUsageBase é assíncrono, e no teste nem existe), o `|| 0`
+        // fazia a aba mostrar 00:00 — cronômetro zerado na tela é pior que
+        // mostrar o ocioso. Sem uso carregado, cai no comportamento anterior.
+        const seconds = current.kind === 'activity'
+          ? current.activeSeconds
+          : (gapWorking && usage ? usage.seconds : current.idleSeconds);
         const palette = current.kind === 'activity'
           ? `border bg-background/95 ${isOver ? 'text-red-600 dark:text-red-400' : ''}`
           : current.kind === 'gap'
-            ? 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200'
+            ? (gapWorking
+              ? 'border border-indigo-300/50 bg-indigo-50/95 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200'
+              : 'border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 text-amber-800 dark:text-amber-200')
             : 'border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 text-sky-800 dark:text-sky-200';
         // Clique fica no contêiner (não num botão interno): o drag faz
         // setPointerCapture no pointerdown e o click é reentregue ao próprio
@@ -527,8 +600,8 @@ export function ActivityTimerOverlay() {
           <div
             {...dragAttrs}
             onClick={() => { if (!drag.wasDragged()) showTimer(); }}
-            className={`${floatWrap}flex flex-col items-center gap-1.5 rounded-l-none rounded-r-xl border-l-0 px-1 py-2.5 select-none cursor-pointer hover:opacity-90 ${palette}`}
-            title="Cronômetro · clique para abrir · arraste para subir/descer"
+            className={`${floatWrap}flex flex-col items-center gap-1.5 ${drag.docked ? 'rounded-l-none rounded-r-xl border-l-0' : 'rounded-xl'} px-1 py-2.5 select-none cursor-pointer hover:opacity-90 ${palette}`}
+            title="Cronômetro · clique para abrir · arraste para mover (qualquer direção)"
           >
             {current.kind === 'activity' && (
               <span className="relative flex h-2 w-2">
@@ -554,7 +627,7 @@ export function ActivityTimerOverlay() {
           className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border bg-background/95 px-2 py-1.5 select-none ${grab}`}
           title="Arraste para mover · clique no tempo para abrir a atividade"
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} usage={usage?.dayTotal} />
           <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground/60" />
           <span className="relative flex h-2.5 w-2.5">
@@ -639,21 +712,23 @@ export function ActivityTimerOverlay() {
       {current && current.kind === 'gap' && !hidden && dock(
         <div
           {...dragAttrs}
-          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60 px-2 py-1.5 select-none ${grab}`}
+          className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border ${gapWorking ? 'border-indigo-300/50 bg-indigo-50/95 dark:bg-indigo-950/60' : 'border-amber-300/50 bg-amber-50/95 dark:bg-amber-950/60'} px-2 py-1.5 select-none ${grab}`}
           title={gapWorking
-            ? 'Sem atividade vinculada — o tempo NÃO conta como produtivo; vincule uma atividade'
+            ? `Uso do sistema em ${usage?.areaLabel || 'tela'} — registrado, mas NÃO conta como produtivo; vincule uma atividade`
             : 'Tempo ocioso entre atividades'}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} usage={usage?.dayTotal} />
           <div className="flex items-center gap-1.5">
-          <GripVertical className="h-3.5 w-3.5 text-amber-700/50 dark:text-amber-300/50" />
+          <GripVertical className={`h-3.5 w-3.5 ${gapWorking ? 'text-indigo-700/50 dark:text-indigo-300/50' : 'text-amber-700/50 dark:text-amber-300/50'}`} />
           {gapWorking ? (
             <>
-              <Clock className="h-3.5 w-3.5 text-amber-700 dark:text-amber-300" />
-              <span className="font-mono text-sm tabular-nums font-bold text-amber-800 dark:text-amber-200">
-                {formatHMS(current.idleSeconds)}
+              <Clock className="h-3.5 w-3.5 text-indigo-700 dark:text-indigo-300" />
+              <span className="font-mono text-sm tabular-nums font-bold text-indigo-800 dark:text-indigo-200">
+                {formatHMS(usage?.seconds || 0)}
               </span>
-              <span className="text-xs font-medium text-amber-800 dark:text-amber-200 hidden sm:inline">sem atividade · não conta</span>
+              <span className="text-xs font-medium text-indigo-800 dark:text-indigo-200 hidden sm:inline">
+                {usage?.areaLabel || 'Sistema'} · não conta
+              </span>
             </>
           ) : (
             <>
@@ -677,22 +752,22 @@ export function ActivityTimerOverlay() {
               <span className="sm:hidden">Retomar</span>
             </button>
           )}
-          <BreakMenu className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onStart={startBreak} onEndShift={endShift} />
+          <BreakMenu className={`ml-1 ${gapIconBtn}`} onStart={startBreak} onEndShift={endShift} />
           <VoiceActivityButton
-            className="ml-1 flex items-center gap-1 rounded-full border border-amber-300/60 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/60"
+            className={`${gapPillBtn} text-[11px] font-medium`}
             onClick={() => setVoiceOpen(true)}
             label="O que faço?"
           />
           <SwitchActivityButton
-            className="ml-1 rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            className={`ml-1 ${gapIconBtn}`}
             onClick={() => setSwitchOpen(true)}
           />
-          <TeamPanelButton className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300" onOpenActivity={setTeamViewActivityId} />
+          <TeamPanelButton className={gapIconBtn} onOpenActivity={setTeamViewActivityId} />
           <button
             type="button"
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); hideTimer(); }}
-            className="rounded-full p-1 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 text-amber-700 dark:text-amber-300"
+            className={gapIconBtn}
             title="Recolher para a aba lateral"
           >
             <Minimize2 className="h-3.5 w-3.5" />
@@ -708,7 +783,7 @@ export function ActivityTimerOverlay() {
           className={`${floatWrap}${slideIn}flex flex-col gap-0.5 rounded-2xl border border-sky-300/60 bg-sky-50/95 dark:bg-sky-950/60 px-2 py-1.5 select-none ${grab}`}
           title={`Pausa: ${current.activityTitle}${current.breakNote ? ` — ${current.breakNote}` : ''}`}
         >
-          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} />
+          <DayTotalsRow active={dayTotals.active} idle={dayTotals.idle} usage={usage?.dayTotal} />
           <div className="flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 text-sky-700/50 dark:text-sky-300/50" />
           <UtensilsCrossed className="h-3.5 w-3.5 text-sky-700 dark:text-sky-300" />

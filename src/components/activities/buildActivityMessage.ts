@@ -42,6 +42,12 @@ export interface ActivityMessageContext {
   selectedActivity: any;
   caseProcesses: any[];
   stepContext: StepContextLike;
+  /**
+   * Fallback de fase/progresso para caso SEM POP (linha do trem do processo —
+   * src/lib/processFaseAtual.ts). Só é usado quando stepContext não trouxe
+   * etapa nem passos; nunca sobrepõe o POP.
+   */
+  faseProcessual?: { faseLabel: string | null; posicao: number; total: number } | null;
   leadPreview: { board_id?: string | null } | null;
   systemOabs: any;
   currentUserId: string | null;
@@ -121,7 +127,7 @@ export function buildActivityMessage(
     formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
-    fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
+    fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, leadPreview, systemOabs,
     currentUserId, resolveUserName, getTemplateForContext,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
@@ -200,13 +206,16 @@ export function buildActivityMessage(
     const wfPhase = stepContext?.phaseLabel || '';
     const wfObjective = stepContext?.objectiveLabel || '';
     const wfStep = stepContext?.stepLabel || '';
+    // Sem POP (nem etapa, nem objetivo, nem passo): cai na fase da linha do trem
+    // do processo, quando houver marco. Sem marco nenhum, o bloco some inteiro —
+    // linha "Etapa: —" nunca vai pro cliente.
     const workflowInfo = (wfPhase || wfObjective || wfStep)
       ? [
           wfPhase && `*Etapa:* ${wfPhase}`,
           wfObjective && `*Objetivo:* ${wfObjective}`,
           wfStep && `*Passo atual:* ${wfStep}`,
         ].filter(Boolean).join('\n')
-      : '';
+      : (faseProcessual?.faseLabel ? `*Fase processual:* ${faseProcessual.faseLabel}` : '');
 
     // Progresso em 3 níveis a partir do checklist do fluxo:
     //   Fase (stage do kanban) → Objetivo (template de checklist) → Passo (item).
@@ -214,7 +223,15 @@ export function buildActivityMessage(
     // full = quebra completa (mensagem ao ASSESSOR e painel). Vazio sem checklist.
     const progress = (() => {
       const steps = stepContext?.allSteps || [];
-      if (steps.length === 0) return { headline: '', full: '' };
+      if (steps.length === 0) {
+        // Sem checklist: usa a régua de marcos do processo, com rótulo próprio —
+        // "andamento processual" não é a mesma medida que "progresso do caso".
+        if (faseProcessual && faseProcessual.total > 0) {
+          const linha = `*📊 Andamento processual: ${faseProcessual.posicao} de ${faseProcessual.total} etapas*`;
+          return { headline: linha, full: linha };
+        }
+        return { headline: '', full: '' };
+      }
       const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0);
 
       const doneSteps = steps.filter((s) => s.checked).length;
@@ -238,7 +255,11 @@ export function buildActivityMessage(
       const objSteps = phaseSteps.filter((s) => s.templateId === curObj);
       const objStepsDone = objSteps.filter((s) => s.checked).length;
 
-      const headline = `*📊 Progresso do caso: ${overallPct}% concluído*`;
+      // "0% concluído" logo abaixo da saudação soa a caso parado. É o começo do
+      // caminho, e o cliente merece ler isso em vez de um zero seco.
+      const headline = overallPct === 0
+        ? '*📊 Progresso do caso: estamos no comecinho (0% concluído)*'
+        : `*📊 Progresso do caso: ${overallPct}% concluído*`;
       const full = [
         headline,
         `• Fases: ${pct(phasesDone, phaseIds.length)}% (${phasesDone}/${phaseIds.length})`,
@@ -319,7 +340,7 @@ export function buildActivityMessage(
         case_number: formCaseTitle || '—',
         process_number: procNumberForMsg || formProcessTitle || '—',
         process_info: processInfo,
-        etapa: wfPhase || '—',
+        etapa: wfPhase || faseProcessual?.faseLabel || '—',
         objetivo: wfObjective || '—',
         passo_atual: wfStep || '—',
         workflow_info: workflowInfo,
@@ -359,7 +380,8 @@ export function buildActivityMessage(
 
       // Workflow (fase/objetivo/passo atual — o passo logo após o último concluído):
       // auto-injeta após o "Referente ao processo" quando o template não o referencia.
-      if (workflowInfo && !template.includes('workflow_info') && !result.includes('*Passo atual:*')) {
+      if (workflowInfo && !template.includes('workflow_info')
+          && !result.includes('*Passo atual:*') && !result.includes('*Fase processual:*')) {
         const lines = result.split('\n');
         const afterProc = lines.findIndex(line => line.includes('Referente ao processo'));
         const at = afterProc >= 0 ? afterProc + 1 : (() => {
@@ -372,9 +394,11 @@ export function buildActivityMessage(
 
       // Progresso (3 níveis): auto-injeta após o workflow/processo quando o
       // template não referencia {{progresso}} e há checklist.
-      if (progressInfo && !template.includes('progresso') && !result.includes('Progresso do caso')) {
+      if (progressInfo && !template.includes('progresso')
+          && !result.includes('Progresso do caso') && !result.includes('Andamento processual')) {
         const lines = result.split('\n');
-        const anchor = lines.findIndex(line => line.includes('*Passo atual:*') || line.includes('Referente ao processo'));
+        const anchor = lines.findIndex(line =>
+          line.includes('*Passo atual:*') || line.includes('*Fase processual:*') || line.includes('Referente ao processo'));
         const at = anchor >= 0 ? anchor + 1 : (() => { for (let i = 0; i < lines.length; i++) if (lines[i].trim()) return i + 1; return 0; })();
         lines.splice(at, 0, '', progressInfo);
         result = lines.join('\n');

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'; // force rebuild
+import { useState, useEffect, useMemo, useRef } from 'react'; // force rebuild
 import {
   Sheet,
   SheetContent,
@@ -86,6 +86,8 @@ import { ContactCustomFieldsInline } from './ContactCustomFieldsInline';
 import { useContactCustomFields, type ContactFieldType } from '@/hooks/useContactCustomFields';
 import { useContactTabLayout } from '@/hooks/useContactTabLayout';
 import { useContactFieldLayout } from '@/hooks/useContactFieldLayout';
+import { useContactsPendencies } from '@/hooks/useContactsPendencies';
+import { ContactPendencyBadge } from './ContactPendencyBadge';
 
 interface ContactDetailSheetProps {
   contact: Contact | null;
@@ -94,6 +96,9 @@ interface ContactDetailSheetProps {
   onContactUpdated?: () => void;
   mode?: 'sheet' | 'dialog';
   side?: 'right' | 'bottom';
+  /** Aba em que a ficha abre. Sem isto, sempre 'info' — quem veio pela
+   *  etiqueta de atividades cairia longe do que foi buscar. */
+  initialTab?: string;
 }
 
 // ViaCEP integration
@@ -150,8 +155,15 @@ export function ContactDetailSheet({
   onContactUpdated,
   mode = 'sheet',
   side = 'right',
+  initialTab,
 }: ContactDetailSheetProps) {
   const [isEditing, setIsEditing] = useState(true);
+  // Aba controlada: a ficha fica montada e só troca de contato, então o
+  // `defaultValue` do Radix nunca reagiria a quem entrou por outro atalho.
+  const [activeTab, setActiveTab] = useState(initialTab || 'info');
+  useEffect(() => {
+    if (open) setActiveTab(initialTab || 'info');
+  }, [open, initialTab, contact?.id]);
   const [saving, setSaving] = useState(false);
   
   // Edit form state
@@ -211,7 +223,31 @@ export function ContactDetailSheet({
   const previousClassificationsRef = useRef<string[]>([]);
   const [linkedProcesses, setLinkedProcesses] = useState<any[]>([]);
   const [chatPreviewPhone, setChatPreviewPhone] = useState<string | null>(null);
-  
+  /** Abriu o chat pela etiqueta de pendência — a lista já vem expandida. */
+  const [chatPreviewCommitments, setChatPreviewCommitments] = useState(false);
+
+  // Pendências do cliente (o que ELE ficou de fazer). Ficam na etiqueta do
+  // cabeçalho para não depender de alguém abrir a conversa para descobrir.
+  // Só consulta com a ficha aberta: este componente fica montado com contato
+  // já preenchido em várias telas, e sem a trava viraria uma consulta por ficha.
+  const pendencyTargets = useMemo(
+    () => (open && contact?.id ? [{ id: contact.id, phone: contact.phone }] : []),
+    [open, contact?.id, contact?.phone],
+  );
+  const { byContact: pendenciesByContact, loading: loadingPendencies } = useContactsPendencies(pendencyTargets);
+  const contactPendencies = contact?.id ? pendenciesByContact[contact.id] : undefined;
+
+  const openChatWithPendencies = () => {
+    const digits = contact?.phone?.replace(/\D/g, '') || null;
+    if (!digits) {
+      toast.info('Este contato não tem telefone — as pendências ficam na conversa do WhatsApp.');
+      return;
+    }
+    setChatPreviewCommitments(true);
+    setChatPreviewPhone(digits);
+  };
+
+
   // State for full LeadEditDialog when creating new lead
   const [showLeadEditDialog, setShowLeadEditDialog] = useState(false);
   const [newCreatedLead, setNewCreatedLead] = useState<Lead | null>(null);
@@ -657,7 +693,13 @@ export function ContactDetailSheet({
           </div>
 
           {/* Quick badges */}
-          <div className="flex flex-wrap gap-2 mt-2">
+          <div className="flex flex-wrap items-center gap-2 mt-2">
+            <ContactPendencyBadge
+              summary={contactPendencies}
+              loading={loadingPendencies}
+              showWhenEmpty
+              onClick={openChatWithPendencies}
+            />
             {classifications.map((c) => (
               <Badge key={c} className={`${getClassificationColor(c)} text-white text-xs`}>
                 <Tag className="h-3 w-3 mr-1" />
@@ -673,7 +715,7 @@ export function ContactDetailSheet({
           </div>
         </Header>
 
-        <Tabs defaultValue="info" className="flex-1 flex flex-col overflow-hidden">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           {(() => {
             const tabIcons: Record<string, JSX.Element> = {
               info: <User className="h-3 w-3 mr-1" />,
@@ -1593,7 +1635,7 @@ export function ContactDetailSheet({
 
     <DashboardChatPreview
       open={!!chatPreviewPhone}
-      onOpenChange={(open) => { if (!open) setChatPreviewPhone(null); }}
+      onOpenChange={(open) => { if (!open) { setChatPreviewPhone(null); setChatPreviewCommitments(false); } }}
       phone={chatPreviewPhone}
       contactName={contact?.full_name || null}
       instanceName={null}
@@ -1601,6 +1643,7 @@ export function ContactDetailSheet({
       hasContact={true}
       wasResponded={false}
       responseTimeMinutes={null}
+      initialCommitmentsOpen={chatPreviewCommitments}
     />
     <ContactFieldsUnifiedEditor open={showCustomizer} onOpenChange={setShowCustomizer} />
     </>

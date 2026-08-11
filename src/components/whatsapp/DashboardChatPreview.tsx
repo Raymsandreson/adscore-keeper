@@ -104,9 +104,11 @@ interface Props {
   campaignStageId?: string | null;
   /** Mensagem a destacar ao abrir (ex.: a que gerou a atividade). */
   highlightMessageId?: string | null;
+  /** Abre já com a lista de pendências expandida (entrada pela etiqueta de pendência). */
+  initialCommitmentsOpen?: boolean;
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId, highlightMessageId }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId, highlightMessageId, initialCommitmentsOpen }: Props) {
   const { user, profile } = useAuthContext();
   // Visão alternável: conversa principal (grupo) vs privado unificado — todas as conversas
   // individuais da equipe com o contato, sem filtrar instância.
@@ -130,7 +132,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   useEffect(() => {
     setViewMode('main');
     setSendAsInstance('');
-  }, [open, phoneProp]);
+    // Quem entrou pela etiqueta de pendência já quer a lista aberta; quem
+    // entrou pela conversa começa com ela recolhida, como sempre foi.
+    setCommitmentsOpen(!!initialCommitmentsOpen);
+  }, [open, phoneProp, initialCommitmentsOpen]);
 
   useEffect(() => {
     if (!open || !canTogglePrivate) return;

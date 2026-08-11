@@ -27,6 +27,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { extractCompromissos, type CompromissoExtraido } from "../_shared/escavadorCompromissos.ts";
 import { classifyUpdates } from "../_shared/processUpdateClassifier.ts";
+import { classificarEsfera } from "../_shared/esferaJustica.ts";
 
 const EXTERNAL_URL_DEFAULT = "https://kmedldlepwiityjsdahz.supabase.co";
 
@@ -108,7 +109,14 @@ interface ProcessRow {
   responsible_user_id: string | null;
   movimentacoes: unknown[] | null;
   audiencias: unknown[] | null;
-  leads: { lead_name: string | null } | null;
+  // Usados só para classificar a esfera do feed do sino.
+  process_type: string | null;
+  area: string | null;
+  assuntos: string[] | null;
+  classe: string | null;
+  polo_ativo: string | null;
+  polo_passivo: string | null;
+  leads: { lead_name: string | null; case_type: string | null } | null;
   legal_cases: { title: string | null } | null;
 }
 
@@ -253,12 +261,30 @@ async function syncFeed(
   });
   if (!updates.length) return 0;
 
+  // Ramo da Justiça — o sino filtra por ele (equipe trabalhista x previdenciária).
+  // Calculado aqui porque a edge enxerga o processo inteiro; o cliente só tem o CNJ.
+  const esfera = classificarEsfera({
+    numeroCnj: process.process_number,
+    processType: process.process_type,
+    area: process.area,
+    assuntos: process.assuntos,
+    classe: process.classe,
+    caseType: process.leads?.case_type ?? null,
+    // Área/assuntos vêm vazios na maioria dos processos — título e polos são,
+    // na prática, o que revela previdenciário na Justiça Federal (o INSS
+    // aparece no polo passivo).
+    titulo: process.title,
+    poloAtivo: process.polo_ativo,
+    poloPassivo: process.polo_passivo,
+  });
+
   const rows = updates.map((u) => ({
     process_id: process.id,
     lead_id: process.lead_id,
     case_id: process.case_id,
     numero_cnj: process.process_number,
     processo_titulo: process.title || process.leads?.lead_name || process.process_number,
+    esfera,
     categoria: u.categoria,
     titulo: u.titulo,
     descricao: u.descricao,
@@ -438,7 +464,7 @@ async function syncProcess(
   return counts;
 }
 
-const PROCESS_SELECT = 'id, process_number, title, lead_id, case_id, responsible_user_id, movimentacoes, audiencias, leads(lead_name), legal_cases(title)';
+const PROCESS_SELECT = 'id, process_number, title, lead_id, case_id, responsible_user_id, movimentacoes, audiencias, process_type, area, assuntos, classe, polo_ativo, polo_passivo, leads(lead_name, case_type), legal_cases(title)';
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {

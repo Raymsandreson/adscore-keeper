@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useDeferredValue, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef, lazy, Suspense } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -7,6 +7,14 @@ import { useContacts, Contact } from '@/hooks/useContacts';
 import { ContactDetailSheet } from './ContactDetailSheet';
 import { CreateContactDialog } from './CreateContactDialog';
 import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
+import { ContactPendencyBadge } from './ContactPendencyBadge';
+import { ContactActivityBadge } from './ContactActivityBadge';
+import { ContactsDistributionDonuts } from './ContactsDistributionDonuts';
+import { ClassificationContactsSheet } from './ClassificationContactsSheet';
+import { useContactsPendencies } from '@/hooks/useContactsPendencies';
+import { useContactsActivities } from '@/hooks/useContactsActivities';
+import { useContactsLinks, EMPTY_CONTACT_LINKS } from '@/hooks/useContactsLinks';
+import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useBroadcastLists, BroadcastList, BroadcastListMember } from '@/hooks/useBroadcastLists';
 import { supabase } from '@/integrations/supabase/client';
 import { db, ensureExternalSession } from '@/integrations/supabase';
@@ -29,10 +37,29 @@ import { toast } from 'sonner';
 import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
-  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw
+  SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw,
+  Briefcase, Scale
 } from 'lucide-react';
 
 import { cloudFunctions } from '@/lib/functionRouter';
+
+// O caso vinculado abre por cima da lista, e a tela de processo é das mais
+// pesadas do sistema — só carrega quando alguém clica na etiqueta.
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+
+/**
+ * Teto das etiquetas por linha (pendências, atividades, lead/caso). A lista
+ * carrega até 5.000 contatos de uma vez; consultar tudo isso a cada filtro
+ * derrubaria a tela. Acima do teto as primeiras linhas continuam etiquetadas e
+ * um aviso explica que as demais não estão.
+ */
+const ENRICH_LIMIT = 300;
+
+const PARTY_ROLE_LABELS: Record<string, string> = {
+  autor: 'Autor',
+  reu: 'Réu',
+  advogado: 'Advogado',
+};
 
 export function ContactsListPage() {
   const navigate = useNavigate();
@@ -286,8 +313,22 @@ export function ContactsListPage() {
   const [search, setSearch] = useState('');
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [detailContact, setDetailContact] = useState<Contact | null>(null);
+  /** Aba em que a ficha abre — o atalho de atividades cai direto na certa. */
+  const [detailTab, setDetailTab] = useState<string | undefined>(undefined);
   const [activeTab, setActiveTab] = useState('contacts');
-  
+
+  // Atalhos disparados de dentro da linha do contato. Tudo abre POR CIMA da
+  // lista: quem clicou está no meio de uma triagem e perderia os filtros se
+  // fosse mandado para outra página.
+  const [classificationSheet, setClassificationSheet] = useState<{ name: string; color?: string } | null>(null);
+  const [processToOpen, setProcessToOpen] = useState<any | null>(null);
+  /** Qual etiqueta está buscando o registro completo (trava só aquele botão). */
+  const [loadingShortcut, setLoadingShortcut] = useState<string | null>(null);
+  /** Profissão em foco (clique na rosca). `undefined` = sem filtro, `null` = sem profissão. */
+  const [professionFilter, setProfessionFilter] = useState<string | null | undefined>(undefined);
+
+  const { classificationConfig } = useContactClassifications();
+
   // Filter states
   const [cityFilter, setCityFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
@@ -986,7 +1027,13 @@ export function ContactsListPage() {
     }
   }, [contacts]);
 
-  const filteredContacts = contacts.filter(c => {
+  // Memoizado porque as consultas em lote das etiquetas dependem desta lista:
+  // recriada a cada render, elas se refariam sem parar.
+  const filteredContacts = useMemo(() => contacts.filter(c => {
+    if (professionFilter !== undefined) {
+      const prof = (c.profession || '').trim();
+      if (professionFilter === null ? prof !== '' : prof !== professionFilter) return false;
+    }
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -997,9 +1044,73 @@ export function ContactsListPage() {
       (c.state && c.state.toLowerCase().includes(q)) ||
       (c.neighborhood && c.neighborhood.toLowerCase().includes(q))
     );
-  });
+  }), [contacts, search, professionFilter]);
 
   const selectableContacts = filteredContacts.filter(c => c.phone);
+
+  // Etiquetas só das linhas de cima quando a lista é enorme (ver ENRICH_LIMIT),
+  // e só na aba de contatos — nas outras nada disso está em tela.
+  const enrichedContacts = useMemo(
+    () => (activeTab === 'contacts' ? filteredContacts.slice(0, ENRICH_LIMIT) : []),
+    [filteredContacts, activeTab]
+  );
+  const enrichedIds = useMemo(() => enrichedContacts.map(c => c.id), [enrichedContacts]);
+  const enrichedSet = useMemo(() => new Set(enrichedIds), [enrichedIds]);
+  const pendencyTargets = useMemo(
+    () => enrichedContacts.map(c => ({ id: c.id, phone: c.phone })),
+    [enrichedContacts]
+  );
+
+  const { byContact: pendencies, loading: loadingPendencies } = useContactsPendencies(pendencyTargets);
+  const { byContact: activities, loading: loadingActivities } = useContactsActivities(enrichedIds);
+  const { byContact: contactLinks } = useContactsLinks(enrichedIds);
+
+  /**
+   * Conversa do WhatsApp do contato — abre no fim, nas mensagens mais recentes.
+   * O número vai com DDI: é assim que a conversa está gravada em
+   * `whatsapp_messages`, e sem o 55 a busca volta vazia.
+   */
+  const openContactChat = useCallback((contact: Contact) => {
+    let digits = (contact.phone || '').replace(/\D/g, '');
+    if (!digits) {
+      toast.error('Este contato não tem telefone cadastrado.');
+      return;
+    }
+    if (digits.length <= 11) digits = `55${digits}`;
+    setChatPreview({
+      phone: digits,
+      instance_name: null,
+      contact_name: contact.full_name,
+    });
+  }, []);
+
+  const openLinkedLead = useCallback(async (leadId: string) => {
+    setLoadingShortcut(`lead:${leadId}`);
+    try {
+      const { data, error } = await externalSupabase.from('leads').select('*').eq('id', leadId).maybeSingle();
+      if (error || !data) throw error || new Error('lead não encontrado');
+      setEditingLead(data as any);
+    } catch (e) {
+      console.error('Erro ao abrir lead vinculado:', e);
+      toast.error('Não consegui abrir este lead.');
+    } finally {
+      setLoadingShortcut(null);
+    }
+  }, []);
+
+  const openLinkedCase = useCallback(async (processId: string) => {
+    setLoadingShortcut(`case:${processId}`);
+    try {
+      const { data, error } = await externalSupabase.from('lead_processes').select('*').eq('id', processId).maybeSingle();
+      if (error || !data) throw error || new Error('processo não encontrado');
+      setProcessToOpen(data);
+    } catch (e) {
+      console.error('Erro ao abrir caso vinculado:', e);
+      toast.error('Não consegui abrir este caso.');
+    } finally {
+      setLoadingShortcut(null);
+    }
+  }, []);
 
   const toggleContact = (id: string) => {
     setSelectedContacts(prev => {
@@ -1312,6 +1423,41 @@ export function ContactsListPage() {
             </div>
           )}
 
+          {!contactsLoading && filteredContacts.length > 0 && (
+            <ContactsDistributionDonuts
+              contacts={filteredContacts}
+              classificationConfig={classificationConfig}
+              onSelectClassification={(name) =>
+                setClassificationSheet({ name, color: classificationConfig[name]?.color })
+              }
+              onSelectProfession={(prof) =>
+                setProfessionFilter(prev =>
+                  prev !== undefined && prev === prof ? undefined : prof
+                )
+              }
+              selectedProfession={professionFilter}
+              className="pb-3"
+            />
+          )}
+
+          {professionFilter !== undefined && (
+            <div className="flex items-center gap-1.5 pb-2 shrink-0">
+              <Badge variant="secondary" className="text-xs gap-1">
+                <Briefcase className="h-3 w-3" />
+                {professionFilter === null ? 'Sem profissão' : professionFilter}
+                <button type="button" onClick={() => setProfessionFilter(undefined)} className="shrink-0">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            </div>
+          )}
+
+          {filteredContacts.length > ENRICH_LIMIT && (
+            <p className="text-[11px] text-muted-foreground pb-2 shrink-0">
+              Pendências, atividades e vínculos carregados nos {ENRICH_LIMIT} primeiros contatos — refine os filtros para ver o resto.
+            </p>
+          )}
+
           <div className="flex-1 min-h-0 overflow-y-auto">
             <div className="space-y-1">
               {contactsLoading ? (
@@ -1319,36 +1465,148 @@ export function ContactsListPage() {
               ) : filteredContacts.length === 0 ? (
                 <p className="text-center text-muted-foreground py-8">Nenhum contato encontrado</p>
               ) : (
-                filteredContacts.map(contact => (
+                filteredContacts.map(contact => {
+                  const enriched = enrichedSet.has(contact.id);
+                  const linked = contactLinks[contact.id] || EMPTY_CONTACT_LINKS;
+                  const rels = contact.classifications?.length
+                    ? contact.classifications
+                    : (contact.classification ? [contact.classification] : []);
+                  return (
                   <div
                     key={contact.id}
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
-                    onClick={() => setDetailContact(contact)}
+                    className="flex items-start gap-3 p-3 rounded-lg hover:bg-accent/50 cursor-pointer transition-colors"
+                    onClick={() => { setDetailTab(undefined); setDetailContact(contact); }}
                   >
                     <Checkbox
+                      className="mt-1"
                       checked={selectedContacts.has(contact.id)}
                       onCheckedChange={() => toggleContact(contact.id)}
                       onClick={(e) => e.stopPropagation()}
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 space-y-1">
                       <p className="font-medium text-sm truncate">{contact.full_name}</p>
-                      <p className="text-xs text-muted-foreground flex items-center gap-1">
-                        <Phone className="h-3 w-3" />
-                        {contact.phone || 'Sem telefone'}
+                      {/* Telefone, lugar e profissão na mesma linha: são o que
+                          identifica a pessoa antes de abrir qualquer coisa. A
+                          profissão vem do próprio registro, então aparece em
+                          toda linha — não depende do teto das etiquetas. */}
+                      <div className="text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 min-w-0">
+                        <span className="flex items-center gap-1 min-w-0">
+                          <Phone className="h-3 w-3 shrink-0" />
+                          <span className="truncate">{contact.phone || 'Sem telefone'}</span>
+                        </span>
                         {(contact.city || contact.state) && (
-                          <span className="ml-2 text-muted-foreground/70">
-                            📍 {[contact.city, contact.state].filter(Boolean).join(', ')}
+                          <span className="flex items-center gap-1 min-w-0 text-muted-foreground/70">
+                            <MapPin className="h-3 w-3 shrink-0" />
+                            <span className="truncate">
+                              {[contact.city, contact.state].filter(Boolean).join(', ')}
+                            </span>
                           </span>
                         )}
-                      </p>
-            </div>
-                    {contact.classification && (
-                      <Badge variant="outline" className="text-[10px] shrink-0">
-                        {contact.classification}
-                      </Badge>
-                    )}
+                        {contact.profession && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProfessionFilter(prev => prev === contact.profession ? undefined : contact.profession);
+                            }}
+                            title={`Filtrar a lista por ${contact.profession}`}
+                            className={`flex items-center gap-1 min-w-0 rounded hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                              professionFilter === contact.profession ? 'text-primary font-medium' : 'text-muted-foreground/70'
+                            }`}
+                          >
+                            <Briefcase className="h-3 w-3 shrink-0" />
+                            <span className="truncate">{contact.profession}</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Etiquetas com atalho: o que está em aberto com essa
+                          pessoa e de onde ela veio, sem precisar abrir a ficha. */}
+                      {enriched && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <ContactPendencyBadge
+                            summary={pendencies[contact.id]}
+                            loading={loadingPendencies}
+                            onClick={contact.phone ? () => openContactChat(contact) : undefined}
+                          />
+                          <ContactActivityBadge
+                            summary={activities[contact.id]}
+                            loading={loadingActivities}
+                            onClick={() => { setDetailTab('activities'); setDetailContact(contact); }}
+                          />
+                          {linked.leads.map(l => (
+                            <button
+                              key={l.id}
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openLinkedLead(l.id); }}
+                              disabled={loadingShortcut === `lead:${l.id}`}
+                              title={`Abrir o lead ${l.name}`}
+                              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                            >
+                              <Badge variant="outline" className="text-[10px] gap-1 px-1.5 py-0 font-normal max-w-[180px]">
+                                {loadingShortcut === `lead:${l.id}`
+                                  ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                                  : <Link2 className="h-3 w-3 shrink-0" />}
+                                <span className="truncate">{l.name}</span>
+                              </Badge>
+                            </button>
+                          ))}
+                          {linked.cases.map(cs => (
+                            <button
+                              key={cs.processId}
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openLinkedCase(cs.processId); }}
+                              disabled={loadingShortcut === `case:${cs.processId}`}
+                              title={`Abrir o caso ${cs.label}${cs.role ? ` (${PARTY_ROLE_LABELS[cs.role] || cs.role})` : ''}`}
+                              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+                            >
+                              <Badge variant="outline" className="text-[10px] gap-1 px-1.5 py-0 font-normal max-w-[180px]">
+                                {loadingShortcut === `case:${cs.processId}`
+                                  ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                                  : <Scale className="h-3 w-3 shrink-0" />}
+                                <span className="truncate">{cs.label}</span>
+                              </Badge>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {rels.map(r => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setClassificationSheet({ name: r, color: classificationConfig[r]?.color });
+                          }}
+                          title={`Ver todos os contatos com esse relacionamento`}
+                          className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                          <Badge variant="outline" className="text-[10px] gap-1 px-1.5 py-0 font-normal">
+                            <span
+                              className={`h-2 w-2 rounded-full shrink-0 ${classificationConfig[r]?.color || 'bg-slate-500'}`}
+                            />
+                            {classificationConfig[r]?.label || r}
+                          </Badge>
+                        </button>
+                      ))}
+                      {contact.phone && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1"
+                          onClick={(e) => { e.stopPropagation(); openContactChat(contact); }}
+                        >
+                          <MessageCircle className="h-3 w-3 text-green-600" />
+                          WhatsApp
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -2790,7 +3048,8 @@ export function ContactsListPage() {
       <ContactDetailSheet
         contact={detailContact}
         open={!!detailContact}
-        onOpenChange={(open) => { if (!open) setDetailContact(null); }}
+        initialTab={detailTab}
+        onOpenChange={(open) => { if (!open) { setDetailContact(null); setDetailTab(undefined); } }}
         onContactUpdated={() => {
           fetchContacts(1, 5000, {
             ...(stateFilter !== 'all' ? { state: stateFilter } : {}),
@@ -2829,6 +3088,25 @@ export function ContactsListPage() {
         wasResponded={false}
         responseTimeMinutes={null}
       />
+
+      {/* Painel do relacionamento (fatia da rosca ou etiqueta da linha) e caso
+          vinculado — ambos por cima da lista, que continua filtrada atrás. */}
+      <ClassificationContactsSheet
+        classification={classificationSheet?.name || null}
+        color={classificationSheet?.color}
+        open={!!classificationSheet}
+        onOpenChange={(open) => { if (!open) setClassificationSheet(null); }}
+      />
+
+      {processToOpen && (
+        <Suspense fallback={null}>
+          <ProcessDetailSheet
+            open={!!processToOpen}
+            onOpenChange={(open: boolean) => { if (!open) setProcessToOpen(null); }}
+            process={processToOpen}
+          />
+        </Suspense>
+      )}
 
       <LeadEditDialog
         open={!!editingLead}

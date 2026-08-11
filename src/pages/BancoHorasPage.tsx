@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import { Check, ChevronDown, Clock, Coffee, Download, Loader2, RefreshCw, Users, X } from 'lucide-react';
+import { Check, ChevronDown, Clock, Coffee, Download, Loader2, MousePointerClick, RefreshCw, Users, X } from 'lucide-react';
 
 interface RawEntry {
   user_id: string;
@@ -21,6 +21,15 @@ interface RawEntry {
   active_seconds: number;
   idle_seconds: number;
   break_type: BreakType | null;
+}
+
+/** Linha de system_usage_entries: tempo por membro/dia/área do menu. */
+interface UsageEntry {
+  user_id: string;
+  user_name: string | null;
+  area_key: string;
+  area_label: string | null;
+  active_seconds: number;
 }
 
 interface Agg {
@@ -67,6 +76,9 @@ export default function BancoHorasPage() {
   const [typeFilter, setTypeFilter] = useState<Set<string>>(new Set());
   const [teamFilter, setTeamFilter] = useState<Set<string>>(new Set());
   const [teamOptions, setTeamOptions] = useState<{ id: string; name: string; extIds: Set<string> }[]>([]);
+  // Uso do sistema por área (sem atividade vinculada) — 3ª categoria, não é
+  // tempo produtivo e por isso não entra na tabela de ativo/ocioso.
+  const [usageRows, setUsageRows] = useState<UsageEntry[]>([]);
 
   // Times (Cloud) + membros mapeados pro Externo — habilita o filtro "por time"
   useEffect(() => {
@@ -125,9 +137,25 @@ export default function BancoHorasPage() {
     } catch (e) {
       console.error('[banco-horas] erro ao carregar:', e);
       setRows([]);
-    } finally {
-      setLoading(false);
     }
+
+    // Uso do sistema por área no mesmo período (tabela separada — não entra
+    // no ativo/ocioso; é o tempo trabalhado no sistema sem atividade aberta).
+    try {
+      const { data, error } = await dbAny
+        .from('system_usage_entries')
+        .select('user_id, user_name, area_key, area_label, active_seconds')
+        .gte('work_date', from)
+        .lte('work_date', to);
+      if (error) throw error;
+      setUsageRows((data as UsageEntry[]) || []);
+    } catch (e) {
+      // Tabela ainda não aplicada no Externo: o resto da página segue igual.
+      console.warn('[banco-horas] uso do sistema indisponível:', e);
+      setUsageRows([]);
+    }
+
+    setLoading(false);
   }, [from, to]);
 
   useEffect(() => { load(); }, [load]);
@@ -195,6 +223,23 @@ export default function BancoHorasPage() {
     return { active, idle, loose, acts: acts.size, members: byMember.length };
   }, [aggregated, byMember.length]);
 
+  // Uso do sistema por ÁREA, respeitando os filtros de time e membro (o filtro
+  // por tipo de atividade não se aplica: aqui não há atividade vinculada).
+  const usageByArea = useMemo(() => {
+    const m = new Map<string, { key: string; label: string; seconds: number; members: Set<string> }>();
+    for (const r of usageRows) {
+      if (teamAllowedExtIds && !teamAllowedExtIds.has(r.user_id)) continue;
+      if (memberFilter.size && !memberFilter.has(r.user_id)) continue;
+      let a = m.get(r.area_key);
+      if (!a) { a = { key: r.area_key, label: r.area_label || r.area_key, seconds: 0, members: new Set() }; m.set(r.area_key, a); }
+      a.seconds += r.active_seconds || 0;
+      a.members.add(r.user_id);
+    }
+    return Array.from(m.values()).sort((x, y) => y.seconds - x.seconds);
+  }, [usageRows, teamAllowedExtIds, memberFilter]);
+
+  const usageTotal = useMemo(() => usageByArea.reduce((s, a) => s + a.seconds, 0), [usageByArea]);
+
   const toggle = (set: Set<string>, setter: (s: Set<string>) => void, v: string) => {
     const next = new Set(set);
     if (next.has(v)) next.delete(v); else next.add(v);
@@ -202,7 +247,7 @@ export default function BancoHorasPage() {
   };
 
   const exportCSV = () => {
-    const header = ['Membro', 'Tipo', 'Tempo ativo (s)', 'Tempo ativo', 'Ocioso (s)', 'Ocioso', 'Nº atividades'];
+    const header = ['Membro', 'Tipo', 'Tempo ativo (s)', 'Tempo ativo', 'Ocioso (s)', 'Ocioso', 'Nº atividades', 'Uso do sistema (s)', 'Uso do sistema'];
     const lines = aggregated.map((a) => [
       a.userName,
       typeLabel(a.activityType),
@@ -212,7 +257,20 @@ export default function BancoHorasPage() {
       formatHMS(a.idle),
       String(a.activities.size),
     ]);
-    const csv = [header, ...lines]
+    // Uso do sistema entra como linhas próprias (tempo sem atividade
+    // vinculada), com o ativo zerado para não se somar ao produtivo.
+    const usageLines = usageByArea.map((a) => [
+      `(${a.members.size} membros)`,
+      `Uso do sistema · ${a.label}`,
+      '0',
+      formatHMS(0),
+      '0',
+      formatHMS(0),
+      '0',
+      String(a.seconds),
+      formatHMS(a.seconds),
+    ]);
+    const csv = [header, ...lines.map((l) => [...l, '', '']), ...usageLines]
       .map((cols) => cols.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(';'))
       .join('\n');
     const BOM = String.fromCharCode(0xfeff); // Excel reconhece UTF-8
@@ -295,13 +353,48 @@ export default function BancoHorasPage() {
       </Card>
 
       {/* Totais */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
         <StatCard icon={<Clock className="h-4 w-4 text-emerald-500" />} label="Tempo ativo" value={formatHMS(totals.active)} />
         <StatCard icon={<Clock className="h-4 w-4 text-sky-500" />} label="Trabalho avulso" value={formatHMS(totals.loose)} />
+        <StatCard icon={<MousePointerClick className="h-4 w-4 text-indigo-500" />} label="Uso do sistema" value={formatHMS(usageTotal)} />
         <StatCard icon={<Coffee className="h-4 w-4 text-amber-500" />} label="Tempo ocioso" value={formatHMS(totals.idle)} />
         <StatCard icon={<RefreshCw className="h-4 w-4 text-blue-500" />} label="Atividades" value={String(totals.acts)} />
         <StatCard icon={<Users className="h-4 w-4 text-indigo-500" />} label="Membros" value={String(totals.members)} />
       </div>
+
+      {/* Uso do sistema por área — tempo em que a pessoa estava mexendo no
+          sistema SEM atividade vinculada. Não é produtivo (não pontua), mas
+          também não é ociosidade: mostra onde o tempo sem vínculo está indo. */}
+      {usageByArea.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <MousePointerClick className="h-4 w-4 text-indigo-500" />
+              Uso do sistema por área
+              <span className="text-xs font-normal text-muted-foreground">
+                sem atividade vinculada · não conta como produtivo
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {usageByArea.map((a) => (
+              <div key={a.key} className="flex items-center gap-3">
+                <span className="w-32 shrink-0 text-sm truncate" title={a.label}>{a.label}</span>
+                <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-indigo-500"
+                    style={{ width: `${usageTotal ? Math.max(2, (a.seconds / usageTotal) * 100) : 0}%` }}
+                  />
+                </div>
+                <span className="w-20 shrink-0 text-right font-mono text-sm tabular-nums">{formatHMS(a.seconds)}</span>
+                <span className="w-24 shrink-0 text-right text-xs text-muted-foreground">
+                  {a.members.size} {a.members.size === 1 ? 'membro' : 'membros'}
+                </span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Tabela */}
       <Card>

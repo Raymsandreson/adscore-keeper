@@ -68,6 +68,8 @@ export interface LeadActivity {
   is_management?: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
+  /** Movimentação do sino que gerou esta atividade (migration 20260811210000). */
+  process_update_id?: string | null;
   cobranca_phone?: string | null;
   cobranca_email?: string | null;
 }
@@ -319,6 +321,9 @@ export function useLeadActivities() {
             observer_names: extObserverNames,
           } : {}),
           ...(activity.assignment_group_id ? { assignment_group_id: activity.assignment_group_id } : {}),
+          // Origem no sino de atualizações: só entra quando informado, pra banco
+          // sem a migration continuar criando atividade normal.
+          ...(activity.process_update_id ? { process_update_id: activity.process_update_id } : {}),
           // Cadeia de continuidade: só entra no insert quando informado, pra
           // banco sem a migration das colunas continuar criando atividade normal.
           ...(activity.parent_activity_id ? { parent_activity_id: activity.parent_activity_id } : {}),

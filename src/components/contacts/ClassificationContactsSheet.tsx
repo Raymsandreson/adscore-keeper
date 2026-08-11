@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -11,6 +11,7 @@ import {
   Loader2,
   Map,
   MapPin,
+  MessageCircle,
   Phone,
   Search,
   Tag,
@@ -27,6 +28,12 @@ import {
   type ReportFilters,
 } from '@/hooks/useClassificationContacts';
 import { classificationLabel } from '@/hooks/useContactClassifications';
+
+// A conversa é das telas mais pesadas do sistema — só carrega quando alguém
+// clica em WhatsApp.
+const DashboardChatPreview = lazy(() =>
+  import('@/components/whatsapp/DashboardChatPreview').then(m => ({ default: m.DashboardChatPreview }))
+);
 
 interface ClassificationContactsSheetProps {
   /** Slug do status (contacts.classifications). `null` mantém o painel fechado. */
@@ -45,12 +52,18 @@ const FACETS: { key: FacetKey; title: string; icon: React.ElementType }[] = [
 
 const INITIAL_FACET_ROWS = 6;
 
-function waLink(phone: string | null): string | null {
+/**
+ * Identidade da conversa no banco: só dígitos, com DDI. Era um link `wa.me`,
+ * que jogava a pessoa para fora do sistema e para o WhatsApp Web — sem
+ * histórico da equipe, sem IA, sem virar atividade. Aqui abre a conversa de
+ * dentro, com tudo isso.
+ */
+function chatPhone(phone: string | null): string | null {
   if (!phone) return null;
   let digits = phone.replace(/\D/g, '');
   if (!digits) return null;
   if (digits.length <= 11) digits = `55${digits}`;
-  return `https://wa.me/${digits}`;
+  return digits;
 }
 
 /** Painel lateral: contatos de um relacionamento + detalhamento por cidade/estado/bairro/profissão. */
@@ -65,6 +78,8 @@ export function ClassificationContactsSheet({
   const [selected, setSelected] = useState<Partial<Record<FacetKey, string | null>>>({});
   const [expanded, setExpanded] = useState<Partial<Record<FacetKey, boolean>>>({});
   const [page, setPage] = useState(0);
+  /** Conversa aberta por cima do painel (sobe de baixo, com todas as funções). */
+  const [chat, setChat] = useState<{ phone: string; name: string } | null>(null);
 
   // Busca só vai ao banco depois que o usuário para de digitar.
   useEffect(() => {
@@ -166,7 +181,7 @@ export function ClassificationContactsSheet({
   };
 
   const renderContact = (c: ClassificationContact) => {
-    const wa = waLink(c.phone);
+    const digits = chatPhone(c.phone);
     const place = [c.neighborhood, c.city, c.state].filter(Boolean).join(' · ');
     return (
       <div key={c.id} className="rounded-lg border bg-card p-3 space-y-1.5 min-w-0">
@@ -174,9 +189,15 @@ export function ClassificationContactsSheet({
           <span className="font-medium text-sm leading-tight break-words min-w-0">
             {c.full_name || 'Sem nome'}
           </span>
-          {wa && (
-            <Button asChild size="sm" variant="outline" className="h-7 text-xs shrink-0">
-              <a href={wa} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+          {digits && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs shrink-0 gap-1"
+              onClick={() => setChat({ phone: digits, name: c.full_name || 'Sem nome' })}
+            >
+              <MessageCircle className="h-3 w-3 text-green-600" />
+              WhatsApp
             </Button>
           )}
         </div>
@@ -206,6 +227,7 @@ export function ClassificationContactsSheet({
   const lastPage = Math.max(0, Math.ceil(report.filtered / PAGE_SIZE) - 1);
 
   return (
+    <>
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent side="right" className="w-full sm:max-w-2xl p-0 flex flex-col gap-0">
         <SheetHeader className="p-4 pb-3 border-b space-y-2 text-left shrink-0">
@@ -337,6 +359,25 @@ export function ClassificationContactsSheet({
         </ScrollArea>
       </SheetContent>
     </Sheet>
+
+    {/* Conversa por cima do painel: sobe de baixo e traz tudo — histórico da
+        equipe, resposta com IA, virar atividade. O painel continua atrás. */}
+    {chat && (
+      <Suspense fallback={null}>
+        <DashboardChatPreview
+          open={!!chat}
+          onOpenChange={(v) => { if (!v) setChat(null); }}
+          phone={chat.phone}
+          contactName={chat.name}
+          instanceName={null}
+          hasLead={false}
+          hasContact={true}
+          wasResponded={false}
+          responseTimeMinutes={null}
+        />
+      </Suspense>
+    )}
+    </>
   );
 }
 

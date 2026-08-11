@@ -8,6 +8,11 @@ export interface KanbanStage {
   name: string;
   color: string;
   stagnationDays?: number; // Days before marking as stagnant (null = disabled)
+  /**
+   * Responsável padrão da fase. Herda para os objetivos e passos dela que não
+   * tiverem responsável próprio (src/lib/popResponsavel.ts).
+   */
+  assigneeId?: string | null;
 }
 
 export interface KanbanBoard {
