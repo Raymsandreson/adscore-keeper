@@ -14,6 +14,8 @@ export interface WhatsAppChatSheetIntent {
    * instância errada.
    */
   instanceName?: string | null;
+  /** Nome do contato ou do grupo, para o cabeçalho não abrir vazio. */
+  contactName?: string | null;
   nonce: string;
 }
 

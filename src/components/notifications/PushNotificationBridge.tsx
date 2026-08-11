@@ -94,12 +94,16 @@ export function PushNotificationBridge() {
 
   /** Leva a pessoa até o destino da notificação. */
   const openUrl = useCallback(
-    (rawUrl: string | undefined) => {
+    (rawUrl: string | undefined, contactName?: string | null) => {
       const target = parsePushTarget(rawUrl, window.location.origin);
       if (!target) return;
 
       if (target.kind === 'whatsapp') {
-        openWhatsAppChatSheet({ phone: target.phone, instanceName: target.instanceName });
+        openWhatsAppChatSheet({
+          phone: target.phone,
+          instanceName: target.instanceName,
+          contactName,
+        });
         return;
       }
 
@@ -128,7 +132,7 @@ export function PushNotificationBridge() {
             title={payload.title || 'Mensagem nova'}
             context="WhatsApp"
             preview={payload.body || 'Nova mensagem'}
-            onOpen={() => openUrl(url)}
+            onOpen={() => openUrl(url, payload.title)}
             onMuteForMinutes={(minutes) => muteConversation(key, minutes)}
           />
         ),
@@ -145,7 +149,7 @@ export function PushNotificationBridge() {
       const data = event.data;
       if (!data || typeof data !== 'object') return;
 
-      if (data.type === 'push-notification-click') openUrl(data.url);
+      if (data.type === 'push-notification-click') openUrl(data.url, data.title);
       else if (data.type === 'push-received') showInAppToast((data.payload || {}) as PushPayload);
     };
 
