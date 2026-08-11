@@ -117,6 +117,12 @@ interface ActivityTimerCtx {
   lastActivity: TimerActivityRef | null;
   /** Retoma o cronômetro da última atividade pausada (acumula de onde parou). */
   resumeLast: () => Promise<void>;
+  /**
+   * Reassume o comando do cronômetro NESTA aba (quando outra aba/janela tinha
+   * assumido, ou a contagem caiu por falha). Readota a sessão de hoje que estiver
+   * rodando; sem nenhuma, retoma a última atividade ou volta pro gap.
+   */
+  reclaimTimer: () => Promise<void>;
   /** Totais do dia (do membro): produtivo (ativo) e ocioso, ao vivo. */
   dayTotals: { active: number; idle: number };
   /**
@@ -891,8 +897,12 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         entryId = existing.id;
         idleSeconds = existing.idle_seconds || 0;
         activeSeconds = existing.active_seconds || 0;
+        // started_at renovado: é o desempate de posse (assertOwnership). Sem
+        // renovar, uma linha 'running' esquecida em outra janela seria "mais
+        // nova" que esta e roubaria o comando no próximo heartbeat.
+        const nowIso = new Date().toISOString();
         await dbAny.from('activity_time_entries')
-          .update({ status: 'running', ended_at: new Date().toISOString() }).eq('id', entryId);
+          .update({ status: 'running', started_at: nowIso, ended_at: nowIso }).eq('id', entryId);
       } else {
         const { data, error } = await dbAny.from('activity_time_entries').insert({
           activity_id: null, activity_type: null, activity_title: GAP_TITLE, lead_name: null,
@@ -1010,8 +1020,11 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
         activeSeconds = existing.active_seconds || 0;
         idleSeconds = existing.idle_seconds || 0;
         if (existing.estimated_minutes != null) estimateMinutes = existing.estimated_minutes;
+        // started_at renovado — ver startGap: quem retoma passa a ser a sessão
+        // mais nova e não perde a posse para uma linha rodando esquecida.
+        const nowIso = new Date().toISOString();
         await dbAny.from('activity_time_entries')
-          .update({ status: 'running', ended_at: new Date().toISOString() }).eq('id', entryId);
+          .update({ status: 'running', started_at: nowIso, ended_at: nowIso }).eq('id', entryId);
       } else {
         const { data, error } = await dbAny.from('activity_time_entries').insert({
           activity_id: activity.id,
@@ -1060,6 +1073,123 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   const resumeLast = useCallback(async () => {
     if (lastActivityRef.current) await startTimer(lastActivityRef.current);
   }, [startTimer]);
+
+  /**
+   * Reassume o comando do cronômetro NESTA aba.
+   *
+   * Quando outra aba/janela assume (announceTakeover / assertOwnership), esta
+   * solta o cronômetro com sync(null) — e o overlay ficava sem NADA na tela,
+   * sem contar e sem botão, até um F5. Era a queixa "o cronômetro fica
+   * desaparecendo": bastava abrir o sistema numa segunda aba para a primeira
+   * ficar muda. Quem está com o foco é quem está trabalhando, então esta aba
+   * readota a sessão de hoje que estiver rodando (renovando started_at, o
+   * desempate de posse) ou recomeça a contagem.
+   */
+  const reclaimBusyRef = useRef<boolean>(false);
+  const reclaimTimer = useCallback(async () => {
+    if (entryRef.current || busyRef.current || reclaimBusyRef.current) return;
+    if (!shiftIdRef.current) return; // fora do expediente o botão é "Iniciar expediente"
+    reclaimBusyRef.current = true;
+    try {
+      await ensureExternalSession().catch(() => {});
+      const u = await getUser();
+      if (!u) return;
+      otherOwnerRef.current = false;
+
+      type Row = {
+        id: string; activity_id: string | null; activity_type: string | null; activity_title: string | null;
+        lead_name: string | null; active_seconds: number | null; idle_seconds: number | null;
+        estimated_minutes: number | null; break_type: BreakType | null; break_note: string | null;
+      };
+      let row: Row | null = null;
+      try {
+        const { data } = await dbAny.from('activity_time_entries')
+          .select('id, activity_id, activity_type, activity_title, lead_name, active_seconds, idle_seconds, estimated_minutes, break_type, break_note')
+          .eq('user_id', u.userId).eq('status', 'running').eq('work_date', brasiliaToday())
+          .order('started_at', { ascending: false }).limit(1).maybeSingle();
+        row = (data as Row | null) ?? null;
+      } catch { /* sem linha adotável — cai no fallback abaixo */ }
+
+      if (row) {
+        const nowIso = new Date().toISOString();
+        try {
+          await dbAny.from('activity_time_entries')
+            .update({ status: 'running', started_at: nowIso, ended_at: nowIso }).eq('id', row.id);
+        } catch { /* melhor esforço */ }
+        const kind: TimerEntry['kind'] = row.activity_id ? 'activity' : (row.break_type ? 'break' : 'gap');
+        const activeSeconds = row.active_seconds || 0;
+        const idleSeconds = row.idle_seconds || 0;
+        const estSec = row.estimated_minutes ? row.estimated_minutes * 60 : 0;
+        // Não re-apita o que esta sessão já avisou antes de soltar o cronômetro.
+        overNotifiedRef.current = estSec > 0 && activeSeconds >= estSec;
+        nearNotifiedRef.current = estSec > 0 && activeSeconds >= estSec * 0.8;
+        breakOverNotifiedRef.current = kind === 'break' && estSec > 0 && idleSeconds >= estSec;
+        awaitingConfirmRef.current = false;
+        lastInteractionRef.current = Date.now();
+        lastFlushRef.current = Date.now();
+        lastGapNudgeRef.current = idleSeconds;
+        sync({
+          kind,
+          entryId: row.id,
+          activityId: row.activity_id,
+          activityType: row.activity_type || '',
+          activityTitle: row.activity_title || (kind === 'gap' ? GAP_TITLE : 'Atividade'),
+          leadName: row.lead_name,
+          userId: u.userId,
+          userName: u.userName,
+          activeSeconds, idleSeconds,
+          status: 'running',
+          estimateMinutes: row.estimated_minutes,
+          breakType: row.break_type,
+          breakNote: row.break_note,
+        });
+        if (kind === 'activity' && row.activity_id) {
+          const la: TimerActivityRef = {
+            id: row.activity_id,
+            activity_type: row.activity_type,
+            title: row.activity_title,
+            lead_name: row.lead_name,
+            estimated_minutes: row.estimated_minutes,
+          };
+          lastActivityRef.current = la;
+          setLastActivity(la);
+        }
+        announceTakeover();
+        pauseOtherSessions(u.userId, row.id);
+        return;
+      }
+
+      if (lastActivityRef.current) { await startTimer(lastActivityRef.current); return; }
+      await startGap();
+    } finally {
+      reclaimBusyRef.current = false;
+    }
+  }, [getUser, sync, announceTakeover, pauseOtherSessions, startTimer, startGap]);
+
+  /**
+   * Autocura: a aba com FOCO é a que comanda. Se esta ficou sem cronômetro com
+   * o expediente aberto, ela reassume sozinha ao ganhar o foco. O `hasFocus`
+   * evita disputa entre duas janelas visíveis lado a lado (só uma tem foco por
+   * vez) — sem ele as duas ficariam se roubando o cronômetro.
+   */
+  useEffect(() => {
+    if (current || onShift !== true) return;
+    let cancelled = false;
+    const tryReclaim = () => {
+      if (cancelled || typeof document === 'undefined' || !document.hasFocus()) return;
+      reclaimTimer().catch(() => {});
+    };
+    // Espera a reidratação inicial (que também restaura a sessão) antes de agir.
+    const t = setTimeout(tryReclaim, 3000);
+    window.addEventListener('focus', tryReclaim);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      window.removeEventListener('focus', tryReclaim);
+    };
+    // `!!current` (e não `current`) para o efeito não remontar a cada segundo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!current, onShift, reclaimTimer]);
 
   const requestLeave = useCallback(() => {
     if (entryRef.current?.kind === 'activity') setLeavePrompt(true);
@@ -1376,7 +1506,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   };
 
   const value: ActivityTimerCtx = {
-    current, lastActivity, resumeLast, dayTotals, usage, hidden, idlePrompt, leavePrompt, switchPrompt,
+    current, lastActivity, resumeLast, reclaimTimer, dayTotals, usage, hidden, idlePrompt, leavePrompt, switchPrompt,
     startTimer, requestLeave, keepRunning, pauseAndClose, stopTimerFor,
     confirmStillWorking, rejectStillWorking, switchTo, dismissSwitch,
     hideTimer, showTimer, setEstimate, managerAlert, dismissManagerAlert,
