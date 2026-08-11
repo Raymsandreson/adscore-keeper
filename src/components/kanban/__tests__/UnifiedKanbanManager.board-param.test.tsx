@@ -37,6 +37,14 @@ const { BOARDS, dbMock } = vi.hoisted(() => {
           eq: () => Promise.resolve({ data: [], error: null }),
         }),
       }),
+      // Realtime: o useGroupReportsPending (badge de relatos) assina um canal
+      // no mount. Sem estes dois o efeito estoura e derruba a árvore inteira,
+      // levando junto os testes de ?board=<id>, que nada têm com relatos.
+      channel: () => {
+        const ch: any = { on: () => ch, subscribe: () => ch };
+        return ch;
+      },
+      removeChannel: () => {},
     },
   };
 });
