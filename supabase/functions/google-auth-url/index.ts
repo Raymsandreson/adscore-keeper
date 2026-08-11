@@ -36,6 +36,12 @@ serve(async (req) => {
   const scopes = [
     'https://www.googleapis.com/auth/contacts',
     'https://www.googleapis.com/auth/calendar',
+    // Somente leitura, e a edge sync-email-push consulta apenas remetentes
+    // .jus.br: é o push dos tribunais que alimenta o sino e decide quais
+    // processos valem a consulta paga no Escavador. Quem conectou o Google
+    // antes disso continua funcionando (agenda/contatos) e só passa a valer
+    // para e-mail depois de reconectar.
+    'https://www.googleapis.com/auth/gmail.readonly',
   ].join(' ');
 
   const params = new URLSearchParams({
