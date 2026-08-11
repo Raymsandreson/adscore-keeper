@@ -18,8 +18,9 @@ import { useTeamLeadership } from '@/hooks/useTeamLeadership';
  * ActivityTimerOverlay) segue à mão pra bater o ponto a qualquer momento.
  * O que NÃO mudou: fora do expediente nada é cronometrado.
  *
- * O aviso dispensado não volta enquanto a aba viver (o componente mora no
- * SidebarLayout e não desmonta na navegação); ao recarregar, aparece de novo.
+ * O aviso dispensado não volta no mesmo dia (localStorage, ver DISMISS_KEY):
+ * quem fechou de manhã não é interrompido de novo a cada recarga. No dia
+ * seguinte ele aparece uma vez e pede o ponto outra vez.
  *
  * Quem NÃO vê o aviso:
  * - visitante sem sessão (senão a própria tela de login ficaria coberta);
@@ -45,15 +46,35 @@ import { useTeamLeadership } from '@/hooks/useTeamLeadership';
  */
 const SHIFT_FREE_PATHS = ['/gerar-procuracao'];
 
+/**
+ * Fechou no X: some pelo resto do DIA (guarda a data local, não um booleano —
+ * assim a chave velha expira sozinha e o POP volta amanhã). Recarregar a página
+ * ou abrir em outra aba não traz o aviso de volta no mesmo dia.
+ */
+const DISMISS_KEY = 'shiftGate:dismissedOn';
+
+function todayKey(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 export function ShiftGate() {
   const { user, loading: authLoading } = useAuthContext();
   const { onShift, shiftEndedToday, startShift } = useActivityTimer();
   const { isDirector, loading: leadershipLoading } = useTeamLeadership();
   const { pathname } = useLocation();
   const [starting, setStarting] = useState(false);
-  // Fechou no X: some até o próximo carregamento da aba. Daí em diante o ponto
-  // fica só no botão flutuante do cronômetro.
-  const [dismissed, setDismissed] = useState(false);
+  // Fechado hoje? Daí em diante o ponto fica só no botão flutuante do cronômetro.
+  const [dismissed, setDismissed] = useState(() => {
+    try { return localStorage.getItem(DISMISS_KEY) === todayKey(); } catch { return false; }
+  });
+
+  const handleDismiss = useCallback(() => {
+    setDismissed(true);
+    try { localStorage.setItem(DISMISS_KEY, todayKey()); } catch { /* ignora */ }
+  }, []);
 
   const shiftFree = SHIFT_FREE_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`),
@@ -92,7 +113,7 @@ export function ShiftGate() {
             </div>
             <button
               type="button"
-              onClick={() => setDismissed(true)}
+              onClick={handleDismiss}
               aria-label="Fechar e usar o sistema sem bater o ponto"
               title="Fechar — o botão “Iniciar expediente” continua no canto inferior esquerdo"
               className="-mr-1 -mt-1 shrink-0 rounded-full p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
