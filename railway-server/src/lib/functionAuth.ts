@@ -84,6 +84,36 @@ export async function verifyCloudJwt(authHeader: string | undefined): Promise<Au
   }
 }
 
+// Placar do modo observação. O log do Railway é a fonte rica, mas quem precisa
+// decidir se liga o enforce nem sempre tem acesso a ele — e sem um número
+// visível de fora a decisão vira palpite. Mantido em memória (zera a cada
+// deploy) e exposto em /health.
+const seen = { total: 0, internal_key: 0, api_key: 0, cloud_jwt: 0, missing: 0 };
+const missingByFn = new Map<string, number>();
+const MISSING_FN_CAP = 40; // teto: o mapa é alimentado por path de request
+
+export function recordAuth(verdict: AuthVerdict, fn: string): void {
+  seen.total += 1;
+  if (verdict.ok && verdict.via) {
+    seen[verdict.via] += 1;
+    return;
+  }
+  seen.missing += 1;
+  const key = fn || '(sem path)';
+  if (missingByFn.has(key)) missingByFn.set(key, missingByFn.get(key)! + 1);
+  else if (missingByFn.size < MISSING_FN_CAP) missingByFn.set(key, 1);
+}
+
+export function authStats() {
+  return {
+    ...seen,
+    // Quem chamaria sem credencial, do mais frequente pro menos: é esta lista
+    // que precisa estar vazia (ou só com chamadores que você reconhece e vai
+    // credenciar) antes de ligar o RAILWAY_AUTH_ENFORCE.
+    missing_por_funcao: Object.fromEntries([...missingByFn.entries()].sort((a, b) => b[1] - a[1])),
+  };
+}
+
 // Token efêmero deste processo. As chamadas que o servidor faz a si mesmo (os
 // crons internos, que batem em http://127.0.0.1:PORT/functions/...) se
 // autenticam com ele e portanto não dependem de nenhum secret estar configurado.
