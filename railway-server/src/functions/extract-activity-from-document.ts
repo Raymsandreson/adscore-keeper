@@ -1,10 +1,13 @@
-// Lê um DOCUMENTO (PDF) ou TEXTO puro e preenche os campos da atividade,
-// de forma FIEL ao que está escrito (sem inventar). Retorna { success, extracted_text, fields }.
+// Lê DOCUMENTOS (PDF), IMAGENS (print colado/arrastado) ou TEXTO puro e preenche os
+// campos da atividade, de forma FIEL ao que está escrito (sem inventar).
+// Retorna { success, extracted_text, fields }.
 //
-// Body: { text?: string, file_url?: string, activity_context?: {...} }
-// - text: conteúdo já em texto puro (colado pelo usuário).
-// - file_url: URL pública de um arquivo (PDF, txt, md). Baixado aqui e enviado ao Gemini.
-//   PDFs seguem via inlineData (Gemini lê nativamente). TXT/MD viram texto direto.
+// Body: { text?: string, file_url?: string, file_urls?: string[], activity_context?: {...} }
+// - text: conteúdo já em texto puro (colado pelo usuário). Convive com os arquivos:
+//   quando vêm juntos, o texto entra como complemento.
+// - file_url / file_urls: URL(s) pública(s) de arquivos (PDF, imagem, txt, md). Baixados
+//   aqui e enviados ao Gemini. PDFs e imagens seguem via inlineData (Gemini lê
+//   nativamente, inclusive OCR de print). TXT/MD viram texto direto.
 //
 // Reaproveita o MESMO prompt de "Preenchimento por Áudio" (transcribe-activity-call),
 // só troca a origem da informação (documento em vez de ligação).
@@ -12,7 +15,9 @@ import type { RequestHandler } from 'express';
 import { geminiChat } from '../lib/gemini';
 
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
-const MAX_BYTES = 15 * 1024 * 1024; // 15 MB — teto seguro pra inlineData do Gemini.
+const MAX_BYTES = 15 * 1024 * 1024; // 15 MB por arquivo — teto seguro pra inlineData do Gemini.
+const MAX_TOTAL_BYTES = 30 * 1024 * 1024; // teto somado (vários prints de um mesmo documento).
+const MAX_FILES = 6;
 
 interface PreviousActivity {
   title?: string;
@@ -105,60 +110,103 @@ const EMPTY_FIELDS = {
   notes: '',
 };
 
+const EXT_MIME: Record<string, string> = {
+  pdf: 'application/pdf',
+  txt: 'text/plain',
+  md: 'text/markdown',
+  markdown: 'text/markdown',
+  csv: 'text/csv',
+  log: 'text/plain',
+  rtf: 'application/rtf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+};
+
 function guessMimeFromUrl(url: string, fallback: string): string {
-  const lower = url.toLowerCase().split('?')[0];
-  if (lower.endsWith('.pdf')) return 'application/pdf';
-  if (lower.endsWith('.txt')) return 'text/plain';
-  if (lower.endsWith('.md')) return 'text/markdown';
-  if (lower.endsWith('.rtf')) return 'application/rtf';
-  return fallback;
+  const clean = url.toLowerCase().split('?')[0];
+  const ext = clean.split('.').pop() || '';
+  // A extensão manda: o Storage costuma devolver octet-stream pra print colado.
+  return EXT_MIME[ext] || fallback;
 }
+
+/** Formatos de imagem que o Gemini lê nativamente (OCR incluso). */
+const GEMINI_IMAGE_MIMES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif']);
 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { text, file_url, activity_context, user_answer } = (req.body || {}) as {
+    const { text, file_url, file_urls, activity_context, user_answer } = (req.body || {}) as {
       text?: string;
       file_url?: string;
+      file_urls?: string[];
       activity_context?: ActivityContext;
       user_answer?: string;
     };
 
-    if (!text && !file_url) {
-      return ok({ success: false, error: 'Envie text ou file_url' });
+    // Aceita file_urls (novo, vários prints/páginas) e file_url (legado). Dedup preserva ordem.
+    const urls = Array.from(new Set([
+      ...(Array.isArray(file_urls) ? file_urls : []),
+      ...(file_url ? [file_url] : []),
+    ].map((u) => String(u || '').trim()).filter(Boolean))).slice(0, MAX_FILES);
+
+    const pastedText = (text || '').trim();
+    if (!pastedText && urls.length === 0) {
+      return ok({ success: false, error: 'Envie text, file_url ou file_urls' });
     }
 
-    // 1) Prepara a "fonte de informação" — texto puro OU parte multimodal (PDF/base64).
-    let documentText = (text || '').trim();
-    let inlinePart: { type: 'image_url'; image_url: { url: string } } | null = null;
-    let sourceLabel = 'TEXTO FORNECIDO';
+    // 1) Prepara a "fonte de informação": texto puro e/ou partes multimodais
+    // (PDF e imagem viram inlineData base64; TXT/MD viram texto direto).
+    const textChunks: string[] = [];
+    const inlineParts: { type: 'image_url'; image_url: { url: string } }[] = [];
+    const sourceKinds: string[] = [];
+    let totalBytes = 0;
 
-    if (file_url && !documentText) {
-      const resp = await fetch(file_url);
+    for (const url of urls) {
+      const resp = await fetch(url);
       if (!resp.ok) return ok({ success: false, error: `Falha ao baixar arquivo (${resp.status})` });
       const rawMime = resp.headers.get('content-type') || 'application/octet-stream';
-      const mime = guessMimeFromUrl(file_url, rawMime);
+      const mime = guessMimeFromUrl(url, rawMime);
       const buffer = await resp.arrayBuffer();
       if (buffer.byteLength > MAX_BYTES) {
         return ok({ success: false, error: `Arquivo muito grande (>${Math.round(MAX_BYTES / 1024 / 1024)}MB).` });
       }
+      totalBytes += buffer.byteLength;
+      if (totalBytes > MAX_TOTAL_BYTES) {
+        return ok({ success: false, error: `Arquivos somam mais de ${Math.round(MAX_TOTAL_BYTES / 1024 / 1024)}MB. Envie menos de uma vez.` });
+      }
 
       if (mime.startsWith('text/') || mime === 'application/rtf') {
-        documentText = new TextDecoder('utf-8').decode(buffer).trim();
-        sourceLabel = 'DOCUMENTO DE TEXTO';
-      } else if (mime === 'application/pdf') {
-        // Envia o PDF como inlineData pro Gemini (leitura nativa via OCR/parser interno).
+        const decoded = new TextDecoder('utf-8').decode(buffer).trim();
+        if (decoded) textChunks.push(decoded);
+        sourceKinds.push('documento de texto');
+      } else if (mime === 'application/pdf' || GEMINI_IMAGE_MIMES.has(mime)) {
+        // PDF e imagem seguem como inlineData — o Gemini lê nativamente (OCR de print incluso).
         const base64 = Buffer.from(buffer).toString('base64');
-        inlinePart = { type: 'image_url', image_url: { url: `data:application/pdf;base64,${base64}` } };
-        sourceLabel = 'PDF ANEXADO';
+        inlineParts.push({ type: 'image_url', image_url: { url: `data:${mime};base64,${base64}` } });
+        sourceKinds.push(mime === 'application/pdf' ? 'PDF' : 'imagem/print');
       } else {
-        return ok({ success: false, error: `Tipo de arquivo não suportado: ${mime}. Envie PDF, TXT ou MD.` });
+        return ok({ success: false, error: `Tipo de arquivo não suportado: ${mime}. Envie PDF, imagem (PNG/JPG/WEBP), TXT ou MD.` });
       }
     }
 
-    if (!documentText && !inlinePart) {
+    if (pastedText) {
+      textChunks.push(pastedText);
+      sourceKinds.push('texto colado');
+    }
+
+    const documentText = textChunks.join('\n\n---\n\n').trim();
+    if (!documentText && inlineParts.length === 0) {
       return ok({ success: false, error: 'Documento vazio ou ilegível.' });
     }
+
+    const uniqueKinds = Array.from(new Set(sourceKinds));
+    const sourceLabel = uniqueKinds.length > 0
+      ? `MATERIAL ENVIADO (${uniqueKinds.join(' + ')})`.toUpperCase()
+      : 'TEXTO FORNECIDO';
 
     // 2) Monta contexto da atividade (mesma estrutura da função de áudio).
     const ctx = activity_context || {};
@@ -198,7 +246,9 @@ Conteúdo ATUAL dos campos (preserve o que ainda for válido e complemente com o
 - Observações: ${ctx.notes || '(vazio)'}${buildContextSections(ctx)}${user_answer && user_answer.trim() ? `\n\nRESPOSTA DO USUÁRIO a uma pergunta anterior (use para completar o preenchimento; se ainda faltar algo, pergunte de novo):\n${user_answer.trim()}` : ''}`;
 
     // Prompt: MESMA lógica do preenchimento por áudio, adaptado pra origem "documento/texto".
-    const fillSystem = `Você é um assistente jurídico de um escritório de advocacia. Foi anexado um DOCUMENTO (PDF, publicação, despacho, e-mail, ata, laudo) ou TEXTO fornecido pelo usuário, e você recebeu o CONTEÚDO desse documento MAIS o contexto da atividade (campos atuais, fluxo de trabalho, atividades anteriores do processo e mensagens internas).
+    const fillSystem = `Você é um assistente jurídico de um escritório de advocacia. Foi enviado um DOCUMENTO (PDF, publicação, despacho, e-mail, ata, laudo), uma ou mais IMAGENS/PRINTS de tela (ex.: print do Meu INSS, de um sistema do tribunal, de uma conversa) ou TEXTO fornecido pelo usuário, e você recebeu o CONTEÚDO desse material MAIS o contexto da atividade (campos atuais, fluxo de trabalho, atividades anteriores do processo e mensagens internas).
+
+Quando vier IMAGEM/PRINT: leia todo o texto visível na tela (OCR), inclusive cabeçalhos, números de protocolo, datas, horários e endereços. Vários arquivos são páginas/partes do MESMO material — consolide tudo antes de preencher. Se a imagem estiver ilegível ou cortada num ponto essencial, use clarifying_question em vez de adivinhar.
 
 Sua tarefa: ATUALIZAR os campos da atividade COMBINANDO o contexto existente com o que consta no documento. Regras:
 - NÃO descarte informação válida que já estava nos campos atuais — preserve e integre com o que o documento acrescenta. Se o documento contradiz/atualiza algo, prevaleça a informação mais nova do documento.
@@ -244,12 +294,18 @@ Orientações: Levar Cadúnico, toda documentação médica que dispuser (exames
 
 Dados do comprovante que não couberem no modelo (número do protocolo, serviço/benefício requerido, unidade, data de entrada do requerimento) vão resumidos em notes. Dia/Data nos blocos acima em DD/MM/AAAA com horário quando o comprovante trouxer. Se a perícia/avaliação tiver data marcada, retorne essa data também em deadline (YYYY-MM-DD).`;
 
-    // 3) Monta a mensagem do usuário: contexto + documento (texto puro ou multimodal).
+    // 3) Monta a mensagem do usuário: contexto + material (arquivos multimodais e/ou texto).
     const userParts: any[] = [{ type: 'text', text: `${ctxText}\n\n${sourceLabel}:` }];
-    if (inlinePart) {
-      userParts.push(inlinePart);
-      userParts.push({ type: 'text', text: 'Leia integralmente o PDF acima e extraia a informação relevante para preencher os campos da atividade.' });
-    } else {
+    if (inlineParts.length > 0) {
+      for (const part of inlineParts) userParts.push(part);
+      userParts.push({
+        type: 'text',
+        text: inlineParts.length > 1
+          ? `Os ${inlineParts.length} arquivos acima (PDFs e/ou imagens/prints) fazem parte do MESMO material — leia todos na ordem, trate-os como páginas/partes de um conjunto só e extraia a informação relevante para preencher os campos da atividade. Em imagens, faça a leitura do texto que aparece na tela (OCR).`
+          : 'Leia integralmente o arquivo acima e extraia a informação relevante para preencher os campos da atividade. Se for uma imagem/print, faça a leitura do texto que aparece na tela (OCR).',
+      });
+    }
+    if (documentText) {
       userParts.push({ type: 'text', text: documentText.slice(0, 200_000) });
     }
 
@@ -320,10 +376,10 @@ Dados do comprovante que não couberem no modelo (número do protocolo, serviço
       fillError = e?.message || String(e);
     }
 
-    // Devolve preview do texto (útil quando veio de PDF — mostra que a IA leu algo).
+    // Devolve preview do texto (útil quando veio de PDF/imagem — mostra que a IA leu algo).
     const preview = documentText
       ? documentText.slice(0, 800)
-      : '(PDF processado nativamente pela IA)';
+      : `(${inlineParts.length} arquivo(s) processado(s) nativamente pela IA — ${uniqueKinds.join(' + ')})`;
 
     return ok({
       success: true,

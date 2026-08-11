@@ -1,9 +1,9 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { FileText, Upload, Loader2, Sparkles, Info, RotateCcw, X } from 'lucide-react';
+import { FileText, Upload, Loader2, Sparkles, Info, RotateCcw, X, ImagePlus } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -32,8 +32,34 @@ interface Props {
 
 type Phase = 'idle' | 'uploading' | 'processing' | 'done';
 
-const ACCEPTED = '.pdf,.txt,.md,application/pdf,text/plain,text/markdown';
+// Formatos de imagem que o Gemini lê nativamente (espelha GEMINI_IMAGE_MIMES no backend).
+const IMAGE_EXT = ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif'];
+const TEXT_EXT = ['txt', 'md', 'markdown', 'csv', 'log'];
+const ACCEPTED = '.pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.heic,.heif,application/pdf,text/plain,text/markdown,image/png,image/jpeg,image/webp,image/heic,image/heif';
 const MAX_MB = 15;
+const MAX_FILES = 6;
+
+function extOf(name: string): string {
+  return (name.split('.').pop() || '').toLowerCase();
+}
+function isImageFile(f: File): boolean {
+  return (f.type || '').toLowerCase().startsWith('image/') || IMAGE_EXT.includes(extOf(f.name));
+}
+function isSupportedFile(f: File): boolean {
+  const t = (f.type || '').toLowerCase();
+  const e = extOf(f.name);
+  if (t === 'application/pdf' || e === 'pdf') return true;
+  if (t.startsWith('text/') || TEXT_EXT.includes(e)) return true;
+  // Imagem: só os formatos que o Gemini lê (evita subir um BMP/GIF que o backend recusa).
+  if (t.startsWith('image/')) return IMAGE_EXT.includes(t.split('/')[1] || '');
+  return IMAGE_EXT.includes(e);
+}
+function attachmentTypeOf(f: File): string {
+  if (isImageFile(f)) return 'image';
+  const t = (f.type || '').toLowerCase();
+  if (t === 'application/pdf' || extOf(f.name) === 'pdf') return 'document';
+  return 'text';
+}
 
 // Campos de texto (detalhe) + metadados extraídos pela IA. Espelha o áudio
 // (ActivityCallRecorder): o documento agora também preenche título, prazo,
@@ -61,7 +87,8 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
   };
   const [phase, setPhase] = useState<Phase>('idle');
   const [pastedText, setPastedText] = useState('');
-  const [pickedFile, setPickedFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [question, setQuestion] = useState<string | null>(null);
@@ -69,13 +96,22 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
   // sem substituir o documento/texto original).
   const [answerText, setAnswerText] = useState('');
   // Guarda a fonte usada na 1ª extração para reaproveitar no "Reenviar com a resposta".
-  const lastSourceRef = useRef<{ file_url?: string; text?: string } | null>(null);
+  const lastSourceRef = useRef<{ file_url?: string; file_urls?: string[]; text?: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Miniaturas das imagens escolhidas (print colado/arrastado) — revogadas ao trocar a lista.
+  // HEIC/HEIF ficam sem thumb: o Chrome não renderiza (o Gemini lê normalmente).
+  const thumbs = useMemo(
+    () => files.map((f) => (isImageFile(f) && !['heic', 'heif'].includes(extOf(f.name)) ? URL.createObjectURL(f) : null)),
+    [files],
+  );
+  useEffect(() => () => { thumbs.forEach((u) => u && URL.revokeObjectURL(u)); }, [thumbs]);
 
   const reset = useCallback(() => {
     setPhase('idle');
     setPastedText('');
-    setPickedFile(null);
+    setFiles([]);
+    setDragOver(false);
     setError(null);
     setPreview(null);
     setQuestion(null);
@@ -83,6 +119,44 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
     lastSourceRef.current = null;
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
+
+  const addFiles = useCallback((incoming: File[]) => {
+    const accepted: File[] = [];
+    let tooBig = 0;
+    let unsupported = 0;
+    for (const f of incoming) {
+      if (!isSupportedFile(f)) { unsupported++; continue; }
+      if (f.size > MAX_MB * 1024 * 1024) { tooBig++; continue; }
+      accepted.push(f);
+    }
+    if (unsupported > 0) toast.error('Formato não suportado. Envie PDF, imagem (print), TXT ou MD.');
+    if (tooBig > 0) toast.error(`${tooBig} arquivo(s) acima de ${MAX_MB}MB foram ignorados.`);
+    if (accepted.length === 0) return;
+    if (files.length + accepted.length > MAX_FILES) toast.error(`Máximo de ${MAX_FILES} arquivos por envio.`);
+    setFiles((prev) => [...prev, ...accepted].slice(0, MAX_FILES));
+  }, [files.length]);
+
+  // Ctrl+V com imagem no clipboard (print de publicação, comprovante do Meu INSS…).
+  // Escuta no documento porque o Popover é renderizado em portal e o foco pode
+  // estar fora do textarea. Só intercepta quando há ARQUIVO no clipboard —
+  // colar texto continua caindo normalmente no campo "Colar texto".
+  useEffect(() => {
+    if (!open || phase !== 'idle') return;
+    const onPaste = (e: ClipboardEvent) => {
+      const items = Array.from(e.clipboardData?.items || []);
+      const dropped: File[] = [];
+      for (const it of items) {
+        if (it.kind !== 'file') continue;
+        const f = it.getAsFile();
+        if (f) dropped.push(f);
+      }
+      if (dropped.length === 0) return;
+      e.preventDefault();
+      addFiles(dropped);
+    };
+    document.addEventListener('paste', onPaste);
+    return () => document.removeEventListener('paste', onPaste);
+  }, [open, phase, addFiles]);
 
   const collectExtraContext = useCallback(async () => {
     // Mesma coleta de contexto usada em ActivityCallRecorder (previous_activities + chat).
@@ -165,49 +239,47 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
       return;
     }
 
-    const hasFile = !!pickedFile;
+    const hasFiles = files.length > 0;
     const hasText = pastedText.trim().length > 0;
-    if (!hasFile && !hasText) {
-      toast.error('Anexe um arquivo ou cole um texto.');
-      return;
-    }
-    if (hasFile && pickedFile!.size > MAX_MB * 1024 * 1024) {
-      toast.error(`Arquivo maior que ${MAX_MB}MB.`);
+    if (!hasFiles && !hasText) {
+      toast.error('Anexe, arraste ou cole (Ctrl+V) um arquivo — ou cole um texto.');
       return;
     }
 
     try {
-      let file_url: string | undefined;
-      let mime: string | undefined;
+      const fileUrls: string[] = [];
 
-      // 1) Se houver arquivo, sobe pro bucket activity-chat (reaproveita o mesmo do áudio).
-      if (hasFile) {
+      // 1) Sobe os arquivos pro bucket activity-chat (o mesmo usado pelo áudio).
+      if (hasFiles) {
         setPhase('uploading');
-        const ext = (pickedFile!.name.split('.').pop() || 'bin').toLowerCase();
-        const path = `activity-documents/doc_${Date.now()}.${ext}`;
-        const { error: upErr } = await supabase.storage
-          .from('activity-chat')
-          .upload(path, pickedFile!, { contentType: pickedFile!.type || undefined });
-        if (upErr) throw upErr;
-        const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
-        file_url = urlData.publicUrl;
-        mime = pickedFile!.type || undefined;
+        const { data: { user } } = await supabase.auth.getUser();
+        const extUserId = await remapToExternal(user?.id || null);
+        const stamp = Date.now();
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          const ext = extOf(f.name) || (isImageFile(f) ? 'png' : 'bin');
+          const path = `activity-documents/doc_${stamp}_${i}.${ext}`;
+          const { error: upErr } = await supabase.storage
+            .from('activity-chat')
+            .upload(path, f, { contentType: f.type || undefined });
+          if (upErr) throw upErr;
+          const { data: urlData } = supabase.storage.from('activity-chat').getPublicUrl(path);
+          fileUrls.push(urlData.publicUrl);
 
-        // Guarda como anexo da atividade (rastreabilidade).
-        if (activityId) {
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            const extUserId = await remapToExternal(user?.id || null);
-            await externalSupabase.from('activity_attachments').insert({
-              activity_id: activityId,
-              file_url,
-              file_name: pickedFile!.name,
-              file_type: mime || `application/${ext}`,
-              attachment_type: mime === 'application/pdf' ? 'document' : 'text',
-              created_by: extUserId,
-            });
-          } catch (attErr) {
-            console.warn('[ActivityDocumentUpload] não foi possível anexar:', attErr);
+          // Guarda como anexo da atividade (rastreabilidade).
+          if (activityId) {
+            try {
+              await externalSupabase.from('activity_attachments').insert({
+                activity_id: activityId,
+                file_url: urlData.publicUrl,
+                file_name: f.name,
+                file_type: f.type || `application/${ext}`,
+                attachment_type: attachmentTypeOf(f),
+                created_by: extUserId,
+              });
+            } catch (attErr) {
+              console.warn('[ActivityDocumentUpload] não foi possível anexar:', attErr);
+            }
           }
         }
       }
@@ -217,11 +289,15 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
       const { previousActivities, chatMessages } = await collectExtraContext();
       const fullContext = { ...context, previous_activities: previousActivities, chat_messages: chatMessages };
 
-      const body: any = { activity_context: fullContext };
-      if (file_url) body.file_url = file_url;
-      else body.text = pastedText.trim();
+      // Arquivo(s) e texto convivem: o print/PDF é a fonte principal e o texto colado
+      // entra como complemento. `file_url` segue junto por compatibilidade.
+      const source: { file_url?: string; file_urls?: string[]; text?: string } = {};
+      if (fileUrls.length > 0) { source.file_urls = fileUrls; source.file_url = fileUrls[0]; }
+      if (hasText) source.text = pastedText.trim();
+
+      const body: any = { activity_context: fullContext, ...source };
       // Guarda a fonte para reaproveitar caso a IA faça uma pergunta e o usuário responda.
-      lastSourceRef.current = file_url ? { file_url } : { text: pastedText.trim() };
+      lastSourceRef.current = source;
 
       const { data, error: fnErr } = await cloudFunctions.invoke('extract-activity-from-document', { body });
       if (fnErr) throw fnErr;
@@ -250,7 +326,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
       setPhase('done');
       toast.error(e?.message || 'Erro ao processar o documento');
     }
-  }, [pickedFile, pastedText, activityId, collectExtraContext, context, onFields, question, answerText]);
+  }, [files, pastedText, activityId, collectExtraContext, context, onFields, question, answerText]);
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o && phase === 'done') reset(); }}>
@@ -259,12 +335,24 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
           variant="outline"
           size="sm"
           className="h-7 text-xs gap-1 text-blue-700 border-blue-200 hover:bg-blue-50 dark:text-blue-400 dark:border-blue-800 dark:hover:bg-blue-900/20"
-          title="Anexe um PDF ou cole um texto para a IA extrair e preencher os campos automaticamente"
+          title="Anexe um PDF, print/imagem ou cole um texto para a IA extrair e preencher os campos automaticamente"
         >
           <FileText className="h-3 w-3" /> Preenchimento por Documento
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-96 p-3 space-y-3">
+      <PopoverContent
+        align="end"
+        className="w-96 p-3 space-y-3"
+        onDragOver={(e) => { if (phase !== 'idle') return; e.preventDefault(); setDragOver(true); }}
+        onDragLeave={(e) => { if (e.currentTarget.contains(e.relatedTarget as Node | null)) return; setDragOver(false); }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          if (phase !== 'idle') return;
+          const dropped = Array.from(e.dataTransfer?.files || []);
+          if (dropped.length > 0) addFiles(dropped);
+        }}
+      >
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-blue-600" />
           <span className="text-sm font-semibold">Preenchimento por Documento</span>
@@ -275,28 +363,33 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
             <div className="flex items-start gap-1.5 rounded-md bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 p-2">
               <Info className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
               <span className="text-[11px] text-blue-700 dark:text-blue-300">
-                Anexe um <strong>PDF</strong> (publicação, despacho, laudo, e-mail, comprovante do INSS) ou cole um <strong>texto</strong>.
+                Anexe, <strong>arraste</strong> ou <strong>cole (Ctrl+V)</strong> um <strong>PDF</strong> ou <strong>print/imagem</strong>
+                {' '}(publicação, despacho, laudo, e-mail, comprovante do INSS) — ou cole um <strong>texto</strong>.
                 A IA lê, entende e preenche os campos da atividade sozinha. Comprovantes do Meu INSS
                 (protocolo, agendamento de perícia/avaliação social, exigência) preenchem no modelo padrão da equipe.
               </span>
             </div>
 
-            {/* Upload de arquivo */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-muted-foreground">Anexar arquivo (PDF, TXT, MD)</label>
+            {/* Upload / arrastar / colar */}
+            <div
+              className={`space-y-1.5 rounded-md border border-dashed p-2 transition-colors ${
+                dragOver ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40' : 'border-border'
+              }`}
+            >
+              <label className="text-[11px] font-medium text-muted-foreground">
+                Anexar arquivos (PDF, imagem, TXT, MD) — arraste aqui ou cole com Ctrl+V
+              </label>
               <div className="flex items-center gap-2">
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept={ACCEPTED}
+                  multiple
                   className="hidden"
                   onChange={(e) => {
-                    const f = e.target.files?.[0] || null;
-                    if (f && f.size > MAX_MB * 1024 * 1024) {
-                      toast.error(`Arquivo maior que ${MAX_MB}MB.`);
-                      return;
-                    }
-                    setPickedFile(f);
+                    const picked = Array.from(e.target.files || []);
+                    if (picked.length > 0) addFiles(picked);
+                    if (fileInputRef.current) fileInputRef.current.value = '';
                   }}
                 />
                 <Button
@@ -304,29 +397,45 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
                   size="sm"
                   className="gap-1.5 h-8 text-xs"
                   onClick={() => fileInputRef.current?.click()}
+                  disabled={files.length >= MAX_FILES}
                 >
                   <Upload className="h-3.5 w-3.5" />
-                  {pickedFile ? 'Trocar arquivo' : 'Escolher arquivo'}
+                  {files.length > 0 ? 'Adicionar mais' : 'Escolher arquivo'}
                 </Button>
-                {pickedFile && (
-                  <div className="flex items-center gap-1 min-w-0 flex-1 text-[11px]">
-                    <span className="truncate" title={pickedFile.name}>{pickedFile.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => { setPickedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
-                      className="text-muted-foreground hover:text-foreground shrink-0"
-                      title="Remover"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                )}
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <ImagePlus className="h-3 w-3" />
+                  {files.length > 0 ? `${files.length}/${MAX_FILES} arquivo(s)` : `até ${MAX_FILES} arquivos, ${MAX_MB}MB cada`}
+                </span>
               </div>
+
+              {files.length > 0 && (
+                <div className="space-y-1 pt-1">
+                  {files.map((f, i) => (
+                    <div key={`${f.name}-${i}`} className="flex items-center gap-1.5 min-w-0 text-[11px]">
+                      {thumbs[i] ? (
+                        <img src={thumbs[i] as string} alt={f.name} className="h-7 w-7 rounded border object-cover shrink-0" />
+                      ) : (
+                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                      )}
+                      <span className="truncate flex-1" title={f.name}>{f.name}</span>
+                      <span className="text-muted-foreground shrink-0">{Math.max(1, Math.round(f.size / 1024))} KB</span>
+                      <button
+                        type="button"
+                        onClick={() => setFiles((prev) => prev.filter((_, idx) => idx !== i))}
+                        className="text-muted-foreground hover:text-foreground shrink-0"
+                        title="Remover"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
               <div className="h-px flex-1 bg-border" />
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">ou</span>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">e/ou</span>
               <div className="h-px flex-1 bg-border" />
             </div>
 
@@ -338,10 +447,9 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
                 onChange={(e) => setPastedText(e.target.value)}
                 placeholder="Cole aqui o texto da publicação, despacho, e-mail, ata…"
                 className="min-h-[100px] text-xs"
-                disabled={!!pickedFile}
               />
-              {pickedFile && (
-                <p className="text-[10px] text-muted-foreground">Texto ignorado enquanto houver arquivo anexado.</p>
+              {files.length > 0 && (
+                <p className="text-[10px] text-muted-foreground">O texto entra como complemento dos arquivos anexados.</p>
               )}
             </div>
 
@@ -349,7 +457,7 @@ export function ActivityDocumentUpload({ context, onFields, activityId, leadId, 
               className="w-full gap-2"
               size="sm"
               onClick={process}
-              disabled={!pickedFile && !pastedText.trim()}
+              disabled={files.length === 0 && !pastedText.trim()}
             >
               <Sparkles className="h-4 w-4" /> Extrair e preencher
             </Button>
