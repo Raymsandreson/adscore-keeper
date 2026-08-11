@@ -18,7 +18,7 @@
 // de propósito, porque alimenta telão. Aqui aparece nome do segurado, então
 // este painel não vai pra TV — só Visão Geral e Acompanhamento Processual.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CalendarDays, FileText, Link2Off } from "lucide-react";
 
 import ListPagination from "@/components/processes/ListPagination";
@@ -34,6 +34,10 @@ import {
 } from "@/components/ui/sheet";
 import { db, ensureExternalSession } from "@/integrations/supabase";
 import { cn } from "@/lib/utils";
+
+// Só baixa quando alguém clica numa linha: esse painel puxa o LeadEditDialog e
+// o useLeads, e nenhum dos dois pesa no bundle da Visão Geral até lá.
+const ProtocoloLeadPainel = lazy(() => import("@/components/protocolos/ProtocoloLeadPainel"));
 
 /** Teto por consulta. Acima disso o painel avisa em vez de mentir por omissão. */
 const LIMITE = 500;
@@ -144,18 +148,33 @@ interface Props {
 }
 
 export default function ProtocolosListaSheet({ open, onOpenChange }: Props) {
+  const [leadAlvo, setLeadAlvo] = useState<string | null>(null);
+  // useCallback estável: o painel refaz a busca do lead quando o onClose troca
+  // de identidade, e uma arrow inline trocaria a cada render daqui.
+  const fecharLead = useCallback(() => setLeadAlvo(null), []);
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
-        {/* Conteúdo só monta quando abre: enquanto fechado não dispara consulta
-            nenhuma no dashboard. */}
-        {open && <Conteudo />}
-      </SheetContent>
-    </Sheet>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent side="right" className="w-full sm:max-w-2xl p-0">
+          {/* Conteúdo só monta quando abre: enquanto fechado não dispara consulta
+              nenhuma no dashboard. */}
+          {open && <Conteudo onAbrirLead={setLeadAlvo} />}
+        </SheetContent>
+      </Sheet>
+
+      {/* Irmão do Sheet, não filho — é o arranjo já usado no ClosedLeadsSheet
+          pra empilhar o painel do lead por cima de um sheet aberto. */}
+      {leadAlvo && (
+        <Suspense fallback={null}>
+          <ProtocoloLeadPainel leadId={leadAlvo} onClose={fecharLead} />
+        </Suspense>
+      )}
+    </>
   );
 }
 
-function Conteudo() {
+function Conteudo({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
   const hoje = useMemo(() => hojeSP(), []);
   const [de, setDe] = useState(() => somaDias(hoje, -29));
   const [ate, setAte] = useState(hoje);
@@ -211,7 +230,7 @@ function Conteudo() {
         leadIds.length
           ? emLotes(leadIds, 100, async (lote) => {
               const { data: d } = await db
-                .from("leads" as any)
+                .from("leads")
                 .select("id, lead_name")
                 .in("id", lote);
               return (d || []) as any[];
@@ -357,8 +376,8 @@ function Conteudo() {
                 : p.lead_id
                   ? vinculos[`lead:${p.lead_id}`]
                   : null;
-              return (
-                <div key={p.id} className="rounded-lg border p-3 space-y-1">
+              const corpo = (
+                <div className="space-y-1">
                   <div className="flex items-baseline justify-between gap-3">
                     <span className="text-sm font-semibold tabular-nums">
                       {fmtBr(p.protocol_date)}
@@ -388,6 +407,25 @@ function Conteudo() {
                       </span>
                     )}
                   </div>
+                </div>
+              );
+
+              // Só vira botão quando há lead pra abrir. Linha sem vínculo não
+              // finge ser clicável (medido em 11/08: 39 das 179 da janela
+              // padrão não têm nem caso nem lead).
+              return p.lead_id ? (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => onAbrirLead(p.lead_id!)}
+                  title="Abrir o lead vinculado"
+                  className="w-full rounded-lg border p-3 text-left transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {corpo}
+                </button>
+              ) : (
+                <div key={p.id} className="rounded-lg border p-3">
+                  {corpo}
                 </div>
               );
             })}

@@ -12,10 +12,21 @@ import { toast } from 'sonner';
 import { ensureRemapCache, remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfilesList } from '@/hooks/useProfilesList';
-import { MapPin, Phone, Instagram, Briefcase, Users2, Megaphone, MapPinOff, Sparkles, Loader2 } from 'lucide-react';
+import { useContactsPendencies } from '@/hooks/useContactsPendencies';
+import { useContactsLinks, EMPTY_CONTACT_LINKS } from '@/hooks/useContactsLinks';
+import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { ContactPendencyBadge } from '@/components/contacts/ContactPendencyBadge';
+import { MapPin, Phone, Instagram, Briefcase, Users2, Megaphone, MapPinOff, Sparkles, Loader2, User, MessageCircle, Link2, Scale } from 'lucide-react';
 import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
+import type { Contact } from '@/hooks/useContacts';
 
 const ActivityFullSheet = lazy(() => import('@/components/activities/ActivityFullSheet').then(m => ({ default: m.ActivityFullSheet })));
+// Todos lazy de propósito: são as telas mais pesadas do sistema e o
+// LeadEditDialog importa ESTE arquivo de volta — o import dinâmico quebra o ciclo.
+const ContactDetailSheet = lazy(() => import('@/components/contacts/ContactDetailSheet').then(m => ({ default: m.ContactDetailSheet })));
+const DashboardChatPreview = lazy(() => import('@/components/whatsapp/DashboardChatPreview').then(m => ({ default: m.DashboardChatPreview })));
+const LeadEditDialog = lazy(() => import('@/components/kanban/LeadEditDialog').then(m => ({ default: m.LeadEditDialog })));
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface CityContact {
   id: string;
@@ -67,13 +78,20 @@ function cepDigits(raw: string): string {
 const UNCLASSIFIED = '__none__';
 const ALL_TAB = '__all__';
 
-function waLink(phone: string | null): string | null {
+/** Identidade da conversa no banco: dígitos puros, com DDI. */
+function chatPhone(phone: string | null): string | null {
   if (!phone) return null;
   let digits = phone.replace(/\D/g, '');
   if (!digits) return null;
   if (digits.length <= 11) digits = `55${digits}`;
-  return `https://wa.me/${digits}`;
+  return digits;
 }
+
+const ROLE_LABELS: Record<string, string> = {
+  autor: 'Autor',
+  reu: 'Réu',
+  advogado: 'Advogado',
+};
 
 export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadName, onCepChange }: CityContactsSuggestionDialogProps) {
   const { classificationConfig } = useContactClassifications();
@@ -89,6 +107,22 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
   const [newsSummary, setNewsSummary] = useState('');
   const [summarizing, setSummarizing] = useState(false);
   const [marketing, setMarketing] = useState<{ assignee: TeamPerson | null; observers: TeamPerson[] }>({ assignee: null, observers: [] });
+
+  // Atalhos abertos a partir de um contato da lista. Todos são camadas por
+  // cima deste diálogo — nada aqui manda o usuário para outra página, porque
+  // ele está no meio do cadastro de um lead e perderia o que digitou.
+  const [detailContact, setDetailContact] = useState<Contact | null>(null);
+  const [chat, setChat] = useState<{ phone: string; name: string; commitments: boolean } | null>(null);
+  const [leadToEdit, setLeadToEdit] = useState<any | null>(null);
+  const [processToOpen, setProcessToOpen] = useState<any | null>(null);
+  /** Qual atalho está buscando o registro completo (trava só aquele botão). */
+  const [loadingShortcut, setLoadingShortcut] = useState<string | null>(null);
+  const { boards: kanbanBoards } = useKanbanBoards();
+
+  const contactIds = useMemo(() => contacts.map(c => c.id), [contacts]);
+  const pendencyTargets = useMemo(() => contacts.map(c => ({ id: c.id, phone: c.phone })), [contacts]);
+  const { byContact: pendencies, loading: loadingPendencies } = useContactsPendencies(pendencyTargets);
+  const { byContact: links } = useContactsLinks(contactIds);
 
   useEffect(() => {
     if (!trigger?.city || !trigger?.state) return;
@@ -280,11 +314,67 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
     }
   };
 
+  /** Abre a ficha completa do contato — a lista traz só um resumo da RPC. */
+  const openContactDetail = useCallback(async (c: CityContact) => {
+    setLoadingShortcut(`detail:${c.id}`);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await (db as any).from('contacts').select('*').eq('id', c.id).maybeSingle();
+      if (error || !data) throw error || new Error('contato não encontrado');
+      setDetailContact(data as Contact);
+    } catch (e) {
+      console.error('Erro ao abrir ficha do contato:', e);
+      toast.error('Não consegui abrir a ficha deste contato.');
+    } finally {
+      setLoadingShortcut(null);
+    }
+  }, []);
+
+  const openChat = useCallback((c: CityContact, commitments = false) => {
+    const digits = chatPhone(c.phone);
+    if (!digits) {
+      toast.error('Este contato não tem telefone cadastrado.');
+      return;
+    }
+    setChat({ phone: digits, name: c.full_name, commitments });
+  }, []);
+
+  const openLead = useCallback(async (leadId: string) => {
+    setLoadingShortcut(`lead:${leadId}`);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await (db as any).from('leads').select('*').eq('id', leadId).maybeSingle();
+      if (error || !data) throw error || new Error('lead não encontrado');
+      setLeadToEdit(data);
+    } catch (e) {
+      console.error('Erro ao abrir lead vinculado:', e);
+      toast.error('Não consegui abrir este lead.');
+    } finally {
+      setLoadingShortcut(null);
+    }
+  }, []);
+
+  const openProcess = useCallback(async (processId: string) => {
+    setLoadingShortcut(`case:${processId}`);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await (db as any).from('lead_processes').select('*').eq('id', processId).maybeSingle();
+      if (error || !data) throw error || new Error('processo não encontrado');
+      setProcessToOpen(data);
+    } catch (e) {
+      console.error('Erro ao abrir caso vinculado:', e);
+      toast.error('Não consegui abrir este caso.');
+    } finally {
+      setLoadingShortcut(null);
+    }
+  }, []);
+
   const renderCard = (c: CityContact) => {
     const rel = (c.classifications && c.classifications.length > 0)
       ? c.classifications
       : (c.classification ? [c.classification] : []);
-    const wa = waLink(c.phone);
+    const linked = links[c.id] || EMPTY_CONTACT_LINKS;
+    const busyDetail = loadingShortcut === `detail:${c.id}`;
     return (
       <div key={c.id} className="rounded-lg border bg-card p-3 space-y-2">
         <div className="flex items-start justify-between gap-2">
@@ -311,16 +401,85 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
             <span className="flex items-center gap-1"><Instagram className="h-3 w-3" />@{c.instagram_username.replace(/^@/, '')}</span>
           )}
         </div>
-        {c.phone && (
-          <div className="flex items-center justify-between gap-2 pt-1">
-            <span className="flex items-center gap-1 text-xs text-muted-foreground"><Phone className="h-3 w-3" />{c.phone}</span>
-            {wa && (
-              <Button asChild size="sm" variant="outline" className="h-7 text-xs">
-                <a href={wa} target="_blank" rel="noopener noreferrer">WhatsApp</a>
+
+        {/* Etiquetas com atalho: pendência do cliente, lead e caso de onde ele
+            veio. Antes era preciso abrir a ficha para descobrir qualquer uma. */}
+        <div className="flex flex-wrap items-center gap-1">
+          <ContactPendencyBadge
+            summary={pendencies[c.id]}
+            loading={loadingPendencies}
+            showWhenEmpty
+            onClick={c.phone ? () => openChat(c, true) : undefined}
+          />
+          {linked.leads.map(l => (
+            <button
+              key={l.id}
+              type="button"
+              onClick={() => openLead(l.id)}
+              disabled={loadingShortcut === `lead:${l.id}`}
+              title={`Abrir o lead ${l.name}`}
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              <Badge variant="outline" className="text-[10px] gap-1 px-1.5 py-0 font-normal max-w-[180px]">
+                {loadingShortcut === `lead:${l.id}`
+                  ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                  : <Link2 className="h-3 w-3 shrink-0" />}
+                <span className="truncate">{l.name}</span>
+              </Badge>
+            </button>
+          ))}
+          {linked.cases.map(cs => (
+            <button
+              key={cs.processId}
+              type="button"
+              onClick={() => openProcess(cs.processId)}
+              disabled={loadingShortcut === `case:${cs.processId}`}
+              title={`Abrir o caso ${cs.label}${cs.role ? ` (${ROLE_LABELS[cs.role] || cs.role})` : ''}`}
+              className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
+            >
+              <Badge variant="outline" className="text-[10px] gap-1 px-1.5 py-0 font-normal max-w-[180px]">
+                {loadingShortcut === `case:${cs.processId}`
+                  ? <Loader2 className="h-3 w-3 animate-spin shrink-0" />
+                  : <Scale className="h-3 w-3 shrink-0" />}
+                <span className="truncate">{cs.label}</span>
+              </Badge>
+            </button>
+          ))}
+          {linked.leads.length === 0 && linked.cases.length === 0 && (
+            <span className="text-[10px] text-muted-foreground">Sem lead ou caso vinculado</span>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <span className="flex items-center gap-1 text-xs text-muted-foreground min-w-0">
+            {c.phone
+              ? <><Phone className="h-3 w-3 shrink-0" /><span className="truncate">{c.phone}</span></>
+              : <span className="italic">Sem telefone</span>}
+          </span>
+          <div className="flex items-center gap-1 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1"
+              disabled={busyDetail}
+              onClick={() => openContactDetail(c)}
+            >
+              {busyDetail ? <Loader2 className="h-3 w-3 animate-spin" /> : <User className="h-3 w-3" />}
+              Detalhar
+            </Button>
+            {c.phone && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={() => openChat(c)}
+              >
+                <MessageCircle className="h-3 w-3 text-green-600" />
+                WhatsApp
               </Button>
             )}
           </div>
-        )}
+        </div>
       </div>
     );
   };
@@ -460,6 +619,64 @@ export function CityContactsSuggestionDialog({ trigger, onClose, leadId, leadNam
           </DialogContent>
         )}
       </Dialog>
+
+      {/* Ficha completa do contato, por cima da lista — o diálogo continua
+          aberto atrás para não perder o cadastro em andamento. */}
+      {detailContact && (
+        <Suspense fallback={null}>
+          <ContactDetailSheet
+            contact={detailContact}
+            open={!!detailContact}
+            onOpenChange={(v) => { if (!v) setDetailContact(null); }}
+          />
+        </Suspense>
+      )}
+
+      {/* WhatsApp: a conversa inteira subindo de baixo, com as mesmas funções
+          da sessão do WhatsApp (envio, mídia, IA, pendências, chat da equipe).
+          O wa.me antigo jogava o usuário para fora do sistema. */}
+      {chat && (
+        <Suspense fallback={null}>
+          <DashboardChatPreview
+            open={!!chat}
+            onOpenChange={(v) => { if (!v) setChat(null); }}
+            phone={chat.phone}
+            contactName={chat.name}
+            instanceName={null}
+            hasLead={false}
+            hasContact
+            wasResponded={false}
+            responseTimeMinutes={null}
+            initialCommitmentsOpen={chat.commitments}
+          />
+        </Suspense>
+      )}
+
+      {leadToEdit && (
+        <Suspense fallback={null}>
+          <LeadEditDialog
+            open={!!leadToEdit}
+            onOpenChange={(v) => { if (!v) setLeadToEdit(null); }}
+            lead={leadToEdit}
+            onSave={async (id: string, updates: any) => {
+              const { error } = await (db as any).from('leads').update(updates).eq('id', id);
+              if (error) throw error;
+            }}
+            boards={kanbanBoards}
+            mode="dialog"
+          />
+        </Suspense>
+      )}
+
+      {processToOpen && (
+        <Suspense fallback={null}>
+          <ProcessDetailSheet
+            open={!!processToOpen}
+            onOpenChange={(v: boolean) => { if (!v) setProcessToOpen(null); }}
+            process={processToOpen}
+          />
+        </Suspense>
+      )}
 
       {activitySheetOpen && (
         <Suspense fallback={null}>

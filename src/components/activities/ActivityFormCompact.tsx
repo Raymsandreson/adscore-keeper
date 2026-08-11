@@ -23,6 +23,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { TimeOffAssigneeWarning } from '@/components/activities/TimeOffAssigneeWarning';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
@@ -736,12 +737,15 @@ export function SendToGroupSection({ buildMsg, leadId, fieldSettings, updateFiel
 
 export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const { user } = useAuthContext();
+  // Desativados na aba Times somem do seletor de assessor (filterAssignableMembers
+  // já os descarta; o hook é quem carrega a lista e repinta quando ela chega).
+  const inactiveIds = useInactiveUserIds();
   // Opções de @menção nos campos de texto (membros atribuíveis da equipe).
   const mentionOptions = useMemo(
     () => filterAssignableMembers(props.teamMembers)
       .map((m: any) => ({ id: m.user_id, name: m.full_name || '' }))
       .filter((o: { id: string; name: string }) => o.name),
-    [props.teamMembers],
+    [props.teamMembers, inactiveIds],
   );
   const [detailsOpen, setDetailsOpen] = useState(true);
   // Estado de "Revisar com IA" no feedback.

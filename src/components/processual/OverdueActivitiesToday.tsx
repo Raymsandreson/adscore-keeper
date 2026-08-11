@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers, ASSIGNEE_BLOCKLIST } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -51,6 +52,7 @@ interface ActivityRow extends OverdueActivity {
 export function OverdueActivitiesToday() {
   const navigate = useNavigate();
   const profiles = useProfilesList();
+  const inactiveIds = useInactiveUserIds();
   const [items, setItems] = useState<OverdueActivity[]>([]);
   const [chatToday, setChatToday] = useState<TodayChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -125,7 +127,7 @@ export function OverdueActivitiesToday() {
       if (name) set.add(name);
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [profiles]);
+  }, [profiles, inactiveIds]);
 
   // Última mensagem de hoje por atividade (a query já vem ordenada desc)
   const chatByActivity = useMemo(() => {

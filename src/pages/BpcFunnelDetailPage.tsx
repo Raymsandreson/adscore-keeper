@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CalendarIcon, LayoutGrid, Loader2, Users, Filter, RefreshCw } from "lucide-react";
+import { ArrowLeft, CalendarIcon, ExternalLink, LayoutGrid, Loader2, Users, Filter, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
@@ -15,7 +15,7 @@ import { BpcStageLeadsSheet } from "@/components/kanban/BpcStageLeadsSheet";
 import { BpcKpisPanel } from "@/components/kanban/BpcKpisPanel";
 import { BpcSheetSyncButton } from "@/components/kanban/BpcSheetSyncButton";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
-import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
+import { getFunnelSheetConfig, getFunnelSheetUrl } from "@/lib/funnelSheetConfig";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,6 +79,7 @@ const BpcFunnelDetailPage = () => {
   }), [fromDate, toDate]);
 
   const sheetCfg = useMemo(() => getFunnelSheetConfig(board?.name), [board?.name]);
+  const sheetUrl = useMemo(() => getFunnelSheetUrl(sheetCfg?.spreadsheetId), [sheetCfg?.spreadsheetId]);
 
   const {
     metrics: bpcMetrics,
@@ -277,6 +278,14 @@ const BpcFunnelDetailPage = () => {
           </div>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {sheetUrl && (
+            <Button variant="outline" size="sm" asChild title="Abrir a planilha do Meta Ads no Google Sheets">
+              <a href={sheetUrl} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
+                Abrir planilha
+              </a>
+            </Button>
+          )}
           <BpcSheetSyncButton
             boardId={board.id}
             onCreated={handleRefresh}

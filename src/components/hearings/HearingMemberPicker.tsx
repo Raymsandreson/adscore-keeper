@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Button } from '@/components/ui/button';
@@ -15,6 +16,7 @@ interface Props {
 
 export function HearingMemberPicker({ value, onChange }: Props) {
   const profiles = useProfilesList();
+  const inactiveIds = useInactiveUserIds();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -30,7 +32,7 @@ export function HearingMemberPicker({ value, onChange }: Props) {
       (p.full_name || '').toLowerCase().includes(term) ||
       (p.email || '').toLowerCase().includes(term)
     );
-  }, [profiles, query]);
+  }, [profiles, query, inactiveIds]);
 
   const label = selected
     ? (selected.full_name || selected.email || 'Membro sem nome')

@@ -91,6 +91,7 @@ import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { summarizeActivityConversation, type SuggestedActivity } from '@/lib/activityFeedbackSummary';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 
 // IMPORTANTE: lazy() precisa ficar no escopo do módulo. Se ficar dentro do
 // render, cada re-render (ex.: tick do cronômetro ativo) cria um componente
@@ -286,6 +287,8 @@ const ActivitiesPage = () => {
   const [courtContactsOpen, setCourtContactsOpen] = useState(false);
   const [leads, setLeads] = useState<LeadOption[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  // Desativados na aba Times somem dos seletores de assessor (filterAssignableMembers).
+  useInactiveUserIds();
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [leadSearch, setLeadSearch] = useState('');
   const [searchedLeads, setSearchedLeads] = useState<LeadOption[]>([]);

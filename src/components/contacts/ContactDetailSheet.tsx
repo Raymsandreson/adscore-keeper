@@ -52,7 +52,7 @@ import {
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
-import { useContactRelationships } from '@/hooks/useContactRelationships';
+import { ContactRelationshipsPanel } from '@/components/contacts/ContactRelationshipsPanel';
 import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { detectStateFromName, detectCityFromBase } from '@/lib/parseLocationFromName';
@@ -198,7 +198,6 @@ export function ContactDetailSheet({
     updateClassification,
     deleteClassification,
   } = useContactClassifications();
-  const { relationships, loading: loadingRelationships } = useContactRelationships(contact?.id);
   const { leads: contactLeads, loading: loadingLeads, unlinkLead, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
   const { professions, searchProfessions } = useCboProfessions();
@@ -1261,51 +1260,7 @@ export function ContactDetailSheet({
 
             {/* Relationships Tab */}
             <TabsContent value="relationships" className="space-y-4 mt-0">
-              {loadingRelationships ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
-                </div>
-              ) : relationships.length > 0 ? (
-                <div className="space-y-2">
-                  {relationships.map((rel) => (
-                    <div
-                      key={rel.id}
-                      className="flex items-center gap-3 p-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                    >
-                      <Users className="h-4 w-4 text-muted-foreground" />
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">
-                          {rel.related_contact?.full_name || 'Contato desconhecido'}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {rel.relationship_type}
-                          {rel.isInverse && ' (inverso)'}
-                        </p>
-                      </div>
-                      {rel.related_contact?.instagram_username && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => window.open(`https://instagram.com/${rel.related_contact?.instagram_username?.replace('@', '')}`, '_blank')}
-                        >
-                          <Instagram className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Users className="h-10 w-10 mx-auto text-muted-foreground/50 mb-2" />
-                  <p className="text-sm text-muted-foreground">
-                    Nenhum vínculo cadastrado
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Use a gestão de relacionamentos para adicionar vínculos
-                  </p>
-                </div>
-              )}
+              <ContactRelationshipsPanel contact={contact} embedded />
             </TabsContent>
 
             {/* Leads Tab */}

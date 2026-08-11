@@ -40,6 +40,7 @@ import { useConversationDisplayNames, conversationDisplayName } from '@/hooks/us
 import { ensureRemapCache, remapToCloudSync, remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { isCommitmentOverdue } from '@/lib/clientCommitments';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import {
   groupByBucket, countByDay, countByOwner, commitmentDate, isCommitmentConverted, BUCKET_LABEL,
   type InboxCommitment,
@@ -81,6 +82,8 @@ export function ClientCommitmentsInbox({
   open, onOpenChange, teamOptions = [], onCreateActivity, onOpenActivity,
 }: Props) {
   const navigate = useNavigate();
+  // Desativados na aba Times somem do seletor de assessor (filterAssignableMembers).
+  useInactiveUserIds();
   const {
     items, loading, reload, markDone, dismiss, setAssignee, meExtId,
   } = useClientCommitmentsInbox({ enabled: open });
