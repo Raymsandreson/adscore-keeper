@@ -166,7 +166,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
   const [isLeadClosed, setIsLeadClosed] = useState(false);
   const [boardName, setBoardName] = useState<string>('');
   const [boardType, setBoardType] = useState<string>('');
-  // Status possíveis do POP (kanban_boards.settings.resultados) — usados no
+  // Resultados possíveis do POP (kanban_boards.settings.resultados) — usados no
   // rótulo do status aplicado pela resposta escolhida.
   const [popResultados, setPopResultados] = useState<{ id: string; label: string }[]>([]);
   // Funil do próprio lead: só nele a fase mora em leads.status (no POP de

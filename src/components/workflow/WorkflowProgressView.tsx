@@ -250,7 +250,7 @@ export function WorkflowProgressView({
     });
   };
 
-  // Status possíveis do POP (moram em board.settings.resultados) — usados para
+  // Resultados possíveis do POP (moram em board.settings.resultados) — usados para
   // mostrar a badge de status e aplicar o setStatusId de passo/resposta/checklist.
   const popResultados = useMemo(() => {
     const cfg = (board as { settings?: { resultados?: { id: string; label: string }[] } }).settings;
