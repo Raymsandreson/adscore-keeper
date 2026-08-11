@@ -54,6 +54,26 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   'a4eab7b5-8bcc-473e-804c-c412348b2aa1', // Maria Clara Mendes (mariaclaramendeso2014@gmail.com)
 ]);
 
+/**
+ * Desativados na aba Times (org_user_status.active = false, no Externo).
+ * Antes só a lista fixa acima tirava alguém do seletor, então quem saía do
+ * escritório continuava assinalável até alguém colar o UUID aqui na mão — foi
+ * assim que a conta antiga da Maria Lydia recebeu 5 atividades depois de
+ * desativada. Agora o desativar da aba Times já basta.
+ *
+ * Preenchido por src/lib/inactiveUsers.ts assim que a busca responde; os
+ * componentes que montam `useInactiveUserIds()` repintam nesse momento.
+ */
+let INACTIVE_USER_IDS: ReadonlySet<string> = new Set<string>();
+
+export function setInactiveUserIds(ids: ReadonlySet<string>) {
+  INACTIVE_USER_IDS = ids;
+}
+
+export function isAssignable(userId: string): boolean {
+  return !ASSIGNEE_BLOCKLIST.has(userId) && !INACTIVE_USER_IDS.has(userId);
+}
+
 export function filterAssignableMembers<T extends { user_id: string }>(members: T[]): T[] {
-  return members.filter(m => !ASSIGNEE_BLOCKLIST.has(m.user_id));
+  return members.filter(m => isAssignable(m.user_id));
 }

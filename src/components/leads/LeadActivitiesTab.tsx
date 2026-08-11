@@ -19,6 +19,7 @@ import { cn } from '@/lib/utils';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ActivityChatSheet } from '@/components/activities/ActivityChatSheet';
@@ -153,6 +154,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
 
   const { types: activityTypes } = useActivityTypes();
   const profiles = useProfilesList();
+  // Desativados na aba Times somem do seletor de assessor (filterAssignableMembers).
+  useInactiveUserIds();
   const { configs: timeBlockSettings } = useTimeBlockSettings();
 
   const allowedTypes = timeBlockSettings.length > 0

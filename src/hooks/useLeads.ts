@@ -597,7 +597,14 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
     }, 500);
   }, [calculateStats]);
 
-  const addLead = async (lead: Partial<Lead>, testEventCode?: string) => {
+  // `skipAutoGroup`: quem já cria o grupo com o fluxo completo (escolha do autor,
+  // nº do lead, link de convite e resumo no grupo) passa true para não disparar
+  // uma segunda criação por aqui — senão o lead nasce com dois grupos.
+  const addLead = async (
+    lead: Partial<Lead>,
+    testEventCode?: string,
+    opts?: { skipAutoGroup?: boolean }
+  ) => {
     try {
       const externalUserId = user?.id ? await remapToExternal(user.id) : null;
       const sanitizedLead = sanitizeLeadDateFields(lead);
@@ -655,7 +662,7 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
       // Passa pelo functionRouter (alvo 'external'): o fetch direto pro projeto Cloud
       // caía na cópia legada da função, que montava o nome com o template antigo
       // ("PREV1954 Cidade - UF ( Bairro ) Acd- Acolhedor -") e numeração própria.
-      if ((newLead as any).acolhedor && newLead.board_id) {
+      if (!opts?.skipAutoGroup && (newLead as any).acolhedor && newLead.board_id) {
         cloudFunctions.invoke<any>('create-whatsapp-group', {
           body: {
             lead_id: newLead.id,

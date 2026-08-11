@@ -48,6 +48,7 @@ import { RedistributeActivitiesDialog } from './RedistributeActivitiesDialog';
 import { TeamManagerPicker } from './TeamManagerPicker';
 import { DirectorPicker } from './DirectorPicker';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { invalidateInactiveUserIds } from '@/lib/inactiveUsers';
 
 const ALL_METRICS = [
   { key: 'replies', label: 'Respostas' },
@@ -339,6 +340,9 @@ export function TeamsManager() {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_id' });
       if (error) throw error;
+      // Sem isso, o seletor de assessor só deixaria de oferecer a pessoa no
+      // próximo carregamento da lista compartilhada.
+      invalidateInactiveUserIds();
       setInactiveIds(prev => {
         const next = new Set(prev);
         if (active) next.delete(person.user_id); else next.add(person.user_id);

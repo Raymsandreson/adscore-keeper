@@ -9,6 +9,7 @@ const ActivityFullSheet = lazy(() =>
 );
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -79,18 +80,15 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const [teamFilter, setTeamFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'responder' | 'aguardando'>('all');
   const [teamGroups, setTeamGroups] = useState<{ name: string; memberIds: string[] }[]>([]);
-  const [inactiveIds, setInactiveIds] = useState<Set<string>>(new Set());
+  // Desativados (org_user_status) somem do chat: sem conversa nova, sem @menção
+  // e a conversa direta antiga fica oculta.
+  const inactiveIds = useInactiveUserIds();
 
   // Times pro filtro: usa os grupos "👥 {time}" sincronizados na aba Times
   useEffect(() => {
     (async () => {
       try {
         await ensureExternalSession();
-        // Desativados (org_user_status) somem do chat: sem conversa nova,
-        // sem @menção e a conversa direta antiga fica oculta.
-        const { data: statusRows } = await ((externalSupabase as any).from('org_user_status') as any)
-          .select('user_id').eq('active', false);
-        setInactiveIds(new Set(((statusRows as any[]) || []).map(r => r.user_id)));
         const { data: groups } = await (externalSupabase.from('team_conversations') as any)
           .select('id, name').eq('type', 'group').like('name', '👥 %');
         if (!groups?.length) return;

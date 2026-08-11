@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 import { CampaignPicker } from '@/components/leads/CampaignPicker';
@@ -301,6 +302,7 @@ export function LeadEditDialog({
   const [notes, setNotes] = useState('');
   const [acolhedor, setAcolhedor] = useState('');
   const profiles = useProfilesList();
+  const inactiveIds = useInactiveUserIds();
   const { sources: leadSources, addSource: addLeadSource, updateSource: updateLeadSource, deleteSource: deleteLeadSource } = useLeadSources();
   const [showSourceManager, setShowSourceManager] = useState(false);
   const [newSourceLabel, setNewSourceLabel] = useState('');
@@ -470,7 +472,7 @@ export function LeadEditDialog({
     isTrabalhistaBoard((currentLead as any)?.board_id)
       ? TRABALHISTA_ACOLHEDORES
       : filterAssignableMembers(profiles).map((p) => p.full_name || p.email || p.id)
-  ), [currentLead, profiles]);
+  ), [currentLead, profiles, inactiveIds]);
   const autoDrive = useAutoImportGroupDocs(
     currentLead?.id || null,
     currentLead?.lead_name || null,

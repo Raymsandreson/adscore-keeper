@@ -29,6 +29,7 @@ import {
 import { useLegalCases, LegalCase } from '@/hooks/useLegalCases';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { useProcessParties, partyRoleLabels, PartyRole } from '@/hooks/useProcessParties';
@@ -60,6 +61,8 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   const { cases, loading: casesLoading, fetchCases, createCase, updateCase, deleteCase } = useLegalCases(leadId);
   const { nuclei } = useSpecializedNuclei();
   const profiles = useProfilesList();
+  // Desativados na aba Times somem do seletor de assessor (filterAssignableMembers).
+  useInactiveUserIds();
 
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [editingCase, setEditingCase] = useState<LegalCase | null>(null);

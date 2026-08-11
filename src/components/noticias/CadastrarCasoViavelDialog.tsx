@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { externalSupabase, ensureExternalSession } from "@/integrations/supabase/external-client";
 import { cloudFunctions } from "@/lib/functionRouter";
+import {
+  GROUP_AUTHOR_OPTIONS,
+  DEFAULT_GROUP_AUTHOR_INSTANCE_ID,
+  composeGroupIntroMessage,
+  createLeadWhatsappGroup,
+  fetchInstanceConnStatus,
+  formatISOToBR,
+  nextFreeLeadNumber as nextFreeLeadNumberForBoard,
+  suggestNextSequence as suggestNextSequenceForBoard,
+} from "@/lib/leadWhatsappGroupFlow";
+import { TRABALHISTA_BOARD_ID } from "@/lib/trabalhistaAcolhedores";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfilesList } from "@/hooks/useProfilesList";
 import {
@@ -19,7 +29,6 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import type { Lead } from "@/hooks/useLeads";
 
-const TRABALHISTA_BOARD_ID = "2dcd54b5-502b-413b-b795-5e24a20797d2";
 const FIRST_KANBAN_STAGE = "recepcao";
 
 const CASE_TYPES = ['Queda de Altura', 'Soterramento', 'Choque Elétrico', 'Acidente com Máquinas', 'Intoxicação', 'Explosão', 'Incêndio', 'Acidente de Trânsito', 'Esmagamento', 'Corte/Amputação', 'Afogamento', 'Outro'];
@@ -71,11 +80,6 @@ const EMPTY_FORM: CasoForm = {
   sector: '', company_size_justification: '', liability_type: '', liability_justification: '',
 };
 
-function formatISOToBR(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
-}
-
 // Lead título: Vítima(Cidade-UF) x Tomadora(Dano - Dinâmica) - DD/MM/AAAA
 function composeTitle(f: CasoForm): string {
   const victim = f.victim_name.trim() || 'Vítima não identificada';
@@ -90,147 +94,12 @@ function composeTitle(f: CasoForm): string {
   return title;
 }
 
-// Iniciais do acolhedor: "Juliana Pimentel" → "JP", "Luiz Ricardo Silva" → "LR" (2 primeiras).
-function initialsOf(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
-
-// Monta a mensagem-resumo que vai no grupo assim que ele é criado.
-function composeGroupIntroMessage(f: CasoForm, groupLink: string): string {
-  const today = format(new Date(), 'dd/MM/yyyy');
-  const acolhedorLine = f.acolhedor
-    ? `${f.acolhedor}${initialsOf(f.acolhedor) ? ` (${initialsOf(f.acolhedor)})` : ''}`
-    : 'Não informado';
-  const respLine = [f.liability_type, f.liability_justification.trim()]
-    .filter(Boolean)
-    .join(' — ');
-  const linhas: string[] = [
-    `📅 Data da criação: ${today}`,
-    ``,
-    `🔢 Lead título: ${f.lead_title.trim() || 'Não informado'}`,
-    ``,
-    ` ✅ STATUS: OUTBOUND`,
-    ``,
-    `👤 Acolhedor: ${acolhedorLine}`,
-    ``,
-    `⚠️ Tipo de Caso: ${f.case_type || 'Não informado'}`,
-    ``,
-    `📰 Origem do Caso: Internet`,
-    ``,
-    `🔗 Link do Grupo do WhatsApp: ${groupLink || 'Não disponível'}`,
-    ``,
-    `📍 Cidade da Visita: ${f.visit_city || 'Não informado'}`,
-    ``,
-    `🏛️ Estado da Visita: ${f.visit_state || 'Não informado'}`,
-    ``,
-    `🌎 Região da Visita: ${f.visit_region || 'Não informado'}`,
-    ``,
-    `📅 Data do Acidente: ${f.accident_date ? formatISOToBR(f.accident_date) : 'Não informado'}`,
-    ``,
-    `💥 Dano: ${f.damage || 'Não informado'}`,
-    ``,
-    `🆔 Nome da Vítima: ${f.victim_name || 'Não informado'}`,
-    ``,
-    `🎂 Idade da Vítima: ${f.victim_age ? `${f.victim_age} anos` : 'Não informado'}`,
-    ``,
-    `📌 Endereço do Acidente: ${f.accident_address || 'Não informado'}`,
-    ``,
-    `🏠 Endereço da Visita: ${f.visit_address || [f.visit_city, f.visit_state].filter(Boolean).join(', ') || 'Não informado'}`,
-    ``,
-    `🏢 Nome da Empresa Terceirizada: ${f.contractor_company || 'Não informado'}`,
-    ``,
-    `🏢 Nome da Empresa Tomadora: ${f.main_company || 'Não informado'}`,
-    ``,
-    `📰 Link da Notícia: ${f.news_link || 'Não informado'}`,
-    ``,
-    `💰 Justificativa do Porte da Empresa: ${f.company_size_justification || 'Não informado'}`,
-    ``,
-    `⚖️ Tipo de Responsabilidade: ${respLine || 'Não informado'}`,
-    ``,
-    `📜 Viabilidade Jurídica: Positiva`,
-  ];
-  return linhas.join('\n');
-}
-
 type StepState = 'idle' | 'running' | 'done' | 'error';
 
-// Extrai o nº de nomes tipo "LEAD94", "LEAD169", "LEAD132/jun.26".
-// Números com zero à esquerda ("LEAD0656") são de outro funil (INSS/BPC) e são ignorados.
-function parseLeadSeq(name: string | null | undefined): number {
-  const m = String(name || '').match(/^\s*(?:✅\s*)?LEAD\s*[-|:]?\s*(\d{1,6})\b/i);
-  if (!m || /^0/.test(m[1])) return 0;
-  return Number(m[1]);
-}
-
-// Maior nº entre: contador oficial, grupos vinculados a leads do board (tempo real)
-// e snapshot UazAPI (pega grupos criados manualmente; sincroniza 1x/dia). Best-effort:
-// cada fonte falha isolada e a sugestão continua editável pelo usuário.
-async function suggestNextSequence(): Promise<number | null> {
-  await ensureExternalSession();
-  let best = 0;
-  let seqStart: number | null = null;
-  try {
-    const { data } = await externalSupabase
-      .from('board_group_settings')
-      .select('current_sequence, sequence_start')
-      .eq('board_id', TRABALHISTA_BOARD_ID)
-      .maybeSingle();
-    if (data?.current_sequence) best = Math.max(best, data.current_sequence);
-    seqStart = data?.sequence_start ?? null;
-  } catch { /* segue com as outras fontes */ }
-  // Fonte crítica: maior lead_number já persistido no board — evita colisão
-  // com a constraint unique (product_id, lead_number).
-  try {
-    const { data } = await (externalSupabase as any)
-      .from('leads')
-      .select('lead_number')
-      .eq('board_id', TRABALHISTA_BOARD_ID)
-      .order('lead_number', { ascending: false })
-      .limit(1);
-    const maxLead = Number((data?.[0] as any)?.lead_number || 0);
-    if (maxLead > 0) best = Math.max(best, maxLead);
-  } catch { /* segue */ }
-  try {
-    const { data } = await externalSupabase
-      .from('lead_whatsapp_groups')
-      .select('group_name, leads!inner(board_id)')
-      .eq('leads.board_id', TRABALHISTA_BOARD_ID)
-      .ilike('group_name', '%lead%')
-      .limit(1000);
-    for (const r of data || []) best = Math.max(best, parseLeadSeq((r as any).group_name));
-  } catch { /* segue */ }
-  try {
-    const { data } = await (externalSupabase as any)
-      .from('whatsapp_groups_uazapi_snapshot')
-      .select('group_name')
-      .ilike('group_name', '%lead%')
-      .limit(3000);
-    for (const r of data || []) best = Math.max(best, parseLeadSeq((r as any).group_name));
-  } catch { /* segue */ }
-  if (best > 0) return best + 1;
-  return seqStart;
-}
-
-// Retorna o próximo lead_number livre a partir de `desired`, checando colisões
-// reais na tabela leads (unique constraint em (product_id, lead_number)).
-async function nextFreeLeadNumber(desired: number): Promise<number> {
-  await ensureExternalSession();
-  let candidate = Math.max(1, Math.floor(desired));
-  for (let i = 0; i < 50; i++) {
-    const { data } = await (externalSupabase as any)
-      .from('leads')
-      .select('id')
-      .eq('board_id', TRABALHISTA_BOARD_ID)
-      .eq('lead_number', candidate)
-      .limit(1);
-    if (!data || data.length === 0) return candidate;
-    candidate += 1;
-  }
-  return candidate;
-}
+// Sequência e nº livre deste board — as funções genéricas vivem em
+// leadWhatsappGroupFlow (compartilhadas com o "Adicionar Lead" dos funis).
+const suggestNextSequence = () => suggestNextSequenceForBoard(TRABALHISTA_BOARD_ID, 'LEAD');
+const nextFreeLeadNumber = (desired: number) => nextFreeLeadNumberForBoard(TRABALHISTA_BOARD_ID, desired);
 
 interface Props {
   lead: Lead | null;
@@ -249,18 +118,6 @@ const ALLOWED_ACOLHEDOR_IDS = [
   '01f77785-871a-4a2f-b237-2392c2cb7860', // Juliana Clara Santos Pimentel
   'fab3461c-d1ca-4276-946a-972bf0c70cd9', // Mateus Santos Saraiva
 ];
-
-// Autor do grupo = instância cujo token chama /group/create no UazAPI, virando
-// criador/dono/admin. Sem isso, o edge escolhe "a primeira conectada" do board
-// (query sem ORDER BY) → autor aleatório. IDs conferidos em whatsapp_instances.
-const GROUP_AUTHOR_OPTIONS = [
-  { label: 'Analyne Sousa de Oliveira', instanceId: 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508' }, // Analyne Oliveira
-  { label: 'João Manoel', instanceId: '259203a6-d8e7-4638-b700-0a1eb1d29db9' }, // João Manoel- Acolhedor
-  { label: 'Mateus', instanceId: 'f939bac7-bb57-47de-8620-8c6790643ae0' }, // Mateus Atendimento
-  { label: 'Raym', instanceId: '35eefdd1-c554-4883-a7c8-93149723d61c' }, // Raym / Dr. Prudêncio
-  { label: 'Juliana Clara Santos Pimentel', instanceId: '3a282d27-625d-4b3b-bf51-ddde7dd43063' }, // Juliana Pimentel
-];
-const DEFAULT_GROUP_AUTHOR_INSTANCE_ID = 'b9ced9ee-4469-4dc9-a7a0-3c0cbdb43508'; // Analyne
 
 export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, onRegistered }: Props) {
   const { profile, user } = useAuth();
@@ -302,14 +159,9 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
   const fetchConnStatus = useCallback(async () => {
     setConnLoading(true);
     try {
-      const { data, error } = await cloudFunctions.invoke('check-whatsapp-status');
-      if (error) throw error;
-      const rows = (Array.isArray(data) ? data : []) as Array<{ id: string; instance_name: string; connected: boolean }>;
+      const rows = await fetchInstanceConnStatus();
       setConnList(rows);
       return rows;
-    } catch (e) {
-      console.warn('[CadastrarCasoViavel] falha ao checar conexão das instâncias', e);
-      return [] as Array<{ id: string; instance_name: string; connected: boolean }>;
     } finally {
       setConnLoading(false);
     }
@@ -578,74 +430,44 @@ export function CadastrarCasoViavelDialog({ lead, open, onOpenChange, saveLead, 
       return;
     }
 
-    // Passo 2 — criar grupo WhatsApp (nome sequencial "LEAD N | ..." vem do board_group_settings)
-    let groupJid: string | null = null;
-    try {
-      const { data, error } = await cloudFunctions.invoke('create-whatsapp-group', {
-        body: {
-          lead_id: lead.id,
-          lead_name: form.lead_title.trim(),
-          board_id: TRABALHISTA_BOARD_ID,
-          creation_origin: 'noticia_viavel',
-          phase: 'open',
-          // Fixa o criador/dono do grupo escolhido no dropdown (evita autor aleatório).
-          ...(creatorInstanceId ? { creator_instance_id: creatorInstanceId } : {}),
-          ...(resolvedSeq > 0 ? { forced_sequence: resolvedSeq } : {}),
-          ...(groupNameInput.trim() ? { group_name_override: groupNameInput.trim() } : {}),
-        },
-      });
-      if (error) throw error;
-      if (data?.queued) {
-        setSteps((s) => ({ ...s, group: 'error', link: 'idle' }));
-        toast.info('Lead cadastrado. Instâncias offline: grupo entrou na fila e será criado automaticamente.', { duration: 8000 });
-        onRegistered();
-        onOpenChange(false);
-        setRegistering(false);
-        return;
-      }
-      if (!data?.success || !data?.group_id) throw new Error(data?.error || 'Grupo não foi criado');
-      groupJid = String(data.group_id);
-      setSteps((s) => ({ ...s, group: 'done', link: 'running' }));
-    } catch (e: any) {
-      setSteps((s) => ({ ...s, group: 'error' }));
-      toast.error('Lead cadastrado, mas a criação do grupo falhou', { description: e?.message, duration: 8000 });
+    // Passos 2 a 4 — criar grupo, obter link de convite e postar o resumo.
+    // (nome sequencial "LEAD N | ..." vem do board_group_settings)
+    const outcome = await createLeadWhatsappGroup({
+      leadId: lead.id,
+      leadName: form.lead_title.trim(),
+      boardId: TRABALHISTA_BOARD_ID,
+      creationOrigin: 'noticia_viavel',
+      creatorInstanceId,
+      forcedSequence: resolvedSeq > 0 ? resolvedSeq : null,
+      groupNameOverride: groupNameInput.trim() || null,
+      introMessage: (inviteLink) => composeGroupIntroMessage(form, inviteLink),
+      onStep: (step, state) => {
+        if (step === 'group') setSteps((s) => ({ ...s, group: state === 'error' ? 'error' : state }));
+        if (step === 'link') setSteps((s) => ({ ...s, link: state === 'error' ? 'error' : state }));
+      },
+    });
+
+    if (outcome.queued) {
+      toast.info('Lead cadastrado. Instâncias offline: grupo entrou na fila e será criado automaticamente.', { duration: 8000 });
+      onRegistered();
+      onOpenChange(false);
+      setRegistering(false);
+      return;
+    }
+    if (outcome.groupError) {
+      toast.error('Lead cadastrado, mas a criação do grupo falhou', { description: outcome.groupError, duration: 8000 });
       onRegistered();
       setRegistering(false);
       return;
     }
-
-    // Passo 3 — buscar link de convite (a função persiste em leads.group_link)
-    let inviteLink = '';
-    try {
-      const { data, error } = await cloudFunctions.invoke('get-group-invite-link', {
-        body: { group_jid: groupJid, lead_id: lead.id },
-      });
-      if (error || !data?.success || !data?.invite_link) throw new Error(data?.error || error?.message || 'Link não retornado');
-      inviteLink = String(data.invite_link);
-      setGroupLink(inviteLink);
-      setSteps((s) => ({ ...s, link: 'done' }));
+    if (outcome.linkError) {
+      toast.warning('Grupo criado, mas não foi possível obter o link de convite agora.', { description: outcome.linkError, duration: 8000 });
+    } else {
+      setGroupLink(outcome.inviteLink);
       toast.success('Caso cadastrado, grupo criado e link salvo no lead.');
-    } catch (e: any) {
-      setSteps((s) => ({ ...s, link: 'error' }));
-      toast.warning('Grupo criado, mas não foi possível obter o link de convite agora.', { description: e?.message, duration: 8000 });
     }
-
-    // Passo 4 — mensagem-resumo automática no próprio grupo recém-criado.
-    // Usa a mesma instância que criou o grupo (send-whatsapp resolve pela JID); sem
-    // necessidade de "associar número" — o grupo já pertence a essa instância.
-    try {
-      const message = composeGroupIntroMessage(form, inviteLink);
-      await cloudFunctions.invoke('send-whatsapp', {
-        body: {
-          phone: groupJid,
-          chat_id: groupJid,
-          message,
-          lead_id: lead.id,
-        },
-      });
-    } catch (e: any) {
-      console.warn('[CadastrarCasoViavel] falha ao enviar resumo no grupo', e);
-      toast.warning('Grupo criado, mas não consegui enviar o resumo automático.', { description: e?.message });
+    if (outcome.introError) {
+      toast.warning('Grupo criado, mas não consegui enviar o resumo automático.', { description: outcome.introError });
     }
 
     onRegistered();

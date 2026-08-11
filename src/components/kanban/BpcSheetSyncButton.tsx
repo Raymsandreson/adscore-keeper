@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { Download, Loader2, CheckCircle2, AlertCircle, RefreshCw } from "lucide-react";
+import { Download, Loader2, CheckCircle2, AlertCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { cloudFunctions } from "@/lib/functionRouter";
+import { getFunnelSheetUrl } from "@/lib/funnelSheetConfig";
 import { useToast } from "@/hooks/use-toast";
 
 interface Props {
@@ -46,6 +47,7 @@ export function BpcSheetSyncButton({ boardId, onCreated, spreadsheetId, label }:
   const [result, setResult] = useState<SyncResult | null>(null);
   const [sinceDays, setSinceDays] = useState<number>(7);
   const [lastRunAt, setLastRunAt] = useState<Date | null>(null);
+  const sheetUrl = getFunnelSheetUrl(spreadsheetId);
 
   async function run(dryRun: boolean) {
     setRunning(true);
@@ -120,6 +122,17 @@ export function BpcSheetSyncButton({ boardId, onCreated, spreadsheetId, label }:
           </DialogHeader>
 
           <div className="space-y-3">
+            {sheetUrl && (
+              <a
+                href={sheetUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
+              >
+                <ExternalLink className="h-3.5 w-3.5" />
+                Abrir a planilha no Google Sheets
+              </a>
+            )}
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Janela de tempo</label>
               <div className="flex gap-1.5 flex-wrap">

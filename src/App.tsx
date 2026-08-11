@@ -149,6 +149,7 @@ const Index = lazyRetry(() => import("./pages/Index"), "Index");
 const ActivitiesPage = lazyRetry(() => import("./pages/ActivitiesPage"), "ActivitiesPage");
 const LeadsCenter = lazyRetry(() => import("./pages/LeadsCenter"), "LeadsCenter");
 const NoticiasPage = lazyRetry(() => import("./pages/NoticiasPage"), "NoticiasPage");
+const RelatosGruposPage = lazyRetry(() => import("./pages/RelatosGruposPage"), "RelatosGruposPage");
 const AnalyticsPage = lazyRetry(() => import("./pages/AnalyticsPage"), "AnalyticsPage");
 const LeaderboardPage = lazyRetry(() => import("./pages/LeaderboardPage"), "LeaderboardPage");
 const TeamPage = lazyRetry(() => import("./pages/TeamPage"), "TeamPage");
@@ -350,6 +351,10 @@ function SidebarLayout() {
                 <Route path="/campanhas" element={<ProtectedRoute><CampaignsPage /></ProtectedRoute>} />
                 <Route path="/campanhas/:id" element={<ProtectedRoute><CampaignDetailPage /></ProtectedRoute>} />
                 <Route path="/noticias" element={<ProtectedRoute><NoticiasPage /></ProtectedRoute>} />
+                {/* Mora dentro de Leads: o relato de grupo vira lead do mesmo funil. */}
+                <Route path="/leads/relatos-grupos" element={<ProtectedRoute><RelatosGruposPage /></ProtectedRoute>} />
+                {/* Push antigo e link salvo continuam chegando na tela certa. */}
+                <Route path="/relatos-grupos" element={<Navigate to="/leads/relatos-grupos" replace />} />
                 <Route path="/mapa-leads" element={<ProtectedRoute><LeadsMapPage /></ProtectedRoute>} />
                 <Route path="/analytics" element={<ProtectedRoute><AnalyticsPage /></ProtectedRoute>} />
                 <Route path="/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />

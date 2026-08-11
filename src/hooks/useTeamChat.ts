@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
@@ -72,6 +72,29 @@ export interface TeamMember {
   full_name: string | null;
   email: string | null;
 }
+
+/**
+ * Estado de cobrança de uma menção — mesmo vocabulário do Chat da Equipe:
+ * "responder" é a bola com você, "aguardando" é a bola com o outro.
+ */
+export type MentionStatus = 'responder' | 'aguardando' | 'respondido';
+
+export interface TeamMentionItem extends TeamMention {
+  message: TeamMessage;
+  /** 'in' = marcaram você. 'out' = você marcou alguém no chat de uma ficha. */
+  direction: 'in' | 'out';
+  status: MentionStatus | null;
+  /** Primeira mensagem do thread depois da menção — a resposta que fechou a cobrança. */
+  reply?: { sender_name: string | null; content: string; created_at: string } | null;
+}
+
+/**
+ * "@" seguido de letra e não colado num e-mail (fulano@dominio). O chat de ficha
+ * não guarda o id de quem foi marcado nas próprias mensagens, e o RLS de
+ * team_chat_mentions só devolve as menções recebidas — então o que você marcou
+ * sai daqui, do texto da sua própria mensagem.
+ */
+const MENTION_IN_TEXT = /(^|[^\w@])@[\p{L}]/u;
 
 /** A lista de membros muda muito pouco — não vale uma query por painel aberto. */
 let membersCache: TeamMember[] | null = null;
@@ -420,8 +443,14 @@ export function useUnreadMentionsCount() {
 
 export function useMyMentions() {
   const { user } = useAuthContext();
-  const [mentions, setMentions] = useState<(TeamMention & { message: TeamMessage })[]>([]);
+  const [mentions, setMentions] = useState<TeamMentionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  /**
+   * Conversas que este painel está cobrando. O painel fica montado em toda tela,
+   * então recarregar a cada mensagem da casa sairia caro — só interessa mensagem
+   * nova numa conversa que já está na lista.
+   */
+  const trackedThreads = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -429,60 +458,153 @@ export function useMyMentions() {
 
     await ensureExternalSession();
 
-    const { data: mentionData } = await externalSupabase
-      .from('team_chat_mentions')
-      .select('*')
-      .eq('mentioned_user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(50);
+    const [{ data: mentionData }, { data: sentData }] = await Promise.all([
+      externalSupabase
+        .from('team_chat_mentions')
+        .select('*')
+        .eq('mentioned_user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      // As menções que VOCÊ fez no chat de uma ficha. Não dá pra ler de
+      // team_chat_mentions (RLS devolve só as recebidas), então vêm das suas
+      // próprias mensagens — que a equipe inteira pode ler.
+      externalSupabase
+        .from('team_chat_messages')
+        .select('*')
+        .eq('sender_id', user.id)
+        .is('deleted_at', null)
+        .ilike('content', '%@%')
+        .order('created_at', { ascending: false })
+        .limit(50),
+    ]);
 
-    if (!mentionData || mentionData.length === 0) {
+    const incoming = mentionData || [];
+    const sent = (sentData || []).filter(m => MENTION_IN_TEXT.test(m.content || ''));
+
+    if (incoming.length === 0 && sent.length === 0) {
       setMentions([]);
       setLoading(false);
       return;
     }
 
-    const msgIds = mentionData.map(m => m.message_id);
-    const { data: msgData } = await externalSupabase
-      .from('team_chat_messages')
-      .select('*')
-      .in('id', msgIds);
+    const msgMap = new Map<string, TeamMessage>();
 
-    const msgMap = new Map((msgData || []).map(m => [m.id, m as TeamMessage]));
+    if (incoming.length > 0) {
+      const msgIds = incoming.map(m => m.message_id);
+      const { data: msgData } = await externalSupabase
+        .from('team_chat_messages')
+        .select('*')
+        .in('id', msgIds);
+      (msgData || []).forEach(m => msgMap.set(m.id, m as TeamMessage));
 
-    // Menções feitas no chat direto/grupo apontam pra team_messages, não pra
-    // team_chat_messages — sem resolver aqui elas somem do painel mas seguem
-    // contando no badge, sem como marcar lidas.
-    const missingIds = msgIds.filter(id => !msgMap.has(id));
-    if (missingIds.length > 0) {
-      const { data: directData } = await externalSupabase
-        .from('team_messages')
-        .select('id, sender_id, sender_name, content, created_at')
-        .in('id', missingIds);
-      (directData || []).forEach(m => {
-        msgMap.set(m.id, {
-          id: m.id,
-          entity_type: 'team_chat',
-          entity_id: '',
-          entity_name: null,
-          content: m.content || '',
-          sender_id: m.sender_id,
-          sender_name: m.sender_name,
-          reply_to_id: null,
-          created_at: m.created_at,
-          deleted_at: null,
-        } as TeamMessage);
+      // Menções feitas no chat direto/grupo apontam pra team_messages, não pra
+      // team_chat_messages — sem resolver aqui elas somem do painel mas seguem
+      // contando no badge, sem como marcar lidas.
+      const missingIds = msgIds.filter(id => !msgMap.has(id));
+      if (missingIds.length > 0) {
+        const { data: directData } = await externalSupabase
+          .from('team_messages')
+          .select('id, sender_id, sender_name, content, created_at')
+          .in('id', missingIds);
+        (directData || []).forEach(m => {
+          msgMap.set(m.id, {
+            id: m.id,
+            entity_type: 'team_chat',
+            entity_id: '',
+            entity_name: null,
+            content: m.content || '',
+            sender_id: m.sender_id,
+            sender_name: m.sender_name,
+            reply_to_id: null,
+            created_at: m.created_at,
+            deleted_at: null,
+          } as TeamMessage);
+        });
+      }
+    }
+
+    const items: TeamMentionItem[] = [];
+
+    incoming.forEach(m => {
+      const message = msgMap.get(m.message_id);
+      if (!message) return;
+      items.push({ ...(m as TeamMention), message, direction: 'in', status: null, reply: null });
+    });
+
+    // A menção enviada não tem linha em team_chat_mentions do seu lado: o
+    // registro é a própria mensagem. Id com prefixo pra nunca confundir com um
+    // id de menção real (marcar como lida não se aplica).
+    sent.forEach(m => {
+      const message = m as TeamMessage;
+      items.push({
+        id: `sent:${message.id}`,
+        message_id: message.id,
+        mentioned_user_id: user.id,
+        entity_type: message.entity_type,
+        entity_id: message.entity_id,
+        entity_name: message.entity_name,
+        conversation_id: null,
+        is_read: true,
+        read_at: null,
+        created_at: message.created_at,
+        message,
+        direction: 'out',
+        status: null,
+        reply: null,
+      });
+    });
+
+    items.sort((a, b) => b.created_at.localeCompare(a.created_at));
+
+    // Quem já respondeu? Uma varredura só nas conversas envolvidas, do momento
+    // da menção mais antiga pra frente.
+    const entityIds = Array.from(
+      new Set(items.map(i => i.message.entity_id).filter((id): id is string => !!id))
+    );
+    const byThread = new Map<string, { sender_id: string; sender_name: string | null; content: string; created_at: string }[]>();
+
+    if (entityIds.length > 0) {
+      const since = items.reduce((min, i) => (i.created_at < min ? i.created_at : min), items[0].created_at);
+      const { data: threadData } = await externalSupabase
+        .from('team_chat_messages')
+        .select('entity_type, entity_id, sender_id, sender_name, content, created_at')
+        .in('entity_id', entityIds)
+        .gte('created_at', since)
+        .is('deleted_at', null)
+        // Descendente de propósito: se bater o teto, o que se perde é o passado
+        // distante, não a resposta recém-chegada.
+        .order('created_at', { ascending: false })
+        .limit(1000);
+      (threadData || []).forEach(m => {
+        const key = `${m.entity_type}:${m.entity_id}`;
+        const list = byThread.get(key);
+        if (list) list.unshift(m);
+        else byThread.set(key, [m]);
       });
     }
 
-    const result = mentionData
-      .map(m => ({
-        ...(m as TeamMention),
-        message: msgMap.get(m.message_id)!,
-      }))
-      .filter(m => m.message);
+    const resolved = items.map(item => {
+      const { entity_type, entity_id, created_at } = item.message;
+      if (!entity_id) return item; // menção do chat direto — o próprio Chat cobra isso
+      const thread = byThread.get(`${entity_type}:${entity_id}`) || [];
+      const answer = thread.find(m =>
+        m.created_at > created_at &&
+        (item.direction === 'out' ? m.sender_id !== user.id : m.sender_id === user.id)
+      );
+      if (answer) {
+        return {
+          ...item,
+          status: 'respondido' as MentionStatus,
+          reply: { sender_name: answer.sender_name, content: answer.content, created_at: answer.created_at },
+        };
+      }
+      return { ...item, status: (item.direction === 'out' ? 'aguardando' : 'responder') as MentionStatus };
+    });
 
-    setMentions(result);
+    trackedThreads.current = new Set(
+      resolved.map(i => `${i.message.entity_type}:${i.message.entity_id}`).filter(k => !k.endsWith(':'))
+    );
+    setMentions(resolved);
     setLoading(false);
   }, [user]);
 
@@ -507,10 +629,36 @@ export function useMyMentions() {
       )
       .subscribe();
 
-    return () => { externalSupabase.removeChannel(channel); };
+    // A resposta que fecha uma cobrança é uma mensagem, não uma menção — sem
+    // ouvir aqui, o "Aguardando" só viraria "Respondido" ao reabrir o painel.
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const messagesChannel = externalSupabase
+      .channel(`mentions-messages-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'team_chat_messages' },
+        (payload) => {
+          const msg = payload.new as TeamMessage;
+          const isTracked = trackedThreads.current.has(`${msg.entity_type}:${msg.entity_id}`);
+          // Menção nova sua entra na lista; de terceiro, só se for na conversa cobrada.
+          const isMyNewMention = msg.sender_id === user.id && (msg.content || '').includes('@');
+          if (!isTracked && !isMyNewMention) return;
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => { load(); }, 600);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (timer) clearTimeout(timer);
+      externalSupabase.removeChannel(channel);
+      externalSupabase.removeChannel(messagesChannel);
+    };
   }, [user, load]);
 
   const markAsRead = useCallback(async (mentionId: string) => {
+    // Menção enviada por você não tem linha própria — nada a marcar.
+    if (mentionId.startsWith('sent:')) return;
     await externalSupabase
       .from('team_chat_mentions')
       .update({ is_read: true, read_at: new Date().toISOString() })

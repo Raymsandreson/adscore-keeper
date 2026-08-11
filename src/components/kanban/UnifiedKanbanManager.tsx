@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect, lazy, Suspense } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useState, useMemo, useEffect, useRef, useCallback, lazy, Suspense } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useGroupReportsPending } from '@/hooks/useGroupReportsPending';
 import { usePageState } from '@/hooks/usePageState';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { getStageType } from '@/utils/kanbanStageTypes';
@@ -16,6 +17,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
@@ -39,7 +41,26 @@ import {
   Columns3,
   List,
   HeartHandshake,
+  Ear,
+  Loader2,
+  Users,
+  Link2,
+  CheckCircle2,
+  WifiOff,
 } from 'lucide-react';
+import {
+  GROUP_AUTHOR_OPTIONS,
+  DEFAULT_GROUP_AUTHOR_INSTANCE_ID,
+  composeGroupIntroMessage,
+  createLeadWhatsappGroup,
+  fetchBoardInstanceIds,
+  fetchBoardSequencePrefix,
+  fetchInstanceConnStatus,
+  nextFreeLeadNumber,
+  suggestNextSequence,
+  type InstanceConnStatus,
+} from '@/lib/leadWhatsappGroupFlow';
+import { isTrabalhistaBoard } from '@/lib/trabalhistaAcolhedores';
 import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/AccidentLeadForm';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -81,6 +102,8 @@ interface UnifiedKanbanManagerProps {
 
 export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanManagerProps) {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { count: relatosPendentes } = useGroupReportsPending();
   const [searchQuery, setSearchQuery] = usePageState<string>('kanban_searchQuery', '');
   const teamProfiles = useProfilesList();
   const { classifications } = useContactClassifications();
@@ -192,6 +215,26 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     liability_type: '',
     legal_viability: '',
   });
+
+  // ===== Grupo automático do WhatsApp no "Adicionar Lead" =====
+  // Mesmo fluxo do modal "Cadastrar Caso Viável" (Notícias): nº do lead sugerido,
+  // instância autora do grupo, nome editável, link de convite salvo no lead e
+  // mensagem-resumo postada no grupo recém-criado.
+  const [autoCreateGroup, setAutoCreateGroup] = useState(true);
+  const [groupSeq, setGroupSeq] = useState('');
+  const [groupSeqLoading, setGroupSeqLoading] = useState(false);
+  const [groupPrefix, setGroupPrefix] = useState('');
+  const [groupAuthorId, setGroupAuthorId] = useState<string>(DEFAULT_GROUP_AUTHOR_INSTANCE_ID);
+  const [groupNameInput, setGroupNameInput] = useState('');
+  const groupNameTouched = useRef(false);
+  const [connList, setConnList] = useState<InstanceConnStatus[]>([]);
+  const [connLoading, setConnLoading] = useState(false);
+  const [boardInstanceIds, setBoardInstanceIds] = useState<string[]>([]);
+  const [showCreatorPicker, setShowCreatorPicker] = useState(false);
+  const [addingLead, setAddingLead] = useState(false);
+  const [groupSteps, setGroupSteps] = useState<{ save: 'idle' | 'running' | 'done' | 'error'; group: 'idle' | 'running' | 'done' | 'error'; link: 'idle' | 'running' | 'done' | 'error' }>(
+    { save: 'idle', group: 'idle', link: 'idle' }
+  );
 
   // Kanban boards hook
   const {
@@ -588,12 +631,112 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     }
   }, [showAddLeadDialog, selectedBoardId]);
 
+  const boardIdForNewLead = selectedBoardForNewLead || selectedBoardId || null;
+
+  const refreshConnStatus = useCallback(async () => {
+    setConnLoading(true);
+    try {
+      const rows = await fetchInstanceConnStatus();
+      setConnList(rows);
+      return rows;
+    } finally {
+      setConnLoading(false);
+    }
+  }, []);
+
+  // Ao abrir o dialog (ou trocar de funil): status das instâncias, instâncias
+  // vinculadas ao funil, prefixo da sequência e o próximo nº sugerido.
+  useEffect(() => {
+    if (!showAddLeadDialog || !boardIdForNewLead) return;
+    let cancelled = false;
+    groupNameTouched.current = false;
+    setGroupSteps({ save: 'idle', group: 'idle', link: 'idle' });
+    refreshConnStatus();
+    fetchBoardInstanceIds(boardIdForNewLead).then(ids => { if (!cancelled) setBoardInstanceIds(ids); });
+    setGroupSeq('');
+    setGroupSeqLoading(true);
+    fetchBoardSequencePrefix(boardIdForNewLead)
+      .then(async (prefix) => {
+        if (cancelled) return;
+        setGroupPrefix(prefix);
+        const n = await suggestNextSequence(boardIdForNewLead, prefix || 'LEAD');
+        if (!cancelled) setGroupSeq(n ? String(n) : '');
+      })
+      .finally(() => { if (!cancelled) setGroupSeqLoading(false); });
+    return () => { cancelled = true; };
+  }, [showAddLeadDialog, boardIdForNewLead, refreshConnStatus]);
+
+  // Instâncias oferecidas como autoras: as vinculadas ao funil (mesma tabela que
+  // o edge consulta). Sem vínculo cadastrado, cai na lista completa.
+  const groupAuthorOptions = useMemo(() => {
+    const known = new Map(GROUP_AUTHOR_OPTIONS.map(o => [o.instanceId, o.label]));
+    const pool = boardInstanceIds.length
+      ? connList.filter(r => boardInstanceIds.includes(r.id))
+      : connList;
+    const rows = pool.length ? pool : connList;
+    return rows.map(r => ({
+      instanceId: r.id,
+      label: known.get(r.id) || r.instance_name,
+      connected: r.connected,
+    }));
+  }, [connList, boardInstanceIds]);
+
+  // Mantém a seleção válida: se a instância padrão não serve para este funil,
+  // escolhe a primeira conectada da lista.
+  useEffect(() => {
+    if (!groupAuthorOptions.length) return;
+    if (groupAuthorOptions.some(o => o.instanceId === groupAuthorId)) return;
+    const fallback = groupAuthorOptions.find(o => o.connected) || groupAuthorOptions[0];
+    setGroupAuthorId(fallback.instanceId);
+  }, [groupAuthorOptions, groupAuthorId]);
+
+  // Nome do grupo = mesmo padrão do nome do lead ("<prefixo> <n> | <nome>"),
+  // para grupo e lead não divergirem. Editável: depois de mexer, o input manda.
+  const groupNamePreview = useMemo(() => {
+    const base = newLeadFormData.lead_name.trim();
+    if (!base) return '';
+    const prefix = groupPrefix.trim();
+    if (!prefix) return base;
+    return `${prefix} ${groupSeq || '?'} | ${base}`;
+  }, [newLeadFormData.lead_name, groupPrefix, groupSeq]);
+
+  useEffect(() => {
+    if (!groupNameTouched.current) setGroupNameInput(groupNamePreview);
+  }, [groupNamePreview]);
+
+  const connMap = useMemo(() => {
+    const m: Record<string, boolean> = {};
+    for (const r of connList) m[r.id] = r.connected;
+    return m;
+  }, [connList]);
+
   const handleAddLead = async () => {
     if (!newLeadFormData.lead_name.trim()) {
       toast.error('Nome é obrigatório');
       return;
     }
+    if (!(selectedBoardForNewLead || selectedBoardId)) {
+      toast.error('Selecione um funil');
+      return;
+    }
 
+    // Guard de conexão: se a instância-autora escolhida está offline, abre o
+    // seletor de outra criadora ANTES de qualquer escrita (igual ao fluxo de
+    // Notícias). Status desconhecido → segue e o backend enfileira.
+    if (autoCreateGroup) {
+      let rows = connList;
+      if (!rows.length) rows = await refreshConnStatus();
+      const selected = rows.find(r => r.id === groupAuthorId);
+      if (selected && !selected.connected) {
+        setShowCreatorPicker(true);
+        return;
+      }
+    }
+
+    await proceedAddLead(groupAuthorId);
+  };
+
+  const proceedAddLead = async (creatorInstanceId: string) => {
     // CEP da visita é opcional em todos os funis (ago/2026): quem pede o CEP é o
     // dialog da tarefa de Marketing, não o salvamento do lead.
     const targetBoardId = selectedBoardForNewLead || selectedBoardId;
@@ -605,28 +748,29 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     const targetBoard = boards.find(b => b.id === targetBoardId) || selectedBoard;
     const firstStage = targetBoard?.stages[0]?.id || 'new';
 
+    setAddingLead(true);
+    setGroupSteps({ save: 'running', group: 'idle', link: 'idle' });
+
     // Apply funnel naming pattern: "<prefix> <N> | <user-typed name>"
+    // O nº vem do campo editável do dialog (sugerido por suggestNextSequence, que
+    // olha contador + maior lead_number + grupos reais) e é confirmado contra
+    // colisões na tabela leads antes de gravar.
     let finalLeadName = newLeadFormData.lead_name.trim();
     let usedSequence: number | null = null;
     try {
-      const { data: settings } = await supabase
-        .from('board_group_settings')
-        .select('group_name_prefix, current_sequence, sequence_start')
-        .eq('board_id', targetBoardId)
-        .maybeSingle();
-
-      const prefix = settings?.group_name_prefix?.trim();
-      if (prefix) {
-        const start = settings?.sequence_start ?? 1;
-        const current = settings?.current_sequence ?? (start - 1);
-        usedSequence = current + 1;
-        finalLeadName = `${prefix} ${usedSequence} | ${finalLeadName}`;
+      const typedSeq = Number(groupSeq) > 0 ? Number(groupSeq) : 0;
+      if (typedSeq > 0) {
+        usedSequence = await nextFreeLeadNumber(targetBoardId, typedSeq);
+        if (usedSequence !== typedSeq) setGroupSeq(String(usedSequence));
+      }
+      if (groupPrefix.trim() && usedSequence) {
+        finalLeadName = `${groupPrefix.trim()} ${usedSequence} | ${finalLeadName}`;
       }
     } catch (err) {
-      console.warn('[handleAddLead] could not load board prefix settings, using raw name:', err);
+      console.warn('[handleAddLead] could not resolve funnel sequence, using raw name:', err);
     }
 
-    await addLead({
+    const leadPayload = {
       lead_name: finalLeadName,
       lead_phone: newLeadFormData.lead_phone || null,
       lead_email: newLeadFormData.lead_email || null,
@@ -661,7 +805,45 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
       legal_viability: newLeadFormData.legal_viability || null,
       client_classification: newLeadFormData.client_classification || null,
       expected_birth_date: normalizeDateInput(newLeadFormData.expected_birth_date),
-    } as Partial<Lead>);
+      ...(usedSequence ? { lead_number: usedSequence } : {}),
+    } as Partial<Lead>;
+
+    // O grupo é criado logo abaixo com o fluxo completo (autor, nº, link e
+    // resumo) — `skipAutoGroup` evita que o hook dispare uma segunda criação.
+    // Uma colisão na unique (product_id, lead_number) pode acontecer quando dois
+    // operadores cadastram ao mesmo tempo: relê a sequência e tenta de novo.
+    let createdLead: Lead | null = null;
+    try {
+      createdLead = await addLead(leadPayload, undefined, { skipAutoGroup: true });
+      setGroupSteps(s => ({ ...s, save: 'done' }));
+    } catch (err: any) {
+      const isDup = /leads_product_lead_number_uniq|duplicate key/i.test(String(err?.message || ''));
+      if (!isDup || !usedSequence) {
+        setGroupSteps(s => ({ ...s, save: 'error' }));
+        setAddingLead(false);
+        return; // addLead já mostrou o toast de erro
+      }
+      try {
+        const suggested = await suggestNextSequence(targetBoardId, groupPrefix || 'LEAD');
+        const retrySeq = await nextFreeLeadNumber(targetBoardId, Math.max(usedSequence + 1, suggested || 0));
+        setGroupSeq(String(retrySeq));
+        const retryName = groupPrefix.trim()
+          ? `${groupPrefix.trim()} ${retrySeq} | ${newLeadFormData.lead_name.trim()}`
+          : finalLeadName;
+        finalLeadName = retryName;
+        usedSequence = retrySeq;
+        createdLead = await addLead(
+          { ...leadPayload, lead_name: retryName, lead_number: retrySeq } as Partial<Lead>,
+          undefined,
+          { skipAutoGroup: true }
+        );
+        setGroupSteps(s => ({ ...s, save: 'done' }));
+      } catch {
+        setGroupSteps(s => ({ ...s, save: 'error' }));
+        setAddingLead(false);
+        return;
+      }
+    }
 
     // Bump board sequence counter when prefix was applied
     if (usedSequence !== null) {
@@ -674,6 +856,68 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
         console.warn('[handleAddLead] failed to bump board sequence:', err);
       }
     }
+
+    // Grupo do WhatsApp — mesmo fluxo do modal de Notícias.
+    if (autoCreateGroup && createdLead?.id) {
+      const outcome = await createLeadWhatsappGroup({
+        leadId: createdLead.id,
+        leadName: finalLeadName,
+        boardId: targetBoardId,
+        creationOrigin: 'adicionar_lead',
+        creatorInstanceId,
+        forcedSequence: usedSequence,
+        groupNameOverride: groupNameInput.trim() || null,
+        phone: newLeadFormData.lead_phone || null,
+        introMessage: (inviteLink) => composeGroupIntroMessage(
+          {
+            lead_title: finalLeadName,
+            acolhedor: newLeadFormData.acolhedor,
+            case_type: newLeadFormData.case_type,
+            source_label: newLeadFormData.source || 'Manual',
+            phone: newLeadFormData.lead_phone,
+            visit_city: newLeadFormData.visit_city,
+            visit_state: newLeadFormData.visit_state,
+            visit_region: newLeadFormData.visit_region,
+            visit_address: newLeadFormData.visit_address,
+            accident_date: normalizeDateInput(newLeadFormData.accident_date) || '',
+            damage: newLeadFormData.damage_description,
+            victim_name: newLeadFormData.victim_name,
+            victim_age: newLeadFormData.victim_age,
+            accident_address: newLeadFormData.accident_address,
+            contractor_company: newLeadFormData.contractor_company,
+            main_company: newLeadFormData.main_company,
+            news_link: newLeadFormData.news_link,
+            company_size_justification: newLeadFormData.company_size_justification,
+            liability_type: newLeadFormData.liability_type,
+            legal_viability: newLeadFormData.legal_viability,
+          },
+          inviteLink,
+          // Funis fora do Trabalhista não têm os campos de acidente: sem isso o
+          // resumo viraria uma parede de "Não informado".
+          { omitEmpty: !isTrabalhistaBoard(targetBoardId) }
+        ),
+        onStep: (step, state) => {
+          if (step === 'group') setGroupSteps(s => ({ ...s, group: state === 'error' ? 'error' : state }));
+          if (step === 'link') setGroupSteps(s => ({ ...s, link: state === 'error' ? 'error' : state }));
+        },
+      });
+
+      if (outcome.queued) {
+        toast.info('Lead cadastrado. Instâncias offline: grupo entrou na fila e será criado automaticamente.', { duration: 8000 });
+      } else if (outcome.groupError) {
+        toast.error('Lead cadastrado, mas a criação do grupo falhou', { description: outcome.groupError, duration: 8000 });
+      } else if (outcome.linkError) {
+        toast.warning('Grupo criado, mas não foi possível obter o link de convite agora.', { description: outcome.linkError, duration: 8000 });
+      } else {
+        toast.success('Grupo criado e link salvo no lead.');
+      }
+      if (outcome.introError) {
+        toast.warning('Grupo criado, mas não consegui enviar o resumo automático.', { description: outcome.introError });
+      }
+      fetchLeads();
+    }
+
+    setAddingLead(false);
 
     // Reset form
     setNewLeadFormData({
@@ -710,6 +954,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     });
     setSelectedBoardForNewLead(null);
     setShowAddLeadDialog(false);
+    groupNameTouched.current = false;
+    setGroupNameInput('');
+    setGroupSteps({ save: 'idle', group: 'idle', link: 'idle' });
   };
 
   const handleExtractedData = (data: ExtractedAccidentData) => {
@@ -847,6 +1094,21 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
                 <span className="hidden sm:inline">Relatório</span>
               </Button>
             )}
+
+            {/* Captação por escuta de grupo: o relato vira lead deste mesmo
+                funil, então o caminho até a fila fica aqui, e não num canto
+                do menu que ninguém abre. */}
+            <Button
+              variant="outline"
+              onClick={() => navigate('/leads/relatos-grupos')}
+              title="Relatos de acidente ouvidos nos grupos de WhatsApp"
+            >
+              <Ear className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Relatos nos grupos</span>
+              {relatosPendentes > 0 && (
+                <Badge variant="destructive" className="ml-2">{relatosPendentes}</Badge>
+              )}
+            </Button>
           
             {selectedBoard && (
               <ChecklistFilter
@@ -1195,12 +1457,167 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
             boardName={boards.find(b => b.id === (selectedBoardForNewLead || selectedBoardId))?.name}
           />
 
+          {/* Grupo do WhatsApp — mesmo fluxo do "Cadastrar Caso Viável" (Notícias) */}
+          <div className="rounded-lg border p-3 bg-muted/30 space-y-3 text-sm mt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <Checkbox
+                checked={autoCreateGroup}
+                onCheckedChange={(v) => setAutoCreateGroup(v === true)}
+              />
+              <span className="font-medium flex items-center gap-1.5">
+                <Users className="h-4 w-4" />
+                Criar grupo do WhatsApp automaticamente
+              </span>
+            </label>
+
+            {autoCreateGroup && (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Número do Lead (grupo)</Label>
+                    <Input
+                      value={groupSeq}
+                      onChange={(e) => setGroupSeq(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      placeholder={groupSeqLoading ? 'Calculando...' : 'Ex: 170'}
+                      disabled={groupSeqLoading}
+                    />
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      Sugerido a partir do último grupo criado — ajuste se estiver errado.
+                    </p>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Autor do grupo</Label>
+                    <Select value={groupAuthorId} onValueChange={setGroupAuthorId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder={connLoading ? 'Carregando...' : 'Selecione...'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {groupAuthorOptions.map((a) => (
+                          <SelectItem key={a.instanceId} value={a.instanceId}>
+                            <span className="flex items-center gap-2">
+                              <span
+                                className={`h-2 w-2 rounded-full shrink-0 ${a.connected ? 'bg-emerald-500' : 'bg-red-500'}`}
+                                title={a.connected ? 'Conectada' : 'Desconectada'}
+                              />
+                              {a.label}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {connMap[groupAuthorId] === false && (
+                      <p className="text-[11px] text-red-600 mt-1">
+                        Instância desconectada — ao adicionar você escolhe outra criadora do grupo.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-xs text-muted-foreground">Nome do grupo (editável)</Label>
+                  <Input
+                    value={groupNameInput}
+                    onChange={(e) => { groupNameTouched.current = true; setGroupNameInput(e.target.value); }}
+                    placeholder="Nome exato do grupo do WhatsApp"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">
+                    Pré-preenchido com o padrão do funil — edite se quiser. Vazio, o nome vem do template do funil.
+                  </p>
+                </div>
+
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    [groupSteps.save, 'Salvar lead', <CheckCircle2 key="s" className="h-3 w-3 mr-1" />],
+                    [groupSteps.group, 'Criar grupo', <Users key="g" className="h-3 w-3 mr-1" />],
+                    [groupSteps.link, 'Obter link', <Link2 key="l" className="h-3 w-3 mr-1" />],
+                  ] as const).map(([state, label, icon]) => (
+                    <Badge
+                      key={label}
+                      variant="outline"
+                      className={
+                        state === 'done' ? 'border-emerald-500 text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30'
+                          : state === 'running' ? 'border-blue-500 text-blue-700 bg-blue-50 dark:bg-blue-900/30'
+                            : state === 'error' ? 'border-red-500 text-red-700 bg-red-50 dark:bg-red-900/30'
+                              : 'text-muted-foreground'
+                      }
+                    >
+                      {state === 'running' ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : icon}
+                      {label}
+                    </Badge>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowAddLeadDialog(false)}>
+            <Button variant="outline" onClick={() => setShowAddLeadDialog(false)} disabled={addingLead}>
               Cancelar
             </Button>
-            <Button onClick={handleAddLead}>
-              Adicionar
+            <Button onClick={handleAddLead} disabled={addingLead} className="gap-2">
+              {addingLead && <Loader2 className="h-4 w-4 animate-spin" />}
+              {addingLead ? 'Adicionando...' : 'Adicionar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Seletor de instância criadora — abre quando o autor escolhido está offline */}
+      <Dialog open={showCreatorPicker} onOpenChange={(v) => !addingLead && setShowCreatorPicker(v)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <WifiOff className="h-5 w-5 text-red-500" />
+              Instância criadora offline
+            </DialogTitle>
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">
+              {groupAuthorOptions.find(a => a.instanceId === groupAuthorId)?.label || 'A instância selecionada'}
+            </span>{' '}
+            está desconectada e não pode criar o grupo. Escolha outra instância conectada para ser a
+            criadora/dona do grupo.
+          </p>
+
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">
+              {connLoading ? 'Verificando conexões...' : `${connList.filter(r => r.connected).length} instância(s) conectada(s)`}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 gap-1 text-xs" onClick={() => refreshConnStatus()} disabled={connLoading}>
+              <RefreshCw className={`h-3 w-3 ${connLoading ? 'animate-spin' : ''}`} /> Atualizar
+            </Button>
+          </div>
+
+          <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+            {connList.filter(r => r.connected).map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                disabled={addingLead}
+                onClick={() => { setGroupAuthorId(r.id); setShowCreatorPicker(false); proceedAddLead(r.id); }}
+                className="w-full flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted disabled:opacity-60"
+              >
+                <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                {r.instance_name}
+              </button>
+            ))}
+            {connList.filter(r => r.connected).length === 0 && !connLoading && (
+              <p className="text-sm text-muted-foreground">
+                Nenhuma instância conectada no momento. Ao adicionar mesmo assim, o grupo entra na fila
+                e é criado automaticamente quando uma instância reconectar.
+              </p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreatorPicker(false)} disabled={addingLead}>Cancelar</Button>
+            <Button
+              variant="secondary"
+              disabled={addingLead}
+              onClick={() => { setShowCreatorPicker(false); proceedAddLead(groupAuthorId); }}
+            >
+              Adicionar mesmo assim (fila)
             </Button>
           </DialogFooter>
         </DialogContent>
