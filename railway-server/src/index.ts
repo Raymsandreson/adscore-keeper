@@ -609,3 +609,79 @@ async function runFunnelStatusSync() {
 // Escalonado dos demais (60s/120s) pra não competirem no boot.
 setTimeout(runFunnelStatusSync, 180_000);
 setInterval(runFunnelStatusSync, FUNNEL_SYNC_INTERVAL_MS);
+
+// ============================================================
+// CRON: caixa processual do Gmail, de hora em hora. Substitui o
+// pg_cron `gmail-processual-sync-hourly` do Externo, que mandava
+// `x-api-key` buscado em `vault.decrypted_secrets` com name
+// 'RAILWAY_API_KEY' — segredo que NUNCA existiu (o vault do Externo
+// está vazio). Na prática o header ia nulo e a chamada chegava aqui
+// sem credencial nenhuma.
+//
+// Rodando por dentro, autentica com o LOOPBACK_TOKEN do boot e para
+// de depender de segredo em dois lugares.
+//   Desligar o pg_cron: select cron.unschedule('gmail-processual-sync-hourly');
+// ============================================================
+const PROCESSUAL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+async function runProcessualSync() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/gmail-processual-sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: '{}',
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    // Rodada sem e-mail novo é o caso comum — só loga novidade ou problema.
+    if (json?.total_inserted > 0 || json?.success === false || !resp.ok) {
+      console.log(
+        `[cron:gmail-processual-sync] status=${resp.status} inserted=${json?.total_inserted ?? 0} checked=${json?.total_checked ?? 0}${json?.error ? ` error=${json.error}` : ''}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:gmail-processual-sync] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Escalonado dos demais (60s/120s/180s) pra não competirem no boot.
+setTimeout(runProcessualSync, 240_000);
+setInterval(runProcessualSync, PROCESSUAL_SYNC_INTERVAL_MS);
+
+// ============================================================
+// CRON: importa audiências da planilha, 1x por dia às
+// HEARINGS_SYNC_HOUR_BRT:HEARINGS_SYNC_MINUTE_BRT (padrão 08:30,
+// Brasília) — mesmo horário do pg_cron `sync-hearings-from-sheet-daily`
+// que ele substitui, e que também chegava aqui sem credencial.
+//
+// Segue o padrão do daily-team-report (intervalo curto + checagem de
+// hora + trava por dia) em vez de um setInterval de 24h: intervalo longo
+// não sobrevive a restart do Railway — cada deploy remarcaria o disparo
+// para 24h depois, e a importação simplesmente nunca aconteceria.
+//   Desligar o pg_cron: select cron.unschedule('sync-hearings-from-sheet-daily');
+// ============================================================
+const HEARINGS_SYNC_HOUR_BRT = Number(process.env.HEARINGS_SYNC_HOUR_BRT || 8);
+const HEARINGS_SYNC_MINUTE_BRT = Number(process.env.HEARINGS_SYNC_MINUTE_BRT || 30);
+let lastHearingsSyncDate = '';
+async function runHearingsSync() {
+  try {
+    const now = new Date();
+    const spHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(now));
+    const spMinute = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', minute: 'numeric' }).format(now));
+    const spDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(now);
+    if (spHour !== HEARINGS_SYNC_HOUR_BRT || spMinute < HEARINGS_SYNC_MINUTE_BRT) return;
+    if (lastHearingsSyncDate === spDate) return;
+    lastHearingsSyncDate = spDate;
+
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/sync-hearings-from-sheet`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      // Mesmo corpo do pg_cron: `confirm` é a trava do handler contra execução acidental.
+      body: JSON.stringify({ apply: true, confirm: 'SYNC' }),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    console.log(
+      `[cron:sync-hearings-from-sheet] status=${resp.status} inserted=${json?.inserted ?? 0} updated=${json?.updated ?? 0} errors=${json?.errors?.length || 0}${json?.error ? ` error=${json.error}` : ''}`,
+    );
+  } catch (err) {
+    console.warn('[cron:sync-hearings-from-sheet] failed:', err instanceof Error ? err.message : err);
+  }
+}
+setInterval(runHearingsSync, 10 * 60 * 1000);
