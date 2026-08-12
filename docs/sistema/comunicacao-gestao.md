@@ -103,6 +103,17 @@ Botão no cabeçalho de **Atividades**, ao lado de "💬 Feedbacks", com deep-li
 - Fonte: view `vw_client_commitments_owner` (Externo, `security_invoker`), que resolve o dono com a **mesma cascata do telão** — a regra deixou de ser duplicada dentro da função `tv_atividades_ranking`, que agora lê a view. Conferido na troca: números por pessoa idênticos.
 - Regras puras em `src/lib/clientCommitmentsInbox.ts` (19 testes); dados em `useClientCommitmentsInbox`; UI em `ClientCommitmentsInbox.tsx`. Migration `20260806220000`.
 
+##### A caixa lê TODAS as abertas, e a data é a da promessa (desde 12/08/2026)
+
+Sintoma: o telão cobrava **1 pendência faltando** da Andressa e a caixa dizia **"nenhuma"**. Dois defeitos independentes, os dois em torno de data.
+
+- **Teto escondia linha.** A caixa lia `limit(500)` ordenado por `due_date` com nulos no fim. Em 12/08/2026 havia 691 abertas, 462 **sem prazo**: as 229 com prazo entravam e sobravam 271 vagas para 462 — **191 nunca chegavam à tela**, e o corte caía justamente nas sem prazo, que a própria tela posiciona por `promised_at`. O telão lê a mesma view **sem teto**, daí a divergência. Agora lê em páginas de 1000 até esgotar (teto de segurança 5000); o badge de vencidas passou de 143 para 567 — não era regressão, era backlog escondido.
+- **`promised_at` era a data da varredura.** A coluna é `DEFAULT now()` e `detect-client-commitments` nunca a preenchia: **100% das 1174 pendências da IA** nasceram com `promised_at = created_at`, deslocamento médio de **26,9 dias** (pior caso 162). Promessa de 20/07 varrida em 10/08 aparecia no dia 10/08. Agora sai do timestamp da mensagem da promessa.
+- **Mensagem de origem por número, não por UUID.** O `promised_at` depende de saber QUAL mensagem originou a pendência, e a IA errava ao copiar 36 caracteres — 46% das linhas ficavam sem `source_message_id`. O transcript numera as mensagens (`#1`, `#2`, …) e a IA devolve só o número; se falhar, cai para o UUID cru e depois para casar o `quote` (literal) no texto das mensagens. O log de cada varredura mostra `com_origem=` e `com_prazo=`.
+- **`due_date` resolve pela data da mensagem, não por hoje.** O prompt mandava resolver "amanhã"/"sexta" por hoje, mas a varredura roda dias depois — "amanhã" dito em 03/08 virava data errada. O transcript passou a trazer a data em `AAAA-MM-DD` (em `dd/mm/aaaa` a IA troca dia por mês). Marcador brando ("mais tarde", "semana que vem") passou a valer; **"quando puder" e "te mando depois" continuam sem prazo** — a amostra mostra que a maioria das promessas não tem data mesmo, e prazo inventado vira cobrança errada.
+- Verificado em produção (deploy `fc308a3a8`): pendências novas nasceram com `promised_at` igual ao timestamp da mensagem (11/08 12:29:58 e 10/08 21:54:30), com a varredura em 12/08 17:25.
+- **Pendente**: o histórico continua deslocado. 639 linhas têm `source_message_id` e dão para corrigir com `UPDATE … SET promised_at = m.created_at FROM whatsapp_messages m WHERE m.id::text = c.source_message_id` (387 abertas; 18 passam a aparecer como vencidas). Escrita em produção — não aplicada sem ok do Raym.
+
 ##### De quem é a pendência — cascata de 5 degraus (desde 07/08/2026)
 
 Em 07/08/2026, 207 das 256 pendências abertas apareciam como "sem responsável definido": a cascata só olhava lead/processo, e quem é **parceiro/acolhedor** não tem processo nem assessor atribuído — sumia da cobrança mesmo com a conversa rodando numa linha com dono conhecido.
