@@ -52,6 +52,64 @@ prefixo `PLANO_` existe para **não** rodar sozinho.
 
 ---
 
+## 1b. A régua manda na fase e no percentual (12/08/2026)
+
+Antes: o % da ficha vinha de **passo marcado à mão** (`calculateHierarchicalProgress`)
+e `workflow_stage_id` estava null em **1848 de 1848** processos — ninguém movia fase.
+Processo no TST desde maio aparecia com 8% na fase 1.
+
+Agora: `process_pop_marcos` (materializada de `vw_pop_marcos_regua`) → fase e
+percentual. `pop_marcos_tick()` roda aos **:15 e :45** (cron `pop-marcos-tick`),
+atrás dos crons de captura. Primeiro tick: **1430 marcos, 401 processos posicionados**.
+
+```
+% = marcos cumpridos ÷ marcos PREVISTOS deste processo
+    previsto = obrigatório, ou eventual que aconteceu
+    cumprido = detectado, ou obrigatório anterior ao marco atual ("presumido")
+```
+
+O **presumido** existe porque `lead_processes.movimentacoes` guarda no máximo **20**
+movimentações (367 processos estão exatos em 20): é janela do recente, não histórico.
+Sem ele o percentual cairia sozinho conforme a movimentação velha sai da janela.
+
+**Duas medidas, dois nomes.** Régua = ANDAMENTO do processo (barra da ficha).
+Passos = TRABALHO da equipe (percentual por objetivo e `team_process_goals_progress`,
+que **não** mudou). Não junte as duas num número só.
+
+### As quatro leituras, e a que faltava
+
+| fonte | processos | o que dá |
+|---|---|---|
+| `movimento` (TPU/DataJud) | 183 | código determinístico |
+| `escavador_texto` | **274** | `classificacao_predita.nome` — a maior cobertura |
+| `movimento_grau` | 87 | subida de instância pelo `grau` |
+| `documento` | 74 | título em `jm_documentos` |
+| `escavador_grau` | 58 | subida pelo `fonte.grau` (1/2/3) |
+
+O Escavador tem código TPU em **0%** das 7.284 movimentações e classificação em
+**100%** — por isso o tipo `'texto'`, criado em 08/08 e vazio até aqui. Nunca
+tente casar TPU nele.
+
+**Marcos de subida** (`remessa_2grau` ordem 8, `remessa_superior` ordem 12) marcam a
+CHEGADA, não o julgamento. Sem eles, processo que subiu e está esperando ficava
+carimbado na instância de baixo — era o sintoma do caso que abriu a investigação.
+
+**Sinal de grau vale nas duas fontes.** Só no Escavador, a subida ao TST do
+0016855-58.2023.5.16.0008 saía como 31/07; com o DataJud junto, 14/05 — a data certa.
+Consolidação vence pela **menor data**, empate desempata por TPU.
+
+**Armadilha repetida:** `suspensao` estava com `atravessa_fases = false` no POP em uso
+e, tendo a maior ordem (21), sequestrou a fase de 9 processos no primeiro tick. Mesmo
+erro dos 61 de julho. Marco novo que é ESTADO nasce com `atravessa_fases = true` —
+está no checklist do fim deste arquivo por um motivo.
+
+**A carteira não foi tocada:** `vw_pop_carteira_por_fase` lê o board **rascunho**
+(`Trabalhistas judicial — marcos (rascunho)`), e as mudanças acima são todas no board
+**em uso** (`b436c043-…624816`) e em views novas. Antes de mexer em marco, confira em
+qual board você está.
+
+---
+
 ## 2. Nunca some `jm_valores` direto
 
 `jm_valores` tem **uma linha por (decisão × cliente)**. Cada decisão que confirma o valor

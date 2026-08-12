@@ -23,12 +23,19 @@ import {
 } from '@/lib/popAnswerMirror';
 import { isStepBlockedBySubItems, pendingSubItems } from '@/lib/stepSubitems';
 import { PopCatchUpSheet, type PopCatchUpStep, type PopCatchUpMark } from '@/components/activities/PopCatchUpSheet';
+import { useProcessoMarcos, FONTE_LABEL } from '@/hooks/useProcessoMarcos';
 
 interface Stage {
   id: string;
   name: string;
   color: string;
 }
+
+/** '2026-05-14' → '14/05/2026'. Data de marco vem do banco como ISO puro. */
+const formatBRShort = (iso: string): string => {
+  const [y, m, d] = iso.slice(0, 10).split('-');
+  return d && m && y ? `${d}/${m}/${y}` : iso;
+};
 
 /** RPCs do Externo que não estão nos tipos gerados (log_*, etc.). */
 type RpcResult = { error?: { message?: string } | null };
@@ -184,6 +191,14 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
   const [leadName, setLeadName] = useState('');
   const { createLeadInstances, fetchLeadInstances } = useChecklists();
 
+  /**
+   * Régua de marcos deste processo. Quando ela tem percentual, é ELA que diz o
+   * andamento e a fase — não o passo marcado (decisão do usuário, 12/08/2026:
+   * "o percentual do processo atualizar só pelos marcos, não depender de marcar
+   * os passos, pq isso pode ser falho"). Sem marco nenhum, tudo segue como era.
+   */
+  const regua = useProcessoMarcos(processId);
+
   const fetchData = useCallback(async () => {
     if (!leadId || !boardId) {
       setLoading(false);
@@ -191,12 +206,18 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
     }
 
     try {
-      const [boardRes, historyRes, leadRes, linksRes, settingsRes] = await Promise.all([
+      const [boardRes, historyRes, leadRes, linksRes, settingsRes, procRes] = await Promise.all([
         externalSupabase.from('kanban_boards').select('stages, board_type, name').eq('id', boardId).maybeSingle(),
         externalSupabase.from('lead_stage_history').select('to_stage').eq('lead_id', leadId).order('changed_at', { ascending: false }).limit(1),
         externalSupabase.from('leads').select('status, lead_status, became_client_date, board_id, lead_name').eq('id', leadId).maybeSingle(),
         externalSupabase.from('checklist_stage_links').select('stage_id, checklist_template_id, display_order').eq('board_id', boardId),
         fromExternalLoose('kanban_boards').select('settings').eq('id', boardId).maybeSingle(),
+        // Fase do PROCESSO (escrita pela régua de marcos, ou movida na mão na
+        // ficha). O histórico de fase é por LEAD e embaralharia leads com mais
+        // de um processo — por isso a fase do processo vem daqui.
+        processId
+          ? externalSupabase.from('lead_processes').select('workflow_stage_id').eq('id', processId).maybeSingle()
+          : Promise.resolve({ data: null }),
       ]);
       setBoardName((boardRes.data as any)?.name || '');
       setBoardType((boardRes.data as any)?.board_type || '');
@@ -226,8 +247,15 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
         setStages(parsedStages);
       }
 
+      // Fase do processo manda quando existe: é ela que a régua de marcos
+      // escreve (aplicar_fase_por_marco) e a que a ficha do processo edita.
+      const faseDoProcesso = (procRes?.data as { workflow_stage_id?: string | null } | null)?.workflow_stage_id;
+      if (faseDoProcesso && parsedStages.some(s => s.id === faseDoProcesso)) {
+        stageId = faseDoProcesso;
+      }
+
       // Try history first, then fall back to lead.status
-      if (historyRes.data && historyRes.data.length > 0) {
+      if (!stageId && historyRes.data && historyRes.data.length > 0) {
         stageId = historyRes.data[0].to_stage;
       }
       
@@ -315,7 +343,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
     } finally {
       setLoading(false);
     }
-  }, [leadId, boardId]);
+  }, [leadId, boardId, processId]);
 
   useEffect(() => {
     fetchData();
@@ -1028,6 +1056,41 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
 
   const globalPercent = hierarchicalProgress.globalPercent;
 
+  /**
+   * ANDAMENTO x TRABALHO — duas medidas, dois donos.
+   *
+   * Régua de marcos (esta): onde o processo está, lida das movimentações e dos
+   * documentos. É a que a barra mostra sempre que existir.
+   * Passos marcados (globalPercent): o que a equipe já executou. Continua vivo
+   * no percentual de cada objetivo, mais abaixo, e nas metas por time.
+   *
+   * Sem marco nenhum (POP administrativo, processo sem CNJ, processo novo) a
+   * barra volta a ser a de passos — mostrar 0% ali seria dizer que o processo
+   * não andou quando o que falta é dado.
+   */
+  const porMarco = regua.percentual != null;
+  const percentExibido = porMarco ? (regua.percentual as number) : globalPercent;
+
+  // Preenchimento de cada fase quando quem manda é a régua: fase anterior à do
+  // marco atual fica cheia (o processo passou por ela), a atual mostra a
+  // proporção dos marcos dela já atingidos, as seguintes ficam vazias.
+  const fillPorMarco = useMemo(() => {
+    if (!porMarco) return null;
+    const idxAtual = stages.findIndex(s => s.id === (regua.atual?.stage_id ?? null));
+    if (idxAtual < 0) return null;
+    const mapa: Record<string, number> = {};
+    stages.forEach((s, i) => {
+      if (i < idxAtual) { mapa[s.id] = 100; return; }
+      if (i > idxAtual) { mapa[s.id] = 0; return; }
+      const previstos = regua.marcos.filter(m => m.stage_id === s.id && (!m.eventual || m.estado === 'atingido'));
+      const cumpridos = previstos.filter(m => m.estado !== 'pendente');
+      mapa[s.id] = previstos.length > 0
+        ? Math.round((cumpridos.length / previstos.length) * 100)
+        : 0;
+    });
+    return mapa;
+  }, [porMarco, regua.marcos, regua.atual, stages]);
+
   // Determine current stage index
   const currentIdx = stages.findIndex(s => s.id === currentStageId);
 
@@ -1090,7 +1153,8 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
               const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
               const stageWeight = stageDetail?.stagePercent || 0;
               const stageCompleted = stageDetail?.completedPercent || 0;
-              const fillPercent = stageWeight > 0 ? (stageCompleted / stageWeight) * 100 : 0;
+              const fillPorPasso = stageWeight > 0 ? (stageCompleted / stageWeight) * 100 : 0;
+              const fillPercent = fillPorMarco ? (fillPorMarco[stage.id] ?? 0) : fillPorPasso;
               const isStageComplete = fillPercent >= 100;
               const hasPartialProgress = fillPercent > 0 && !isStageComplete;
               const isCurrent = idx === currentIdx;
@@ -1106,7 +1170,10 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
               const objLine = stageObjectives.length > 0
                 ? `\n• ${stageObjectives.join('\n• ')}`
                 : '';
-              const tooltip = `${prefix}${stage.name} — ${Math.round(fillPercent)}%${objLine}`;
+              const medida = porMarco
+                ? `\n(andamento por marco · passos: ${Math.round(fillPorPasso)}%)`
+                : '';
+              const tooltip = `${prefix}${stage.name} — ${Math.round(fillPercent)}%${medida}${objLine}`;
 
               return (
                 <button
@@ -1149,12 +1216,17 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
             type="button"
             onClick={() => setExpanded(e => !e)}
             className="flex items-center gap-1.5 text-xs shrink-0 hover:opacity-80 transition-opacity"
+            title={porMarco
+              ? `Andamento do processo: ${regua.cumpridos} de ${regua.previstos} marcos.\n`
+                + `Vem das movimentações e documentos — não depende de marcar passo.\n`
+                + `Passos executados neste POP: ${Math.round(globalPercent)}%.`
+              : 'Percentual por passos marcados no POP'}
           >
             <span className={cn(
               "font-bold tabular-nums min-w-[34px] text-right",
-              globalPercent >= 100 ? "text-emerald-600" : "text-foreground"
+              percentExibido >= 100 ? "text-emerald-600" : "text-foreground"
             )}>
-              {Math.round(globalPercent)}%
+              {Math.round(percentExibido)}%
             </span>
             {expanded ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
           </button>
@@ -1167,6 +1239,12 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
               {stages.find(s => s.id === currentStageId)?.name}
             </span>
             <span className="ml-1.5">· fase {currentIdx + 1} de {stages.length}</span>
+            {regua.atual && (
+              <span className="ml-1.5">
+                · {regua.atual.rotulo}
+                {regua.atual.data_detectada && ` em ${formatBRShort(regua.atual.data_detectada)}`}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -1219,6 +1297,39 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
               </div>
             );
           })()}
+
+          {/* Onde o PROCESSO está, pela régua de marcos — leitura automática das
+              movimentações e documentos. Aparece acima dos passos de propósito:
+              é o fato do processo; o passo é o trabalho da equipe sobre ele. */}
+          {regua.atual && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/60 px-2 py-1.5 dark:border-emerald-900 dark:bg-emerald-950/30">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] min-w-0 flex-1">
+                  <span className="font-semibold text-emerald-800 dark:text-emerald-300">
+                    {regua.atual.rotulo}
+                  </span>
+                  {regua.atual.data_detectada && (
+                    <span className="text-emerald-700/80 dark:text-emerald-400/80">
+                      {' '}· {formatBRShort(regua.atual.data_detectada)}
+                    </span>
+                  )}
+                  {regua.atual.fonte && (
+                    <span className="text-emerald-700/60 dark:text-emerald-400/60">
+                      {' '}· {FONTE_LABEL[regua.atual.fonte] || regua.atual.fonte}
+                    </span>
+                  )}
+                </p>
+                <span className="shrink-0 text-[10px] text-emerald-700/70 dark:text-emerald-400/70 tabular-nums">
+                  {regua.cumpridos}/{regua.previstos} marcos
+                </span>
+              </div>
+              {regua.marcos.some(m => m.estado === 'presumido') && (
+                <p className="mt-0.5 text-[9.5px] leading-snug text-emerald-700/60 dark:text-emerald-400/60">
+                  Marcos anteriores contam como cumpridos — a movimentação antiga já saiu da janela do Escavador.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Régua "onde você está": o que foi marcado hoje x em outro dia, e o
               atalho pra conciliar o POP com as movimentações do processo. */}
