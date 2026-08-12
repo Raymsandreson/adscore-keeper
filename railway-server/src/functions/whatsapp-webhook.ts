@@ -8,6 +8,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { selfUrl, selfHeaders } from '../lib/selfCall';
 import { RequestHandler } from 'express';
 import * as nodeCrypto from 'crypto';
 import { geminiChat } from '../lib/gemini';
@@ -1587,8 +1588,6 @@ export const handler: RequestHandler = async (req, res) => {
         }
 
         // Dispara prepare-label-document-trigger pra cada match e registra o resultado.
-        const railwayBase = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
-        const apiKey = process.env.RAILWAY_API_KEY || '';
         const dispatchResults: any[] = [];
         for (const t of matched) {
           // 1) Se o gatilho tem agente vinculado, ativa-o na conversa (igual auto_swap_agent_on_stage_change)
@@ -1656,9 +1655,9 @@ export const handler: RequestHandler = async (req, res) => {
             triggerId: t.id,
           };
           try {
-            const dispatchResponse = await fetch(`${railwayBase}/functions/prepare-label-document-trigger`, {
+            const dispatchResponse = await fetch(selfUrl('prepare-label-document-trigger'), {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
+              headers: selfHeaders(),
               body: JSON.stringify(payload),
             });
             const dispatchJson = await dispatchResponse.json().catch(() => null);

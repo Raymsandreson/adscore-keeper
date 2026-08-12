@@ -14,6 +14,7 @@
 //     · create_case_process / create_onboarding_activity → nascem por outro
 //       fluxo (733 casos e 367 atividades em 60d, zero via checkpoint)
 import { supabase } from '../lib/supabase';
+import { selfUrl, selfHeaders } from '../lib/selfCall';
 
 interface PostSignInput {
   doc_token: string;
@@ -182,7 +183,6 @@ export async function runPostSignExtras(input: PostSignInput): Promise<void> {
 import { mintInternalExecNonce } from './onboarding-checkpoint-execute';
 
 const AUTO_STEPS = ['confirm_funnel', 'setup_lead_close', 'create_group'] as const;
-const RAILWAY_BASE = process.env.RAILWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
 
 async function autoExecuteCheckpoints(leadId: string): Promise<void> {
   // Pequena espera pra garantir que os upserts pegaram no Externo
@@ -207,12 +207,11 @@ async function autoExecuteCheckpoints(leadId: string): Promise<void> {
       }
 
       const nonce = mintInternalExecNonce();
-      const r = await fetch(`${RAILWAY_BASE}/functions/onboarding-checkpoint-execute`, {
+      // O nonce é a autorização do handler; o x-internal-key do selfHeaders é a
+      // do middleware de /functions/*. São camadas distintas, ambas necessárias.
+      const r = await fetch(selfUrl('onboarding-checkpoint-execute'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-internal-exec-nonce': nonce,
-        },
+        headers: selfHeaders({ 'x-internal-exec-nonce': nonce }),
         body: JSON.stringify({ checkpoint_id: ck.id }),
       });
       const data: any = await r.json().catch(() => ({}));

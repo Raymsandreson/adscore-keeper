@@ -25,10 +25,7 @@ import {
   upsertInssLeadProcess, inssProcessTitle, type InssProcessRow,
 } from '@/lib/inssLeadProcess';
 import { resolveAssignmentForCase, createOrAttachAndamentoActivity } from '@/lib/processAssignment';
-
-const RAILWAY_BASE =
-  (import.meta as any).env?.VITE_RAILWAY_BASE_URL ||
-  'https://adscore-keeper-production.up.railway.app';
+import { cloudFunctions } from '@/lib/functionRouter';
 
 interface Props {
   caseId: string;
@@ -330,16 +327,11 @@ export default function InssEmailSearchTab({
   const syncNow = async () => {
     setSyncing(true);
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-inss-sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': (import.meta as any).env?.VITE_RAILWAY_API_KEY || '',
-        },
-        body: JSON.stringify({ lookback_days: 30 }),
+      const { data: j, error } = await cloudFunctions.invoke<any>('gmail-inss-sync', {
+        body: { lookback_days: 30 },
       });
-      const j = await resp.json();
-      if (!j.success) {
+      if (error) throw error;
+      if (!j?.success) {
         toast.error('Sync do Gmail falhou: ' + (j.error || 'desconhecido'));
       } else {
         toast.success(`Gmail lido: ${j.checked || 0} e-mail(s), ${j.created_processes || 0} novo(s)`);

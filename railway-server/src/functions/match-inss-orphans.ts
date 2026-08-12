@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { selfPost } from '../lib/selfCall';
 import { supabase } from '../lib/supabase';
 import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
 
@@ -45,15 +46,7 @@ export const handler: RequestHandler = async (_req, res) => {
         matched++;
 
         if (caseId) {
-          const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
-          fetch(`${railwayUrl}/functions/notify-inss-update`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.RAILWAY_API_KEY || '',
-            },
-            body: JSON.stringify({ process_id: o.id }),
-          }).catch(() => {});
+          selfPost('notify-inss-update', { process_id: o.id }).catch(() => {});
           notify_fired++;
         }
       } catch (e: any) {

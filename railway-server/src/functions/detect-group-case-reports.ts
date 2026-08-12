@@ -25,6 +25,7 @@
 // Sem mensagem nova, o grupo é pulado SEM chamar a IA — rodando de 10 em 10
 // minutos em dezenas de grupos, é a diferença entre caro e barato.
 import type { RequestHandler } from 'express';
+import { selfUrl, selfHeaders } from '../lib/selfCall';
 import { geminiChat } from '../lib/gemini';
 import { supabase } from '../lib/supabase';
 
@@ -220,14 +221,9 @@ function firePush(group: WatchedGroup, created: number, primeira: string) {
   const userIds = (group.notify_user_ids || []).filter(Boolean);
   if (userIds.length === 0 || created === 0) return;
 
-  const url = `${process.env.RAILWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3000}`}/functions/send-team-push`;
-  fetch(url, {
+  fetch(selfUrl('send-team-push'), {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.RAILWAY_API_KEY || '',
-      'x-internal-key': process.env.RAILWAY_INTERNAL_KEY || '',
-    },
+    headers: selfHeaders(),
     body: JSON.stringify({
       user_ids: userIds,
       title: created === 1

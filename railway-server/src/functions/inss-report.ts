@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { selfUrl, selfHeaders } from '../lib/selfCall';
 import { supabase } from '../lib/supabase';
 import { stageOf, STAGE_LABELS, STAGE_ORDER, type StageKey } from '../lib/inss-despacho';
 
@@ -107,10 +108,9 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // Envia pela caixa administrativa (adm@).
-    const base = process.env.RAILWAY_PUBLIC_URL || `http://127.0.0.1:${process.env.PORT || 3000}`;
-    const r = await fetch(`${base}/functions/send-email`, {
+    const r = await fetch(selfUrl('send-email'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.RAILWAY_API_KEY || '' },
+      headers: selfHeaders(),
       body: JSON.stringify({
         to,
         subject: `Relatório de Benefícios INSS — ${hoje}`,

@@ -72,6 +72,18 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'celcoin-open-finance': 'railway', // Open Finance/Celcoin — conciliação financeira (substitui a Pluggy); suporte a mTLS caso a Celcoin passe a exigir
   'update-profile-avatar': 'railway', // foto de perfil: a policy de UPDATE de profiles barra a sessão anônima do Externo — só service role grava
 
+  // --- INSS administrativo / e-mails processuais ---
+  // Só existem no Railway. Estavam FORA deste mapa e os componentes chamavam
+  // com fetch cru + `x-api-key: VITE_RAILWAY_API_KEY`, que nunca teve valor —
+  // ou seja, 12 chamadas anônimas que morreriam no RAILWAY_AUTH_ENFORCE=1.
+  'gmail-inss-sync': 'railway',
+  'gmail-message-body': 'railway',
+  'gmail-processual-sync': 'railway',
+  'notify-inss-update': 'railway',
+  'match-inss-orphans': 'railway',
+  'auto-link-inss-by-name': 'railway',
+  'bulk-link-inss-by-cpf': 'railway',
+
   // --- Consolidação no Supabase Externo (kmedldlepwiityjsdahz) ---
   // Deploy: supabase functions deploy <slug> --project-ref kmedldlepwiityjsdahz --no-verify-jwt
   // Fallback automático → Cloud (código legado) se o externo falhar.

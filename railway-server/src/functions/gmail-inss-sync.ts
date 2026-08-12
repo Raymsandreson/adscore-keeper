@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { selfPost } from '../lib/selfCall';
 import { supabase } from '../lib/supabase';
 import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
 
@@ -13,8 +14,9 @@ import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
  * Envs necessárias na Railway:
  *   - LOVABLE_API_KEY        (gateway)
  *   - GOOGLE_MAIL_API_KEY    (connection key do gateway)
- *   - RAILWAY_PUBLIC_URL     (ex.: https://app.up.railway.app) — usado p/ chamar notify-inss-update
- *   - RAILWAY_API_KEY        (a mesma já em uso)
+ *
+ * notify-inss-update é chamado por loopback (lib/selfCall) — não depende mais de
+ * RAILWAY_PUBLIC_URL nem de RAILWAY_API_KEY, que nunca chegaram a ser setadas.
  */
 
 const GATEWAY_BASE = 'https://connector-gateway.lovable.dev/google_mail/gmail/v1';
@@ -546,15 +548,8 @@ export const handler: RequestHandler = async (req, res) => {
         if (caseId && allowNotify) {
           inboxResult.notify_triggers++;
           totalNotifyTriggers++;
-          const railwayUrl = process.env.RAILWAY_PUBLIC_URL || `http://localhost:${process.env.PORT || 3000}`;
-          fetch(`${railwayUrl}/functions/notify-inss-update`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-api-key': process.env.RAILWAY_API_KEY || '',
-            },
-            body: JSON.stringify({ process_id: processId }),
-          }).catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
+          selfPost('notify-inss-update', { process_id: processId })
+            .catch((e) => console.error('[gmail-inss-sync] notify fire failed:', e));
         }
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);

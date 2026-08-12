@@ -10,6 +10,7 @@ import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { db } from "@/integrations/supabase";
 import { authClient } from "@/integrations/supabase";
 import { upsertInssLeadProcess } from "@/lib/inssLeadProcess";
+import { cloudFunctions } from "@/lib/functionRouter";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -127,10 +128,6 @@ interface CaseOption {
   matched_via?: string;
   needs_case_creation?: boolean; // true quando id é "lead:..."
 }
-
-const RAILWAY_BASE =
-  (import.meta as any).env?.VITE_RAILWAY_BASE_URL ||
-  "https://adscore-keeper-production.up.railway.app";
 
 const statusVariant = (s?: string | null) => {
   const v = (s || "").toLowerCase();
@@ -332,16 +329,11 @@ export default function InssAdminProcessesTab() {
   const fetchAndCacheBody = useCallback(async (gmailId: string, fallbackSubject: string | null) => {
     if (emailBodyCache[gmailId]) return emailBodyCache[gmailId];
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-message-body`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ gmail_message_id: gmailId }),
+      const { data: j, error } = await cloudFunctions.invoke<any>("gmail-message-body", {
+        body: { gmail_message_id: gmailId },
       });
-      const j = await resp.json();
-      if (!j.success) return null;
+      if (error) throw error;
+      if (!j?.success) return null;
       const text = decodeHtmlEntities(
         j.body_text ||
           (j.body_html
@@ -527,16 +519,11 @@ export default function InssAdminProcessesTab() {
   const triggerSync = async () => {
     setSyncing(true);
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-inss-sync`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ lookback_hours: 48, max_messages: 100 }),
+      const { data: j, error } = await cloudFunctions.invoke<any>("gmail-inss-sync", {
+        body: { lookback_hours: 48, max_messages: 100 },
       });
-      const j = await resp.json();
-      if (j.success) {
+      if (error) throw error;
+      if (j?.success) {
         toast.success(
           `Sync OK — ${j.new || 0} novos emails, ${j.created_processes || 0} processos criados`,
         );
@@ -567,17 +554,12 @@ export default function InssAdminProcessesTab() {
     let calls = 0;
     try {
       do {
-        const resp = await fetch(`${RAILWAY_BASE}/functions/gmail-inss-sync`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-          },
-          body: JSON.stringify({ backfill: true, max_messages: 150, cursor }),
+        const { data: j, error } = await cloudFunctions.invoke<any>("gmail-inss-sync", {
+          body: { backfill: true, max_messages: 150, cursor },
         });
-        const j = await resp.json();
-        if (!j.success) {
-          toast.error("Backfill falhou: " + (j.error || "erro desconhecido"));
+        if (error) throw error;
+        if (!j?.success) {
+          toast.error("Backfill falhou: " + (j?.error || "erro desconhecido"));
           break;
         }
         totalNew += j.new || 0;
@@ -945,14 +927,9 @@ export default function InssAdminProcessesTab() {
 
       toast.success("Processo vinculado ao caso " + caseNumberLabel);
 
-      fetch(`${RAILWAY_BASE}/functions/notify-inss-update`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ process_id: linkingProc.id }),
-      }).catch(() => {});
+      void cloudFunctions
+        .invoke("notify-inss-update", { body: { process_id: linkingProc.id } })
+        .catch(() => {});
 
       setLinkingProc(null);
       loadProcesses();
@@ -966,16 +943,9 @@ export default function InssAdminProcessesTab() {
   const runAutoMatch = async () => {
     toast.info("Procurando órfãos que casam com leads...");
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/match-inss-orphans`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: "{}",
-      });
-      const j = await resp.json();
-      if (j.success) {
+      const { data: j, error } = await cloudFunctions.invoke<any>("match-inss-orphans", { body: {} });
+      if (error) throw error;
+      if (j?.success) {
         toast.success(`${j.matched}/${j.scanned} órfãos vinculados automaticamente.`);
         loadProcesses();
       } else {
@@ -989,16 +959,9 @@ export default function InssAdminProcessesTab() {
   const runAutoLinkByName = async () => {
     toast.info("Vinculando órfãos por nome (só candidatos únicos)...");
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/auto-link-inss-by-name`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: "{}",
-      });
-      const j = await resp.json();
-      if (j.success) {
+      const { data: j, error } = await cloudFunctions.invoke<any>("auto-link-inss-by-name", { body: {} });
+      if (error) throw error;
+      if (j?.success) {
         const s = j.stats || {};
         toast.success(
           `${s.linked || 0} vinculados · ${s.ambiguous || 0} ambíguos (revisar manualmente) · ${s.no_match || 0} sem match`
@@ -1016,16 +979,9 @@ export default function InssAdminProcessesTab() {
     if (!confirm("Vincular em lote todos os órfãos cujo CPF do segurado bate com um lead ou contato existente. Continuar?")) return;
     toast.info("Vinculando órfãos por CPF…");
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/bulk-link-inss-by-cpf`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: "{}",
-      });
-      const j = await resp.json();
-      if (j.success) {
+      const { data: j, error } = await cloudFunctions.invoke<any>("bulk-link-inss-by-cpf", { body: {} });
+      if (error) throw error;
+      if (j?.success) {
         const s = j.stats || {};
         toast.success(`${s.linked || 0} vinculados por CPF · ${s.no_match || 0} sem match · ${s.errors || 0} erros`);
         loadProcesses();
@@ -1051,16 +1007,11 @@ export default function InssAdminProcessesTab() {
     setAmbiguous([]);
     setAmbiguousLoading(true);
     try {
-      const resp = await fetch(`${RAILWAY_BASE}/functions/auto-link-inss-by-name`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ dry_run: true }),
+      const { data: j, error } = await cloudFunctions.invoke<any>("auto-link-inss-by-name", {
+        body: { dry_run: true },
       });
-      const j = await resp.json();
-      if (!j.success) {
+      if (error) throw error;
+      if (!j?.success) {
         toast.error("Erro: " + (j.error || "desconhecido"));
         setAmbiguous(null);
         return;

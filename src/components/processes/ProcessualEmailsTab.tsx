@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import ListPagination from "@/components/processes/ListPagination";
 import { db } from "@/integrations/supabase";
+import { cloudFunctions } from "@/lib/functionRouter";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
@@ -24,10 +25,6 @@ interface ProcessualEmail {
   process_number: string | null;
   created_at: string;
 }
-
-const RAILWAY_BASE =
-  (import.meta as any).env?.VITE_RAILWAY_BASE_URL ||
-  "https://adscore-keeper-production.up.railway.app";
 
 const PAGE_SIZE = 25;
 
@@ -62,16 +59,11 @@ export default function ProcessualEmailsTab() {
   const triggerSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const r = await fetch(`${RAILWAY_BASE}/functions/gmail-processual-sync`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ lookback_hours: 168, max_messages: 200 }),
+      const { data: j, error } = await cloudFunctions.invoke<any>("gmail-processual-sync", {
+        body: { lookback_hours: 168, max_messages: 200 },
       });
-      const j = await r.json();
-      if (!j.success) toast.error(j.error || "Falha no sync");
+      if (error) throw error;
+      if (!j?.success) toast.error(j?.error || "Falha no sync");
       else toast.success(`Sync ok — ${j.total_inserted} novo(s), ${j.total_existing} já tinha`);
       await load();
     } catch (e: any) {
@@ -92,16 +84,11 @@ export default function ProcessualEmailsTab() {
     let calls = 0;
     try {
       do {
-        const r = await fetch(`${RAILWAY_BASE}/functions/gmail-processual-sync`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-          },
-          body: JSON.stringify({ backfill: true, max_messages: 150, cursor }),
+        const { data: j, error } = await cloudFunctions.invoke<any>("gmail-processual-sync", {
+          body: { backfill: true, max_messages: 150, cursor },
         });
-        const j = await r.json();
-        if (!j.success) { toast.error("Backfill falhou: " + (j.error || "erro")); break; }
+        if (error) throw error;
+        if (!j?.success) { toast.error("Backfill falhou: " + (j?.error || "erro")); break; }
         totalNew += j.total_inserted || 0;
         totalExisting += j.total_existing || 0;
         calls++;
@@ -136,16 +123,11 @@ export default function ProcessualEmailsTab() {
     }
     setEmailView({ open: true, loading: true, subject: row.subject, body: null, error: null });
     try {
-      const r = await fetch(`${RAILWAY_BASE}/functions/gmail-message-body`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": (import.meta as any).env?.VITE_RAILWAY_API_KEY || "",
-        },
-        body: JSON.stringify({ gmail_message_id: row.gmail_message_id }),
+      const { data: j, error } = await cloudFunctions.invoke<any>("gmail-message-body", {
+        body: { gmail_message_id: row.gmail_message_id },
       });
-      const j = await r.json();
-      if (!j.success) setEmailView((s) => ({ ...s, loading: false, error: j.error || "Falha" }));
+      if (error) throw error;
+      if (!j?.success) setEmailView((s) => ({ ...s, loading: false, error: j?.error || "Falha" }));
       else setEmailView({
         open: true, loading: false,
         subject: j.subject || row.subject,
