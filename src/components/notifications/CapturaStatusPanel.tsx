@@ -23,6 +23,13 @@ import { RefreshCw, FileText, Radio, AlertTriangle, Mail, ChevronDown, ChevronRi
 
 const CHAVE_ABERTO = 'jm.captura-status.aberto';
 
+// A ordem é a da cadeia, não a do custo: o aviso por e-mail diz que o processo
+// mexeu, o DataJud diz o QUE mudou (código TPU do movimento) e o Escavador só
+// então busca o documento de quem tem documento. Ler de cima para baixo é ler o
+// funil. A view faz UNION ALL sem ORDER BY — a ordem que chega não é garantida,
+// então quem manda é esta lista.
+const ORDEM_DA_CADEIA: CapturaStatus['fonte'][] = ['email', 'datajud', 'escavador'];
+
 function lerPreferencia(): boolean {
   try {
     return localStorage.getItem(CHAVE_ABERTO) === '1';
@@ -80,7 +87,12 @@ export function CapturaStatusPanel() {
       // `as any`: a view é nova e ainda não está nos tipos gerados.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (db as any).from('vw_jm_captura_status').select('*');
-      setLinhas((data || []) as CapturaStatus[]);
+      const vindas = (data || []) as CapturaStatus[];
+      setLinhas(
+        [...vindas].sort(
+          (a, b) => ORDEM_DA_CADEIA.indexOf(a.fonte) - ORDEM_DA_CADEIA.indexOf(b.fonte),
+        ),
+      );
     } finally {
       setLoading(false);
     }
