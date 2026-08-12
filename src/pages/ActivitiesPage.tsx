@@ -85,7 +85,8 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
-import { displayProcessLabel } from '@/lib/processLabel';
+import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
+import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
@@ -377,6 +378,11 @@ const ActivitiesPage = () => {
   const [caseSearch, setCaseSearch] = useState('');
   const [leadCases, setLeadCases] = useState<{id: string; case_number: string; title: string}[]>([]);
   const [caseProcesses, setCaseProcesses] = useState<{id: string; title: string; process_number: string | null; polo_ativo?: string | null; polo_passivo: string | null; cliente_polo?: string | null; tribunal: string | null; area: string | null; assuntos: string[] | null; workflow_id: string | null; envolvidos: any[] | null; data_ultima_movimentacao?: string | null}[]>([]);
+  // Caso/processo vivos do vínculo: cobre a atividade cujo snapshot de título
+  // veio nulo (e cujo processo não está em `caseProcesses`, quando não há caso).
+  const { linkedCase, linkedProcess } = useLinkedCaseProcess({
+    caseId: formCaseId, processId: formProcessId, caseProcesses, leadCases,
+  });
   // OABs dos usuários do escritório — para auto-detectar o polo do cliente.
   const systemOabs = useSystemOabs();
   const applyUpdatedCaseProcess = useCallback((updatedProcess?: any) => {
@@ -5490,22 +5496,27 @@ const ActivitiesPage = () => {
                   </Button>
                 </div>
               </div>
-              {(formCaseTitle || formProcessTitle) && (
+              {/* Vínculo aparece pelo *id*, não pelo título: atividade auto-criada
+                  grava case_id/process_id com case_title/process_title nulos e o
+                  cabeçalho ficava vazio enquanto o menu oferecia "Remover Processo". */}
+              {(formCaseId || formCaseTitle || formProcessId || formProcessTitle) && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground mt-1">
-                  {formCaseTitle && (
-                    <span className="flex items-center gap-1 min-w-0 max-w-full" title={formCaseTitle}>
+                  {(formCaseId || formCaseTitle) && (() => {
+                    const caseLabel = displayCaseLabel(linkedCase, formCaseTitle) || 'Caso vinculado';
+                    return (
+                    <span className="flex items-center gap-1 min-w-0 max-w-full" title={caseLabel}>
                       <Briefcase className="h-3 w-3 shrink-0" />
                       <button
                         type="button"
                         onClick={async () => {
-                          const ok = await copyTextToClipboard(formCaseTitle);
+                          const ok = await copyTextToClipboard(caseLabel);
                           if (ok) toast.success('Caso copiado');
                           else toast.error('Não foi possível copiar.');
                         }}
                         className="truncate hover:text-primary text-left"
                         title="Clique para copiar"
                       >
-                        {formCaseTitle}
+                        {caseLabel}
                       </button>
                       {formCaseId && (
                         <button
@@ -5518,14 +5529,15 @@ const ActivitiesPage = () => {
                         </button>
                       )}
                     </span>
-                  )}
-                  {formProcessTitle && (() => {
-                    const proc = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
-                    const procNumber = proc?.process_number || formProcessTitle;
+                    );
+                  })()}
+                  {(formProcessId || formProcessTitle) && (() => {
+                    const proc = (formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null) || linkedProcess;
                     // Exibe o rótulo do processo vivo ("<nº> - <título>"): o
                     // snapshot `process_title` das atividades auto-criadas vinha
                     // só com o título e escondia o número do processo.
-                    const procLabel = displayProcessLabel(proc, formProcessTitle);
+                    const procLabel = displayProcessLabel(proc, formProcessTitle) || 'Processo vinculado';
+                    const procNumber = proc?.process_number || formProcessTitle || procLabel;
                     // Tempo sem andamento efetivo: dias desde a última movimentação (fonte Escavador),
                     // mesma métrica do relatório "Processos sem movimentação" (faixas 30/60/90).
                     const ultMov = proc?.data_ultima_movimentacao ? new Date(proc.data_ultima_movimentacao) : null;

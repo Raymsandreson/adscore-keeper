@@ -17,7 +17,8 @@ import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, 
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
-import { displayProcessLabel } from '@/lib/processLabel';
+import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
+import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import ProcessMarcosInline from '@/components/cases/ProcessMarcosInline';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
@@ -234,6 +235,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   // prioridade (mesma regra do activeStepBoardId da ActivitiesPage); senão
   // workflow do processo; senão funil do lead
   const linkedProcess = formProcessId ? caseProcesses.find(p => p.id === formProcessId) : null;
+  // Caso/processo vivos para o rótulo do vínculo (o snapshot de título pode ser nulo)
+  const { linkedCase, linkedProcess: linkedProcessLive } = useLinkedCaseProcess({
+    caseId: formCaseId, processId: formProcessId, caseProcesses, leadCases,
+  });
   const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
   const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
 
@@ -1195,9 +1200,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 <Plus className="h-3 w-3" /> Vincular Lead
               </Button>
             )}
-            {formCaseTitle ? (
+            {/* Vínculo aparece pelo *id*, não pelo snapshot de título: atividade
+                auto-criada grava case_id/process_id com título nulo e a badge
+                sumia, mostrando "Vincular Caso" onde já havia caso vinculado. */}
+            {(formCaseId || formCaseTitle) ? (
               <Badge variant="outline" className="text-[10px] gap-1 max-w-[260px]">
-                <Briefcase className="h-3 w-3 shrink-0" /><span className="truncate">{formCaseTitle}</span>
+                <Briefcase className="h-3 w-3 shrink-0" />
+                <span className="truncate" title={displayCaseLabel(linkedCase, formCaseTitle) || 'Caso vinculado'}>
+                  {displayCaseLabel(linkedCase, formCaseTitle) || 'Caso vinculado'}
+                </span>
                 <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar caso"
                   onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-case'))}>
                   <Pencil className="h-2.5 w-2.5" />
@@ -1213,14 +1224,14 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 <Briefcase className="h-3 w-3" /> Vincular Caso
               </Button>
             )}
-            {formProcessTitle ? (
+            {(formProcessId || formProcessTitle) ? (
               <Badge variant="outline" className="text-[10px] gap-1 max-w-[260px]">
                 {/* Rótulo vem do processo vivo, não do snapshot `process_title`:
                     atividades auto-criadas nasciam só com o título e mostravam
                     "INDENIZAÇÃO" no lugar do nº do processo. */}
                 <FileText className="h-3 w-3 shrink-0" />
-                <span className="truncate" title={displayProcessLabel(linkedProcess, formProcessTitle)}>
-                  {displayProcessLabel(linkedProcess, formProcessTitle)}
+                <span className="truncate" title={displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || 'Processo vinculado'}>
+                  {displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || 'Processo vinculado'}
                 </span>
                 {formCaseId && (
                   <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar processo"
