@@ -1,7 +1,7 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Bell, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2, BadgeCheck, AlertTriangle,
+  Bell, BellRing, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2, BadgeCheck, AlertTriangle,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
@@ -34,6 +34,7 @@ import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
 import { ASSUNTO_SIMPLES, EXPLICACAO, blocoTextoDoTribunal } from '@/lib/linguagemSimples';
 import { CATEGORIAS } from '@/lib/processUpdateCategorias';
 import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPanel';
+import { notificationsSupported, requestNotificationPermission } from '@/lib/nativeNotification';
 
 const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
   'todas', 'decisao_merito', 'audiencia', 'pericia', 'prazo', 'despacho', 'movimentacao',
@@ -211,6 +212,32 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+
+  // ---- Destaque de CHEGADA ----
+  // Separado do "tem não-lida": o anel vermelho fica enquanto houver pendência,
+  // mas o pulso é evento, não estado. Acende quando o contador sobe, apaga
+  // sozinho em 20s ou assim que o painel é aberto — depois de olhar, não há
+  // mais chegada a anunciar.
+  const [pulsar, setPulsar] = useState(false);
+  const contadorAnterior = useRef(unreadCount);
+  useEffect(() => {
+    if (unreadCount > contadorAnterior.current) setPulsar(true);
+    contadorAnterior.current = unreadCount;
+  }, [unreadCount]);
+  useEffect(() => {
+    if (!pulsar) return;
+    const t = setTimeout(() => setPulsar(false), 20000);
+    return () => clearTimeout(t);
+  }, [pulsar]);
+  useEffect(() => { if (open) setPulsar(false); }, [open]);
+
+  // O pop-up do responsável (useProcessUpdates) só sai com permissão concedida.
+  // Sem um lugar para conceder, o recurso existiria e nunca dispararia — mas o
+  // navegador só aceita o pedido a partir de um clique, então é botão e não
+  // efeito de montagem.
+  const [permissao, setPermissao] = useState<NotificationPermission | 'indisponivel'>(
+    () => (notificationsSupported() ? Notification.permission : 'indisponivel'),
+  );
 
   // ---- Insumos da mensagem padrão da atividade (mesma função da ficha) ----
   const { fields: fieldSettings } = useActivityFieldSettings();
@@ -532,14 +559,39 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
         <Button
           variant="ghost"
           size="icon"
-          aria-label="Atualizações processuais"
+          aria-label={`Atualizações processuais${unreadCount > 0 ? ` — ${unreadCount} não lidas` : ''}`}
           title="Atualizações processuais"
-          className={cn('relative shrink-0', compact ? 'h-8 w-8' : 'h-10 w-10')}
+          className={cn(
+            'relative shrink-0 transition-colors',
+            compact ? 'h-8 w-8' : 'h-10 w-10',
+            // Fundo e anel enquanto houver não-lida: o sino deixa de ser mais um
+            // ícone cinza na fileira e passa a ser a coisa acesa da barra.
+            unreadCount > 0 && 'bg-red-500/10 hover:bg-red-500/20 ring-1 ring-red-500/40',
+          )}
         >
-          <Bell className={cn(compact ? 'h-4 w-4' : 'h-5 w-5', unreadCount > 0 && 'text-primary')} />
+          <Bell
+            className={cn(
+              compact ? 'h-4 w-4' : 'h-5 w-5',
+              unreadCount > 0 && 'text-red-600 dark:text-red-500',
+              // O balanço é só na chegada, junto com o pulso do contador.
+              pulsar && 'animate-bounce',
+            )}
+          />
           {unreadCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-              {unreadCount > 99 ? '99+' : unreadCount}
+            <span className="absolute -top-1 -right-1 flex">
+              {/* O halo pulsa SÓ quando algo acabou de chegar. Pulsar sempre que
+                  há não-lida deixaria 97 pendências piscando o dia inteiro no
+                  canto da tela — que é o jeito mais rápido de ensinar a equipe
+                  a não olhar mais para o sino. */}
+              {pulsar && (
+                <span
+                  aria-hidden
+                  className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-60"
+                />
+              )}
+              <span className="relative inline-flex min-w-[20px] h-[20px] px-1 rounded-full bg-red-500 text-white text-[11px] font-bold items-center justify-center shadow-sm ring-2 ring-background">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             </span>
           )}
         </Button>
@@ -556,6 +608,28 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
             )}
           </div>
         </SheetHeader>
+        {/* Só aparece enquanto ninguém decidiu: concedida some, negada some
+            (insistir não reabre o prompt — o navegador bloqueia). */}
+        {permissao === 'default' && (
+          <button
+            type="button"
+            onClick={async () => {
+              const ok = await requestNotificationPermission();
+              setPermissao(ok ? 'granted' : Notification.permission);
+              if (ok) toast.success('Pronto — você será avisado das movimentações dos seus passos');
+            }}
+            className="flex w-full items-start gap-2 border-b bg-amber-500/10 px-4 py-2.5 text-left hover:bg-amber-500/15"
+          >
+            <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
+            <span className="text-[11px] leading-snug">
+              <span className="font-medium">Ativar avisos no computador</span>
+              <span className="block text-muted-foreground">
+                Você recebe um aviso na hora quando cair movimentação num processo cujo
+                passo em aberto é seu. Só o responsável pelo passo é avisado.
+              </span>
+            </span>
+          </button>
+        )}
         {/* Quanto da atualização já foi feita, quanto falta e quanto custou.
             Fica acima dos filtros porque a pergunta "o que ainda não chegou?" é
             a mesma do sino pelo avesso — e fila parada não avisa sozinha. */}
