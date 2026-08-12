@@ -11,6 +11,7 @@ import { ContactPendencyBadge } from './ContactPendencyBadge';
 import { ContactActivityBadge } from './ContactActivityBadge';
 import { ContactsDistributionDonuts } from './ContactsDistributionDonuts';
 import { ContactsCreationTrendBars } from './ContactsCreationTrendBars';
+import { ClassificationFilterSelect, NO_CLASSIFICATION, type ClassificationFilterMode } from './ClassificationFilterSelect';
 import { ClassificationContactsSheet } from './ClassificationContactsSheet';
 import { useContactsPendencies } from '@/hooks/useContactsPendencies';
 import { useContactsActivities } from '@/hooks/useContactsActivities';
@@ -328,14 +329,16 @@ export function ContactsListPage() {
   /** Profissão em foco (clique na rosca). `undefined` = sem filtro, `null` = sem profissão. */
   const [professionFilter, setProfessionFilter] = useState<string | null | undefined>(undefined);
 
-  const { classificationConfig } = useContactClassifications();
+  const { classificationConfig, classifications: classificationOptions } = useContactClassifications();
 
   // Filter states
   const [cityFilter, setCityFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [createdByFilter, setCreatedByFilter] = useState('all');
-  const [classificationFilter, setClassificationFilter] = useState('all');
+  /** Vazio = todos. Vários relacionamentos ao mesmo tempo; `mode` diz se é união ou interseção. */
+  const [classificationFilter, setClassificationFilter] = useState<string[]>([]);
+  const [classificationMode, setClassificationMode] = useState<ClassificationFilterMode>('any');
   const [groupFilter, setGroupFilter] = useState<'all' | 'with_group' | 'without_group'>('all');
   const [leadLinkedFilter, setLeadLinkedFilter] = useState<'all' | 'linked' | 'not_linked'>('all');
   const [showFilters, setShowFilters] = useState(true);
@@ -934,7 +937,7 @@ export function ContactsListPage() {
         ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
         ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
         ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
-        ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+        ...(classificationFilter.length > 0 ? { classification: classificationFilter, classificationMode } : {}),
         ...(groupFilter !== 'all' ? { groupFilter } : {}),
       });
     } catch (err) {
@@ -992,11 +995,11 @@ export function ContactsListPage() {
       ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
-      ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+      ...(classificationFilter.length > 0 ? { classification: classificationFilter, classificationMode } : {}),
       groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
       ...(leadLinkedFilter !== 'all' ? { leadLinked: leadLinkedFilter } : {}),
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, classificationMode, groupFilter, leadLinkedFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
@@ -1049,6 +1052,13 @@ export function ContactsListPage() {
 
   const selectableContacts = filteredContacts.filter(c => c.phone);
 
+  /** Relacionamento conta como UM filtro mesmo com vários marcados. */
+  const activeFilterCount = useMemo(() => (
+    [stateFilter, cityFilter, sourceFilter, createdByFilter, groupFilter, leadLinkedFilter].filter(v => v !== 'all').length
+    + (classificationFilter.length > 0 ? 1 : 0)
+  ), [stateFilter, cityFilter, sourceFilter, createdByFilter, groupFilter, leadLinkedFilter, classificationFilter]);
+  const hasActiveFilters = activeFilterCount > 0;
+
   // O card de cadastros por período conta no banco (a lista aqui é só a 1ª
   // página), então precisa dos filtros — inclusive busca e profissão, que são
   // aplicados no cliente logo acima.
@@ -1057,12 +1067,13 @@ export function ContactsListPage() {
     city: cityFilter,
     actionSource: sourceFilter,
     createdBy: createdByFilter,
-    classification: classificationFilter,
+    classifications: classificationFilter,
+    classificationMode,
     groupFilter: (groupFilter !== 'all' ? groupFilter : 'without_group') as 'with_group' | 'without_group',
     leadLinked: leadLinkedFilter,
     profession: professionFilter,
     search,
-  }), [stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter, professionFilter, search]);
+  }), [stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, classificationMode, groupFilter, leadLinkedFilter, professionFilter, search]);
 
   // Etiquetas só das linhas de cima quando a lista é enorme (ver ENRICH_LIMIT),
   // e só na aba de contatos — nas outras nada disso está em tela.
@@ -1339,9 +1350,9 @@ export function ContactsListPage() {
             <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)}>
               <Filter className="h-3.5 w-3.5 mr-1" />
               Filtros
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
+              {hasActiveFilters && (
                 <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter].filter(v => v !== 'all').length}
+                  {activeFilterCount}
                 </Badge>
               )}
             </Button>
@@ -1387,22 +1398,13 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={classificationFilter} onValueChange={setClassificationFilter}>
-                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Relacionamento Conosco" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos Relacionamentos</SelectItem>
-                  <SelectItem value="client">Cliente</SelectItem>
-                  <SelectItem value="prospect">Prospect</SelectItem>
-                  <SelectItem value="non_client">Não-Cliente</SelectItem>
-                  <SelectItem value="partner">Parceiro</SelectItem>
-                  <SelectItem value="supplier">Fornecedor</SelectItem>
-                  <SelectItem value="ponte">Ponte</SelectItem>
-                  <SelectItem value="ex_cliente">Ex-cliente</SelectItem>
-                  <SelectItem value="acolhedor">Acolhedor</SelectItem>
-                  <SelectItem value="Embaixador">Embaixador</SelectItem>
-                  <SelectItem value="none">Sem classificação</SelectItem>
-                </SelectContent>
-              </Select>
+              <ClassificationFilterSelect
+                value={classificationFilter}
+                onChange={setClassificationFilter}
+                mode={classificationMode}
+                onModeChange={setClassificationMode}
+                options={classificationOptions.map(c => ({ name: c.name, color: c.color }))}
+              />
 
               <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v as any)}>
                 <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Grupo" /></SelectTrigger>
@@ -1422,13 +1424,14 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
+              {hasActiveFilters && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
                   setSourceFilter('all');
                   setCreatedByFilter('all');
-                  setClassificationFilter('all');
+                  setClassificationFilter([]);
+                  setClassificationMode('any');
                   setGroupFilter('all');
                   setLeadLinkedFilter('all');
                 }}>
@@ -3073,7 +3076,7 @@ export function ContactsListPage() {
             ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
             ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
             ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
-            ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+            ...(classificationFilter.length > 0 ? { classification: classificationFilter, classificationMode } : {}),
             groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
           });
         }}
