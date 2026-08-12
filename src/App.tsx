@@ -185,7 +185,7 @@ const VisitasPage = lazyRetry(() => import("./pages/VisitasPage"), "VisitasPage"
 const BpcAutistaPage = lazyRetry(() => import("./pages/BpcAutistaPage"), "BpcAutistaPage");
 const AcompanhamentoProcessualPage = lazyRetry(() => import("./pages/AcompanhamentoProcessualPage"), "AcompanhamentoProcessualPage");
 const RevisaoAcordosPage = lazyRetry(() => import("./pages/RevisaoAcordosPage"), "RevisaoAcordosPage");
-const CarteiraPorFasePage = lazyRetry(() => import("./pages/CarteiraPorFasePage"), "CarteiraPorFasePage");
+const CarteiraPorMarcoPage = lazyRetry(() => import("./pages/CarteiraPorMarcoPage"), "CarteiraPorMarcoPage");
 const ResetPasswordPage = lazyRetry(() => import("./pages/ResetPasswordPage"), "ResetPasswordPage");
 const ContactsPage = lazyRetry(() => import("./pages/ContactsPage"), "ContactsPage");
 const InstagramPage = lazyRetry(() => import("./pages/InstagramPage"), "InstagramPage");
@@ -400,7 +400,7 @@ function SidebarLayout() {
         <Route path="/processual/bpc-autista" element={<ProtectedRoute><BpcAutistaPage /></ProtectedRoute>} />
         <Route path="/processual/acompanhamento" element={<ProtectedRoute><AcompanhamentoProcessualPage /></ProtectedRoute>} />
         <Route path="/processual/revisao-acordos" element={<ProtectedRoute><RevisaoAcordosPage /></ProtectedRoute>} />
-        <Route path="/processual/carteira" element={<ProtectedRoute><CarteiraPorFasePage /></ProtectedRoute>} />
+        <Route path="/processual/carteira" element={<ProtectedRoute><CarteiraPorMarcoPage /></ProtectedRoute>} />
                 <Route path="/archived" element={<ProtectedRoute><ArchivedItemsPage /></ProtectedRoute>} />
                 <Route path="/debug/hooks" element={<ProtectedRoute><HookDebugPage /></ProtectedRoute>} />
                 <Route path="/debug/group-audit" element={<ProtectedRoute><GroupAuditLogPage /></ProtectedRoute>} />

@@ -1,8 +1,13 @@
 // =============================================================================
-// Carteira por fase do POP: onde cada processo está e quanto vale ali.
+// Carteira por marco do POP: onde cada processo está e quanto vale ali.
+//
+// "Marco" é o nome único desde ago/2026 — marco e fase do POP eram a mesma
+// coisa dita de dois jeitos. Os nomes de BANCO seguem com o termo antigo
+// (`vw_pop_carteira_por_fase`, `fase_digitada`, `atravessa_fases`): renomeá-los
+// exigiria migration e não muda nada para quem usa a tela.
 //
 // A granularidade da fonte é (processo x cliente) — um processo de litisconsórcio
-// tem um valor por pessoa. Ao agrupar por fase, os PROCESSOS são contados
+// tem um valor por pessoa. Ao agrupar por marco, os PROCESSOS são contados
 // distintos e os VALORES somados por linha; misturar isso conta processo várias
 // vezes.
 // =============================================================================
@@ -30,15 +35,15 @@ export interface CarteiraLinha {
   advogado_oab: string | null;
   responsavel_nome: string | null;
   empresa: string | null;
-  /** Fase/objetivo/passo digitados à mão em jm_processos, antes da régua automática. */
+  /** Marco/objetivo/passo digitados à mão em jm_processos, antes da régua automática. */
   fase_digitada: string | null;
   objetivo_digitado: string | null;
   passo_digitado: string | null;
 }
 
-export interface GrupoFase {
+export interface GrupoMarco {
   ordem: number;
-  fase: string;
+  marco: string;
   processos: number;
   clientes: number;
   valor: number;
@@ -52,7 +57,7 @@ export type Periodo = 'tudo' | '30d' | '90d' | '12m';
 
 const DIAS: Record<Periodo, number | null> = { tudo: null, '30d': 30, '90d': 90, '12m': 365 };
 
-export function useCarteiraPorFase(periodo: Periodo = 'tudo', pop: string = 'todos') {
+export function useCarteiraPorMarco(periodo: Periodo = 'tudo', pop: string = 'todos') {
   const [linhas, setLinhas] = useState<CarteiraLinha[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
@@ -78,7 +83,7 @@ export function useCarteiraPorFase(periodo: Periodo = 'tudo', pop: string = 'tod
 
   /**
    * O período filtra pela data em que o MARCO foi atingido — "o que entrou
-   * nesta fase nos últimos 90 dias". Filtrar pela data da decisão responderia
+   * neste marco nos últimos 90 dias". Filtrar pela data da decisão responderia
    * outra pergunta (quando o valor foi fixado), e processo sem decisão sumiria.
    */
   const filtradas = useMemo(() => {
@@ -111,13 +116,13 @@ export function useCarteiraPorFase(periodo: Periodo = 'tudo', pop: string = 'tod
     return { lista: [...set].sort(), semPop };
   }, [linhas]);
 
-  const grupos = useMemo<GrupoFase[]>(() => {
-    const mapa = new Map<string, GrupoFase & { _cnjs: Set<string> }>();
+  const grupos = useMemo<GrupoMarco[]>(() => {
+    const mapa = new Map<string, GrupoMarco & { _cnjs: Set<string> }>();
     for (const l of filtradas) {
-      const fase = l.marco_rotulo || 'Sem marco detectado';
+      const marco = l.marco_rotulo || 'Sem marco detectado';
       const ordem = l.marco_ordem ?? 99;
-      const g = mapa.get(fase) || {
-        ordem, fase, processos: 0, clientes: 0, valor: 0, pago: 0,
+      const g = mapa.get(marco) || {
+        ordem, marco, processos: 0, clientes: 0, valor: 0, pago: 0,
         comAcordo: 0, suspensos: 0, porEstagio: {}, _cnjs: new Set<string>(),
       };
       g._cnjs.add(l.processo_cnj);
@@ -127,7 +132,7 @@ export function useCarteiraPorFase(periodo: Periodo = 'tudo', pop: string = 'tod
       if (l.tem_acordo) g.comAcordo += 1;
       if (l.suspenso) g.suspensos += 1;
       g.porEstagio[l.estagio_financeiro] = (g.porEstagio[l.estagio_financeiro] || 0) + Number(l.valor_condenacao || 0);
-      mapa.set(fase, g);
+      mapa.set(marco, g);
     }
     return [...mapa.values()]
       .map(({ _cnjs, ...g }) => ({ ...g, processos: _cnjs.size }))

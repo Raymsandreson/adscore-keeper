@@ -1,9 +1,9 @@
 // =============================================================================
-// Carteira por fase do POP: onde os processos estão hoje e quanto vale cada fase.
+// Carteira por marco do POP: onde os processos estão hoje e quanto vale cada marco.
 //
 // Responde três perguntas na mesma tela:
-//   1. em que fase/marco cada processo está;
-//   2. quanto de dinheiro está parado em cada fase;
+//   1. em que marco cada processo está;
+//   2. quanto de dinheiro está parado em cada marco;
 //   3. em que estágio financeiro esse dinheiro se encontra.
 //
 // O NÚMERO AQUI NÃO É A SOMA DE jm_valores. Aquela tabela tem uma linha por
@@ -19,7 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Progress } from '@/components/ui/progress';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCarteiraPorFase, type Periodo, type GrupoFase } from '@/hooks/useCarteiraPorFase';
+import { useCarteiraPorMarco, type Periodo, type GrupoMarco } from '@/hooks/useCarteiraPorMarco';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { Wallet, RefreshCw, PanelRightOpen, Handshake, PauseCircle } from 'lucide-react';
 
@@ -45,14 +45,14 @@ function moeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 }
 
-export default function CarteiraPorFasePage() {
+export default function CarteiraPorMarcoPage() {
   const [periodo, setPeriodo] = useState<Periodo>('tudo');
   const [pop, setPop] = useState<string>('todos');
-  const { linhas, grupos, totais, pops, loading, erro, recarregar } = useCarteiraPorFase(periodo, pop);
-  const [aberta, setAberta] = useState<GrupoFase | null>(null);
+  const { linhas, grupos, totais, pops, loading, erro, recarregar } = useCarteiraPorMarco(periodo, pop);
+  const [aberta, setAberta] = useState<GrupoMarco | null>(null);
 
   const doGrupo = aberta
-    ? linhas.filter((l) => (l.marco_rotulo || 'Sem marco detectado') === aberta.fase)
+    ? linhas.filter((l) => (l.marco_rotulo || 'Sem marco detectado') === aberta.marco)
     : [];
 
   return (
@@ -61,7 +61,7 @@ export default function CarteiraPorFasePage() {
         <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2">
-              <Wallet className="h-5 w-5" /> Jurimetria — carteira por fase
+              <Wallet className="h-5 w-5" /> Jurimetria — carteira por marco
             </CardTitle>
             <CardDescription>
               Onde cada processo está hoje e quanto vale ali. O valor é a condenação
@@ -80,7 +80,7 @@ export default function CarteiraPorFasePage() {
               <button
                 key={p.v}
                 onClick={() => setPeriodo(p.v)}
-                title="Filtra pela data em que o processo entrou na fase"
+                title="Filtra pela data em que o processo entrou no marco"
                 className={`rounded-full border px-3 py-0.5 text-xs transition-colors ${
                   periodo === p.v ? 'bg-primary text-primary-foreground border-primary' : 'hover:bg-accent'
                 }`}
@@ -121,7 +121,7 @@ export default function CarteiraPorFasePage() {
                 <Resumo rotulo="Processos" valor={String(totais.processos)} />
                 <Resumo rotulo="Valor em carteira" valor={moeda(totais.valor)} />
                 <Resumo rotulo="Já recebido" valor={moeda(totais.pago)} />
-                <Resumo rotulo="Fases com processo" valor={String(grupos.length)} />
+                <Resumo rotulo="Marcos com processo" valor={String(grupos.length)} />
               </div>
 
               <div className="space-y-2">
@@ -129,7 +129,7 @@ export default function CarteiraPorFasePage() {
                   const pctValor = totais.valor > 0 ? Math.round((g.valor / totais.valor) * 100) : 0;
                   return (
                     <button
-                      key={g.fase}
+                      key={g.marco}
                       type="button"
                       onClick={() => setAberta(g)}
                       title="abrir a lista aqui do lado"
@@ -138,7 +138,7 @@ export default function CarteiraPorFasePage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs text-muted-foreground">{g.ordem === 99 ? '—' : g.ordem}</span>
-                          <span className="font-medium">{g.fase}</span>
+                          <span className="font-medium">{g.marco}</span>
                           <Badge variant="outline" className="text-[10px]">
                             {g.processos} processo{g.processos > 1 ? 's' : ''}
                           </Badge>
@@ -155,7 +155,7 @@ export default function CarteiraPorFasePage() {
                         </div>
 
                         {/* Barra por estágio financeiro: mostra em que estado está
-                            o dinheiro parado nesta fase. */}
+                            o dinheiro parado neste marco. */}
                         {g.valor > 0 ? (
                           <>
                             <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-muted">
@@ -205,7 +205,7 @@ export default function CarteiraPorFasePage() {
       <Sheet open={!!aberta} onOpenChange={(o) => { if (!o) setAberta(null); }}>
         <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
           <SheetHeader className="text-left">
-            <SheetTitle>{aberta?.fase}</SheetTitle>
+            <SheetTitle>{aberta?.marco}</SheetTitle>
             <SheetDescription>
               {aberta?.processos} processo(s) · {moeda(aberta?.valor || 0)}
             </SheetDescription>

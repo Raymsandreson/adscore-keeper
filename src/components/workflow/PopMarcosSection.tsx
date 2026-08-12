@@ -50,7 +50,7 @@ export function PopMarcosSection({ boardId }: Props) {
           </div>
           <p className="text-xs text-muted-foreground">
             A IA achou acordo homologado dentro da ata de audiência. Não vira marco
-            enquanto alguém não confirmar — acordo errado move o processo de fase e
+            enquanto alguém não confirmar — acordo errado move o processo de marco e
             reclassifica dinheiro.
           </p>
           {pendentes.map((p) => (
