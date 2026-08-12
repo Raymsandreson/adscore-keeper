@@ -103,6 +103,13 @@ real. Roda **uma vez por dia à meia-noite BRT** = `0 3 * * *` no cron (o servid
 Painel: `CapturaStatusPanel` no sino, view `vw_jm_captura_status`. O gasto exibido não é
 estimativa — vem de `jm_esc_solicitacoes.creditos`, o que a própria API devolve.
 
+Desde 12/08/2026 o painel **vem recolhido**: as três barras comiam um terço da tela do
+celular antes da primeira movimentação aparecer. Abre no clique do título e a escolha fica
+salva em `localStorage['jm.captura-status.aberto']`, por navegador. Fechado, a barra ainda
+diz `· N na fila` ou, havendo falha, `⚠ N com erro` em âmbar — esse resumo é o que impede
+o painel de virar decoração: fila parada não avisa sozinha, foi o que custou o mês entre
+09/07 e 11/08. Se um dia mexer nesse componente, mantenha o resumo da barra fechada.
+
 ### Armadilha: cron que falha em silêncio
 
 A URL certa do Railway é **`adscore-keeper-production.up.railway.app`**. Vários crons
