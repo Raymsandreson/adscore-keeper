@@ -110,6 +110,38 @@ diz `· N na fila` ou, havendo falha, `⚠ N com erro` em âmbar — esse resumo
 o painel de virar decoração: fila parada não avisa sozinha, foi o que custou o mês entre
 09/07 e 11/08. Se um dia mexer nesse componente, mantenha o resumo da barra fechada.
 
+### Armadilha: o feed do sino ordenado por `created_at`
+
+`useProcessUpdates` busca as **100 mais recentes** (`FETCH_LIMIT`). Enquanto essa ordem foi
+`created_at desc`, o backfill do Escavador/DataJud — que insere linha **nova** com
+movimentação **velha** — tomava as 100 vagas e empurrava o que era do dia para fora.
+
+Em 12/08/2026 o banco tinha 22 movimentações do dia e 26 do dia anterior; o sino carregava
+**3 e 0**, e o filtro "Hoje" abria com 3 cards sem nenhum erro em log:
+
+```sql
+-- o que o sino REALMENTE carrega vs. o que existe: rode os dois e compare
+with carregadas as (
+  select coalesce(data_movimentacao::date, created_at::date) as dia
+  from process_updates order by data_movimentacao desc nulls last, created_at desc limit 100
+)
+select count(*) filter (where dia = current_date) as hoje,
+       count(*) filter (where dia = current_date - 1) as ontem from carregadas;
+
+select count(*) filter (where coalesce(data_movimentacao::date, created_at::date) = current_date) as hoje,
+       count(*) filter (where coalesce(data_movimentacao::date, created_at::date) = current_date - 1) as ontem
+from process_updates;
+```
+
+A ordem agora é `data_movimentacao desc nulls last, created_at desc` — a mesma data que o
+card mostra e que o filtro de período lê. Regra geral: **ordenar pela data do fato, não pela
+data da linha**, sempre que houver backfill alimentando a tabela.
+
+Consequência que fica: Hoje, Ontem e 7 dias cabem nas 100 e os chips são exatos; 30 dias
+(488) e Tudo (2334) não cabem e aparecem como `100+`. Se um dia precisar do número exato
+desses dois, é contagem agregada no servidor — não adianta subir o `FETCH_LIMIT`, que
+engorda também as queries `in(ids)` de leitura e de notificação.
+
 ### Armadilha: cron que falha em silêncio
 
 A URL certa do Railway é **`adscore-keeper-production.up.railway.app`**. Vários crons
