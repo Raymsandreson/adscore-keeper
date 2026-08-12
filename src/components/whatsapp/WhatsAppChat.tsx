@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
+import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
 import { FastForward, FileText, ClipboardCheck } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
@@ -33,7 +33,8 @@ import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
 import { ClientCommitmentsBar } from './ClientCommitmentsBar';
 import { ClientCommitmentsPanel, type CommitmentDraft, type CommitmentCardItem } from './ClientCommitmentsPanel';
 import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
-import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { useClientCommitments, type CommitmentReminder } from '@/hooks/useClientCommitments';
+import { buildReminderText } from '@/lib/clientCommitments';
 import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
@@ -73,6 +74,24 @@ const ActivityFullSheet = lazy(() =>
   import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
 );
 
+/**
+ * Tira do fim da URL a pontuação que costuma encostar nela na frase
+ * ("veja em https://x.com/y." → o ponto final não é parte do link).
+ * Parêntese de fechamento só cai se não tiver abertura correspondente.
+ */
+const trimUrlTail = (url: string): string => {
+  let out = url;
+  while (out.length > 0 && /[.,;:!?"'»)\]}]$/.test(out)) {
+    if (out.endsWith(')')) {
+      const open = (out.match(/\(/g) || []).length;
+      const close = (out.match(/\)/g) || []).length;
+      if (open >= close) break;
+    }
+    out = out.slice(0, -1);
+  }
+  return out;
+};
+
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
   { value: 'full', label: 'Nome completo' },
@@ -103,7 +122,16 @@ interface Props {
     treatmentOverride?: string | null,
     nameFormatOverride?: string,
     nicknameOverride?: string | null,
-    mentions?: string[]
+    mentions?: string[],
+    /**
+     * `replyid`: id do WhatsApp da mensagem que esta vai citar (a cobrança sai
+     * "respondendo" a promessa do cliente). `onSent` devolve a bolha gravada
+     * para vincular o envio ao histórico da pendência.
+     */
+    extra?: {
+      replyid?: string | null;
+      onSent?: (r: { message_id?: string | null; external_message_id?: string | null; text: string }) => void;
+    }
   ) => Promise<boolean>;
   onSendMedia: (
     phone: string, mediaUrl: string, mediaType: string, caption?: string, fileName?: string,
@@ -200,6 +228,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     contactId: conversation.contact_id,
     clientName: conversation.contact_name,
   });
+  /**
+   * Cobrança armada: o texto está no campo e o próximo envio vai sair citando a
+   * mensagem em que o cliente prometeu (igual ao "responder" do WhatsApp) e
+   * virar linha do histórico da pendência. Cancelar aqui não desfaz nada — a
+   * cobrança só existe depois que a mensagem sai.
+   */
+  const [cobranca, setCobranca] = useState<{
+    item: CommitmentCardItem;
+    /** Bolha da promessa (uuid em whatsapp_messages). */
+    sourceMessageId: string | null;
+    /** Id do WhatsApp da mesma bolha — é o que a UazAPI cita. */
+    replyExternalId: string | null;
+  } | null>(null);
 
   /**
    * Entrou na conversa e o cliente tem pendência em aberto: mostra a lista uma
@@ -1831,14 +1872,52 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   /**
    * Renderiza o corpo da mensagem trocando "@<número>" por "@Nome" clicável,
-   * que abre a aba lateral do formulário do contato. Mantém o realce da busca
-   * nos trechos de texto comum.
+   * que abre a aba lateral do formulário do contato, e deixando URLs clicáveis.
+   * Mantém o realce da busca nos trechos de texto comum.
    */
   const renderMessageText = (text: string | null | undefined, outbound: boolean): React.ReactNode => {
     const raw = text || '';
     if (!raw) return null;
-    const plain = (chunk: string, key: string) =>
+    const highlight = (chunk: string, key: string) =>
       searchTerm ? <HighlightedText key={key} text={chunk} term={searchTerm} /> : <span key={key}>{chunk}</span>;
+
+    // Trecho comum: URL vira link clicável, o resto segue como texto (com realce da busca).
+    const plain = (chunk: string, key: string): React.ReactNode => {
+      const re = /(?:https?:\/\/|www\.)[^\s<>"']+/gi;
+      const nodes: React.ReactNode[] = [];
+      let last = 0;
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(chunk)) !== null) {
+        const url = trimUrlTail(m[0]);
+        if (!url) { re.lastIndex = m.index + m[0].length; continue; }
+        if (m.index > last) nodes.push(highlight(chunk.slice(last, m.index), `${key}-t${last}`));
+        const href = /^https?:\/\//i.test(url) ? url : `https://${url}`;
+        nodes.push(
+          <a
+            key={`${key}-u${m.index}`}
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={href}
+            onClick={(e) => e.stopPropagation()}
+            className={cn(
+              'underline [overflow-wrap:anywhere]',
+              outbound
+                ? 'text-white decoration-white/60 hover:decoration-white'
+                : 'text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300'
+            )}
+          >
+            {highlight(url, `${key}-ul${m.index}`)}
+          </a>
+        );
+        last = m.index + url.length;
+        re.lastIndex = last;
+      }
+      if (nodes.length === 0) return highlight(chunk, key);
+      if (last < chunk.length) nodes.push(highlight(chunk.slice(last), `${key}-t${last}`));
+      return <span key={key}>{nodes}</span>;
+    };
+
     if (!isGroup) return plain(raw, 'all');
 
     const nodes: React.ReactNode[] = [];
@@ -2348,6 +2427,53 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAnchor({ msgId: hit.id, created_at: hit.created_at, before: 25, after: 40 });
   }, [conversation.messages, conversation.phone, conversation.instance_name, onLoadMessagesAround]);
 
+  /**
+   * "Cobrar" na pendência: escreve o texto no campo e deixa o envio armado para
+   * sair citando a mensagem em que o cliente prometeu. Nada é gravado agora —
+   * o histórico só recebe a cobrança quando a mensagem realmente sai.
+   */
+  const armarCobranca = useCallback((item: CommitmentCardItem) => {
+    const origem = item.source_message_id
+      ? (conversation.messages || []).find((m: any) => m.id === item.source_message_id)
+      : null;
+    const replyExternalId = (origem as any)?.external_message_id || null;
+
+    setInputMode('message');
+    setNewMessage(buildReminderText(item, conversation.contact_name || conversation.phone));
+    setCobranca({
+      item,
+      sourceMessageId: item.source_message_id || null,
+      replyExternalId,
+    });
+    requestAnimationFrame(() => messageInputRef.current?.focus());
+
+    toast.success(
+      replyExternalId
+        ? 'Cobrança pronta — vai sair respondendo à mensagem da promessa. Revise antes de enviar.'
+        : 'Cobrança escrita no campo de mensagem — revise antes de enviar.'
+    );
+  }, [conversation.messages, conversation.contact_name, conversation.phone]);
+
+  /** Histórico da pendência → pula até a bolha daquela cobrança na conversa. */
+  const abrirMensagemDaCobranca = useCallback((r: CommitmentReminder) => {
+    if (!r.message_id) return;
+    const emMemoria = (conversation.messages || []).find((m: any) => m.id === r.message_id);
+    void jumpToSearchHit({
+      id: r.message_id,
+      // Sem a bolha em memória, o instante da cobrança serve de âncora para
+      // carregar o trecho certo da conversa.
+      created_at: (emMemoria as any)?.created_at || r.reminded_at,
+      message_text: r.message_text,
+      message_type: 'text',
+      direction: 'outbound',
+    });
+  }, [conversation.messages, jumpToSearchHit]);
+
+  // Trocou de conversa: a cobrança armada não vale para outro cliente.
+  useEffect(() => {
+    setCobranca(null);
+  }, [conversation.phone, conversation.instance_name]);
+
   // Depois que a janela renderiza, leva a bolha alvo pro centro e pisca.
   useLayoutEffect(() => {
     const target = pendingAnchorScrollRef.current;
@@ -2623,6 +2749,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     // Rewrite "@Name" tokens to "@<number>" and collect mentioned numbers (group only).
     const { text: outgoingMessage, mentions } = buildMentionPayload(newMessage.trim());
 
+    // Cobrança armada: sai citando a promessa e vira linha do histórico da
+    // pendência — só depois do envio confirmado.
+    const cobrancaEmCurso = cobranca;
+
     setSending(true);
     try {
       const success = await onSendMessage(
@@ -2636,10 +2766,28 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         nameFormat === 'nickname' ? null : (treatmentTitle || null),
         nameFormat,
         nameFormat === 'nickname' ? (selectedNickname || null) : null,
-        mentions.length ? mentions : undefined
+        mentions.length ? mentions : undefined,
+        cobrancaEmCurso
+          ? {
+              replyid: cobrancaEmCurso.replyExternalId,
+              onSent: (r) => {
+                void commitments
+                  .registerReminder(cobrancaEmCurso.item, {
+                    messageId: r.message_id,
+                    externalMessageId: r.external_message_id,
+                    text: r.text,
+                    repliedToMessageId: cobrancaEmCurso.sourceMessageId,
+                    repliedToExternalId: cobrancaEmCurso.replyExternalId,
+                  })
+                  .then(() => toast.success('Cobrança registrada no histórico da pendência'))
+                  .catch(() => toast.error('Mensagem enviada, mas não consegui registrar no histórico'));
+              },
+            }
+          : undefined
       );
       if (success) {
         setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null);
+        setCobranca(null);
         // Atendimento a cliente conta como tempo produtivo (guarda-chuva do dia).
         trackClientReply();
       }
@@ -3589,6 +3737,9 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onReopen={commitments.reopen}
         onRemind={commitments.registerReminder}
         onRemove={commitments.remove}
+        reminders={commitments.reminders}
+        onStartRemind={armarCobranca}
+        onOpenReminderMessage={abrirMensagemDaCobranca}
         onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
         alertEnabled={commitmentAlertEnabled}
         onAlertEnabledChange={toggleCommitmentAlert}
@@ -4686,6 +4837,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                     {commitments.byMessageId[String(msg.id)].title}
                   </button>
                 )}
+                {/* Selo: esta mensagem É uma cobrança que saiu daqui. Sem ele,
+                    a cobrança some no meio da conversa e ninguém sabe qual
+                    bolha corresponde ao "cobrado 3x" da pendência. */}
+                {commitments.remindersByMessageId[String(msg.id)] && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setCommitmentDraft(null); setShowCommitments(true); }}
+                    className="mb-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border border-amber-300 text-amber-800 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-300 transition-colors"
+                    title="Cobrança registrada no histórico da pendência — clique para abrir"
+                  >
+                    <Bell className="h-3 w-3" />
+                    Cobrança: {commitments.remindersByMessageId[String(msg.id)].commitment.title}
+                  </button>
+                )}
                 {isMissingMedia(msg) && (
                   <div className="mb-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed bg-muted/40">
                     <span className="text-xs italic opacity-80 flex-1">
@@ -4946,6 +5111,40 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </Select>
           )}
         </div>
+        {/* Cobrança armada: fica visível até o envio, porque o texto no campo
+            sozinho não diz que a mensagem vai citar a promessa nem que ela
+            entra no histórico da pendência. */}
+        {cobranca && (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 px-2.5 py-2">
+            <Bell className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0 flex-1">
+              <p className="text-[11px] font-medium text-amber-800 dark:text-amber-300 break-words">
+                Cobrando: {cobranca.item.title}
+              </p>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80">
+                {cobranca.replyExternalId
+                  ? 'Vai sair respondendo à mensagem em que ele prometeu.'
+                  : 'Sem a mensagem original em mão — vai sair como mensagem normal.'}
+                {' '}Ao enviar, entra no histórico da pendência.
+              </p>
+              {cobranca.item.source_message_text && (
+                <p className="mt-1 text-[10px] text-muted-foreground border-l-2 border-amber-400/60 pl-2 italic break-words">
+                  “{cobranca.item.source_message_text.slice(0, 160)}”
+                </p>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 shrink-0 text-amber-700 hover:text-destructive"
+              title="Cancelar cobrança (a mensagem continua no campo)"
+              onClick={() => setCobranca(null)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        )}
+
         {/* Pasted image preview */}
         {pastedImage && (
           <div className="flex items-start gap-3 p-2 bg-muted/50 rounded-lg border">
