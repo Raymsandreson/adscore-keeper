@@ -42,6 +42,71 @@ export interface TeamMessageExtra {
   reply_to_id?: string | null;
 }
 
+/**
+ * Participação no chat da ficha: quem foi marcado (ou já falou) continua
+ * recebendo o que vier depois, até apertar "Finalizar participação". Sem isso,
+ * só a mensagem com o @ virava popup e a resposta passava batido.
+ */
+export async function followThread(
+  people: { user_id: string; reason: 'mention' | 'message' }[],
+  entityType: string,
+  entityId: string,
+  entityName?: string | null,
+) {
+  if (people.length === 0) return;
+  try {
+    await ensureExternalSession();
+    await (externalSupabase as any)
+      .from('team_chat_thread_followers')
+      .upsert(
+        people.map(p => ({
+          user_id: p.user_id,
+          entity_type: entityType,
+          entity_id: entityId,
+          entity_name: entityName || null,
+          reason: p.reason,
+          // Re-marcar quem tinha saído traz a pessoa de volta pro acompanhamento.
+          left_at: null,
+        })),
+        { onConflict: 'user_id,entity_type,entity_id' }
+      );
+  } catch (e) {
+    console.warn('[followThread] não consegui registrar a participação:', e);
+  }
+}
+
+/** Chats de ficha que a pessoa acompanha hoje — `${entity_type}:${entity_id}`. */
+export async function loadFollowedThreads(userId: string): Promise<Set<string>> {
+  try {
+    await ensureExternalSession();
+    const { data } = await (externalSupabase as any)
+      .from('team_chat_thread_followers')
+      .select('entity_type, entity_id')
+      .eq('user_id', userId)
+      .is('left_at', null);
+    return new Set((data || []).map((f: { entity_type: string; entity_id: string }) => `${f.entity_type}:${f.entity_id}`));
+  } catch {
+    return new Set();
+  }
+}
+
+/** "Finalizar participação": para de receber as mensagens desse chat. */
+export async function leaveThread(userId: string, entityType: string, entityId: string) {
+  await ensureExternalSession();
+  const { error } = await (externalSupabase as any)
+    .from('team_chat_thread_followers')
+    .upsert(
+      {
+        user_id: userId,
+        entity_type: entityType,
+        entity_id: entityId,
+        left_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,entity_type,entity_id' }
+    );
+  if (error) throw error;
+}
+
 /** Deep-link da ficha por trás do chat — usado no push e nas notificações. */
 export function entityChatUrl(entityType: string, entityId: string): string {
   return entityType === 'activity' ? `/?openActivity=${entityId}`
@@ -288,6 +353,13 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
 
       await externalSupabase.from('team_chat_mentions').insert(mentions);
 
+      // Marcado = passa a acompanhar este chat até "Finalizar participação".
+      // Re-marcar alguém que tinha saído traz a pessoa de volta (left_at null).
+      void followThread(
+        mentionedUserIds.map(uid => ({ user_id: uid, reason: 'mention' as const })),
+        entityType, entityId, entityName
+      );
+
       // Send WhatsApp notification to mentioned users (using sender's instance)
       cloudFunctions.invoke('notify-team-mention', {
         body: {
@@ -300,6 +372,12 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
           entity_name: entityName || null,
         },
       }).catch(err => console.error('Failed to notify mentions via WhatsApp:', err));
+    }
+
+    // Quem fala no chat está participando dele: passa a receber o que vier
+    // depois, pela mesma porta de quem foi marcado.
+    if (msg) {
+      void followThread([{ user_id: user.id, reason: 'message' }], entityType, entityId, entityName);
     }
 
     // Web Push nativo para os participantes do thread (celular/notebook, mesmo com
@@ -470,6 +548,8 @@ export function useMyMentions() {
   const { user } = useAuthContext();
   const [mentions, setMentions] = useState<TeamMentionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Chats de ficha que eu acompanho — `${entity_type}:${entity_id}`. */
+  const [followedThreads, setFollowedThreads] = useState<Set<string>>(new Set());
   /**
    * Conversas que este painel está cobrando. O painel fica montado em toda tela,
    * então recarregar a cada mensagem da casa sairia caro — só interessa mensagem
@@ -682,6 +762,7 @@ export function useMyMentions() {
     );
     setMentions(withNudges);
     setLoading(false);
+    setFollowedThreads(await loadFollowedThreads(user.id));
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
@@ -842,5 +923,36 @@ export function useMyMentions() {
     }
   }, [user]);
 
-  return { mentions, loading, markAsRead, markAllAsRead, nudgeMention, reload: load };
+  /**
+   * "Finalizar participação": para de receber as mensagens daquele chat de
+   * ficha. Um novo @ traz a pessoa de volta.
+   */
+  const leaveMentionThread = useCallback(async (mention: TeamMentionItem) => {
+    if (!user) return;
+    const { entity_type, entity_id } = mention.message;
+    if (!entity_type || !entity_id) return;
+    try {
+      await leaveThread(user.id, entity_type, entity_id);
+      setFollowedThreads(prev => {
+        const next = new Set(prev);
+        next.delete(`${entity_type}:${entity_id}`);
+        return next;
+      });
+      toast.success(`Você não recebe mais as mensagens de ${mention.entity_name || 'desse chat'}.`);
+    } catch (e) {
+      console.error('[useMyMentions] erro ao finalizar participação:', e);
+      toast.error('Não foi possível finalizar a participação.');
+    }
+  }, [user]);
+
+  return {
+    mentions,
+    loading,
+    markAsRead,
+    markAllAsRead,
+    nudgeMention,
+    followedThreads,
+    leaveMentionThread,
+    reload: load,
+  };
 }

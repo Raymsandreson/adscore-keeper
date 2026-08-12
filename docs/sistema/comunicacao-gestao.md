@@ -229,6 +229,21 @@ Marcar alguém e ficar no vácuo deixou de ser o fim da linha. Na aba **Mençõe
 - **Como o alvo é descoberto**: a mensagem não guarda o id de quem foi marcado; vem de `team_chat_mentions` por `message_id` (a policy do Externo deixa a equipe ler as menções da casa). Menção com várias pessoas cobra todas de uma vez.
 - Código: `useMyMentions.nudgeMention` em `src/hooks/useTeamChat.ts`, `MentionNudgeRow` em `src/components/chat/MentionsPanel.tsx`, popup em `src/components/chat/TeamChatNotifications.tsx`. Testes: `MentionsPanel.urgencia.test.tsx` (7).
 
+### Popup de menção e participação no chat da ficha (desde 12/08/2026)
+
+Duas falhas reais no aviso de menção, corrigidas juntas:
+
+- **A menção em ficha nunca gritava.** O popup do chat direto lia `is_urgent` da mensagem — tocava som e só saía no clique. O da ficha (`branch 2` em `TeamChatNotifications`) nem selecionava a coluna: toda menção virava um toast mudo de 15s, que sumia sozinho se a pessoa estivesse olhando pra outro lado. Agora os dois caminhos têm o mesmo comportamento (som, vermelho e `duration: Infinity` quando urgente, anexo no popup).
+- **Menção recebida com o app fechado não aparecia nunca.** Não havia catch-up: só quem estava com a aba aberta no instante do INSERT via o popup. Agora, ao abrir o app, as não lidas desde o último popup aparecem em fila (máx. 5, janela de 3 dias). A marca d'água fica em `localStorage` (`team-mentions-last-popup-at`) — marcar como lida aqui apagaria o badge.
+- **Chat aberto não gera popup de si mesmo**: `setActiveTeamChatEntity` em `TeamChatPanel` faz pro chat de ficha o que `teamChatActiveConversation` já fazia pro chat direto.
+
+**Participação (`team_chat_thread_followers`)**: quem é marcado num chat de ficha — ou quem fala nele — passa a receber **todas** as mensagens seguintes daquele chat como popup, não só as que trazem um novo `@`. Antes, a resposta que vinha depois do `@` passava batido e quem marcou não sabia que tinha sido respondido.
+
+- Sai pelo botão **"Finalizar participação"** no rodapé da menção, no painel. Um novo `@` traz a pessoa de volta (`left_at` volta a `null` no upsert).
+- Sem popup duplicado: se a mensagem também te marcou, o canal de menções é quem avisa (o de participação consulta `team_chat_mentions` e se cala).
+- O canal de participação escuta `team_chat_messages` **sem filtro no servidor** e corta no cliente contra o conjunto que você segue — a chave é `(entity_type, entity_id)`, que o filtro do Realtime não expressa. Volume medido: 15–51 msgs/dia, pico de 24 threads.
+- Migration: `supabase/migrations-external/20260812140000_team_chat_thread_followers.sql` (também corrige `mention_nudges` para `replica identity full`, como as demais tabelas do chat).
+
 ### Ferramentas de IA e ações na mensagem — paridade com o WhatsApp (desde 06/08/2026)
 
 O que existia só na conversa do WhatsApp passou a existir **em todo chat interno**: o chat da equipe das fichas (lead, caso, processo, atividade, passo do POP e o painel "Equipe" da conversa) e o chat direto/grupo.

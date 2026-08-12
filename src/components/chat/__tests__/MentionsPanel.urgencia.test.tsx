@@ -99,6 +99,8 @@ const respondida = {
 };
 
 let mentions: any[] = [];
+let followedThreads = new Set<string>();
+const leaveMentionThread = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('@/hooks/useTeamChat', () => ({
   useMyMentions: () => ({
@@ -107,6 +109,8 @@ vi.mock('@/hooks/useTeamChat', () => ({
     markAsRead: vi.fn(),
     markAllAsRead: vi.fn(),
     nudgeMention,
+    followedThreads,
+    leaveMentionThread,
     reload: vi.fn(),
   }),
 }));
@@ -127,8 +131,9 @@ vi.mock('@/lib/teamChatPanelEvents', () => ({
 import { MentionsPanel } from '../MentionsPanel';
 
 /** O painel abre na aba Chat — as menções ficam atrás do primeiro clique. */
-function renderMentionsTab(list: any[]) {
+function renderMentionsTab(list: any[], seguindo: string[] = []) {
   mentions = list;
+  followedThreads = new Set(seguindo);
   render(<MentionsPanel open onOpenChange={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: /^Menções/ }));
 }
@@ -136,6 +141,7 @@ function renderMentionsTab(list: any[]) {
 describe('MentionsPanel — cobrar resposta urgente', () => {
   beforeEach(() => {
     nudgeMention.mockClear();
+    leaveMentionThread.mockClear();
   });
 
   it('oferece cobrar quem você marcou e ainda não respondeu', () => {
@@ -186,5 +192,26 @@ describe('MentionsPanel — cobrar resposta urgente', () => {
     renderMentionsTab([recebidaCobrada]);
 
     expect(screen.getByText(/Gisele Borges pediu resposta urgente/)).toBeInTheDocument();
+  });
+});
+
+describe('MentionsPanel — participação no chat da ficha', () => {
+  beforeEach(() => {
+    leaveMentionThread.mockClear();
+  });
+
+  it('quem acompanha o chat pode finalizar a participação', () => {
+    renderMentionsTab([recebidaCobrada], ['activity:atv-1']);
+
+    fireEvent.click(screen.getByRole('button', { name: /Finalizar participação/ }));
+
+    expect(leaveMentionThread).toHaveBeenCalledTimes(1);
+    expect(leaveMentionThread.mock.calls[0][0].message_id).toBe('msg-4');
+  });
+
+  it('não oferece finalizar em chat que a pessoa não acompanha', () => {
+    renderMentionsTab([recebidaCobrada], []);
+
+    expect(screen.queryByRole('button', { name: /Finalizar participação/ })).not.toBeInTheDocument();
   });
 });

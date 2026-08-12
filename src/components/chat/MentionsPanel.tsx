@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -67,10 +67,14 @@ function MentionNudgeRow({
   mention,
   busy,
   onNudge,
+  following,
+  onLeave,
 }: {
   mention: TeamMentionItem;
   busy: boolean;
   onNudge: (level: MentionNudgeLevel) => void;
+  following: boolean;
+  onLeave: () => void;
 }) {
   const nudge = mention.nudge;
   // Cobrar só faz sentido enquanto ninguém respondeu, e só quem marcou cobra.
@@ -79,7 +83,7 @@ function MentionNudgeRow({
     mention.status !== 'respondido' &&
     (mention.targets?.length ?? 0) > 0;
 
-  if (!podeCobrar && !nudge) return null;
+  if (!podeCobrar && !nudge && !following) return null;
 
   return (
     <div className="pl-10 pr-1 pt-1.5 space-y-1">
@@ -123,12 +127,24 @@ function MentionNudgeRow({
           )}
         </p>
       )}
+      {/* Enquanto acompanha, tudo que for dito nesse chat chega como popup —
+          mesmo sem novo @. Aqui é onde a pessoa desliga isso. */}
+      {following && (
+        <button
+          type="button"
+          onClick={onLeave}
+          title="Parar de receber as mensagens deste chat"
+          className="inline-flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+        >
+          <BellOff className="h-2.5 w-2.5" /> Finalizar participação
+        </button>
+      )}
     </div>
   );
 }
 
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
-  const { mentions, loading, markAsRead, markAllAsRead, nudgeMention } = useMyMentions();
+  const { mentions, loading, markAsRead, markAllAsRead, nudgeMention, followedThreads, leaveMentionThread } = useMyMentions();
   // Trava de duplo clique da cobrança, por mensagem.
   const [nudgingId, setNudgingId] = useState<string | null>(null);
   const navigate = useNavigate();
@@ -577,6 +593,8 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                       mention={mention}
                       busy={nudgingId === mention.message_id}
                       onNudge={level => handleNudge(mention, level)}
+                      following={!!followedThreads?.has(`${mention.message.entity_type}:${mention.message.entity_id}`)}
+                      onLeave={() => leaveMentionThread?.(mention)}
                     />
                   </div>
                 ))}

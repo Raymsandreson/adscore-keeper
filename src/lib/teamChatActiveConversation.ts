@@ -21,3 +21,16 @@ export function subscribeActiveTeamChatConversation(listener: Listener) {
     listeners.delete(listener);
   };
 }
+
+// Mesma ideia para o chat de ficha (atividade, lead, processo, contato, POP):
+// quem está com aquele chat aberto não precisa de popup do que já está vendo.
+// Chave = `${entity_type}:${entity_id}`.
+let activeEntityKey: string | null = null;
+
+export function setActiveTeamChatEntity(key: string | null) {
+  activeEntityKey = key;
+}
+
+export function getActiveTeamChatEntity() {
+  return activeEntityKey;
+}

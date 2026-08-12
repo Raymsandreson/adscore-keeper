@@ -8,6 +8,7 @@ import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import {
   getActiveTeamChatConversation,
+  getActiveTeamChatEntity,
   subscribeActiveTeamChatConversation,
 } from '@/lib/teamChatActiveConversation';
 
@@ -62,6 +63,12 @@ const NORMAL_TOAST_DURATION_MS = 15000;
 
 // Cobrança de menção pendente não pode se perder: quem estava offline vê ao voltar.
 const MENTION_NUDGE_CATCH_UP_DIAS = 7;
+
+// Menção recebida com o app fechado também não: marca d'água do último popup
+// exibido, pra mostrar o que chegou desde então sem repetir a cada recarga.
+const MENTION_CATCH_UP_KEY = 'team-mentions-last-popup-at';
+const MENTION_CATCH_UP_DIAS = 3;
+const MENTION_CATCH_UP_MAX = 5;
 
 /** Linha de mention_nudges (Externo) — a cobrança "responda com urgência". */
 type MentionNudge = {
@@ -268,6 +275,8 @@ function showConversationToast({
 export function TeamChatNotifications() {
   const { user } = useAuthContext();
   const teamConversationIdsRef = useRef<Set<string>>(new Set());
+  /** Chats de ficha que eu acompanho — `${entity_type}:${entity_id}`. */
+  const followedThreadsRef = useRef<Set<string>>(new Set());
   const teamConversationLabelsRef = useRef<Map<string, string>>(new Map());
   const currentUserNameRef = useRef('');
 
@@ -503,18 +512,7 @@ export function TeamChatNotifications() {
     void Promise.all([loadTeamConversationContext(), loadCurrentUserName()]);
 
     // Listen for new mentions directed at this user
-    const mentionsChannel = externalSupabase
-      .channel('notification-mentions-' + user.id)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'team_chat_mentions',
-        filter: `mentioned_user_id=eq.${user.id}`,
-      }, async (payload) => {
-        console.log('[TeamChatNotifications] Mention received:', payload);
-        if (isMuted()) return;
-        const mention = payload.new as any;
-
+    const handleMention = async (mention: any) => {
         // Branch 1: mention inside a team conversation (general/direct chat)
         if (mention.conversation_id) {
           const { data: tmsg } = await (externalSupabase
@@ -564,26 +562,43 @@ export function TeamChatNotifications() {
           return;
         }
 
-        // Branch 2: legacy entity-bound mention (lead/activity/etc)
+        // Branch 2: menção no chat de uma ficha (atividade, lead, processo…)
         const { data: msg } = await externalSupabase
           .from('team_chat_messages')
-          .select('content, sender_name, sender_id, entity_name, entity_type')
+          .select('content, sender_name, sender_id, entity_name, entity_type, message_type, file_name, file_url, file_type, is_urgent')
           .eq('id', mention.message_id)
           .single();
 
         if (!msg) return;
         if ((msg as any).sender_id === user.id) return; // nunca notificar mensagem própria
 
+        // Marcado aqui = passo a acompanhar este chat já nesta sessão, sem
+        // esperar recarregar a página pra receber a resposta que vier depois.
+        followedThreadsRef.current.add(`${msg.entity_type}:${mention.entity_id}`);
+
+        if (
+          getActiveTeamChatEntity() === `${msg.entity_type}:${mention.entity_id}` &&
+          document.visibilityState === 'visible'
+        ) return; // o chat dessa ficha já está aberto na tela
+
         const senderName = msg.sender_name || 'Alguém';
         const context = msg.entity_name || msg.entity_type || '';
         const preview = buildPreview(msg).substring(0, 120);
+        // Menção urgente na ficha vale o mesmo que no chat direto: som e popup
+        // que só sai no clique. Sem isso ela sumia sozinha em 15s, calada.
+        const urgent = Boolean((msg as any).is_urgent);
 
         showNotificationToast({
           id: `team-entity-${mention.entity_type}-${mention.entity_id}`,
-          icon: <AtSign className="h-4 w-4 text-primary shrink-0" />,
+          icon: <AtSign className={`h-4 w-4 shrink-0 ${urgent ? 'text-destructive' : 'text-primary'}`} />,
           title: `${senderName} te mencionou`,
           context: context ? `em ${context}` : undefined,
           preview,
+          urgent,
+          fileUrl: (msg as any).file_url,
+          fileName: (msg as any).file_name,
+          fileType: (msg as any).file_type,
+          messageType: (msg as any).message_type,
           onOpen: () => openEntityChat({
             entityType: msg.entity_type,
             entityId: mention.entity_id,
@@ -596,10 +611,115 @@ export function TeamChatNotifications() {
             content: reply,
           }),
         });
+    };
+
+    // Threads de ficha que eu acompanho (fui marcado ou já falei) e ainda não
+    // finalizei. É o que decide se a mensagem que chega vira popup.
+    const loadFollowedThreads = async () => {
+      const { data } = await (externalSupabase as any)
+        .from('team_chat_thread_followers')
+        .select('entity_type, entity_id')
+        .eq('user_id', user.id)
+        .is('left_at', null);
+      followedThreadsRef.current = new Set(
+        (data || []).map((f: { entity_type: string; entity_id: string }) => `${f.entity_type}:${f.entity_id}`)
+      );
+    };
+    void loadFollowedThreads();
+
+    // Mensagem nova num chat de ficha que eu acompanho — mesmo sem @ pra mim.
+    // Sem filtro no servidor porque a chave é (entity_type, entity_id); o corte
+    // é aqui, contra o conjunto que eu sigo. Volume real: ~50 msgs/dia.
+    const followedThreadsChannel = externalSupabase
+      .channel('notification-followed-threads-' + user.id)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'team_chat_messages',
+      }, async (payload) => {
+        if (isMuted()) return;
+        const msg = payload.new as any;
+        if (!msg?.entity_id || msg.sender_id === user.id) return;
+
+        const key = `${msg.entity_type}:${msg.entity_id}`;
+        if (!followedThreadsRef.current.has(key)) return;
+        if (getActiveTeamChatEntity() === key && document.visibilityState === 'visible') return;
+
+        // Se essa mensagem me marcou, o canal de menções já cuida dela — o
+        // popup de lá é mais completo e não pode virar dois avisos.
+        const { count } = await (externalSupabase as any)
+          .from('team_chat_mentions')
+          .select('id', { count: 'exact', head: true })
+          .eq('message_id', msg.id)
+          .eq('mentioned_user_id', user.id);
+        if (count) return;
+
+        const urgent = Boolean(msg.is_urgent);
+        showNotificationToast({
+          id: `team-entity-${msg.entity_type}-${msg.entity_id}`,
+          icon: <MessageCircle className={`h-4 w-4 shrink-0 ${urgent ? 'text-destructive' : 'text-primary'}`} />,
+          title: msg.sender_name || 'Alguém',
+          context: msg.entity_name ? `em ${msg.entity_name}` : `em ${getEntityLabel(msg.entity_type)}`,
+          preview: buildPreview(msg).substring(0, 120),
+          urgent,
+          fileUrl: msg.file_url,
+          fileName: msg.file_name,
+          fileType: msg.file_type,
+          messageType: msg.message_type,
+          onOpen: () => openEntityChat({
+            entityType: msg.entity_type,
+            entityId: msg.entity_id,
+            messageId: msg.id,
+          }),
+          onReply: (reply) => replyToEntityChat({
+            entityType: msg.entity_type,
+            entityId: msg.entity_id,
+            entityName: msg.entity_name,
+            content: reply,
+          }),
+        });
+      })
+      .subscribe((status) => {
+        console.log('[TeamChatNotifications] Followed threads channel status:', status);
+      });
+
+    const mentionsChannel = externalSupabase
+      .channel('notification-mentions-' + user.id)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'team_chat_mentions',
+        filter: `mentioned_user_id=eq.${user.id}`,
+      }, async (payload) => {
+        console.log('[TeamChatNotifications] Mention received:', payload);
+        if (isMuted()) return;
+        await handleMention(payload.new as any);
       })
       .subscribe((status) => {
         console.log('[TeamChatNotifications] Mentions channel status:', status);
       });
+
+    // Menção que chegou com o app fechado não pode se perder: ao voltar, as não
+    // lidas desde o último popup aparecem em fila. A marca d'água evita repetir
+    // o mesmo popup a cada recarga (marcar como lida aqui apagaria o badge).
+    void (async () => {
+      if (isMuted()) return;
+      const marca = localStorage.getItem(MENTION_CATCH_UP_KEY);
+      const desde = marca || new Date(Date.now() - MENTION_CATCH_UP_DIAS * 86400_000).toISOString();
+      const agora = new Date().toISOString();
+      const { data: pend } = await externalSupabase
+        .from('team_chat_mentions')
+        .select('message_id, conversation_id, entity_type, entity_id, entity_name, created_at')
+        .eq('mentioned_user_id', user.id)
+        .eq('is_read', false)
+        .gt('created_at', desde)
+        .order('created_at', { ascending: true })
+        .limit(MENTION_CATCH_UP_MAX);
+      localStorage.setItem(MENTION_CATCH_UP_KEY, agora);
+      for (const m of (pend || [])) {
+        await handleMention(m as any);
+      }
+    })();
 
     // Contextual team chat messages channel REMOVED — was broadcasting to ALL users.
     // Mentions are already handled by mentionsChannel above.
@@ -847,6 +967,7 @@ export function TeamChatNotifications() {
 
     return () => {
       externalSupabase.removeChannel(mentionsChannel);
+      externalSupabase.removeChannel(followedThreadsChannel);
       externalSupabase.removeChannel(mentionNudgesChannel);
       externalSupabase.removeChannel(teamMessagesChannel);
       externalSupabase.removeChannel(popupReceiptsChannel);
