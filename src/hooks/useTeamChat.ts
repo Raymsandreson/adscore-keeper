@@ -42,6 +42,71 @@ export interface TeamMessageExtra {
   reply_to_id?: string | null;
 }
 
+/**
+ * Participação no chat da ficha: quem foi marcado (ou já falou) continua
+ * recebendo o que vier depois, até apertar "Finalizar participação". Sem isso,
+ * só a mensagem com o @ virava popup e a resposta passava batido.
+ */
+export async function followThread(
+  people: { user_id: string; reason: 'mention' | 'message' }[],
+  entityType: string,
+  entityId: string,
+  entityName?: string | null,
+) {
+  if (people.length === 0) return;
+  try {
+    await ensureExternalSession();
+    await (externalSupabase as any)
+      .from('team_chat_thread_followers')
+      .upsert(
+        people.map(p => ({
+          user_id: p.user_id,
+          entity_type: entityType,
+          entity_id: entityId,
+          entity_name: entityName || null,
+          reason: p.reason,
+          // Re-marcar quem tinha saído traz a pessoa de volta pro acompanhamento.
+          left_at: null,
+        })),
+        { onConflict: 'user_id,entity_type,entity_id' }
+      );
+  } catch (e) {
+    console.warn('[followThread] não consegui registrar a participação:', e);
+  }
+}
+
+/** Chats de ficha que a pessoa acompanha hoje — `${entity_type}:${entity_id}`. */
+export async function loadFollowedThreads(userId: string): Promise<Set<string>> {
+  try {
+    await ensureExternalSession();
+    const { data } = await (externalSupabase as any)
+      .from('team_chat_thread_followers')
+      .select('entity_type, entity_id')
+      .eq('user_id', userId)
+      .is('left_at', null);
+    return new Set((data || []).map((f: { entity_type: string; entity_id: string }) => `${f.entity_type}:${f.entity_id}`));
+  } catch {
+    return new Set();
+  }
+}
+
+/** "Finalizar participação": para de receber as mensagens desse chat. */
+export async function leaveThread(userId: string, entityType: string, entityId: string) {
+  await ensureExternalSession();
+  const { error } = await (externalSupabase as any)
+    .from('team_chat_thread_followers')
+    .upsert(
+      {
+        user_id: userId,
+        entity_type: entityType,
+        entity_id: entityId,
+        left_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id,entity_type,entity_id' }
+    );
+  if (error) throw error;
+}
+
 /** Deep-link da ficha por trás do chat — usado no push e nas notificações. */
 export function entityChatUrl(entityType: string, entityId: string): string {
   return entityType === 'activity' ? `/?openActivity=${entityId}`
@@ -79,6 +144,21 @@ export interface TeamMember {
  */
 export type MentionStatus = 'responder' | 'aguardando' | 'respondido';
 
+/** Nível da cobrança de menção — mesmo par do funil de Feedbacks. */
+export type MentionNudgeLevel = 'importante' | 'urgente';
+
+/**
+ * Última cobrança de uma menção: quando foi pedida urgência e se o popup já
+ * apareceu pra quem tem que responder (o "✓ visto").
+ */
+export interface MentionNudge {
+  level: MentionNudgeLevel;
+  created_at: string;
+  read_at: string | null;
+  actor_name: string | null;
+  recipient_name: string | null;
+}
+
 export interface TeamMentionItem extends TeamMention {
   message: TeamMessage;
   /** 'in' = marcaram você. 'out' = você marcou alguém no chat de uma ficha. */
@@ -86,6 +166,10 @@ export interface TeamMentionItem extends TeamMention {
   status: MentionStatus | null;
   /** Primeira mensagem do thread depois da menção — a resposta que fechou a cobrança. */
   reply?: { sender_name: string | null; content: string; created_at: string } | null;
+  /** Quem foi marcado nessa mensagem — alvo da cobrança de urgência. */
+  targets?: { user_id: string; name: string | null }[];
+  /** Última cobrança dessa menção, se já houve. */
+  nudge?: MentionNudge | null;
 }
 
 /**
@@ -100,23 +184,29 @@ const MENTION_IN_TEXT = /(^|[^\w@])@[\p{L}]/u;
 let membersCache: TeamMember[] | null = null;
 let membersPromise: Promise<TeamMember[]> | null = null;
 
+/** Mesma lista/cache do useTeamMembers, para quem precisa fora de um componente. */
+export function loadTeamMembers(): Promise<TeamMember[]> {
+  if (membersCache) return Promise.resolve(membersCache);
+  if (!membersPromise) {
+    // profiles continua no Cloud
+    membersPromise = Promise.resolve(supabase
+      .from('profiles')
+      .select('user_id, full_name, email'))
+      .then(({ data }) => {
+        membersCache = data || [];
+        return membersCache;
+      });
+  }
+  return membersPromise;
+}
+
 export function useTeamMembers() {
   const [members, setMembers] = useState<TeamMember[]>(() => membersCache || []);
 
   useEffect(() => {
     if (membersCache) return;
-    if (!membersPromise) {
-      // profiles continua no Cloud
-      membersPromise = Promise.resolve(supabase
-        .from('profiles')
-        .select('user_id, full_name, email'))
-        .then(({ data }) => {
-          membersCache = data || [];
-          return membersCache;
-        });
-    }
     let alive = true;
-    membersPromise.then(list => { if (alive) setMembers(list); });
+    loadTeamMembers().then(list => { if (alive) setMembers(list); });
     return () => { alive = false; };
   }, []);
 
@@ -263,6 +353,13 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
 
       await externalSupabase.from('team_chat_mentions').insert(mentions);
 
+      // Marcado = passa a acompanhar este chat até "Finalizar participação".
+      // Re-marcar alguém que tinha saído traz a pessoa de volta (left_at null).
+      void followThread(
+        mentionedUserIds.map(uid => ({ user_id: uid, reason: 'mention' as const })),
+        entityType, entityId, entityName
+      );
+
       // Send WhatsApp notification to mentioned users (using sender's instance)
       cloudFunctions.invoke('notify-team-mention', {
         body: {
@@ -275,6 +372,12 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
           entity_name: entityName || null,
         },
       }).catch(err => console.error('Failed to notify mentions via WhatsApp:', err));
+    }
+
+    // Quem fala no chat está participando dele: passa a receber o que vier
+    // depois, pela mesma porta de quem foi marcado.
+    if (msg) {
+      void followThread([{ user_id: user.id, reason: 'message' }], entityType, entityId, entityName);
     }
 
     // Web Push nativo para os participantes do thread (celular/notebook, mesmo com
@@ -445,6 +548,8 @@ export function useMyMentions() {
   const { user } = useAuthContext();
   const [mentions, setMentions] = useState<TeamMentionItem[]>([]);
   const [loading, setLoading] = useState(true);
+  /** Chats de ficha que eu acompanho — `${entity_type}:${entity_id}`. */
+  const [followedThreads, setFollowedThreads] = useState<Set<string>>(new Set());
   /**
    * Conversas que este painel está cobrando. O painel fica montado em toda tela,
    * então recarregar a cada mensagem da casa sairia caro — só interessa mensagem
@@ -601,11 +706,63 @@ export function useMyMentions() {
       return { ...item, status: (item.direction === 'out' ? 'aguardando' : 'responder') as MentionStatus };
     });
 
+    // Cobrança de urgência: quem foi marcado em cada mensagem (o alvo) e a
+    // última cobrança já dada (com o "visto"). Duas queries por lista inteira —
+    // nada de uma por menção.
+    const messageIds = Array.from(new Set(resolved.map(i => i.message_id)));
+    const targetsByMessage = new Map<string, { user_id: string; name: string | null }[]>();
+    const nudgeByMessage = new Map<string, MentionNudge>();
+
+    if (messageIds.length > 0) {
+      const [{ data: targetRows }, { data: nudgeRows }, members] = await Promise.all([
+        // A policy do Externo deixa a equipe ler as menções da casa — é assim que
+        // quem cobra descobre quem marcou (a mensagem não guarda o id do marcado).
+        externalSupabase
+          .from('team_chat_mentions')
+          .select('message_id, mentioned_user_id')
+          .in('message_id', messageIds),
+        (externalSupabase as any)
+          .from('mention_nudges')
+          .select('message_id, level, created_at, read_at, actor_name, recipient_name')
+          .in('message_id', messageIds)
+          .order('created_at', { ascending: false }),
+        loadTeamMembers(),
+      ]);
+
+      const nameById = new Map(members.map(m => [m.user_id, m.full_name]));
+      (targetRows || []).forEach(t => {
+        const list = targetsByMessage.get(t.message_id) || [];
+        if (!list.some(x => x.user_id === t.mentioned_user_id)) {
+          list.push({ user_id: t.mentioned_user_id, name: nameById.get(t.mentioned_user_id) ?? null });
+        }
+        targetsByMessage.set(t.message_id, list);
+      });
+      // Ordenado desc → a 1ª de cada mensagem é a cobrança mais recente.
+      (nudgeRows || []).forEach((n: any) => {
+        if (!nudgeByMessage.has(n.message_id)) {
+          nudgeByMessage.set(n.message_id, {
+            level: n.level === 'importante' ? 'importante' : 'urgente',
+            created_at: n.created_at,
+            read_at: n.read_at,
+            actor_name: n.actor_name ?? null,
+            recipient_name: n.recipient_name ?? null,
+          });
+        }
+      });
+    }
+
+    const withNudges = resolved.map(item => ({
+      ...item,
+      targets: targetsByMessage.get(item.message_id) || [],
+      nudge: nudgeByMessage.get(item.message_id) || null,
+    }));
+
     trackedThreads.current = new Set(
-      resolved.map(i => `${i.message.entity_type}:${i.message.entity_id}`).filter(k => !k.endsWith(':'))
+      withNudges.map(i => `${i.message.entity_type}:${i.message.entity_id}`).filter(k => !k.endsWith(':'))
     );
-    setMentions(resolved);
+    setMentions(withNudges);
     setLoading(false);
+    setFollowedThreads(await loadFollowedThreads(user.id));
   }, [user]);
 
   useEffect(() => { load(); }, [load]);
@@ -625,6 +782,25 @@ export function useMyMentions() {
         },
         () => {
           load();
+        }
+      )
+      .subscribe();
+
+    // "✓ visto" da cobrança ao vivo: o popup na tela do outro carimba read_at,
+    // e quem cobrou vê isso sem reabrir o painel.
+    const nudgesChannel = externalSupabase
+      .channel(`mention-nudges-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'mention_nudges' },
+        (payload) => {
+          const n = payload.new as { message_id?: string; read_at?: string | null };
+          if (!n?.message_id || !n.read_at) return;
+          setMentions(prev => prev.map(m => (
+            m.message_id === n.message_id && m.nudge && !m.nudge.read_at
+              ? { ...m, nudge: { ...m.nudge, read_at: n.read_at as string } }
+              : m
+          )));
         }
       )
       .subscribe();
@@ -653,6 +829,7 @@ export function useMyMentions() {
       if (timer) clearTimeout(timer);
       externalSupabase.removeChannel(channel);
       externalSupabase.removeChannel(messagesChannel);
+      externalSupabase.removeChannel(nudgesChannel);
     };
   }, [user, load]);
 
@@ -676,5 +853,106 @@ export function useMyMentions() {
     setMentions(prev => prev.map(m => ({ ...m, is_read: true })));
   }, [user]);
 
-  return { mentions, loading, markAsRead, markAllAsRead, reload: load };
+  /**
+   * Cobra resposta de quem você marcou: grava em mention_nudges (vira popup na
+   * tela dele via TeamChatNotifications) e dispara Web Push pra alcançar quem
+   * está com o sistema fechado. O registro fica — inclusive o "visto".
+   */
+  const nudgeMention = useCallback(async (mention: TeamMentionItem, level: MentionNudgeLevel) => {
+    if (!user) return;
+    const targets = (mention.targets || []).filter(t => t.user_id !== user.id);
+    if (targets.length === 0) {
+      toast.error('Não achei quem foi marcado nessa mensagem para cobrar.');
+      return;
+    }
+
+    const { entity_type, entity_id, entity_name } = mention.message;
+    const myName = mention.message.sender_name || user.email || 'Alguém';
+    const createdAt = new Date().toISOString();
+
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase as any).from('mention_nudges').insert(
+        targets.map(t => ({
+          message_id: mention.message_id,
+          recipient_id: t.user_id,
+          recipient_name: t.name,
+          actor_id: user.id,
+          actor_name: myName,
+          level,
+          entity_type,
+          entity_id,
+          entity_name: entity_name || null,
+        }))
+      );
+      if (error) throw error;
+
+      setMentions(prev => prev.map(m => m.message_id === mention.message_id
+        ? {
+            ...m,
+            nudge: {
+              level,
+              created_at: createdAt,
+              read_at: null,
+              actor_name: myName,
+              recipient_name: targets[0]?.name ?? null,
+            },
+          }
+        : m));
+
+      // Fora do app aberto o popup não existe — o push é o que alcança o celular.
+      cloudFunctions.invoke('send-team-push', {
+        body: {
+          user_ids: targets.map(t => t.user_id),
+          sender_id: user.id,
+          sender_name: myName,
+          title: level === 'urgente' ? '🚨 Responda com urgência' : '❗ Responda: é importante',
+          content: mention.message.content || 'Você foi marcado e estão esperando sua resposta.',
+          is_urgent: level === 'urgente',
+          url: entityChatUrl(entity_type, entity_id),
+        },
+      }).catch(err => console.error('Falha no Web Push da cobrança de menção:', err));
+
+      const quem = targets.map(t => t.name).filter(Boolean).join(', ') || 'quem foi marcado';
+      toast.success(level === 'urgente'
+        ? `🚨 Cobrança URGENTE enviada para ${quem}.`
+        : `❗ Cobrança de importância enviada para ${quem}.`);
+    } catch (e) {
+      console.error('[useMyMentions] erro ao cobrar a menção:', e);
+      toast.error('Não foi possível enviar a cobrança.');
+    }
+  }, [user]);
+
+  /**
+   * "Finalizar participação": para de receber as mensagens daquele chat de
+   * ficha. Um novo @ traz a pessoa de volta.
+   */
+  const leaveMentionThread = useCallback(async (mention: TeamMentionItem) => {
+    if (!user) return;
+    const { entity_type, entity_id } = mention.message;
+    if (!entity_type || !entity_id) return;
+    try {
+      await leaveThread(user.id, entity_type, entity_id);
+      setFollowedThreads(prev => {
+        const next = new Set(prev);
+        next.delete(`${entity_type}:${entity_id}`);
+        return next;
+      });
+      toast.success(`Você não recebe mais as mensagens de ${mention.entity_name || 'desse chat'}.`);
+    } catch (e) {
+      console.error('[useMyMentions] erro ao finalizar participação:', e);
+      toast.error('Não foi possível finalizar a participação.');
+    }
+  }, [user]);
+
+  return {
+    mentions,
+    loading,
+    markAsRead,
+    markAllAsRead,
+    nudgeMention,
+    followedThreads,
+    leaveMentionThread,
+    reload: load,
+  };
 }

@@ -14,9 +14,9 @@
  * filtros da tela e devolve 5 linhas prontas.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Bar, BarChart, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { CalendarDays, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { addDays, addMonths, addWeeks, addYears, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { db } from '@/integrations/supabase';
 import { cn } from '@/lib/utils';
@@ -51,14 +51,31 @@ export interface CreationSeriesFilters {
   search?: string;
 }
 
+/** Recorte que o clique numa barra manda para a lista. */
+export interface CreationPeriodSelection {
+  /** Início do período, ISO — vira `created_at >= from` na lista. */
+  from: string;
+  /** Início do período seguinte, ISO — vira `created_at < to` (fim exclusivo). */
+  to: string;
+  label: string;
+  /** Pedaço da barra que foi clicado. */
+  lead: 'linked' | 'not_linked';
+}
+
 interface Props {
   filters: CreationSeriesFilters;
+  /** Clique numa barra: filtra a lista pelo período + situação de lead. `null` = limpar. */
+  onSelectPeriod?: (selection: CreationPeriodSelection | null) => void;
+  /** Período em foco na lista (destaca a barra). */
+  selected?: CreationPeriodSelection | null;
   className?: string;
 }
 
 interface Row {
   label: string;
   full: string;
+  from: string;
+  to: string;
   comLead: number;
   semLead: number;
   total: number;
@@ -80,7 +97,15 @@ function fullLabelFor(period: Period, start: Date) {
   return format(start, 'yyyy', { locale: ptBR });
 }
 
-export function ContactsCreationTrendBars({ filters, className }: Props) {
+/** Início do período seguinte — fim exclusivo da janela que vai para a lista. */
+function nextStart(period: Period, start: Date) {
+  if (period === 'day') return addDays(start, 1);
+  if (period === 'week') return addWeeks(start, 1);
+  if (period === 'month') return addMonths(start, 1);
+  return addYears(start, 1);
+}
+
+export function ContactsCreationTrendBars({ filters, onSelectPeriod, selected, className }: Props) {
   const [period, setPeriod] = useState<Period>('day');
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -126,6 +151,8 @@ export function ContactsCreationTrendBars({ filters, className }: Props) {
           return {
             label: labelFor(period, start),
             full: fullLabelFor(period, start),
+            from: start.toISOString(),
+            to: nextStart(period, start).toISOString(),
             comLead,
             semLead: total - comLead,
             total,
@@ -154,6 +181,20 @@ export function ContactsCreationTrendBars({ filters, className }: Props) {
   }), [rows]);
 
   const periodTitle = PERIODS.find((p) => p.value === period)?.title ?? '';
+
+  /** Clicar de novo no mesmo pedaço desfaz o filtro. */
+  const handleSlice = (row: Row | undefined, lead: 'linked' | 'not_linked') => {
+    if (!row || !onSelectPeriod) return;
+    if (selected?.from === row.from && selected?.lead === lead) {
+      onSelectPeriod(null);
+      return;
+    }
+    onSelectPeriod({ from: row.from, to: row.to, label: row.full, lead });
+  };
+
+  /** Com um recorte ativo, só o pedaço escolhido fica cheio. */
+  const dimOpacity = (row: Row, lead: 'linked' | 'not_linked') =>
+    !selected || (selected.from === row.from && selected.lead === lead) ? 1 : 0.3;
 
   return (
     <div className={cn('rounded-lg border bg-card p-3 min-w-0', className)}>
@@ -229,7 +270,23 @@ export function ContactsCreationTrendBars({ filters, className }: Props) {
                   labelFormatter={(_label, payload) => payload?.[0]?.payload?.full || ''}
                   contentStyle={{ fontSize: 12, borderRadius: 8 }}
                 />
-                <Bar dataKey="comLead" name="Com lead" stackId="p" fill={WITH_LEAD} isAnimationActive={false} />
+                <Bar
+                  dataKey="comLead"
+                  name="Com lead"
+                  stackId="p"
+                  fill={WITH_LEAD}
+                  isAnimationActive={false}
+                  onClick={(entry: any) => handleSlice(entry?.payload as Row, 'linked')}
+                >
+                  {rows.map((r) => (
+                    <Cell
+                      key={`com-${r.from}`}
+                      fill={WITH_LEAD}
+                      opacity={dimOpacity(r, 'linked')}
+                      className={onSelectPeriod ? 'cursor-pointer' : undefined}
+                    />
+                  ))}
+                </Bar>
                 <Bar
                   dataKey="semLead"
                   name="Sem lead"
@@ -237,7 +294,16 @@ export function ContactsCreationTrendBars({ filters, className }: Props) {
                   fill={WITHOUT_LEAD}
                   radius={[3, 3, 0, 0]}
                   isAnimationActive={false}
+                  onClick={(entry: any) => handleSlice(entry?.payload as Row, 'not_linked')}
                 >
+                  {rows.map((r) => (
+                    <Cell
+                      key={`sem-${r.from}`}
+                      fill={WITHOUT_LEAD}
+                      opacity={dimOpacity(r, 'not_linked')}
+                      className={onSelectPeriod ? 'cursor-pointer' : undefined}
+                    />
+                  ))}
                   <LabelList
                     dataKey="total"
                     position="top"
@@ -252,7 +318,10 @@ export function ContactsCreationTrendBars({ filters, className }: Props) {
       )}
 
       <p className="text-[10px] text-muted-foreground mt-2">
-        {periodTitle}, com os filtros da tela. "Com lead" = já vinculado a um lead.
+        {periodTitle}, com os filtros da tela.{' '}
+        {onSelectPeriod
+          ? 'Clique num pedaço da barra para filtrar a lista por aquele período, com ou sem lead.'
+          : '"Com lead" = já vinculado a um lead.'}
       </p>
     </div>
   );
