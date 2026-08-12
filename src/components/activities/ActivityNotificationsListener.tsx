@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 // Rótulo por tipo de notificação (tabela activity_notifications no Externo).
 const TYPE_LABELS: Record<string, string> = {
   assigned: '📌 Atividade repassada para você',
+  assigned_bulk: '📦 Atividades repassadas para você',
   feedback: '💬 Feedback na atividade',
   status: '🔄 Situação da atividade alterada',
   rescheduled: '🗓️ Atividade reagendada',

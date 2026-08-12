@@ -57,7 +57,10 @@ import {
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
   Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark, DollarSign,
+  ArrowRightLeft, CheckSquare,
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -2557,6 +2560,66 @@ const ActivitiesPage = () => {
     setRenderLimit(RENDER_BATCH);
   }, [filterStatus, filterType, filterAssignee, filterCreatedBy, filterLead, filterContact, filterWorkflow, filterCase, selectedCalDays, calendarMonth, viewMode]);
 
+  // --- Seleção múltipla para passar atividades a outro assessor ---------------
+  // Só alcança o que está renderizado na tela (displayedActivities até o
+  // renderLimit) — o que ficou além do lote não pode ser marcado sem o usuário
+  // ver, então o rodapé avisa quantas sobraram.
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkReassignOpen, setBulkReassignOpen] = useState(false);
+  const lastClickedIdRef = useRef<string | null>(null);
+
+  const renderedActivities = useMemo(
+    () => displayedActivities.slice(0, renderLimit),
+    [displayedActivities, renderLimit],
+  );
+
+  // Some da seleção o que saiu da tela (troca de filtro, mês, busca).
+  useEffect(() => {
+    if (!selectionMode) return;
+    setSelectedIds(prev => {
+      const visiveis = new Set(renderedActivities.map(a => a.id));
+      const next = new Set([...prev].filter(id => visiveis.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [selectionMode, renderedActivities]);
+
+  const exitSelection = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedIds(new Set());
+    lastClickedIdRef.current = null;
+  }, []);
+
+  // Shift+clique marca o intervalo desde o último card clicado.
+  const toggleSelected = useCallback((id: string, shift = false) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      const anchor = lastClickedIdRef.current;
+      if (shift && anchor && anchor !== id) {
+        const ordem = renderedActivities.map(a => a.id);
+        const i = ordem.indexOf(anchor);
+        const j = ordem.indexOf(id);
+        if (i >= 0 && j >= 0) {
+          const [ini, fim] = i < j ? [i, j] : [j, i];
+          const marcar = !next.has(id);
+          for (let k = ini; k <= fim; k++) {
+            if (marcar) next.add(ordem[k]); else next.delete(ordem[k]);
+          }
+          return next;
+        }
+      }
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+    lastClickedIdRef.current = id;
+  }, [renderedActivities]);
+
+  const selectedActivities = useMemo(
+    () => renderedActivities.filter(a => selectedIds.has(a.id)),
+    [renderedActivities, selectedIds],
+  );
+  const allRenderedSelected = renderedActivities.length > 0 && renderedActivities.every(a => selectedIds.has(a.id));
+
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
     // Tenta direto (cloud_uuid) e via remap (ext_uuid → cloud_uuid)
@@ -4710,6 +4773,42 @@ const ActivitiesPage = () => {
             )}
           </div>
 
+          {/* Barra de seleção múltipla — passar várias atividades a outro assessor */}
+          <div className="shrink-0 border-b bg-card/50 px-3 py-1.5 flex items-center gap-2">
+            {!selectionMode ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                onClick={() => setSelectionMode(true)}
+                title="Marcar várias atividades para passar a outro assessor"
+              >
+                <CheckSquare className="h-3.5 w-3.5" />
+                Selecionar
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    if (allRenderedSelected) setSelectedIds(new Set());
+                    else setSelectedIds(new Set(renderedActivities.map(a => a.id)));
+                  }}
+                >
+                  {allRenderedSelected ? 'Desmarcar todas' : 'Marcar todas'}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
+                </span>
+                <Button variant="ghost" size="sm" className="h-7 text-xs ml-auto" onClick={exitSelection}>
+                  Cancelar
+                </Button>
+              </>
+            )}
+          </div>
+
           {/* Activity list - scrollable like WhatsApp chat */}
           <div className="flex-1 overflow-y-auto bg-muted/10">
             {selectedCalDays.length > 0 && (
@@ -4737,16 +4836,20 @@ const ActivitiesPage = () => {
                   </Button>
                 </div>
               ) : (
-                displayedActivities.slice(0, renderLimit).map(activity => (
+                renderedActivities.map(activity => (
                   <ContextMenu key={activity.id}>
                     <ContextMenuTrigger asChild>
                   <div
                     className={cn(
                       "bg-card rounded-lg shadow-sm border border-border/50 cursor-pointer transition-all hover:shadow-md active:scale-[0.99] overflow-hidden",
                       selectedActivity?.id === activity.id && "ring-2 ring-primary border-primary/30",
+                      selectionMode && selectedIds.has(activity.id) && "ring-2 ring-primary border-primary/30 bg-primary/5",
                       activity.status === 'concluida' && "opacity-60"
                     )}
-                    onClick={() => handleOpenEdit(activity)}
+                    onClick={(e) => {
+                      if (selectionMode) { toggleSelected(activity.id, e.shiftKey); return; }
+                      handleOpenEdit(activity);
+                    }}
                   >
                     {/* Situation ribbon (top) — codifica a situação temporal, não a prioridade */}
                     {(() => {
@@ -4761,6 +4864,11 @@ const ActivitiesPage = () => {
 
                     {/* Top row: badges + actions */}
                     <div className="flex items-start justify-between gap-2">
+                      {selectionMode && (
+                        <span onClick={e => { e.stopPropagation(); toggleSelected(activity.id, (e as any).shiftKey); }} className="pt-0.5">
+                          <Checkbox checked={selectedIds.has(activity.id)} />
+                        </span>
+                      )}
                       <div className="flex items-center gap-1.5 flex-wrap flex-1">
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                           {ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}
@@ -4803,7 +4911,7 @@ const ActivitiesPage = () => {
                           );
                         })()}
                       </div>
-                      <div className="flex items-center gap-0.5 shrink-0">
+                      <div className={cn("flex items-center gap-0.5 shrink-0", selectionMode && "hidden")}>
                         {activity.status !== 'concluida' && (
                           <Button variant="ghost" size="icon" className="h-6 w-6 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={e => { e.stopPropagation(); handleComplete(activity.id); }} title="Concluir">
                             <CheckCircle2 className="h-3.5 w-3.5" />
@@ -4920,6 +5028,26 @@ const ActivitiesPage = () => {
               )}
             </div>
           </div>
+
+          {/* Ações do lote — dentro da coluna, sem cobrir card nenhum */}
+          {selectionMode && selectedIds.size > 0 && (
+            <div className="shrink-0 border-t bg-card px-3 py-2 flex items-center gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+              <div className="text-xs min-w-0 flex-1">
+                <span className="font-medium">
+                  {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
+                </span>
+                {displayedActivities.length > renderLimit && (
+                  <span className="text-muted-foreground block truncate">
+                    há {(displayedActivities.length - renderLimit).toLocaleString('pt-BR')} não carregadas — use "Mostrar mais"
+                  </span>
+                )}
+              </div>
+              <Button size="sm" className="h-8 text-xs gap-1.5 shrink-0" onClick={() => setBulkReassignOpen(true)}>
+                <ArrowRightLeft className="h-3.5 w-3.5" />
+                Passar para...
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* RIGHT: Form panel (WhatsApp chat-detail style) */}
@@ -6247,6 +6375,16 @@ const ActivitiesPage = () => {
         origin={aiMergeOrigin}
         conflicts={aiConflicts}
         onApply={applyAIFieldValues}
+      />
+      <BulkReassignSheet
+        open={bulkReassignOpen}
+        onOpenChange={setBulkReassignOpen}
+        activities={selectedActivities}
+        teamMembers={teamMembers}
+        onApplied={() => {
+          exitSelection();
+          fetchActivities(getFilterParams());
+        }}
       />
       {keepAsObserverDialog}
     </div>
