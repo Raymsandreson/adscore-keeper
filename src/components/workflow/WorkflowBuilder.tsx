@@ -45,6 +45,7 @@ import {
   Search,
   FolderInput,
   MessagesSquare,
+  BellRing,
   History,
 } from 'lucide-react';
 import {
@@ -263,6 +264,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // (mesmo banco de team_managers, então o id casa na hora de notificar).
   const [formResponsibleTeamId, setFormResponsibleTeamId] = useState<string>('');
   const [teamsList, setTeamsList] = useState<{ id: string; name: string }[]>([]);
+  // Quem recebe as notificações de atualização dos processos deste POP.
+  // Penúltimo degrau da cascata de responsável (ver src/lib/popResponsavel.ts):
+  // só entra quando nem o passo, nem o objetivo, nem a fase, nem o lead têm
+  // dono. Coluna própria em kanban_boards, não settings — é valor com forma de
+  // chave estrangeira e o roteamento vai servir ao servidor depois.
+  const [formNotificacoesAssigneeId, setFormNotificacoesAssigneeId] = useState<string>('');
   const [newResultadoLabel, setNewResultadoLabel] = useState<string>('');
   // Template do nome do PROCESSO — só POP (não funil). Guardado em
   // kanban_boards.settings.process_name_template. Ver src/lib/processNameTemplate.ts.
@@ -602,6 +609,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setFormResultadoEsperadoIds(cfgEspIds);
     setFormProcessNameTemplate(cfg?.process_name_template || '');
     setFormResponsibleTeamId(cfg?.responsible_team_id || '');
+    // Coluna, não settings — daí sair de `board` e não de `cfg`.
+    setFormNotificacoesAssigneeId(
+      (board as { notificacoes_assignee_id?: string | null }).notificacoes_assignee_id || '',
+    );
 
     // Sempre busca templates frescos junto com os links pra evitar race
     // (sem isso, se o usuário abrir Editar antes do fetchTemplates inicial
@@ -1141,6 +1152,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           description: latestDesc.trim() || null,
           color: '#3b82f6',
           stages,
+          notificacoes_assignee_id: formNotificacoesAssigneeId || null,
           // resultado_esperado_ids = fonte da verdade (múltiplos); resultado_esperado_id
           // = primeiro, mantido por compat com o ranking atual e o LeadEditDialog.
           settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null, process_name_template: formProcessNameTemplate.trim() || null, responsible_team_id: formResponsibleTeamId || null },
@@ -1153,6 +1165,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           color: '#3b82f6',
           stages,
           board_type: boardType,
+          notificacoes_assignee_id: formNotificacoesAssigneeId || null,
         } as any);
         boardId = created.id;
       }
@@ -1648,6 +1661,29 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   </Select>
                   <p className="text-[10px] text-muted-foreground mt-1">
                     O gerente deste time é avisado (notificação) quando houver mensagem no chat de qualquer passo deste POP.
+                  </p>
+                </div>
+              )}
+
+              {/* Rede de segurança da cascata de responsável. Sem isto, processo
+                  sem dono em nenhum nível avisa a equipe inteira — e aviso que
+                  chega para todos é aviso que ninguém trata como seu. */}
+              {!isFunnel && (
+                <div>
+                  <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                    <BellRing className="h-3.5 w-3.5" />
+                    Recebe as atualizações dos processos
+                  </Label>
+                  <div className="mt-1">
+                    <ResponsavelSelect
+                      value={formNotificacoesAssigneeId || null}
+                      onChange={(id) => setFormNotificacoesAssigneeId(id || '')}
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Recebe o aviso de movimentação dos processos deste POP quando ninguém mais
+                    responde por ela — nem o passo, nem o objetivo, nem a fase, nem o responsável
+                    do caso. Sem nome aqui, o aviso vai para a equipe toda.
                   </p>
                 </div>
               )}

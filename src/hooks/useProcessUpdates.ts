@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { classificarEsfera, type Esfera } from '@/lib/esferaJustica';
 import { responsavelDoPassoAberto } from '@/lib/leadStepContext';
 import { showNativeNotification } from '@/lib/nativeNotification';
+import { ASSIGNEE_BLOCKLIST } from '@/lib/assigneeBlocklist';
 
 export type UpdateCategoria =
   | 'decisao_merito'
@@ -148,21 +149,35 @@ export const useProcessUpdates = () => {
    * inteiro mandaria o aviso para a pessoa errada na metade das fases; avisar
    * todo mundo com o sino aberto (o que o canal fazia) é o mesmo que não avisar.
    *
-   * Silencioso de propósito quando não há POP, quando ninguém foi designado ou
-   * quando o dono é outro: notificação que chega para quem não vai agir ensina
-   * a ignorar notificação.
+   * Quando a cascata inteira falha (origem 'nenhum'), o aviso vai para TODO
+   * MUNDO — decisão do Raym em 12/08/2026. É fundo de poço, não descuido:
+   * cinco degraus já foram tentados, e movimentação sem destinatário é
+   * movimentação que ninguém lê. Cada cliente decide por si (todos resolvem a
+   * mesma cascata), então não precisa de fan-out no servidor.
+   *
+   * Silencioso só quando o dono é outro: notificação que chega para quem não
+   * vai agir ensina a ignorar notificação.
    */
   const avisarSeForMinha = useCallback(async (u: ProcessUpdate) => {
     const eu = extUserIdRef.current;
     if (!eu || !u.lead_id) return;
     try {
       const passo = await responsavelDoPassoAberto(u.process_id, u.lead_id);
-      if (!passo?.assigneeId || passo.assigneeId !== eu) return;
+
+      const semDono = !passo.assigneeId;
+      const minha = passo.assigneeId === eu;
+      // Contas de teste e inativas ficam de fora do "todo mundo" — elas não
+      // atuam em processo, e engrossariam o barulho justamente no caso em que
+      // ele já é mais largo.
+      if (!minha && !(semDono && !ASSIGNEE_BLOCKLIST.has(user?.id || ''))) return;
 
       const processo = u.processo_titulo || u.numero_cnj || 'processo';
       const corpo = [
         u.descricao?.slice(0, 140),
         passo.stepLabel ? `Passo em aberto: ${passo.stepLabel}` : null,
+        // Quem recebe por falta de dono precisa saber que não é "sua" tarefa —
+        // senão ou todo mundo age, ou ninguém age achando que é de outro.
+        semDono ? 'Sem responsável definido — avisando a equipe' : null,
       ].filter(Boolean).join('\n');
 
       const exibiu = await showNativeNotification(`${u.titulo} — ${processo}`, {
@@ -177,14 +192,16 @@ export const useProcessUpdates = () => {
       // tem o app aberto ainda precisa ver que caiu algo no passo dele.
       if (!exibiu) {
         toast.info(`${u.titulo} — ${processo}`, {
-          description: passo.stepLabel ? `Seu passo: ${passo.stepLabel}` : undefined,
+          description: semDono
+            ? 'Sem responsável definido — avisando a equipe'
+            : (passo.stepLabel ? `Seu passo: ${passo.stepLabel}` : undefined),
           duration: 10000,
         });
       }
     } catch (err) {
       console.warn('[useProcessUpdates] não deu para avisar o responsável:', err);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchAll();

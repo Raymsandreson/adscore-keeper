@@ -22,6 +22,20 @@ describe('resolverResponsavel', () => {
     expect(r).toEqual({ assigneeId: 'D', origem: 'processo' });
   });
 
+  // O degrau do POP atende os leads sem responsável processual — 97 dos 314 que
+  // apareciam no sino em 12/08/2026.
+  it('sem ninguém no lead, cai no responsável de notificações do POP', () => {
+    const r = resolverResponsavel({ pop: 'E' });
+    expect(r).toEqual({ assigneeId: 'E', origem: 'pop' });
+  });
+
+  // Ordem que importa na prática: o dono do caso é mais específico do que o do
+  // POP. Inverter faria uma pessoa só receber tudo e o dono certo, nada.
+  it('o responsável do lead vence o do POP', () => {
+    const r = resolverResponsavel({ processo: 'D', pop: 'E' });
+    expect(r).toEqual({ assigneeId: 'D', origem: 'processo' });
+  });
+
   it('devolve nenhum quando não há responsável em lugar algum', () => {
     expect(resolverResponsavel({})).toEqual({ assigneeId: null, origem: 'nenhum' });
   });

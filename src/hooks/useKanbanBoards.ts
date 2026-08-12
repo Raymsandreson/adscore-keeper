@@ -32,6 +32,11 @@ export interface KanbanBoard {
   sheet_initial_stage_id?: string | null;
   sheet_source_url?: string | null;
   sheet_enabled?: boolean | null;
+  /**
+   * Quem recebe as notificações de atualização dos processos deste POP.
+   * Penúltimo degrau da cascata de responsável — ver src/lib/popResponsavel.ts.
+   */
+  notificacoes_assignee_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -99,6 +104,7 @@ export const useKanbanBoards = (adAccountId?: string) => {
           ad_account_id: adAccountId || null,
           board_type: board.board_type || 'funnel',
           product_service_id: board.product_service_id || null,
+          notificacoes_assignee_id: board.notificacoes_assignee_id || null,
         } as any])
         .select()
         .single();
@@ -138,6 +144,9 @@ export const useKanbanBoards = (adAccountId?: string) => {
       if (updates.sheet_initial_stage_id !== undefined) updatePayload.sheet_initial_stage_id = updates.sheet_initial_stage_id;
       if (updates.sheet_source_url !== undefined) updatePayload.sheet_source_url = updates.sheet_source_url;
       if (updates.sheet_enabled !== undefined) updatePayload.sheet_enabled = updates.sheet_enabled;
+      // `!== undefined` e não truthy: limpar o campo na tela manda null, e null
+      // precisa gravar — senão não há como tirar o responsável depois de pôr.
+      if (updates.notificacoes_assignee_id !== undefined) updatePayload.notificacoes_assignee_id = updates.notificacoes_assignee_id;
       // KPI "resultado esperado" do POP e outras configs vivem em settings (jsonb).
       if ((updates as { settings?: unknown }).settings !== undefined) {
         updatePayload.settings = (updates as { settings?: unknown }).settings;
