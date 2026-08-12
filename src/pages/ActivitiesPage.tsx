@@ -7,6 +7,8 @@ import { remapToCloud, remapToCloudSync, remapToExternal, remapToExternalSync, e
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
 import { useEstimateSuggestion } from '@/hooks/useActivityTimeEstimate';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
+import { logAudit } from '@/hooks/useAuditLog';
+import { currentExtUserId } from '@/lib/currentExtUser';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
@@ -2694,6 +2696,75 @@ const ActivitiesPage = () => {
   );
   const allRenderedSelected = renderedActivities.length > 0 && renderedActivities.every(a => selectedIds.has(a.id));
 
+  // Excluir o lote selecionado. Mesmo caminho do delete individual
+  // (useLeadActivities.deleteActivity): soft delete via deleted_at + descarte do
+  // tempo cronometrado. Diferença: o audit vai em UMA linha com os snapshots do
+  // lote — logAudit por atividade custaria 3 requisições ao Cloud cada uma.
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+
+  const handleBulkDelete = useCallback(() => {
+    const ids = selectedActivities.map(a => a.id);
+    if (!ids.length) return;
+    const uma = ids.length === 1;
+    confirmDelete(
+      uma ? 'Excluir atividade' : `Excluir ${ids.length} atividades`,
+      uma
+        ? 'Tem certeza que deseja excluir esta atividade? Ela sai das listas e o tempo cronometrado nela é descartado.'
+        : `As ${ids.length} atividades selecionadas saem das listas e o tempo cronometrado nelas é descartado. Não dá para desfazer pela tela.`,
+      async () => {
+        setBulkDeleting(true);
+        try {
+          const CHUNK = 200;
+          const snapshots: any[] = [];
+          for (let i = 0; i < ids.length; i += CHUNK) {
+            const { data, error } = await externalSupabase
+              .from('lead_activities')
+              .select('*')
+              .in('id', ids.slice(i, i + CHUNK));
+            if (error) throw error;
+            if (data) snapshots.push(...data);
+          }
+
+          await logAudit({
+            action: 'delete',
+            entityType: uma ? 'lead_activity' : 'exclusao_atividades',
+            entityId: uma ? ids[0] : undefined,
+            entityName: uma ? ((snapshots[0] as any)?.title || 'Atividade') : `${ids.length} atividades`,
+            details: { soft_delete: true, total: ids.length, ids, snapshots },
+          });
+
+          const autor = await currentExtUserId();
+          const agora = new Date().toISOString();
+          for (let i = 0; i < ids.length; i += CHUNK) {
+            const chunk = ids.slice(i, i + CHUNK);
+            const { error } = await externalSupabase
+              .from('lead_activities')
+              .update({ deleted_at: agora, updated_by: autor } as any)
+              .in('id', chunk);
+            if (error) throw error;
+            await (externalSupabase as unknown as import('@supabase/supabase-js').SupabaseClient)
+              .from('activity_time_entries')
+              .delete()
+              .in('activity_id', chunk);
+          }
+
+          toast.success(uma ? 'Atividade arquivada!' : `${ids.length} atividades arquivadas`);
+          // Se a atividade aberta no painel foi para o lote, fecha — senão fica
+          // um formulário editando registro que sumiu da lista.
+          if (selectedActivity && ids.includes(selectedActivity.id)) closeSheet();
+          exitSelection();
+          fetchActivities(getFilterParams());
+        } catch (e: any) {
+          console.error('[bulkDelete] falhou', e);
+          toast.error(e?.message || 'Erro ao excluir as atividades');
+        } finally {
+          setBulkDeleting(false);
+        }
+      },
+      uma ? 'Excluir' : `Excluir ${ids.length}`,
+    );
+  }, [selectedActivities, confirmDelete, exitSelection, fetchActivities, selectedActivity]);
+
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
     // Tenta direto (cloud_uuid) e via remap (ext_uuid → cloud_uuid)
@@ -5132,7 +5203,24 @@ const ActivitiesPage = () => {
                   </span>
                 )}
               </div>
-              <Button size="sm" className="h-8 text-xs gap-1.5 shrink-0" onClick={() => setBulkReassignOpen(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs gap-1.5 shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+                onClick={handleBulkDelete}
+                disabled={bulkDeleting}
+              >
+                {bulkDeleting
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <Trash2 className="h-3.5 w-3.5" />}
+                Excluir
+              </Button>
+              <Button
+                size="sm"
+                className="h-8 text-xs gap-1.5 shrink-0"
+                onClick={() => setBulkReassignOpen(true)}
+                disabled={bulkDeleting}
+              >
                 <ArrowRightLeft className="h-3.5 w-3.5" />
                 Passar para...
               </Button>
