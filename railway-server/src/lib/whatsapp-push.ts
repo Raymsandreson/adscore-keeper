@@ -28,6 +28,23 @@ function ensureVapid(): boolean {
   return true;
 }
 
+/**
+ * Como o push sai daqui — os dois cabeçalhos que decidem se ele chega na hora.
+ *
+ * urgency 'high': o Web Push traduz esse cabeçalho em prioridade da mensagem no
+ * FCM. Sem ele o padrão é 'normal', e o Android segura mensagem de prioridade
+ * normal enquanto o aparelho está em Doze/App Standby — o celular só recebe
+ * quando o Chrome acorda. Foi exatamente o que apareceu em 12/08/2026: pushes
+ * emitidos 11:30, 11:38, 11:47 e 12:28 (horário de SP) caíram todos juntos às
+ * 12:38, quando o app foi aberto. Mensagem de cliente não pode esperar o app
+ * abrir — é 'high'.
+ *
+ * TTL 900 (15 min): sem TTL o web-push manda 4 semanas. Aviso de mensagem nova
+ * que chega horas depois não é aviso, é ruído — e ainda leva a pessoa a uma
+ * conversa que já foi respondida. Passou de 15 min, o FCM descarta.
+ */
+const PUSH_OPTIONS = { urgency: 'high', TTL: 900 } as const;
+
 export interface NewMessagePushInput {
   phone: string;                 // telefone do contato OU JID do grupo (como gravado)
   instanceName: string;
@@ -247,7 +264,11 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
   await Promise.all(
     subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
+        await webpush.sendNotification(
+          { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+          payload,
+          PUSH_OPTIONS,
+        );
         sent++;
       } catch (err: unknown) {
         const code = (err as { statusCode?: number })?.statusCode;

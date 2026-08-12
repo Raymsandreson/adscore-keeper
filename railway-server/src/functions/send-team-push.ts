@@ -19,6 +19,15 @@ const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
 const VAPID_SUBJECT = process.env.VAPID_SUBJECT || 'mailto:processual@rprudencioadv.com';
 
+/**
+ * urgency 'high' faz o FCM entregar mesmo com o Android em Doze/App Standby —
+ * sem isso (padrão 'normal') a notificação fica presa até o Chrome acordar.
+ * TTL de 30 min: menção da equipe ainda vale um pouco mais que mensagem de
+ * cliente, mas nada aqui presta depois de meia hora. Mesmo raciocínio (e mesma
+ * evidência) de `lib/whatsapp-push.ts`.
+ */
+const PUSH_OPTIONS = { urgency: 'high', TTL: 1800 } as const;
+
 let configured = false;
 function ensureVapid(): boolean {
   if (configured) return true;
@@ -163,6 +172,7 @@ export const handler: RequestHandler = async (req, res) => {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
             payload,
+            PUSH_OPTIONS,
           );
           sent++;
         } catch (err: unknown) {
