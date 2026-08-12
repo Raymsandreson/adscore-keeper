@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMyMentions } from '@/hooks/useTeamChat';
+import { useMyMentions, type MentionNudgeLevel, type MentionScope, type TeamMentionItem } from '@/hooks/useTeamChat';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -58,8 +58,95 @@ const entityColors: Record<string, string> = {
   case: 'bg-indigo-500/10 text-indigo-600',
 };
 
+/**
+ * Cobrança de urgência da menção. Aparece na menção que VOCÊ fez e ainda não
+ * teve resposta: um toque e quem foi marcado recebe o popup. O que já foi
+ * cobrado fica registrado aqui embaixo, com o "visto" — igual ao Feedback.
+ */
+function MentionNudgeRow({
+  mention,
+  busy,
+  onNudge,
+  following,
+  onLeave,
+}: {
+  mention: TeamMentionItem;
+  busy: boolean;
+  onNudge: (level: MentionNudgeLevel) => void;
+  following: boolean;
+  onLeave: () => void;
+}) {
+  const nudge = mention.nudge;
+  // Cobrar só faz sentido enquanto ninguém respondeu, e só quem marcou cobra.
+  const podeCobrar =
+    mention.direction === 'out' &&
+    mention.status !== 'respondido' &&
+    (mention.targets?.length ?? 0) > 0;
+
+  if (!podeCobrar && !nudge && !following) return null;
+
+  return (
+    <div className="pl-10 pr-1 pt-1.5 space-y-1">
+      {podeCobrar && (
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 flex-1 text-[10px] border-amber-300 text-amber-700 dark:text-amber-400"
+            disabled={busy}
+            onClick={() => onNudge('importante')}
+            title="Avisar quem você marcou que é importante responder"
+          >
+            ❗ Importante
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 flex-1 text-[10px] border-red-400 text-red-700 dark:text-red-400"
+            disabled={busy}
+            onClick={() => onNudge('urgente')}
+            title="Avisar quem você marcou que é urgente — popup na tela dele"
+          >
+            🚨 Urgente
+          </Button>
+        </div>
+      )}
+      {nudge && (
+        <p className="text-[9px] leading-tight text-muted-foreground">
+          {nudge.level === 'urgente' ? '🚨' : '❗'}{' '}
+          {mention.direction === 'out'
+            ? `Cobrado ${format(new Date(nudge.created_at), 'dd/MM HH:mm')}`
+            : `${nudge.actor_name || 'Alguém'} pediu resposta ${nudge.level} ${format(new Date(nudge.created_at), 'dd/MM HH:mm')}`}
+          {' · '}
+          {nudge.read_at ? (
+            <span className="text-green-600 dark:text-green-400 font-medium">
+              ✓ visto {format(new Date(nudge.read_at), 'dd/MM HH:mm')}
+            </span>
+          ) : (
+            <span className="text-amber-600 dark:text-amber-400">aguardando visualização</span>
+          )}
+        </p>
+      )}
+      {/* Enquanto acompanha, tudo que for dito nesse chat chega como popup —
+          mesmo sem novo @. Aqui é onde a pessoa desliga isso. */}
+      {following && (
+        <button
+          type="button"
+          onClick={onLeave}
+          title="Parar de receber as mensagens deste chat"
+          className="inline-flex items-center gap-1 text-[9px] text-muted-foreground hover:text-foreground underline underline-offset-2"
+        >
+          <BellOff className="h-2.5 w-2.5" /> Finalizar participação
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
-  const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
+  const { mentions, loading, markAsRead, markAllAsRead, nudgeMention, followedThreads, leaveMentionThread } = useMyMentions();
+  // Trava de duplo clique da cobrança, por mensagem.
+  const [nudgingId, setNudgingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('chat');
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
@@ -68,6 +155,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   // Mesmo vocabulário da aba Chat: a bola está com você (responder) ou com o
   // outro (aguardando). "Não lidas" continua sendo só o que você ainda não abriu.
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'responder' | 'aguardando'>('all');
+  // Onde foi dito (privado / grupo / ficha) e como te chamaram (nome / @todos).
+  // São dimensões independentes do status — dá pra cruzar as duas.
+  const [scopeFilter, setScopeFilter] = useState<'all' | MentionScope>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'nome' | 'todos'>('all');
 
   useEffect(() => {
     return subscribeToTeamChatConversation((intent) => {
@@ -197,6 +288,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     }
   };
 
+  const handleNudge = async (mention: TeamMentionItem, level: MentionNudgeLevel) => {
+    setNudgingId(mention.message_id);
+    try {
+      await nudgeMention?.(mention, level);
+    } finally {
+      setNudgingId(null);
+    }
+  };
+
   const unreadCount = mentions.filter(m => !m.is_read).length;
   const responderCount = mentions.filter(m => m.status === 'responder').length;
   const aguardandoCount = mentions.filter(m => m.status === 'aguardando').length;
@@ -214,6 +314,8 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     return mentions.filter(m => {
       if (statusFilter === 'unread' && m.is_read) return false;
       if ((statusFilter === 'responder' || statusFilter === 'aguardando') && m.status !== statusFilter) return false;
+      if (scopeFilter !== 'all' && m.scope !== scopeFilter) return false;
+      if (kindFilter !== 'all' && (m.mentionKind || 'nome') !== kindFilter) return false;
       if (typeFilter !== 'all' && (m.entity_type || 'team_chat') !== typeFilter) return false;
       if (!term) return true;
       const haystack = [
@@ -228,9 +330,18 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [mentions, search, typeFilter, statusFilter]);
+  }, [mentions, search, typeFilter, statusFilter, scopeFilter, kindFilter]);
 
-  const hasActiveFilter = search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all';
+  const hasActiveFilter =
+    search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all' ||
+    scopeFilter !== 'all' || kindFilter !== 'all';
+
+  const limparFiltros = () => {
+    setSearch(''); setTypeFilter('all'); setStatusFilter('all');
+    setScopeFilter('all'); setKindFilter('all');
+  };
+
+  const scopeCount = (s: MentionScope) => mentions.filter(m => m.scope === s).length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -247,9 +358,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="truncate text-sm">
-                  {activeTab === 'mentions' ? 'Menções' : 'Chat da Equipe'}
-                </div>
+                <div className="truncate text-sm">Chat interno</div>
                 <div className="text-[10px] text-muted-foreground font-normal">
                   {activeTab === 'mentions'
                     ? (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
@@ -379,6 +488,65 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 <Reply className="h-3 w-3" /> Aguardando{aguardandoCount > 0 ? ` (${aguardandoCount})` : ''}
               </button>
             </div>
+            {/* Onde foi dito: no privado, no grupo, ou no chat de uma ficha. */}
+            <div className="flex gap-1">
+              {([
+                { v: 'privado' as const, label: 'Privado', icon: <MessageCircle className="h-3 w-3" /> },
+                { v: 'grupo' as const, label: 'Grupo', icon: <Users className="h-3 w-3" /> },
+                { v: 'ficha' as const, label: 'Ficha', icon: <ClipboardList className="h-3 w-3" /> },
+              ]).map(({ v, label, icon }) => {
+                const n = scopeCount(v);
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setScopeFilter(prev => (prev === v ? 'all' : v))}
+                    title={
+                      v === 'privado' ? 'Marcaram você numa conversa direta'
+                        : v === 'grupo' ? 'Marcaram você num grupo'
+                          : 'Marcaram você no chat de uma atividade, lead, processo, contato ou POP'
+                    }
+                    className={cn(
+                      'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors inline-flex items-center justify-center gap-1',
+                      scopeFilter === v
+                        ? 'bg-foreground text-background border-foreground'
+                        : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
+                    )}
+                  >
+                    {icon} {label}{n > 0 ? ` (${n})` : ''}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Te chamaram pelo nome ou foi um @todos? Muda o quanto é com você. */}
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setKindFilter(prev => (prev === 'nome' ? 'all' : 'nome'))}
+                title="Marcaram você pelo nome"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
+                  kindFilter === 'nome'
+                    ? 'bg-violet-500 text-white border-violet-500'
+                    : 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/40 hover:bg-violet-500/20'
+                )}
+              >
+                Pelo nome
+              </button>
+              <button
+                type="button"
+                onClick={() => setKindFilter(prev => (prev === 'todos' ? 'all' : 'todos'))}
+                title="Chamaram a equipe inteira com @todos — não era só com você"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
+                  kindFilter === 'todos'
+                    ? 'bg-slate-500 text-white border-slate-500'
+                    : 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/40 hover:bg-slate-500/20'
+                )}
+              >
+                @todos
+              </button>
+            </div>
           </div>
         )}
 
@@ -416,7 +584,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => { setSearch(''); setTypeFilter('all'); setStatusFilter('all'); }}
+                    onClick={limparFiltros}
                   >
                     Limpar filtros
                   </Button>
@@ -425,17 +593,20 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
             ) : (
               <div className="divide-y">
                 {visibleMentions.map(mention => (
-                  <button
+                  <div
                     key={mention.id}
-                    onClick={() => handleMentionClick(mention)}
                     className={cn(
-                      "w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors",
+                      "px-4 py-3 transition-colors",
                       !mention.is_read && "bg-primary/5",
                       mention.status === 'responder' && "border-l-2 border-l-amber-500",
                       mention.status === 'aguardando' && "border-l-2 border-l-sky-500/70"
                     )}
                   >
-                    <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleMentionClick(mention)}
+                      className="w-full text-left flex items-start gap-3 rounded-md hover:bg-accent/50 transition-colors"
+                    >
                       <div className={cn("shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5", entityColors[mention.entity_type || 'team_chat'] || 'bg-muted')}>
                         {entityIcons[mention.entity_type || 'team_chat'] || <AtSign className="h-3.5 w-3.5" />}
                       </div>
@@ -489,8 +660,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                         </div>
                       </div>
                       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-2" />
-                    </div>
-                  </button>
+                    </button>
+                    <MentionNudgeRow
+                      mention={mention}
+                      busy={nudgingId === mention.message_id}
+                      onNudge={level => handleNudge(mention, level)}
+                      following={!!followedThreads?.has(`${mention.message.entity_type}:${mention.message.entity_id}`)}
+                      onLeave={() => leaveMentionThread?.(mention)}
+                    />
+                  </div>
                 ))}
               </div>
             )}

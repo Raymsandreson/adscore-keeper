@@ -29,12 +29,18 @@ interface Props {
   contacts: DonutContact[];
   /** Cores cadastradas em Classificações (`bg-*-500`). */
   classificationConfig: Record<string, { label: string; color: string }>;
-  /** Fatia do relacionamento: abre o painel daquele status. */
+  /** Nome do relacionamento na legenda: abre o painel daquele status. */
   onSelectClassification: (name: string) => void;
+  /** Fatia do relacionamento: filtra a lista (mesmo gesto das outras figuras). */
+  onFilterClassification: (name: string) => void;
+  /** Relacionamento em foco no filtro da tela (destaca a fatia). */
+  selectedClassification?: string;
   /** Fatia da profissão: filtra a lista. `null` = "sem profissão". */
   onSelectProfession: (profession: string | null) => void;
   /** Profissão em foco no momento (destaca a fatia). `undefined` = nenhuma. */
   selectedProfession?: string | null;
+  /** Terceiro card do painel (cadastros por período) — quem monta é a página, que tem os filtros. */
+  trendSlot?: React.ReactNode;
   className?: string;
 }
 
@@ -87,6 +93,8 @@ function Donut({
   emptyLabel,
   activeKey,
   onSlice,
+  onLegend,
+  legendHint,
   footer,
 }: {
   title: string;
@@ -96,6 +104,9 @@ function Donut({
   emptyLabel: string;
   activeKey?: string | null;
   onSlice: (slice: Slice) => void;
+  /** Clique no nome da legenda, quando ele faz algo diferente da fatia. */
+  onLegend?: (slice: Slice) => void;
+  legendHint?: (slice: Slice) => string;
   footer?: string | null;
 }) {
   return (
@@ -159,11 +170,13 @@ function Donut({
                   key={s.key}
                   type="button"
                   disabled={!s.clickable}
-                  onClick={() => onSlice(s)}
+                  onClick={() => (onLegend || onSlice)(s)}
                   title={
-                    s.clickable
-                      ? `${s.label}: ${s.count} contato${s.count === 1 ? '' : 's'}`
-                      : 'Fatia somada — refine os filtros para detalhar'
+                    !s.clickable
+                      ? 'Fatia somada — refine os filtros para detalhar'
+                      : legendHint
+                        ? legendHint(s)
+                        : `${s.label}: ${s.count} contato${s.count === 1 ? '' : 's'}`
                   }
                   className={cn(
                     'w-full flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[11px] text-left transition-colors',
@@ -190,8 +203,11 @@ export function ContactsDistributionDonuts({
   contacts,
   classificationConfig,
   onSelectClassification,
+  onFilterClassification,
+  selectedClassification,
   onSelectProfession,
   selectedProfession,
+  trendSlot,
   className,
 }: Props) {
   const [open, setOpen] = useState(true);
@@ -268,18 +284,21 @@ export function ContactsDistributionDonuts({
       </div>
 
       {open && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
           <Donut
             title="Relacionamento Conosco"
             icon={Users2}
             slices={relationshipSlices}
             total={relationshipTotal}
             emptyLabel="Nenhum contato classificado"
-            onSlice={(s) => onSelectClassification(s.key)}
+            activeKey={selectedClassification && selectedClassification !== 'all' ? selectedClassification : null}
+            onSlice={(s) => onFilterClassification(s.key)}
+            onLegend={(s) => onSelectClassification(s.key)}
+            legendHint={(s) => `Abrir o painel de ${s.label} (${s.count} contato${s.count === 1 ? '' : 's'})`}
             footer={
               multiCount > 0
-                ? `${multiCount} contato${multiCount === 1 ? '' : 's'} com mais de um relacionamento conta${multiCount === 1 ? '' : 'm'} em cada fatia. Clique para abrir o painel do status.`
-                : 'Clique numa fatia para abrir o painel daquele relacionamento.'
+                ? `${multiCount} contato${multiCount === 1 ? '' : 's'} com mais de um relacionamento conta${multiCount === 1 ? '' : 'm'} em cada fatia. Clique na fatia para filtrar a lista; no nome, para abrir o painel.`
+                : 'Clique na fatia para filtrar a lista por relacionamento; no nome, para abrir o painel.'
             }
           />
           <Donut
@@ -292,6 +311,7 @@ export function ContactsDistributionDonuts({
             onSlice={(s) => onSelectProfession(s.key === NONE_KEY ? null : s.key)}
             footer="Clique numa fatia para filtrar a lista por profissão."
           />
+          {trendSlot}
         </div>
       )}
     </div>

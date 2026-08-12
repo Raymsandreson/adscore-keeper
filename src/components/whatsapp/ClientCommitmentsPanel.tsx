@@ -16,11 +16,11 @@ import { toast } from 'sonner';
 import {
   ClipboardCheck, Check, Bell, X, RotateCcw, Trash2, AlertTriangle, Loader2,
   MessageSquareQuote, Sparkles, RefreshCw, ThumbsDown, Plus, FileText, AlertCircle,
-  CalendarPlus, UserCog, ExternalLink,
+  CalendarPlus, UserCog, ExternalLink, History, CornerUpLeft,
 } from 'lucide-react';
 import { formatDistanceToNow, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { type ClientCommitment } from '@/hooks/useClientCommitments';
+import { type ClientCommitment, type CommitmentReminder } from '@/hooks/useClientCommitments';
 import {
   buildReminderText, isCommitmentOpen, isCommitmentOverdue, isSameCommitmentTitle,
 } from '@/lib/clientCommitments';
@@ -83,6 +83,12 @@ interface Props {
   onDismiss: (id: string) => Promise<unknown>;
   onReopen: (id: string) => Promise<unknown>;
   onRemind: (item: ClientCommitment) => Promise<unknown>;
+  /** Histórico de cobranças por pendência (id → cobranças enviadas). */
+  reminders?: Record<string, CommitmentReminder[]>;
+  /** Arma a cobrança na conversa (texto + citação) em vez de contar no clique. */
+  onStartRemind?: (item: CommitmentCardItem) => void;
+  /** Pula até a bolha de uma cobrança já enviada. */
+  onOpenReminderMessage?: (r: CommitmentReminder) => void;
   onRemove: (id: string) => Promise<unknown>;
   /** Escreve a cobrança no campo de mensagem da conversa (não envia). */
   onDraftMessage?: (text: string) => void;
@@ -102,9 +108,20 @@ interface Props {
 export function CommitmentItemCard({
   item, clientName, onDone, onGiveUp, onDismiss, onReopen, onRemind, onRemove, onDraftMessage,
   onCreateActivity, onAskResolver, donoNome, onTrocarDono, onOpenActivity,
+  reminders, onStartRemind, onOpenReminderMessage,
 }: {
   item: CommitmentCardItem;
   clientName: string;
+  /** Cobranças já enviadas desta pendência, da mais recente para a mais antiga. */
+  reminders?: CommitmentReminder[];
+  /**
+   * Arma a cobrança no campo de mensagem (texto + citação da promessa) em vez
+   * de já contar como cobrada. O registro no histórico acontece no envio.
+   * Sem esta prop, o botão mantém o caminho antigo (conta na hora do clique).
+   */
+  onStartRemind?: (item: CommitmentCardItem) => void;
+  /** Pula até a bolha da cobrança na conversa. */
+  onOpenReminderMessage?: (r: CommitmentReminder) => void;
   onDone: Props['onDone'];
   onGiveUp: Props['onGiveUp'];
   onDismiss: Props['onDismiss'];
@@ -123,6 +140,9 @@ export function CommitmentItemCard({
   onOpenActivity?: (activityId: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
+  // Já cobrado abre com o histórico fechado — o card cresceria demais em
+  // pendência antiga, e o que importa primeiro é o que está em aberto.
+  const [showHistorico, setShowHistorico] = useState(false);
   const isOpen = isCommitmentOpen(item.status);
   const isOverdue = isCommitmentOverdue(item);
   const fromAI = item.origin === 'ia';
@@ -221,6 +241,51 @@ export function CommitmentItemCard({
         {item.notes && (
           <p className="mt-1 text-[11px] text-muted-foreground break-words">{item.notes}</p>
         )}
+
+        {/* Histórico: o contador diz quantas vezes; aqui fica o que foi dito,
+            quando, por quem — e o atalho para a bolha da cobrança na conversa. */}
+        {reminders && reminders.length > 0 && (
+          <div className="mt-2 rounded-md border bg-muted/30 p-2">
+            <button
+              type="button"
+              className="text-[11px] font-medium text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+              onClick={() => setShowHistorico((v) => !v)}
+            >
+              <History className="h-3 w-3" />
+              {showHistorico ? '▾' : '▸'} {reminders.length} cobrança{reminders.length > 1 ? 's' : ''} enviada{reminders.length > 1 ? 's' : ''}
+            </button>
+
+            {showHistorico && (
+              <ul className="mt-1.5 space-y-1.5">
+                {reminders.map((r) => (
+                  <li key={r.id} className="text-[11px] border-l-2 border-amber-400/60 pl-2">
+                    <p className="text-muted-foreground">
+                      {format(new Date(r.reminded_at), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                      {r.reminded_by_name ? ` · ${r.reminded_by_name}` : ''}
+                      {r.replied_to_external_id || r.replied_to_message_id
+                        ? ' · respondendo à promessa'
+                        : ''}
+                    </p>
+                    {r.message_text && (
+                      <p className="break-words whitespace-pre-wrap text-foreground/80">
+                        {r.message_text.length > 220 ? `${r.message_text.slice(0, 220)}…` : r.message_text}
+                      </p>
+                    )}
+                    {r.message_id && onOpenReminderMessage && (
+                      <button
+                        type="button"
+                        className="mt-0.5 inline-flex items-center gap-1 text-primary underline decoration-dotted underline-offset-2"
+                        onClick={() => onOpenReminderMessage(r)}
+                      >
+                        <CornerUpLeft className="h-3 w-3" /> ver na conversa
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
@@ -234,9 +299,18 @@ export function CommitmentItemCard({
                 : run(() => onDone(item.id), 'Marcada como feita'))}>
               <Check className="h-3 w-3" /> Feito
             </Button>
+            {/* Cobrar não conta mais no clique: arma a mensagem citando a
+                promessa e só vira histórico quando o envio confirma. */}
             <Button size="sm" variant="outline" className="h-7 text-[11px] gap-1"
+              title={item.source_message_id
+                ? 'Escreve a cobrança respondendo à mensagem em que ele prometeu'
+                : 'Escreve a cobrança no campo de mensagem'}
               disabled={busy}
               onClick={async () => {
+                if (onStartRemind) {
+                  onStartRemind(item);
+                  return;
+                }
                 await run(() => onRemind(item));
                 onDraftMessage?.(buildReminderText(item, clientName));
                 toast.success('Cobrança escrita no campo de mensagem — revise antes de enviar');
@@ -304,6 +378,7 @@ export function ClientCommitmentsPanel({
   openState, onOpenChange, clientName, open, done, loading, analyzing, summary, analyzeError,
   draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
   onReopen, onRemind, onRemove, onDraftMessage, onCreateActivity,
+  reminders, onStartRemind, onOpenReminderMessage,
   alertEnabled, onAlertEnabledChange, teamOptions, suggestedResolver,
   resolveDonoNome, onTrocarDono, onOpenActivity,
 }: Props) {
@@ -466,6 +541,11 @@ export function ClientCommitmentsPanel({
                     donoNome={resolveDonoNome?.(item) ?? null}
                     onTrocarDono={onTrocarDono}
                     onOpenActivity={onOpenActivity}
+                    reminders={reminders?.[item.id]}
+                    onStartRemind={onStartRemind ? (i) => { onStartRemind(i); onOpenChange(false); } : undefined}
+                    onOpenReminderMessage={onOpenReminderMessage
+                      ? (r) => { onOpenReminderMessage(r); onOpenChange(false); }
+                      : undefined}
                     onDraftMessage={(t) => { onDraftMessage?.(t); onOpenChange(false); }}
                   />
                 ))}
@@ -575,6 +655,10 @@ export function ClientCommitmentsPanel({
                     donoNome={resolveDonoNome?.(item) ?? null}
                     onTrocarDono={onTrocarDono}
                     onOpenActivity={onOpenActivity}
+                    reminders={reminders?.[item.id]}
+                    onOpenReminderMessage={onOpenReminderMessage
+                      ? (r) => { onOpenReminderMessage(r); onOpenChange(false); }
+                      : undefined}
                     onDraftMessage={onDraftMessage}
                   />
                 ))}

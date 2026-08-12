@@ -72,7 +72,18 @@ Barra logo abaixo do "Progresso" do POP, dentro da conversa: **o que o CLIENTE f
 - **"Atividade"** no card cria a tarefa do escritório para tratar da pendência: abre o mesmo formulário de "Criar atividade a partir desta mensagem", já preenchido com o título, a fala do cliente e o prazo. A pendência (do cliente) e a atividade (do assessor) seguem separadas — uma não vira a outra.
 - **"Não era"** (só em pendência da IA): marca `status='descartada'`, some da tela e a IA não registra aquilo de novo. É a correção quando ela entende errado — diferente de "Desistiu", que é o cliente desistindo de verdade.
 - **"Feito" pergunta QUEM resolveu** — a instância é compartilhada (a de atendimento tem 42 pessoas com acesso), então gravar sempre o usuário logado apagava quem de fato tratou o cliente. O diálogo já vem **pré-selecionado com quem falou por último na conversa**: `whatsapp_messages` não guarda autor, mas o envio com "Identificar remetente" prefixa o texto com `*Nome:*`, e é daí que sai a identificação (`src/lib/whatsappSenderName.ts`, 13 testes). Nome abreviado casa por primeiro + último ("Ana Souza" → "Ana Carolina Moreira Souza"); **dois membros com o mesmo primeiro+último não casam** — melhor perguntar que chutar. Sem ninguém identificado, o diálogo abre vazio e obriga a escolher. Grava em `done_by`/`done_by_name`.
-- Por item: **Feito**, **Cobrar**, **Desistiu**, **Não era**, **Reabrir**, excluir. **"Cobrar" não envia nada**: grava a cobrança (`reminder_count+1`, "cobrado 2x") e **escreve o texto no campo de mensagem** pro assessor revisar e enviar. O texto é escolhido por palavra-chave do título/kind, já que o tipo é livre.
+- Por item: **Feito**, **Cobrar**, **Desistiu**, **Não era**, **Reabrir**, excluir. **"Cobrar" não envia nada**: **escreve o texto no campo de mensagem** pro assessor revisar e enviar. O texto é escolhido por palavra-chave do título/kind, já que o tipo é livre.
+
+##### Cobrança responde a promessa e vira histórico (desde 12/08/2026)
+
+O card só dizia "cobrado 3x". Não dava para saber **quando** cada cobrança saiu, **quem** mandou, **o que** foi dito, nem **qual bolha** da conversa era a cobrança — e o contador subia no **clique** do botão, então "cobrado 3x" podia ser três rascunhos que ninguém enviou.
+
+- **"Cobrar" arma, não conta.** O texto vai pro campo e aparece a faixa **"Cobrando: \<pendência\>"** acima do input (com o trecho da promessa e um X que cancela). Nada é gravado até a mensagem sair.
+- **A cobrança sai respondendo à promessa**, igual ao "responder" do WhatsApp: o envio leva `replyid` = `external_message_id` da mensagem que a IA marcou como origem (`source_message_id`). Sem mensagem de origem em mão, sai como mensagem normal e a faixa avisa.
+- **Histórico por pendência** em `lead_client_commitment_reminders` (Externo, RLS `authenticated` como as demais): data, quem cobrou, texto enviado, id da bolha e a mensagem citada. O card lista as cobranças e cada uma tem **"ver na conversa"**, que pula até a bolha (mesmo modo âncora da busca).
+- **Selo na bolha**: a mensagem enviada ganha **"Cobrança: \<pendência\>"**, do mesmo jeito que a mensagem do cliente ganha "Virou pendência".
+- Vale na conversa completa (`WhatsAppChat`) e no painel de baixo do dashboard (`DashboardChatPreview`), que compartilham o `CommitmentItemCard`.
+- Infra: `sendMessage` (`useWhatsAppMessages`) ganhou um extra opcional `{ replyid, onSent }`; a edge **`send-whatsapp` do Externo foi para a v24** — repassa `body.replyid` para a UazAPI (texto e mídia) e devolve `external_message_id`. A fonte dela passou a ser versionada em `supabase/functions/_external/send-whatsapp/index.ts` (antes só existia no Supabase); **rollback = apagar os dois blocos marcados `v24` e redeployar**. Migration `20260812120000`.
 - **Registro manual continua**, escondido atrás de "Adicionar à mão" — é exceção, não o caminho principal. Na bolha, o botão "Pendência" abre esse formulário já com a mensagem citada.
 - **Prazo é opcional e sem prazo nunca vence** — a maioria das promessas do WhatsApp não tem data. Vencida = em aberto com prazo anterior a hoje.
 - Tabela `lead_client_commitments` (Externo, RLS + realtime): conversa sem lead também controla pendência (`lead_id` OU `phone`+`instance_name`, garantido por CHECK). Marcação feita por outro assessor aparece na hora via Realtime.
@@ -207,6 +218,7 @@ Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): ante
 - Filtros: busca, "Filtrar por time", "Responder (n)" (esperam resposta sua), "Aguardando".
 - Na conversa: mencionar lead/contato/atividade, enviar arquivo, "Marcar como urgente", "Sugerir resposta com IA", `@` menciona pessoas, gravar áudio.
 - Por mensagem: "Responder", "Reenviar como urgente", "Marcar como resolvida"; mostra sua média de tempo de resposta (30 dias).
+- Na aba **Menções**, a menção que você fez e ficou sem resposta pode ser **cobrada** (❗ Importante / 🚨 Urgente) — popup na tela do outro e "visto" registrado. Ver "Cobrar resposta urgente na menção".
 
 ### Criar atividade a partir de mensagens (IA) — **já existe**
 - Ícone de atividade numa mensagem entra no **modo seleção**: dá pra tocar em outras mensagens pra incluir/remover (o rodapé mostra "n mensagens selecionadas").
@@ -215,6 +227,42 @@ Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): ante
 - Criada a atividade, as mensagens de origem ficam **marcadas na conversa** com o selo "Virou atividade: {assunto}". Clicar no selo abre a **ficha completa da atividade** sem sair do chat — serve de atalho e de registro de que aquele pedido já virou tarefa (some do "ficou combinado e ninguém abriu"). Fechar o formulário sem criar não marca nada.
 
 **Fluxo recomendado**: usar o filtro "Responder" pra zerar o que espera resposta sua; `@` pra acionar alguém, menção de entidade pra dar contexto de lead/caso. Combinação/pedido que virou tarefa: selecionar as mensagens e "Criar atividade" em vez de redigitar.
+
+### Cobrar resposta urgente na menção (desde 12/08/2026)
+
+Marcar alguém e ficar no vácuo deixou de ser o fim da linha. Na aba **Menções**, toda menção que **você fez** e que ainda não teve resposta ganha dois botões — **❗ Importante** e **🚨 Urgente** — e a cobrança fica registrada, com o "visto", igual à cobrança de atividade atrasada do painel de Feedbacks.
+
+- **Quem pode cobrar**: só quem marcou, e só enquanto ninguém respondeu (menção com status `respondido` não mostra os botões). Na menção que você **recebeu** não há botão — aparece só quem pediu urgência e quando.
+- **O que o outro vê**: popup no topo da tela (`TeamNotificationToast`, o mesmo do chat) com o texto da menção, **Abrir** (vai direto pro chat da ficha, sem redirecionar pra fora) e **Responder** ali mesmo. Urgente é vermelho, toca som e **só sai no clique** (`duration: Infinity`); importante é âmbar. Quem está com o sistema fechado é alcançado por **Web Push** (`send-team-push` com `user_ids`).
+- **Histórico e "visto"**: a linha embaixo da menção mostra `🚨 Cobrado 11/08 15:57 · ✓ visto 11/08 17:14` ou `aguardando visualização`. **Popup exibido = visto** — mesma regra da cobrança de atividade. O "visto" chega ao vivo por Realtime, sem reabrir o painel.
+- **Quem estava offline** vê a cobrança ao voltar (catch-up de 7 dias das não vistas, teto de 5 popups).
+- **Onde mora**: tabela `mention_nudges` no **Externo** (`supabase/migrations-external/20260812120000_mention_nudges.sql`). Tabela própria, não coluna em `activity_notifications`, porque lá `activity_id` tem FK pra `lead_activities` (menção em lead/processo/WhatsApp não caberia) e `recipient_id` é UUID do Externo, enquanto menção, chat e push usam o UUID do **Cloud**. Rollback = `drop table` (nada mais depende dela).
+- **Como o alvo é descoberto**: a mensagem não guarda o id de quem foi marcado; vem de `team_chat_mentions` por `message_id` (a policy do Externo deixa a equipe ler as menções da casa). Menção com várias pessoas cobra todas de uma vez.
+- Código: `useMyMentions.nudgeMention` em `src/hooks/useTeamChat.ts`, `MentionNudgeRow` em `src/components/chat/MentionsPanel.tsx`, popup em `src/components/chat/TeamChatNotifications.tsx`. Testes: `MentionsPanel.urgencia.test.tsx` (7).
+
+### Popup de menção e participação no chat da ficha (desde 12/08/2026)
+
+Duas falhas reais no aviso de menção, corrigidas juntas:
+
+- **A menção em ficha nunca gritava.** O popup do chat direto lia `is_urgent` da mensagem — tocava som e só saía no clique. O da ficha (`branch 2` em `TeamChatNotifications`) nem selecionava a coluna: toda menção virava um toast mudo de 15s, que sumia sozinho se a pessoa estivesse olhando pra outro lado. Agora os dois caminhos têm o mesmo comportamento (som, vermelho e `duration: Infinity` quando urgente, anexo no popup).
+- **Menção recebida com o app fechado não aparecia nunca.** Não havia catch-up: só quem estava com a aba aberta no instante do INSERT via o popup. Agora, ao abrir o app, as não lidas desde o último popup aparecem em fila (máx. 5, janela de 3 dias). A marca d'água fica em `localStorage` (`team-mentions-last-popup-at`) — marcar como lida aqui apagaria o badge.
+- **Chat aberto não gera popup de si mesmo**: `setActiveTeamChatEntity` em `TeamChatPanel` faz pro chat de ficha o que `teamChatActiveConversation` já fazia pro chat direto.
+
+**Participação (`team_chat_thread_followers`)**: quem é marcado num chat de ficha — ou quem fala nele — passa a receber **todas** as mensagens seguintes daquele chat como popup, não só as que trazem um novo `@`. Antes, a resposta que vinha depois do `@` passava batido e quem marcou não sabia que tinha sido respondido.
+
+- Sai pelo botão **"Finalizar participação"** no rodapé da menção, no painel. Um novo `@` traz a pessoa de volta (`left_at` volta a `null` no upsert).
+- Sem popup duplicado: se a mensagem também te marcou, o canal de menções é quem avisa (o de participação consulta `team_chat_mentions` e se cala).
+- O canal de participação escuta `team_chat_messages` **sem filtro no servidor** e corta no cliente contra o conjunto que você segue — a chave é `(entity_type, entity_id)`, que o filtro do Realtime não expressa. Volume medido: 15–51 msgs/dia, pico de 24 threads.
+- Migration: `supabase/migrations-external/20260812140000_team_chat_thread_followers.sql` (também corrige `mention_nudges` para `replica identity full`, como as demais tabelas do chat).
+
+### Filtros de origem da menção (desde 12/08/2026)
+
+O painel passou a se chamar **Chat interno** e ganhou duas dimensões de filtro, cruzáveis entre si e com as que já existiam (Todas / Não lidas / Responder / Aguardando):
+
+- **Onde foi dito**: **Privado**, **Grupo**, **Ficha** (atividade, lead, processo, contato, POP). Menção de ficha tem `entity_id`; sem ele, o tipo vem de `team_conversations.type` (`group` → Grupo, senão Privado) — uma query pelas conversas citadas, não uma por menção.
+- **Como te chamaram**: **Pelo nome** x **@todos**. O `@todos` é expandido em uma linha por pessoa no envio, então o que distingue "é comigo" de "é com a casa" é o texto da mensagem (`/@(todos|todas|equipe|all)\b/i`) — sem mudança de schema.
+
+**Pendente (decisão de layout)**: unificar Menções e Chat numa lista só. Os três desenhos possíveis (lista única estilo menção · lista de conversas com as menções dentro · duas listas na mesma aba) mudam a rotina de quem usa o chat direto o dia todo, e o compartilhamento do `useTeamDirectChat` entre os dois painéis exige refatorar `TeamDirectChatPanel` (1.800 linhas) pra não duplicar canais de Realtime. Por isso as abas seguem como estão até a escolha.
 
 ### Ferramentas de IA e ações na mensagem — paridade com o WhatsApp (desde 06/08/2026)
 

@@ -766,7 +766,18 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     treatmentOverride?: string | null,
     nameFormatOverride?: string,
     nicknameOverride?: string | null,
-    mentions?: string[]
+    mentions?: string[],
+    /**
+     * Extras opcionais do envio. `replyid` é o id do WhatsApp
+     * (`external_message_id`) da mensagem que esta vai citar — é assim que a
+     * cobrança sai "respondendo" a promessa do cliente. `onSent` devolve a
+     * mensagem gravada para quem precisa vincular o envio a outro registro
+     * (histórico de cobrança da pendência).
+     */
+    extra?: {
+      replyid?: string | null;
+      onSent?: (r: { message_id?: string | null; external_message_id?: string | null; text: string }) => void;
+    }
   ) => {
     const debugId = Math.random().toString(36).slice(2, 8);
     console.log(`[sendMessage ${debugId}] START`, {
@@ -848,6 +859,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         instance_id: fallbackInstanceId,
         // Group @mentions: array of phone numbers (digits) to tag in a group message.
         mentions: mentions && mentions.length ? mentions : undefined,
+        // Citação (UazAPI `replyid`): a mensagem sai como resposta à bolha
+        // original, igual ao "responder" do WhatsApp.
+        replyid: extra?.replyid || undefined,
         // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
         // Comparação case-insensitive + trim: instance_name pode vir com variação de caixa.
         channel: (conversationInstanceName || '').trim().toLowerCase() === 'cloud_gerencia' ? 'cloud' : undefined,
@@ -921,6 +935,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       }
 
       console.log(`[sendMessage ${debugId}] SUCCESS`);
+      // Quem pediu o envio pode precisar do id da bolha para vincular (ex.:
+      // registrar qual mensagem é a cobrança de uma pendência).
+      try {
+        extra?.onSent?.({
+          message_id: data?.message_id ?? null,
+          external_message_id: data?.external_message_id ?? null,
+          text: finalMessage,
+        });
+      } catch (e) {
+        console.warn(`[sendMessage ${debugId}] onSent falhou (envio já ocorreu)`, e);
+      }
       void claimConversation(conversationPhone, conversationInstanceName || targetInstanceName || null);
       return true;
     } catch (error: any) {

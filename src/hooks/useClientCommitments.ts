@@ -16,12 +16,26 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
   isCommitmentOpen, isCommitmentOverdue, isCommitmentDismissed,
   type ClientCommitment, type CommitmentKind, type CommitmentStatus,
+  type CommitmentReminder,
 } from '@/lib/clientCommitments';
 import type { InboxCommitment } from '@/lib/clientCommitmentsInbox';
 
 export type {
   ClientCommitment, CommitmentKind, CommitmentStatus, CommitmentOrigin,
+  CommitmentReminder,
 } from '@/lib/clientCommitments';
+
+/** Dados da mensagem de cobrança que acabou de sair — vira linha do histórico. */
+export interface ReminderSent {
+  messageId?: string | null;
+  externalMessageId?: string | null;
+  text?: string | null;
+  repliedToMessageId?: string | null;
+  repliedToExternalId?: string | null;
+}
+
+const REMINDER_SELECT = `id, commitment_id, reminded_at, reminded_by_name, channel,
+  message_text, message_id, external_message_id, replied_to_message_id, replied_to_external_id`;
 
 interface Params {
   leadId?: string | null;
@@ -51,6 +65,8 @@ export function useClientCommitments({
 }: Params) {
   const { profile, user } = useAuthContext();
   const [items, setItems] = useState<InboxCommitment[]>([]);
+  /** Histórico de cobranças, indexado por pendência. */
+  const [reminders, setReminders] = useState<Record<string, CommitmentReminder[]>>({});
   const [loading, setLoading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState<string | null>(null);
@@ -87,10 +103,30 @@ export function useClientCommitments({
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setItems((data as InboxCommitment[]) || []);
+      const rows = (data as InboxCommitment[]) || [];
+      setItems(rows);
+
+      // Histórico de todas as pendências da conversa numa query só (o card
+      // abre com o que já foi cobrado, sem uma ida ao banco por pendência).
+      const ids = rows.map((r) => r.id);
+      if (ids.length === 0) {
+        setReminders({});
+      } else {
+        const { data: hist } = await (db as any)
+          .from('lead_client_commitment_reminders')
+          .select(REMINDER_SELECT)
+          .in('commitment_id', ids)
+          .order('reminded_at', { ascending: false });
+        const map: Record<string, CommitmentReminder[]> = {};
+        for (const r of (hist as CommitmentReminder[]) || []) {
+          (map[r.commitment_id] ||= []).push(r);
+        }
+        setReminders(map);
+      }
     } catch (e) {
       console.warn('[useClientCommitments] falha ao carregar pendências');
       setItems([]);
+      setReminders({});
     } finally {
       setLoading(false);
     }
@@ -222,6 +258,22 @@ export function useClientCommitments({
     return map;
   }, [items]);
 
+  /**
+   * Bolhas que SÃO cobrança, indexadas pelo id da mensagem — a conversa marca
+   * "Cobrança de: <pendência>" na própria mensagem enviada.
+   */
+  const remindersByMessageId = useMemo(() => {
+    const map: Record<string, { reminder: CommitmentReminder; commitment: ClientCommitment }> = {};
+    const porId = new Map(items.map((i) => [i.id, i]));
+    for (const lista of Object.values(reminders)) {
+      for (const r of lista) {
+        const dono = porId.get(r.commitment_id);
+        if (r.message_id && dono) map[r.message_id] = { reminder: r, commitment: dono };
+      }
+    }
+    return map;
+  }, [reminders, items]);
+
   const create = useCallback(
     async (input: {
       title: string;
@@ -346,15 +398,50 @@ export function useClientCommitments({
     [patch]
   );
 
-  /** Registra que o cliente foi cobrado (não envia nada — quem envia é o assessor). */
+  /**
+   * Registra uma cobrança que SAIU de verdade: incrementa o contador da
+   * pendência e grava a linha do histórico (quando, quem, o texto, qual bolha
+   * é a cobrança e qual mensagem do cliente ela citou).
+   *
+   * Antes o contador subia no clique do botão, mesmo que ninguém enviasse nada
+   * — "cobrado 3x" podia significar três rascunhos abandonados.
+   */
   const registerReminder = useCallback(
-    async (item: ClientCommitment) =>
-      patch(item.id, {
+    async (item: ClientCommitment, sent?: ReminderSent) => {
+      const extUserId = await remapToExternal(user?.id);
+      const agora = new Date().toISOString();
+
+      const { data: linha } = await (db as any)
+        .from('lead_client_commitment_reminders')
+        .insert({
+          commitment_id: item.id,
+          reminded_at: agora,
+          reminded_by: extUserId,
+          reminded_by_name: profile?.full_name || null,
+          channel: 'whatsapp',
+          message_text: sent?.text?.slice(0, 2000) || null,
+          message_id: sent?.messageId || null,
+          external_message_id: sent?.externalMessageId || null,
+          replied_to_message_id: sent?.repliedToMessageId || null,
+          replied_to_external_id: sent?.repliedToExternalId || null,
+        })
+        .select(REMINDER_SELECT)
+        .single();
+
+      if (linha) {
+        setReminders((prev) => ({
+          ...prev,
+          [item.id]: [linha as CommitmentReminder, ...(prev[item.id] || [])],
+        }));
+      }
+
+      return patch(item.id, {
         status: 'cobrado',
-        last_reminded_at: new Date().toISOString(),
+        last_reminded_at: agora,
         reminder_count: (item.reminder_count || 0) + 1,
-      }),
-    [patch]
+      });
+    },
+    [patch, user?.id, profile?.full_name]
   );
 
   const remove = useCallback(async (id: string) => {
@@ -364,7 +451,8 @@ export function useClientCommitments({
   }, []);
 
   return {
-    items, open, done, overdue, byMessageId, loading, analyzing, lastAnalyzedAt,
+    items, open, done, overdue, byMessageId, reminders, remindersByMessageId,
+    loading, analyzing, lastAnalyzedAt,
     summary, analyzeError,
     reload: load, analyze,
     create, patch, markDone, markGivenUp, dismiss, reopen, registerReminder, remove,

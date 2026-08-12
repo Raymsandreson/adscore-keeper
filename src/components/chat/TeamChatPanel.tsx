@@ -3,6 +3,7 @@ import { useTeamChat, useTeamMembers, TeamMember, TeamMessage } from '@/hooks/us
 import { ChatMessageActions } from './ChatMessageActions';
 import { ForwardMessagePicker } from './ForwardMessagePicker';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
+import { setActiveTeamChatEntity } from '@/lib/teamChatActiveConversation';
 import { startDirectConversationWith, sendTeamDirectMessage } from '@/lib/teamDirectMessages';
 import {
   buildForwardContent,
@@ -181,6 +182,13 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     if (pendingQuote) appendQuote(pendingQuote.text);
     return subscribeToTeamChatQuote(entityType, entityId, intent => appendQuote(intent.text));
   }, [entityType, entityId, appendQuote]);
+
+  // Com este chat aberto na tela, popup do que chega aqui vira ruído: quem está
+  // vendo a conversa não precisa de aviso dela.
+  useEffect(() => {
+    setActiveTeamChatEntity(`${entityType}:${entityId}`);
+    return () => setActiveTeamChatEntity(null);
+  }, [entityType, entityId]);
 
   // Quem cuida do caso por trás deste chat (responsável processual + acolhedor).
   const { owners } = useCaseOwners(entityType, entityId, members);

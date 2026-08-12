@@ -54,6 +54,7 @@ export function CapturaStatusPanel() {
   const carregar = useCallback(async () => {
     try {
       // `as any`: a view é nova e ainda não está nos tipos gerados.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (db as any).from('vw_jm_captura_status').select('*');
       setLinhas((data || []) as CapturaStatus[]);
     } finally {
@@ -129,6 +130,13 @@ export function CapturaStatusPanel() {
                   {/* No e-mail, a descrição diz DE QUAL CAIXA vem — é o que se
                       quer saber ao olhar: tribunal ou INSS. */}
                   {l.fonte === 'email' ? <span>{l.descricao}</span> : null}
+                  {/* Chegada e leitura são coisas diferentes, e por um tempo o
+                      painel tratou as duas como uma só: mostrava o último
+                      e-mail RECEBIDO sob o rótulo "última entrega", com a fila
+                      em 0 processados. Uma fila parada parecia fila andando. */}
+                  {l.fonte === 'email' ? (
+                    <span>último e-mail {hora(l.iniciou_em)}</span>
+                  ) : null}
                   <span>última entrega {hora(l.ultimo_concluido)}</span>
                   <span>sem custo</span>
                 </>

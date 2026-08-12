@@ -47,6 +47,25 @@ export interface ClientCommitment {
   ai_confidence: number | null;
 }
 
+/**
+ * Uma cobrança REALMENTE enviada ao cliente (tabela
+ * `lead_client_commitment_reminders`). O contador `reminder_count` diz quantas
+ * foram; aqui fica o quando, o quem, o texto e qual bolha da conversa é a
+ * cobrança — inclusive a mensagem do cliente que ela citou.
+ */
+export interface CommitmentReminder {
+  id: string;
+  commitment_id: string;
+  reminded_at: string;
+  reminded_by_name: string | null;
+  channel: string;
+  message_text: string | null;
+  message_id: string | null;
+  external_message_id: string | null;
+  replied_to_message_id: string | null;
+  replied_to_external_id: string | null;
+}
+
 export const OPEN_COMMITMENT_STATUSES: CommitmentStatus[] = ['combinado', 'cobrado'];
 
 export function isCommitmentOpen(status: CommitmentStatus): boolean {

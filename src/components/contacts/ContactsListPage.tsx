@@ -10,6 +10,8 @@ import { DuplicateContactsScanDialog } from './DuplicateContactsScanDialog';
 import { ContactPendencyBadge } from './ContactPendencyBadge';
 import { ContactActivityBadge } from './ContactActivityBadge';
 import { ContactsDistributionDonuts } from './ContactsDistributionDonuts';
+import { ContactsCreationTrendBars, type CreationPeriodSelection } from './ContactsCreationTrendBars';
+import { ClassificationFilterSelect, type ClassificationFilterMode } from './ClassificationFilterSelect';
 import { ClassificationContactsSheet } from './ClassificationContactsSheet';
 import { useContactsPendencies } from '@/hooks/useContactsPendencies';
 import { useContactsActivities } from '@/hooks/useContactsActivities';
@@ -38,7 +40,7 @@ import {
   Search, Users, Send, Plus, Trash2, Radio, UserPlus,
   Phone, Loader2, X, ImagePlus, Bot, BotOff, Filter, UsersRound, Wand2, Info,
   SlidersHorizontal, ArrowDownAZ, ArrowUpAZ, AlertTriangle, CheckCircle2, ClipboardCheck, MessageCircle, MapPin, Pencil, Link2, RefreshCw,
-  Briefcase, Scale
+  Briefcase, Scale, CalendarDays
 } from 'lucide-react';
 
 import { cloudFunctions } from '@/lib/functionRouter';
@@ -327,16 +329,20 @@ export function ContactsListPage() {
   /** Profissão em foco (clique na rosca). `undefined` = sem filtro, `null` = sem profissão. */
   const [professionFilter, setProfessionFilter] = useState<string | null | undefined>(undefined);
 
-  const { classificationConfig } = useContactClassifications();
+  const { classificationConfig, classifications: classificationOptions } = useContactClassifications();
 
   // Filter states
   const [cityFilter, setCityFilter] = useState('all');
   const [stateFilter, setStateFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [createdByFilter, setCreatedByFilter] = useState('all');
-  const [classificationFilter, setClassificationFilter] = useState('all');
+  /** Vazio = todos. Vários relacionamentos ao mesmo tempo; `mode` diz se é união ou interseção. */
+  const [classificationFilter, setClassificationFilter] = useState<string[]>([]);
+  const [classificationMode, setClassificationMode] = useState<ClassificationFilterMode>('any');
   const [groupFilter, setGroupFilter] = useState<'all' | 'with_group' | 'without_group'>('all');
   const [leadLinkedFilter, setLeadLinkedFilter] = useState<'all' | 'linked' | 'not_linked'>('all');
+  // Recorte vindo do clique numa barra de "Cadastros por período".
+  const [periodFilter, setPeriodFilter] = useState<CreationPeriodSelection | null>(null);
   const [showFilters, setShowFilters] = useState(true);
   
   // Filter options loaded from DB
@@ -933,7 +939,7 @@ export function ContactsListPage() {
         ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
         ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
         ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
-        ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+        ...(classificationFilter.length > 0 ? { classification: classificationFilter, classificationMode } : {}),
         ...(groupFilter !== 'all' ? { groupFilter } : {}),
       });
     } catch (err) {
@@ -991,11 +997,12 @@ export function ContactsListPage() {
       ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
       ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
       ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
-      ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+      ...(classificationFilter.length > 0 ? { classification: classificationFilter, classificationMode } : {}),
       groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
       ...(leadLinkedFilter !== 'all' ? { leadLinked: leadLinkedFilter } : {}),
+      ...(periodFilter ? { createdFrom: periodFilter.from, createdTo: periodFilter.to } : {}),
     });
-  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter]);
+  }, [fetchContacts, stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, classificationMode, groupFilter, leadLinkedFilter, periodFilter]);
 
   // Load filter options and instances on mount
   useEffect(() => {
@@ -1047,6 +1054,33 @@ export function ContactsListPage() {
   }), [contacts, search, professionFilter]);
 
   const selectableContacts = filteredContacts.filter(c => c.phone);
+
+  /** Relacionamento conta como UM filtro mesmo com vários marcados. */
+  const activeFilterCount = useMemo(() => (
+    [stateFilter, cityFilter, sourceFilter, createdByFilter, groupFilter, leadLinkedFilter].filter(v => v !== 'all').length
+    + (classificationFilter.length > 0 ? 1 : 0)
+    + (periodFilter ? 1 : 0)
+  ), [stateFilter, cityFilter, sourceFilter, createdByFilter, groupFilter, leadLinkedFilter, classificationFilter, periodFilter]);
+  const hasActiveFilters = activeFilterCount > 0;
+
+  // O card de cadastros por período conta no banco (a lista aqui é só a 1ª
+  // página), então precisa dos filtros — inclusive busca e profissão, que são
+  // aplicados no cliente logo acima.
+  const creationSeriesFilters = useMemo(() => ({
+    state: stateFilter,
+    city: cityFilter,
+    actionSource: sourceFilter,
+    createdBy: createdByFilter,
+    classifications: classificationFilter,
+    classificationMode,
+    groupFilter: (groupFilter !== 'all' ? groupFilter : 'without_group') as 'with_group' | 'without_group',
+    // Com um período escolhido no próprio gráfico, o filtro de lead veio do
+    // clique: devolvê-lo ao gráfico zeraria a metade não escolhida de TODAS as
+    // barras e apagaria a comparação que fez a pessoa clicar.
+    leadLinked: periodFilter ? 'all' as const : leadLinkedFilter,
+    profession: professionFilter,
+    search,
+  }), [stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, classificationMode, groupFilter, leadLinkedFilter, periodFilter, professionFilter, search]);
 
   // Etiquetas só das linhas de cima quando a lista é enorme (ver ENRICH_LIMIT),
   // e só na aba de contatos — nas outras nada disso está em tela.
@@ -1323,9 +1357,9 @@ export function ContactsListPage() {
             <Button variant="outline" size="sm" onClick={() => setShowFilters(v => !v)}>
               <Filter className="h-3.5 w-3.5 mr-1" />
               Filtros
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
+              {hasActiveFilters && (
                 <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px]">
-                  {[stateFilter, cityFilter, sourceFilter, createdByFilter, classificationFilter, groupFilter, leadLinkedFilter].filter(v => v !== 'all').length}
+                  {activeFilterCount}
                 </Badge>
               )}
             </Button>
@@ -1371,22 +1405,13 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              <Select value={classificationFilter} onValueChange={setClassificationFilter}>
-                <SelectTrigger className="w-[170px] h-8 text-xs"><SelectValue placeholder="Relacionamento Conosco" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos Relacionamentos</SelectItem>
-                  <SelectItem value="client">Cliente</SelectItem>
-                  <SelectItem value="prospect">Prospect</SelectItem>
-                  <SelectItem value="non_client">Não-Cliente</SelectItem>
-                  <SelectItem value="partner">Parceiro</SelectItem>
-                  <SelectItem value="supplier">Fornecedor</SelectItem>
-                  <SelectItem value="ponte">Ponte</SelectItem>
-                  <SelectItem value="ex_cliente">Ex-cliente</SelectItem>
-                  <SelectItem value="acolhedor">Acolhedor</SelectItem>
-                  <SelectItem value="Embaixador">Embaixador</SelectItem>
-                  <SelectItem value="none">Sem classificação</SelectItem>
-                </SelectContent>
-              </Select>
+              <ClassificationFilterSelect
+                value={classificationFilter}
+                onChange={setClassificationFilter}
+                mode={classificationMode}
+                onModeChange={setClassificationMode}
+                options={classificationOptions.map(c => ({ name: c.name, color: c.color }))}
+              />
 
               <Select value={groupFilter} onValueChange={(v) => setGroupFilter(v as any)}>
                 <SelectTrigger className="w-[140px] h-8 text-xs"><SelectValue placeholder="Grupo" /></SelectTrigger>
@@ -1406,15 +1431,17 @@ export function ContactsListPage() {
                 </SelectContent>
               </Select>
 
-              {(stateFilter !== 'all' || cityFilter !== 'all' || sourceFilter !== 'all' || createdByFilter !== 'all' || classificationFilter !== 'all' || groupFilter !== 'all' || leadLinkedFilter !== 'all') && (
+              {hasActiveFilters && (
                 <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => {
                   setStateFilter('all');
                   setCityFilter('all');
                   setSourceFilter('all');
                   setCreatedByFilter('all');
-                  setClassificationFilter('all');
+                  setClassificationFilter([]);
+                  setClassificationMode('any');
                   setGroupFilter('all');
                   setLeadLinkedFilter('all');
+                  setPeriodFilter(null);
                 }}>
                   <X className="h-3 w-3 mr-1" />
                   Limpar
@@ -1430,25 +1457,56 @@ export function ContactsListPage() {
               onSelectClassification={(name) =>
                 setClassificationSheet({ name, color: classificationConfig[name]?.color })
               }
+              onFilterClassification={(name) =>
+                setClassificationFilter(prev => (prev === name ? 'all' : name))
+              }
+              selectedClassification={classificationFilter}
               onSelectProfession={(prof) =>
                 setProfessionFilter(prev =>
                   prev !== undefined && prev === prof ? undefined : prof
                 )
               }
               selectedProfession={professionFilter}
+              trendSlot={
+                <ContactsCreationTrendBars
+                  filters={creationSeriesFilters}
+                  selected={periodFilter}
+                  onSelectPeriod={(sel) => {
+                    setPeriodFilter(sel);
+                    // O pedaço clicado JÁ diz a situação de lead — o filtro da
+                    // barra de cima acompanha, senão a lista mostraria os dois.
+                    setLeadLinkedFilter(sel ? sel.lead : 'all');
+                  }}
+                />
+              }
               className="pb-3"
             />
           )}
 
-          {professionFilter !== undefined && (
-            <div className="flex items-center gap-1.5 pb-2 shrink-0">
-              <Badge variant="secondary" className="text-xs gap-1">
-                <Briefcase className="h-3 w-3" />
-                {professionFilter === null ? 'Sem profissão' : professionFilter}
-                <button type="button" onClick={() => setProfessionFilter(undefined)} className="shrink-0">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
+          {(professionFilter !== undefined || periodFilter) && (
+            <div className="flex items-center gap-1.5 pb-2 shrink-0 flex-wrap">
+              {professionFilter !== undefined && (
+                <Badge variant="secondary" className="text-xs gap-1">
+                  <Briefcase className="h-3 w-3" />
+                  {professionFilter === null ? 'Sem profissão' : professionFilter}
+                  <button type="button" onClick={() => setProfessionFilter(undefined)} className="shrink-0">
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
+              {periodFilter && (
+                <Badge variant="secondary" className="text-xs gap-1">
+                  <CalendarDays className="h-3 w-3" />
+                  {periodFilter.label} · {periodFilter.lead === 'linked' ? 'com lead' : 'sem lead'}
+                  <button
+                    type="button"
+                    onClick={() => { setPeriodFilter(null); setLeadLinkedFilter('all'); }}
+                    className="shrink-0"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </Badge>
+              )}
             </div>
           )}
 
@@ -3056,7 +3114,7 @@ export function ContactsListPage() {
             ...(cityFilter !== 'all' ? { city: cityFilter } : {}),
             ...(sourceFilter !== 'all' ? { actionSource: sourceFilter } : {}),
             ...(createdByFilter !== 'all' ? { createdBy: createdByFilter } : {}),
-            ...(classificationFilter !== 'all' ? { classification: classificationFilter } : {}),
+            ...(classificationFilter.length > 0 ? { classification: classificationFilter, classificationMode } : {}),
             groupFilter: groupFilter !== 'all' ? groupFilter : 'without_group',
           });
         }}

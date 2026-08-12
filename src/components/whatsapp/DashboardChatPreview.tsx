@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { WhatsAppConversationTeamChat } from './WhatsAppConversationTeamChat';
 import { WhatsAppLeadProgressBar } from './WhatsAppLeadProgressBar';
@@ -6,6 +6,7 @@ import { ClientCommitmentsBar } from './ClientCommitmentsBar';
 import { CommitmentItemCard, type CommitmentCardItem } from './ClientCommitmentsPanel';
 import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { buildReminderText } from '@/lib/clientCommitments';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -22,7 +23,7 @@ import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Trash2, FastForward, Mic, Copy, Download, ClipboardList, MessageSquare} from 'lucide-react';
+import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Bell, Trash2, FastForward, Mic, Copy, Download, ClipboardList, MessageSquare} from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
@@ -184,6 +185,29 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   });
   /** Pendência que está com o "quem cuida disto?" aberto. */
   const [trocandoDono, setTrocandoDono] = useState<CommitmentCardItem | null>(null);
+  /**
+   * Cobrança armada: o texto está no campo e o próximo envio sai citando a
+   * mensagem da promessa, virando linha do histórico da pendência.
+   */
+  const [cobranca, setCobranca] = useState<{
+    item: CommitmentCardItem;
+    sourceMessageId: string | null;
+    replyExternalId: string | null;
+  } | null>(null);
+
+  const armarCobranca = useCallback((item: CommitmentCardItem) => {
+    const origem = item.source_message_id
+      ? messages.find((m: any) => m.id === item.source_message_id)
+      : null;
+    const replyExternalId = (origem as any)?.external_message_id || null;
+    setNewMessage(buildReminderText(item, contactName || linkedLead?.lead_name || ''));
+    setCobranca({ item, sourceMessageId: item.source_message_id || null, replyExternalId });
+    toast.success(
+      replyExternalId
+        ? 'Cobrança pronta — vai sair respondendo à mensagem da promessa. Revise antes de enviar.'
+        : 'Cobrança escrita no campo de mensagem — revise antes de enviar.'
+    );
+  }, [messages, contactName, linkedLead?.lead_name]);
   /** Pendência que originou a atividade em criação — fecha o ciclo ao salvar. */
   const commitmentOriginRef = useRef<string | null>(null);
   const [activityPrefillFields, setActivityPrefillFields] = useState<{
@@ -717,6 +741,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const handleSend = async () => {
     if (!newMessage.trim() || !phone || sending) return;
     setSending(true);
+    // Cobrança armada pelo card da pendência: sai citando a promessa e vira
+    // linha do histórico só depois do envio confirmado.
+    const cobrancaEmCurso = cobranca;
     try {
       const instanceId = await resolveInstanceId();
       const finalMessage = await buildFinalMessage(newMessage.trim());
@@ -727,12 +754,26 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           phone,
           message: finalMessage,
           instance_id: instanceId,
+          replyid: cobrancaEmCurso?.replyExternalId || undefined,
           // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
           channel: msgInstanceName === 'cloud_gerencia' ? 'cloud' : undefined,
         },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Erro ao enviar');
+
+      if (cobrancaEmCurso) {
+        setCobranca(null);
+        void commitments
+          .registerReminder(cobrancaEmCurso.item, {
+            messageId: data.message_id || null,
+            externalMessageId: data.external_message_id || null,
+            text: finalMessage,
+            repliedToMessageId: cobrancaEmCurso.sourceMessageId,
+            repliedToExternalId: cobrancaEmCurso.replyExternalId,
+          })
+          .catch(() => toast.error('Mensagem enviada, mas não consegui registrar no histórico'));
+      }
 
       setMessages(prev => [...prev, {
         id: data.message_id || crypto.randomUUID(),
@@ -1974,6 +2015,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 onReopen={commitments.reopen}
                 onRemind={commitments.registerReminder}
                 onRemove={commitments.remove}
+                reminders={commitments.reminders[item.id]}
+                onStartRemind={(i) => { armarCobranca(i); setCommitmentsOpen(false); }}
                 onDraftMessage={(t) => setNewMessage(t)}
                 donoNome={resolveDonoNome(item)}
                 onTrocarDono={setTrocandoDono}
@@ -2346,6 +2389,35 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
               onCheckedChange={handleToggleIdentifySender}
             />
           </div>
+
+          {/* Cobrança armada — mesma faixa da conversa completa: o texto no
+              campo sozinho não diz que vai citar a promessa nem que entra no
+              histórico da pendência. */}
+          {cobranca && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30 px-2.5 py-2 mb-2">
+              <Bell className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-medium text-amber-800 dark:text-amber-300 break-words">
+                  Cobrando: {cobranca.item.title}
+                </p>
+                <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80">
+                  {cobranca.replyExternalId
+                    ? 'Vai sair respondendo à mensagem em que ele prometeu.'
+                    : 'Sem a mensagem original em mão — vai sair como mensagem normal.'}
+                  {' '}Ao enviar, entra no histórico da pendência.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 shrink-0 text-amber-700 hover:text-destructive"
+                title="Cancelar cobrança (a mensagem continua no campo)"
+                onClick={() => setCobranca(null)}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          )}
 
           {/* Input row */}
           {isRecording ? (
