@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToCloud, remapToCloudSync, remapToExternal, remapToExternalSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
+import { useEstimateSuggestion } from '@/hooks/useActivityTimeEstimate';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
@@ -215,6 +216,8 @@ const ActivitiesPage = () => {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { getTemplateForContext } = useActivityMessageTemplates();
+  // Previsão sugerida por tipo (mediana real das execuções cronometradas).
+  const { ready: estimateReady, suggestFor: suggestEstimateFor, samplesFor: estimateSamplesFor } = useEstimateSuggestion();
 
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
@@ -331,6 +334,20 @@ const ActivitiesPage = () => {
   const [formRespostaJuizo, setFormRespostaJuizo] = useState('');
   const [formType, setFormType] = useState('');
   const [formPriority, setFormPriority] = useState('normal');
+  // Previsão de tempo (min) da atividade. `estimateTouchedRef` separa "o assessor
+  // escolheu" de "veio da sugestão por tipo" — só re-sugere enquanto ninguém mexeu.
+  const [formEstimatedMinutes, setFormEstimatedMinutesState] = useState<number | null>(null);
+  const estimateTouchedRef = useRef(false);
+  const setFormEstimatedMinutes = useCallback((v: number | null) => {
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState(v);
+  }, []);
+  // Criação: sugere a previsão pelo tipo escolhido enquanto o assessor não mexer
+  // no campo. Trocar o tipo re-sugere; escolher um valor congela a escolha.
+  useEffect(() => {
+    if (selectedActivity || !estimateReady || estimateTouchedRef.current) return;
+    setFormEstimatedMinutesState(suggestEstimateFor(formType));
+  }, [selectedActivity, estimateReady, formType, suggestEstimateFor]);
   const [formLeadId, setFormLeadId] = useState<string>('');
   const [formLeadName, setFormLeadName] = useState('');
   const [formClientNameOverride, setFormClientNameOverride] = useState('');
@@ -833,6 +850,9 @@ const ActivitiesPage = () => {
     setFormRespostaJuizo('');
     setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : '');
     setFormPriority('normal');
+    // Nova atividade volta a aceitar a previsão sugerida pelo tipo.
+    estimateTouchedRef.current = false;
+    setFormEstimatedMinutesState(null);
     setFormLeadId('');
     setFormLeadName('');
     setFormClientNameOverride('');
@@ -1155,6 +1175,7 @@ const ActivitiesPage = () => {
       resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
+      estimated_minutes: formEstimatedMinutes ?? null,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
       notes: formNotes || null,
@@ -1348,6 +1369,8 @@ const ActivitiesPage = () => {
         activity_type: activity.activity_type,
         title: activity.title,
         lead_name: activity.lead_name,
+        // Previsão da atividade vira a previsão da sessão (gatilho de urgência).
+        estimated_minutes: (activity as any).estimated_minutes ?? null,
       });
     }
     // Auto-mic: abre o "Preenchimento por Áudio" já gravando a narração. Ao parar, a IA
@@ -1371,6 +1394,10 @@ const ActivitiesPage = () => {
     setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
+    // Atividade existente traz a previsão gravada (ou fica sem — não inventamos
+    // meta retroativa em cima do que já foi planejado).
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState((activity as any).estimated_minutes ?? null);
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
@@ -1600,6 +1627,7 @@ const ActivitiesPage = () => {
       resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
+      estimated_minutes: formEstimatedMinutes ?? null,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
       assigned_to: formAssignedTo || null,
@@ -2054,6 +2082,8 @@ const ActivitiesPage = () => {
         activity_type: activity.activity_type,
         title: activity.title,
         lead_name: activity.lead_name,
+        // Previsão da atividade vira a previsão da sessão (gatilho de urgência).
+        estimated_minutes: (activity as any).estimated_minutes ?? null,
       });
     }
     setSelectedActivity(activity);
@@ -2065,6 +2095,10 @@ const ActivitiesPage = () => {
     setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
+    // Atividade existente traz a previsão gravada (ou fica sem — não inventamos
+    // meta retroativa em cima do que já foi planejado).
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState((activity as any).estimated_minutes ?? null);
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
@@ -2163,7 +2197,8 @@ const ActivitiesPage = () => {
       title: formTitle, what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
       solicitacao: formSolicitacao || null, resposta_juizo: formRespostaJuizo || null,
-      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
+      activity_type: formType, priority: formPriority,
+      estimated_minutes: formEstimatedMinutes ?? null, lead_id: formLeadId || null,
       lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
       notification_date: formNotificationDate || null, notes: formNotes || null,
@@ -3044,6 +3079,13 @@ const ActivitiesPage = () => {
       formType={formType} setFormType={setFormType}
       formStatus={formStatus} setFormStatus={setFormStatus}
       formPriority={formPriority} setFormPriority={setFormPriority}
+      formEstimatedMinutes={formEstimatedMinutes} setFormEstimatedMinutes={setFormEstimatedMinutes}
+      spentSeconds={Math.max(
+        activityTotalSecs,
+        runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+          ? runningTimer.activeSeconds : 0,
+      )}
+      estimateSamples={selectedActivity ? 0 : estimateSamplesFor(formType)}
       formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
       formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
       formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}

@@ -43,6 +43,8 @@ export interface LeadActivity {
   rescheduled_to?: string | null;
   deadline: string | null;
   notification_date: string | null;
+  /** Previsão de tempo (min) para executar. O cronômetro herda ao iniciar a sessão. */
+  estimated_minutes?: number | null;
   /** Data e hora da reunião (só quando activity_type = 'reuniao'). timestamptz no Externo. */
   meeting_at?: string | null;
   completed_at: string | null;

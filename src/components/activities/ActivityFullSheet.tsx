@@ -42,6 +42,7 @@ import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
+import { useActivitySpentSeconds, useEstimateSuggestion, formatEstimate, formatSpent } from '@/hooks/useActivityTimeEstimate';
 import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { loadActivityMessageOrigin, type ActivityMessageOrigin } from '@/lib/whatsappMessageActivities';
 import { MessageSquare } from 'lucide-react';
@@ -163,6 +164,14 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formType, setFormType] = useState('');
   const [formStatus, setFormStatus] = useState('pendente');
   const [formPriority, setFormPriority] = useState('normal');
+  // Previsão de tempo (min). `estimateTouchedRef` distingue "o assessor escolheu"
+  // de "veio da sugestão" — trocar o tipo só re-sugere enquanto ninguém mexeu.
+  const [formEstimatedMinutes, setFormEstimatedMinutesState] = useState<number | null>(null);
+  const estimateTouchedRef = useRef(false);
+  const setFormEstimatedMinutes = useCallback((v: number | null) => {
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState(v);
+  }, []);
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formMeetingAt, setFormMeetingAt] = useState('');
@@ -230,6 +239,31 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
   const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
+
+  // Previsão sugerida (mediana real do tipo) e tempo já gasto na atividade.
+  const { ready: estimateReady, suggestFor: suggestEstimateFor, samplesFor: estimateSamplesFor } = useEstimateSuggestion();
+  const { spentSeconds, refreshSpent } = useActivitySpentSeconds(activityId, open && !isCreate);
+  // Cronômetro rodando NESTA atv: o total do banco só é gravado de tempos em
+  // tempos, então o contador ao vivo é o piso do que já foi gasto.
+  const liveSpentSeconds = Math.max(
+    spentSeconds,
+    runningTimer?.kind === 'activity' && runningTimer.activityId === activityId ? runningTimer.activeSeconds : 0,
+  );
+
+  // Criação: sugere a previsão pelo tipo escolhido enquanto o assessor não mexer
+  // no campo. Trocar o tipo re-sugere; escolher um valor congela a escolha.
+  useEffect(() => {
+    if (!open || !isCreate || !estimateReady || estimateTouchedRef.current) return;
+    setFormEstimatedMinutesState(suggestEstimateFor(formType));
+  }, [open, isCreate, estimateReady, formType, suggestEstimateFor]);
+
+  // Cronômetro parou nesta atv → relê o total gravado (o contador ao vivo zera).
+  const timerWasRunningRef = useRef(false);
+  useEffect(() => {
+    const running = runningTimer?.kind === 'activity' && runningTimer.activityId === activityId;
+    if (timerWasRunningRef.current && !running) void refreshSpent();
+    timerWasRunningRef.current = running;
+  }, [runningTimer?.kind, runningTimer?.activityId, activityId, refreshSpent]);
 
   // Board dos "Modelos do passo"/checklist: POP escolhido na atividade tem
   // prioridade (mesma regra do activeStepBoardId da ActivitiesPage); senão
@@ -387,6 +421,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormType(act.activity_type || '');
     setFormStatus(act.status || 'pendente');
     setFormPriority(act.priority || 'normal');
+    // Atividade antiga não tem previsão: fica "sem previsão" e o assessor decide.
+    // Não sugerimos em cima do que já existe pra não inventar meta retroativa.
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState(act.estimated_minutes ?? null);
     setFormDeadline(act.deadline || '');
     // Atividades auto-criadas (onboarding, "Dar andamento") nascem sem
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
@@ -475,6 +513,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormType(d.activity_type || '');
     setFormStatus('pendente');
     setFormPriority(d.priority || 'normal');
+    // Criação: previsão nasce da sugestão (mediana do tipo) — o efeito abaixo
+    // preenche assim que as medianas chegam.
+    estimateTouchedRef.current = false;
+    setFormEstimatedMinutesState(null);
     setFormDeadline(d.deadline || '');
     setFormNotificationDate('');
     setFormMeetingAt('');
@@ -536,6 +578,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     }
     if (!open) {
       draftInitedRef.current = false;
+      estimateTouchedRef.current = false; // próxima criação volta a aceitar sugestão
       setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null);
     }
   }, [open, activityId, fetchActivity, isCreate, draft, initFromDraft]);
@@ -558,6 +601,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           activity_type: selectedActivity.activity_type,
           title: selectedActivity.title,
           lead_name: selectedActivity.lead_name,
+          // Previsão da atividade vira a previsão da sessão (gatilho de urgência).
+          estimated_minutes: selectedActivity.estimated_minutes ?? null,
         });
       }
     })();
@@ -661,6 +706,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     resposta_juizo: formRespostaJuizo || null,
     activity_type: formType,
     priority: formPriority,
+    estimated_minutes: formEstimatedMinutes ?? null,
     lead_id: formLeadId || null,
     lead_name: formLeadName || null,
     assigned_to: formAssignedTo || null,
@@ -1011,6 +1057,35 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               title={formTitle || undefined}
             >
               {formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}
+              {/* Tempo gasto x previsto, ao lado do assunto: quem abre a atividade
+                  já vê quanto ela custou até agora sem descer até o formulário.
+                  Fica no fluxo do texto (inline) pra não cobrir o título. */}
+              {!isCreate && (liveSpentSeconds > 0 || !!formEstimatedMinutes) && (() => {
+                const estSec = (formEstimatedMinutes || 0) * 60;
+                const over = estSec > 0 && liveSpentSeconds > estSec;
+                const near = estSec > 0 && !over && liveSpentSeconds >= estSec * 0.8;
+                return (
+                  <span
+                    className={cn(
+                      'ml-2 align-middle inline-flex items-center gap-1 text-[11px] font-mono tabular-nums font-normal rounded px-1.5 py-0.5',
+                      over
+                        ? 'bg-destructive/10 text-destructive'
+                        : near
+                          ? 'bg-warning/15 text-warning'
+                          : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+                    )}
+                    title={
+                      formEstimatedMinutes
+                        ? `Tempo gasto nesta atividade (todas as sessões) x previsão de ${formatEstimate(formEstimatedMinutes)}`
+                        : 'Tempo gasto nesta atividade (todas as sessões). Sem previsão definida.'
+                    }
+                  >
+                    ⏱️ {formatSpent(liveSpentSeconds)}
+                    {formEstimatedMinutes ? ` / ${formatEstimate(formEstimatedMinutes)}` : ''}
+                    {over ? ` (+${formatSpent(liveSpentSeconds - estSec)})` : ''}
+                  </span>
+                );
+              })()}
             </SheetTitle>
             <div className="flex items-center gap-1">
               {/* Renomear o assunto com IA (título de ação a partir do próximo passo + fluxo) */}
@@ -1361,6 +1436,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formType={formType} setFormType={setFormType}
                 formStatus={formStatus} setFormStatus={setFormStatus}
                 formPriority={formPriority} setFormPriority={setFormPriority}
+                formEstimatedMinutes={formEstimatedMinutes} setFormEstimatedMinutes={setFormEstimatedMinutes}
+                spentSeconds={liveSpentSeconds}
+                estimateSamples={isCreate ? estimateSamplesFor(formType) : 0}
                 formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
                 formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
                 formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}

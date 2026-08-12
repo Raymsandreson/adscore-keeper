@@ -1495,6 +1495,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
     try {
       await dbAny.from('activity_time_entries')
         .update({ estimated_minutes: value }).eq('id', e.entryId);
+      // A previsão também mora na atividade (migration 20260812120000): ajustar
+      // no relógio tem que valer para as próximas sessões e para o formulário,
+      // senão amanhã a atividade volta com a previsão antiga.
+      if (e.activityId) {
+        await dbAny.from('lead_activities')
+          .update({ estimated_minutes: value }).eq('id', e.activityId);
+      }
     } catch (err) {
       console.warn('[activity-timer] setEstimate falhou:', err);
     }

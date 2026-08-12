@@ -50,6 +50,7 @@ import { useLegalCases } from '@/hooks/useLegalCases';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
 import { toast } from 'sonner';
 import { copyTextToClipboard } from '@/lib/clipboard';
+import { ESTIMATE_OPTIONS, formatEstimate, formatSpent } from '@/hooks/useActivityTimeEstimate';
 
 function copyField(text: string | null | undefined) {
   if (!text) return;
@@ -189,6 +190,16 @@ interface ActivityFormCompactProps {
   formType: string; setFormType: (v: string) => void;
   formStatus: string; setFormStatus: (v: string) => void;
   formPriority: string; setFormPriority: (v: string) => void;
+  /**
+   * Previsão de tempo (min) da atividade e tempo já cronometrado nela.
+   * Opcionais: telas que ainda não passam simplesmente não mostram o campo.
+   */
+  formEstimatedMinutes?: number | null;
+  setFormEstimatedMinutes?: (v: number | null) => void;
+  /** Segundos ativos já gastos (soma das sessões). Ao vivo quando o cronômetro roda. */
+  spentSeconds?: number;
+  /** Amostra da mediana que gerou a sugestão (tooltip "baseado em N execuções"). */
+  estimateSamples?: number;
   formDeadline: string; handleDeadlineChange: (v: string) => void;
   formCallbackAt?: string; setFormCallbackAt?: (v: string) => void;
   formNotificationDate: string; setFormNotificationDate: (v: string) => void;
@@ -1248,6 +1259,62 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             </SelectContent>
           </Select>
         </div>
+
+        {/* Previsão de tempo + tempo já gasto. Quem executa vê no mesmo lugar quanto
+            se comprometeu a gastar e quanto já gastou; o cronômetro herda a previsão
+            ao iniciar a sessão e passa a avisar quando estoura. */}
+        {props.setFormEstimatedMinutes && (
+          <div>
+            <div className="flex items-center justify-between mb-0.5">
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wider">⏱️ Previsão</span>
+              {!!props.estimateSamples && props.estimateSamples > 0 && (
+                <span
+                  className="text-[9px] text-muted-foreground"
+                  title={`Sugerido pela mediana real deste tipo (${props.estimateSamples} execuções cronometradas nos últimos 180 dias)`}
+                >
+                  {props.estimateSamples} exec.
+                </span>
+              )}
+            </div>
+            <Select
+              value={props.formEstimatedMinutes ? String(props.formEstimatedMinutes) : 'none'}
+              onValueChange={v => props.setFormEstimatedMinutes?.(v === 'none' ? null : Number(v))}
+            >
+              <SelectTrigger className="h-8 text-xs mt-0" title="Quanto tempo se espera gastar nesta atividade">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none" className="text-xs">Sem previsão</SelectItem>
+                {ESTIMATE_OPTIONS.map(m => (
+                  <SelectItem key={m} value={String(m)} className="text-xs">{formatEstimate(m)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {(() => {
+              const spent = props.spentSeconds || 0;
+              if (spent <= 0) return null;
+              const estSec = (props.formEstimatedMinutes || 0) * 60;
+              const over = estSec > 0 && spent > estSec;
+              const near = estSec > 0 && !over && spent >= estSec * 0.8;
+              return (
+                <div
+                  className={cn(
+                    'mt-1 text-[10px] font-mono tabular-nums',
+                    over ? 'text-destructive font-semibold'
+                      : near ? 'text-warning'
+                      : 'text-muted-foreground'
+                  )}
+                  title="Tempo já cronometrado nesta atividade (todas as sessões)"
+                >
+                  gasto {formatSpent(spent)}
+                  {estSec > 0 && (over
+                    ? ` · +${formatSpent(spent - estSec)} do previsto`
+                    : ` de ${formatEstimate(props.formEstimatedMinutes)}`)}
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       {/* Matriz Eisenhower e Nome do cliente removidos do form — cliente vive no cabeçalho */}
