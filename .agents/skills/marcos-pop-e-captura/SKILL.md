@@ -110,6 +110,30 @@ diz `· N na fila` ou, havendo falha, `⚠ N com erro` em âmbar — esse resumo
 o painel de virar decoração: fila parada não avisa sozinha, foi o que custou o mês entre
 09/07 e 11/08. Se um dia mexer nesse componente, mantenha o resumo da barra fechada.
 
+### O que o card do sino escreve embaixo do processo
+
+`process_updates.descricao` mistura duas naturezas, e quem for mexer no card precisa saber
+separar (`resumoMovimentacao.ts`, com teste dos padrões reais):
+
+| Natureza | Exemplo | No card |
+|---|---|---|
+| Teor do tribunal | `Distribuído por sorteio`, `Proferido despacho de mero expediente` | assunto, em destaque |
+| Ruído do push por e-mail | `[TRT15] [PUSH] Atualizações de Informações Processuais do Processo <CNJ>` | `aviso por e-mail · TRT15`, miúdo |
+
+Medido em 12/08/2026 sobre os 30 dias anteriores: **327 com teor (67%) contra 161 de ruído
+(33%)**. O assunto já existia na maioria dos cards — estava só com o mesmo peso visual do
+lixo que repetia o número do processo impresso duas linhas acima.
+
+O que **não** dá para fazer: inventar assunto para as linhas de push. O texto TPU que teria
+esse assunto está em `jm_movimentos.nome`, e em 12/08/2026 a tabela tinha 39.214 movimentos
+mas o mais novo era de 03/08 — **nenhuma** das 73 atualizações da semana tinha movimento
+casando com o dia. Antes de prometer "resumo da movimentação" a alguém, rode:
+
+```sql
+select max(data_hora)::date as movimento_mais_novo, count(distinct processo_cnj) as processos
+from jm_movimentos;
+```
+
 ### Armadilha: o feed do sino ordenado por `created_at`
 
 `useProcessUpdates` busca as **100 mais recentes** (`FETCH_LIMIT`). Enquanto essa ordem foi
