@@ -54,6 +54,7 @@ export function CapturaStatusPanel() {
   const carregar = useCallback(async () => {
     try {
       // `as any`: a view é nova e ainda não está nos tipos gerados.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data } = await (db as any).from('vw_jm_captura_status').select('*');
       setLinhas((data || []) as CapturaStatus[]);
     } finally {

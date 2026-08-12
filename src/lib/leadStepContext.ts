@@ -9,6 +9,7 @@
 // =============================================================================
 import { db } from '@/integrations/supabase';
 import type { ChecklistItem } from '@/hooks/useChecklists';
+import { resolverResponsavel, type OrigemResponsavel } from '@/lib/popResponsavel';
 
 interface InstanciaChecklist {
   id: string;
@@ -26,6 +27,19 @@ export interface StepOption {
   templateId: string;
   instanceId: string;
   checked: boolean;
+  /**
+   * Dono do passo já resolvido pela cascata passo → objetivo → fase → processo
+   * (src/lib/popResponsavel.ts). É id do Externo, o mesmo espaço de
+   * profiles.user_id e de leads.processual_responsible_id.
+   *
+   * Ficava de fora: os três níveis existem no banco desde 08/08/2026, o
+   * resolverResponsavel foi escrito junto com 7 testes — e ninguém no app
+   * chamava. O passo saía daqui sem dono, então nada a jusante conseguia
+   * perguntar "de quem é este passo?".
+   */
+  assigneeId: string | null;
+  /** De qual nível o nome veio — "herdado da fase" precisa aparecer diferente. */
+  assigneeOrigem: OrigemResponsavel;
 }
 
 export interface LeadStepsResult {
@@ -44,7 +58,7 @@ export async function fetchLeadSteps(
 ): Promise<LeadStepsResult> {
   if (!leadId || !boardId) return VAZIO;
 
-  const [boardRes, instancesRes, leadRes] = await Promise.all([
+  const [boardRes, instancesRes, leadRes, linksRes] = await Promise.all([
     db.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
     db
       .from('lead_checklist_instances')
@@ -52,13 +66,34 @@ export async function fetchLeadSteps(
       .eq('lead_id', leadId)
       .eq('board_id', boardId)
       .order('created_at', { ascending: true }),
-    db.from('leads').select('status').eq('id', leadId).maybeSingle(),
+    db.from('leads').select('status, processual_responsible_id').eq('id', leadId).maybeSingle(),
+    // Responsável do objetivo mora no LINK, não no template: o mesmo
+    // "Protocolo e citação" existe no trabalhista e no cível com donos
+    // diferentes, e só o link conhece a combinação (POP, fase, objetivo).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any)
+      .from('checklist_stage_links')
+      .select('checklist_template_id, stage_id, assignee_id')
+      .eq('board_id', boardId),
   ]);
 
-  const stages = (boardRes.data as { stages?: Array<{ id: string; name: string }> } | null)?.stages || [];
+  const stages = (boardRes.data as
+    { stages?: Array<{ id: string; name: string; assigneeId?: string | null }> } | null)?.stages || [];
   const stageNameById: Record<string, string> = {};
-  stages.forEach((s) => { stageNameById[s.id] = s.name; });
-  const currentStageId = (leadRes.data as { status?: string } | null)?.status || null;
+  const stageAssigneeById: Record<string, string | null> = {};
+  stages.forEach((s) => {
+    stageNameById[s.id] = s.name;
+    stageAssigneeById[s.id] = s.assigneeId ?? null;
+  });
+  const lead = leadRes.data as { status?: string; processual_responsible_id?: string | null } | null;
+  const currentStageId = lead?.status || null;
+  const responsavelDoProcesso = lead?.processual_responsible_id || null;
+
+  // Chave (fase, objetivo) → dono do objetivo naquela fase deste POP.
+  const objetivoAssignee: Record<string, string | null> = {};
+  for (const l of ((linksRes as { data?: Array<{ checklist_template_id: string; stage_id: string; assignee_id: string | null }> })?.data || [])) {
+    objetivoAssignee[`${l.stage_id}|${l.checklist_template_id}`] = l.assignee_id;
+  }
 
   const instances = (instancesRes.data || []) as unknown as InstanciaChecklist[];
   if (instances.length === 0) return { ...VAZIO, currentStageId };
@@ -79,6 +114,12 @@ export async function fetchLeadSteps(
   for (const inst of instances) {
     const items = inst.items || [];
     for (const it of items) {
+      const { assigneeId, origem } = resolverResponsavel({
+        passo: it.assigneeId,
+        objetivo: objetivoAssignee[`${inst.stage_id}|${inst.checklist_template_id}`],
+        fase: stageAssigneeById[inst.stage_id],
+        processo: responsavelDoProcesso,
+      });
       steps.push({
         stepId: it.id,
         stepLabel: it.label,
@@ -88,6 +129,8 @@ export async function fetchLeadSteps(
         templateId: inst.checklist_template_id,
         instanceId: inst.id,
         checked: !!it.checked,
+        assigneeId,
+        assigneeOrigem: origem,
       });
     }
   }
@@ -100,4 +143,53 @@ export async function fetchLeadSteps(
   if (!defaultStepId && steps.length > 0) defaultStepId = steps[steps.length - 1].stepId;
 
   return { steps, defaultStepId, currentStageId };
+}
+
+export interface PassoAberto {
+  /** Id do Externo de quem responde pelo passo. Null quando ninguém foi designado. */
+  assigneeId: string | null;
+  origem: OrigemResponsavel;
+  stepLabel: string | null;
+  phaseLabel: string | null;
+}
+
+/**
+ * Quem responde pelo passo que está EM ABERTO agora neste processo.
+ *
+ * "Em aberto" é o mesmo defaultStepId do resto do app: 1º não-concluído da fase
+ * atual → 1º não-concluído geral → último. Manter a mesma régua importa porque
+ * o passo que o sino usa para avisar tem que ser o mesmo que a ficha mostra;
+ * duas definições de "passo atual" seriam duas verdades.
+ *
+ * Devolve null quando o processo não tem POP — aí não há passo, e quem chama
+ * não deve inventar dono.
+ */
+export async function responsavelDoPassoAberto(
+  processId: string | null | undefined,
+  leadId: string | null | undefined,
+): Promise<PassoAberto | null> {
+  if (!leadId) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = db as any;
+  const [procRes, leadRes] = await Promise.all([
+    processId
+      ? client.from('lead_processes').select('workflow_id').eq('id', processId).maybeSingle()
+      : Promise.resolve({ data: null }),
+    client.from('leads').select('board_id').eq('id', leadId).maybeSingle(),
+  ]);
+
+  const boardId = procRes?.data?.workflow_id || leadRes?.data?.board_id || null;
+  if (!boardId) return null;
+
+  const { steps, defaultStepId } = await fetchLeadSteps(leadId, boardId);
+  const passo = steps.find((s) => s.stepId === defaultStepId);
+  if (!passo) return null;
+
+  return {
+    assigneeId: passo.assigneeId,
+    origem: passo.assigneeOrigem,
+    stepLabel: passo.stepLabel,
+    phaseLabel: passo.phaseLabel,
+  };
 }
