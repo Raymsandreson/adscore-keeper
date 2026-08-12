@@ -195,6 +195,62 @@ describe('MentionsPanel — cobrar resposta urgente', () => {
   });
 });
 
+describe('MentionsPanel — filtros de onde e de como te chamaram', () => {
+  /** Mesma menção em três lugares diferentes, pra separar por escopo. */
+  const noPrivado = {
+    ...recebidaCobrada,
+    id: 'm-p', message_id: 'msg-p', scope: 'privado' as const, mentionKind: 'nome' as const,
+    nudge: null, entity_type: null, entity_id: null, conversation_id: 'conv-1',
+    message: { ...recebidaCobrada.message, id: 'msg-p', entity_id: '', content: '@Eu Mesmo me chama no privado' },
+  };
+  const noGrupo = {
+    ...recebidaCobrada,
+    id: 'm-g', message_id: 'msg-g', scope: 'grupo' as const, mentionKind: 'todos' as const,
+    nudge: null, entity_type: null, entity_id: null, conversation_id: 'conv-2',
+    message: { ...recebidaCobrada.message, id: 'msg-g', entity_id: '', content: '@todos reunião às 9h' },
+  };
+  const naFicha = {
+    ...recebidaCobrada,
+    id: 'm-f', message_id: 'msg-f', scope: 'ficha' as const, mentionKind: 'nome' as const, nudge: null,
+    message: { ...recebidaCobrada.message, id: 'msg-f', content: '@Eu Mesmo prazo hoje nessa atividade' },
+  };
+  const todas = [noPrivado, noGrupo, naFicha];
+
+  it('separa privado, grupo e ficha', () => {
+    renderMentionsTab(todas);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Privado/ }));
+    expect(screen.getByText('@Eu Mesmo me chama no privado')).toBeInTheDocument();
+    expect(screen.queryByText('@todos reunião às 9h')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Ficha/ }));
+    expect(screen.getByText('@Eu Mesmo prazo hoje nessa atividade')).toBeInTheDocument();
+    expect(screen.queryByText('@Eu Mesmo me chama no privado')).not.toBeInTheDocument();
+  });
+
+  it('separa quem te chamou pelo nome de quem disparou @todos', () => {
+    renderMentionsTab(todas);
+
+    fireEvent.click(screen.getByRole('button', { name: '@todos' }));
+    expect(screen.getByText('@todos reunião às 9h')).toBeInTheDocument();
+    expect(screen.queryByText('@Eu Mesmo prazo hoje nessa atividade')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Pelo nome' }));
+    expect(screen.getByText('@Eu Mesmo prazo hoje nessa atividade')).toBeInTheDocument();
+    expect(screen.queryByText('@todos reunião às 9h')).not.toBeInTheDocument();
+  });
+
+  it('cruza as duas dimensões: grupo + pelo nome não devolve o @todos do grupo', () => {
+    renderMentionsTab(todas);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Grupo/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pelo nome' }));
+
+    expect(screen.queryByText('@todos reunião às 9h')).not.toBeInTheDocument();
+    expect(screen.getByText(/Nenhuma menção com esse filtro/)).toBeInTheDocument();
+  });
+});
+
 describe('MentionsPanel — participação no chat da ficha', () => {
   beforeEach(() => {
     leaveMentionThread.mockClear();
