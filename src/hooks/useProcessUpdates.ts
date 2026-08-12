@@ -53,8 +53,34 @@ export interface UpdateNotificacao {
 }
 
 // Exportado porque o sino precisa saber quando a lista está no teto: um período
-// que abrange tudo que foi carregado vira "100+" no chip, e não "100" cravado.
-export const FETCH_LIMIT = 100;
+// que abrange tudo que foi carregado vira "600+" no chip, e não "600" cravado.
+//
+// Era 100, e 100 mentia: em 12/08/2026 o banco tinha 452 movimentações nos
+// últimos 30 dias e 1882 no total, mas a busca pegava as 100 mais recentes de
+// TODOS os tempos — e como audiência designada entra com data futura (a mais
+// distante era 09/12/2026), essas 100 começavam em dezembro e terminavam em
+// 04/08. O chip dizia "30 dias (100+)" para 452, e as 352 restantes não
+// existiam em lugar nenhum da tela.
+export const FETCH_LIMIT = 600;
+
+/**
+ * Janela padrão da busca, em dias. O sino carrega o PERÍODO inteiro (e o teto
+ * passa a valer dentro dele), em vez das N linhas mais recentes da tabela — é o
+ * que faz o chip de 30 dias contar 452 e abrir 452.
+ */
+export const JANELA_DIAS = 30;
+
+// Teto do `.in()`: 600 UUIDs viram uma URL de ~22KB no GET do PostgREST, que
+// proxy nenhum entrega. Em lotes, a etiqueta continua chegando.
+const LOTE_IDS = 200;
+
+async function emLotes<T>(ids: string[], fn: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; i < ids.length; i += LOTE_IDS) {
+    out.push(...await fn(ids.slice(i, i + LOTE_IDS)));
+  }
+  return out;
+}
 
 /** Mesma ordem do `order()` da busca — usada para reencaixar o que vem do realtime. */
 const ordemDoFeed = (a: ProcessUpdate, b: ProcessUpdate): number => {
@@ -84,15 +110,22 @@ const COLUNAS_SEM_ESFERA = COLUNAS_SEM_EVENTOS.replace(', esfera', '');
  * processo?"). Filtrar a lista global no cliente não serviria: ela é cortada nas
  * FETCH_LIMIT mais recentes de todo mundo, então um processo parado há duas
  * semanas apareceria como "nenhuma atualização".
+ *
+ * `opts.desde` (dia YYYY-MM-DD) é a janela da busca. Com ela o corte deixa de
+ * ser "as N linhas mais recentes da tabela" e passa a ser "tudo do período" —
+ * e `totalNoBanco` diz quantas o filtro casou de verdade, com teto ou sem.
  */
-export const useProcessUpdates = (opts?: { processId?: string | null }) => {
+export const useProcessUpdates = (opts?: { processId?: string | null; desde?: string | null }) => {
   const scopeProcessId = opts?.processId || null;
+  const desde = opts?.desde || null;
   const { user } = useAuthContext();
   const [updates, setUpdates] = useState<ProcessUpdate[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
   const [notificadas, setNotificadas] = useState<Map<string, UpdateNotificacao>>(new Map());
   const [extUserId, setExtUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Quantas linhas o filtro casou no banco — não quantas couberam no teto. */
+  const [totalNoBanco, setTotalNoBanco] = useState<number | null>(null);
 
   const fetchAll = useCallback(async () => {
     try {
@@ -111,19 +144,28 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
       // dia e 26 do anterior — o sino mostrava 3 e 0. O filtro de período lê
       // data_movimentacao e o card mostra data_movimentacao; a busca também
       // precisa, senão "Hoje" esconde o que é de hoje.
+      //
+      // A janela (`desde`) é o que impede o teto de virar mentira: sem ela, as
+      // FETCH_LIMIT vagas eram disputadas pela tabela inteira — e audiência
+      // designada, que entra com data futura, ficava com as primeiras.
+      // `count: 'exact'` vem junto para o chip saber dizer "452", e não "600+".
       const buscar = (colunas: string) => {
-        let q = client.from('process_updates').select(colunas);
+        let q = client.from('process_updates').select(colunas, { count: 'exact' });
         if (scopeProcessId) q = q.eq('process_id', scopeProcessId);
+        // Linha sem data de movimentação não pode sumir do período: o card e o
+        // filtro caem no created_at quando ela falta.
+        if (desde) q = q.or(`data_movimentacao.gte.${desde},data_movimentacao.is.null`);
         return q
           .order('data_movimentacao', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
           .limit(FETCH_LIMIT);
       };
 
-      let { data, error } = await buscar(COLUNAS);
-      if (error) ({ data, error } = await buscar(COLUNAS_SEM_EVENTOS));
-      if (error) ({ data, error } = await buscar(COLUNAS_SEM_ESFERA));
+      let { data, error, count } = await buscar(COLUNAS);
+      if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_EVENTOS));
+      if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_ESFERA));
       if (error) throw error;
+      setTotalNoBanco(typeof count === 'number' ? count : null);
       // Linha antiga (ou banco sem a coluna): classifica pelo CNJ na hora, para
       // o filtro por ramo já valer sem esperar o backfill.
       const rows = ((data || []) as ProcessUpdate[]).map((r) => ({
@@ -136,22 +178,32 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
       if (rows.length) {
         const ids = rows.map((r) => r.id);
         if (uid) {
-          const { data: reads } = await client
-            .from('process_update_reads')
-            .select('update_id')
-            .eq('user_id', uid)
-            .in('update_id', ids);
-          setReadIds(new Set((reads || []).map((r: { update_id: string }) => r.update_id)));
+          const reads = await emLotes(ids, async (chunk) => {
+            const { data } = await client
+              .from('process_update_reads')
+              .select('update_id')
+              .eq('user_id', uid)
+              .in('update_id', chunk);
+            return (data || []) as Array<{ update_id: string }>;
+          });
+          setReadIds(new Set(reads.map((r) => r.update_id)));
         }
         // Etiqueta "Notificado" é global (fato do caso), não por usuário.
-        const { data: notifs, error: notifErr } = await client
-          .from('process_update_notifications')
-          .select('update_id, notified_at, notified_by_name, activity_id')
-          .in('update_id', ids);
-        if (notifErr) {
-          console.warn('[useProcessUpdates] etiqueta de notificação indisponível:', notifErr.message);
-        } else {
-          setNotificadas(new Map((notifs || []).map((n: UpdateNotificacao) => [n.update_id, n])));
+        try {
+          const notifs = await emLotes(ids, async (chunk) => {
+            const { data, error: e } = await client
+              .from('process_update_notifications')
+              .select('update_id, notified_at, notified_by_name, activity_id')
+              .in('update_id', chunk);
+            if (e) throw e;
+            return (data || []) as UpdateNotificacao[];
+          });
+          setNotificadas(new Map(notifs.map((n) => [n.update_id, n])));
+        } catch (notifErr) {
+          console.warn(
+            '[useProcessUpdates] etiqueta de notificação indisponível:',
+            notifErr instanceof Error ? notifErr.message : notifErr,
+          );
         }
       }
     } catch (err) {
@@ -159,7 +211,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id, scopeProcessId]);
+  }, [user?.id, scopeProcessId, desde]);
 
   // Ref e não estado: o canal do realtime é montado uma vez só, e uma dependência
   // que muda depois do login faria a assinatura cair e subir de novo.
@@ -229,9 +281,11 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
     }
   }, [user?.id]);
 
-  useEffect(() => {
-    fetchAll();
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
+  // Assinatura separada da busca: trocar o período refaz o fetch, e antes isso
+  // derrubaria e subiria o canal do realtime junto — perdendo INSERT no meio.
+  useEffect(() => {
     // Tópico por escopo: o sino global e o atalho da ficha ficam montados ao
     // mesmo tempo, e dois canais com o mesmo nome disputam a mesma assinatura.
     const channel = db
@@ -256,6 +310,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
           // data_movimentacao, uma linha recém-inserida de movimentação antiga
           // no topo apareceria acima do que é de hoje.
           setUpdates((prev) => [novo, ...prev].sort(ordemDoFeed).slice(0, FETCH_LIMIT));
+          setTotalNoBanco((t) => (t === null ? t : t + 1));
           // Só o feed global avisa. O atalho da ficha é outra instância do mesmo
           // hook: deixá-lo avisar também mandaria dois pop-ups do mesmo fato pra
           // quem estiver com a atividade daquele processo aberta.
@@ -267,7 +322,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
     return () => {
       db.removeChannel(channel);
     };
-  }, [fetchAll, avisarSeForMinha, scopeProcessId]);
+  }, [avisarSeForMinha, scopeProcessId]);
 
   const unreadCount = useMemo(
     () => updates.filter((u) => !readIds.has(u.id)).length,
@@ -333,6 +388,6 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
 
   return {
     updates, loading, unreadCount, readIds, markRead, markAllRead,
-    notificadas, markNotified, refetch: fetchAll,
+    notificadas, markNotified, refetch: fetchAll, totalNoBanco,
   };
 };
