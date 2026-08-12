@@ -3,10 +3,15 @@
  * `label → connection key` e de qual caixa é a processual / administrativa.
  *
  * Por que existe: o mapeamento estava copiado em gmail-inss-sync,
- * gmail-processual-sync e gmail-message-body, e o send-email tinha um quarto
- * mapeamento, hardcodado e divergente (apontava pra GOOGLE_MAIL_API_KEY_3 =
- * inbox#4, que não existe — as caixas configuradas são inbox#1..#3). Resultado:
- * a leitura funcionava e o envio judicial falhava com "key não configurada".
+ * gmail-processual-sync e gmail-message-body, e o send-email tinha um quarto,
+ * hardcodado. Nenhum deles conseguia responder "qual caixa é qual" sem alguém
+ * ir ler env var no Railway — e não dá pra ler env var de fora. Centralizar é
+ * o que permite o gmail-status responder isso.
+ *
+ * CUIDADO ao mexer na resolução do remetente: LER e ENVIAR usam critérios
+ * diferentes. PROCESSUAL_INBOXES lista as caixas que o sync varre (inbox#3 e
+ * inbox#4), mas o envio judicial sai da inbox#4. Derivar o remetente da ordem
+ * da allowlist troca a conta que assina o e-mail sem ninguém pedir.
  *
  * O nome da label vem do índice da env, e a numeração é herdada (não mexer,
  * PROCESSUAL_INBOXES/INSS_INBOXES em produção já falam nesses termos):
@@ -96,26 +101,30 @@ export function resolveSenderInbox(processType?: string): InboxResolution {
     return { inbox: byRawKey(inboxes, override, overrideEnv), origem: overrideEnv };
   }
 
-  // Deriva da allowlist de leitura: é ela que define qual label é a caixa
-  // processual e qual é a administrativa.
+  // Caixa vigente, e ela vem PRIMEIRO de propósito: judicial sai da inbox#4
+  // (GOOGLE_MAIL_API_KEY_3) e adm da inbox#1, que é o que o send-email já fazia.
+  // Derivar da allowlist antes disto trocaria o remetente sem ninguém pedir —
+  // PROCESSUAL_INBOXES lista inbox#3 e inbox#4, e a primeira da lista não é a
+  // caixa de envio. Allowlist define o que se LÊ, não de onde se ENVIA.
+  const padraoLabel = isAdmin ? 'inbox#1' : 'inbox#4';
+  const padrao = byLabel(inboxes, padraoLabel);
+  if (padrao) return { inbox: padrao, origem: `padrão (${padraoLabel})` };
+
+  // A caixa de sempre sumiu. Aí sim a allowlist de leitura é o melhor palpite
+  // disponível — melhor que falhar, e a origem no retorno deixa isso explícito.
   const allowEnv = isAdmin ? 'INSS_INBOXES' : 'PROCESSUAL_INBOXES';
   for (const label of labelsFromEnv(allowEnv)) {
     const found = byLabel(inboxes, label);
-    if (found) return { inbox: found, origem: `${allowEnv}=${label}` };
+    if (found) return { inbox: found, origem: `fallback ${allowEnv}=${label} (${padraoLabel} ausente)` };
   }
-
-  // Default histórico: adm é a inbox#1; judicial era GOOGLE_MAIL_API_KEY_3.
-  const fallbackLabel = isAdmin ? 'inbox#1' : 'inbox#4';
-  const fallback = byLabel(inboxes, fallbackLabel);
-  if (fallback) return { inbox: fallback, origem: `default (${fallbackLabel})` };
 
   const disponiveis = inboxes.map((i) => `${i.label} (${i.envName})`).join(', ');
   return {
     inbox: null,
     origem: 'nenhuma',
     erro:
-      `Não deu pra decidir a caixa remetente para "${isAdmin ? 'administrativo' : 'judicial'}". ` +
-      `Defina ${allowEnv} (ex.: ${allowEnv}="${inboxes[0].label}") ou ${overrideEnv}. ` +
-      `Caixas configuradas: ${disponiveis}.`,
+      `Não deu pra decidir a caixa remetente para "${isAdmin ? 'administrativo' : 'judicial'}": ` +
+      `a caixa padrão (${padraoLabel}) não está configurada e ${allowEnv} não aponta pra nenhuma caixa válida. ` +
+      `Defina ${overrideEnv} ou ${allowEnv}. Caixas configuradas: ${disponiveis}.`,
   };
 }

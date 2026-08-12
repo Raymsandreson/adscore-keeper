@@ -4,11 +4,11 @@
 //   - judicial       → caixa processual (a mesma que o gmail-processual-sync lê)
 //   - administrativo → caixa adm/INSS
 //
-// Qual caixa é qual sai de resolveSenderInbox (lib/gmail-inboxes), que deriva
-// das allowlists de leitura. Antes isso era hardcodado aqui como
-// GOOGLE_MAIL_API_KEY_3 para o judicial — que é a inbox#4, inexistente: as
-// caixas configuradas são inbox#1..#3 e a processual é a inbox#3. O envio
-// judicial falhava sempre com "connection key não configurada".
+// Qual caixa é qual sai de resolveSenderInbox (lib/gmail-inboxes). O padrão
+// continua o mesmo de sempre — judicial na inbox#4 (GOOGLE_MAIL_API_KEY_3),
+// adm na inbox#1 — mas agora, quando a caixa padrão não existe, a resposta diz
+// quais caixas existem em vez de só "key não configurada", e o retorno informa
+// de qual caixa o e-mail saiu.
 //
 // Body: { to: string|string[], subject: string, html?: string, text?: string,
 //         process_type?: 'judicial'|'administrativo', from?: string, reply_to?: string }

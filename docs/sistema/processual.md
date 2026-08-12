@@ -224,13 +224,17 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 | `GOOGLE_MAIL_API_KEY_2` | `inbox#3` |
 | `GOOGLE_MAIL_API_KEY_3` | `inbox#4` |
 
-Quem lê o quê é decidido por allowlist: `PROCESSUAL_INBOXES` (caixa processual) e `INSS_INBOXES` (caixa adm; vazia = todas). O mapeamento único fica em `railway-server/src/lib/gmail-inboxes.ts` — antes estava copiado em cada função e divergia.
+Quem lê o quê é decidido por allowlist: `PROCESSUAL_INBOXES` (hoje `inbox#3` + `inbox#4`) e `INSS_INBOXES` (hoje `inbox#1..#3`). Allowlist vazia = todas as caixas. O mapeamento único fica em `railway-server/src/lib/gmail-inboxes.ts`.
+
+**Ler e enviar não usam o mesmo critério.** A allowlist diz o que o robô *varre*; o remetente do envio é outra decisão (`inbox#4` para judicial, `inbox#1` para adm). Derivar o remetente da ordem da allowlist troca a conta que assina o e-mail — não fazer.
 
 **Diagnóstico** — `POST /functions/gmail-status` (corpo `{}`; `{"probe_send": false}` pula o teste de envio). Responde, caixa por caixa: qual endereço é (mascarado), quantas mensagens tem, se **lê** e se **pode enviar**; e mostra qual caixa o `send-email` usaria para `judicial` e para `administrativo`, com a origem da decisão. É a ferramenta para responder "o Gmail está conectado?" sem adivinhar env var.
 
 O teste de envio **não manda e-mail**: faz `POST /messages/send` com um envelope sem destinatário. `400` = tem escopo de envio (o Gmail recusou o envelope); `403` = a conexão foi autorizada só para leitura e precisa ser reautorizada incluindo `gmail.send`.
 
-**Envio** — `POST /functions/send-email` `{ to, subject, html|text, process_type }`. O remetente é a conta da connection key, então `process_type` decide a caixa: `judicial` → processual, `administrativo` → adm. Até 12/08/2026 o judicial estava hardcodado em `GOOGLE_MAIL_API_KEY_3` (= `inbox#4`, inexistente — as caixas configuradas são `inbox#1..#3`), e todo envio judicial morria em "connection key não configurada". Hoje deriva de `PROCESSUAL_INBOXES`/`INSS_INBOXES`, com override opcional por `COBRANCA_GMAIL_KEY_JUDICIAL`/`COBRANCA_GMAIL_KEY_ADMIN`. Não há tela de envio: o único chamador é o `inss-report`.
+**Envio** — `POST /functions/send-email` `{ to, subject, html|text, process_type }`. O remetente é a conta da connection key, então `process_type` decide a caixa: `judicial` → `inbox#4`, `administrativo` → `inbox#1`. Override por `COBRANCA_GMAIL_KEY_JUDICIAL` / `COBRANCA_GMAIL_KEY_ADMIN`. Se a caixa padrão sumir, cai na allowlist de leitura e diz isso na resposta (campo `origem`), em vez de falhar mudo. Não há tela de envio: o único chamador é o `inss-report`.
+
+**Não confirmado**: se as conexões têm escopo `gmail.send`. O `gmail-status` responde isso — mas depende de estar publicado. Enquanto ninguém rodar, "o envio funciona" é hipótese, não fato.
 
 **Lição registrada** (migration `20260812010000`): `net.http_post` sem ler `net._http_response` falha em silêncio — foi assim que uma URL errada do Railway deixou a caixa processual parada por dias sem alerta nenhum.
 
