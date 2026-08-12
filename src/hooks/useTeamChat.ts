@@ -170,7 +170,21 @@ export interface TeamMentionItem extends TeamMention {
   targets?: { user_id: string; name: string | null }[];
   /** Última cobrança dessa menção, se já houve. */
   nudge?: MentionNudge | null;
+  /** Onde foi dito: conversa privada, grupo, ou o chat de uma ficha. */
+  scope?: MentionScope;
+  /** Marcaram você pelo nome, ou foi um "@todos" que pegou a equipe inteira. */
+  mentionKind?: 'nome' | 'todos';
 }
+
+/** Onde a menção aconteceu — dimensão de filtro do painel. */
+export type MentionScope = 'privado' | 'grupo' | 'ficha';
+
+/**
+ * "@todos" (ou @todas/@equipe/@all) é expandido em uma linha por pessoa na hora
+ * do envio, então o que sobra pra distinguir "me chamaram" de "chamaram geral"
+ * é o texto da própria mensagem.
+ */
+const MENTION_ALL = /@(todos|todas|equipe|all)\b/i;
 
 /**
  * "@" seguido de letra e não colado num e-mail (fulano@dominio). O chat de ficha
@@ -751,10 +765,31 @@ export function useMyMentions() {
       });
     }
 
+    // Privado x grupo: a menção do chat direto só aponta pra conversa; o tipo
+    // mora em team_conversations. Uma query pras conversas citadas, não uma por
+    // menção.
+    const conversationIds = Array.from(
+      new Set(resolved.map(i => i.conversation_id).filter((id): id is string => !!id))
+    );
+    const conversationTypes = new Map<string, string>();
+    if (conversationIds.length > 0) {
+      const { data: convs } = await externalSupabase
+        .from('team_conversations')
+        .select('id, type')
+        .in('id', conversationIds);
+      (convs || []).forEach(c => conversationTypes.set(c.id, (c as { type?: string }).type || 'direct'));
+    }
+
     const withNudges = resolved.map(item => ({
       ...item,
       targets: targetsByMessage.get(item.message_id) || [],
       nudge: nudgeByMessage.get(item.message_id) || null,
+      scope: (item.message.entity_id
+        ? 'ficha'
+        : conversationTypes.get(item.conversation_id || '') === 'group'
+          ? 'grupo'
+          : 'privado') as MentionScope,
+      mentionKind: (MENTION_ALL.test(item.message.content || '') ? 'todos' : 'nome') as 'nome' | 'todos',
     }));
 
     trackedThreads.current = new Set(

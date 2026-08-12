@@ -244,6 +244,15 @@ Duas falhas reais no aviso de menção, corrigidas juntas:
 - O canal de participação escuta `team_chat_messages` **sem filtro no servidor** e corta no cliente contra o conjunto que você segue — a chave é `(entity_type, entity_id)`, que o filtro do Realtime não expressa. Volume medido: 15–51 msgs/dia, pico de 24 threads.
 - Migration: `supabase/migrations-external/20260812140000_team_chat_thread_followers.sql` (também corrige `mention_nudges` para `replica identity full`, como as demais tabelas do chat).
 
+### Filtros de origem da menção (desde 12/08/2026)
+
+O painel passou a se chamar **Chat interno** e ganhou duas dimensões de filtro, cruzáveis entre si e com as que já existiam (Todas / Não lidas / Responder / Aguardando):
+
+- **Onde foi dito**: **Privado**, **Grupo**, **Ficha** (atividade, lead, processo, contato, POP). Menção de ficha tem `entity_id`; sem ele, o tipo vem de `team_conversations.type` (`group` → Grupo, senão Privado) — uma query pelas conversas citadas, não uma por menção.
+- **Como te chamaram**: **Pelo nome** x **@todos**. O `@todos` é expandido em uma linha por pessoa no envio, então o que distingue "é comigo" de "é com a casa" é o texto da mensagem (`/@(todos|todas|equipe|all)\b/i`) — sem mudança de schema.
+
+**Pendente (decisão de layout)**: unificar Menções e Chat numa lista só. Os três desenhos possíveis (lista única estilo menção · lista de conversas com as menções dentro · duas listas na mesma aba) mudam a rotina de quem usa o chat direto o dia todo, e o compartilhamento do `useTeamDirectChat` entre os dois painéis exige refatorar `TeamDirectChatPanel` (1.800 linhas) pra não duplicar canais de Realtime. Por isso as abas seguem como estão até a escolha.
+
 ### Ferramentas de IA e ações na mensagem — paridade com o WhatsApp (desde 06/08/2026)
 
 O que existia só na conversa do WhatsApp passou a existir **em todo chat interno**: o chat da equipe das fichas (lead, caso, processo, atividade, passo do POP e o painel "Equipe" da conversa) e o chat direto/grupo.

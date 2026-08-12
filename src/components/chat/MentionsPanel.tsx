@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMyMentions, type MentionNudgeLevel, type TeamMentionItem } from '@/hooks/useTeamChat';
+import { useMyMentions, type MentionNudgeLevel, type MentionScope, type TeamMentionItem } from '@/hooks/useTeamChat';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -155,6 +155,10 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   // Mesmo vocabulário da aba Chat: a bola está com você (responder) ou com o
   // outro (aguardando). "Não lidas" continua sendo só o que você ainda não abriu.
   const [statusFilter, setStatusFilter] = useState<'all' | 'unread' | 'responder' | 'aguardando'>('all');
+  // Onde foi dito (privado / grupo / ficha) e como te chamaram (nome / @todos).
+  // São dimensões independentes do status — dá pra cruzar as duas.
+  const [scopeFilter, setScopeFilter] = useState<'all' | MentionScope>('all');
+  const [kindFilter, setKindFilter] = useState<'all' | 'nome' | 'todos'>('all');
 
   useEffect(() => {
     return subscribeToTeamChatConversation((intent) => {
@@ -310,6 +314,8 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
     return mentions.filter(m => {
       if (statusFilter === 'unread' && m.is_read) return false;
       if ((statusFilter === 'responder' || statusFilter === 'aguardando') && m.status !== statusFilter) return false;
+      if (scopeFilter !== 'all' && m.scope !== scopeFilter) return false;
+      if (kindFilter !== 'all' && (m.mentionKind || 'nome') !== kindFilter) return false;
       if (typeFilter !== 'all' && (m.entity_type || 'team_chat') !== typeFilter) return false;
       if (!term) return true;
       const haystack = [
@@ -324,9 +330,18 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         .toLowerCase();
       return haystack.includes(term);
     });
-  }, [mentions, search, typeFilter, statusFilter]);
+  }, [mentions, search, typeFilter, statusFilter, scopeFilter, kindFilter]);
 
-  const hasActiveFilter = search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all';
+  const hasActiveFilter =
+    search.trim() !== '' || typeFilter !== 'all' || statusFilter !== 'all' ||
+    scopeFilter !== 'all' || kindFilter !== 'all';
+
+  const limparFiltros = () => {
+    setSearch(''); setTypeFilter('all'); setStatusFilter('all');
+    setScopeFilter('all'); setKindFilter('all');
+  };
+
+  const scopeCount = (s: MentionScope) => mentions.filter(m => m.scope === s).length;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -343,9 +358,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <div className="truncate text-sm">
-                  {activeTab === 'mentions' ? 'Menções' : 'Chat da Equipe'}
-                </div>
+                <div className="truncate text-sm">Chat interno</div>
                 <div className="text-[10px] text-muted-foreground font-normal">
                   {activeTab === 'mentions'
                     ? (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
@@ -475,6 +488,65 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                 <Reply className="h-3 w-3" /> Aguardando{aguardandoCount > 0 ? ` (${aguardandoCount})` : ''}
               </button>
             </div>
+            {/* Onde foi dito: no privado, no grupo, ou no chat de uma ficha. */}
+            <div className="flex gap-1">
+              {([
+                { v: 'privado' as const, label: 'Privado', icon: <MessageCircle className="h-3 w-3" /> },
+                { v: 'grupo' as const, label: 'Grupo', icon: <Users className="h-3 w-3" /> },
+                { v: 'ficha' as const, label: 'Ficha', icon: <ClipboardList className="h-3 w-3" /> },
+              ]).map(({ v, label, icon }) => {
+                const n = scopeCount(v);
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setScopeFilter(prev => (prev === v ? 'all' : v))}
+                    title={
+                      v === 'privado' ? 'Marcaram você numa conversa direta'
+                        : v === 'grupo' ? 'Marcaram você num grupo'
+                          : 'Marcaram você no chat de uma atividade, lead, processo, contato ou POP'
+                    }
+                    className={cn(
+                      'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors inline-flex items-center justify-center gap-1',
+                      scopeFilter === v
+                        ? 'bg-foreground text-background border-foreground'
+                        : 'bg-transparent text-muted-foreground border-border hover:bg-accent'
+                    )}
+                  >
+                    {icon} {label}{n > 0 ? ` (${n})` : ''}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Te chamaram pelo nome ou foi um @todos? Muda o quanto é com você. */}
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setKindFilter(prev => (prev === 'nome' ? 'all' : 'nome'))}
+                title="Marcaram você pelo nome"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
+                  kindFilter === 'nome'
+                    ? 'bg-violet-500 text-white border-violet-500'
+                    : 'bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/40 hover:bg-violet-500/20'
+                )}
+              >
+                Pelo nome
+              </button>
+              <button
+                type="button"
+                onClick={() => setKindFilter(prev => (prev === 'todos' ? 'all' : 'todos'))}
+                title="Chamaram a equipe inteira com @todos — não era só com você"
+                className={cn(
+                  'flex-1 h-6 rounded-full text-[10px] font-medium border transition-colors',
+                  kindFilter === 'todos'
+                    ? 'bg-slate-500 text-white border-slate-500'
+                    : 'bg-slate-500/10 text-slate-600 dark:text-slate-300 border-slate-500/40 hover:bg-slate-500/20'
+                )}
+              >
+                @todos
+              </button>
+            </div>
           </div>
         )}
 
@@ -512,7 +584,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => { setSearch(''); setTypeFilter('all'); setStatusFilter('all'); }}
+                    onClick={limparFiltros}
                   >
                     Limpar filtros
                   </Button>
