@@ -161,7 +161,13 @@ export const handler: RequestHandler = async (req, res) => {
     const transcript = messages
       .map((m) => {
         const who = m.direction === 'outbound' ? 'ESCRITÓRIO' : clientLabel;
-        const when = new Date(m.created_at).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+        // ISO (en-CA dá YYYY-MM-DD) porque a IA resolve "amanhã"/"sexta" por
+        // esta data: em dd/mm/aaaa ela troca dia por mês e o prazo sai errado.
+        const when = new Date(m.created_at).toLocaleString('en-CA', {
+          timeZone: 'America/Sao_Paulo',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hour12: false,
+        });
         const audio = m.message_type === 'audio' ? ' (transcrição de áudio)' : '';
         return `[${m.id}] ${when} — ${who}${audio}: ${(m.message_text || '').slice(0, 1200)}`;
       })
@@ -191,7 +197,9 @@ REGRAS DE ESCRITA:
 - Uma pendência por promessa. Não junte duas coisas num título só.
 - quote: o trecho literal em que ele prometeu (até 200 caracteres).
 - source_message_id: o id EXATO entre colchetes da mensagem em que ele prometeu — copie da conversa, não invente.
-- due_date: só se a conversa der data ou prazo claro (YYYY-MM-DD, resolva "amanhã"/"sexta" pela data de hoje). Senão "".
+- due_date: quando o cliente deve entregar, em YYYY-MM-DD. Resolva SEMPRE pela DATA DA MENSAGEM em que ele prometeu (o AAAA-MM-DD logo depois do id, no início da linha), NUNCA pela data de hoje: a varredura roda dias depois da conversa, então "amanhã" dito em 03/08 é 04/08, não amanhã.
+  * Marcador brando de tempo também vale: "ainda hoje"/"mais tarde"/"hoje à noite" = a data da própria mensagem; "segunda"/"sexta" = o próximo dia dessa semana contado a partir da mensagem; "semana que vem" = a segunda-feira seguinte; "depois do dia 15" = dia 15 do mês da mensagem.
+  * "Quando puder", "assim que der", "vou ver", "te mando depois", "qualquer coisa te aviso" NÃO são prazo: devolva "". Prazo inventado vira cobrança errada — na dúvida, "".
 - kind: um rótulo curto e livre que classifique (ex.: "avaliação", "depoimento", "documento", "comparecimento", "pagamento", "contato").
 - confidence: 0 a 1. Use abaixo de 0.6 quando a promessa for vaga.
 - NÃO invente. Sem promessa clara na conversa, devolva lista vazia.
@@ -273,6 +281,12 @@ ${existingTitles.length > 0
     }
 
     // ---- 6. filtra e grava --------------------------------------------------------
+    // Quando cada mensagem foi enviada: é daqui que sai `promised_at`, a data em
+    // que o cliente prometeu. A coluna é `DEFAULT now()` e ninguém a preenchia,
+    // então TODA pendência nascia com a data da VARREDURA — promessa de 20/07
+    // varrida em 10/08 aparecia no dia 10/08 na caixa e no calendário, porque
+    // pendência sem prazo é posicionada por `promised_at`.
+    const messageAt = new Map(messages.map((m) => [m.id, m.created_at]));
     const validMessageIds = new Set(messages.map((m) => m.id));
     const seenNow = new Set<string>();
 
@@ -308,6 +322,9 @@ ${existingTitles.length > 0
           origin: 'ia',
           ai_confidence: Number(c.confidence) || null,
           due_date: due,
+          // Sem a mensagem de origem não há como saber quando foi combinado;
+          // aí sim vale a hora da varredura (é o default da coluna).
+          promised_at: (srcId && messageAt.get(srcId)) || new Date().toISOString(),
           source_message_id: srcId,
           source_message_text: String(c.quote || '').slice(0, 400) || null,
           created_by_name: 'IA',
