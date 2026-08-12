@@ -54,9 +54,22 @@ describe('rótulo do vínculo quando o snapshot veio nulo', () => {
 
   it('monta o rótulo do processo a partir do processo vivo', () => {
     expect(displayProcessLabel(
+      { process_number: '0000384-82.2022.5.05.0371', title: 'ACIDENTE DE TRABALHO' },
+      null,
+    )).toBe('0000384-82.2022.5.05.0371 - ACIDENTE DE TRABALHO');
+  });
+
+  it('título que chega com hífen na frente não vira hífen duplo', () => {
+    // 363 processos tinham o título assim ("- ACIDENTE DE TRABALHO") em 12/08/2026
+    expect(displayProcessLabel(
       { process_number: '0000384-82.2022.5.05.0371', title: '- ACIDENTE DE TRABALHO' },
       null,
-    )).toBe('0000384-82.2022.5.05.0371 - - ACIDENTE DE TRABALHO');
+    )).toBe('0000384-82.2022.5.05.0371 - ACIDENTE DE TRABALHO');
+  });
+
+  it('hífen no meio do nome é preservado', () => {
+    expect(displayCaseLabel({ case_number: 'CASO 17 e 17.1', title: 'ACIDENTE - DORYEDSON' }, null))
+      .toBe('CASO 17 e 17.1 - ACIDENTE - DORYEDSON');
   });
 
   it('sem dado vivo nem snapshot devolve vazio (a tela usa o texto genérico)', () => {
