@@ -46,9 +46,27 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
 Tabelas: `pop_marcos`, `pop_marco_sinais` (Externo). POP de referência: board
 `Trabalhistas judicial — marcos (rascunho)`.
 
-**Pendente:** migrar os 703 checklists com trabalho já feito para as fases-marco. Plano em
-`supabase/migrations-external/PLANO_20260808_migrar_checklists_para_fase_marco.sql` — o
-prefixo `PLANO_` existe para **não** rodar sozinho.
+**Pendente:** migrar os checklists com trabalho já feito para os marcos. Plano vigente em
+`supabase/migrations-external/PLANO_20260812_migrar_checklists_para_marco.sql` — o prefixo
+`PLANO_` existe para **não** rodar sozinho. O plano de 08/08 está marcado ⛔ OBSOLETO: ele
+mapeava os templates antigos, e o board rascunho ganhou 26 templates **próprios**
+(interseção zero). Medido em 12/08: 8.968 instâncias, **727** com trabalho.
+
+### Ao migrar, o que decide o estrago é o `id` do passo
+
+A instância guarda os `items` **completos** (label, checked, docChecklist) — não um
+ponteiro. Mover instância não apaga nada. Quem decide é `syncInstanceItems`
+(`src/lib/syncChecklistInstances.ts`), que compara instância × template **por id**:
+
+| no template novo | resultado |
+|---|---|
+| mesmo id, mesmo label | passa intacto, marcado |
+| mesmo id, label mudou | `needsRedo` → histórico riscado **+ passo reaberto desmarcado** |
+| id não existe | fica com selo `removido do POP` |
+
+Medido: **3.278 de 3.304 passos marcados (99,2%) passam intactos**; 9 reabrem, 17 riscam.
+Sempre rode essa conta antes de migrar checklist — um label com espaço à direita no
+template novo respondia por 8 das 9 reaberturas.
 
 ---
 

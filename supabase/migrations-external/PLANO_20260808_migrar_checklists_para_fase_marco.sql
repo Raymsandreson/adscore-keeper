@@ -1,4 +1,16 @@
 -- =============================================================================
+-- ⛔ OBSOLETO — NÃO RODAR. Substituído em 12/08/2026 por
+--    PLANO_20260812_migrar_checklists_para_marco.sql
+--
+-- Motivo: este plano mapeia template_id ANTIGO -> stage novo, assumindo que o
+-- board rascunho reaproveitaria os templates existentes. Ele ganhou 26
+-- templates PRÓPRIOS — a interseção com os do board em uso é ZERO. Rodando
+-- hoje, o `on conflict do nothing` da ETAPA 1 engoliria tudo em silêncio e o
+-- resultado pareceria sucesso.
+--
+-- Mantido só como registro do raciocínio original.
+-- =============================================================================
+--
 -- PLANO DE MIGRAÇÃO — checklists das 8 fases atuais para as 23 fases-marco
 --
 -- ESTE ARQUIVO NÃO FOI EXECUTADO. Prefixo PLANO_ de propósito: é para ler,
