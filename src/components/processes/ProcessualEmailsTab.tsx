@@ -73,10 +73,20 @@ export default function ProcessualEmailsTab() {
     }
   }, [load]);
 
-  // Backfill paginado: varre TODO o histórico em lotes, seguindo o cursor
-  // devolvido pelo servidor até `done`. Destrava o teto de 125 e-mails.
-  const runBackfill = useCallback(async () => {
-    if (!confirm("Buscar e-mails antigos: varre todo o histórico desta caixa página por página. Pode levar alguns minutos. Continuar?")) return;
+  // Backfill paginado: varre o histórico em lotes, seguindo o cursor devolvido
+  // pelo servidor até `done`. Destrava o teto de 125 e-mails.
+  //
+  // `dias` limita a varredura (backfill aceita `after:YYYY/MM/DD`). Sem limite,
+  // recuperar uma janela de duas semanas obrigava a reler anos de caixa.
+  const runBackfill = useCallback(async (dias?: number) => {
+    const desde = dias ? new Date(Date.now() - dias * 86400_000) : null;
+    const after = desde
+      ? `${desde.getFullYear()}/${String(desde.getMonth() + 1).padStart(2, '0')}/${String(desde.getDate()).padStart(2, '0')}`
+      : null;
+    const pergunta = after
+      ? `Recuperar os e-mails dos últimos ${dias} dias (desde ${after}). Continuar?`
+      : "Buscar e-mails antigos: varre todo o histórico desta caixa página por página. Pode levar alguns minutos. Continuar?";
+    if (!confirm(pergunta)) return;
     setBackfilling(true);
     let cursor: any = null;
     let totalNew = 0;
@@ -85,7 +95,7 @@ export default function ProcessualEmailsTab() {
     try {
       do {
         const { data: j, error } = await cloudFunctions.invoke<any>("gmail-processual-sync", {
-          body: { backfill: true, max_messages: 150, cursor },
+          body: { backfill: true, max_messages: 150, cursor, ...(after ? { after } : {}) },
         });
         if (error) throw error;
         if (!j?.success) { toast.error("Backfill falhou: " + (j?.error || "erro")); break; }
@@ -188,7 +198,20 @@ export default function ProcessualEmailsTab() {
             <RefreshCw className={`h-4 w-4 mr-1 ${syncing ? "animate-spin" : ""}`} />
             {syncing ? "Sincronizando..." : "Sincronizar"}
           </Button>
-          <Button variant="outline" size="sm" onClick={runBackfill} disabled={syncing || backfilling}>
+          {/* Recuperação de janela: quando a captura fica dias parada, o sync
+              normal (7 dias) não alcança mais o que passou — e sem isto a única
+              saída era varrer a caixa inteira. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => runBackfill(30)}
+            disabled={syncing || backfilling}
+            title="Rebusca os e-mails dos últimos 30 dias — use quando a captura ficou parada"
+          >
+            <DownloadCloud className={`h-4 w-4 mr-1 ${backfilling ? "animate-pulse" : ""}`} />
+            {backfilling ? (backfillStatus || "Recuperando...") : "Recuperar 30 dias"}
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => runBackfill()} disabled={syncing || backfilling}>
             <DownloadCloud className={`h-4 w-4 mr-1 ${backfilling ? "animate-pulse" : ""}`} />
             {backfilling ? (backfillStatus || "Buscando antigos...") : "Buscar mais antigos"}
           </Button>

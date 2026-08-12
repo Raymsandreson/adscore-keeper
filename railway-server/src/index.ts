@@ -623,18 +623,24 @@ setInterval(runFunnelStatusSync, FUNNEL_SYNC_INTERVAL_MS);
 //   Desligar o pg_cron: select cron.unschedule('gmail-processual-sync-hourly');
 // ============================================================
 const PROCESSUAL_SYNC_INTERVAL_MS = 60 * 60 * 1000;
+// Rodada que estourou o orçamento devolve `done:false` + cursor. Sem devolver o
+// cursor na chamada seguinte, o cron recomeçava do zero toda hora e nunca passava
+// do ponto em que parou — a caixa seguinte da fila jamais era lida.
+let processualCursor: { inbox: string | null; page_token: string | null } | null = null;
 async function runProcessualSync() {
   try {
     const resp = await fetch(`http://127.0.0.1:${PORT}/functions/gmail-processual-sync`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
-      body: '{}',
+      body: JSON.stringify(processualCursor ? { cursor: processualCursor } : {}),
     });
     const json: any = await resp.json().catch(() => ({}));
+    // Terminou a varredura → próxima rodada começa do topo da janela.
+    processualCursor = json?.success && json?.done === false ? (json.cursor ?? null) : null;
     // Rodada sem e-mail novo é o caso comum — só loga novidade ou problema.
     if (json?.total_inserted > 0 || json?.success === false || !resp.ok) {
       console.log(
-        `[cron:gmail-processual-sync] status=${resp.status} inserted=${json?.total_inserted ?? 0} checked=${json?.total_checked ?? 0}${json?.error ? ` error=${json.error}` : ''}`,
+        `[cron:gmail-processual-sync] status=${resp.status} inserted=${json?.total_inserted ?? 0} checked=${json?.total_checked ?? 0}${processualCursor ? ` resume=${processualCursor.inbox}` : ''}${json?.error ? ` error=${json.error}` : ''}`,
       );
     }
   } catch (err) {
