@@ -16,6 +16,13 @@ export type UpdateCategoria =
   | 'despacho'
   | 'movimentacao';
 
+/** Um evento do push do tribunal, como veio no e-mail. */
+export interface EventoProcesso {
+  data: string | null;
+  hora: string | null;
+  texto: string;
+}
+
 export interface ProcessUpdate {
   id: string;
   process_id: string;
@@ -30,6 +37,11 @@ export interface ProcessUpdate {
   descricao: string | null;
   data_movimentacao: string | null;
   created_at: string;
+  /**
+   * Eventos do push agrupado (migration 20260812150000). Null nas linhas do
+   * Escavador e nas do layout de tabela, em que cada movimento já é uma linha.
+   */
+  eventos: EventoProcesso[] | null;
 }
 
 /** Etiqueta "Notificado" — o cliente já foi avisado desta movimentação. */
@@ -53,10 +65,13 @@ const ordemDoFeed = (a: ProcessUpdate, b: ProcessUpdate): number => {
   return a.created_at < b.created_at ? 1 : -1;
 };
 
-const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at';
-// Sem a migration da esfera aplicada, o select acima falha inteiro e o sino fica
-// vazio. Fallback mantém o sino funcionando (só sem o filtro por ramo).
-const COLUNAS_SEM_ESFERA = COLUNAS.replace(', esfera', '');
+const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at, eventos';
+// Coluna que falta derruba o select INTEIRO e o sino fica vazio em silêncio —
+// já aconteceu com callback_at em lead_activities. Então cada coluna nova entra
+// com degrau de recuo próprio: sem eventos ainda dá para ler o feed, e sem
+// esfera dá para ler sem o filtro por ramo.
+const COLUNAS_SEM_EVENTOS = COLUNAS.replace(', eventos', '');
+const COLUNAS_SEM_ESFERA = COLUNAS_SEM_EVENTOS.replace(', esfera', '');
 
 /**
  * Feed do sino de atualizações processuais (process_updates no Externo,
@@ -106,6 +121,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
       };
 
       let { data, error } = await buscar(COLUNAS);
+      if (error) ({ data, error } = await buscar(COLUNAS_SEM_EVENTOS));
       if (error) ({ data, error } = await buscar(COLUNAS_SEM_ESFERA));
       if (error) throw error;
       // Linha antiga (ou banco sem a coluna): classifica pelo CNJ na hora, para
@@ -113,6 +129,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
       const rows = ((data || []) as ProcessUpdate[]).map((r) => ({
         ...r,
         esfera: r.esfera || classificarEsfera({ numeroCnj: r.numero_cnj, titulo: r.processo_titulo }),
+        eventos: Array.isArray(r.eventos) ? r.eventos : null,
       }));
       setUpdates(rows);
 
@@ -233,6 +250,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null }) => {
           const novo = {
             ...bruto,
             esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj, titulo: bruto.processo_titulo }),
+            eventos: Array.isArray(bruto.eventos) ? bruto.eventos : null,
           };
           // Reordena em vez de empilhar no topo: com a lista ordenada por
           // data_movimentacao, uma linha recém-inserida de movimentação antiga

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, BellRing, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2, BadgeCheck, AlertTriangle,
+  ListChecks, X, ChevronDown, ChevronRight, Users,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
@@ -10,6 +11,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -29,11 +31,15 @@ import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
 import { resumoMovimentacao } from './resumoMovimentacao';
+import { UpdateDetalhe, type PassoDoPop, type SugestaoIA } from './UpdateDetalhe';
 import { fetchLeadSteps } from '@/lib/leadStepContext';
 import { fetchFaseProcessual } from '@/lib/processFaseAtual';
 import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
-import { ASSUNTO_SIMPLES, EXPLICACAO, blocoTextoDoTribunal } from '@/lib/linguagemSimples';
+import { ASSUNTO_SIMPLES } from '@/lib/linguagemSimples';
 import { CATEGORIAS } from '@/lib/processUpdateCategorias';
+import {
+  camposConsolidados, camposDeUmaMovimentacao, movimentacaoPrincipal, type CamposDaMensagem,
+} from './notificacaoEmLote';
 import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPanel';
 import { notificationsSupported, requestNotificationPermission } from '@/lib/nativeNotification';
 
@@ -104,26 +110,6 @@ function fmtData(iso: string | null): string | null {
   }
 }
 
-/**
- * Conteúdo dos três campos que o cliente lê ("Como está?", "O que foi feito?",
- * "Próximo passo"), em linguagem de quem não é da área — o texto vive em
- * src/lib/linguagemSimples.ts.
- *
- * O passo do POP entra entre parênteses no fim do próximo passo: ele é escrito
- * pra equipe ("Redação da Petição"), então não pode ser a frase principal
- * endereçada ao cliente, mas some da mensagem se for descartado.
- */
-function camposDaMensagem(u: ProcessUpdate, passoPop: string | null) {
-  const explicacao = EXPLICACAO[u.categoria] || EXPLICACAO.movimentacao;
-  return {
-    comoEsta: explicacao.comoEsta,
-    oQueFoiFeito: blocoTextoDoTribunal(u.descricao),
-    proximo: passoPop
-      ? `${explicacao.proximo}\n_(Na nossa lista de tarefas, o passo em andamento é: ${passoPop}.)_`
-      : explicacao.proximo,
-  };
-}
-
 interface EnvioPendente {
   update: ProcessUpdate;
   groupJid: string;
@@ -136,9 +122,25 @@ interface EnvioPendente {
   reenvio: boolean;
 }
 
+/**
+ * Título da linha, quando ele diz mais que o rótulo da categoria.
+ *
+ * Nas linhas de push agrupado o título é o evento principal ("Decorrido o prazo
+ * de CGB ENERGIA LTDA"); nas antigas é só o rótulo genérico que o badge ao lado
+ * já mostra — repetir "Movimentação" embaixo de "Movimentação" é ruído.
+ */
+function tituloUtil(u: ProcessUpdate): string | null {
+  const t = (u.titulo || '').trim();
+  if (!t) return null;
+  const rotulo = (CATEGORIAS[u.categoria] || CATEGORIAS.movimentacao).label;
+  return t.toLowerCase() === rotulo.toLowerCase() ? null : t;
+}
+
 function UpdateRow({
   update, unread, notificacao, onOpenLead, onCreateActivity, onSendGroup, onMarkRead, sending,
+  carregarPasso, sugerirComIA, criarAtividadeDoPasso,
   showOpenLead = true, showProcesso = true,
+  selecionavel = false, selecionado = false, onToggleSelecao,
 }: {
   update: ProcessUpdate;
   unread: boolean;
@@ -148,28 +150,54 @@ function UpdateRow({
   onSendGroup: (u: ProcessUpdate) => void;
   onMarkRead: (u: ProcessUpdate) => void;
   sending: boolean;
+  carregarPasso: (u: ProcessUpdate) => Promise<PassoDoPop | null>;
+  sugerirComIA: (u: ProcessUpdate, passo: PassoDoPop | null) => Promise<SugestaoIA | null>;
+  criarAtividadeDoPasso: (u: ProcessUpdate, rascunho?: SugestaoIA) => Promise<void>;
   /** Fora quando o painel já está dentro da ficha: "abrir lead" ali é redirecionar. */
   showOpenLead?: boolean;
   /** Fora no modo por processo: seria repetir o mesmo cabeçalho em toda linha. */
   showProcesso?: boolean;
+  /** Modo lote ligado: a linha ganha caixa de marcar e o clique passa a marcar. */
+  selecionavel?: boolean;
+  selecionado?: boolean;
+  onToggleSelecao?: (u: ProcessUpdate) => void;
 }) {
   const style = CATEGORIAS[update.categoria] || CATEGORIAS.movimentacao;
   const Icon = style.icon;
   const dataMov = fmtData(update.data_movimentacao);
   const { assunto, origem } = useMemo(() => resumoMovimentacao(update.descricao), [update.descricao]);
+  const titulo = tituloUtil(update);
+  const [detalheAberto, setDetalheAberto] = useState(false);
 
   return (
     <div
       className={cn(
         'px-3 py-2.5 border-b last:border-b-0',
         unread && 'bg-accent/40',
+        selecionado && 'bg-primary/10',
+        selecionavel && 'cursor-pointer',
         style.borda && 'border-l-2',
         style.borda,
       )}
-      onClick={() => unread && onMarkRead(update)}
+      onClick={() => {
+        // Em modo lote a linha inteira é alvo de marcação: caixinha de 16px é
+        // mira ruim quando são quarenta linhas para percorrer.
+        if (selecionavel) { onToggleSelecao?.(update); return; }
+        if (unread) onMarkRead(update);
+      }}
     >
       <div className="flex gap-2.5">
-        <span className={cn('mt-1.5 h-2 w-2 rounded-full shrink-0', unread ? style.dot : 'bg-transparent border border-border')} />
+        {selecionavel ? (
+          <Checkbox
+            checked={selecionado}
+            onCheckedChange={() => onToggleSelecao?.(update)}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-0.5 shrink-0"
+            aria-label={`Selecionar movimentação de ${update.processo_titulo || update.numero_cnj || 'processo'}`}
+          />
+        ) : (
+          <span className={cn('mt-1.5 h-2 w-2 rounded-full shrink-0', unread ? style.dot : 'bg-transparent border border-border')} />
+        )}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
             <Badge variant="outline" className={cn('text-[10px] px-1.5 py-0 gap-1 font-medium', style.badge)}>
@@ -210,14 +238,27 @@ function UpdateRow({
               o que existe, vem miúdo. Antes os dois saíam do mesmo jeito, e o
               "Distribuído por sorteio" tinha o mesmo peso do "[PUSH] ..." que
               repetia o número do processo. */}
-          {assunto && (
-            <p className="text-[11px] mt-0.5 line-clamp-2 text-foreground/85">
+          {/* Título do evento principal em destaque; o resumo dos demais
+              embaixo, miúdo. Sem título (linha antiga), o resumo sobe. */}
+          {titulo && (
+            <p className="text-[11px] mt-0.5 font-medium leading-snug line-clamp-2">{titulo}</p>
+          )}
+          {assunto && assunto !== titulo && (
+            <p className={cn('text-[11px] mt-0.5 line-clamp-2', titulo ? 'text-muted-foreground' : 'text-foreground/85')}>
               {assunto}
             </p>
           )}
-          {!assunto && origem && (
+          {!assunto && !titulo && origem && (
             <p className="text-[10px] mt-0.5 truncate text-muted-foreground/70">{origem}</p>
           )}
+          <UpdateDetalhe
+            update={update}
+            aberto={detalheAberto}
+            onToggle={() => setDetalheAberto((v) => !v)}
+            carregarPasso={carregarPasso}
+            sugerirComIA={sugerirComIA}
+            criarAtividade={criarAtividadeDoPasso}
+          />
           <div className="flex gap-1 mt-1.5">
             {showOpenLead && (
               <Button
@@ -289,6 +330,14 @@ export function ProcessUpdatesBell({
   const [open, setOpen] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
+  // ---- Lote ----
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [preparandoLote, setPreparandoLote] = useState(false);
+  const [lote, setLote] = useState<LoteCliente[] | null>(null);
+  const [loteExpandido, setLoteExpandido] = useState<Set<string>>(new Set());
+  /** Progresso do disparo: sem isso, 30 clientes são 45s de tela parada. */
+  const [loteProgresso, setLoteProgresso] = useState<{ feitos: number; total: number } | null>(null);
 
   // ---- Destaque de CHEGADA ----
   // Separado do "tem não-lida": o anel vermelho fica enquanto houver pendência,
@@ -454,13 +503,43 @@ export function ProcessUpdatesBell({
   type ContextoUpdate = Awaited<ReturnType<typeof carregarContexto>>;
 
   /**
+   * Um destinatário do lote: as movimentações daquele cliente já viradas em UMA
+   * mensagem. Sem grupo vinculado, `groupJid` é null — a linha aparece na
+   * revisão como "não vai sair" em vez de falhar calada no meio do disparo.
+   *
+   * A atividade NÃO é criada aqui: quem desistir na revisão não pode deixar
+   * trinta atividades órfãs no nome de quem clicou. Ela nasce no envio.
+   */
+  interface LoteCliente {
+    chave: string;
+    leadName: string | null;
+    groupJid: string | null;
+    principal: ProcessUpdate;
+    updates: ProcessUpdate[];
+    ctx: ContextoUpdate;
+    campos: CamposDaMensagem;
+    message: string;
+    reenvio: boolean;
+    semContexto: boolean;
+  }
+
+  /**
    * Atividade do próximo passo. Uma movimentação gera no máximo UMA — reenvio e
    * o botão "Criar atv" reaproveitam a mesma (lead_activities.process_update_id).
    */
   const buscarOuCriarAtividade = useCallback(async (
     u: ProcessUpdate,
     ctx: ContextoUpdate,
+    opts?: {
+      /** Rascunho da IA: quando vem, é ele que preenche título e os três campos. */
+      rascunho?: SugestaoIA;
+      /** Campos já prontos — é como o lote entrega o texto das N movimentações juntas. */
+      campos?: CamposDaMensagem;
+      /** As demais movimentações do mesmo cliente, para a descrição interna citar todas. */
+      agrupadas?: ProcessUpdate[];
+    },
   ): Promise<LeadActivity | null> => {
+    const rascunho = opts?.rascunho;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const client = db as any;
     const { data: existente, error } = await client
@@ -474,22 +553,27 @@ export function ProcessUpdatesBell({
     }
     if (existente) return existente as LeadActivity;
 
-    const campos = camposDaMensagem(u, ctx.passoAtual?.stepLabel || null);
+    const campos = opts?.campos || camposDeUmaMovimentacao(u, ctx.passoAtual?.stepLabel || null);
+    // No lote a descrição interna lista TODAS as movimentações que a atividade
+    // cobre — quem abrir a ficha depois precisa ver as seis, não só a principal.
+    const cobertas = opts?.agrupadas?.length ? opts.agrupadas : [u];
     return await createActivity({
       // Assunto sem jargão: o título entra na mensagem como "Assunto da
       // atividade", e "Decisão de mérito" não diz nada pra quem é leigo.
-      title: `${ASSUNTO_SIMPLES[u.categoria]} — ${u.processo_titulo || u.numero_cnj || 'processo'}`,
+      title: rascunho?.title || campos.titulo,
       description: [
-        u.descricao,
-        u.data_movimentacao ? `📌 Movimentação de ${fmtData(u.data_movimentacao)}.` : null,
+        ...cobertas.map((m) => [
+          m.data_movimentacao ? `📌 ${fmtData(m.data_movimentacao)}` : null,
+          m.descricao,
+        ].filter(Boolean).join(' — ')),
         u.numero_cnj ? `⚖️ Processo ${u.numero_cnj}.` : null,
       ].filter(Boolean).join('\n\n'),
-      activity_type: TIPO_ATV[u.categoria] || 'tarefa',
+      activity_type: rascunho?.activity_type || TIPO_ATV[u.categoria] || 'tarefa',
       priority: u.categoria === 'movimentacao' ? 'normal' : 'alta',
       // Campos da mensagem padrão: o que foi feito / como está / próximo passo.
-      what_was_done: campos.oQueFoiFeito,
-      current_status_notes: campos.comoEsta,
-      next_steps: campos.proximo,
+      what_was_done: rascunho?.what_was_done || campos.oQueFoiFeito,
+      current_status_notes: rascunho?.current_status || campos.comoEsta,
+      next_steps: rascunho?.next_steps || campos.proximo,
       process_id: u.process_id,
       process_title: u.processo_titulo || u.numero_cnj || null,
       lead_id: u.lead_id,
@@ -506,16 +590,22 @@ export function ProcessUpdatesBell({
     u: ProcessUpdate,
     ctx: ContextoUpdate,
     atividade: LeadActivity | null,
+    /**
+     * Campos do lote. Vêm por fora porque a atividade pode ser reaproveitada de
+     * um aviso anterior (`process_update_id` já existente): sem isso a mensagem
+     * sairia com o texto de UMA movimentação e as outras cinco sumiriam.
+     */
+    override?: CamposDaMensagem,
   ): string => {
-    const campos = camposDaMensagem(u, ctx.passoAtual?.stepLabel || null);
+    const campos = override || camposDeUmaMovimentacao(u, ctx.passoAtual?.stepLabel || null);
     const p = ctx.passoAtual;
     return buildActivityMessage({
-      formTitle: atividade?.title || `${ASSUNTO_SIMPLES[u.categoria]} — ${u.processo_titulo || ''}`,
+      formTitle: override?.titulo || atividade?.title || `${ASSUNTO_SIMPLES[u.categoria]} — ${u.processo_titulo || ''}`,
       formDeadline: atividade?.deadline || '',
       formNotificationDate: atividade?.notification_date || '',
-      formWhatWasDone: atividade?.what_was_done || campos.oQueFoiFeito,
-      formCurrentStatus: atividade?.current_status_notes || campos.comoEsta,
-      formNextSteps: atividade?.next_steps || campos.proximo,
+      formWhatWasDone: override ? campos.oQueFoiFeito : (atividade?.what_was_done || campos.oQueFoiFeito),
+      formCurrentStatus: override ? campos.comoEsta : (atividade?.current_status_notes || campos.comoEsta),
+      formNextSteps: override ? campos.proximo : (atividade?.next_steps || campos.proximo),
       formSolicitacao: '',
       formRespostaJuizo: '',
       formNotes: '',
@@ -549,6 +639,94 @@ export function ProcessUpdatesBell({
       getTemplateForContext,
     }, 'client');
   }, [fieldSettings, systemOabs, user?.id, resolveUserName, getTemplateForContext, profile?.full_name]);
+
+  /**
+   * Passo em aberto do POP daquele processo — a dica de "o que fazer agora",
+   * de graça, direto do banco. Sem POP, devolve a fase da régua de marcos.
+   */
+  const carregarPasso = useCallback(async (u: ProcessUpdate): Promise<PassoDoPop | null> => {
+    try {
+      const ctx = await carregarContexto(u);
+      const p = ctx.passoAtual;
+      const i = p ? ctx.steps.findIndex((s) => s.stepId === p.stepId) : -1;
+      const proximo = i >= 0 ? ctx.steps.slice(i + 1).find((s) => !s.checked) || null : null;
+      return {
+        phaseLabel: p?.phaseLabel || null,
+        objectiveLabel: p?.objectiveLabel || null,
+        stepLabel: p?.stepLabel || null,
+        proximoLabel: proximo?.stepLabel || null,
+        faseProcessual: ctx.fase?.faseLabel || null,
+        responsavelNome: resolveUserName(p?.assigneeId || null),
+      };
+    } catch (err) {
+      console.error('[ProcessUpdatesBell] passo do POP:', err);
+      return null;
+    }
+  }, [carregarContexto, resolveUserName]);
+
+  /**
+   * Dica redigida: a IA lê os EVENTOS do push (não só o resumo) mais o POP e
+   * devolve o próximo passo. Mesma função que a aba de movimentações do
+   * processo usa — uma implementação só do "movimentação vira atividade".
+   */
+  const sugerirComIA = useCallback(async (
+    u: ProcessUpdate,
+    passo: PassoDoPop | null,
+  ): Promise<SugestaoIA | null> => {
+    try {
+      const eventos = u.eventos || [];
+      const { data, error } = await cloudFunctions.invoke('activity-from-movement', {
+        body: {
+          movement: {
+            data: u.data_movimentacao,
+            tipo: CATEGORIAS[u.categoria]?.label,
+            conteudo: u.descricao || u.titulo,
+          },
+          // Os eventos do próprio e-mail entram como contexto recente: é o
+          // detalhe que o resumo do card corta.
+          recent_movements: eventos.map((e) => ({ data: e.data, conteudo: e.texto })),
+          activity_context: {
+            process_title: u.processo_titulo,
+            process_number: u.numero_cnj,
+            workflow: passo
+              ? {
+                  step_label: passo.stepLabel || undefined,
+                  phase_label: passo.phaseLabel || undefined,
+                  next_step: passo.proximoLabel || undefined,
+                }
+              : undefined,
+          },
+        },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'A IA não conseguiu responder');
+      const f = data.fields || {};
+      if (!f.next_steps && !f.title) {
+        toast.error('A IA não devolveu uma dica desta vez');
+        return null;
+      }
+      return f as SugestaoIA;
+    } catch (err) {
+      console.error('[ProcessUpdatesBell] sugestão da IA:', err);
+      toast.error(err instanceof Error ? err.message : 'Erro ao pedir a dica à IA');
+      return null;
+    }
+  }, []);
+
+  /** Cria a atividade da movimentação — com o rascunho da IA, quando houver. */
+  const criarAtividadeDoPasso = useCallback(async (u: ProcessUpdate, rascunho?: SugestaoIA) => {
+    try {
+      const ctx = await carregarContexto(u);
+      const criada = await buscarOuCriarAtividade(u, ctx, { rascunho });
+      if (criada) {
+        markRead(u.id);
+        toast.success(rascunho ? 'Atividade criada com a dica da IA' : 'Atividade criada a partir da atualização');
+      }
+    } catch (err) {
+      console.error('[ProcessUpdatesBell] criar atividade do passo:', err);
+      toast.error('Erro ao criar a atividade');
+    }
+  }, [carregarContexto, buscarOuCriarAtividade, markRead]);
 
   const handleCreateActivity = async (u: ProcessUpdate) => {
     try {
@@ -657,9 +835,178 @@ export function ProcessUpdatesBell({
     }
   };
 
+  // ===========================================================================
+  // Lote — uma mensagem por CLIENTE, não uma por movimentação
+  // ===========================================================================
+
+  /**
+   * Quem recebe. É o lead (dono do grupo de WhatsApp), não o processo: um mesmo
+   * cliente pode ter movimentação de até três processos no período, e mandar
+   * três mensagens ao mesmo grupo é exatamente o que o lote existe para evitar.
+   */
+  const chaveDoCliente = (u: ProcessUpdate) => u.lead_id || `processo:${u.process_id}`;
+
+  const alternarSelecao = useCallback((id: string) => {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const sairDaSelecao = useCallback(() => {
+    setModoSelecao(false);
+    setSelecionados(new Set());
+  }, []);
+
+  // Só o que está na tela conta: seleção que sobrevive à troca de filtro
+  // mandaria mensagem que a pessoa não está mais vendo.
+  const selecionadosVisiveis = useMemo(
+    () => filtered.filter((u) => selecionados.has(u.id)),
+    [filtered, selecionados],
+  );
+
+  const clientesSelecionados = useMemo(
+    () => new Set(selecionadosVisiveis.map(chaveDoCliente)).size,
+    [selecionadosVisiveis],
+  );
+
+  const todosVisiveisMarcados = filtered.length > 0 && selecionadosVisiveis.length === filtered.length;
+
+  const alternarTodosVisiveis = useCallback(() => {
+    setSelecionados((prev) => {
+      const next = new Set(prev);
+      const marcar = !filtered.every((u) => next.has(u.id));
+      for (const u of filtered) {
+        if (marcar) next.add(u.id); else next.delete(u.id);
+      }
+      return next;
+    });
+  }, [filtered]);
+
+  /** Agrupa por cliente, monta a mensagem de cada um e abre a revisão. */
+  const prepararLote = async () => {
+    if (!selecionadosVisiveis.length) return;
+    setPreparandoLote(true);
+    try {
+      const porCliente = new Map<string, ProcessUpdate[]>();
+      for (const u of selecionadosVisiveis) {
+        const k = chaveDoCliente(u);
+        porCliente.set(k, [...(porCliente.get(k) || []), u]);
+      }
+
+      const preparados: LoteCliente[] = [];
+      for (const [chave, ups] of porCliente) {
+        const principal = movimentacaoPrincipal(ups);
+        const ctx = await carregarContexto(principal);
+        const campos = camposConsolidados(ups, ctx.passoAtual?.stepLabel || null);
+        preparados.push({
+          chave,
+          leadName: ctx.lead?.lead_name || null,
+          groupJid: ctx.lead?.whatsapp_group_id || null,
+          principal,
+          updates: ups,
+          ctx,
+          campos,
+          message: montarMensagem(principal, ctx, null, campos),
+          reenvio: ups.some((x) => notificadas.has(x.id)),
+          semContexto: ctx.steps.length === 0 && !ctx.fase,
+        });
+      }
+
+      // Quem não vai sair fica no fim da revisão: o que precisa de decisão é o
+      // que vai ser enviado.
+      preparados.sort((a, b) => Number(!!b.groupJid) - Number(!!a.groupJid));
+      setLote(preparados);
+    } catch (err) {
+      console.error('[ProcessUpdatesBell] preparo do lote:', err);
+      toast.error('Erro ao preparar as mensagens do lote');
+    } finally {
+      setPreparandoLote(false);
+    }
+  };
+
+  /**
+   * Dispara. Em série e com respiro entre um cliente e outro — a mesma cadência
+   * do envio de lista de transmissão (useBroadcastLists): trinta mensagens de
+   * uma vez pela mesma instância é o caminho curto para a UazAPI derrubar o
+   * número da firma.
+   */
+  const confirmarLote = async () => {
+    const alvos = (lote || []).filter((c) => c.groupJid);
+    if (!alvos.length) return;
+    setLote(null);
+    setLoteProgresso({ feitos: 0, total: alvos.length });
+
+    let enviados = 0;
+    const falhas: string[] = [];
+    for (const [i, cliente] of alvos.entries()) {
+      try {
+        // A atividade nasce agora, com o texto que o cliente vai receber, e uma
+        // só para as N movimentações dele.
+        const atividade = await buscarOuCriarAtividade(cliente.principal, cliente.ctx, {
+          campos: cliente.campos,
+          agrupadas: cliente.updates,
+        });
+
+        const instanceName = await resolveGroupSenderInstanceName(cliente.groupJid!);
+        const sendBody: Record<string, unknown> = {
+          phone: cliente.groupJid,
+          chat_id: cliente.groupJid,
+          message: cliente.message,
+          lead_id: cliente.principal.lead_id,
+        };
+        if (instanceName) sendBody.instance_name = instanceName;
+
+        const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+        if (error || !data?.success) throw new Error(data?.error || 'envio recusado');
+
+        enviados++;
+        // Etiqueta em TODAS as movimentações que a mensagem cobriu, com a mesma
+        // atividade: senão as outras cinco continuariam pedindo aviso.
+        for (const u of cliente.updates) {
+          markRead(u.id);
+          await markNotified(u.id, {
+            activityId: atividade?.id || null,
+            groupJid: cliente.groupJid,
+            notifiedByName: profile?.full_name || null,
+          });
+        }
+      } catch (err) {
+        console.error('[ProcessUpdatesBell] lote — falha em', cliente.leadName, err);
+        falhas.push(cliente.leadName || 'cliente sem nome');
+      }
+      setLoteProgresso({ feitos: i + 1, total: alvos.length });
+      if (i < alvos.length - 1) await new Promise((r) => setTimeout(r, 1500));
+    }
+
+    setLoteProgresso(null);
+    sairDaSelecao();
+    if (falhas.length) {
+      toast.warning(`${enviados} de ${alvos.length} avisados`, {
+        description: `Não saiu para: ${falhas.slice(0, 3).join(', ')}${falhas.length > 3 ? ` e mais ${falhas.length - 3}` : ''}`,
+        duration: 10000,
+      });
+    } else {
+      toast.success(`${enviados} ${enviados === 1 ? 'cliente avisado' : 'clientes avisados'} no grupo`);
+    }
+  };
+
+  const loteComGrupo = (lote || []).filter((c) => c.groupJid);
+  const loteSemGrupo = (lote || []).filter((c) => !c.groupJid);
+  const loteReenvios = loteComGrupo.filter((c) => c.reenvio).length;
+
   return (
     <>
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet
+      open={open}
+      onOpenChange={(o) => {
+        setOpen(o);
+        // Fechou o painel: a seleção morre junto. Voltar dias depois e achar 40
+        // linhas marcadas de um filtro que não existe mais é armadilha.
+        if (!o) sairDaSelecao();
+      }}
+    >
       <SheetTrigger asChild>
         {escopado ? (
           // Na barra da ficha o gatilho é botão com rótulo, não ícone: ali ele
@@ -745,12 +1092,26 @@ export function ProcessUpdatesBell({
                 </p>
               )}
             </div>
-            {unreadCount > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 mr-6 shrink-0" onClick={markAllRead}>
-                <CheckCheck className="h-3.5 w-3.5" />
-                Marcar lidas
+            <div className="flex items-center gap-1 mr-6 shrink-0">
+              {unreadCount > 0 && !modoSelecao && (
+                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={markAllRead}>
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Marcar lidas
+                </Button>
+              )}
+              {/* Avisar em lote: 43 movimentações numa semana para 30 clientes
+                  eram 43 confirmações, uma a uma. */}
+              <Button
+                variant={modoSelecao ? 'secondary' : 'ghost'}
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => (modoSelecao ? sairDaSelecao() : setModoSelecao(true))}
+                title={modoSelecao ? 'Sair da seleção' : 'Selecionar várias e avisar todos os clientes de uma vez'}
+              >
+                {modoSelecao ? <X className="h-3.5 w-3.5" /> : <ListChecks className="h-3.5 w-3.5" />}
+                {modoSelecao ? 'Sair' : 'Selecionar'}
               </Button>
-            )}
+            </div>
           </div>
         </SheetHeader>
         {/* Só aparece enquanto ninguém decidiu: concedida some, negada some
@@ -895,12 +1256,58 @@ export function ProcessUpdatesBell({
                 onSendGroup={handleSendGroup}
                 onMarkRead={(upd) => markRead(upd.id)}
                 sending={sendingId === u.id}
+                carregarPasso={carregarPasso}
+                sugerirComIA={sugerirComIA}
+                criarAtividadeDoPasso={criarAtividadeDoPasso}
                 showOpenLead={!escopado}
                 showProcesso={!escopado}
+                selecionavel={modoSelecao}
+                selecionado={selecionados.has(u.id)}
+                onToggleSelecao={(upd) => alternarSelecao(upd.id)}
               />
             ))
           )}
         </ScrollArea>
+        {/* Barra do lote: no fluxo, com borda — nada de flutuante por cima da
+            última linha da lista. */}
+        {modoSelecao && (
+          <div className="border-t bg-muted/40 px-3 py-2 shrink-0 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={alternarTodosVisiveis}
+                className="text-[11px] text-primary hover:underline shrink-0"
+              >
+                {todosVisiveisMarcados ? 'Limpar seleção' : `Marcar as ${filtered.length} da lista`}
+              </button>
+              <span className="text-[11px] text-muted-foreground truncate">
+                {selecionadosVisiveis.length === 0
+                  ? 'Nenhuma marcada'
+                  : `${selecionadosVisiveis.length} ${selecionadosVisiveis.length === 1 ? 'movimentação' : 'movimentações'} · ${clientesSelecionados} ${clientesSelecionados === 1 ? 'cliente' : 'clientes'}`}
+              </span>
+            </div>
+            <Button
+              size="sm"
+              className="w-full h-8 text-xs gap-1.5"
+              disabled={selecionadosVisiveis.length === 0 || preparandoLote || !!loteProgresso}
+              onClick={prepararLote}
+            >
+              {preparandoLote || loteProgresso ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+              {loteProgresso
+                ? `Enviando ${loteProgresso.feitos}/${loteProgresso.total}...`
+                : preparandoLote
+                  ? 'Montando as mensagens...'
+                  : `Notificar ${clientesSelecionados || ''} ${clientesSelecionados === 1 ? 'cliente' : 'clientes'}`.trim()}
+            </Button>
+            {/* Uma mensagem por cliente é o ponto do recurso — dizer isso antes
+                do clique evita o medo de "vou mandar 43 mensagens". */}
+            {selecionadosVisiveis.length > clientesSelecionados && (
+              <p className="text-[10px] text-muted-foreground leading-snug">
+                Clientes com mais de uma movimentação recebem <strong>uma mensagem só</strong>, com todas juntas.
+              </p>
+            )}
+          </div>
+        )}
       </SheetContent>
     </Sheet>
 
@@ -940,6 +1347,96 @@ export function ProcessUpdatesBell({
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
           <AlertDialogAction onClick={confirmSendGroup}>
             {envioPendente?.reenvio ? 'Reenviar' : 'Enviar'}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+
+    {/* Revisão do lote: uma linha por CLIENTE, com o texto inteiro sob clique.
+        Nada sai sem alguém ter podido ler — é o que separa isto de notificar
+        automaticamente. */}
+    <AlertDialog open={!!lote} onOpenChange={(o) => !o && setLote(null)}>
+      <AlertDialogContent className="max-w-lg">
+        <AlertDialogHeader>
+          <AlertDialogTitle>
+            {loteComGrupo.length === 1
+              ? 'Avisar 1 cliente no grupo?'
+              : `Avisar ${loteComGrupo.length} clientes no grupo?`}
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-2 text-left">
+              <p className="text-[11px]">
+                Cada cliente recebe <strong>uma mensagem</strong>, com todas as movimentações dele juntas.
+                O envio é em série, com pausa entre um e outro — leva cerca de{' '}
+                {Math.max(1, Math.ceil((loteComGrupo.length * 1.5) / 5) * 5)} segundos.
+              </p>
+              {loteReenvios > 0 && (
+                <p className="text-[11px] flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {loteReenvios === 1
+                    ? '1 cliente já foi notificado de alguma dessas movimentações e vai receber de novo.'
+                    : `${loteReenvios} clientes já foram notificados de alguma dessas movimentações e vão receber de novo.`}
+                </p>
+              )}
+              <div className="max-h-[45vh] overflow-y-auto space-y-1.5 pr-1">
+                {loteComGrupo.map((c) => {
+                  const aberto = loteExpandido.has(c.chave);
+                  return (
+                    <div key={c.chave} className="border rounded-md overflow-hidden">
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-1.5 px-2 py-1.5 text-left hover:bg-accent"
+                        onClick={() => setLoteExpandido((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(c.chave)) next.delete(c.chave); else next.add(c.chave);
+                          return next;
+                        })}
+                      >
+                        {aberto ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+                        <span className="text-xs font-medium truncate flex-1">
+                          {c.leadName || 'Cliente sem nome'}
+                        </span>
+                        {c.reenvio && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 border-amber-500/40 text-amber-600 dark:text-amber-400 shrink-0">
+                            reenvio
+                          </Badge>
+                        )}
+                        {c.semContexto && (
+                          <Badge variant="outline" className="text-[9px] px-1 py-0 text-muted-foreground shrink-0">
+                            sem POP
+                          </Badge>
+                        )}
+                        <span className="text-[10px] text-muted-foreground shrink-0">
+                          {c.updates.length} mov.
+                        </span>
+                      </button>
+                      {aberto && (
+                        <div className="text-[11px] whitespace-pre-wrap bg-muted p-2 max-h-56 overflow-y-auto border-t">
+                          {c.message}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              {loteSemGrupo.length > 0 && (
+                <p className="text-[11px] flex items-start gap-1.5 text-muted-foreground">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {loteSemGrupo.length === 1 ? '1 cliente ficou de fora' : `${loteSemGrupo.length} clientes ficaram de fora`}
+                  {' '}por não ter grupo de WhatsApp vinculado
+                  {loteSemGrupo.length <= 3 ? ` (${loteSemGrupo.map((c) => c.leadName || 'sem nome').join(', ')})` : ''}.
+                </p>
+              )}
+              <p className="text-[11px] text-muted-foreground">
+                Uma atividade com o próximo passo é criada para cada cliente e fica com você.
+              </p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancelar</AlertDialogCancel>
+          <AlertDialogAction onClick={confirmarLote} disabled={loteComGrupo.length === 0}>
+            Enviar {loteComGrupo.length} {loteComGrupo.length === 1 ? 'mensagem' : 'mensagens'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
