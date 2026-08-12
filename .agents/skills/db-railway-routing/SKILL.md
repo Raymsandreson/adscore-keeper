@@ -69,6 +69,51 @@ export const handler: RequestHandler = async (req, res) => {
 
 Sempre HTTP 200 com `{ success, error? }` — nunca 4xx/5xx para regra de negócio.
 
+## Como CHAMAR uma função do Railway (12/08/2026)
+
+`/functions/*` tem middleware de autenticação (`railway-server/src/lib/functionAuth.ts`).
+Hoje ele roda em **modo observação** — loga e deixa passar, com o placar em
+`/health.auth.observado`. Quando `RAILWAY_AUTH_ENFORCE=1` for ligado, quem
+chegar sem credencial toma 401. Só há duas formas certas de chamar:
+
+**Do front** — sempre `cloudFunctions.invoke`, nunca `fetch` cru:
+
+```ts
+import { cloudFunctions } from '@/lib/functionRouter';
+const { data, error } = await cloudFunctions.invoke<any>('minha-funcao', { body: { ... } });
+if (error) throw error;
+```
+
+Ele injeta o JWT da sessão do Cloud sozinho. E **registre a rota** em
+`FUNCTION_ROUTES` (`'minha-funcao': 'railway'`) — o default é `'cloud'`, onde
+não existe handler, então função ausente do mapa falha calada.
+
+Nunca montar `fetch(\`${RAILWAY_BASE}/functions/...\`)` com
+`x-api-key: VITE_RAILWAY_API_KEY`: essa env **nunca teve valor**. Eram 12
+chamadas anônimas em 3 componentes até 12/08/2026.
+
+**De dentro do próprio Railway** (uma função chamando outra) — `lib/selfCall`:
+
+```ts
+import { selfPost, selfUrl, selfHeaders } from '../lib/selfCall';
+selfPost('notify-inss-update', { process_id: id }).catch(() => {});
+```
+
+Vai por loopback `127.0.0.1` e autentica com o `LOOPBACK_TOKEN` — um
+`randomUUID()` gerado no boot, checado **antes** de tudo em
+`authorizeFunctionRequest`. Não depende de nenhum segredo configurado.
+O padrão antigo (`RAILWAY_PUBLIC_URL` + `x-api-key` vazio) dava uma volta pela
+internet pública e, com enforce ligado, morreria em 401 — calado, porque todos
+os seis eram fire-and-forget com `.catch(() => {})`.
+
+Onde o handler já tem autorização própria (ex.: o nonce de
+`onboarding-checkpoint-execute`), ela **continua**: nonce é a camada do handler,
+`x-internal-key` é a do middleware. São distintas, ambas necessárias.
+
+**Lição de método:** o placar de `/health` só enxerga quem dispara na janela
+observada. Ele mostrava 2 chamadores anônimos; a varredura da árvore achou 18.
+Botão de admin e cron diário não aparecem no contador — enumere, não espere.
+
 ## Armadilha de tipo no `railway-server` (`res.json()` é `unknown`)
 
 O `railway-server/tsconfig.json` compila com `"lib": ["ES2020"]` — **sem DOM**.
