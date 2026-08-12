@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMyMentions } from '@/hooks/useTeamChat';
+import { useMyMentions, type MentionNudgeLevel, type TeamMentionItem } from '@/hooks/useTeamChat';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -58,8 +58,79 @@ const entityColors: Record<string, string> = {
   case: 'bg-indigo-500/10 text-indigo-600',
 };
 
+/**
+ * Cobrança de urgência da menção. Aparece na menção que VOCÊ fez e ainda não
+ * teve resposta: um toque e quem foi marcado recebe o popup. O que já foi
+ * cobrado fica registrado aqui embaixo, com o "visto" — igual ao Feedback.
+ */
+function MentionNudgeRow({
+  mention,
+  busy,
+  onNudge,
+}: {
+  mention: TeamMentionItem;
+  busy: boolean;
+  onNudge: (level: MentionNudgeLevel) => void;
+}) {
+  const nudge = mention.nudge;
+  // Cobrar só faz sentido enquanto ninguém respondeu, e só quem marcou cobra.
+  const podeCobrar =
+    mention.direction === 'out' &&
+    mention.status !== 'respondido' &&
+    (mention.targets?.length ?? 0) > 0;
+
+  if (!podeCobrar && !nudge) return null;
+
+  return (
+    <div className="pl-10 pr-1 pt-1.5 space-y-1">
+      {podeCobrar && (
+        <div className="flex items-center gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 flex-1 text-[10px] border-amber-300 text-amber-700 dark:text-amber-400"
+            disabled={busy}
+            onClick={() => onNudge('importante')}
+            title="Avisar quem você marcou que é importante responder"
+          >
+            ❗ Importante
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-6 flex-1 text-[10px] border-red-400 text-red-700 dark:text-red-400"
+            disabled={busy}
+            onClick={() => onNudge('urgente')}
+            title="Avisar quem você marcou que é urgente — popup na tela dele"
+          >
+            🚨 Urgente
+          </Button>
+        </div>
+      )}
+      {nudge && (
+        <p className="text-[9px] leading-tight text-muted-foreground">
+          {nudge.level === 'urgente' ? '🚨' : '❗'}{' '}
+          {mention.direction === 'out'
+            ? `Cobrado ${format(new Date(nudge.created_at), 'dd/MM HH:mm')}`
+            : `${nudge.actor_name || 'Alguém'} pediu resposta ${nudge.level} ${format(new Date(nudge.created_at), 'dd/MM HH:mm')}`}
+          {' · '}
+          {nudge.read_at ? (
+            <span className="text-green-600 dark:text-green-400 font-medium">
+              ✓ visto {format(new Date(nudge.read_at), 'dd/MM HH:mm')}
+            </span>
+          ) : (
+            <span className="text-amber-600 dark:text-amber-400">aguardando visualização</span>
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
-  const { mentions, loading, markAsRead, markAllAsRead } = useMyMentions();
+  const { mentions, loading, markAsRead, markAllAsRead, nudgeMention } = useMyMentions();
+  // Trava de duplo clique da cobrança, por mensagem.
+  const [nudgingId, setNudgingId] = useState<string | null>(null);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('chat');
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
@@ -194,6 +265,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         }
         break;
       }
+    }
+  };
+
+  const handleNudge = async (mention: TeamMentionItem, level: MentionNudgeLevel) => {
+    setNudgingId(mention.message_id);
+    try {
+      await nudgeMention?.(mention, level);
+    } finally {
+      setNudgingId(null);
     }
   };
 
@@ -425,17 +505,20 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
             ) : (
               <div className="divide-y">
                 {visibleMentions.map(mention => (
-                  <button
+                  <div
                     key={mention.id}
-                    onClick={() => handleMentionClick(mention)}
                     className={cn(
-                      "w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors",
+                      "px-4 py-3 transition-colors",
                       !mention.is_read && "bg-primary/5",
                       mention.status === 'responder' && "border-l-2 border-l-amber-500",
                       mention.status === 'aguardando' && "border-l-2 border-l-sky-500/70"
                     )}
                   >
-                    <div className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleMentionClick(mention)}
+                      className="w-full text-left flex items-start gap-3 rounded-md hover:bg-accent/50 transition-colors"
+                    >
                       <div className={cn("shrink-0 w-7 h-7 rounded-full flex items-center justify-center mt-0.5", entityColors[mention.entity_type || 'team_chat'] || 'bg-muted')}>
                         {entityIcons[mention.entity_type || 'team_chat'] || <AtSign className="h-3.5 w-3.5" />}
                       </div>
@@ -489,8 +572,13 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
                         </div>
                       </div>
                       <ArrowRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-2" />
-                    </div>
-                  </button>
+                    </button>
+                    <MentionNudgeRow
+                      mention={mention}
+                      busy={nudgingId === mention.message_id}
+                      onNudge={level => handleNudge(mention, level)}
+                    />
+                  </div>
                 ))}
               </div>
             )}

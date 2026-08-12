@@ -207,6 +207,7 @@ Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): ante
 - Filtros: busca, "Filtrar por time", "Responder (n)" (esperam resposta sua), "Aguardando".
 - Na conversa: mencionar lead/contato/atividade, enviar arquivo, "Marcar como urgente", "Sugerir resposta com IA", `@` menciona pessoas, gravar áudio.
 - Por mensagem: "Responder", "Reenviar como urgente", "Marcar como resolvida"; mostra sua média de tempo de resposta (30 dias).
+- Na aba **Menções**, a menção que você fez e ficou sem resposta pode ser **cobrada** (❗ Importante / 🚨 Urgente) — popup na tela do outro e "visto" registrado. Ver "Cobrar resposta urgente na menção".
 
 ### Criar atividade a partir de mensagens (IA) — **já existe**
 - Ícone de atividade numa mensagem entra no **modo seleção**: dá pra tocar em outras mensagens pra incluir/remover (o rodapé mostra "n mensagens selecionadas").
@@ -215,6 +216,18 @@ Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): ante
 - Criada a atividade, as mensagens de origem ficam **marcadas na conversa** com o selo "Virou atividade: {assunto}". Clicar no selo abre a **ficha completa da atividade** sem sair do chat — serve de atalho e de registro de que aquele pedido já virou tarefa (some do "ficou combinado e ninguém abriu"). Fechar o formulário sem criar não marca nada.
 
 **Fluxo recomendado**: usar o filtro "Responder" pra zerar o que espera resposta sua; `@` pra acionar alguém, menção de entidade pra dar contexto de lead/caso. Combinação/pedido que virou tarefa: selecionar as mensagens e "Criar atividade" em vez de redigitar.
+
+### Cobrar resposta urgente na menção (desde 12/08/2026)
+
+Marcar alguém e ficar no vácuo deixou de ser o fim da linha. Na aba **Menções**, toda menção que **você fez** e que ainda não teve resposta ganha dois botões — **❗ Importante** e **🚨 Urgente** — e a cobrança fica registrada, com o "visto", igual à cobrança de atividade atrasada do painel de Feedbacks.
+
+- **Quem pode cobrar**: só quem marcou, e só enquanto ninguém respondeu (menção com status `respondido` não mostra os botões). Na menção que você **recebeu** não há botão — aparece só quem pediu urgência e quando.
+- **O que o outro vê**: popup no topo da tela (`TeamNotificationToast`, o mesmo do chat) com o texto da menção, **Abrir** (vai direto pro chat da ficha, sem redirecionar pra fora) e **Responder** ali mesmo. Urgente é vermelho, toca som e **só sai no clique** (`duration: Infinity`); importante é âmbar. Quem está com o sistema fechado é alcançado por **Web Push** (`send-team-push` com `user_ids`).
+- **Histórico e "visto"**: a linha embaixo da menção mostra `🚨 Cobrado 11/08 15:57 · ✓ visto 11/08 17:14` ou `aguardando visualização`. **Popup exibido = visto** — mesma regra da cobrança de atividade. O "visto" chega ao vivo por Realtime, sem reabrir o painel.
+- **Quem estava offline** vê a cobrança ao voltar (catch-up de 7 dias das não vistas, teto de 5 popups).
+- **Onde mora**: tabela `mention_nudges` no **Externo** (`supabase/migrations-external/20260812120000_mention_nudges.sql`). Tabela própria, não coluna em `activity_notifications`, porque lá `activity_id` tem FK pra `lead_activities` (menção em lead/processo/WhatsApp não caberia) e `recipient_id` é UUID do Externo, enquanto menção, chat e push usam o UUID do **Cloud**. Rollback = `drop table` (nada mais depende dela).
+- **Como o alvo é descoberto**: a mensagem não guarda o id de quem foi marcado; vem de `team_chat_mentions` por `message_id` (a policy do Externo deixa a equipe ler as menções da casa). Menção com várias pessoas cobra todas de uma vez.
+- Código: `useMyMentions.nudgeMention` em `src/hooks/useTeamChat.ts`, `MentionNudgeRow` em `src/components/chat/MentionsPanel.tsx`, popup em `src/components/chat/TeamChatNotifications.tsx`. Testes: `MentionsPanel.urgencia.test.tsx` (7).
 
 ### Ferramentas de IA e ações na mensagem — paridade com o WhatsApp (desde 06/08/2026)
 

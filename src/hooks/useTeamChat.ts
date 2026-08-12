@@ -79,6 +79,21 @@ export interface TeamMember {
  */
 export type MentionStatus = 'responder' | 'aguardando' | 'respondido';
 
+/** Nível da cobrança de menção — mesmo par do funil de Feedbacks. */
+export type MentionNudgeLevel = 'importante' | 'urgente';
+
+/**
+ * Última cobrança de uma menção: quando foi pedida urgência e se o popup já
+ * apareceu pra quem tem que responder (o "✓ visto").
+ */
+export interface MentionNudge {
+  level: MentionNudgeLevel;
+  created_at: string;
+  read_at: string | null;
+  actor_name: string | null;
+  recipient_name: string | null;
+}
+
 export interface TeamMentionItem extends TeamMention {
   message: TeamMessage;
   /** 'in' = marcaram você. 'out' = você marcou alguém no chat de uma ficha. */
@@ -86,6 +101,10 @@ export interface TeamMentionItem extends TeamMention {
   status: MentionStatus | null;
   /** Primeira mensagem do thread depois da menção — a resposta que fechou a cobrança. */
   reply?: { sender_name: string | null; content: string; created_at: string } | null;
+  /** Quem foi marcado nessa mensagem — alvo da cobrança de urgência. */
+  targets?: { user_id: string; name: string | null }[];
+  /** Última cobrança dessa menção, se já houve. */
+  nudge?: MentionNudge | null;
 }
 
 /**
@@ -100,23 +119,29 @@ const MENTION_IN_TEXT = /(^|[^\w@])@[\p{L}]/u;
 let membersCache: TeamMember[] | null = null;
 let membersPromise: Promise<TeamMember[]> | null = null;
 
+/** Mesma lista/cache do useTeamMembers, para quem precisa fora de um componente. */
+export function loadTeamMembers(): Promise<TeamMember[]> {
+  if (membersCache) return Promise.resolve(membersCache);
+  if (!membersPromise) {
+    // profiles continua no Cloud
+    membersPromise = Promise.resolve(supabase
+      .from('profiles')
+      .select('user_id, full_name, email'))
+      .then(({ data }) => {
+        membersCache = data || [];
+        return membersCache;
+      });
+  }
+  return membersPromise;
+}
+
 export function useTeamMembers() {
   const [members, setMembers] = useState<TeamMember[]>(() => membersCache || []);
 
   useEffect(() => {
     if (membersCache) return;
-    if (!membersPromise) {
-      // profiles continua no Cloud
-      membersPromise = Promise.resolve(supabase
-        .from('profiles')
-        .select('user_id, full_name, email'))
-        .then(({ data }) => {
-          membersCache = data || [];
-          return membersCache;
-        });
-    }
     let alive = true;
-    membersPromise.then(list => { if (alive) setMembers(list); });
+    loadTeamMembers().then(list => { if (alive) setMembers(list); });
     return () => { alive = false; };
   }, []);
 
@@ -601,10 +626,61 @@ export function useMyMentions() {
       return { ...item, status: (item.direction === 'out' ? 'aguardando' : 'responder') as MentionStatus };
     });
 
+    // Cobrança de urgência: quem foi marcado em cada mensagem (o alvo) e a
+    // última cobrança já dada (com o "visto"). Duas queries por lista inteira —
+    // nada de uma por menção.
+    const messageIds = Array.from(new Set(resolved.map(i => i.message_id)));
+    const targetsByMessage = new Map<string, { user_id: string; name: string | null }[]>();
+    const nudgeByMessage = new Map<string, MentionNudge>();
+
+    if (messageIds.length > 0) {
+      const [{ data: targetRows }, { data: nudgeRows }, members] = await Promise.all([
+        // A policy do Externo deixa a equipe ler as menções da casa — é assim que
+        // quem cobra descobre quem marcou (a mensagem não guarda o id do marcado).
+        externalSupabase
+          .from('team_chat_mentions')
+          .select('message_id, mentioned_user_id')
+          .in('message_id', messageIds),
+        (externalSupabase as any)
+          .from('mention_nudges')
+          .select('message_id, level, created_at, read_at, actor_name, recipient_name')
+          .in('message_id', messageIds)
+          .order('created_at', { ascending: false }),
+        loadTeamMembers(),
+      ]);
+
+      const nameById = new Map(members.map(m => [m.user_id, m.full_name]));
+      (targetRows || []).forEach(t => {
+        const list = targetsByMessage.get(t.message_id) || [];
+        if (!list.some(x => x.user_id === t.mentioned_user_id)) {
+          list.push({ user_id: t.mentioned_user_id, name: nameById.get(t.mentioned_user_id) ?? null });
+        }
+        targetsByMessage.set(t.message_id, list);
+      });
+      // Ordenado desc → a 1ª de cada mensagem é a cobrança mais recente.
+      (nudgeRows || []).forEach((n: any) => {
+        if (!nudgeByMessage.has(n.message_id)) {
+          nudgeByMessage.set(n.message_id, {
+            level: n.level === 'importante' ? 'importante' : 'urgente',
+            created_at: n.created_at,
+            read_at: n.read_at,
+            actor_name: n.actor_name ?? null,
+            recipient_name: n.recipient_name ?? null,
+          });
+        }
+      });
+    }
+
+    const withNudges = resolved.map(item => ({
+      ...item,
+      targets: targetsByMessage.get(item.message_id) || [],
+      nudge: nudgeByMessage.get(item.message_id) || null,
+    }));
+
     trackedThreads.current = new Set(
-      resolved.map(i => `${i.message.entity_type}:${i.message.entity_id}`).filter(k => !k.endsWith(':'))
+      withNudges.map(i => `${i.message.entity_type}:${i.message.entity_id}`).filter(k => !k.endsWith(':'))
     );
-    setMentions(resolved);
+    setMentions(withNudges);
     setLoading(false);
   }, [user]);
 
@@ -625,6 +701,25 @@ export function useMyMentions() {
         },
         () => {
           load();
+        }
+      )
+      .subscribe();
+
+    // "✓ visto" da cobrança ao vivo: o popup na tela do outro carimba read_at,
+    // e quem cobrou vê isso sem reabrir o painel.
+    const nudgesChannel = externalSupabase
+      .channel(`mention-nudges-${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'mention_nudges' },
+        (payload) => {
+          const n = payload.new as { message_id?: string; read_at?: string | null };
+          if (!n?.message_id || !n.read_at) return;
+          setMentions(prev => prev.map(m => (
+            m.message_id === n.message_id && m.nudge && !m.nudge.read_at
+              ? { ...m, nudge: { ...m.nudge, read_at: n.read_at as string } }
+              : m
+          )));
         }
       )
       .subscribe();
@@ -653,6 +748,7 @@ export function useMyMentions() {
       if (timer) clearTimeout(timer);
       externalSupabase.removeChannel(channel);
       externalSupabase.removeChannel(messagesChannel);
+      externalSupabase.removeChannel(nudgesChannel);
     };
   }, [user, load]);
 
@@ -676,5 +772,75 @@ export function useMyMentions() {
     setMentions(prev => prev.map(m => ({ ...m, is_read: true })));
   }, [user]);
 
-  return { mentions, loading, markAsRead, markAllAsRead, reload: load };
+  /**
+   * Cobra resposta de quem você marcou: grava em mention_nudges (vira popup na
+   * tela dele via TeamChatNotifications) e dispara Web Push pra alcançar quem
+   * está com o sistema fechado. O registro fica — inclusive o "visto".
+   */
+  const nudgeMention = useCallback(async (mention: TeamMentionItem, level: MentionNudgeLevel) => {
+    if (!user) return;
+    const targets = (mention.targets || []).filter(t => t.user_id !== user.id);
+    if (targets.length === 0) {
+      toast.error('Não achei quem foi marcado nessa mensagem para cobrar.');
+      return;
+    }
+
+    const { entity_type, entity_id, entity_name } = mention.message;
+    const myName = mention.message.sender_name || user.email || 'Alguém';
+    const createdAt = new Date().toISOString();
+
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase as any).from('mention_nudges').insert(
+        targets.map(t => ({
+          message_id: mention.message_id,
+          recipient_id: t.user_id,
+          recipient_name: t.name,
+          actor_id: user.id,
+          actor_name: myName,
+          level,
+          entity_type,
+          entity_id,
+          entity_name: entity_name || null,
+        }))
+      );
+      if (error) throw error;
+
+      setMentions(prev => prev.map(m => m.message_id === mention.message_id
+        ? {
+            ...m,
+            nudge: {
+              level,
+              created_at: createdAt,
+              read_at: null,
+              actor_name: myName,
+              recipient_name: targets[0]?.name ?? null,
+            },
+          }
+        : m));
+
+      // Fora do app aberto o popup não existe — o push é o que alcança o celular.
+      cloudFunctions.invoke('send-team-push', {
+        body: {
+          user_ids: targets.map(t => t.user_id),
+          sender_id: user.id,
+          sender_name: myName,
+          title: level === 'urgente' ? '🚨 Responda com urgência' : '❗ Responda: é importante',
+          content: mention.message.content || 'Você foi marcado e estão esperando sua resposta.',
+          is_urgent: level === 'urgente',
+          url: entityChatUrl(entity_type, entity_id),
+        },
+      }).catch(err => console.error('Falha no Web Push da cobrança de menção:', err));
+
+      const quem = targets.map(t => t.name).filter(Boolean).join(', ') || 'quem foi marcado';
+      toast.success(level === 'urgente'
+        ? `🚨 Cobrança URGENTE enviada para ${quem}.`
+        : `❗ Cobrança de importância enviada para ${quem}.`);
+    } catch (e) {
+      console.error('[useMyMentions] erro ao cobrar a menção:', e);
+      toast.error('Não foi possível enviar a cobrança.');
+    }
+  }, [user]);
+
+  return { mentions, loading, markAsRead, markAllAsRead, nudgeMention, reload: load };
 }

@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { AtSign, MessageCircle, EyeOff } from 'lucide-react';
+import { AtSign, MessageCircle, EyeOff, AlarmClock } from 'lucide-react';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import {
@@ -59,6 +59,46 @@ function buildPreview(message: { content?: string | null; message_type?: string 
 }
 
 const NORMAL_TOAST_DURATION_MS = 15000;
+
+// Cobrança de menção pendente não pode se perder: quem estava offline vê ao voltar.
+const MENTION_NUDGE_CATCH_UP_DIAS = 7;
+
+/** Linha de mention_nudges (Externo) — a cobrança "responda com urgência". */
+type MentionNudge = {
+  id: string;
+  message_id: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  level: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  entity_name: string | null;
+};
+
+/** Texto da menção cobrada — é o que a pessoa precisa ler pra saber o que responder. */
+async function mentionNudgePreview(messageId: string): Promise<string> {
+  try {
+    const { data } = await externalSupabase
+      .from('team_chat_messages')
+      .select('content, message_type, file_name')
+      .eq('id', messageId)
+      .maybeSingle();
+    if (data) return buildPreview(data as any).substring(0, 120);
+  } catch (e) {
+    console.warn('[TeamChatNotifications] preview da cobrança falhou:', e);
+  }
+  return 'Você foi marcado e estão esperando sua resposta.';
+}
+
+/** Popup exibido = cobrança vista (alimenta o "✓ visto" de quem cobrou). */
+function markMentionNudgeSeen(id: string) {
+  return (externalSupabase as any)
+    .from('mention_nudges')
+    .update({ read_at: new Date().toISOString() })
+    .eq('id', id)
+    .is('read_at', null)
+    .then(() => {});
+}
 
 // Um popup por conversa (estilo WhatsApp): mensagens novas da mesma pessoa/grupo
 // atualizam o popup existente e incrementam o contador, em vez de empilhar.
@@ -670,6 +710,76 @@ export function TeamChatNotifications() {
         console.log('[TeamChatNotifications] Team messages channel status:', status);
       });
 
+    // Cobrança de menção ("responda com urgência"): popup vermelho que só sai
+    // com o clique, e o "visto" volta pra quem cobrou no painel de Menções.
+    const showMentionNudge = async (n: MentionNudge) => {
+      const urgente = n.level !== 'importante';
+      const preview = await mentionNudgePreview(n.message_id);
+      showNotificationToast({
+        id: `mention-nudge-${n.id}`,
+        icon: <AlarmClock className={`h-4 w-4 shrink-0 ${urgente ? 'text-destructive' : 'text-amber-500'}`} />,
+        title: urgente
+          ? `🚨 ${n.actor_name || 'Alguém'} precisa da sua resposta AGORA`
+          : `❗ ${n.actor_name || 'Alguém'} pediu sua resposta`,
+        context: n.entity_name ? `em ${n.entity_name}` : (n.entity_type ? `em ${getEntityLabel(n.entity_type)}` : undefined),
+        preview,
+        urgent: urgente,
+        onOpen: () => {
+          if (!n.entity_type || !n.entity_id) return;
+          void openEntityChat({
+            entityType: n.entity_type,
+            entityId: n.entity_id,
+            messageId: n.message_id,
+          });
+        },
+        onReply: n.entity_type && n.entity_id
+          ? (reply) => replyToEntityChat({
+              entityType: n.entity_type as string,
+              entityId: n.entity_id as string,
+              entityName: n.entity_name,
+              content: reply,
+            })
+          : undefined,
+      });
+      // Popup exibido = cobrança vista. É esse carimbo que vira o "✓ visto"
+      // no painel de quem cobrou (mesma regra da cobrança de atividade).
+      void markMentionNudgeSeen(n.id);
+    };
+
+    const mentionNudgesChannel = externalSupabase
+      .channel('notification-mention-nudges-' + user.id)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'mention_nudges',
+        filter: `recipient_id=eq.${user.id}`,
+      }, async (payload) => {
+        // Urgência não é silenciável: quem cobrou está esperando resposta.
+        const n = payload.new as MentionNudge;
+        if (n.actor_id === user.id) return; // nunca cobrar a si mesmo
+        await showMentionNudge(n);
+      })
+      .subscribe((status) => {
+        console.log('[TeamChatNotifications] Mention nudges channel status:', status);
+      });
+
+    // Quem estava com o app fechado quando a cobrança chegou vê ao voltar.
+    void (async () => {
+      const desde = new Date(Date.now() - MENTION_NUDGE_CATCH_UP_DIAS * 86400_000).toISOString();
+      const { data: pend } = await (externalSupabase as any)
+        .from('mention_nudges')
+        .select('id, message_id, actor_id, actor_name, level, entity_type, entity_id, entity_name')
+        .eq('recipient_id', user.id)
+        .is('read_at', null)
+        .gte('created_at', desde)
+        .order('created_at', { ascending: true })
+        .limit(5);
+      for (const n of ((pend || []) as MentionNudge[])) {
+        if (n.actor_id === user.id) continue;
+        await showMentionNudge(n);
+      }
+    })();
+
     // Avisa quem enviou quando o destinatário fecha o popup sem responder
     const popupReceiptsChannel = externalSupabase
       .channel('notification-popup-receipts-' + user.id)
@@ -737,6 +847,7 @@ export function TeamChatNotifications() {
 
     return () => {
       externalSupabase.removeChannel(mentionsChannel);
+      externalSupabase.removeChannel(mentionNudgesChannel);
       externalSupabase.removeChannel(teamMessagesChannel);
       externalSupabase.removeChannel(popupReceiptsChannel);
       externalSupabase.removeChannel(teamMembershipsChannel);
