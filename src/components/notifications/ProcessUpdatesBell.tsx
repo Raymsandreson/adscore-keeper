@@ -28,6 +28,7 @@ import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
+import { resumoMovimentacao } from './resumoMovimentacao';
 import { fetchLeadSteps } from '@/lib/leadStepContext';
 import { fetchFaseProcessual } from '@/lib/processFaseAtual';
 import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
@@ -150,6 +151,7 @@ function UpdateRow({
   const style = CATEGORIAS[update.categoria] || CATEGORIAS.movimentacao;
   const Icon = style.icon;
   const dataMov = fmtData(update.data_movimentacao);
+  const { assunto, origem } = useMemo(() => resumoMovimentacao(update.descricao), [update.descricao]);
 
   return (
     <div
@@ -195,13 +197,17 @@ function UpdateRow({
           {update.numero_cnj && update.processo_titulo && (
             <p className="text-[10px] text-muted-foreground font-mono truncate">{update.numero_cnj}</p>
           )}
-          {update.descricao && (
-            <p className={cn(
-              'text-[11px] mt-0.5 line-clamp-2',
-              update.categoria === 'movimentacao' ? 'text-muted-foreground/70' : 'text-muted-foreground',
-            )}>
-              {update.descricao}
+          {/* O que aconteceu vem em destaque; de onde veio o aviso, quando é só
+              o que existe, vem miúdo. Antes os dois saíam do mesmo jeito, e o
+              "Distribuído por sorteio" tinha o mesmo peso do "[PUSH] ..." que
+              repetia o número do processo. */}
+          {assunto && (
+            <p className="text-[11px] mt-0.5 line-clamp-2 text-foreground/85">
+              {assunto}
             </p>
+          )}
+          {!assunto && origem && (
+            <p className="text-[10px] mt-0.5 truncate text-muted-foreground/70">{origem}</p>
           )}
           <div className="flex gap-1 mt-1.5">
             <Button
