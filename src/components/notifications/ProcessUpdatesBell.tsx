@@ -20,7 +20,7 @@ import { cloudFunctions } from '@/lib/functionRouter';
 import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useProcessUpdates, type UpdateCategoria, type ProcessUpdate, type UpdateNotificacao } from '@/hooks/useProcessUpdates';
+import { useProcessUpdates, FETCH_LIMIT, type UpdateCategoria, type ProcessUpdate, type UpdateNotificacao } from '@/hooks/useProcessUpdates';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
@@ -28,6 +28,7 @@ import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
+import { resumoMovimentacao } from './resumoMovimentacao';
 import { fetchLeadSteps } from '@/lib/leadStepContext';
 import { fetchFaseProcessual } from '@/lib/processFaseAtual';
 import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
@@ -40,13 +41,53 @@ const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
   'todas', 'decisao_merito', 'audiencia', 'pericia', 'prazo', 'despacho', 'movimentacao',
 ];
 
-type Periodo = 'hoje' | '7d' | '30d' | 'tudo';
-const PERIODOS: Array<{ value: Periodo; label: string; dias: number | null }> = [
-  { value: 'hoje', label: 'Hoje', dias: 0 },
-  { value: '7d', label: '7 dias', dias: 7 },
-  { value: '30d', label: '30 dias', dias: 30 },
-  { value: 'tudo', label: 'Tudo', dias: null },
+type Periodo = 'hoje' | 'ontem' | '7d' | '30d' | 'tudo';
+const PERIODOS: Array<{ value: Periodo; label: string }> = [
+  { value: 'hoje', label: 'Hoje' },
+  { value: 'ontem', label: 'Ontem' },
+  { value: '7d', label: '7 dias' },
+  { value: '30d', label: '30 dias' },
+  { value: 'tudo', label: 'Tudo' },
 ];
+
+/**
+ * Dia no fuso de quem está olhando, YYYY-MM-DD.
+ *
+ * `toISOString().slice(0,10)` — que era o que estava aqui — devolve o dia em
+ * UTC: depois das 21h de Brasília já é "amanhã", e a partir daí "Hoje" perdia
+ * a movimentação da noite. Com "Ontem" ao lado o erro fica visível (um dia
+ * mostrando o do outro), então o corte passou a ser pelo calendário local.
+ */
+function diaLocal(d: Date): string {
+  const mes = String(d.getMonth() + 1).padStart(2, '0');
+  const dia = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mes}-${dia}`;
+}
+
+/** Faixa fechada de dias do período; `null` numa ponta = sem limite daquele lado. */
+function faixaDoPeriodo(p: Periodo): { de: string | null; ate: string | null } {
+  if (p === 'tudo') return { de: null, ate: null };
+  const hoje = new Date();
+  if (p === 'hoje') return { de: diaLocal(hoje), ate: null };
+  // Ontem é o único fechado dos dois lados: é "o que caiu no dia anterior",
+  // não "de ontem para cá" — senão repetiria o que Hoje já mostra.
+  if (p === 'ontem') {
+    const d = new Date(hoje);
+    d.setDate(d.getDate() - 1);
+    const dia = diaLocal(d);
+    return { de: dia, ate: dia };
+  }
+  const d = new Date(hoje);
+  d.setDate(d.getDate() - (p === '7d' ? 7 : 30));
+  return { de: diaLocal(d), ate: null };
+}
+
+function dentroDaFaixa(u: ProcessUpdate, faixa: { de: string | null; ate: string | null }): boolean {
+  const dia = (u.data_movimentacao || u.created_at).slice(0, 10);
+  if (faixa.de && dia < faixa.de) return false;
+  if (faixa.ate && dia > faixa.ate) return false;
+  return true;
+}
 
 const TIPO_ATV: Partial<Record<UpdateCategoria, string>> = {
   audiencia: 'audiencia',
@@ -110,6 +151,7 @@ function UpdateRow({
   const style = CATEGORIAS[update.categoria] || CATEGORIAS.movimentacao;
   const Icon = style.icon;
   const dataMov = fmtData(update.data_movimentacao);
+  const { assunto, origem } = useMemo(() => resumoMovimentacao(update.descricao), [update.descricao]);
 
   return (
     <div
@@ -155,13 +197,17 @@ function UpdateRow({
           {update.numero_cnj && update.processo_titulo && (
             <p className="text-[10px] text-muted-foreground font-mono truncate">{update.numero_cnj}</p>
           )}
-          {update.descricao && (
-            <p className={cn(
-              'text-[11px] mt-0.5 line-clamp-2',
-              update.categoria === 'movimentacao' ? 'text-muted-foreground/70' : 'text-muted-foreground',
-            )}>
-              {update.descricao}
+          {/* O que aconteceu vem em destaque; de onde veio o aviso, quando é só
+              o que existe, vem miúdo. Antes os dois saíam do mesmo jeito, e o
+              "Distribuído por sorteio" tinha o mesmo peso do "[PUSH] ..." que
+              repetia o número do processo. */}
+          {assunto && (
+            <p className="text-[11px] mt-0.5 line-clamp-2 text-foreground/85">
+              {assunto}
             </p>
+          )}
+          {!assunto && origem && (
+            <p className="text-[10px] mt-0.5 truncate text-muted-foreground/70">{origem}</p>
           )}
           <div className="flex gap-1 mt-1.5">
             <Button
@@ -265,19 +311,40 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     localStorage.setItem(ESFERA_STORAGE_KEY, e);
   };
 
-  const filtered = useMemo(() => {
+  // Tudo menos o período. Serve de base para a lista E para a contagem de cada
+  // chip de período — que por isso já sai respeitando ramo, categoria e
+  // "não notificados", em vez de prometer 26 e abrir 3.
+  const baseSemPeriodo = useMemo(() => {
     let list = filtro === 'todas' ? updates : updates.filter((u) => u.categoria === filtro);
     if (esferaFiltro !== 'todas') list = list.filter((u) => (u.esfera || 'outros') === esferaFiltro);
     if (soNaoNotificadas) list = list.filter((u) => !notificadas.has(u.id));
-    const dias = PERIODOS.find((p) => p.value === periodo)?.dias;
-    if (dias !== null && dias !== undefined) {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - dias);
-      const cutoffIso = cutoff.toISOString().slice(0, 10);
-      list = list.filter((u) => (u.data_movimentacao || u.created_at).slice(0, 10) >= cutoffIso);
-    }
     return list;
-  }, [updates, filtro, esferaFiltro, soNaoNotificadas, notificadas, periodo]);
+  }, [updates, filtro, esferaFiltro, soNaoNotificadas, notificadas]);
+
+  // Uma vez por lista, não uma vez por item: `new Date()` dentro do filter seria
+  // uma alocação por linha, e a virada do dia não precisa de precisão de ms.
+  const faixas = useMemo(() => {
+    const acc = {} as Record<Periodo, { de: string | null; ate: string | null }>;
+    for (const p of PERIODOS) acc[p.value] = faixaDoPeriodo(p.value);
+    return acc;
+  }, [updates]);
+
+  const filtered = useMemo(
+    () => baseSemPeriodo.filter((u) => dentroDaFaixa(u, faixas[periodo])),
+    [baseSemPeriodo, faixas, periodo],
+  );
+
+  const countByPeriodo = useMemo(() => {
+    const acc = {} as Record<Periodo, number>;
+    for (const p of PERIODOS) acc[p.value] = baseSemPeriodo.filter((u) => dentroDaFaixa(u, faixas[p.value])).length;
+    return acc;
+  }, [baseSemPeriodo, faixas]);
+
+  // O sino carrega as FETCH_LIMIT mais recentes. Hoje, Ontem e 7 dias cabem
+  // folgado nisso (12/08: 22 · 11/08: 26), mas 30 dias e Tudo estouram — o
+  // número ali seria o do teto, não o do banco. Daí o "+": 100+ é verdade,
+  // 100 cravado não é.
+  const noTeto = updates.length >= FETCH_LIMIT;
 
   const countByCategoria = useMemo(() => {
     const acc = {} as Record<string, number>;
@@ -687,18 +754,25 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
         </div>
         <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0 items-center">
           <span className="text-[10px] text-muted-foreground pr-1">Período:</span>
-          {PERIODOS.map((p) => (
-            <button
-              key={p.value}
-              onClick={() => setPeriodo(p.value)}
-              className={cn(
-                'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors',
-                periodo === p.value ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent',
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
+          {PERIODOS.map((p) => {
+            const count = countByPeriodo[p.value] || 0;
+            // "+" só quando o período pegou tudo que foi carregado e a carga
+            // está no teto — aí o que falta é banco, não filtro.
+            const truncado = noTeto && count === baseSemPeriodo.length;
+            return (
+              <button
+                key={p.value}
+                onClick={() => setPeriodo(p.value)}
+                title={truncado ? `Mais de ${count} — o sino carrega as ${FETCH_LIMIT} mais recentes` : undefined}
+                className={cn(
+                  'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors',
+                  periodo === p.value ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent',
+                )}
+              >
+                {p.label} <span className="opacity-70">({count}{truncado ? '+' : ''})</span>
+              </button>
+            );
+          })}
         </div>
         <ScrollArea className="flex-1">
           {loading ? (

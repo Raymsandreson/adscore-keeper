@@ -27,3 +27,26 @@ export function displayProcessLabel(
   const live = process ? formatProcessLabel(process.process_number, process.title) : '';
   return live || (fallback || '');
 }
+
+/** Rótulo canônico de caso usado em atividades: "<nº do caso> - <título>". */
+export function formatCaseLabel(
+  caseNumber?: string | null,
+  title?: string | null,
+): string {
+  return [caseNumber?.trim(), title?.trim()].filter(Boolean).join(' - ');
+}
+
+/**
+ * Rótulo a exibir para o caso vinculado a uma atividade.
+ *
+ * Mesma regra do processo: o `case_title` da atividade é snapshot e pode estar
+ * nulo (atividade auto-criada), enquanto `case_id` está preenchido — nesse caso
+ * a tela mostrava vínculo nenhum apesar de o vínculo existir.
+ */
+export function displayCaseLabel(
+  legalCase: { case_number?: string | null; title?: string | null } | null | undefined,
+  fallback?: string | null,
+): string {
+  const live = legalCase ? formatCaseLabel(legalCase.case_number, legalCase.title) : '';
+  return live || (fallback || '');
+}

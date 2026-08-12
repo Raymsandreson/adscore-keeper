@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatProcessLabel, displayProcessLabel } from '@/lib/processLabel';
+import { formatProcessLabel, displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 
 /**
  * Regressão do CASO 382 (03/08/2026): a atividade "Dar andamento - INDENIZAÇÃO",
@@ -37,5 +37,30 @@ describe('displayProcessLabel', () => {
   it('processo sem número nem título não apaga o snapshot', () => {
     expect(displayProcessLabel({ process_number: null, title: null }, 'INDENIZAÇÃO'))
       .toBe('INDENIZAÇÃO');
+  });
+});
+
+/**
+ * Regressão da atividade "CONSULTA - JACKSON - PERÍCIA E APOSENTADORIA"
+ * (12/08/2026): `case_id`/`process_id` preenchidos com `case_title`/
+ * `process_title` NULL. O cabeçalho condicionava a exibição ao título e o
+ * vínculo sumia, enquanto o menu "Vincular" (que lê o id) oferecia "Remover".
+ */
+describe('rótulo do vínculo quando o snapshot veio nulo', () => {
+  it('monta o rótulo do caso a partir do caso vivo', () => {
+    expect(displayCaseLabel({ case_number: 'CASO 128', title: 'CASO 128' }, null))
+      .toBe('CASO 128 - CASO 128');
+  });
+
+  it('monta o rótulo do processo a partir do processo vivo', () => {
+    expect(displayProcessLabel(
+      { process_number: '0000384-82.2022.5.05.0371', title: '- ACIDENTE DE TRABALHO' },
+      null,
+    )).toBe('0000384-82.2022.5.05.0371 - - ACIDENTE DE TRABALHO');
+  });
+
+  it('sem dado vivo nem snapshot devolve vazio (a tela usa o texto genérico)', () => {
+    expect(displayCaseLabel(null, null)).toBe('');
+    expect(displayProcessLabel(null, null)).toBe('');
   });
 });

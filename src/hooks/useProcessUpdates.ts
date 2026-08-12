@@ -39,7 +39,18 @@ export interface UpdateNotificacao {
   activity_id: string | null;
 }
 
-const FETCH_LIMIT = 100;
+// Exportado porque o sino precisa saber quando a lista está no teto: um período
+// que abrange tudo que foi carregado vira "100+" no chip, e não "100" cravado.
+export const FETCH_LIMIT = 100;
+
+/** Mesma ordem do `order()` da busca — usada para reencaixar o que vem do realtime. */
+const ordemDoFeed = (a: ProcessUpdate, b: ProcessUpdate): number => {
+  const da = a.data_movimentacao || '';
+  const dbb = b.data_movimentacao || '';
+  // Sem data de movimentação vai para o fim, igual ao nullsFirst: false.
+  if (da !== dbb) return da && dbb ? (da < dbb ? 1 : -1) : (da ? -1 : 1);
+  return a.created_at < b.created_at ? 1 : -1;
+};
 
 const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at';
 // Sem a migration da esfera aplicada, o select acima falha inteiro e o sino fica
@@ -69,9 +80,18 @@ export const useProcessUpdates = () => {
       // process_updates/process_update_reads ainda não estão no types.ts gerado.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const client = db as any;
+      // Ordem pela data DA MOVIMENTAÇÃO, não pela da linha.
+      //
+      // Ordenar por created_at parecia igual e não era: o backfill do Escavador
+      // e do DataJud insere linhas novas com movimentação velha, e elas tomavam
+      // as FETCH_LIMIT vagas. Em 12/08/2026 o banco tinha 22 movimentações do
+      // dia e 26 do anterior — o sino mostrava 3 e 0. O filtro de período lê
+      // data_movimentacao e o card mostra data_movimentacao; a busca também
+      // precisa, senão "Hoje" esconde o que é de hoje.
       const buscar = (colunas: string) => client
         .from('process_updates')
         .select(colunas)
+        .order('data_movimentacao', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(FETCH_LIMIT);
 
@@ -180,7 +200,10 @@ export const useProcessUpdates = () => {
             ...bruto,
             esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj, titulo: bruto.processo_titulo }),
           };
-          setUpdates((prev) => [novo, ...prev].slice(0, FETCH_LIMIT));
+          // Reordena em vez de empilhar no topo: com a lista ordenada por
+          // data_movimentacao, uma linha recém-inserida de movimentação antiga
+          // no topo apareceria acima do que é de hoje.
+          setUpdates((prev) => [novo, ...prev].sort(ordemDoFeed).slice(0, FETCH_LIMIT));
           void avisarSeForMinha(novo);
         },
       )
