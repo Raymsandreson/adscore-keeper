@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { classificarEsfera, type Esfera } from '@/lib/esferaJustica';
 import { responsavelDoPassoAberto } from '@/lib/leadStepContext';
 import { showNativeNotification } from '@/lib/nativeNotification';
+import { ASSIGNEE_BLOCKLIST } from '@/lib/assigneeBlocklist';
 
 export type UpdateCategoria =
   | 'decisao_merito'
@@ -62,8 +63,15 @@ const COLUNAS_SEM_ESFERA = COLUNAS.replace(', esfera', '');
  * alimentada pela edge sync-process-compromissos + cron diário 5h).
  * Lido/não-lido é POR USUÁRIO, persistido em process_update_reads
  * (user_id = profile do Externo via remapToExternal).
+ *
+ * `opts.processId` restringe o feed a um processo só — é o que permite o mesmo
+ * sino virar atalho dentro da ficha da atividade ("tem movimentação NESTE
+ * processo?"). Filtrar a lista global no cliente não serviria: ela é cortada nas
+ * FETCH_LIMIT mais recentes de todo mundo, então um processo parado há duas
+ * semanas apareceria como "nenhuma atualização".
  */
-export const useProcessUpdates = () => {
+export const useProcessUpdates = (opts?: { processId?: string | null }) => {
+  const scopeProcessId = opts?.processId || null;
   const { user } = useAuthContext();
   const [updates, setUpdates] = useState<ProcessUpdate[]>([]);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
@@ -88,12 +96,14 @@ export const useProcessUpdates = () => {
       // dia e 26 do anterior — o sino mostrava 3 e 0. O filtro de período lê
       // data_movimentacao e o card mostra data_movimentacao; a busca também
       // precisa, senão "Hoje" esconde o que é de hoje.
-      const buscar = (colunas: string) => client
-        .from('process_updates')
-        .select(colunas)
-        .order('data_movimentacao', { ascending: false, nullsFirst: false })
-        .order('created_at', { ascending: false })
-        .limit(FETCH_LIMIT);
+      const buscar = (colunas: string) => {
+        let q = client.from('process_updates').select(colunas);
+        if (scopeProcessId) q = q.eq('process_id', scopeProcessId);
+        return q
+          .order('data_movimentacao', { ascending: false, nullsFirst: false })
+          .order('created_at', { ascending: false })
+          .limit(FETCH_LIMIT);
+      };
 
       let { data, error } = await buscar(COLUNAS);
       if (error) ({ data, error } = await buscar(COLUNAS_SEM_ESFERA));
@@ -132,7 +142,7 @@ export const useProcessUpdates = () => {
     } finally {
       setLoading(false);
     }
-  }, [user?.id]);
+  }, [user?.id, scopeProcessId]);
 
   // Ref e não estado: o canal do realtime é montado uma vez só, e uma dependência
   // que muda depois do login faria a assinatura cair e subir de novo.
@@ -148,21 +158,35 @@ export const useProcessUpdates = () => {
    * inteiro mandaria o aviso para a pessoa errada na metade das fases; avisar
    * todo mundo com o sino aberto (o que o canal fazia) é o mesmo que não avisar.
    *
-   * Silencioso de propósito quando não há POP, quando ninguém foi designado ou
-   * quando o dono é outro: notificação que chega para quem não vai agir ensina
-   * a ignorar notificação.
+   * Quando a cascata inteira falha (origem 'nenhum'), o aviso vai para TODO
+   * MUNDO — decisão do Raym em 12/08/2026. É fundo de poço, não descuido:
+   * cinco degraus já foram tentados, e movimentação sem destinatário é
+   * movimentação que ninguém lê. Cada cliente decide por si (todos resolvem a
+   * mesma cascata), então não precisa de fan-out no servidor.
+   *
+   * Silencioso só quando o dono é outro: notificação que chega para quem não
+   * vai agir ensina a ignorar notificação.
    */
   const avisarSeForMinha = useCallback(async (u: ProcessUpdate) => {
     const eu = extUserIdRef.current;
     if (!eu || !u.lead_id) return;
     try {
       const passo = await responsavelDoPassoAberto(u.process_id, u.lead_id);
-      if (!passo?.assigneeId || passo.assigneeId !== eu) return;
+
+      const semDono = !passo.assigneeId;
+      const minha = passo.assigneeId === eu;
+      // Contas de teste e inativas ficam de fora do "todo mundo" — elas não
+      // atuam em processo, e engrossariam o barulho justamente no caso em que
+      // ele já é mais largo.
+      if (!minha && !(semDono && !ASSIGNEE_BLOCKLIST.has(user?.id || ''))) return;
 
       const processo = u.processo_titulo || u.numero_cnj || 'processo';
       const corpo = [
         u.descricao?.slice(0, 140),
         passo.stepLabel ? `Passo em aberto: ${passo.stepLabel}` : null,
+        // Quem recebe por falta de dono precisa saber que não é "sua" tarefa —
+        // senão ou todo mundo age, ou ninguém age achando que é de outro.
+        semDono ? 'Sem responsável definido — avisando a equipe' : null,
       ].filter(Boolean).join('\n');
 
       const exibiu = await showNativeNotification(`${u.titulo} — ${processo}`, {
@@ -177,25 +201,35 @@ export const useProcessUpdates = () => {
       // tem o app aberto ainda precisa ver que caiu algo no passo dele.
       if (!exibiu) {
         toast.info(`${u.titulo} — ${processo}`, {
-          description: passo.stepLabel ? `Seu passo: ${passo.stepLabel}` : undefined,
+          description: semDono
+            ? 'Sem responsável definido — avisando a equipe'
+            : (passo.stepLabel ? `Seu passo: ${passo.stepLabel}` : undefined),
           duration: 10000,
         });
       }
     } catch (err) {
       console.warn('[useProcessUpdates] não deu para avisar o responsável:', err);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchAll();
 
+    // Tópico por escopo: o sino global e o atalho da ficha ficam montados ao
+    // mesmo tempo, e dois canais com o mesmo nome disputam a mesma assinatura.
     const channel = db
-      .channel('process-updates-bell')
+      .channel(scopeProcessId ? `process-updates-bell-${scopeProcessId}` : 'process-updates-bell')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'process_updates' },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'process_updates',
+          ...(scopeProcessId ? { filter: `process_id=eq.${scopeProcessId}` } : {}),
+        },
         (payload) => {
           const bruto = payload.new as ProcessUpdate;
+          if (scopeProcessId && bruto.process_id !== scopeProcessId) return;
           const novo = {
             ...bruto,
             esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj, titulo: bruto.processo_titulo }),
@@ -204,7 +238,10 @@ export const useProcessUpdates = () => {
           // data_movimentacao, uma linha recém-inserida de movimentação antiga
           // no topo apareceria acima do que é de hoje.
           setUpdates((prev) => [novo, ...prev].sort(ordemDoFeed).slice(0, FETCH_LIMIT));
-          void avisarSeForMinha(novo);
+          // Só o feed global avisa. O atalho da ficha é outra instância do mesmo
+          // hook: deixá-lo avisar também mandaria dois pop-ups do mesmo fato pra
+          // quem estiver com a atividade daquele processo aberta.
+          if (!scopeProcessId) void avisarSeForMinha(novo);
         },
       )
       .subscribe();
@@ -212,7 +249,7 @@ export const useProcessUpdates = () => {
     return () => {
       db.removeChannel(channel);
     };
-  }, [fetchAll, avisarSeForMinha]);
+  }, [fetchAll, avisarSeForMinha, scopeProcessId]);
 
   const unreadCount = useMemo(
     () => updates.filter((u) => !readIds.has(u.id)).length,

@@ -10,7 +10,20 @@ export function formatProcessLabel(
   processNumber?: string | null,
   title?: string | null,
 ): string {
-  return [processNumber?.trim(), title?.trim()].filter(Boolean).join(' - ');
+  return [processNumber, title].map(trimSeparators).filter(Boolean).join(' - ');
+}
+
+/**
+ * Tira espaços e hífens das bordas antes de juntar as partes do rótulo.
+ *
+ * 363 processos tinham o título gravado como "- ACIDENTE DE TRABALHO"
+ * (12/08/2026), e o rótulo saía "0000384-82.2022.5.05.0371 - - ACIDENTE DE
+ * TRABALHO". Os títulos foram limpos no banco; isto evita que o hífen duplo
+ * reapareça se a origem gravar assim de novo. Só as bordas — hífen no meio do
+ * texto ("CASO 17 e 17.1 - ACIDENTE") é parte do nome.
+ */
+function trimSeparators(value?: string | null): string {
+  return (value || '').replace(/^[\s\-–—]+/, '').replace(/[\s\-–—]+$/, '');
 }
 
 /**
@@ -33,7 +46,7 @@ export function formatCaseLabel(
   caseNumber?: string | null,
   title?: string | null,
 ): string {
-  return [caseNumber?.trim(), title?.trim()].filter(Boolean).join(' - ');
+  return [caseNumber, title].map(trimSeparators).filter(Boolean).join(' - ');
 }
 
 /**

@@ -138,6 +138,7 @@ interface EnvioPendente {
 
 function UpdateRow({
   update, unread, notificacao, onOpenLead, onCreateActivity, onSendGroup, onMarkRead, sending,
+  showOpenLead = true, showProcesso = true,
 }: {
   update: ProcessUpdate;
   unread: boolean;
@@ -147,6 +148,10 @@ function UpdateRow({
   onSendGroup: (u: ProcessUpdate) => void;
   onMarkRead: (u: ProcessUpdate) => void;
   sending: boolean;
+  /** Fora quando o painel já está dentro da ficha: "abrir lead" ali é redirecionar. */
+  showOpenLead?: boolean;
+  /** Fora no modo por processo: seria repetir o mesmo cabeçalho em toda linha. */
+  showProcesso?: boolean;
 }) {
   const style = CATEGORIAS[update.categoria] || CATEGORIAS.movimentacao;
   const Icon = style.icon;
@@ -191,11 +196,15 @@ function UpdateRow({
               </Badge>
             )}
           </div>
-          <p className="text-xs font-medium mt-1 truncate">
-            {update.processo_titulo || update.numero_cnj || 'Processo'}
-          </p>
-          {update.numero_cnj && update.processo_titulo && (
-            <p className="text-[10px] text-muted-foreground font-mono truncate">{update.numero_cnj}</p>
+          {showProcesso && (
+            <>
+              <p className="text-xs font-medium mt-1 truncate">
+                {update.processo_titulo || update.numero_cnj || 'Processo'}
+              </p>
+              {update.numero_cnj && update.processo_titulo && (
+                <p className="text-[10px] text-muted-foreground font-mono truncate">{update.numero_cnj}</p>
+              )}
+            </>
           )}
           {/* O que aconteceu vem em destaque; de onde veio o aviso, quando é só
               o que existe, vem miúdo. Antes os dois saíam do mesmo jeito, e o
@@ -210,13 +219,15 @@ function UpdateRow({
             <p className="text-[10px] mt-0.5 truncate text-muted-foreground/70">{origem}</p>
           )}
           <div className="flex gap-1 mt-1.5">
-            <Button
-              variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
-              onClick={(e) => { e.stopPropagation(); onOpenLead(update); }}
-            >
-              <ExternalLink className="h-3 w-3" />
-              Abrir lead
-            </Button>
+            {showOpenLead && (
+              <Button
+                variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
+                onClick={(e) => { e.stopPropagation(); onOpenLead(update); }}
+              >
+                <ExternalLink className="h-3 w-3" />
+                Abrir lead
+              </Button>
+            )}
             <Button
               variant="outline" size="sm" className="h-6 px-2 text-[10px] gap-1"
               onClick={(e) => { e.stopPropagation(); onCreateActivity(update); }}
@@ -242,8 +253,26 @@ function UpdateRow({
 
 const ESFERA_STORAGE_KEY = 'process_updates_esfera_filtro';
 
-export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
-  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified } = useProcessUpdates();
+/**
+ * Sino de atualizações processuais.
+ *
+ * Com `processId`, o mesmo painel vira atalho de UM processo — é o que a ficha
+ * da atividade usa para responder "caiu movimentação neste processo?" sem sair
+ * dali. Mesma lista, mesmo Criar atv e mesmo Notificar: um componente só, para
+ * a regra da mensagem ao cliente não existir em duas versões.
+ */
+export function ProcessUpdatesBell({
+  compact = false, processId = null, processLabel = null,
+}: {
+  compact?: boolean;
+  /** Escopo: só as movimentações deste processo (lead_processes.id). */
+  processId?: string | null;
+  /** Rótulo do processo no cabeçalho do painel escopado. */
+  processLabel?: string | null;
+}) {
+  const escopado = !!processId;
+  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified } =
+    useProcessUpdates({ processId });
   const { createActivity } = useLeadActivities();
   const { profile, user } = useAuthContext();
   const navigate = useNavigate();
@@ -254,7 +283,9 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     () => (localStorage.getItem(ESFERA_STORAGE_KEY) as Esfera | 'todas') || 'todas',
   );
   const [soNaoNotificadas, setSoNaoNotificadas] = useState(false);
-  const [periodo, setPeriodo] = useState<Periodo>('30d');
+  // Num processo só, "30 dias" esconderia justamente a resposta que se foi
+  // buscar ali ("tem alguma?") quando a última movimentação é de um mês atrás.
+  const [periodo, setPeriodo] = useState<Periodo>(escopado ? 'tudo' : '30d');
   const [open, setOpen] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -316,10 +347,13 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
   // "não notificados", em vez de prometer 26 e abrir 3.
   const baseSemPeriodo = useMemo(() => {
     let list = filtro === 'todas' ? updates : updates.filter((u) => u.categoria === filtro);
-    if (esferaFiltro !== 'todas') list = list.filter((u) => (u.esfera || 'outros') === esferaFiltro);
+    // No modo escopado o ramo não é filtro, é característica do processo — e o
+    // valor guardado no localStorage é do sino global: quem deixou "Trabalhista"
+    // ligado abriria o atalho de um processo do INSS e veria lista vazia.
+    if (!escopado && esferaFiltro !== 'todas') list = list.filter((u) => (u.esfera || 'outros') === esferaFiltro);
     if (soNaoNotificadas) list = list.filter((u) => !notificadas.has(u.id));
     return list;
-  }, [updates, filtro, esferaFiltro, soNaoNotificadas, notificadas]);
+  }, [updates, filtro, escopado, esferaFiltro, soNaoNotificadas, notificadas]);
 
   // Uma vez por lista, não uma vez por item: `new Date()` dentro do filter seria
   // uma alocação por linha, e a virada do dia não precisa de precisão de ms.
@@ -350,11 +384,13 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     const acc = {} as Record<string, number>;
     // Contagem da linha de categorias respeita o ramo já escolhido — senão o
     // chip mostra 40 e a lista abre com 3.
-    const base = esferaFiltro === 'todas' ? updates : updates.filter((u) => (u.esfera || 'outros') === esferaFiltro);
+    const base = escopado || esferaFiltro === 'todas'
+      ? updates
+      : updates.filter((u) => (u.esfera || 'outros') === esferaFiltro);
     for (const u of base) acc[u.categoria] = (acc[u.categoria] || 0) + 1;
     acc.todas = base.length;
     return acc;
-  }, [updates, esferaFiltro]);
+  }, [updates, escopado, esferaFiltro]);
 
   const countByEsfera = useMemo(() => {
     const acc = {} as Record<string, number>;
@@ -603,7 +639,9 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
           notifiedByName: profile?.full_name || null,
         });
         toast.success(`Cliente notificado${pending.leadName ? ` no grupo de ${pending.leadName}` : ''}!`, {
-          action: pending.activityId
+          // Dentro da ficha não se oferece "Abrir atv": o atalho navega e jogaria
+          // a pessoa para fora da atividade que ela está preenchendo.
+          action: pending.activityId && !escopado
             ? {
                 label: 'Abrir atv',
                 onClick: () => { setOpen(false); navigate(`/?openActivity=${pending.activityId}`); },
@@ -623,6 +661,36 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
     <>
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
+        {escopado ? (
+          // Na barra da ficha o gatilho é botão com rótulo, não ícone: ali ele
+          // divide espaço com Financeiro/Grupo WA, e sino solto no meio deles não
+          // diz de qual processo está falando. O número já responde antes do
+          // clique — 0 é resposta ("nada capturado neste processo"), não erro.
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(
+              'h-7 text-xs gap-1 shrink-0',
+              unreadCount > 0 && 'text-red-600 border-red-200 hover:bg-red-50 dark:hover:bg-red-950/30',
+            )}
+            title={
+              unreadCount > 0
+                ? `${unreadCount} movimentação(ões) não lida(s) neste processo`
+                : 'Movimentações capturadas neste processo'
+            }
+          >
+            <Bell className={cn('h-3 w-3', pulsar && 'animate-bounce')} />
+            Atualizações
+            <span
+              className={cn(
+                'ml-0.5 inline-flex min-w-[16px] h-4 px-1 rounded-full items-center justify-center text-[10px] font-bold',
+                unreadCount > 0 ? 'bg-red-500 text-white' : 'bg-muted text-muted-foreground',
+              )}
+            >
+              {unreadCount > 0 ? (unreadCount > 99 ? '99+' : unreadCount) : updates.length}
+            </span>
+          </Button>
+        ) : (
         <Button
           variant="ghost"
           size="icon"
@@ -662,13 +730,23 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
             </span>
           )}
         </Button>
+        )}
       </SheetTrigger>
       <SheetContent side="right" className="w-full sm:w-[440px] sm:max-w-[440px] p-0 flex flex-col">
         <SheetHeader className="px-4 py-3 border-b space-y-0">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-base">Atualizações processuais</SheetTitle>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <SheetTitle className="text-base">
+                {escopado ? 'Atualizações deste processo' : 'Atualizações processuais'}
+              </SheetTitle>
+              {escopado && processLabel && (
+                <p className="text-[11px] text-muted-foreground truncate mt-0.5" title={processLabel}>
+                  {processLabel}
+                </p>
+              )}
+            </div>
             {unreadCount > 0 && (
-              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 mr-6" onClick={markAllRead}>
+              <Button variant="ghost" size="sm" className="h-7 text-xs gap-1 mr-6 shrink-0" onClick={markAllRead}>
                 <CheckCheck className="h-3.5 w-3.5" />
                 Marcar lidas
               </Button>
@@ -677,7 +755,7 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
         </SheetHeader>
         {/* Só aparece enquanto ninguém decidiu: concedida some, negada some
             (insistir não reabre o prompt — o navegador bloqueia). */}
-        {permissao === 'default' && (
+        {permissao === 'default' && !escopado && (
           <button
             type="button"
             onClick={async () => {
@@ -699,9 +777,13 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
         )}
         {/* Quanto da atualização já foi feita, quanto falta e quanto custou.
             Fica acima dos filtros porque a pergunta "o que ainda não chegou?" é
-            a mesma do sino pelo avesso — e fila parada não avisa sozinha. */}
-        <CapturaStatusPanel />
-        {/* Ramo da Justiça — separa o que é da equipe trabalhista do resto. */}
+            a mesma do sino pelo avesso — e fila parada não avisa sozinha.
+            Fora do modo escopado: o andamento da fila inteira não é assunto de
+            quem abriu a ficha de uma atividade. */}
+        {!escopado && <CapturaStatusPanel />}
+        {/* Ramo da Justiça — separa o que é da equipe trabalhista do resto.
+            Um processo só tem um ramo, então no escopado a linha vira ruído. */}
+        {!escopado && (
         <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0 items-center">
           <span className="text-[10px] text-muted-foreground pr-1 shrink-0">Ramo:</span>
           {(['todas', ...ESFERA_ORDER] as Array<Esfera | 'todas'>).map((e) => {
@@ -732,6 +814,7 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
             Não notificados ({naoNotificadasCount})
           </button>
         </div>
+        )}
         <div className="flex gap-1 px-2 py-1.5 border-b overflow-x-auto shrink-0">
           {FILTER_ORDER.map((cat) => {
             const active = filtro === cat;
@@ -773,13 +856,32 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
               </button>
             );
           })}
+          {/* No escopado a linha de Ramo (onde este filtro mora) não existe, e
+              "o cliente já foi avisado disto?" é justamente a pergunta de quem
+              abriu o atalho pela ficha. */}
+          {escopado && (
+            <button
+              onClick={() => setSoNaoNotificadas((v) => !v)}
+              title="Só as movimentações em que o cliente ainda não foi avisado"
+              className={cn(
+                'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors ml-auto shrink-0',
+                soNaoNotificadas ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-background hover:bg-accent',
+              )}
+            >
+              Não notificados ({naoNotificadasCount})
+            </button>
+          )}
         </div>
         <ScrollArea className="flex-1">
           {loading ? (
             <p className="text-xs text-muted-foreground text-center py-8">Carregando...</p>
           ) : filtered.length === 0 ? (
             <p className="text-xs text-muted-foreground text-center py-8">
-              Nenhuma atualização nesse período{filtro !== 'todas' ? ' e categoria' : ''}.
+              {escopado && updates.length === 0
+                // Diferença que importa na ficha: "não caiu nada" é resposta;
+                // "seu filtro escondeu" é outra conversa.
+                ? 'Nenhuma movimentação capturada neste processo ainda.'
+                : `Nenhuma atualização nesse período${filtro !== 'todas' ? ' e categoria' : ''}.`}
             </p>
           ) : (
             filtered.map((u) => (
@@ -793,6 +895,8 @@ export function ProcessUpdatesBell({ compact = false }: { compact?: boolean }) {
                 onSendGroup={handleSendGroup}
                 onMarkRead={(upd) => markRead(upd.id)}
                 sending={sendingId === u.id}
+                showOpenLead={!escopado}
+                showProcesso={!escopado}
               />
             ))
           )}

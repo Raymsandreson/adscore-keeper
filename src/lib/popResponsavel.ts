@@ -1,13 +1,25 @@
 // =============================================================================
 // Quem é o responsável por um passo do POP.
 //
-// O usuário pode designar responsável em três níveis (08/08/2026), e o mais
-// específico vence:
+// O usuário pode designar responsável em vários níveis, e o mais específico
+// vence:
 //
-//   passo → objetivo → fase → responsável processual do lead
+//   passo → objetivo → fase → responsável do lead → responsável de
+//   notificações do POP → ninguém
 //
 // Definir na FASE alcança todos os objetivos e passos dela; definir no OBJETIVO
 // alcança todos os seus passos. Quem quiser fugir da regra define no passo.
+//
+// O degrau do POP entrou em 12/08/2026, depois do responsável do lead: dos 314
+// leads que apareciam no sino, 97 não tinham responsável processual, e para
+// esses a cascata terminava em silêncio. Vem DEPOIS do lead de propósito —
+// quem cuida daquele caso é mais específico do que quem cuida do POP inteiro,
+// e inverter faria uma pessoa só receber tudo enquanto o dono certo não
+// recebia nada.
+//
+// Quem chama decide o que fazer com origem 'nenhum'. No sino, é avisar todo
+// mundo: como fundo de poço, depois de cinco degraus falharem, é melhor a
+// equipe inteira ver do que a movimentação morrer calada.
 //
 // Por que a herança em vez de preencher tudo: um POP trabalhista tem 24 fases e
 // ~200 passos. Exigir responsável passo a passo garantiria que ninguém
@@ -24,11 +36,17 @@ export interface ResponsavelNiveis {
   objetivo?: string | null;
   /** assigneeId da fase (kanban_boards.stages[].assigneeId). */
   fase?: string | null;
-  /** Último recurso: quem cuida do processo (leads.processual_responsible_id). */
+  /** Quem cuida do processo (leads.processual_responsible_id). */
   processo?: string | null;
+  /**
+   * Último recurso nomeado: quem recebe as notificações dos processos deste POP
+   * (kanban_boards.notificacoes_assignee_id). Só entra quando nem o lead tem
+   * responsável — é o que evita que a movimentação fique sem destinatário.
+   */
+  pop?: string | null;
 }
 
-export type OrigemResponsavel = 'passo' | 'objetivo' | 'fase' | 'processo' | 'nenhum';
+export type OrigemResponsavel = 'passo' | 'objetivo' | 'fase' | 'processo' | 'pop' | 'nenhum';
 
 export interface ResponsavelResolvido {
   assigneeId: string | null;
@@ -60,6 +78,9 @@ export function resolverResponsavel(niveis: ResponsavelNiveis): ResponsavelResol
   const processo = limpo(niveis.processo);
   if (processo) return { assigneeId: processo, origem: 'processo' };
 
+  const pop = limpo(niveis.pop);
+  if (pop) return { assigneeId: pop, origem: 'pop' };
+
   return { assigneeId: null, origem: 'nenhum' };
 }
 
@@ -68,5 +89,6 @@ export const ORIGEM_LABEL: Record<OrigemResponsavel, string> = {
   objetivo: 'herdado do objetivo',
   fase: 'herdado da fase',
   processo: 'responsável do processo',
+  pop: 'responsável de notificações do POP',
   nenhum: 'sem responsável',
 };

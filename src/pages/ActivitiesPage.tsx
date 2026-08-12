@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToCloud, remapToCloudSync, remapToExternal, remapToExternalSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useLeadActivities, LeadActivity } from '@/hooks/useLeadActivities';
+import { useEstimateSuggestion } from '@/hooks/useActivityTimeEstimate';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
@@ -21,6 +22,7 @@ import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { AIFieldMergeDialog } from '@/components/activities/AIFieldMergeDialog';
 import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
+import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
 import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
@@ -86,6 +88,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
+import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -215,6 +218,8 @@ const ActivitiesPage = () => {
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const { fields: fieldSettings, updateField: updateFieldSetting, reorderFields } = useActivityFieldSettings();
   const { getTemplateForContext } = useActivityMessageTemplates();
+  // Previsão sugerida por tipo (mediana real das execuções cronometradas).
+  const { ready: estimateReady, suggestFor: suggestEstimateFor, samplesFor: estimateSamplesFor } = useEstimateSuggestion();
 
   const [filterStatus, setFilterStatus] = usePageState<string[]>('activities_filterStatus', []);
   const [filterType, setFilterType] = usePageState<string[]>('activities_filterType', []);
@@ -331,6 +336,23 @@ const ActivitiesPage = () => {
   const [formRespostaJuizo, setFormRespostaJuizo] = useState('');
   const [formType, setFormType] = useState('');
   const [formPriority, setFormPriority] = useState('normal');
+  // Previsão de tempo (min) da atividade. `estimateTouchedRef` separa "o assessor
+  // escolheu" de "veio da sugestão por tipo" — só re-sugere enquanto ninguém mexeu.
+  const [formEstimatedMinutes, setFormEstimatedMinutesState] = useState<number | null>(null);
+  const estimateTouchedRef = useRef(false);
+  const setFormEstimatedMinutes = useCallback((v: number | null) => {
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState(v);
+  }, []);
+  // Criação: sugere a previsão pelo tipo escolhido enquanto o assessor não mexer
+  // no campo. Trocar o tipo re-sugere; escolher um valor congela a escolha.
+  // A flag de criação é o `sheetMode` — `resetForm()` NÃO limpa `selectedActivity`,
+  // então quem abriu uma atividade antes e clicou em "Nova" continuava com a
+  // atividade anterior na mão e a sugestão nunca rodava (ficava "Sem previsão").
+  useEffect(() => {
+    if (sheetMode !== 'create' || !estimateReady || estimateTouchedRef.current) return;
+    setFormEstimatedMinutesState(suggestEstimateFor(formType));
+  }, [sheetMode, estimateReady, formType, suggestEstimateFor]);
   const [formLeadId, setFormLeadId] = useState<string>('');
   const [formLeadName, setFormLeadName] = useState('');
   const [formClientNameOverride, setFormClientNameOverride] = useState('');
@@ -348,6 +370,7 @@ const ActivitiesPage = () => {
   // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
   const initialResponsiblesRef = useRef<string[]>([]);
   const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
+  const { ask: askEstimate, dialog: estimateConfirmDialog } = useEstimateConfirmPrompt();
   // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
   const [formFeedback, setFormFeedback] = useState('');
   // Próxima atividade sugerida pela IA na "Revisar com IA" (popup de confirmação).
@@ -833,6 +856,9 @@ const ActivitiesPage = () => {
     setFormRespostaJuizo('');
     setFormType(timeBlockSettings.length > 0 ? timeBlockSettings[0].activityType : '');
     setFormPriority('normal');
+    // Nova atividade volta a aceitar a previsão sugerida pelo tipo.
+    estimateTouchedRef.current = false;
+    setFormEstimatedMinutesState(null);
     setFormLeadId('');
     setFormLeadName('');
     setFormClientNameOverride('');
@@ -1145,6 +1171,17 @@ const ActivitiesPage = () => {
     }
     const groupId = responsibles.length > 1 ? crypto.randomUUID() : null;
 
+    // Confirmação da previsão antes de criar: a sugestão acerta o caso comum,
+    // mas quem executa é quem sabe se ESTA atividade foge da média. Sem a parada,
+    // o número viraria enfeite e o gasto x previsto perderia sentido.
+    const estimateChoice = await askEstimate({
+      current: formEstimatedMinutes,
+      typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
+      samples: estimateSamplesFor(formType),
+    });
+    if (!estimateChoice.confirmed) return; // voltou pro formulário
+    setFormEstimatedMinutesState(estimateChoice.minutes);
+
     const baseData = {
       title: titleToUse,
       description: null,
@@ -1155,6 +1192,9 @@ const ActivitiesPage = () => {
       resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
+      // Do diálogo, não do state: setState é assíncrono e o payload sairia com
+      // o valor anterior.
+      estimated_minutes: estimateChoice.minutes,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
       notes: formNotes || null,
@@ -1348,6 +1388,8 @@ const ActivitiesPage = () => {
         activity_type: activity.activity_type,
         title: activity.title,
         lead_name: activity.lead_name,
+        // Previsão da atividade vira a previsão da sessão (gatilho de urgência).
+        estimated_minutes: (activity as any).estimated_minutes ?? null,
       });
     }
     // Auto-mic: abre o "Preenchimento por Áudio" já gravando a narração. Ao parar, a IA
@@ -1371,6 +1413,10 @@ const ActivitiesPage = () => {
     setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
+    // Atividade existente traz a previsão gravada (ou fica sem — não inventamos
+    // meta retroativa em cima do que já foi planejado).
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState((activity as any).estimated_minutes ?? null);
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
@@ -1590,6 +1636,20 @@ const ActivitiesPage = () => {
       }
     }
 
+    // Atividade sem previsão (nasceu antes deste campo) pergunta ao salvar. Com
+    // previsão já definida, salvar não vira interrogatório — o campo está na tela.
+    let estimateToSave = formEstimatedMinutes ?? null;
+    if (estimateToSave == null) {
+      const choice = await askEstimate({
+        current: null,
+        typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
+        samples: estimateSamplesFor(formType),
+      });
+      if (!choice.confirmed) return;
+      estimateToSave = choice.minutes;
+      setFormEstimatedMinutesState(choice.minutes);
+    }
+
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
@@ -1600,6 +1660,7 @@ const ActivitiesPage = () => {
       resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
+      estimated_minutes: estimateToSave,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
       assigned_to: formAssignedTo || null,
@@ -2054,6 +2115,8 @@ const ActivitiesPage = () => {
         activity_type: activity.activity_type,
         title: activity.title,
         lead_name: activity.lead_name,
+        // Previsão da atividade vira a previsão da sessão (gatilho de urgência).
+        estimated_minutes: (activity as any).estimated_minutes ?? null,
       });
     }
     setSelectedActivity(activity);
@@ -2065,6 +2128,10 @@ const ActivitiesPage = () => {
     setFormRespostaJuizo((activity as any).resposta_juizo || '');
     setFormType(activity.activity_type);
     setFormPriority(activity.priority || 'normal');
+    // Atividade existente traz a previsão gravada (ou fica sem — não inventamos
+    // meta retroativa em cima do que já foi planejado).
+    estimateTouchedRef.current = true;
+    setFormEstimatedMinutesState((activity as any).estimated_minutes ?? null);
     setFormLeadId(activity.lead_id || '');
     setFormIsSystem(!!(activity as any).is_system);
     setFormIsManagement(!!(activity as any).is_management);
@@ -2163,7 +2230,8 @@ const ActivitiesPage = () => {
       title: formTitle, what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null, next_steps: formNextSteps || null,
       solicitacao: formSolicitacao || null, resposta_juizo: formRespostaJuizo || null,
-      activity_type: formType, priority: formPriority, lead_id: formLeadId || null,
+      activity_type: formType, priority: formPriority,
+      estimated_minutes: formEstimatedMinutes ?? null, lead_id: formLeadId || null,
       lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
       notification_date: formNotificationDate || null, notes: formNotes || null,
@@ -3044,6 +3112,13 @@ const ActivitiesPage = () => {
       formType={formType} setFormType={setFormType}
       formStatus={formStatus} setFormStatus={setFormStatus}
       formPriority={formPriority} setFormPriority={setFormPriority}
+      formEstimatedMinutes={formEstimatedMinutes} setFormEstimatedMinutes={setFormEstimatedMinutes}
+      spentSeconds={Math.max(
+        activityTotalSecs,
+        runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
+          ? runningTimer.activeSeconds : 0,
+      )}
+      estimateSamples={sheetMode === 'create' ? estimateSamplesFor(formType) : 0}
       formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
       formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
       formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
@@ -3396,6 +3471,15 @@ const ActivitiesPage = () => {
                     >
                       <FileText className="h-3 w-3" /> Processo
                     </Button>
+                  )}
+                  {formProcessId && (
+                    <ProcessUpdatesBell
+                      processId={formProcessId}
+                      processLabel={displayProcessLabel(
+                        caseProcesses.find(p => p.id === formProcessId) || linkedProcess,
+                        formProcessTitle,
+                      ) || null}
+                    />
                   )}
                   {formLeadId && (() => {
                     const hasGroup = !!leadPreview?.whatsapp_group_id;
@@ -5442,6 +5526,20 @@ const ActivitiesPage = () => {
                     }}
                   />
 
+                  {/* Movimentações DESTE processo, sem passar pelo sino global e
+                      sem sair da ficha: o sino carrega as 100 mais recentes de
+                      todo mundo, então o processo desta atividade pode nem estar
+                      lá. Mesmo painel, mesmo Criar atv / Notificar. */}
+                  {formProcessId && (
+                    <ProcessUpdatesBell
+                      processId={formProcessId}
+                      processLabel={displayProcessLabel(
+                        caseProcesses.find(p => p.id === formProcessId) || linkedProcess,
+                        formProcessTitle,
+                      ) || null}
+                    />
+                  )}
+
                   {formLeadId && (() => {
                     const hasGroup = !!leadPreview?.whatsapp_group_id;
                     const hasPhone = !!leadPreview?.lead_phone;
@@ -6399,6 +6497,7 @@ const ActivitiesPage = () => {
         }}
       />
       {keepAsObserverDialog}
+      {estimateConfirmDialog}
     </div>
   );
 };

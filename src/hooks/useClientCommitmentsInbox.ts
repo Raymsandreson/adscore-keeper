@@ -20,8 +20,20 @@ const SELECT = `id, lead_id, process_id, contact_id, phone, instance_name, title
   reminder_count, done_at, done_by_name, created_by_name, created_at, origin, ai_confidence,
   owner_user_id, lead_name, activity_id, converted_at, assigned_to`;
 
-/** Teto de linhas: a caixa é operacional, não relatório histórico. */
-const LIMITE = 500;
+/**
+ * Tamanho da página de leitura. A caixa lê TODAS as pendências em aberto, em
+ * páginas, porque teto fixo escondia pendência real: com `limit(500)` ordenado
+ * por `due_date` (nulos no fim), as 462 sem prazo de 12/08/2026 disputavam 271
+ * vagas — 191 nunca chegavam à tela, e quem tinha só uma delas via "nenhuma
+ * pendência" enquanto o telão (que lê a mesma view sem teto) cobrava o número.
+ */
+const PAGINA = 1000;
+
+/**
+ * Trava de segurança: se o backlog explodir, a caixa para de crescer em vez de
+ * travar o navegador. Hoje são ~700 abertas.
+ */
+const TETO = 5000;
 
 export function useClientCommitmentsInbox({ enabled = true }: { enabled?: boolean } = {}) {
   const { user, profile } = useAuthContext();
@@ -39,14 +51,23 @@ export function useClientCommitmentsInbox({ enabled = true }: { enabled?: boolea
     if (!enabled) return;
     setLoading(true);
     try {
-      const { data, error } = await (db as any)
-        .from('vw_client_commitments_owner')
-        .select(SELECT)
-        .in('status', ['combinado', 'cobrado'])
-        .order('due_date', { ascending: true, nullsFirst: false })
-        .limit(LIMITE);
-      if (error) throw error;
-      setItems((data as InboxCommitment[]) || []);
+      // Ordem por `created_at` só para paginar de forma estável — quem ordena o
+      // que aparece na tela é `commitmentDate` (prazo, ou o dia em que foi
+      // combinada), do lado do cliente.
+      const todas: InboxCommitment[] = [];
+      for (let inicio = 0; inicio < TETO; inicio += PAGINA) {
+        const { data, error } = await (db as any)
+          .from('vw_client_commitments_owner')
+          .select(SELECT)
+          .in('status', ['combinado', 'cobrado'])
+          .order('created_at', { ascending: true })
+          .range(inicio, inicio + PAGINA - 1);
+        if (error) throw error;
+        const pagina = (data as InboxCommitment[]) || [];
+        todas.push(...pagina);
+        if (pagina.length < PAGINA) break;
+      }
+      setItems(todas);
     } catch {
       console.warn('[useClientCommitmentsInbox] falha ao carregar a caixa de pendências');
       setItems([]);

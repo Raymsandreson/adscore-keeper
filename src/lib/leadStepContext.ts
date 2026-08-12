@@ -59,7 +59,8 @@ export async function fetchLeadSteps(
   if (!leadId || !boardId) return VAZIO;
 
   const [boardRes, instancesRes, leadRes, linksRes] = await Promise.all([
-    db.from('kanban_boards').select('stages').eq('id', boardId).maybeSingle(),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (db as any).from('kanban_boards').select('stages, notificacoes_assignee_id').eq('id', boardId).maybeSingle(),
     db
       .from('lead_checklist_instances')
       .select('items, checklist_template_id, stage_id, id')
@@ -77,8 +78,13 @@ export async function fetchLeadSteps(
       .eq('board_id', boardId),
   ]);
 
-  const stages = (boardRes.data as
-    { stages?: Array<{ id: string; name: string; assigneeId?: string | null }> } | null)?.stages || [];
+  const board = boardRes.data as {
+    stages?: Array<{ id: string; name: string; assigneeId?: string | null }>;
+    notificacoes_assignee_id?: string | null;
+  } | null;
+  const stages = board?.stages || [];
+  // Último degrau nomeado da cascata: quem recebe as notificações deste POP.
+  const responsavelDoPop = board?.notificacoes_assignee_id || null;
   const stageNameById: Record<string, string> = {};
   const stageAssigneeById: Record<string, string | null> = {};
   stages.forEach((s) => {
@@ -119,6 +125,7 @@ export async function fetchLeadSteps(
         objetivo: objetivoAssignee[`${inst.stage_id}|${inst.checklist_template_id}`],
         fase: stageAssigneeById[inst.stage_id],
         processo: responsavelDoProcesso,
+        pop: responsavelDoPop,
       });
       steps.push({
         stepId: it.id,
@@ -161,14 +168,23 @@ export interface PassoAberto {
  * o passo que o sino usa para avisar tem que ser o mesmo que a ficha mostra;
  * duas definições de "passo atual" seriam duas verdades.
  *
- * Devolve null quando o processo não tem POP — aí não há passo, e quem chama
- * não deve inventar dono.
+ * SEM PASSO NÃO SIGNIFICA SEM DONO. Processo sem POP, ou com POP mas sem
+ * checklist instanciado, ainda tem os dois últimos degraus: o responsável do
+ * lead e o responsável de notificações do POP. Devolver null aqui deixaria
+ * justamente esses casos — que são a maioria hoje — fora do aviso, e o degrau
+ * do POP nunca alcançaria quem ele foi criado para atender.
+ *
+ * Nunca devolve null: sem ninguém em degrau algum, volta origem 'nenhum', e
+ * quem chama decide (no sino, é avisar todo mundo).
  */
 export async function responsavelDoPassoAberto(
   processId: string | null | undefined,
   leadId: string | null | undefined,
-): Promise<PassoAberto | null> {
-  if (!leadId) return null;
+): Promise<PassoAberto> {
+  const SEM_NINGUEM: PassoAberto = {
+    assigneeId: null, origem: 'nenhum', stepLabel: null, phaseLabel: null,
+  };
+  if (!leadId) return SEM_NINGUEM;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const client = db as any;
@@ -176,20 +192,37 @@ export async function responsavelDoPassoAberto(
     processId
       ? client.from('lead_processes').select('workflow_id').eq('id', processId).maybeSingle()
       : Promise.resolve({ data: null }),
-    client.from('leads').select('board_id').eq('id', leadId).maybeSingle(),
+    client.from('leads').select('board_id, processual_responsible_id').eq('id', leadId).maybeSingle(),
   ]);
 
+  const responsavelDoProcesso = leadRes?.data?.processual_responsible_id || null;
   const boardId = procRes?.data?.workflow_id || leadRes?.data?.board_id || null;
-  if (!boardId) return null;
 
-  const { steps, defaultStepId } = await fetchLeadSteps(leadId, boardId);
-  const passo = steps.find((s) => s.stepId === defaultStepId);
-  if (!passo) return null;
+  if (boardId) {
+    const { steps, defaultStepId } = await fetchLeadSteps(leadId, boardId);
+    const passo = steps.find((s) => s.stepId === defaultStepId);
+    if (passo) {
+      return {
+        assigneeId: passo.assigneeId,
+        origem: passo.assigneeOrigem,
+        stepLabel: passo.stepLabel,
+        phaseLabel: passo.phaseLabel,
+      };
+    }
+  }
 
-  return {
-    assigneeId: passo.assigneeId,
-    origem: passo.assigneeOrigem,
-    stepLabel: passo.stepLabel,
-    phaseLabel: passo.phaseLabel,
-  };
+  // Sem passo: sobram os dois últimos degraus. O do POP só é lido quando há
+  // board — sem board não existe POP de onde tirar responsável.
+  let responsavelDoPop: string | null = null;
+  if (boardId) {
+    const { data } = await client
+      .from('kanban_boards').select('notificacoes_assignee_id').eq('id', boardId).maybeSingle();
+    responsavelDoPop = data?.notificacoes_assignee_id || null;
+  }
+
+  const { assigneeId, origem } = resolverResponsavel({
+    processo: responsavelDoProcesso,
+    pop: responsavelDoPop,
+  });
+  return { assigneeId, origem, stepLabel: null, phaseLabel: null };
 }
