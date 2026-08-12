@@ -211,6 +211,31 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 
 ---
 
+## Conexão com o Gmail — caixas, leitura e envio
+
+**Como funciona**: não há OAuth próprio. Tudo passa pelo gateway de conectores do Lovable (`connector-gateway.lovable.dev/google_mail/gmail/v1`), autenticado com `LOVABLE_API_KEY` + uma `X-Connection-Api-Key` por caixa. Cada connection key equivale a uma conta Google autorizada.
+
+**As caixas** vêm de env vars no Railway, e o rótulo sai do índice da env (numeração herdada, não mexer — as allowlists em produção já falam nesses termos):
+
+| env | label |
+|---|---|
+| `GOOGLE_MAIL_API_KEY` | `inbox#1` |
+| `GOOGLE_MAIL_API_KEY_1` | `inbox#2` |
+| `GOOGLE_MAIL_API_KEY_2` | `inbox#3` |
+| `GOOGLE_MAIL_API_KEY_3` | `inbox#4` |
+
+Quem lê o quê é decidido por allowlist: `PROCESSUAL_INBOXES` (caixa processual) e `INSS_INBOXES` (caixa adm; vazia = todas). O mapeamento único fica em `railway-server/src/lib/gmail-inboxes.ts` — antes estava copiado em cada função e divergia.
+
+**Diagnóstico** — `POST /functions/gmail-status` (corpo `{}`; `{"probe_send": false}` pula o teste de envio). Responde, caixa por caixa: qual endereço é (mascarado), quantas mensagens tem, se **lê** e se **pode enviar**; e mostra qual caixa o `send-email` usaria para `judicial` e para `administrativo`, com a origem da decisão. É a ferramenta para responder "o Gmail está conectado?" sem adivinhar env var.
+
+O teste de envio **não manda e-mail**: faz `POST /messages/send` com um envelope sem destinatário. `400` = tem escopo de envio (o Gmail recusou o envelope); `403` = a conexão foi autorizada só para leitura e precisa ser reautorizada incluindo `gmail.send`.
+
+**Envio** — `POST /functions/send-email` `{ to, subject, html|text, process_type }`. O remetente é a conta da connection key, então `process_type` decide a caixa: `judicial` → processual, `administrativo` → adm. Até 12/08/2026 o judicial estava hardcodado em `GOOGLE_MAIL_API_KEY_3` (= `inbox#4`, inexistente — as caixas configuradas são `inbox#1..#3`), e todo envio judicial morria em "connection key não configurada". Hoje deriva de `PROCESSUAL_INBOXES`/`INSS_INBOXES`, com override opcional por `COBRANCA_GMAIL_KEY_JUDICIAL`/`COBRANCA_GMAIL_KEY_ADMIN`. Não há tela de envio: o único chamador é o `inss-report`.
+
+**Lição registrada** (migration `20260812010000`): `net.http_post` sem ler `net._http_response` falha em silêncio — foi assim que uma URL errada do Railway deixou a caixa processual parada por dias sem alerta nenhum.
+
+---
+
 ## Controle Processual — `/process-tracking`
 
 **Propósito**: planilha editável de acompanhamento de processos trabalhistas e previdenciários, com importação por CSV, Google Sheets e PDF (extração por IA). Abas "Trabalhista" e "Previdenciário" (por prefixo do caso: CASO/PREV).

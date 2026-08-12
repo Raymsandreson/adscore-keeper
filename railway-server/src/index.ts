@@ -65,6 +65,7 @@ import { handler as autoLinkInssByName } from './functions/auto-link-inss-by-nam
 import { handler as bulkLinkInssByCpf } from './functions/bulk-link-inss-by-cpf';
 import { handler as matchOrphansForLead } from './functions/match-orphans-for-lead';
 import { handler as gmailProcessualSync } from './functions/gmail-processual-sync';
+import { handler as gmailStatus } from './functions/gmail-status';
 
 import { handler as getWhatsappGroupInfo } from './functions/get-whatsapp-group-info';
 import { handler as scanDuplicateContacts } from './functions/scan-duplicate-contacts';
@@ -140,6 +141,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'bulk-link-inss-by-cpf': bulkLinkInssByCpf,
   'match-orphans-for-lead': matchOrphansForLead,
   'gmail-processual-sync': gmailProcessualSync,
+  'gmail-status': gmailStatus,
 
   'get-whatsapp-group-info': getWhatsappGroupInfo,
   'scan-duplicate-contacts': scanDuplicateContacts,

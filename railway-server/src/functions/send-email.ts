@@ -1,8 +1,14 @@
 // Envio de e-mail pela API do Gmail, via gateway de conectores do Lovable
 // (mesmo gateway usado pelos syncs gmail-*). O e-mail sai DA conta autenticada
 // pela connection key — então a escolha da key define o remetente real:
-//   - judicial      → caixa processual (GOOGLE_MAIL_API_KEY_3 por padrão)
-//   - administrativo → caixa adm/INSS  (GOOGLE_MAIL_API_KEY  por padrão)
+//   - judicial       → caixa processual (a mesma que o gmail-processual-sync lê)
+//   - administrativo → caixa adm/INSS
+//
+// Qual caixa é qual sai de resolveSenderInbox (lib/gmail-inboxes), que deriva
+// das allowlists de leitura. Antes isso era hardcodado aqui como
+// GOOGLE_MAIL_API_KEY_3 para o judicial — que é a inbox#4, inexistente: as
+// caixas configuradas são inbox#1..#3 e a processual é a inbox#3. O envio
+// judicial falhava sempre com "connection key não configurada".
 //
 // Body: { to: string|string[], subject: string, html?: string, text?: string,
 //         process_type?: 'judicial'|'administrativo', from?: string, reply_to?: string }
@@ -11,24 +17,11 @@
 // Requisitos no Railway: LOVABLE_API_KEY + as connection keys do Gmail.
 // IMPORTANTE: a conexão do Gmail precisa ter ESCOPO DE ENVIO (gmail.send/compose).
 // Se foi autorizada só para leitura, o gateway retorna 403 e o envio falha.
+// /functions/gmail-status diz, caixa por caixa, se o escopo está lá.
 import type { RequestHandler } from 'express';
+import { resolveSenderInbox } from '../lib/gmail-inboxes';
 
 const GATEWAY_BASE = 'https://connector-gateway.lovable.dev/google_mail/gmail/v1';
-
-// Connection key por tipo de processo (sobrescrevível por env dedicada).
-function connectionKeyFor(processType?: string): { key: string; label: string } {
-  const isAdmin = (processType || '').toLowerCase() === 'administrativo';
-  if (isAdmin) {
-    return {
-      key: process.env.COBRANCA_GMAIL_KEY_ADMIN || process.env.GOOGLE_MAIL_API_KEY || '',
-      label: 'adm',
-    };
-  }
-  return {
-    key: process.env.COBRANCA_GMAIL_KEY_JUDICIAL || process.env.GOOGLE_MAIL_API_KEY_3 || '',
-    label: 'processual',
-  };
-}
 
 function encodeSubject(subject: string): string {
   // RFC 2047 — assunto com acentos.
@@ -75,8 +68,8 @@ export const handler: RequestHandler = async (req, res) => {
     const lovable = process.env.LOVABLE_API_KEY;
     if (!lovable) return ok({ success: false, error: 'LOVABLE_API_KEY não configurada no servidor' });
 
-    const { key, label } = connectionKeyFor(process_type);
-    if (!key) return ok({ success: false, error: `connection key do Gmail (${label}) não configurada` });
+    const { inbox, origem, erro } = resolveSenderInbox(process_type);
+    if (!inbox) return ok({ success: false, error: erro || 'caixa remetente do Gmail não resolvida' });
 
     const bodyHtml = html || `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;font-size:14px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(text || '').replace(/\n/g, '<br>')}</div>`;
 
@@ -88,7 +81,7 @@ export const handler: RequestHandler = async (req, res) => {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${lovable}`,
-        'X-Connection-Api-Key': key,
+        'X-Connection-Api-Key': inbox.key,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ raw }),
@@ -96,13 +89,21 @@ export const handler: RequestHandler = async (req, res) => {
 
     const respText = await r.text();
     if (!r.ok) {
-      console.error('[send-email] Gmail gateway error:', r.status, respText.slice(0, 400));
-      return ok({ success: false, error: `Gmail gateway ${r.status}: ${respText.slice(0, 300)}` });
+      console.error('[send-email] Gmail gateway error:', r.status, inbox.label, respText.slice(0, 400));
+      const dica = r.status === 403
+        ? ' — 403 costuma ser falta de escopo de envio na conexão; confira em /functions/gmail-status.'
+        : '';
+      return ok({
+        success: false,
+        error: `Gmail gateway ${r.status}: ${respText.slice(0, 300)}${dica}`,
+        inbox: inbox.label,
+        origem,
+      });
     }
 
     let id: string | undefined;
     try { id = JSON.parse(respText)?.id; } catch { /* sem id no corpo */ }
-    return ok({ success: true, id });
+    return ok({ success: true, id, inbox: inbox.label, origem });
   } catch (e: any) {
     console.error('[send-email] error:', e);
     return ok({ success: false, error: e?.message || String(e) });
