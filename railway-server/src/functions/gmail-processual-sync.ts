@@ -157,7 +157,9 @@ export const handler: RequestHandler = async (req, res) => {
 
     const perInbox: Record<string, any> = {};
     let totalChecked = 0, totalInserted = 0, totalSkipped = 0, totalExisting = 0;
-    let checkedThisCall = 0;
+    // E-mails efetivamente BAIXADOS nesta chamada (format=full). É o custo real
+    // e o que limita a rodada; listar id é barato e não entra na conta.
+    let fetchedThisCall = 0;
     let outCursor: ProcessualCursor | null = null;
     let oldestSeen: string | null = null;
     let newestSeen: string | null = null;
@@ -181,7 +183,7 @@ export const handler: RequestHandler = async (req, res) => {
 
       try {
         while (true) {
-          if (checkedThisCall >= maxMessages) {
+          if (fetchedThisCall >= maxMessages) {
             outCursor = { inbox: inbox.label, page_token: pageToken || null };
             break inboxLoop;
           }
@@ -209,9 +211,23 @@ export const handler: RequestHandler = async (req, res) => {
 
             ir.checked += items.length;
             totalChecked += items.length;
-            checkedThisCall += items.length;
 
             for (const it of toProcess) {
+              // Orçamento conta e-mail BAIXADO, não e-mail listado.
+              //
+              // Contando listados, uma caixa com 7 dias de historico (175-350
+              // mensagens, todas ja no banco) queimava os 100 da rodada sem
+              // baixar nada e a caixa seguinte nunca era alcancada. Foi o que
+              // manteve a inbox#4 muda de 29/07 a 09/08/2026: toda hora o cron
+              // relia as mesmas 100 da primeira caixa (existing=100,
+              // inserted=0) e parava ali. Listar e barato (1 request por 100
+              // ids); baixar com format=full e que custa.
+              if (fetchedThisCall >= maxMessages) {
+                // Token que PRODUZIU esta pagina: retomar aqui reprocessa a
+                // pagina inteira, e o filtro de ja-existentes torna isso idempotente.
+                outCursor = { inbox: inbox.label, page_token: pageToken || null };
+                break inboxLoop;
+              }
               try {
                 const msg = await gmailFetch<GmailMessage>(
                   `/users/me/messages/${it.id}`, inbox.key, { format: 'full' },
@@ -242,17 +258,16 @@ export const handler: RequestHandler = async (req, res) => {
                 ir.errors.push(`${it.id}: ${e?.message || String(e)}`);
                 totalSkipped++; ir.skipped++;
               }
+              fetchedThisCall++;
             }
           }
 
           pageToken = nextToken;
           if (!pageToken) break; // fim desta inbox
-          // Em sync normal (não backfill) sem cursor, paginar até esgotar a janela;
-          // em backfill, continua a paginar até esgotar orçamento.
-          if (!backfill && checkedThisCall >= maxMessages) {
-            outCursor = { inbox: inbox.label, page_token: pageToken };
-            break inboxLoop;
-          }
+          // Pagina até o fim da janela. Quem interrompe a rodada agora é o
+          // orçamento de baixados, lá em cima — reler páginas de e-mail que já
+          // está no banco não custa quase nada e é o que garante que TODAS as
+          // caixas sejam visitadas na mesma rodada.
         }
       } catch (e: any) {
         ir.errors.push(`list: ${e?.message || String(e)}`);

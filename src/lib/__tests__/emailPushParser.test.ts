@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 // O parser vive na pasta da edge (é lá que roda), mas é módulo puro — sem API
 // do Deno — então o teste importa direto e existe UMA implementação só.
-import { parseEmailPush, soDigitos } from '../../../supabase/functions/_shared/emailPushParser';
+import { parseEmailPush, soDigitos, extrairEventosInline, resumirEventos } from '../../../supabase/functions/_shared/emailPushParser';
 
 /**
  * Os corpos abaixo são recortes FIÉIS de e-mails da caixa processual@ em
@@ -92,6 +92,77 @@ describe('parseEmailPush — PJe push', () => {
   it('não confunde cabeçalho de tabela com movimentação', () => {
     const movs = parseEmailPush({ assunto: '', corpo: PJE_TJPI });
     expect(movs.map((m) => m.texto)).not.toContain('Data - Movimento');
+  });
+});
+
+/**
+ * Corpo do TST recebido em 11/08/2026 (gmail_message_id 19fef52b19d31329),
+ * copiado do banco: bloco "Eventos:" em LINHA CORRIDA, sem tabela nenhuma.
+ * É o layout de 804 dos 4.203 e-mails da caixa.
+ */
+const TST_INLINE = `Tribunal Superior do Trabalho Número do Processo: 0016855-58.2023.5.16.0008 `
+  + `Classe Judicial: RECURSO DE REVISTA COM AGRAVO Eventos: Data Evento `
+  + `06/08/2026 00:14 Decorrido o prazo de CGB ENERGIA LTDA em 05/08/2026 `
+  + `05/08/2026 00:26 Documento sigiloso 05/08/2026 00:26 Documento sigiloso `
+  + `Para acessar este processo na consulta pública, clique em https://pje.tst.jus.br/consultaprocessual . `
+  + `ATENÇÃO: este e-mail é gerado de forma automatizada, por gentileza, não o responda.`;
+
+const TRT16_INLINE = `Número do Processo: 0016320-73.2016.5.16.0009 Eventos: Data Evento `
+  + `11/08/2026 17:08 Expedido(a) intima&ccedil;&atilde;o a(o) EDIVANDRO DA SILVA BRANDAO `
+  + `11/08/2026 17:08 Documento sigiloso `
+  + `11/08/2026 17:07 https://pje.trt16.jus.br/consultaprocessual/detalhe-processo/0016320-73.2016.5.16.0009/1#b105d6f Despacho - Despacho `
+  + `Para acessar este processo na consulta pública, clique em https://pje.trt16.jus.br/consultaprocessual .`;
+
+describe('parseEmailPush — bloco "Eventos:" em linha corrida', () => {
+  it('extrai os 3 eventos do push do TST e devolve UMA movimentação com eles junto', () => {
+    const movs = parseEmailPush({
+      assunto: '[TST] [PUSH] Atualizações de Informações Processuais do Processo 0016855-58.2023.5.16.0008',
+      corpo: TST_INLINE,
+    });
+    expect(movs).toHaveLength(1);
+    expect(movs[0].cnj).toBe('0016855-58.2023.5.16.0008');
+    // Data do evento mais recente, não a do primeiro que aparece no corpo.
+    expect(movs[0].data).toBe('2026-08-06');
+    expect(movs[0].eventos).toHaveLength(3);
+    expect(movs[0].eventos?.[0]).toMatchObject({
+      data: '2026-08-06', hora: '00:14',
+      texto: 'Decorrido o prazo de CGB ENERGIA LTDA em 05/08/2026',
+    });
+  });
+
+  it('o título é o evento que diz algo, não "Documento sigiloso"', () => {
+    const movs = parseEmailPush({ assunto: '', corpo: TST_INLINE });
+    expect(movs[0].titulo).toBe('Decorrido o prazo de CGB ENERGIA LTDA em 05/08/2026');
+    expect(movs[0].texto).toBe('Decorrido o prazo de CGB ENERGIA LTDA em 05/08/2026 · Documento sigiloso (2x)');
+  });
+
+  it('decodifica as entidades HTML e tira o link cru colado no evento', () => {
+    const movs = parseEmailPush({ assunto: '', corpo: TRT16_INLINE });
+    const textos = movs[0].eventos?.map((e) => e.texto) || [];
+    expect(textos[0]).toBe('Expedido(a) intimação a(o) EDIVANDRO DA SILVA BRANDAO');
+    expect(textos[2]).toBe('Despacho - Despacho');
+    expect(movs[0].texto).not.toContain('https://');
+  });
+
+  it('não engole o rodapé do tribunal como se fosse evento', () => {
+    const eventos = extrairEventosInline(TST_INLINE);
+    expect(eventos.every((e) => !/consulta p[úu]blica|ATEN/i.test(e.texto))).toBe(true);
+  });
+
+  it('a tabela tem precedência: e-mail com "Eventos:" E tabela segue granular', () => {
+    const movs = parseEmailPush({ assunto: '[TRT10] [PUSH] Atualizações', corpo: TRT10 });
+    expect(movs).toHaveLength(3);
+    expect(movs[0].eventos).toBeUndefined();
+  });
+
+  it('resumo sem repetir o mesmo evento e com contagem', () => {
+    const { titulo, resumo } = resumirEventos([
+      { data: '2026-08-11', hora: '10:00', texto: 'Documento sigiloso' },
+      { data: '2026-08-11', hora: '10:01', texto: 'Documento sigiloso' },
+      { data: '2026-08-11', hora: '10:02', texto: 'Juntada a petição de Manifestação' },
+    ]);
+    expect(titulo).toBe('Juntada a petição de Manifestação');
+    expect(resumo).toBe('Juntada a petição de Manifestação · Documento sigiloso (2x)');
   });
 });
 

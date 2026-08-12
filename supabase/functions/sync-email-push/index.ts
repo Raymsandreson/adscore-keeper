@@ -26,7 +26,9 @@
 //
 // O QUE ESTA FUNÇÃO FAZ, NESTA ORDEM:
 //   1. pega os e-mails ainda não processados (vw_email_push_pendentes);
-//   2. extrai as movimentações (emailPushParser: PJe, EPROC e e-SAJ);
+//   2. extrai as movimentações (emailPushParser: PJe em tabela, PJe com bloco
+//      "Eventos:" em linha corrida — que vira UMA linha com os eventos junto —,
+//      EPROC e e-SAJ);
 //   3. casa o CNJ com lead_processes e grava no feed do sino (process_updates)
 //      — de graça e na hora, sem depender de nenhuma API paga;
 //   4. reabre no Escavador só os processos com push RECENTE, para vir o
@@ -210,6 +212,14 @@ serve(async (req) => {
           poloPassivo: proc.polo_passivo,
         });
 
+        // Push agrupado (bloco "Eventos:"): o e-mail inteiro é UMA movimentação
+        // com os eventos junto. Aí o título deixa de ser o rótulo genérico da
+        // categoria ("Movimentação") e passa a ser o evento que diz alguma
+        // coisa — é o que a equipe lê antes de abrir o card.
+        const agrupado = doProcesso.length === 1 && (doProcesso[0].eventos?.length || 0) > 0
+          ? doProcesso[0]
+          : null;
+
         const linhas = classificadas.map((u) => ({
           process_id: proc.id,
           lead_id: proc.lead_id,
@@ -219,10 +229,11 @@ serve(async (req) => {
           esfera,
           origem: 'email_push',
           categoria: u.categoria,
-          titulo: u.titulo,
+          titulo: agrupado?.titulo || u.titulo,
           descricao: u.descricao,
           data_movimentacao: u.data_movimentacao,
           conteudo_hash: u.conteudo_hash,
+          eventos: agrupado?.eventos || null,
         }));
 
         if (!dryRun) {

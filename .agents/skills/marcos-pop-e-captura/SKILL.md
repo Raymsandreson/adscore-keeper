@@ -52,6 +52,64 @@ prefixo `PLANO_` existe para **não** rodar sozinho.
 
 ---
 
+## 1b. A régua manda na fase e no percentual (12/08/2026)
+
+Antes: o % da ficha vinha de **passo marcado à mão** (`calculateHierarchicalProgress`)
+e `workflow_stage_id` estava null em **1848 de 1848** processos — ninguém movia fase.
+Processo no TST desde maio aparecia com 8% na fase 1.
+
+Agora: `process_pop_marcos` (materializada de `vw_pop_marcos_regua`) → fase e
+percentual. `pop_marcos_tick()` roda aos **:15 e :45** (cron `pop-marcos-tick`),
+atrás dos crons de captura. Primeiro tick: **1430 marcos, 401 processos posicionados**.
+
+```
+% = marcos cumpridos ÷ marcos PREVISTOS deste processo
+    previsto = obrigatório, ou eventual que aconteceu
+    cumprido = detectado, ou obrigatório anterior ao marco atual ("presumido")
+```
+
+O **presumido** existe porque `lead_processes.movimentacoes` guarda no máximo **20**
+movimentações (367 processos estão exatos em 20): é janela do recente, não histórico.
+Sem ele o percentual cairia sozinho conforme a movimentação velha sai da janela.
+
+**Duas medidas, dois nomes.** Régua = ANDAMENTO do processo (barra da ficha).
+Passos = TRABALHO da equipe (percentual por objetivo e `team_process_goals_progress`,
+que **não** mudou). Não junte as duas num número só.
+
+### As quatro leituras, e a que faltava
+
+| fonte | processos | o que dá |
+|---|---|---|
+| `movimento` (TPU/DataJud) | 183 | código determinístico |
+| `escavador_texto` | **274** | `classificacao_predita.nome` — a maior cobertura |
+| `movimento_grau` | 87 | subida de instância pelo `grau` |
+| `documento` | 74 | título em `jm_documentos` |
+| `escavador_grau` | 58 | subida pelo `fonte.grau` (1/2/3) |
+
+O Escavador tem código TPU em **0%** das 7.284 movimentações e classificação em
+**100%** — por isso o tipo `'texto'`, criado em 08/08 e vazio até aqui. Nunca
+tente casar TPU nele.
+
+**Marcos de subida** (`remessa_2grau` ordem 8, `remessa_superior` ordem 12) marcam a
+CHEGADA, não o julgamento. Sem eles, processo que subiu e está esperando ficava
+carimbado na instância de baixo — era o sintoma do caso que abriu a investigação.
+
+**Sinal de grau vale nas duas fontes.** Só no Escavador, a subida ao TST do
+0016855-58.2023.5.16.0008 saía como 31/07; com o DataJud junto, 14/05 — a data certa.
+Consolidação vence pela **menor data**, empate desempata por TPU.
+
+**Armadilha repetida:** `suspensao` estava com `atravessa_fases = false` no POP em uso
+e, tendo a maior ordem (21), sequestrou a fase de 9 processos no primeiro tick. Mesmo
+erro dos 61 de julho. Marco novo que é ESTADO nasce com `atravessa_fases = true` —
+está no checklist do fim deste arquivo por um motivo.
+
+**A carteira não foi tocada:** `vw_pop_carteira_por_fase` lê o board **rascunho**
+(`Trabalhistas judicial — marcos (rascunho)`), e as mudanças acima são todas no board
+**em uso** (`b436c043-…624816`) e em views novas. Antes de mexer em marco, confira em
+qual board você está.
+
+---
+
 ## 2. Nunca some `jm_valores` direto
 
 `jm_valores` tem **uma linha por (decisão × cliente)**. Cada decisão que confirma o valor
@@ -157,15 +215,53 @@ Medido em 12/08/2026 sobre os 30 dias anteriores: **327 com teor (67%) contra 16
 (33%)**. O assunto já existia na maioria dos cards — estava só com o mesmo peso visual do
 lixo que repetia o número do processo impresso duas linhas acima.
 
-O que **não** dá para fazer: inventar assunto para as linhas de push. O texto TPU que teria
-esse assunto está em `jm_movimentos.nome`, e em 12/08/2026 a tabela tinha 39.214 movimentos
-mas o mais novo era de 03/08 — **nenhuma** das 73 atualizações da semana tinha movimento
-casando com o dia. Antes de prometer "resumo da movimentação" a alguém, rode:
+#### O teor do push estava no e-mail o tempo todo (12/08/2026)
+
+A linha de cima dizia que não dava para tirar assunto das linhas de push — e a razão estava
+errada. Não faltava dado: faltava parser. O PJe/TST/TRT manda o teor num bloco `Eventos:`
+em **linha corrida**, sem a tabela de `|` que o `parsePje` lia:
+
+```
+Eventos: Data Evento 06/08/2026 00:14 Decorrido o prazo de CGB ENERGIA LTDA em 05/08/2026
+05/08/2026 00:26 Documento sigiloso  Para acessar este processo na consulta pública...
+```
+
+São **804 dos 4.203** e-mails da caixa nesse layout, contra 166 no de tabela. Sem casar,
+caíam no fallback do assunto — **1.083 linhas** (74,5% das de `origem='email_push'`) tinham
+como descrição o próprio assunto do e-mail. Nenhuma delas gerou notificação ao cliente nem
+virou atividade: card que não diz o que aconteceu não gera ação.
+
+Hoje `extrairEventosInline` + `resumirEventos` (em `_shared/emailPushParser.ts`, com teste
+sobre corpos reais) transformam o e-mail em **UMA** linha do feed:
+
+- `titulo` = o primeiro evento que diz alguma coisa (`Documento sigiloso` nunca vira título);
+- `descricao` = os eventos distintos com `(Nx)` nos repetidos;
+- `eventos` (jsonb, migration `20260812150000`) = a lista inteira, consultável no card;
+- `data_movimentacao` = a do evento **mais recente** do lote.
+
+Uma linha por e-mail, não uma por evento: a média é de 4,1 eventos por push (um chegou a
+27), e granular o sino viraria uma parede de "Documento sigiloso".
+
+O que continua valendo: **o texto TPU do DataJud não serve para isso**. Está em
+`jm_movimentos.nome` e vive dias atrasado — em 12/08 o movimento mais novo era de 03/08.
+Antes de prometer resumo vindo dali, rode:
 
 ```sql
 select max(data_hora)::date as movimento_mais_novo, count(distinct processo_cnj) as processos
 from jm_movimentos;
 ```
+
+### O card responde "e agora?" sem sair do lugar
+
+`UpdateDetalhe.tsx` abre dentro do próprio card (nada de aba nova, nada de `navigate`) e traz,
+nesta ordem: os **eventos** do tribunal com data e hora; o **passo em aberto do POP** daquele
+processo (via `fetchLeadSteps`, de graça, só quando o card é aberto — são 4 consultas por
+movimentação e o sino carrega 100); e, sob clique, a **dica da IA** (`activity-from-movement`,
+a mesma da aba de movimentações do processo) lendo os eventos + o POP. Sem POP, cai na fase da
+régua de marcos (`fetchFaseProcessual`).
+
+A IA é botão e não automático de propósito: 100 cards por abertura do sino seriam 100 chamadas
+para movimentação que ninguém foi ler.
 
 ### Armadilha: o feed do sino ordenado por `created_at`
 
