@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { classificarEsfera, type Esfera } from '@/lib/esferaJustica';
+import { responsavelDoPassoAberto } from '@/lib/leadStepContext';
+import { showNativeNotification } from '@/lib/nativeNotification';
 
 export type UpdateCategoria =
   | 'decisao_merito'
@@ -111,6 +114,58 @@ export const useProcessUpdates = () => {
     }
   }, [user?.id]);
 
+  // Ref e não estado: o canal do realtime é montado uma vez só, e uma dependência
+  // que muda depois do login faria a assinatura cair e subir de novo.
+  const extUserIdRef = useRef<string | null>(null);
+  useEffect(() => { extUserIdRef.current = extUserId; }, [extUserId]);
+
+  /**
+   * Movimentação nova chegou: avisa SÓ quem responde pelo passo que está em
+   * aberto naquele processo.
+   *
+   * Por que o passo e não o processo: o dono muda ao longo do POP — quem cuida
+   * da instrução não é quem cuida da execução. Avisar o responsável do processo
+   * inteiro mandaria o aviso para a pessoa errada na metade das fases; avisar
+   * todo mundo com o sino aberto (o que o canal fazia) é o mesmo que não avisar.
+   *
+   * Silencioso de propósito quando não há POP, quando ninguém foi designado ou
+   * quando o dono é outro: notificação que chega para quem não vai agir ensina
+   * a ignorar notificação.
+   */
+  const avisarSeForMinha = useCallback(async (u: ProcessUpdate) => {
+    const eu = extUserIdRef.current;
+    if (!eu || !u.lead_id) return;
+    try {
+      const passo = await responsavelDoPassoAberto(u.process_id, u.lead_id);
+      if (!passo?.assigneeId || passo.assigneeId !== eu) return;
+
+      const processo = u.processo_titulo || u.numero_cnj || 'processo';
+      const corpo = [
+        u.descricao?.slice(0, 140),
+        passo.stepLabel ? `Passo em aberto: ${passo.stepLabel}` : null,
+      ].filter(Boolean).join('\n');
+
+      const exibiu = await showNativeNotification(`${u.titulo} — ${processo}`, {
+        body: corpo,
+        // Uma notificação por movimentação: reenvio do mesmo id substitui em vez
+        // de empilhar quatro avisos do mesmo fato.
+        tag: `process-update-${u.id}`,
+        url: u.lead_id ? `/leads?openLead=${u.lead_id}` : '/',
+      });
+
+      // Sem permissão do navegador o aviso não pode simplesmente sumir — quem
+      // tem o app aberto ainda precisa ver que caiu algo no passo dele.
+      if (!exibiu) {
+        toast.info(`${u.titulo} — ${processo}`, {
+          description: passo.stepLabel ? `Seu passo: ${passo.stepLabel}` : undefined,
+          duration: 10000,
+        });
+      }
+    } catch (err) {
+      console.warn('[useProcessUpdates] não deu para avisar o responsável:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchAll();
 
@@ -126,6 +181,7 @@ export const useProcessUpdates = () => {
             esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj, titulo: bruto.processo_titulo }),
           };
           setUpdates((prev) => [novo, ...prev].slice(0, FETCH_LIMIT));
+          void avisarSeForMinha(novo);
         },
       )
       .subscribe();
@@ -133,7 +189,7 @@ export const useProcessUpdates = () => {
     return () => {
       db.removeChannel(channel);
     };
-  }, [fetchAll]);
+  }, [fetchAll, avisarSeForMinha]);
 
   const unreadCount = useMemo(
     () => updates.filter((u) => !readIds.has(u.id)).length,

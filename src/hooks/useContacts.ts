@@ -62,7 +62,10 @@ export const useContacts = () => {
   // Fetch contacts with server-side pagination
   const fetchContacts = useCallback(async (page = 1, pageSize = 50, filters?: {
     search?: string;
-    classification?: string;
+    /** Um relacionamento (compat) ou vários; `['none']` = sem classificação. */
+    classification?: string | string[];
+    /** Com vários: 'any' = qualquer um (padrão), 'all' = todos ao mesmo tempo. */
+    classificationMode?: 'any' | 'all';
     followerStatus?: string;
     professions?: string[];
     dateFrom?: string;
@@ -102,11 +105,25 @@ export const useContacts = () => {
           const search = `%${filters.search}%`;
           query = query.or(`full_name.ilike.${search},phone.ilike.${search},email.ilike.${search},instagram_username.ilike.${search}`);
         }
-        if (filters?.classification && filters.classification !== 'all') {
-          if (filters.classification === 'none') {
-            query = query.is('classification', null);
+        // Relacionamento: aceita um valor (telas antigas) ou vários. Com vários,
+        // `classificationMode` decide união ('any') ou interseção ('all').
+        // Cada valor precisa olhar as DUAS fontes — o array novo `classifications`
+        // e a coluna legada `classification`, que ainda é a única preenchida em
+        // parte da base. No modo 'all' isso vira um `.or()` por valor: PostgREST
+        // combina filtros separados com AND, então "parceiro E cliente" sai numa
+        // query só, sem perder quem tem um dos dois no campo legado.
+        const classificationList = Array.isArray(filters?.classification)
+          ? filters!.classification.filter(Boolean)
+          : (filters?.classification && filters.classification !== 'all' ? [filters.classification] : []);
+        if (classificationList.includes('none')) {
+          query = query.is('classification', null);
+        } else if (classificationList.length > 0) {
+          const clause = (name: string) =>
+            `classification.eq.${name},classifications.cs.{"${name}"}`;
+          if (filters?.classificationMode === 'all') {
+            classificationList.forEach(name => { query = query.or(clause(name)); });
           } else {
-            query = query.or(`classification.eq.${filters.classification},classifications.cs.{"${filters.classification}"}`);
+            query = query.or(classificationList.map(clause).join(','));
           }
         }
         if (filters?.followerStatus && filters.followerStatus !== 'all') {

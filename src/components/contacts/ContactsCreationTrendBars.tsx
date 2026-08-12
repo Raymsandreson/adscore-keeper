@@ -40,7 +40,10 @@ export interface CreationSeriesFilters {
   city?: string;
   actionSource?: string;
   createdBy?: string;
-  classification?: string;
+  /** Vazio = todos; `['none']` = sem classificação. */
+  classifications?: string[];
+  /** Com vários: 'any' = qualquer um, 'all' = todos ao mesmo tempo. */
+  classificationMode?: 'any' | 'all';
   groupFilter?: 'all' | 'with_group' | 'without_group';
   leadLinked?: 'all' | 'linked' | 'not_linked';
   /** `null` = "sem profissão"; `undefined` = não filtrado. */
@@ -109,9 +112,13 @@ export function ContactsCreationTrendBars({ filters, onSelectPeriod, selected, c
   const [failed, setFailed] = useState(false);
 
   const {
-    state, city, actionSource, createdBy, classification,
+    state, city, actionSource, createdBy, classifications, classificationMode,
     groupFilter, leadLinked, profession, search,
   } = filters;
+
+  // Array novo a cada render do pai quebraria o useEffect; a chave estável é a
+  // lista serializada.
+  const classificationKey = (classifications || []).join('|');
 
   useEffect(() => {
     let cancelled = false;
@@ -127,7 +134,8 @@ export function ContactsCreationTrendBars({ filters, onSelectPeriod, selected, c
           p_city: city && city !== 'all' ? city : null,
           p_source: actionSource && actionSource !== 'all' ? actionSource : null,
           p_created_by: createdBy && createdBy !== 'all' ? createdBy : null,
-          p_classification: classification && classification !== 'all' ? classification : null,
+          p_classifications: classifications && classifications.length > 0 ? classifications : null,
+          p_classification_mode: classificationMode === 'all' ? 'all' : 'any',
           p_group: groupFilter && groupFilter !== 'all' ? groupFilter : null,
           p_lead_linked: leadLinked && leadLinked !== 'all' ? leadLinked : null,
           p_profession: profession === undefined ? null : (profession === null ? '__none__' : profession),
@@ -165,7 +173,7 @@ export function ContactsCreationTrendBars({ filters, onSelectPeriod, selected, c
     return () => {
       cancelled = true;
     };
-  }, [period, state, city, actionSource, createdBy, classification, groupFilter, leadLinked, profession, search]);
+  }, [period, state, city, actionSource, createdBy, classificationKey, classificationMode, groupFilter, leadLinked, profession, search]);
 
   const { total, withLead } = useMemo(() => ({
     total: rows.reduce((s, r) => s + r.total, 0),
