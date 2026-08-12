@@ -28,6 +28,16 @@ Documentação funcional das telas de atividades, cronômetro/banco de horas e t
 - Clique — abre a ficha; ícone verde — "Concluir"; duplicar; lixeira — excluir.
 - Indicador de cronômetro rodando mostra quem está executando e há quanto tempo.
 
+### Passar várias atividades para outro assessor (seleção em lote)
+Botão **"Selecionar"** acima da lista liga o modo de seleção: cada cartão ganha caixa de marcação, o clique passa a marcar em vez de abrir a ficha (shift+clique marca o intervalo) e as ações individuais do cartão somem. Com algo marcado, o rodapé da coluna mostra a contagem e o botão **"Passar para…"**, que abre um painel lateral com a busca de assessor (`BulkReassignSheet.tsx`).
+
+- **Alcance**: só o que está renderizado na tela. "Marcar todas" pega os cartões carregados; se o filtro tiver mais do que o lote atual, o rodapé avisa quantas ficaram de fora e pede "Mostrar mais". Nunca marca o que o usuário não viu.
+- **Colisão do índice dedup**: antes de aplicar, o painel varre as pendentes que o destino já tem **nos mesmos leads** (não só o que está na tela) e compara pela chave do `lead_activities_dedup_pending_idx` — `(lead_id, lower(btrim(title)), activity_type)`. O que colidiria é **pulado e listado com o motivo**, em vez de estourar 23505 e derrubar o lote inteiro (mesma política da RPC `aplicar_responsavel_do_caso_nas_atividades`). Também trata a colisão entre duas selecionadas iguais: fica a mais antiga. Medição em 12/08/2026: de 8.133 pendentes vivas com lead, só 9 chaves têm 2+ donos (18 atividades) — a colisão é real mas rara, 0,22%.
+- **Concluída não é reatribuída**: ela registra quem executou o trabalho. O painel mostra quantas ficaram de fora.
+- **Co-assessores**: com `assigned_to_ids` populado, o destino substitui o antigo dentro do array e os demais assessores continuam; se o destino já estava no array, o antigo só é removido.
+- **Autoria e aviso**: o lote carimba `updated_by` (sem isso viraria "atualizada por —") e grava audit log `reatribuicao_atividades` com os ids. O destinatário recebe **um** aviso agrupado (`activity_notifications`, tipo `assigned_bulk`, sem `activity_id`), não um popup por atividade; lote de uma atividade usa o `assigned` normal, com botão de abrir.
+- Para esvaziar a fila de alguém **desativado**, o caminho continua sendo Equipe → "Redistribuir atividades de inativos" (`RedistributeActivitiesDialog`), que divide entre várias pessoas com teto por dia e move também a responsabilidade processual dos leads.
+
 ### Ficha da atividade
 - Título editável inline; badge com o tempo total dedicado (soma das sessões de cronômetro).
 - Menu "Vincular": Caso, Processo, Contato, "Últimas movimentações" do processo.
