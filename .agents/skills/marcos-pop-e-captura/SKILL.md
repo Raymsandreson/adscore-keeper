@@ -100,8 +100,41 @@ e-mail push  →  DataJud  →  Escavador
 Não são redundantes: o DataJud dá o código de graça, o Escavador dá o documento e o tempo
 real. Roda **uma vez por dia à meia-noite BRT** = `0 3 * * *` no cron (o servidor é UTC).
 
+### "O DataJud é necessário, se nem tempo real ele é?"
+
+Pergunta recorrente do usuário. Resposta medida em 12/08/2026, para não responder de
+memória na próxima vez:
+
+```
+atraso do DataJud (317 processos, último movimento de cada um)
+  mínimo em toda a base ......  8 dias
+  mediana ....................  64 dias
+  com movimento de até 8 dias ... 1 de 317
+```
+
+Ele não está na cadeia para **avisar** — está para **classificar**. É a única fonte com o
+código TPU: `jm_movimentos` tem 39.244 linhas, **100% `fonte='datajud'`**, 39.082 com
+código. E-mail chega em texto livre; Escavador devolve documento e estado, nenhum dos dois
+traz o código. Cruzando com a carteira de 344 processos:
+
+| marco veio de | processos |
+|---|---|
+| código TPU (DataJud) | 317 |
+| documento + IA (Escavador) | 27 (26 sobrepostos) |
+| **só existe por causa do DataJud** | **291** |
+
+Ressalva ao citar esse corte: o Escavador tem documento em 219 processos mas a IA só leu
+71 (`pop_marco_extracoes`) — a rota do documento está subutilizada, não esgotada. Ainda
+assim 125 processos não têm documento nenhum, e leitura por IA custa token por documento
+enquanto o DataJud custa zero. **Desligar o DataJud não economiza nada e cega a régua.**
+
 Painel: `CapturaStatusPanel` no sino, view `vw_jm_captura_status`. O gasto exibido não é
 estimativa — vem de `jm_esc_solicitacoes.creditos`, o que a própria API devolve.
+
+A ordem das barras é a da cadeia (e-mail → DataJud → Escavador), e quem manda nela é a
+constante `ORDEM_DA_CADEIA` no componente: a view é `UNION ALL` **sem `ORDER BY`**, então
+a ordem que ela devolve é a de escrita (o pago em cima) e não é garantida. Ler de cima
+para baixo tem que ser ler o funil.
 
 Desde 12/08/2026 o painel **vem recolhido**: as três barras comiam um terço da tela do
 celular antes da primeira movimentação aparecer. Abre no clique do título e a escolha fica
