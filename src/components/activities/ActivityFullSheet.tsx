@@ -29,6 +29,7 @@ import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
 import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
+import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
 import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
@@ -239,6 +240,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { createActivity, updateActivity, completeActivity, deleteActivity } = useLeadActivities();
   const { startTimer, requestLeave, stopTimerFor, current: runningTimer } = useActivityTimer();
   const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
+  const { ask: askEstimate, dialog: estimateConfirmDialog } = useEstimateConfirmPrompt();
 
   // Previsão sugerida (mediana real do tipo) e tempo já gasto na atividade.
   const { ready: estimateReady, suggestFor: suggestEstimateFor, samplesFor: estimateSamplesFor } = useEstimateSuggestion();
@@ -960,8 +962,25 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           return;
         }
       }
+      // Confirmação da previsão antes de criar: a sugestão acerta o caso comum,
+      // mas quem executa é quem sabe se ESTA atividade foge da média. Sem a
+      // parada, o número viraria enfeite e o gasto x previsto perderia sentido.
+      const estimateChoice = await askEstimate({
+        current: formEstimatedMinutes,
+        typeLabel: activityTypes.find(t => t.key === formType)?.label || null,
+        samples: estimateSamplesFor(formType),
+      });
+      if (!estimateChoice.confirmed) return; // voltou pro formulário
+      setFormEstimatedMinutesState(estimateChoice.minutes);
+
       setSaving(true);
-      const payload = { ...buildPayload(), title: titleToUse } as Partial<LeadActivity> & { observer_ids?: string[]; observer_names?: string[] };
+      // `estimated_minutes` vem do diálogo, não do state: setState é assíncrono e
+      // o payload sairia com o valor anterior.
+      const payload = {
+        ...buildPayload(),
+        title: titleToUse,
+        estimated_minutes: estimateChoice.minutes,
+      } as Partial<LeadActivity> & { observer_ids?: string[]; observer_names?: string[] };
       // Quem cria a atividade entra como observador automaticamente (se não for responsável).
       const { data: { user } } = await authClient.auth.getUser();
       const uid = user?.id || '';
@@ -999,8 +1018,25 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       }
     }
 
+    // Atividade sem previsão (nasceu antes deste campo) pergunta ao salvar. Com
+    // previsão já definida, salvar não vira interrogatório — o campo está na tela.
+    let estimateToSave = formEstimatedMinutes ?? null;
+    if (estimateToSave == null) {
+      const choice = await askEstimate({
+        current: null,
+        typeLabel: activityTypes.find(t => t.key === formType)?.label || null,
+        samples: estimateSamplesFor(formType),
+      });
+      if (!choice.confirmed) return;
+      estimateToSave = choice.minutes;
+      setFormEstimatedMinutesState(choice.minutes);
+    }
+
     setSaving(true);
-    await updateActivity(activityId, buildPayload(extraObserver) as Partial<LeadActivity>);
+    await updateActivity(activityId, {
+      ...buildPayload(extraObserver),
+      estimated_minutes: estimateToSave,
+    } as Partial<LeadActivity>);
     setSaving(false);
     onUpdated?.();
     handleClose();
@@ -1607,6 +1643,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         onApply={applyAIFieldValues}
       />
       {keepAsObserverDialog}
+      {estimateConfirmDialog}
     </Sheet>
   );
 }

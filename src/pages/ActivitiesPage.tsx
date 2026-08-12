@@ -22,6 +22,7 @@ import { CourtContactsSheet } from '@/components/activities/CourtContactsSheet';
 import { ActivityCallRecorder, callFieldTextToHtml, stripHtmlToText, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { AIFieldMergeDialog } from '@/components/activities/AIFieldMergeDialog';
 import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
+import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
 import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
@@ -368,6 +369,7 @@ const ActivitiesPage = () => {
   // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
   const initialResponsiblesRef = useRef<string[]>([]);
   const { ask: askKeepAsObserver, dialog: keepAsObserverDialog } = useKeepAsObserverPrompt();
+  const { ask: askEstimate, dialog: estimateConfirmDialog } = useEstimateConfirmPrompt();
   // Feedback da atv (preenchido pelo responsável) + data de reagendamento.
   const [formFeedback, setFormFeedback] = useState('');
   // Próxima atividade sugerida pela IA na "Revisar com IA" (popup de confirmação).
@@ -1168,6 +1170,17 @@ const ActivitiesPage = () => {
     }
     const groupId = responsibles.length > 1 ? crypto.randomUUID() : null;
 
+    // Confirmação da previsão antes de criar: a sugestão acerta o caso comum,
+    // mas quem executa é quem sabe se ESTA atividade foge da média. Sem a parada,
+    // o número viraria enfeite e o gasto x previsto perderia sentido.
+    const estimateChoice = await askEstimate({
+      current: formEstimatedMinutes,
+      typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
+      samples: estimateSamplesFor(formType),
+    });
+    if (!estimateChoice.confirmed) return; // voltou pro formulário
+    setFormEstimatedMinutesState(estimateChoice.minutes);
+
     const baseData = {
       title: titleToUse,
       description: null,
@@ -1178,7 +1191,9 @@ const ActivitiesPage = () => {
       resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
-      estimated_minutes: formEstimatedMinutes ?? null,
+      // Do diálogo, não do state: setState é assíncrono e o payload sairia com
+      // o valor anterior.
+      estimated_minutes: estimateChoice.minutes,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
       notes: formNotes || null,
@@ -1620,6 +1635,20 @@ const ActivitiesPage = () => {
       }
     }
 
+    // Atividade sem previsão (nasceu antes deste campo) pergunta ao salvar. Com
+    // previsão já definida, salvar não vira interrogatório — o campo está na tela.
+    let estimateToSave = formEstimatedMinutes ?? null;
+    if (estimateToSave == null) {
+      const choice = await askEstimate({
+        current: null,
+        typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
+        samples: estimateSamplesFor(formType),
+      });
+      if (!choice.confirmed) return;
+      estimateToSave = choice.minutes;
+      setFormEstimatedMinutesState(choice.minutes);
+    }
+
     await updateActivity(selectedActivity.id, {
       title: formTitle,
       description: null,
@@ -1630,7 +1659,7 @@ const ActivitiesPage = () => {
       resposta_juizo: formRespostaJuizo || null,
       activity_type: formType,
       priority: formPriority,
-      estimated_minutes: formEstimatedMinutes ?? null,
+      estimated_minutes: estimateToSave,
       lead_id: formLeadId || null,
       lead_name: formLeadName || null,
       assigned_to: formAssignedTo || null,
@@ -6444,6 +6473,7 @@ const ActivitiesPage = () => {
         }}
       />
       {keepAsObserverDialog}
+      {estimateConfirmDialog}
     </div>
   );
 };
