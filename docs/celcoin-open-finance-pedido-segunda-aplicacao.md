@@ -1,5 +1,11 @@
 # Pedido à Celcoin — segunda aplicação Financial Data sob o contrato existente
 
+> **12/08/2026 — o e-mail provavelmente não é mais necessário.** O portal
+> `onboard-ui.smartkeys.celcoin.production.fsapps.app/**new-application**` cria
+> aplicação em autoserviço. O rascunho fica como reserva, caso a criação esbarre
+> em trava comercial. **Antes de ler o resto, ver a seção de hosts no fim** — ela
+> tem medição, não dedução.
+
 **Status:** rascunho pronto para envio — **não enviado**.
 **Contrato:** PRUDENCIO CAPITAL LTDA — CNPJ 47.737.984/0001-51.
 **Por que este documento existe:** o endereço de retorno do Open Finance é cadastrado
@@ -77,3 +83,71 @@ Esperado: `env: "production"`, `has_client_id: true`, `has_client_secret: true`,
 
 Então o teste ponta a ponta, que nunca rodou:
 `list_brands` → `create_consent` → autorizar no banco → callback → `sync_transactions`.
+
+---
+
+## Hosts — medido em 12/08/2026, não deduzido
+
+O código (`celcoin-open-finance.ts:51-54`) monta os hosts interpolando um `tier`
+(`production` | `sandbox`) no padrão `*.celcoin.<tier>.fsapps.app`. O `tier`
+`sandbox` sempre foi **dedução**. Foi medido e o resultado inverteu a expectativa.
+
+**Produção — os 4 hosts existem e respondem:**
+
+| Host | HTTP |
+|---|---|
+| `onboard-ui.smartkeys.celcoin.production.fsapps.app` | `200` (é o portal) |
+| `api-smartkeys.celcoin.production.fsapps.app` | `401` (exige credencial — correto) |
+| `api-openkeys.celcoin.production.fsapps.app` | `404` (servidor real, raiz sem rota) |
+| `api.v3.celcoin.production.fsapps.app` | `404` (idem) |
+
+O `404` importa: significa que **um servidor respondeu**. Difere de falha de conexão.
+
+**Sandbox — o DNS resolve, mas não há nada publicado.**
+
+`*.celcoin.sandbox.fsapps.app` resolve para um ELB da AWS em `us-east-1`
+(`k8s-ingressn-…elb.us-east-1.amazonaws.com`), e o TLS entrega:
+
+```
+subject=O=Acme Co, CN=Kubernetes Ingress Controller Fake Certificate
+```
+
+Esse é o certificado que um nginx-ingress serve quando **nenhuma regra casa com o
+hostname**. Ou seja: o DNS é curinga, não prova de serviço. `curl` falha com
+`SSL: no alternative certificate subject name matches target hostname`.
+Vale para `onboard-ui`, `api-smartkeys` e `api-openkeys` — os três.
+
+O tier `dev` sob `.fsapps.app` **não resolve**.
+
+**A documentação pública da FinanSysTech está morta.**
+[developers.finansystech.com.br](https://developers.finansystech.com.br/docs/integra%C3%A7%C3%A3o-apis-copy)
+descreve outro esquema — `.fsapps.**io**` com tier `dev`/`prd`, e token via
+Keycloak (`keycloak.celcoin.shared.fsapps.io/auth/realms/smart-keys/…`) em vez de
+`{onboard}/api/portal/onboard/v2/token`. **Nenhum** desses hosts resolve:
+`api-smartkeys.celcoin.dev.fsapps.io`, `…prd.fsapps.io`, `api-openkeys.*` e o
+próprio `keycloak.celcoin.shared.fsapps.io` — todos NXDOMAIN. Seguir essa doc
+levaria a hosts inexistentes. É a mesma armadilha que produziu a
+`celcoin-gateway` órfã com `openfinance.celcoin.com.br`.
+
+**Consequência prática:** não existe sandbox alcançável por hostname adivinhável.
+A hipótese que sobra é que "ambiente de teste" seja **estado da aplicação**, servido
+pelos **mesmos hosts de produção** — o que combina com o portal de criação viver
+em `…production.fsapps.app` e com as telas de "Demo da Jornada" / "Usuário de teste".
+
+Portanto: **`CELCOIN_ENV=production`**, que é onde os hosts respondem. Se a
+Documentação do portal disser outra coisa, não é mudança de código — as linhas
+51-54 já leem `CELCOIN_HOST_ONBOARD`, `CELCOIN_HOST_SMARTKEYS`,
+`CELCOIN_HOST_OPENKEYS` e `CELCOIN_HOST_DATA` do ambiente antes do padrão.
+
+**Como refazer esta medição** (leva 30s, não precisa de credencial):
+
+```bash
+getent hosts api-smartkeys.celcoin.sandbox.fsapps.app       # curinga: resolve mesmo sem serviço
+openssl s_client -connect api-smartkeys.celcoin.sandbox.fsapps.app:443 \
+  -servername api-smartkeys.celcoin.sandbox.fsapps.app </dev/null 2>/dev/null \
+  | openssl x509 -noout -subject                            # "Fake Certificate" = nada publicado
+curl -s -o /dev/null -w '%{http_code}\n' https://api-smartkeys.celcoin.production.fsapps.app/
+```
+
+Regra que fica: **DNS resolver não prova que o serviço existe.** Com DNS curinga,
+o certificado apresentado é que diz a verdade.
