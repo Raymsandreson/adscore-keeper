@@ -344,10 +344,13 @@ const ActivitiesPage = () => {
   }, []);
   // Criação: sugere a previsão pelo tipo escolhido enquanto o assessor não mexer
   // no campo. Trocar o tipo re-sugere; escolher um valor congela a escolha.
+  // A flag de criação é o `sheetMode` — `resetForm()` NÃO limpa `selectedActivity`,
+  // então quem abriu uma atividade antes e clicou em "Nova" continuava com a
+  // atividade anterior na mão e a sugestão nunca rodava (ficava "Sem previsão").
   useEffect(() => {
-    if (selectedActivity || !estimateReady || estimateTouchedRef.current) return;
+    if (sheetMode !== 'create' || !estimateReady || estimateTouchedRef.current) return;
     setFormEstimatedMinutesState(suggestEstimateFor(formType));
-  }, [selectedActivity, estimateReady, formType, suggestEstimateFor]);
+  }, [sheetMode, estimateReady, formType, suggestEstimateFor]);
   const [formLeadId, setFormLeadId] = useState<string>('');
   const [formLeadName, setFormLeadName] = useState('');
   const [formClientNameOverride, setFormClientNameOverride] = useState('');
@@ -3085,7 +3088,7 @@ const ActivitiesPage = () => {
         runningTimer?.kind === 'activity' && runningTimer.activityId === selectedActivity?.id
           ? runningTimer.activeSeconds : 0,
       )}
-      estimateSamples={selectedActivity ? 0 : estimateSamplesFor(formType)}
+      estimateSamples={sheetMode === 'create' ? estimateSamplesFor(formType) : 0}
       formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
       formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
       formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
