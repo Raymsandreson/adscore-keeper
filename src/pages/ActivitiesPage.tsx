@@ -88,6 +88,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
+import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -3471,6 +3472,15 @@ const ActivitiesPage = () => {
                       <FileText className="h-3 w-3" /> Processo
                     </Button>
                   )}
+                  {formProcessId && (
+                    <ProcessUpdatesBell
+                      processId={formProcessId}
+                      processLabel={displayProcessLabel(
+                        caseProcesses.find(p => p.id === formProcessId) || linkedProcess,
+                        formProcessTitle,
+                      ) || null}
+                    />
+                  )}
                   {formLeadId && (() => {
                     const hasGroup = !!leadPreview?.whatsapp_group_id;
                     const hasPhone = !!leadPreview?.lead_phone;
@@ -5515,6 +5525,20 @@ const ActivitiesPage = () => {
                       setFormNextSteps((prev) => (prev && prev !== '<p></p>' ? `${prev}${html}` : html));
                     }}
                   />
+
+                  {/* Movimentações DESTE processo, sem passar pelo sino global e
+                      sem sair da ficha: o sino carrega as 100 mais recentes de
+                      todo mundo, então o processo desta atividade pode nem estar
+                      lá. Mesmo painel, mesmo Criar atv / Notificar. */}
+                  {formProcessId && (
+                    <ProcessUpdatesBell
+                      processId={formProcessId}
+                      processLabel={displayProcessLabel(
+                        caseProcesses.find(p => p.id === formProcessId) || linkedProcess,
+                        formProcessTitle,
+                      ) || null}
+                    />
+                  )}
 
                   {formLeadId && (() => {
                     const hasGroup = !!leadPreview?.whatsapp_group_id;

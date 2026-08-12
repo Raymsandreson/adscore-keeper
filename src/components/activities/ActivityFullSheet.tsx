@@ -18,6 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
+import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import ProcessMarcosInline from '@/components/cases/ProcessMarcosInline';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
@@ -1179,6 +1180,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                   <DollarSign className="h-3 w-3" />
                   Financeiro
                 </Button>
+              )}
+
+              {/* Movimentações DESTE processo, sem passar pelo sino global e sem
+                  sair da ficha: o sino carrega as 100 mais recentes de todo
+                  mundo, então o processo desta atividade pode nem estar lá. */}
+              {formProcessId && (
+                <ProcessUpdatesBell
+                  processId={formProcessId}
+                  processLabel={displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || null}
+                />
               )}
 
               {/* Painéis controlados pelo menu acima (gatilho sr-only sempre montado,
