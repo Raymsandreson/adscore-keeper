@@ -74,6 +74,7 @@ import { handler as transcribeTeamAudio } from './functions/transcribe-team-audi
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as suggestStepCompletion } from './functions/suggest-step-completion';
 import { handler as editWorkflow } from './functions/edit-workflow';
+import { handler as generateWorkflow } from './functions/generate-workflow';
 import { handler as suggestRevisionReason } from './functions/suggest-revision-reason';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
@@ -150,6 +151,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'suggest-step-actions': suggestStepActions,
   'suggest-step-completion': suggestStepCompletion,
   'edit-workflow': editWorkflow,
+  'generate-workflow': generateWorkflow,
   'suggest-revision-reason': suggestRevisionReason,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,

@@ -5,9 +5,10 @@
 // (resultados possíveis + qual é o esperado), que moram em board.settings e
 // antes nunca chegavam à IA. Sem isso a IA "só editava os passos".
 //
-// Body: { description, currentWorkflow, activityTypes }
+// Body: { description, currentWorkflow, activityTypes, team? }
 //   currentWorkflow: { name, description, phases, resultados?, resultado_esperado_ids? }
-// Retorno HTTP 200: { changelog, phases, resultados, resultado_esperado_ids } | { error }
+//   team: equipe com cargos/atribuições para a IA atribuir responsáveis (assigneeId)
+// Retorno HTTP 200: { changelog, phases, resultados, resultado_esperado_ids, sugestoes_cargos? } | { error }
 import type { RequestHandler } from 'express';
 import { geminiChat } from '../lib/gemini';
 
@@ -15,10 +16,11 @@ const MODEL = process.env.EDIT_WORKFLOW_AI_MODEL || 'google/gemini-3.6-flash';
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { description, currentWorkflow, activityTypes } = (req.body || {}) as {
+    const { description, currentWorkflow, activityTypes, team } = (req.body || {}) as {
       description?: string;
       currentWorkflow?: Record<string, unknown>;
       activityTypes?: string[];
+      team?: Array<{ userId: string; nome: string; cargos: string[]; atribuicoes?: string }>;
     };
 
     const systemPrompt = `Você é um especialista em edição de fluxos de trabalho (POPs) para um CRM jurídico (escritório de advocacia focado em acidentes de trabalho e INSS).
@@ -45,7 +47,18 @@ STATUS DO POP (NÃO confundir com passos nem com checklist):
 - Preserve os ids de resultado existentes. Para um resultado NOVO, gere um id novo (uuid) e, se ele for esperado, inclua o id em "resultado_esperado_ids".
 - SEMPRE devolva "resultados" e "resultado_esperado_ids" completos (mesmo que inalterados) para não apagar os existentes.
 
-${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join(', ')}` : ''}`;
+${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join(', ')}` : ''}
+
+${Array.isArray(team) && team.length ? `EQUIPE DO ESCRITÓRIO (com cargos e atribuições de cada um):
+${JSON.stringify(team)}
+
+RESPONSÁVEIS E PRAZOS:
+- Fases, objetivos e passos aceitam "assigneeId": use SOMENTE um userId EXATO da lista acima. Nunca invente id nem use nome no lugar do id.
+- O responsável cai em cascata (fase → objetivo → passo): prefira definir no nível mais alto que fizer sentido e deixe os níveis de baixo sem assigneeId para herdar. Não repita o mesmo responsável passo a passo.
+- Escolha o responsável pelo encaixe entre o trabalho da fase/passo e o cargo/atribuições do membro. Sem encaixe claro, NÃO defina responsável — deixe herdar.
+- Preserve os assigneeId, prazoValor e prazoUnidade existentes, a menos que a alteração pedida seja justamente sobre eles.
+- Passos aceitam prazo: "prazoValor" (número > 0) + "prazoUnidade" ("dias_uteis", "dias" ou "meses"). Prazo processual normalmente corre em dias úteis.
+- Se o POP exigir uma função que NENHUM cargo do time cobre, liste-a em "sugestoes_cargos" (cargo + motivo) em vez de atribuir a pessoa errada.` : ''}`;
 
     const data = await geminiChat({
       model: MODEL,
@@ -102,6 +115,7 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                       stageId: { type: 'string' },
                       stageName: { type: 'string' },
                       stageColor: { type: 'string' },
+                      assigneeId: { type: 'string', description: 'userId do responsável da fase (da lista EQUIPE). Omitir para herdar.' },
                       objectives: {
                         type: 'array',
                         items: {
@@ -111,6 +125,7 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                             name: { type: 'string' },
                             description: { type: 'string' },
                             is_mandatory: { type: 'boolean' },
+                            assigneeId: { type: 'string', description: 'userId do responsável do objetivo (da lista EQUIPE). Omitir para herdar da fase.' },
                             steps: {
                               type: 'array',
                               items: {
@@ -123,6 +138,9 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                                   activityType: { type: 'string' },
                                   nextStageId: { type: 'string' },
                                   setStatusId: { type: 'string', description: 'Ao concluir o passo, altera o status do POP. Id de um item de "resultados".' },
+                                  assigneeId: { type: 'string', description: 'userId do responsável do passo (da lista EQUIPE). Omitir para herdar.' },
+                                  prazoValor: { type: 'number', description: 'Prazo esperado do passo (junto com prazoUnidade).' },
+                                  prazoUnidade: { type: 'string', enum: ['dias_uteis', 'dias', 'meses'] },
                                   answers: {
                                     type: 'array',
                                     items: {
@@ -173,6 +191,18 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
                       },
                     },
                     required: ['stageId', 'stageName', 'stageColor', 'objectives'],
+                  },
+                },
+                sugestoes_cargos: {
+                  type: 'array',
+                  description: 'Funções que o POP exige e nenhum cargo do time cobre. Sugestão para o usuário — não atribui nada.',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      cargo: { type: 'string' },
+                      motivo: { type: 'string' },
+                    },
+                    required: ['cargo', 'motivo'],
                   },
                 },
               },
