@@ -610,12 +610,13 @@ export function LeadLinkedContacts({ leadId, onSearchInGroup }: LeadLinkedContac
                   <Heart className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                   <Select
                     value={cl.relationship_to_victim || ''}
-                    onValueChange={(val) => handleUpdateRelationship(cl.id, val)}
+                    onValueChange={(val) => handleUpdateRelationship(cl.id, val === '__none__' ? '' : val)}
                   >
                     <SelectTrigger className="h-7 text-xs w-auto min-w-[140px]">
                       <SelectValue placeholder="Relação com a vítima" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__none__" className="text-xs text-muted-foreground">Sem vínculo</SelectItem>
                       {RELATIONSHIP_OPTIONS.map((opt) => (
                         <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
                       ))}
