@@ -1497,6 +1497,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formProcessId={formProcessId} formProcessTitle={formProcessTitle}
                 formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
                 workflowOptions={workflowOptions}
+                funnelOptions={allBoards.filter(b => b.board_type === 'funnel').map(b => ({ id: b.id, name: b.name }))}
                 inheritedFlowName={leadPreview?.board_id
                   ? (allBoards.find(b => b.id === leadPreview.board_id)?.name || 'fluxo do lead')
                   : null}

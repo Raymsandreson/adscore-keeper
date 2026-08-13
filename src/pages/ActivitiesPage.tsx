@@ -519,6 +519,18 @@ const ActivitiesPage = () => {
     () => allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name })),
     [allBoards]
   );
+  // Funis: opção de vínculo só pra atividade interna/gerenciamento (o id do funil
+  // vai em workflow_id). O filtro de fluxo abaixo os lista quando usados.
+  const funnelOptions = useMemo(
+    () => allBoards.filter(b => b.board_type === 'funnel').map(b => ({ id: b.id, name: b.name })),
+    [allBoards]
+  );
+  // Filtro de fluxo: POPs sempre; funis só os que alguma atividade referencia,
+  // senão 12 funis vazios inflariam a lista.
+  const filterFlowOptions = useMemo(() => {
+    const used = new Set(allActivitiesRaw.map(a => a.workflow_id).filter(Boolean));
+    return [...workflowOptions, ...funnelOptions.filter(f => used.has(f.id))];
+  }, [workflowOptions, funnelOptions, allActivitiesRaw]);
   const [timeBlockSettingsOpen, setTimeBlockSettingsOpen] = useState(false);
   const [selectedBlockKey, setSelectedBlockKey] = useState<string | null>(null);
   const [blockSearchText, setBlockSearchText] = useState('');
@@ -3205,6 +3217,7 @@ const ActivitiesPage = () => {
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
       formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
       workflowOptions={workflowOptions}
+      funnelOptions={funnelOptions}
       inheritedFlowName={leadPreview?.board_id
         ? (leadPreview.board_name || allBoards.find(b => b.id === leadPreview.board_id)?.name || 'fluxo do lead')
         : null}
@@ -4012,7 +4025,7 @@ const ActivitiesPage = () => {
               {filterWorkflow.length === 0
                 ? 'POP'
                 : filterWorkflow.length === 1
-                  ? (workflowOptions.find(w => w.id === filterWorkflow[0])?.name?.split(' ')[0] || '1')
+                  ? (filterFlowOptions.find(w => w.id === filterWorkflow[0])?.name?.split(' ')[0] || '1')
                   : `${filterWorkflow.length}`}
             </Button>
           </PopoverTrigger>
@@ -4038,7 +4051,7 @@ const ActivitiesPage = () => {
                       </Badge>
                     </span>
                   </CommandItem>
-                  {workflowOptions.map(w => {
+                  {filterFlowOptions.map(w => {
                     const c = countByField('workflow_id', w.id);
                     const isSelected = filterWorkflow.includes(w.id);
                     return (

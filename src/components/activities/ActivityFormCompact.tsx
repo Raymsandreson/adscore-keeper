@@ -7,7 +7,7 @@ const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSh
 const AddProcessDialog = lazy(() => import('@/components/cases/AddProcessDialog'));
 import { Input } from '@/components/ui/input';
 import { RichTextEditor } from '@/components/ui/RichTextEditor';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -218,6 +218,13 @@ interface ActivityFormCompactProps {
    * funil ali quebraria os filtros/contadores de POP, que assumem só board 'workflow'.
    */
   inheritedFlowName?: string | null;
+  /**
+   * Funis de captação, oferecidos como opção de vínculo SÓ em atividade interna/
+   * gerenciamento (sem lead, o fluxo escolhido é livre). Nesse caso o id do funil
+   * vai em workflow_id mesmo — o filtro de fluxo da ActivitiesPage lista funis
+   * que aparecem em atividades, então eles continuam visíveis nos contadores.
+   */
+  funnelOptions?: { id: string; name: string }[];
   formCampaignId?: string; setFormCampaignId?: (v: string) => void;
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
@@ -1116,8 +1123,16 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
         )}
         <div className="col-span-full">
+          {(() => {
+            const isInternal = props.formIsSystem || props.formIsManagement;
+            // Funis entram como opção só em atividade interna — mas continuam
+            // listados se um funil já está selecionado (ex.: atividade que deixou
+            // de ser interna), senão o Select mostraria o valor como vazio.
+            const allFunnels = props.funnelOptions || [];
+            const funnels = (isInternal || allFunnels.some(f => f.id === props.formWorkflowId)) ? allFunnels : [];
+            return (<>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            POP {(props.formIsSystem || props.formIsManagement)
+            {funnels.length > 0 ? 'POP ou Funil' : 'POP'} {isInternal
               ? '(opcional)'
               : (!props.formWorkflowId && props.inheritedFlowName) ? '(herdado do lead)' : '*'}
           </span>
@@ -1125,23 +1140,38 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             <SelectTrigger
               className={cn(
                 "h-8 text-xs mt-0.5",
-                !props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && !props.inheritedFlowName && "border-destructive/60 ring-1 ring-destructive/20"
+                !props.formWorkflowId && !isInternal && !props.inheritedFlowName && "border-destructive/60 ring-1 ring-destructive/20"
               )}
             >
-              <SelectValue placeholder={props.inheritedFlowName ? `Herdado do lead: ${props.inheritedFlowName}` : 'Selecione um POP'} />
+              <SelectValue placeholder={props.inheritedFlowName ? `Herdado do lead: ${props.inheritedFlowName}` : (funnels.length > 0 ? 'Selecione um POP ou funil' : 'Selecione um POP')} />
             </SelectTrigger>
             <SelectContent>
-              {props.workflowOptions.length === 0 ? (
+              {props.workflowOptions.length === 0 && funnels.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
                   Nenhum POP cadastrado
                 </div>
-              ) : (
+              ) : funnels.length > 0 ? (<>
+                <SelectGroup>
+                  <SelectLabel className="text-[10px] uppercase tracking-wider">POPs</SelectLabel>
+                  {props.workflowOptions.map(w => (
+                    <SelectItem key={w.id} value={w.id} className="text-xs">{w.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+                <SelectGroup>
+                  <SelectLabel className="text-[10px] uppercase tracking-wider">Funis</SelectLabel>
+                  {funnels.map(f => (
+                    <SelectItem key={f.id} value={f.id} className="text-xs">{f.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+              </>) : (
                 props.workflowOptions.map(w => (
                   <SelectItem key={w.id} value={w.id} className="text-xs">{w.name}</SelectItem>
                 ))
               )}
             </SelectContent>
           </Select>
+            </>);
+          })()}
           {!props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && (
             props.inheritedFlowName ? (
               <p className="text-[10px] text-muted-foreground mt-0.5">
