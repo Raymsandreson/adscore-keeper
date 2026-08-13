@@ -563,8 +563,12 @@ export function TeamChatNotifications() {
         }
 
         // Branch 2: menção no chat de uma ficha (atividade, lead, processo…)
-        const { data: msg } = await externalSupabase
-          .from('team_chat_messages')
+        // `as any` como no branch 1: os types gerados não conhecem as colunas de
+        // mídia de team_chat_messages (message_type, file_*), que existem no
+        // banco desde a migration de anexos. Sem isso o select inteiro vira
+        // SelectQueryError e o tsc reprova até `sender_name`.
+        const { data: msg } = await (externalSupabase
+          .from('team_chat_messages') as any)
           .select('content, sender_name, sender_id, entity_name, entity_type, message_type, file_name, file_url, file_type, is_urgent')
           .eq('id', mention.message_id)
           .single();
