@@ -263,6 +263,67 @@ régua de marcos (`fetchFaseProcessual`).
 A IA é botão e não automático de propósito: 100 cards por abertura do sino seriam 100 chamadas
 para movimentação que ninguém foi ler.
 
+#### O resumo é escrito na captura, não no render (12/08/2026)
+
+Aquele limite ("100 cards = 100 chamadas") vale para o **render**, não para a chegada. Por isso
+o resumo do que o tribunal disse vive numa **coluna**: `process_updates.resumo_ia` +
+`resumo_ia_at` (migration `20260812210000`), preenchida pelo cron do Railway
+`summarize-process-updates` — 20 por rodada, de 10 em 10 minutos. O card lê texto do banco e
+não custa chamada nenhuma; a fila vazia não chama IA.
+
+Ganho medido na primeira rodada em produção (20 de 20 resumidas):
+
+| descrição no banco | resumo gerado |
+|---|---|
+| `Expedido(a) notificação a(o) <NOME>` | audiência de encerramento designada para 03/12 às 08:00, despacho indeferiu segredo de justiça |
+| `Remetidos os autos para Centro Judiciário…` | autos ao CEJUSC para conciliação **e** nova audiência em 07/10 às 08h50 |
+
+**A data e a hora não estavam na `descricao`** — vieram do e-mail. É a prova de que o
+histórico de `processual_emails` (casado por `process_number`; 191 das 192 movimentações da
+semana têm e-mail casado) é onde está o teor.
+
+Três decisões que não se devem desfazer sem pensar:
+
+- `resumo_ia_at` é carimbado **mesmo quando a IA não devolve texto** — é o que tira a linha da
+  fila. Filtrar por `resumo_ia is null` faria o varredor tentar as mesmas linhas para sempre.
+  Falha de *provider*, ao contrário, **não** carimba: essa volta na próxima rodada.
+- Janela de `SUMMARIZE_UPDATES_WINDOW_DAYS` (30). Sem ela, ligar a coluna joga 2.057
+  movimentações históricas na fila de uma vez (~17 h de varredura) para resumir processo que
+  ninguém vai reabrir. Com a janela: 569.
+- A coluna entrou como o **primeiro degrau de recuo** do select (`COLUNAS_SEM_RESUMO`), antes
+  de eventos e esfera. Coluna que falta derruba o select inteiro em silêncio — foi assim com
+  `callback_at` em `lead_activities`.
+
+#### A dica de IA lê o processo inteiro
+
+`activity-from-movement` aceita `include_email_history: true` (opt-in — a mesma função atende a
+aba de movimentações do processo, e mudar o contexto de todos mudaria a saída de quem não
+pediu). Com a flag, `lib/processual-email-context.ts` busca os e-mails daquele CNJ no Externo;
+o sino manda junto as **atividades anteriores** do processo e o passo do POP.
+
+Tetos obrigatórios, não cosméticos: 10 e-mails, 2,5 mil caracteres por e-mail, 14 mil no total.
+A média por processo é 7,8 mil caracteres, mas o maior soma **650 mil** — sem corte, um único
+caso estoura o request e a dica quebra para todo mundo.
+
+### Avisar o cliente é por CLIENTE, não por movimentação
+
+O botão "Notificar" do card manda uma mensagem e cria uma atividade. Em 7 dias isso eram 43
+movimentações para 30 clientes — 43 confirmações na mão, e sete clientes recebendo duas ou mais
+mensagens seguidas (um deles seis). Na prática **1** das 73 foi avisada: o manual não escala.
+
+O modo lote ("Selecionar" no topo do sino) agrupa por lead e consolida em `notificacaoEmLote.ts`:
+registros em ordem cronológica, glossário uma vez só, e o "próximo passo" da movimentação de
+maior peso (`PESO`: decisão > audiência > perícia > prazo > despacho > movimentação — a audiência
+manda na mensagem, não a juntada que caiu depois dela). Uma mensagem e uma atividade por cliente.
+
+- O disparo é **em série com 1,5 s** entre clientes, a mesma cadência de `useBroadcastLists` —
+  30 mensagens de uma vez pela mesma instância derruba o número da firma.
+- A atividade nasce **no envio**, não no preparo: quem desistir na revisão não pode deixar
+  trinta atividades órfãs no nome de quem clicou.
+- Nada é automático, e não deve ser: 81% das movimentações são rotina, e o texto do tribunal vai
+  **citado** ao cliente. Aviso automático em cima disso é mandar o teor de um processo ao grupo
+  sem ninguém ter lido.
+
 ### Armadilha: o feed do sino ordenado por `created_at`
 
 `useProcessUpdates` busca as **100 mais recentes** (`FETCH_LIMIT`). Enquanto essa ordem foi
