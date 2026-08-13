@@ -210,6 +210,10 @@ Solução (view `inss_requerimento_status`, migration `20260806170000`): **ancor
 
 Na ficha, processo administrativo mostra a régua do INSS em vez de "sem marco" (`df6383c`).
 
+#### Perícia agendada é estado do processo, não marco (13/08/2026)
+
+As datas de **perícia médica** e **perícia social** do Benefício INSS ficam em `lead_processes.pericia_medica_at` / `pericia_social_at` (migration `20260813120000`), editáveis no cabeçalho da atividade — **não** em `process_movements`. Motivo: marco é append-only e descreve o que já aconteceu; agendamento é estado presente e muda quando o INSS remarca, e `tipo_movimentacao='pericia'` não distingue médica de social. Perícia **realizada** continua virando movimentação normalmente. Detalhe funcional em `atividades.md`.
+
 #### NUP não é requerimento — `4445f84` (07/08/2026)
 
 A tela mandava conferir a caixa do INSS para **todo** processo sem requerimento capturado. Para 43 dos 81 isso é falso, e é o mesmo erro da mensagem antiga que culpava o Escavador: só troca o culpado.

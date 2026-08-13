@@ -91,6 +91,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
+import PericiaInssChips from '@/components/activities/PericiaInssChips';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -5803,6 +5804,10 @@ const ActivitiesPage = () => {
                           {diasSemMov < 1 ? 'movimentado hoje' : `há ${humanizeDias(diasSemMov)} sem andamento efetivo`}
                         </button>
                       )}
+                      {/* Benefício INSS: perícia médica e perícia social ficam no
+                          cabeçalho porque é a data que decide o deslocamento do
+                          cliente — antes vivia solta no corpo do texto. */}
+                      <PericiaInssChips processId={formProcessId} processTitle={proc?.title || formProcessTitle} />
                       </>
                     );
                   })()}

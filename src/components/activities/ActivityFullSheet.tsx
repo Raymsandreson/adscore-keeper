@@ -21,6 +21,7 @@ import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import ProcessMarcosInline from '@/components/cases/ProcessMarcosInline';
+import PericiaInssChips from '@/components/activities/PericiaInssChips';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
@@ -1372,6 +1373,12 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 <FileText className="h-3 w-3" /> Vincular Processo
               </Button>
             ) : null}
+            {/* Benefício INSS: perícia médica e perícia social. Mesmo cabeçalho da
+                tela de Atividades — a data mora no processo, não na atividade. */}
+            <PericiaInssChips
+              processId={formProcessId}
+              processTitle={(linkedProcess || linkedProcessLive)?.title || formProcessTitle}
+            />
             {/* Em que altura está o processo desta atividade. Antes era preciso
                 sair da tela pra saber se já tinha sentença. */}
             {formProcessId && (
