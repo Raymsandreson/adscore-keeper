@@ -304,6 +304,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [showAiDialog, setShowAiDialog] = useState(false);
   const [aiMode, setAiMode] = useState<'create' | 'edit'>('create');
   const [aiChangelog, setAiChangelog] = useState<Array<{ action: string; location: string; detail: string }> | null>(null);
+  // Cargos que a IA detectou faltarem no time para cumprir o POP (sugestão, não ação).
+  const [aiCargoSugestoes, setAiCargoSugestoes] = useState<Array<{ cargo: string; motivo: string }> | null>(null);
   // ─── Revisões (histórico estilo "lei consolidada") ───
   // baseline = última revisão registrada; o diff do save é sempre contra ela.
   const baselineRevisionRef = useRef<{ number: number; snapshot: WorkflowSnapshot } | null>(null);
@@ -393,11 +395,82 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setViewMode('edit');
   };
 
+  /**
+   * Equipe com cargos e atribuições, enviada à IA para ela poder atribuir
+   * responsáveis. Cargos vêm de dois lugares que coexistem hoje:
+   * - team_member_cargos (Externo): cargo por time, texto livre;
+   * - job_positions + member_positions (Cloud): cargo formal do plano de
+   *   carreira, cuja descrição são as atribuições escritas da função.
+   * Falha aqui não pode derrubar a geração — sem equipe a IA só não atribui.
+   */
+  const buildTeamForAI = async (): Promise<Array<{ userId: string; nome: string; cargos: string[]; atribuicoes?: string }>> => {
+    try {
+      await ensureExternalSession();
+      const [cargosRes, posRes, memberPosRes] = await Promise.all([
+        (externalSupabase as any).from('team_member_cargos').select('team_name, user_id, cargo'),
+        (supabase as any).from('job_positions').select('id, name, description'),
+        (supabase as any).from('member_positions').select('user_id, position_id'),
+      ]);
+      const cargosDeTime = new Map<string, string[]>();
+      ((cargosRes.data as { team_name: string; user_id: string; cargo: string | null }[]) || []).forEach(r => {
+        if (!r.cargo) return;
+        cargosDeTime.set(r.user_id, [...(cargosDeTime.get(r.user_id) || []), `${r.cargo} (time ${r.team_name})`]);
+      });
+      const positionById = new Map<string, { name: string; description: string | null }>(
+        ((posRes.data as { id: string; name: string; description: string | null }[]) || []).map(p => [p.id, p])
+      );
+      const cargosFormais = new Map<string, { name: string; description: string | null }[]>();
+      ((memberPosRes.data as { user_id: string; position_id: string }[]) || []).forEach(mp => {
+        const pos = positionById.get(mp.position_id);
+        if (pos) cargosFormais.set(mp.user_id, [...(cargosFormais.get(mp.user_id) || []), pos]);
+      });
+      return profilesParaHeranca.map(p => {
+        const userId = p.user_id || p.id;
+        const formais = cargosFormais.get(userId) || [];
+        const atribuicoes = formais.map(f => f.description).filter(Boolean).join(' | ');
+        return {
+          userId,
+          nome: p.full_name || p.email || 'Sem nome',
+          cargos: [...new Set([...(cargosDeTime.get(userId) || []), ...formais.map(f => f.name)])],
+          ...(atribuicoes ? { atribuicoes } : {}),
+        };
+      });
+    } catch (e) {
+      console.error('Erro ao montar equipe para a IA (segue sem responsáveis):', e);
+      return [];
+    }
+  };
+
   const handleGenerateWithAI = async () => {
     if (!aiPrompt.trim()) return;
     setGenerating(true);
     setAiChangelog(null);
+    setAiCargoSugestoes(null);
     try {
+      // Equipe para a IA atribuir responsáveis por cargo/atribuição.
+      const team = await buildTeamForAI();
+      // assigneeId da IA só entra se for um userId real do escritório — id
+      // inventado quebraria a cascata e apontaria pra ninguém.
+      const validUserIds = new Set(profilesParaHeranca.flatMap(p => [p.user_id, p.id]).filter(Boolean));
+      const saneAssignee = (v: unknown, prev: string | null | undefined): string | null | undefined =>
+        typeof v === 'string' && validUserIds.has(v) ? v : prev;
+      const PRAZO_UNIDADES: ReadonlyArray<ChecklistItem['prazoUnidade']> = ['dias_uteis', 'dias', 'meses'];
+      const sanePrazo = (step: any, prev?: ChecklistItem): Pick<ChecklistItem, 'prazoValor' | 'prazoUnidade'> => {
+        const valor = typeof step.prazoValor === 'number' && step.prazoValor > 0
+          ? Math.round(step.prazoValor)
+          : prev?.prazoValor ?? null;
+        if (!valor) return {};
+        const unidade = PRAZO_UNIDADES.includes(step.prazoUnidade) ? step.prazoUnidade : (prev?.prazoUnidade || 'dias_uteis');
+        return { prazoValor: valor, prazoUnidade: unidade };
+      };
+      const guardarSugestoesCargos = (raw: unknown) => {
+        if (!Array.isArray(raw)) return;
+        const sugestoes = raw
+          .filter((s: any) => s && s.cargo)
+          .map((s: any) => ({ cargo: String(s.cargo), motivo: String(s.motivo || '') }));
+        if (sugestoes.length) setAiCargoSugestoes(sugestoes);
+      };
+
       if (aiMode === 'edit' && phases.length > 0) {
         // Edit mode: send current workflow to AI for modification
         const currentWorkflow = {
@@ -411,11 +484,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             stageId: p.stageId,
             stageName: p.stageName,
             stageColor: p.stageColor,
+            assigneeId: p.assigneeId ?? null,
             objectives: p.objectives.map(o => ({
               templateId: o.templateId,
               name: o.name,
               description: o.description,
               is_mandatory: o.is_mandatory,
+              assigneeId: o.assigneeId ?? null,
               steps: o.items.map(s => ({
                 id: s.id,
                 label: s.label,
@@ -424,6 +499,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 activityType: s.activityType,
                 nextStageId: s.nextStageId,
                 setStatusId: s.setStatusId,
+                assigneeId: s.assigneeId ?? null,
+                prazoValor: s.prazoValor ?? null,
+                prazoUnidade: s.prazoUnidade ?? null,
                 answers: s.answers,
                 docChecklist: s.docChecklist,
               })),
@@ -436,6 +514,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             description: aiPrompt,
             currentWorkflow,
             activityTypes: activityTypes.map(t => t.label),
+            team,
           },
         });
 
@@ -467,17 +546,35 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         const reuseTemplateId = (stageId: string, name: string) =>
           templateIdByStageAndName.get(`${stageId}::${(name || '').trim().toLowerCase()}`);
 
-        const editedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => ({
+        // Estado anterior de fase e objetivo, pra restaurar o que a IA não
+        // devolver (responsável, estagnação) — mesma proteção dos passos.
+        const prevPhaseByStageId = new Map(phases.map(p => [p.stageId, p]));
+        const prevObjectiveLookup = new Map<string, PhaseObjective>();
+        phases.forEach(p => p.objectives.forEach(o => {
+          if (o.templateId) prevObjectiveLookup.set(o.templateId, o);
+          prevObjectiveLookup.set(`${p.stageId}::${o.name.trim().toLowerCase()}`, o);
+        }));
+
+        const editedPhases: PhaseConfig[] = (data.phases || []).map((phase: any) => {
+          const prevPhase = prevPhaseByStageId.get(phase.stageId);
+          return {
           stageId: phase.stageId,
           stageName: phase.stageName,
           stageColor: phase.stageColor || '#3b82f6',
-          objectives: (phase.objectives || []).map((obj: any) => ({
-            templateId: validTemplateIds.has(obj.templateId)
+          assigneeId: saneAssignee(phase.assigneeId, prevPhase?.assigneeId),
+          stagnationDays: prevPhase?.stagnationDays,
+          objectives: (phase.objectives || []).map((obj: any) => {
+            const templateId = validTemplateIds.has(obj.templateId)
               ? obj.templateId
-              : reuseTemplateId(phase.stageId, obj.name),
+              : reuseTemplateId(phase.stageId, obj.name);
+            const prevObj = (templateId && prevObjectiveLookup.get(templateId))
+              || prevObjectiveLookup.get(`${phase.stageId}::${(obj.name || '').trim().toLowerCase()}`);
+            return {
+            templateId,
             name: obj.name,
             description: obj.description || '',
             is_mandatory: obj.is_mandatory || false,
+            assigneeId: saneAssignee(obj.assigneeId, prevObj?.assigneeId),
             items: (obj.steps || []).map((step: any) => ({
               id: step.id || crypto.randomUUID(),
               label: step.label,
@@ -486,6 +583,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               activityType: step.activityType || undefined,
               nextStageId: step.nextStageId || undefined,
               setStatusId: step.setStatusId ?? prevStepsById.get(step.id)?.setStatusId,
+              assigneeId: saneAssignee(step.assigneeId, prevStepsById.get(step.id)?.assigneeId),
+              ...sanePrazo(step, prevStepsById.get(step.id)),
+              // Campos que a IA não conhece: sobrevivem sempre do estado anterior.
+              messageTemplates: prevStepsById.get(step.id)?.messageTemplates,
+              supersededBy: prevStepsById.get(step.id)?.supersededBy,
               answers: step.answers?.length
                 ? step.answers.map((a: Partial<StepAnswerOption>) => {
                     const prevAns = prevStepsById.get(step.id)?.answers?.find(pa => pa.id === a.id);
@@ -514,9 +616,11 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 : undefined,
             })),
             isExpanded: true,
-          })),
+          };
+          }),
           isExpanded: true,
-        }));
+        };
+        });
 
         setPhases(editedPhases);
 
@@ -536,6 +640,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         if (Array.isArray(data.resultado_esperado_ids)) {
           setFormResultadoEsperadoIds(data.resultado_esperado_ids.filter((id: any) => typeof id === 'string'));
         }
+        guardarSugestoesCargos(data.sugestoes_cargos);
 
         setAiChangelog(data.changelog || []);
         // O prompt da IA vira o motivo pré-preenchido da próxima revisão —
@@ -551,6 +656,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           body: {
             description: aiPrompt,
             activityTypes: activityTypes.map(t => t.label),
+            team,
           },
         });
 
@@ -564,16 +670,20 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           stageId: phase.name.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
           stageName: phase.name,
           stageColor: phase.color || '#3b82f6',
+          assigneeId: saneAssignee(phase.assigneeId, null),
           objectives: (phase.objectives || []).map((obj: any) => ({
             name: obj.name,
             description: obj.description || '',
             is_mandatory: obj.is_mandatory || false,
+            assigneeId: saneAssignee(obj.assigneeId, null),
             items: (obj.steps || []).map((step: any) => ({
               id: crypto.randomUUID(),
               label: step.label,
               description: step.description || undefined,
               script: step.script || undefined,
               activityType: step.activityType || undefined,
+              assigneeId: saneAssignee(step.assigneeId, null),
+              ...sanePrazo(step),
               docChecklist: step.docChecklist?.length
                 ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label, type: d.type || 'documentos' }))
                 : undefined,
@@ -584,6 +694,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         }));
 
         setPhases(generatedPhases);
+        guardarSugestoesCargos(data.sugestoes_cargos);
         setShowAiDialog(false);
         setAiPrompt('');
         toast.success(`Fluxo "${data.name}" gerado com ${generatedPhases.length} fases!`);
@@ -1693,6 +1804,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 <Button variant="outline" className="flex-1 border-dashed" onClick={() => {
                   setAiMode(editingBoardId ? 'edit' : 'create');
                   setAiChangelog(null);
+                  setAiCargoSugestoes(null);
                   setShowAiDialog(true);
                 }}>
                   <Sparkles className="h-4 w-4 mr-2" />
@@ -1729,6 +1841,34 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                             <p className="font-medium text-foreground">{change.location}</p>
                             <p className="text-muted-foreground">{change.detail}</p>
                           </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Cargos que a IA sugeriu pro time cobrir tudo que o POP exige */}
+              {aiCargoSugestoes && aiCargoSugestoes.length > 0 && (
+                <Card className="border-amber-500/40 bg-amber-500/5">
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 flex items-center gap-1.5">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        Cargos sugeridos pela IA ({aiCargoSugestoes.length})
+                      </span>
+                      <Button variant="ghost" size="icon" className="h-5 w-5" onClick={() => setAiCargoSugestoes(null)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      Funções que o POP exige e a IA não encontrou em nenhum cargo do time. É só sugestão — nada foi criado.
+                    </p>
+                    <div className="space-y-1.5">
+                      {aiCargoSugestoes.map((s, i) => (
+                        <div key={i} className="text-xs">
+                          <p className="font-medium text-foreground">{s.cargo}</p>
+                          {s.motivo && <p className="text-muted-foreground">{s.motivo}</p>}
                         </div>
                       ))}
                     </div>
@@ -3220,8 +3360,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {aiMode === 'edit'
-              ? 'Descreva o que quer alterar no fluxo. A IA vai identificar onde encaixar as mudanças e informar o que foi alterado.'
-              : 'Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists.'}
+              ? 'Descreva o que quer alterar no fluxo. A IA vai identificar onde encaixar as mudanças e informar o que foi alterado. Ela também pode definir responsáveis (pelo cargo de cada um no time) e prazos por passo, e sugere cargos se faltar função no time.'
+              : 'Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists — com responsáveis pelo cargo de cada um no time, prazos por passo, e sugestão de cargos se faltar função no time.'}
           </p>
           <Textarea
             value={aiPrompt}
