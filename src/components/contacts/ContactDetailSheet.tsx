@@ -48,12 +48,14 @@ import {
   CheckCircle,
   XCircle,
   Trash2,
+  Search,
+  Loader2,
 } from 'lucide-react';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { ContactRelationshipsPanel } from '@/components/contacts/ContactRelationshipsPanel';
-import { useContactLeads, ContactLead } from '@/hooks/useContactLeads';
+import { useContactLeads, useSearchLeads, ContactLead } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { detectStateFromName, detectCityFromBase } from '@/lib/parseLocationFromName';
 import { useCboProfessions } from '@/hooks/useCboProfessions';
@@ -198,7 +200,7 @@ export function ContactDetailSheet({
     updateClassification,
     deleteClassification,
   } = useContactClassifications();
-  const { leads: contactLeads, loading: loadingLeads, unlinkLead, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
+  const { leads: contactLeads, loading: loadingLeads, linkLead, unlinkLead, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
   const { professions, searchProfessions } = useCboProfessions();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
@@ -250,6 +252,33 @@ export function ContactDetailSheet({
   // State for full LeadEditDialog when creating new lead
   const [showLeadEditDialog, setShowLeadEditDialog] = useState(false);
   const [newCreatedLead, setNewCreatedLead] = useState<Lead | null>(null);
+
+  // Vincular lead direto pela ficha do contato (busca por nome/telefone/email/nº do processo)
+  const [showLinkLeadDialog, setShowLinkLeadDialog] = useState(false);
+  const [linkLeadSearch, setLinkLeadSearch] = useState('');
+  const [linkingLeadId, setLinkingLeadId] = useState<string | null>(null);
+  const { results: linkLeadResults, loading: linkLeadSearching, searchLeads: searchLeadsToLink } = useSearchLeads();
+
+  useEffect(() => {
+    if (!showLinkLeadDialog) return;
+    const timer = setTimeout(() => {
+      if (linkLeadSearch.trim()) {
+        searchLeadsToLink(linkLeadSearch, contactLeads.map((l) => l.lead_id));
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [linkLeadSearch, showLinkLeadDialog]);
+
+  const handleLinkLeadFromSearch = async (leadId: string) => {
+    setLinkingLeadId(leadId);
+    try {
+      await linkLead(leadId);
+      setShowLinkLeadDialog(false);
+      setLinkLeadSearch('');
+    } finally {
+      setLinkingLeadId(null);
+    }
+  };
 
   // Load contact data
   useEffect(() => {
@@ -1265,6 +1294,18 @@ export function ContactDetailSheet({
 
             {/* Leads Tab */}
             <TabsContent value="leads" className="space-y-4 mt-0">
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="gap-1.5"
+                  onClick={() => { setLinkLeadSearch(''); setShowLinkLeadDialog(true); }}
+                >
+                  <Link2 className="h-4 w-4" />
+                  Vincular lead
+                </Button>
+              </div>
               {loadingLeads ? (
                 <div className="flex items-center justify-center py-8">
                   <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
@@ -1353,7 +1394,7 @@ export function ContactDetailSheet({
                     Nenhum lead vinculado
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Vincule leads a este contato através do gerenciador
+                    Use "Vincular lead" para buscar por nome, telefone ou número do processo
                   </p>
                 </div>
               )}
@@ -1564,6 +1605,84 @@ export function ContactDetailSheet({
             >
               {creatingClientLead ? 'Processando...' : clientLeadMode === 'create' ? 'Criar Lead' : 'Vincular Lead'}
             </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+
+    {/* Vincular lead existente pela ficha do contato */}
+    {showLinkLeadDialog && (
+      <Dialog open={showLinkLeadDialog} onOpenChange={(v) => { if (!v) { setShowLinkLeadDialog(false); setLinkLeadSearch(''); } }}>
+        <DialogContent className="sm:max-w-lg max-h-[85vh] overflow-y-auto" style={{ zIndex: 9999 }}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Link2 className="h-5 w-5" />
+              Vincular lead a {contact?.full_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                placeholder="Nome, telefone, email ou nº do processo..."
+                value={linkLeadSearch}
+                onChange={(e) => setLinkLeadSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            {linkLeadSearch.trim() ? (
+              <div className="border rounded-lg overflow-hidden">
+                {linkLeadSearching ? (
+                  <div className="p-4 text-center">
+                    <Loader2 className="h-4 w-4 animate-spin mx-auto text-muted-foreground" />
+                  </div>
+                ) : linkLeadResults.length === 0 ? (
+                  <p className="p-4 text-center text-sm text-muted-foreground">
+                    Nenhum lead encontrado
+                  </p>
+                ) : (
+                  <div className="divide-y max-h-[300px] overflow-y-auto">
+                    {linkLeadResults.map((lead: any) => (
+                      <button
+                        type="button"
+                        key={lead.id}
+                        disabled={linkingLeadId !== null}
+                        onClick={() => handleLinkLeadFromSearch(lead.id)}
+                        className="w-full text-left p-3 hover:bg-muted/50 transition-colors disabled:opacity-50"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="font-medium text-sm truncate">{lead.lead_name || 'Lead sem nome'}</p>
+                          {linkingLeadId === lead.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin shrink-0 text-muted-foreground" />
+                          ) : (
+                            <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          )}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {lead.status && (
+                            <Badge variant="outline" className="text-xs">{lead.status}</Badge>
+                          )}
+                          {lead.lead_phone && (
+                            <span className="text-xs text-muted-foreground">{lead.lead_phone}</span>
+                          )}
+                          {(lead.matched_process_numbers || []).map((num: string) => (
+                            <Badge key={num} variant="secondary" className="text-xs gap-1">
+                              <Scale className="h-3 w-3" />
+                              {num}
+                            </Badge>
+                          ))}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Digite para buscar. Dá para colar o número do processo inteiro ou só um trecho dele.
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
