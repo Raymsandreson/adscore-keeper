@@ -56,13 +56,31 @@ Erro que já custou meio dia: tratar a migração de checklist como se fosse a m
 | Barra do lead / % do funil | `lead_checklist_instances` via `calculateHierarchicalProgress` |
 | Produtividade da equipe | passos e objetivos dos checklists |
 
-Passo e objetivo são **instrução de como conduzir** — não são o progresso. Trocar o POP de
-marcos exige repontar `process_pop_marcos` (o dado do progresso), `pop_marco_gabarito` e
-`pop_fontes`; o que publica de fato é `team_workflow_boards`. Migrar checklist é opcional
-— serve só para o processo não chegar com a ficha em branco.
+Passo e objetivo são **instrução de como conduzir** — não são o progresso.
 
-**Executado em 12/08/2026:** 1.432 detecções, 331 gabaritos e 2 fontes repontados para o
-board de marcos; 644 checklists migrados junto. Backups `zz_*_bkp_20260812`.
+**E `process_pop_marcos` é dado DERIVADO — não adianta editá-lo na mão.** O cron
+`pop_marcos_tick` (`15,45 * * * *`) roda `refresh_process_pop_marcos()`, que **apaga e
+regenera** as detecções de cada processo a partir de `vw_pop_marcos_regua`, casando pelo
+`lead_processes.workflow_id`. Editar `process_pop_marcos` diretamente dura no máximo 30
+minutos (aprendido na prática: um repontamento manual de 1.432 linhas foi silenciosamente
+desfeito pelo tick). O que troca o POP de verdade:
+
+1. `lead_processes.workflow_id` (+ `workflow_name`) → aponta cada processo ao board;
+2. `team_workflow_boards` → aponta o time;
+3. `pop_marco_gabarito` e `pop_fontes` → têm `board_id` próprio, repontar junto;
+4. **sinais**: `pop_marco_sinais` liga por `pop_marco_id` — board novo com marcos novos
+   nasce SEM os sinais `texto` e `grau` do antigo. Copiar antes de virar, senão a régua
+   nova fica cega para detecção por texto do Escavador. Depois, `pop_marcos_tick()` na mão
+   para não esperar o cron.
+
+Migrar checklist é opcional — serve só para o processo não chegar com a ficha em branco.
+
+**Executado em 12–13/08/2026:** régua nova publicada (27 marcos, +`remessa_superior`);
+713 processos virados de board; 63 sinais no board novo (45 tpu, 12 texto, 4 documento,
+2 grau); saneamento ganhou sinal de texto (frase padrão do art. 357 CPC — 11→16
+processos); 331 gabaritos, 2 fontes e 644 checklists migrados; tick regenerou 1.426
+detecções e moveu 394 fases. Backups `zz_*_bkp_20260812` e
+`zz_lead_processes_workflow_bkp_20260813`.
 
 ### Três armadilhas desta migração, todas medidas
 
