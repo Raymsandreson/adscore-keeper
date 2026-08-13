@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type KeyboardEvent, type CSSProperties, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback, type KeyboardEvent, type CSSProperties, type ReactNode } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -381,11 +381,30 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     void refreshTeamsList();
   }, [open, initialOpenStepId, initialOpenStepChat, initialHighlightMsgId]);
 
-  const refreshTeamsList = async () => {
+  const refreshTeamsList = useCallback(async () => {
     await ensureExternalSession();
     const { data } = await externalSupabase.from('teams').select('id, name').order('name');
     if (data) setTeamsList(data as { id: string; name: string }[]);
-  };
+  }, []);
+
+  // Props estáveis pra seção "Time e cargos" e pro card de sugestões: os dois
+  // são React.memo, e o builder re-renderiza a cada tecla — arrow inline aqui
+  // anularia o memo e devolveria o custo por keystroke.
+  const linkedTeamName = useMemo(
+    () => teamsList.find(t => t.id === formResponsibleTeamId)?.name,
+    [teamsList, formResponsibleTeamId],
+  );
+  const bumpCargoMap = useCallback(() => setCargoMapVersion(v => v + 1), []);
+  const handleInlineTeamCreated = useCallback(async (t: { id: string; name: string }) => {
+    await refreshTeamsList();
+    setFormResponsibleTeamId(t.id);
+  }, [refreshTeamsList]);
+  const removeCargoSugestao = useCallback((cargo: string) => {
+    setAiCargoSugestoes(prev => {
+      const next = (prev || []).filter(s => s.cargo !== cargo);
+      return next.length ? next : null;
+    });
+  }, []);
 
   // Handle initialEditBoardId or initialCreateNew after boards load
   useEffect(() => {
@@ -658,10 +677,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                   })
                 : undefined,
             })),
-            isExpanded: true,
+            // Preserva o recolhido/expandido de antes da edição: expandir TUDO
+            // punha os 173 passos do POP trabalhista no DOM de uma vez e a
+            // navegação travava no celular. Só o que a IA CRIOU abre expandido.
+            isExpanded: prevObj ? prevObj.isExpanded : true,
           };
           }),
-          isExpanded: true,
+          isExpanded: prevPhase ? prevPhase.isExpanded : true,
         };
         });
 
@@ -1875,12 +1897,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                       só a janela de edição no contexto onde o cargo é usado. */}
                   <PopTeamCargosSection
                     teamId={formResponsibleTeamId}
-                    teamName={teamsList.find(t => t.id === formResponsibleTeamId)?.name}
-                    onCargosChanged={() => setCargoMapVersion(v => v + 1)}
-                    onTeamCreated={async (t) => {
-                      await refreshTeamsList();
-                      setFormResponsibleTeamId(t.id);
-                    }}
+                    teamName={linkedTeamName}
+                    onCargosChanged={bumpCargoMap}
+                    onTeamCreated={handleInlineTeamCreated}
                   />
                 </div>
               )}
@@ -1973,12 +1992,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     <CargoSugestoesCard
                       sugestoes={aiCargoSugestoes}
                       teamId={formResponsibleTeamId}
-                      teamName={teamsList.find(t => t.id === formResponsibleTeamId)?.name}
-                      onRemove={(cargo) => setAiCargoSugestoes(prev => {
-                        const next = (prev || []).filter(s => s.cargo !== cargo);
-                        return next.length ? next : null;
-                      })}
-                      onCargosChanged={() => setCargoMapVersion(v => v + 1)}
+                      teamName={linkedTeamName}
+                      onRemove={removeCargoSugestao}
+                      onCargosChanged={bumpCargoMap}
                     />
                   </CardContent>
                 </Card>

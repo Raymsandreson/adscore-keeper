@@ -22,7 +22,7 @@
 // nessas tabelas é admin-only por RLS, então a falha vira aviso, não quebra.
 // A IA do POP já lê as duas fontes (buildTeamForAI no WorkflowBuilder).
 // =============================================================================
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -85,7 +85,7 @@ async function espelharSnapshotExterno() {
  * Sem ocupante o cargo ainda entra nas opções do POP (fetchCargoMap inclui as
  * fichas formais) e a pessoa é definida depois na seção "Time e cargos".
  */
-export function CargoSugestoesCard({ sugestoes, teamId, teamName, onRemove, onCargosChanged }: {
+export const CargoSugestoesCard = memo(function CargoSugestoesCard({ sugestoes, teamId, teamName, onRemove, onCargosChanged }: {
   sugestoes: { cargo: string; motivo: string }[];
   teamId: string;
   teamName?: string;
@@ -218,9 +218,12 @@ export function CargoSugestoesCard({ sugestoes, teamId, teamName, onRemove, onCa
       </div>
     </div>
   );
-}
+});
 
-export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeamCreated }: PopTeamCargosSectionProps) {
+// React.memo: o WorkflowBuilder re-renderiza a cada tecla do formulário; esta
+// seção só depende do time vinculado e de callbacks estáveis (useCallback no
+// builder), então memo corta o re-render por keystroke.
+export const PopTeamCargosSection = memo(function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeamCreated }: PopTeamCargosSectionProps) {
   const profilesList = useProfilesList();
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [cargos, setCargos] = useState<Record<string, string>>({}); // user_id -> cargo
@@ -680,4 +683,4 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
       )}
     </div>
   );
-}
+});

@@ -98,7 +98,9 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
   chars de items) estourava MAX_TOKENS, o Gemini não devolvia tool_call nenhuma e a
   edição "não fazia nada"** (só um toast genérico). Hoje: teto de 60k e o erro
   devolve o finish_reason. Se voltar a "não fazer nada", olhe o log do Railway por
-  `[edit-workflow] sem tool_call`. Armadilha corrigida junto: a edição por IA reconstruía as
+  `[edit-workflow] sem tool_call`. Armadilha irmã: a edição por IA expandia TODAS
+  as fases/objetivos — 173 passos no DOM de uma vez travavam o celular; hoje
+  preserva o recolhido/expandido anterior e só o que a IA criou abre expandido. Armadilha corrigida junto: a edição por IA reconstruía as
   fases e **zerava** responsáveis, prazos, messageTemplates e stagnationDays — hoje o
   front restaura do estado anterior tudo que a IA omitir.
 
