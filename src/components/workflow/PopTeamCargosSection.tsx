@@ -77,6 +77,149 @@ async function espelharSnapshotExterno() {
   }
 }
 
+/**
+ * Card das sugestões de cargo da IA (sugestoes_cargos do generate/edit-workflow),
+ * agora com AÇÃO: confirmar cria o cargo de verdade — a ficha formal
+ * (job_positions) nasce com o motivo da IA como descrição e, se o usuário já
+ * escolher quem assume, o cargo do time (team_member_cargos) é gravado junto.
+ * Sem ocupante o cargo ainda entra nas opções do POP (fetchCargoMap inclui as
+ * fichas formais) e a pessoa é definida depois na seção "Time e cargos".
+ */
+export function CargoSugestoesCard({ sugestoes, teamId, teamName, onRemove, onCargosChanged }: {
+  sugestoes: { cargo: string; motivo: string }[];
+  teamId: string;
+  teamName?: string;
+  /** Sugestão criada/resolvida — o pai tira da lista (chaveado pelo nome). */
+  onRemove: (cargo: string) => void;
+  onCargosChanged: () => void;
+}) {
+  const profilesList = useProfilesList();
+  const [membros, setMembros] = useState<{ user_id: string; nome: string; cargoAtual: string }[]>([]);
+  // Ocupante escolhido por sugestão, chaveado pelo NOME do cargo (índice
+  // muda quando uma sugestão sai da lista).
+  const [ocupantes, setOcupantes] = useState<Record<string, string>>({});
+  const [criando, setCriando] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    (async () => {
+      if (!teamId || !teamName) { setMembros([]); return; }
+      try {
+        const { data: memberRows } = await supabase
+          .from('team_members').select('user_id').eq('team_id', teamId);
+        await ensureExternalSession();
+        const { data: cargoRows } = await ((externalSupabase as any).from('team_member_cargos') as any)
+          .select('user_id, cargo').eq('team_name', teamName);
+        if (!vivo) return;
+        const cargoPorUser = new Map(
+          (((cargoRows as { user_id: string; cargo: string | null }[]) || [])).map(r => [r.user_id, r.cargo || ''])
+        );
+        setMembros(((memberRows as { user_id: string }[]) || []).map(r => {
+          const p = profilesList.find(pp => pp.user_id === r.user_id || pp.id === r.user_id);
+          return {
+            user_id: r.user_id,
+            nome: p?.full_name || p?.email || 'Sem nome',
+            cargoAtual: cargoPorUser.get(r.user_id) || '',
+          };
+        }));
+      } catch (e) {
+        console.error('[CargoSugestoes] Failed to load team members:', e);
+      }
+    })();
+    return () => { vivo = false; };
+  }, [teamId, teamName, profilesList]);
+
+  const criar = async (s: { cargo: string; motivo: string }) => {
+    if (!teamName) return;
+    const nome = s.cargo.trim();
+    const ocupante = ocupantes[s.cargo] || '';
+    setCriando(s.cargo);
+    try {
+      // Ficha formal (se ainda não existir cargo com esse nome): é ela que
+      // põe o cargo nas opções do POP mesmo sem ocupante, e o motivo da IA
+      // vira a descrição/atribuições. Admin-only por RLS.
+      const { data: existente } = await (supabase as any).from('job_positions')
+        .select('id').ilike('name', nome).limit(1).maybeSingle();
+      let fichaOk = !!existente;
+      if (!existente) {
+        const { error } = await (supabase as any).from('job_positions')
+          .insert({ name: nome, description: s.motivo?.trim() || null });
+        fichaOk = !error;
+        if (error) console.warn('[CargoSugestoes] Failed to create job position:', error);
+      }
+
+      if (ocupante) {
+        // Um membro tem UM cargo por time (PK team_name+user_id): atribuir
+        // aqui substitui o cargo atual dele — o seletor mostra qual é.
+        await ensureExternalSession();
+        const { error } = await ((externalSupabase as any).from('team_member_cargos') as any).upsert({
+          team_name: teamName,
+          user_id: ocupante,
+          cargo: nome,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'team_name,user_id' });
+        if (error) throw error;
+      } else if (!fichaOk) {
+        toast.error('Sem permissão pra criar a ficha formal (gestão de admin) — escolha quem assume pra criar como cargo do time.');
+        return;
+      }
+
+      onCargosChanged();
+      onRemove(s.cargo);
+      toast.success(ocupante ? `Cargo "${nome}" criado e atribuído` : `Cargo "${nome}" criado — defina quem assume na seção Time e cargos`);
+    } catch (e) {
+      console.error('[CargoSugestoes] Failed to create cargo:', e);
+      toast.error('Erro ao criar o cargo');
+    } finally {
+      setCriando(null);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <p className="text-[11px] text-muted-foreground">
+        Funções que o POP exige e a IA não encontrou em nenhum cargo do time. Confirme pra criar:
+        escolhendo quem assume, o cargo já resolve responsável; sem ocupante, ele fica disponível
+        e a pessoa é definida depois na seção "Time e cargos".
+      </p>
+      <div className="space-y-2">
+        {sugestoes.map(s => (
+          <div key={s.cargo} className="rounded-md border border-amber-500/30 bg-background/60 p-2 space-y-1">
+            <p className="text-xs font-medium text-foreground">{s.cargo}</p>
+            {s.motivo && <p className="text-[11px] text-muted-foreground">{s.motivo}</p>}
+            <div className="flex items-center gap-2">
+              <Select
+                value={ocupantes[s.cargo] || '__depois__'}
+                onValueChange={v => setOcupantes(prev => ({ ...prev, [s.cargo]: v === '__depois__' ? '' : v }))}
+              >
+                <SelectTrigger className="h-7 text-[11px] flex-1">
+                  <SelectValue placeholder="Quem assume?" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__depois__"><span className="text-muted-foreground">Definir quem assume depois</span></SelectItem>
+                  {membros.map(m => (
+                    <SelectItem key={m.user_id} value={m.user_id}>
+                      {m.nome}{m.cargoAtual ? ` (hoje: ${m.cargoAtual})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                className="h-7 text-[11px] shrink-0"
+                disabled={criando === s.cargo}
+                onClick={() => void criar(s)}
+              >
+                {criando === s.cargo ? <Loader2 className="h-3 w-3 animate-spin" /> : <><Plus className="h-3 w-3 mr-1" />Criar cargo</>}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeamCreated }: PopTeamCargosSectionProps) {
   const profilesList = useProfilesList();
   const [memberIds, setMemberIds] = useState<string[]>([]);

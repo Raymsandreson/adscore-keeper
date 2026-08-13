@@ -76,7 +76,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { fetchCargoMap, type CargoMap } from '@/lib/popCargo';
-import { PopTeamCargosSection } from '@/components/workflow/PopTeamCargosSection';
+import { PopTeamCargosSection, CargoSugestoesCard } from '@/components/workflow/PopTeamCargosSection';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
   DndContext,
@@ -1970,17 +1970,16 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
-                    <p className="text-[11px] text-muted-foreground">
-                      Funções que o POP exige e a IA não encontrou em nenhum cargo do time. É só sugestão — nada foi criado.
-                    </p>
-                    <div className="space-y-1.5">
-                      {aiCargoSugestoes.map((s, i) => (
-                        <div key={i} className="text-xs">
-                          <p className="font-medium text-foreground">{s.cargo}</p>
-                          {s.motivo && <p className="text-muted-foreground">{s.motivo}</p>}
-                        </div>
-                      ))}
-                    </div>
+                    <CargoSugestoesCard
+                      sugestoes={aiCargoSugestoes}
+                      teamId={formResponsibleTeamId}
+                      teamName={teamsList.find(t => t.id === formResponsibleTeamId)?.name}
+                      onRemove={(cargo) => setAiCargoSugestoes(prev => {
+                        const next = (prev || []).filter(s => s.cargo !== cargo);
+                        return next.length ? next : null;
+                      })}
+                      onCargosChanged={() => setCargoMapVersion(v => v + 1)}
+                    />
                   </CardContent>
                 </Card>
               )}

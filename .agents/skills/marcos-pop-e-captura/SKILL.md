@@ -74,6 +74,15 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
     `team_member_cargos` = quem faz o quê NESTE time (resolve responsável do
     POP); `job_positions` = ficha formal da função (descrição, salário, trilha).
     A ligação é por NOME do cargo, e a IA já lê as duas (buildTeamForAI).
+  - **Sugestão de cargo da IA CRIA cargo ao confirmar** (`CargoSugestoesCard`,
+    no card âmbar): cada sugestão tem seletor "quem assume?" (opcional) +
+    botão Criar — nasce a ficha formal com o motivo da IA como descrição e,
+    com ocupante escolhido, o cargo do time junto. Pra isso funcionar sem
+    ocupante, `fetchCargoMap` passou a INCLUIR os cargos formais ativos
+    (job_positions) nas opções — sem ocupante não resolve pessoa (cascata
+    segue) e o seletor mostra "— ninguém no time". Fluxo completo: IA sugere →
+    confirma (cria) → IA/usuário atribui nos passos → pessoa é definida na
+    seção "Time e cargos" quando o usuário decidir.
 - **Prazo por passo** — `src/lib/popPrazo.ts`: dias úteis, dias corridos ou meses.
   Feriado **não** é considerado; está declarado no arquivo.
 - **IA do POP atribui responsável e prazo** (ago/2026) — criar/editar com IA no
@@ -84,7 +93,12 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
   front. Se o POP exigir função que nenhum cargo cobre, a IA devolve `sugestoes_cargos`
   (card âmbar ao lado do changelog). As duas functions rodam no **Railway**
   (`railway-server/src/functions/{generate,edit}-workflow.ts`); as cópias do Cloud são
-  fallback sem esses campos. Armadilha corrigida junto: a edição por IA reconstruía as
+  fallback sem esses campos. **Armadilha (13/08/2026): a IA devolve o fluxo COMPLETO
+  numa function call — com `max_tokens: 16000` o POP trabalhista (173 passos, ~41k
+  chars de items) estourava MAX_TOKENS, o Gemini não devolvia tool_call nenhuma e a
+  edição "não fazia nada"** (só um toast genérico). Hoje: teto de 60k e o erro
+  devolve o finish_reason. Se voltar a "não fazer nada", olhe o log do Railway por
+  `[edit-workflow] sem tool_call`. Armadilha corrigida junto: a edição por IA reconstruía as
   fases e **zerava** responsáveis, prazos, messageTemplates e stagnationDays — hoje o
   front restaura do estado anterior tudo que a IA omitir.
 

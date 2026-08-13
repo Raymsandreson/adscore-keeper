@@ -68,7 +68,11 @@ RESPONSÁVEIS E PRAZOS:
     const data = await geminiChat({
       model: MODEL,
       thinking_budget: 0,
-      max_tokens: 16000,
+      // A IA devolve o fluxo COMPLETO na function call. O POP trabalhista tem
+      // 173 passos (~41k chars de JSON) — com 16k o functionCall estourava
+      // MAX_TOKENS no meio, vinha sem tool_call e a edição "não fazia nada".
+      // O Gemini Flash aceita até 65k de saída.
+      max_tokens: 60000,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `FLUXO ATUAL:\n${JSON.stringify(currentWorkflow, null, 2)}\n\nALTERAÇÃO SOLICITADA:\n${description}` },
@@ -224,7 +228,14 @@ RESPONSÁVEIS E PRAZOS:
 
     const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
-      return res.status(200).json({ error: 'IA não retornou dados estruturados' });
+      // Dizer POR QUE não veio: sem isso o front mostra um erro genérico e o
+      // usuário lê como "a IA não fez nada" sem pista de causa.
+      const finish = data?.choices?.[0]?.finish_reason;
+      console.error('[edit-workflow] sem tool_call, finish_reason:', finish);
+      const motivo = finish === 'MAX_TOKENS'
+        ? 'A resposta da IA estourou o limite de tamanho (POP muito grande). Tente pedir uma alteração mais específica.'
+        : `IA não retornou dados estruturados (${finish || 'resposta vazia'}). Tente de novo.`;
+      return res.status(200).json({ error: motivo });
     }
 
     const result = JSON.parse(toolCall.function.arguments);

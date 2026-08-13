@@ -56,7 +56,9 @@ IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia 
     const data = await geminiChat({
       model: MODEL,
       thinking_budget: 0,
-      max_tokens: 16000,
+      // Mesmo teto do edit-workflow: POP grande não cabe em 16k de saída e o
+      // functionCall vinha truncado (sem tool_call). Flash aceita até 65k.
+      max_tokens: 60000,
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: String(description || '') },
@@ -150,7 +152,12 @@ IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia 
 
     const toolCall = data?.choices?.[0]?.message?.tool_calls?.[0];
     if (!toolCall?.function?.arguments) {
-      return res.status(200).json({ error: 'IA não retornou dados estruturados' });
+      const finish = data?.choices?.[0]?.finish_reason;
+      console.error('[generate-workflow] sem tool_call, finish_reason:', finish);
+      const motivo = finish === 'MAX_TOKENS'
+        ? 'A resposta da IA estourou o limite de tamanho (fluxo muito grande). Tente uma descrição mais enxuta.'
+        : `IA não retornou dados estruturados (${finish || 'resposta vazia'}). Tente de novo.`;
+      return res.status(200).json({ error: motivo });
     }
 
     const workflow = JSON.parse(toolCall.function.arguments);
