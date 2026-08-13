@@ -13,26 +13,12 @@ import { Users, ExternalLink, Instagram, Phone, Mail, Plus, Search, Loader2, X, 
 import { logAudit } from '@/hooks/useAuditLog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
+import { CONTACT_LEAD_RELATIONSHIP_OPTIONS as RELATIONSHIP_OPTIONS } from '@/hooks/useContactLeads';
 
 interface ContactCallStats {
   totalCalls: number;
   lastAnsweredDuration: number | null;
 }
-
-const RELATIONSHIP_OPTIONS = [
-  'Vítima',
-  'Cônjuge',
-  'Pai/Mãe',
-  'Filho(a)',
-  'Irmão(ã)',
-  'Familiar',
-  'Amigo(a)',
-  'Colega de Trabalho',
-  'Advogado(a)',
-  'Testemunha',
-  'Responsável',
-  'Outro',
-];
 
 interface LinkedContact {
   id: string;

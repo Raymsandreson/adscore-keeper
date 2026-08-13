@@ -2,11 +2,29 @@ import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/integrations/supabase';
 import { toast } from 'sonner';
 
+// Opções de vínculo contato↔lead (contact_leads.relationship_to_victim).
+// Fonte única — importada também pelo lado do lead (LeadLinkedContacts).
+export const CONTACT_LEAD_RELATIONSHIP_OPTIONS = [
+  'Vítima',
+  'Cônjuge',
+  'Pai/Mãe',
+  'Filho(a)',
+  'Irmão(ã)',
+  'Familiar',
+  'Amigo(a)',
+  'Colega de Trabalho',
+  'Advogado(a)',
+  'Testemunha',
+  'Responsável',
+  'Outro',
+];
+
 export interface ContactLead {
   id: string;
   contact_id: string;
   lead_id: string;
   notes: string | null;
+  relationship_to_victim: string | null;
   created_at: string;
   lead?: {
     id: string;
@@ -72,6 +90,7 @@ export const useContactLeads = (contactId?: string) => {
         contact_id: link.contact_id,
         lead_id: link.lead_id,
         notes: link.notes,
+        relationship_to_victim: link.relationship_to_victim || null,
         created_at: link.created_at,
         lead: leadsMap.get(link.lead_id)
       }));
@@ -84,7 +103,7 @@ export const useContactLeads = (contactId?: string) => {
     }
   }, [contactId]);
 
-  const linkLead = async (leadId: string, notes?: string) => {
+  const linkLead = async (leadId: string, notes?: string, relationship?: string) => {
     if (!contactId) return;
 
     try {
@@ -93,7 +112,8 @@ export const useContactLeads = (contactId?: string) => {
         .insert({
           contact_id: contactId,
           lead_id: leadId,
-          notes: notes || null
+          notes: notes || null,
+          relationship_to_victim: relationship || null
         });
 
       if (error) {
@@ -109,6 +129,26 @@ export const useContactLeads = (contactId?: string) => {
     } catch (error) {
       console.error('Error linking lead:', error);
       toast.error('Erro ao vincular lead');
+    }
+  };
+
+  // Editar/limpar o vínculo de um lead já vinculado (null remove o vínculo)
+  const updateLeadRelationship = async (leadId: string, relationship: string | null) => {
+    if (!contactId) return;
+
+    try {
+      const { error } = await db
+        .from('contact_leads' as any)
+        .update({ relationship_to_victim: relationship })
+        .eq('contact_id', contactId)
+        .eq('lead_id', leadId);
+
+      if (error) throw error;
+
+      setLeads(prev => prev.map(l => l.lead_id === leadId ? { ...l, relationship_to_victim: relationship } : l));
+    } catch (error) {
+      console.error('Error updating lead relationship:', error);
+      toast.error('Erro ao atualizar vínculo');
     }
   };
 
@@ -141,7 +181,8 @@ export const useContactLeads = (contactId?: string) => {
     loading,
     fetchLeads,
     linkLead,
-    unlinkLead
+    unlinkLead,
+    updateLeadRelationship
   };
 };
 
