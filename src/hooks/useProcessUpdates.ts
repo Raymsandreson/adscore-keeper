@@ -42,6 +42,12 @@ export interface ProcessUpdate {
    * Escavador e nas do layout de tabela, em que cada movimento já é uma linha.
    */
   eventos: EventoProcesso[] | null;
+  /**
+   * Resumo do que o e-mail do tribunal disse, escrito pela IA na captura
+   * (migration 20260812210000, Railway: summarize-process-updates). Null
+   * enquanto a fila não passou pela linha — o card cai no texto cru.
+   */
+  resumo_ia: string | null;
 }
 
 /** Etiqueta "Notificado" — o cliente já foi avisado desta movimentação. */
@@ -91,12 +97,15 @@ const ordemDoFeed = (a: ProcessUpdate, b: ProcessUpdate): number => {
   return a.created_at < b.created_at ? 1 : -1;
 };
 
-const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at, eventos';
+const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at, eventos, resumo_ia';
 // Coluna que falta derruba o select INTEIRO e o sino fica vazio em silêncio —
 // já aconteceu com callback_at em lead_activities. Então cada coluna nova entra
-// com degrau de recuo próprio: sem eventos ainda dá para ler o feed, e sem
-// esfera dá para ler sem o filtro por ramo.
-const COLUNAS_SEM_EVENTOS = COLUNAS.replace(', eventos', '');
+// com degrau de recuo próprio: sem resumo_ia o card cai no texto cru, sem
+// eventos ainda dá para ler o feed, e sem esfera dá para ler sem o filtro por
+// ramo. O degrau do resumo é o primeiro porque é a coluna mais nova — enquanto
+// a migration não roda no Externo, é ela que derrubaria o feed inteiro.
+const COLUNAS_SEM_RESUMO = COLUNAS.replace(', resumo_ia', '');
+const COLUNAS_SEM_EVENTOS = COLUNAS_SEM_RESUMO.replace(', eventos', '');
 const COLUNAS_SEM_ESFERA = COLUNAS_SEM_EVENTOS.replace(', esfera', '');
 
 /**
@@ -162,6 +171,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
       };
 
       let { data, error, count } = await buscar(COLUNAS);
+      if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_RESUMO));
       if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_EVENTOS));
       if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_ESFERA));
       if (error) throw error;
@@ -172,6 +182,9 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
         ...r,
         esfera: r.esfera || classificarEsfera({ numeroCnj: r.numero_cnj, titulo: r.processo_titulo }),
         eventos: Array.isArray(r.eventos) ? r.eventos : null,
+        // Degrau sem a coluna devolve linha sem o campo — `undefined` no card
+        // seria "carregando", e o que vale dizer é "ainda não resumido".
+        resumo_ia: r.resumo_ia ?? null,
       }));
       setUpdates(rows);
 
@@ -305,6 +318,9 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
             ...bruto,
             esfera: bruto.esfera || classificarEsfera({ numeroCnj: bruto.numero_cnj, titulo: bruto.processo_titulo }),
             eventos: Array.isArray(bruto.eventos) ? bruto.eventos : null,
+            // Chegou agora: o resumo é escrito minutos depois, pelo cron do
+            // Railway. Até lá o card mostra o texto cru — nunca "undefined".
+            resumo_ia: bruto.resumo_ia ?? null,
           };
           // Reordena em vez de empilhar no topo: com a lista ordenada por
           // data_movimentacao, uma linha recém-inserida de movimentação antiga
