@@ -13,12 +13,22 @@
 // team_member_cargos no Externo chaveados por nome do time — as MESMAS tabelas
 // e chaves que o TeamsManager usa. Aqui é só uma janela de edição no contexto
 // do POP, não um cadastro paralelo.
+//
+// Ponte com o plano de carreira (13/08/2026): o cargo do time é texto livre,
+// mas quando o nome bate com um cargo formal (job_positions, Cloud) a seção
+// mostra a DESCRIÇÃO (atribuições) e o PLANO DE CRESCIMENTO (career_plans) do
+// cargo, e deixa vincular a pessoa a ele (member_positions). Cargo digitado
+// sem ficha formal pode ganhar uma aqui mesmo (descrição + plano) — escrita
+// nessas tabelas é admin-only por RLS, então a falha vira aviso, não quebra.
+// A IA do POP já lê as duas fontes (buildTeamForAI no WorkflowBuilder).
 // =============================================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ChevronDown, ChevronUp, Loader2, Plus, UserPlus, Users } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Check, ChevronDown, ChevronUp, GraduationCap, Loader2, Plus, UserPlus, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -34,6 +44,14 @@ interface PopTeamCargosSectionProps {
   onCargosChanged: () => void;
   /** Time criado aqui: o builder recarrega a lista e vincula o novo. */
   onTeamCreated: (team: { id: string; name: string }) => void;
+}
+
+interface JobPositionLite {
+  id: string;
+  name: string;
+  description: string | null;
+  career_plan_id: string | null;
+  level: number;
 }
 
 /**
@@ -70,6 +88,34 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
   const [novoTimeNome, setNovoTimeNome] = useState('');
   const [criando, setCriando] = useState(false);
 
+  // ─── Cargo formal (plano de carreira, Cloud) ───
+  const [positions, setPositions] = useState<JobPositionLite[]>([]);
+  const [planos, setPlanos] = useState<{ id: string; name: string }[]>([]);
+  const [memberPositions, setMemberPositions] = useState<{ user_id: string; position_id: string }[]>([]);
+  // Editor inline da ficha formal: cria (posId ausente) ou completa (posId
+  // presente) descrição + plano do cargo digitado para aquele membro.
+  const [fichaEditor, setFichaEditor] = useState<{ userId: string; posId?: string; nome: string } | null>(null);
+  const [fichaDesc, setFichaDesc] = useState('');
+  const [fichaPlanoId, setFichaPlanoId] = useState('');
+  const [fichaSaving, setFichaSaving] = useState(false);
+
+  const carregarPlanoCarreira = useCallback(async () => {
+    try {
+      const [posRes, planRes, mpRes] = await Promise.all([
+        (supabase as any).from('job_positions').select('id, name, description, career_plan_id, level').eq('is_active', true),
+        (supabase as any).from('career_plans').select('id, name').eq('is_active', true),
+        (supabase as any).from('member_positions').select('user_id, position_id'),
+      ]);
+      setPositions((posRes.data as JobPositionLite[]) || []);
+      setPlanos((planRes.data as { id: string; name: string }[]) || []);
+      setMemberPositions((mpRes.data as { user_id: string; position_id: string }[]) || []);
+    } catch (e) {
+      console.warn('[PopTeamCargos] Failed to load career plan data:', e);
+    }
+  }, []);
+
+  useEffect(() => { void carregarPlanoCarreira(); }, [carregarPlanoCarreira]);
+
   const carregar = useCallback(async () => {
     if (!teamId || !teamName) { setMemberIds([]); setCargos({}); return; }
     setLoading(true);
@@ -97,7 +143,13 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
   useEffect(() => { void carregar(); }, [carregar]);
 
   // team_members.user_id guarda ora o auth user_id, ora o id do profile
-  // (legado) — casar pelos dois, como o TeamsManager faz.
+  // (legado) — casar pelos dois, como o TeamsManager faz. member_positions é
+  // chaveado pelo auth user_id (CareerPlanManager), daí o resolve.
+  const resolveAuthId = useCallback((storedId: string) => {
+    const p = profilesList.find(pp => pp.user_id === storedId || pp.id === storedId);
+    return p?.user_id || storedId;
+  }, [profilesList]);
+
   const membros = useMemo(() => memberIds.map(storedId => {
     const p = profilesList.find(pp => pp.user_id === storedId || pp.id === storedId);
     return { user_id: storedId, nome: p?.full_name || p?.email || 'Sem nome' };
@@ -110,6 +162,12 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
       .filter(p => !stored.has(p.user_id) && !stored.has(p.id))
       .filter(p => !q || (p.full_name || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q));
   }, [memberIds, profilesList, search]);
+
+  const posPorNome = useMemo(() => new Map(
+    positions.map(p => [p.name.trim().toLowerCase(), p])
+  ), [positions]);
+
+  const planoNome = useMemo(() => new Map(planos.map(p => [p.id, p.name])), [planos]);
 
   // Cargo com 2+ ocupantes não resolve responsável (empate desce a cascata) —
   // avisar aqui, onde o cargo é digitado, e não só no seletor lá embaixo.
@@ -183,8 +241,68 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
     }
   };
 
+  // Vincula a PESSOA ao cargo formal no plano de carreira (member_positions).
+  const vincularNoPlano = async (storedUserId: string, positionId: string) => {
+    const authId = resolveAuthId(storedUserId);
+    try {
+      const { error } = await (supabase as any).from('member_positions').insert({
+        user_id: authId, position_id: positionId,
+      });
+      if (error && error.code !== '23505') throw error;
+      setMemberPositions(prev => [...prev, { user_id: authId, position_id: positionId }]);
+      toast.success('Pessoa vinculada ao cargo no plano de carreira');
+    } catch (e) {
+      console.error('[PopTeamCargos] Failed to assign member position:', e);
+      toast.error('Sem permissão para vincular — gestão de cargos formais é de admin (Equipe → Carreira).');
+    }
+  };
+
+  const abrirFichaEditor = (userId: string, nome: string, pos?: JobPositionLite) => {
+    setFichaEditor({ userId, posId: pos?.id, nome });
+    setFichaDesc(pos?.description || '');
+    setFichaPlanoId(pos?.career_plan_id || '');
+  };
+
+  // Cria ou completa a ficha formal do cargo (job_positions): descrição =
+  // atribuições escritas; plano = trilha de crescimento. Admin-only por RLS.
+  const salvarFicha = async () => {
+    if (!fichaEditor) return;
+    setFichaSaving(true);
+    try {
+      const payload = {
+        description: fichaDesc.trim() || null,
+        career_plan_id: fichaPlanoId || null,
+      };
+      if (fichaEditor.posId) {
+        const { error } = await (supabase as any).from('job_positions')
+          .update(payload).eq('id', fichaEditor.posId);
+        if (error) throw error;
+      } else {
+        const { error } = await (supabase as any).from('job_positions')
+          .insert({ name: fichaEditor.nome, ...payload });
+        if (error) throw error;
+      }
+      await carregarPlanoCarreira();
+      setFichaEditor(null);
+      toast.success('Ficha do cargo salva');
+    } catch (e) {
+      console.error('[PopTeamCargos] Failed to save job position:', e);
+      toast.error('Sem permissão para editar cargos formais — é gestão de admin (Equipe → Carreira).');
+    } finally {
+      setFichaSaving(false);
+    }
+  };
+
+  const datalistId = `pop-cargos-sugestoes-${teamId || 'novo'}`;
+
   return (
     <div className="mt-2 rounded-md border bg-muted/30 p-3 space-y-2">
+      {/* Sugestões do campo de cargo: os cargos formais do plano de carreira,
+          pra puxar o texto livre pro vocabulário que tem descrição e trilha. */}
+      <datalist id={datalistId}>
+        {positions.map(p => <option key={p.id} value={p.name} />)}
+      </datalist>
+
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
           <Users className="h-3.5 w-3.5" />
@@ -230,29 +348,135 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
           {membros.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">Nenhum membro neste time ainda — inclua abaixo.</p>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {membros.map(m => {
                 const cargoAtual = cargos[m.user_id] || '';
                 const empatado = cargoAtual && cargosEmpatados.has(cargoAtual.trim().toLowerCase());
+                const pos = cargoAtual ? posPorNome.get(cargoAtual.trim().toLowerCase()) : undefined;
+                const authId = resolveAuthId(m.user_id);
+                const vinculado = pos ? memberPositions.some(mp => mp.user_id === authId && mp.position_id === pos.id) : false;
+                const editandoFicha = fichaEditor?.userId === m.user_id;
                 return (
-                  <div key={m.user_id} className="flex items-center gap-2">
-                    <span className="text-xs truncate flex-1 min-w-0" title={m.nome}>{m.nome}</span>
-                    <div className="w-[55%] shrink-0">
-                      <Input
-                        defaultValue={cargoAtual}
-                        placeholder="Cargo (quem faz o quê)..."
-                        className={`h-7 text-[11px] ${empatado ? 'border-amber-500/70' : ''}`}
-                        onBlur={e => {
-                          const v = e.target.value;
-                          if (v.trim() !== cargoAtual) void salvarCargo(m.user_id, v);
-                        }}
-                      />
-                      {empatado && (
-                        <p className="text-[10px] text-amber-600 mt-0.5">
-                          2+ pessoas com este cargo: empate não resolve responsável.
-                        </p>
-                      )}
+                  <div key={m.user_id} className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs truncate flex-1 min-w-0" title={m.nome}>{m.nome}</span>
+                      <div className="w-[55%] shrink-0">
+                        <Input
+                          defaultValue={cargoAtual}
+                          list={datalistId}
+                          placeholder="Cargo (quem faz o quê)..."
+                          className={`h-7 text-[11px] ${empatado ? 'border-amber-500/70' : ''}`}
+                          onBlur={e => {
+                            const v = e.target.value;
+                            if (v.trim() !== cargoAtual) void salvarCargo(m.user_id, v);
+                          }}
+                        />
+                      </div>
                     </div>
+                    {empatado && (
+                      <p className="text-[10px] text-amber-600 text-right">
+                        2+ pessoas com este cargo: empate não resolve responsável.
+                      </p>
+                    )}
+
+                    {/* Ficha formal do cargo digitado: descrição + plano de crescimento */}
+                    {cargoAtual && !editandoFicha && (
+                      pos ? (
+                        <div className="pl-2 border-l-2 border-muted space-y-0.5">
+                          {pos.description ? (
+                            <p className="text-[10px] text-muted-foreground line-clamp-2" title={pos.description}>
+                              {pos.description}
+                            </p>
+                          ) : (
+                            <button
+                              type="button"
+                              className="text-[10px] text-muted-foreground underline underline-offset-2"
+                              onClick={() => abrirFichaEditor(m.user_id, pos.name, pos)}
+                            >
+                              Cargo sem descrição — escrever as atribuições
+                            </button>
+                          )}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {pos.career_plan_id && planoNome.get(pos.career_plan_id) ? (
+                              <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 gap-1">
+                                <GraduationCap className="h-3 w-3" />
+                                {planoNome.get(pos.career_plan_id)} · nível {pos.level}
+                              </Badge>
+                            ) : (
+                              <button
+                                type="button"
+                                className="text-[10px] text-muted-foreground underline underline-offset-2"
+                                onClick={() => abrirFichaEditor(m.user_id, pos.name, pos)}
+                              >
+                                Sem plano de crescimento — vincular
+                              </button>
+                            )}
+                            {vinculado ? (
+                              <span className="text-[10px] text-emerald-600 flex items-center gap-0.5">
+                                <Check className="h-3 w-3" />no plano de carreira
+                              </span>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] px-1.5"
+                                onClick={() => void vincularNoPlano(m.user_id, pos.id)}
+                              >
+                                <GraduationCap className="h-3 w-3 mr-1" />
+                                Vincular pessoa ao cargo formal
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="pl-2 border-l-2 border-amber-500/40 flex items-center gap-2 flex-wrap">
+                          <span className="text-[10px] text-amber-600">
+                            Cargo sem ficha formal: sem descrição nem plano de crescimento.
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-5 text-[10px] px-1.5"
+                            onClick={() => abrirFichaEditor(m.user_id, cargoAtual)}
+                          >
+                            <Plus className="h-3 w-3 mr-1" />Criar ficha do cargo
+                          </Button>
+                        </div>
+                      )
+                    )}
+
+                    {editandoFicha && fichaEditor && (
+                      <div className="pl-2 border-l-2 border-primary/40 space-y-1.5 py-1">
+                        <p className="text-[10px] font-medium">
+                          Ficha do cargo "{fichaEditor.nome}"
+                        </p>
+                        <Textarea
+                          value={fichaDesc}
+                          onChange={e => setFichaDesc(e.target.value)}
+                          placeholder="Descrição / atribuições do cargo (o que essa função entrega)..."
+                          className="text-[11px] min-h-[52px]"
+                        />
+                        <Select value={fichaPlanoId || '__none__'} onValueChange={v => setFichaPlanoId(v === '__none__' ? '' : v)}>
+                          <SelectTrigger className="h-7 text-[11px]">
+                            <SelectValue placeholder="Plano de crescimento" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__"><span className="text-muted-foreground">Sem plano de crescimento</span></SelectItem>
+                            {planos.map(p => (
+                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" className="h-6 text-[11px]" onClick={salvarFicha} disabled={fichaSaving}>
+                            {fichaSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Salvar ficha'}
+                          </Button>
+                          <Button variant="ghost" size="sm" className="h-6 text-[11px]" onClick={() => setFichaEditor(null)}>
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -306,7 +530,8 @@ export function PopTeamCargosSection({ teamId, teamName, onCargosChanged, onTeam
 
           <p className="text-[10px] text-muted-foreground">
             Os cargos daqui viram as opções de responsável de fase, objetivo e passo. Trocar quem
-            ocupa o cargo atualiza todos os POPs do time de uma vez.
+            ocupa o cargo atualiza todos os POPs do time de uma vez. Cargo com ficha formal traz a
+            descrição e o plano de crescimento (gestão completa em Equipe → Carreira).
           </p>
         </>
       )}

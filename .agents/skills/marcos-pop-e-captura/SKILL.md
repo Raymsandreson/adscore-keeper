@@ -64,6 +64,16 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
   continua atuando DENTRO do POP (já recebe marcos, objetivos, passos e cargos).
   Contexto: em 13/08/2026 `team_member_cargos` estava com 0 linhas em produção —
   ninguém preenchia cargo porque a única porta era Configurações → Times.
+  - **Ponte com o plano de carreira**: o campo de cargo sugere os cargos formais
+    (`job_positions`, Cloud — datalist); nome que casa mostra a DESCRIÇÃO
+    (atribuições) e o PLANO DE CRESCIMENTO (`career_plans` + nível) embaixo do
+    campo, com botão pra vincular a pessoa (`member_positions`). Cargo sem ficha
+    formal ganha aviso âmbar + "Criar ficha do cargo" (descrição + plano) inline.
+    Escrita em job_positions/member_positions é ADMIN-ONLY por RLS — a seção
+    trata a recusa com toast, não quebra. Duas dimensões que NÃO se fundem:
+    `team_member_cargos` = quem faz o quê NESTE time (resolve responsável do
+    POP); `job_positions` = ficha formal da função (descrição, salário, trilha).
+    A ligação é por NOME do cargo, e a IA já lê as duas (buildTeamForAI).
 - **Prazo por passo** — `src/lib/popPrazo.ts`: dias úteis, dias corridos ou meses.
   Feriado **não** é considerado; está declarado no arquivo.
 - **IA do POP atribui responsável e prazo** (ago/2026) — criar/editar com IA no
