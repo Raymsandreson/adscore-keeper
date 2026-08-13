@@ -29,14 +29,11 @@ import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
-import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
-import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
-import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -91,6 +88,7 @@ import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } 
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
+import PericiaInssChips from '@/components/activities/PericiaInssChips';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isSameMonth, addMonths, subMonths, isToday, parseISO, startOfWeek, addDays, startOfDay, differenceInCalendarDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -440,8 +438,6 @@ const ActivitiesPage = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [teamChatOpen, setTeamChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
-  const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
-  const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   // Aba inicial do sheet do lead: 'casos' quando aberto pelo botão Caso do workflow.
   const [leadSheetTab, setLeadSheetTab] = useState<string | undefined>(undefined);
@@ -1793,18 +1789,22 @@ const ActivitiesPage = () => {
     });
   };
 
-  const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
+  // "Concluir + próxima" executa direto, sem pop-up intermediário. O antigo
+  // CompleteAndNotifyDialog perguntava sobre notificar o grupo e, para isso,
+  // buscava os grupos do lead no banco a cada clique — spinner + 2 cliques por
+  // atividade, o que travava a fila do modo workflow (13/08/2026). Notificar o
+  // grupo continua possível pelo "Enviar ao grupo" dentro da própria ficha.
+  const startCompleteAndNext = (source: 'sheet' | 'workflow') => {
     if (noteAttachmentsUploadingRef.current) {
       toast.info('Aguarde o envio dos anexos terminar antes de concluir.');
       return;
     }
-    setCompleteNotifySource(source);
-    setCompleteNotifyOpen(true);
+    void handleCompleteAndCreateNext(source);
   };
 
   const completeAndCreateLockRef = useRef(false);
 
-  const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
+  const handleCompleteAndCreateNext = async (source: 'sheet' | 'workflow') => {
     if (!selectedActivity) return;
     // Prevent double execution
     if (completeAndCreateLockRef.current) return;
@@ -1968,10 +1968,6 @@ const ActivitiesPage = () => {
         }
       }
 
-      if (notifyOptions) {
-        await sendGroupNotification(notifyOptions);
-      }
-
       // Sem a próxima, a atividade fica concluída e órfã — avisa em vez de
       // anunciar sucesso, e mantém a ficha aberta para refazer na hora.
       if (!nextCreated) {
@@ -1985,7 +1981,7 @@ const ActivitiesPage = () => {
       toast.success('Atividade concluída e próxima criada!');
 
 
-      if (completeNotifySource === 'workflow') {
+      if (source === 'workflow') {
         const timeSpent = getActivityTimeSpent();
         setWorkflowCompleted(prev => [...prev, { activity: currentActivity, action: 'completed_next', timeSpent }]);
         workflowAdvance();
@@ -1995,80 +1991,6 @@ const ActivitiesPage = () => {
       }
     } finally {
       completeAndCreateLockRef.current = false;
-    }
-  };
-
-  const sendGroupNotification = async (options: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
-    try {
-      // Instância remetente: grupo NUNCA usa o default pessoal — a mensagem é da
-      // firma, não do usuário logado. Incidente 04/08/2026 (FAMÍLIA 250): o texto
-      // saiu por "Atendimento Processual" (default legado gravado no Cloud, campo
-      // que o ProfilePage nem escreve mais) enquanto o áudio do MESMO envio saiu
-      // por "Atendimento Previdenciário", que já usava o helper. Mesmo critério do
-      // sendVoiceToWa, pra texto e áudio saírem sempre pela mesma instância.
-      let instanceId: string | undefined;
-      let instanceName: string | undefined;
-      if (isWhatsAppGroupId(options.groupJid)) {
-        instanceName = await resolveGroupSenderInstanceName(options.groupJid);
-      } else {
-        // Alvo pessoa (não ocorre pelo dialog, que só oferece grupos): default do
-        // perfil no EXTERNO, fonte da verdade. O homônimo no Cloud é legado.
-        try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          const extUserId = await remapToExternal(authUser?.id || null);
-          if (extUserId) {
-            const { data: profile } = await externalSupabase
-              .from('profiles')
-              .select('default_instance_id')
-              .eq('user_id', extUserId)
-              .maybeSingle();
-            instanceId = (profile as any)?.default_instance_id || undefined;
-          }
-        } catch (e) {
-          console.warn('[sendGroupNotification] falha lendo profile:', e);
-        }
-      }
-
-      // Send text message
-      const sendBody: Record<string, any> = {
-        phone: options.groupJid,
-        chat_id: options.groupJid,
-        message: options.message,
-        lead_id: formLeadId || null,
-      };
-      if (instanceId) sendBody.instance_id = instanceId;
-      if (instanceName) sendBody.instance_name = instanceName;
-
-      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
-      if (error || !data?.success) {
-        toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
-      } else {
-        toast.success('Mensagem enviada ao grupo!');
-      }
-
-      // Send audio if requested
-      if (options.sendAudio && options.audioText) {
-        const { data: ttsData } = await cloudFunctions.invoke('elevenlabs-tts', {
-          body: { text: options.audioText },
-        });
-        if (ttsData?.audio_url) {
-          await cloudFunctions.invoke('send-whatsapp', {
-            body: {
-              action: 'send_media',
-              phone: options.groupJid,
-              chat_id: options.groupJid,
-              media_url: ttsData.audio_url,
-              media_type: 'audio/mpeg',
-              lead_id: formLeadId || null,
-              ...(instanceId ? { instance_id: instanceId } : {}),
-              ...(instanceName ? { instance_name: instanceName } : {}),
-            },
-          });
-          toast.success('Áudio enviado ao grupo!');
-        }
-      }
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao notificar grupo');
     }
   };
 
@@ -2273,7 +2195,7 @@ const ActivitiesPage = () => {
   };
 
   const handleWorkflowCompleteAndNext = () => {
-    openCompleteAndNotify('workflow');
+    startCompleteAndNext('workflow');
   };
 
   const handleWorkflowSkip = () => {
@@ -5803,6 +5725,10 @@ const ActivitiesPage = () => {
                           {diasSemMov < 1 ? 'movimentado hoje' : `há ${humanizeDias(diasSemMov)} sem andamento efetivo`}
                         </button>
                       )}
+                      {/* Benefício INSS: perícia médica e perícia social ficam no
+                          cabeçalho porque é a data que decide o deslocamento do
+                          cliente — antes vivia solta no corpo do texto. */}
+                      <PericiaInssChips processId={formProcessId} processTitle={proc?.title || formProcessTitle} />
                       </>
                     );
                   })()}
@@ -6139,7 +6065,7 @@ const ActivitiesPage = () => {
                           <Button
                             size="sm"
                             className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground rounded-r-none"
-                            onClick={() => openCompleteAndNotify('sheet')}
+                            onClick={() => startCompleteAndNext('sheet')}
                             disabled={noteAttachmentsUploading}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
@@ -6181,7 +6107,7 @@ const ActivitiesPage = () => {
                                     } finally {
                                       setSendingPendingAudio(false);
                                     }
-                                    openCompleteAndNotify('sheet');
+                                    startCompleteAndNext('sheet');
                                   }}
                                 >
                                   <Mic className="h-3.5 w-3.5 mr-2" /> Concluir + próxima e enviar áudio no grupo
@@ -6507,14 +6433,6 @@ const ActivitiesPage = () => {
           onUpdated={() => { activityChain.reload(); fetchActivities(getFilterParams()); }}
         />
       )}
-
-      <CompleteAndNotifyDialog
-        open={completeNotifyOpen}
-        onClose={() => setCompleteNotifyOpen(false)}
-        onConfirm={handleCompleteAndCreateNextWithNotify}
-        leadId={formLeadId || null}
-        buildMsg={buildMsg}
-      />
 
       <AssessorSummaryShareDialog
         open={shareSummaryOpen}

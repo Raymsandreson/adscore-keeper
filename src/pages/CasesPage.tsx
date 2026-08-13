@@ -5,6 +5,7 @@ import {
   getCaseAssignee,
   isPrevCase,
   INSS_PREV_OPTIONS,
+  PREV_TRILHA_OPTIONS,
   type PrevTrilha,
 } from '@/lib/processAssignment';
 import { useSearchParams, useParams } from 'react-router-dom';
@@ -552,8 +553,9 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   // eles não haveria como trocar depois.
   const [editAssignee, setEditAssignee] = useState<string>(SEM_RESPONSAVEL);
   const [editAssigneeJud, setEditAssigneeJud] = useState<string>(SEM_RESPONSAVEL);
-  // Dono atual que não está entre os 7 assessores: vira opção extra no select
-  // para que salvar o caso não apague quem já estava lá.
+  // Dono atual que não está na lista da trilha (Keliane/José/Vanessa de um caso
+  // antigo, ou qualquer outro usuário): vira opção extra no select para que
+  // salvar o caso não apague quem já estava lá.
   const [foraDaLista, setForaDaLista] = useState<Record<PrevTrilha, { userId: string; shortName: string } | null>>(
     { administrativo: null, judicial: null },
   );
@@ -572,12 +574,15 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       const lidos = await Promise.all(trilhas.map(async (t) => {
         const current = await getCaseAssignee(legalCase.id, t);
         const cloudUuid = current ? await remapToCloud(current.extUuid) : null;
+        // Tem que ser a lista DA TRILHA, não o catálogo: um caso antigo do José
+        // abriria com o select vazio e o Salvar apagaria o responsável dele.
+        const naLista = PREV_TRILHA_OPTIONS[t].some(o => o.userId === cloudUuid);
         const conhecido = INSS_PREV_OPTIONS.find(o => o.userId === cloudUuid);
         return {
           trilha: t,
           value: cloudUuid || SEM_RESPONSAVEL,
-          extra: cloudUuid && !conhecido
-            ? { userId: cloudUuid, shortName: current?.name || 'Responsável atual' }
+          extra: cloudUuid && !naLista
+            ? { userId: cloudUuid, shortName: conhecido?.shortName || current?.name || 'Responsável atual' }
             : null,
         };
       }));
@@ -1451,7 +1456,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                         {foraDaLista[trilha] && (
                           <SelectItem value={foraDaLista[trilha]!.userId}>{foraDaLista[trilha]!.shortName}</SelectItem>
                         )}
-                        {INSS_PREV_OPTIONS.map(o => (
+                        {PREV_TRILHA_OPTIONS[trilha].map(o => (
                           <SelectItem key={o.userId} value={o.userId}>{o.shortName}</SelectItem>
                         ))}
                       </SelectContent>
@@ -1460,7 +1465,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 ))}
                 <p className="col-span-2 text-[11px] text-muted-foreground -mt-1">
                   Cada trilha é independente: processos e atividades novos herdam do responsável da
-                  sua própria trilha.
+                  sua própria trilha. Pelo final do nº do PREV — ímpar: Andressa (adm.) e Gisele
+                  (jud.); par: Maria Lydia (adm.) e Isabela (jud.).
                 </p>
               </div>
             )}

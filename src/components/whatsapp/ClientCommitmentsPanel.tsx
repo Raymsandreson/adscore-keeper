@@ -100,9 +100,6 @@ interface Props {
   onTrocarDono?: (item: CommitmentCardItem) => void;
   /** Abrir a ficha da atividade gerada a partir da pendência. */
   onOpenActivity?: (activityId: string) => void;
-  /** Mostrar esta tela sozinha ao entrar numa conversa com pendência em aberto. */
-  alertEnabled?: boolean;
-  onAlertEnabledChange?: (v: boolean) => void;
 }
 
 export function CommitmentItemCard({
@@ -379,7 +376,7 @@ export function ClientCommitmentsPanel({
   draft, onDraftConsumed, onAnalyze, onCreate, onDone, onGiveUp, onDismiss,
   onReopen, onRemind, onRemove, onDraftMessage, onCreateActivity,
   reminders, onStartRemind, onOpenReminderMessage,
-  alertEnabled, onAlertEnabledChange, teamOptions, suggestedResolver,
+  teamOptions, suggestedResolver,
   resolveDonoNome, onTrocarDono, onOpenActivity,
 }: Props) {
   const [showManual, setShowManual] = useState(false);
@@ -617,18 +614,6 @@ export function ClientCommitmentsPanel({
                   Registrar
                 </Button>
               </div>
-            )}
-
-            {onAlertEnabledChange && (
-              <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  className="h-3 w-3 accent-primary"
-                  checked={alertEnabled !== false}
-                  onChange={(e) => onAlertEnabledChange(e.target.checked)}
-                />
-                Avisar ao abrir uma conversa com pendência em aberto
-              </label>
             )}
 
             {/* Resolvidas */}

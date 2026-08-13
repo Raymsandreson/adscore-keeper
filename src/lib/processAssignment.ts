@@ -32,8 +32,15 @@ export interface PrevAssignee {
 }
 
 /**
- * Assessores que podem receber o Benefício INSS de um caso PREV.
- * A ordem define a numeração do prompt — mudar aqui muda o que o usuário digita.
+ * Catálogo dos assessores que aparecem — ou já apareceram — num caso PREV.
+ * Cumpre dois papéis diferentes, e é por isso que segue com os sete:
+ *
+ *   - resolve o NOME canônico de um uuid (`getCaseAssignee`, `useCaseAssignees`,
+ *     avatar da lista de casos). Keliane, José e Vanessa continuam donos de
+ *     casos antigos; tirá-los daqui faria esses casos caírem no `profiles`;
+ *   - alimenta as listas de escolha, que desde 13/08/2026 são só duas por trilha.
+ *
+ * Quem PODE ser escolhido num caso novo está em `PREV_TRILHA_OPTIONS`, não aqui.
  */
 export const INSS_PREV_OPTIONS: PrevAssignee[] = [
   { userId: '04826c43-15e1-48b8-b54f-51d3fe532651', userName: 'Andressa Leão da Silva Duarte', shortName: 'Andressa' },
@@ -48,17 +55,6 @@ export const INSS_PREV_OPTIONS: PrevAssignee[] = [
 ];
 
 /**
- * Rodízio do PREV **administrativo**, pelo último dígito do número do caso:
- * 0-1 Andressa · 2-3 Keliane · 4-5 José · 6-7 Maria Lydia · 8-9 Vanessa.
- * Valores são índices em `INSS_PREV_OPTIONS`.
- */
-const PREV_ADMIN_BY_DIGIT = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4] as const;
-
-/** PREV **judicial**: final ímpar → Gisele, final par → Isabela. */
-const PREV_JUD_ODD = 5;
-const PREV_JUD_EVEN = 6;
-
-/**
  * Um caso PREV pode ter as duas frentes ao mesmo tempo, e aí tem **dois
  * responsáveis** — um por trilha, cada um na sua coluna de `legal_cases`.
  */
@@ -67,6 +63,32 @@ export type PrevTrilha = 'administrativo' | 'judicial';
 export const COLUNA_RESPONSAVEL: Record<PrevTrilha, string> = {
   administrativo: 'assigned_to',
   judicial: 'assigned_to_judicial',
+};
+
+// Índices no catálogo acima. Os testes travam os nomes: se a ordem de
+// INSS_PREV_OPTIONS mudar, `PREV_TRILHA_OPTIONS` quebra no teste, não em produção.
+const ANDRESSA = INSS_PREV_OPTIONS[0];
+const MARIA_LYDIA = INSS_PREV_OPTIONS[3];
+const GISELE = INSS_PREV_OPTIONS[5];
+const ISABELA = INSS_PREV_OPTIONS[6];
+
+/**
+ * Quem pode ficar com cada trilha de um caso PREV, na ordem **[ímpar, par]**
+ * pelo último dígito do número do PREV:
+ *
+ *   administrativo → ímpar: Andressa · par: Maria Lydia
+ *   judicial       → ímpar: Gisele   · par: Isabela
+ *
+ * Até 13/08/2026 o administrativo era rodízio de cinco por faixa de dígito
+ * (0-1 Andressa · 2-3 Keliane · 4-5 José · 6-7 Maria Lydia · 8-9 Vanessa).
+ * A firma passou a dividir o protocolo entre duas pessoas por paridade, e
+ * Keliane, José e Vanessa saíram da escolha — os casos que já são deles
+ * continuam intocados, e o dono atual sempre aparece no seletor de "Editar
+ * caso" mesmo estando fora desta lista.
+ */
+export const PREV_TRILHA_OPTIONS: Record<PrevTrilha, readonly [PrevAssignee, PrevAssignee]> = {
+  administrativo: [ANDRESSA, MARIA_LYDIA],
+  judicial: [GISELE, ISABELA],
 };
 
 /**
@@ -106,10 +128,8 @@ export function suggestPrevAssignee(
   if (!prevNumber) return null;
   const lastDigit = Number(prevNumber.slice(-1));
   if (Number.isNaN(lastDigit)) return null;
-  const idx = judicial
-    ? (lastDigit % 2 === 0 ? PREV_JUD_EVEN : PREV_JUD_ODD)
-    : PREV_ADMIN_BY_DIGIT[lastDigit];
-  return INSS_PREV_OPTIONS[idx] ?? null;
+  const [impar, par] = PREV_TRILHA_OPTIONS[judicial ? 'judicial' : 'administrativo'];
+  return lastDigit % 2 === 0 ? par : impar;
 }
 
 // José Francisco (Cloud UUID) — atribuição padrão de INSS para títulos de CASO.
@@ -378,8 +398,8 @@ interface PrevPromptContext {
  * Prompt nativo simples (window.prompt) para escolher o responsável de um
  * caso PREV. Retorna null se o usuário cancelar ou digitar opção inválida.
  *
- * A lista traz todos os assessores; o rodízio só decide qual já vem digitado
- * no campo — quem está criando pode sobrescrever.
+ * A lista traz as duas pessoas da trilha; a paridade do número só decide qual
+ * já vem digitada no campo — quem está criando pode trocar para a outra.
  *
  * Optamos por prompt nativo para evitar refatorar 5 pontos de criação
  * diferentes para gerenciar estado de modal.
@@ -391,16 +411,15 @@ function pickInssPrevAssignee(
 ): PrevAssignee | null {
   if (typeof window === 'undefined') return null;
 
+  const opcoes = PREV_TRILHA_OPTIONS[judicial ? 'judicial' : 'administrativo'];
   const suggested = suggestPrevAssignee(prevNumber, judicial);
-  const suggestedIdx = suggested ? INSS_PREV_OPTIONS.indexOf(suggested) : -1;
+  const suggestedIdx = suggested ? opcoes.indexOf(suggested) : -1;
 
-  const lines = INSS_PREV_OPTIONS
+  const lines = opcoes
     .map((o, i) => `${i + 1} - ${o.shortName}${i === suggestedIdx ? '   ← sugerido' : ''}`)
     .join('\n');
 
-  const alvo = prevNumber
-    ? `PREV ${prevNumber} (final ${prevNumber.slice(-1)})`
-    : 'caso PREV';
+  const alvo = prevNumber ? `PREV ${prevNumber}` : 'caso PREV';
   const titulo = {
     'novo-caso': `Novo caso ${alvo}\nQuem responde pela parte ADMINISTRATIVA?`,
     'primeiro-judicial': `1º processo JUDICIAL do ${alvo}\nQuem responde pela parte JUDICIAL?\n(não muda o responsável administrativo)`,
@@ -413,11 +432,11 @@ function pickInssPrevAssignee(
   );
   if (!answer) return null;
   const idx = parseInt(answer.trim(), 10) - 1;
-  if (Number.isNaN(idx) || idx < 0 || idx >= INSS_PREV_OPTIONS.length) {
+  if (Number.isNaN(idx) || idx < 0 || idx >= opcoes.length) {
     window.alert('Opção inválida. Nenhum responsável atribuído.');
     return null;
   }
-  return INSS_PREV_OPTIONS[idx];
+  return opcoes[idx];
 }
 
 /**

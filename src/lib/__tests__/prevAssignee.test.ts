@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   INSS_PREV_OPTIONS,
+  PREV_TRILHA_OPTIONS,
   extractPrevNumber,
   isJudicialProcess,
   suggestPrevAssignee,
@@ -38,10 +39,10 @@ describe('extractPrevNumber', () => {
     expect(extractPrevNumber('Lead 1939', null)).toBe('1939');
   });
 
-  it('o rodízio dos casos LEAD do incidente 07/08/2026 bate com a correção manual', () => {
-    // João corrigiu à mão para José e Vanessa; é o que a regra devolve sozinha.
-    expect(short(extractPrevNumber('2005', '✅LEAD 2005 - (BPC LOAS)'))).toBe('José');
-    expect(short(extractPrevNumber('1999', 'Lead 1999 ( BPC/LOAS )'))).toBe('Vanessa');
+  it('o número extraído do caso LEAD alimenta a divisão administrativa', () => {
+    // Os dois terminam em ímpar (5 e 9) — desde 13/08/2026 isso é a Andressa.
+    expect(short(extractPrevNumber('2005', '✅LEAD 2005 - (BPC LOAS)'))).toBe('Andressa');
+    expect(short(extractPrevNumber('1999', 'Lead 1999 ( BPC/LOAS )'))).toBe('Andressa');
   });
 });
 
@@ -55,13 +56,16 @@ describe('isJudicialProcess', () => {
   });
 });
 
-describe('suggestPrevAssignee — rodízio administrativo por último dígito', () => {
+// Até 13/08/2026 o administrativo era rodízio de cinco por faixa de dígito
+// (0-1 Andressa · 2-3 Keliane · 4-5 José · 6-7 Maria Lydia · 8-9 Vanessa).
+// Virou divisão por paridade entre duas pessoas.
+describe('suggestPrevAssignee — administrativo por par/ímpar', () => {
   const esperado: Record<string, string> = {
-    '0': 'Andressa', '1': 'Andressa',
-    '2': 'Keliane', '3': 'Keliane',
-    '4': 'José', '5': 'José',
-    '6': 'Maria Lydia', '7': 'Maria Lydia',
-    '8': 'Vanessa', '9': 'Vanessa',
+    '0': 'Maria Lydia', '1': 'Andressa',
+    '2': 'Maria Lydia', '3': 'Andressa',
+    '4': 'Maria Lydia', '5': 'Andressa',
+    '6': 'Maria Lydia', '7': 'Andressa',
+    '8': 'Maria Lydia', '9': 'Andressa',
   };
 
   for (const [digito, nome] of Object.entries(esperado)) {
@@ -70,6 +74,15 @@ describe('suggestPrevAssignee — rodízio administrativo por último dígito', 
       expect(short(digito)).toBe(nome);
     });
   }
+
+  it('Keliane, José e Vanessa não são mais sugeridos em nenhum dígito', () => {
+    const sugeridos = new Set(
+      Array.from({ length: 10 }, (_, d) => short(String(d))),
+    );
+    for (const fora of ['Keliane', 'José', 'Vanessa']) {
+      expect(sugeridos.has(fora)).toBe(false);
+    }
+  });
 });
 
 describe('suggestPrevAssignee — judicial por par/ímpar', () => {
@@ -85,9 +98,11 @@ describe('suggestPrevAssignee — judicial por par/ímpar', () => {
     }
   });
 
-  it('judicial vence o rodízio administrativo do mesmo número', () => {
-    expect(short('1984', false)).toBe('José');
+  it('as duas trilhas usam a mesma paridade, com pessoas diferentes', () => {
+    expect(short('1984', false)).toBe('Maria Lydia');
     expect(short('1984', true)).toBe('Isabela');
+    expect(short('1985', false)).toBe('Andressa');
+    expect(short('1985', true)).toBe('Gisele');
   });
 });
 
@@ -99,6 +114,8 @@ describe('suggestPrevAssignee — sem número', () => {
 });
 
 describe('INSS_PREV_OPTIONS', () => {
+  // Continua com os 7 mesmo depois de Keliane, José e Vanessa saírem da
+  // escolha: é este catálogo que dá o nome canônico dos casos que já são deles.
   it('tem os 7 assessores, sem UUID repetido', () => {
     expect(INSS_PREV_OPTIONS).toHaveLength(7);
     expect(new Set(INSS_PREV_OPTIONS.map(o => o.userId)).size).toBe(7);
@@ -106,5 +123,28 @@ describe('INSS_PREV_OPTIONS', () => {
 
   it('não inclui KEILANE DE LIMA TEIXEIRA (blocklist)', () => {
     expect(INSS_PREV_OPTIONS.some(o => o.userId === 'f0a5dad8-5c5e-44f2-82b9-d8b9f022bb0c')).toBe(false);
+  });
+});
+
+describe('PREV_TRILHA_OPTIONS', () => {
+  // Trava a ordem [ímpar, par] e as pessoas: PREV_TRILHA_OPTIONS aponta para
+  // índices de INSS_PREV_OPTIONS, então reordenar o catálogo quebra aqui — que
+  // é onde tem que quebrar, e não em produção.
+  it('administrativo é [Andressa, Maria Lydia]', () => {
+    expect(PREV_TRILHA_OPTIONS.administrativo.map(o => o.shortName))
+      .toEqual(['Andressa', 'Maria Lydia']);
+  });
+
+  it('judicial é [Gisele, Isabela]', () => {
+    expect(PREV_TRILHA_OPTIONS.judicial.map(o => o.shortName))
+      .toEqual(['Gisele', 'Isabela']);
+  });
+
+  it('cada opção existe no catálogo, com o mesmo objeto', () => {
+    for (const t of ['administrativo', 'judicial'] as const) {
+      for (const o of PREV_TRILHA_OPTIONS[t]) {
+        expect(INSS_PREV_OPTIONS).toContain(o);
+      }
+    }
   });
 });

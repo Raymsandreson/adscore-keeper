@@ -50,12 +50,13 @@ import {
   Trash2,
   Search,
   Loader2,
+  Heart,
 } from 'lucide-react';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { ContactRelationshipsPanel } from '@/components/contacts/ContactRelationshipsPanel';
-import { useContactLeads, useSearchLeads, ContactLead } from '@/hooks/useContactLeads';
+import { useContactLeads, useSearchLeads, ContactLead, CONTACT_LEAD_RELATIONSHIP_OPTIONS } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
 import { detectStateFromName, detectCityFromBase } from '@/lib/parseLocationFromName';
 import { useCboProfessions } from '@/hooks/useCboProfessions';
@@ -200,7 +201,7 @@ export function ContactDetailSheet({
     updateClassification,
     deleteClassification,
   } = useContactClassifications();
-  const { leads: contactLeads, loading: loadingLeads, linkLead, unlinkLead, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
+  const { leads: contactLeads, loading: loadingLeads, linkLead, unlinkLead, updateLeadRelationship, fetchLeads: refetchLeads } = useContactLeads(contact?.id);
   const { states, cities, fetchCities } = useBrazilianLocations();
   const { professions, searchProfessions } = useCboProfessions();
   const { fetchProfileNames, getDisplayName } = useProfileNames();
@@ -256,6 +257,7 @@ export function ContactDetailSheet({
   // Vincular lead direto pela ficha do contato (busca por nome/telefone/email/nº do processo)
   const [showLinkLeadDialog, setShowLinkLeadDialog] = useState(false);
   const [linkLeadSearch, setLinkLeadSearch] = useState('');
+  const [linkLeadRelationship, setLinkLeadRelationship] = useState('');
   const [linkingLeadId, setLinkingLeadId] = useState<string | null>(null);
   const { results: linkLeadResults, loading: linkLeadSearching, searchLeads: searchLeadsToLink } = useSearchLeads();
 
@@ -272,9 +274,10 @@ export function ContactDetailSheet({
   const handleLinkLeadFromSearch = async (leadId: string) => {
     setLinkingLeadId(leadId);
     try {
-      await linkLead(leadId);
+      await linkLead(leadId, undefined, linkLeadRelationship || undefined);
       setShowLinkLeadDialog(false);
       setLinkLeadSearch('');
+      setLinkLeadRelationship('');
     } finally {
       setLinkingLeadId(null);
     }
@@ -1300,7 +1303,7 @@ export function ContactDetailSheet({
                   size="sm"
                   variant="outline"
                   className="gap-1.5"
-                  onClick={() => { setLinkLeadSearch(''); setShowLinkLeadDialog(true); }}
+                  onClick={() => { setLinkLeadSearch(''); setLinkLeadRelationship(''); setShowLinkLeadDialog(true); }}
                 >
                   <Link2 className="h-4 w-4" />
                   Vincular lead
@@ -1335,6 +1338,23 @@ export function ContactDetailSheet({
                           <Badge variant="outline" className="text-xs">
                             {contactLead.lead?.status || 'N/A'}
                           </Badge>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1.5" onClick={(e) => e.stopPropagation()}>
+                          <Heart className="h-3 w-3 text-muted-foreground shrink-0" />
+                          <Select
+                            value={contactLead.relationship_to_victim || ''}
+                            onValueChange={(v) => updateLeadRelationship(contactLead.lead_id, v === '__none__' ? null : v)}
+                          >
+                            <SelectTrigger className="h-7 text-xs w-auto min-w-[140px]">
+                              <SelectValue placeholder="Definir vínculo" />
+                            </SelectTrigger>
+                            <SelectContent className="z-[9999]" position="popper" sideOffset={4}>
+                              <SelectItem value="__none__" className="text-xs text-muted-foreground">Sem vínculo</SelectItem>
+                              {CONTACT_LEAD_RELATIONSHIP_OPTIONS.map((opt) => (
+                                <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                       <div className="flex items-center gap-1">
@@ -1630,6 +1650,23 @@ export function ContactDetailSheet({
                 onChange={(e) => setLinkLeadSearch(e.target.value)}
                 className="pl-10"
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <Heart className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Select
+                value={linkLeadRelationship}
+                onValueChange={(v) => setLinkLeadRelationship(v === '__none__' ? '' : v)}
+              >
+                <SelectTrigger className="h-8 text-xs flex-1">
+                  <SelectValue placeholder="Vínculo do contato com o lead (opcional)" />
+                </SelectTrigger>
+                <SelectContent className="z-[9999]" position="popper" sideOffset={4}>
+                  <SelectItem value="__none__" className="text-xs text-muted-foreground">Sem vínculo</SelectItem>
+                  {CONTACT_LEAD_RELATIONSHIP_OPTIONS.map((opt) => (
+                    <SelectItem key={opt} value={opt} className="text-xs">{opt}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {linkLeadSearch.trim() ? (
               <div className="border rounded-lg overflow-hidden">

@@ -11,6 +11,8 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Search, X, Plus, Loader2, Mic, MicOff, Sparkles, Send } from 'lucide-react';
 import { toast } from 'sonner';
+import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
+import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 
 const ACTIVITY_TYPES = [
@@ -73,6 +75,9 @@ export function WhatsAppActivitySheet({
   onActivityCreated,
 }: WhatsAppActivitySheetProps) {
   const { createActivity } = useLeadActivities();
+  // Publica os desativados da aba Times no assigneeBlocklist e repinta quando a
+  // busca responde; sem isso só a lista fixa filtraria.
+  useInactiveUserIds();
 
   // Form state
   const [formTitle, setFormTitle] = useState('');
@@ -484,7 +489,10 @@ export function WhatsAppActivitySheet({
               <Select value={formAssignedTo} onValueChange={handleSelectAssignee}>
                 <SelectTrigger><SelectValue placeholder="Selecionar" /></SelectTrigger>
                 <SelectContent>
-                  {teamMembers.map(m => (
+                  {/* Lista crua traria quem já saiu do escritório — o .find() de
+                      resolução de nome acima segue com teamMembers inteiro de
+                      propósito, senão o histórico degrada para UUID cru. */}
+                  {filterAssignableMembers(teamMembers).map(m => (
                     <SelectItem key={m.user_id} value={m.user_id}>{m.full_name || 'Sem nome'}</SelectItem>
                   ))}
                 </SelectContent>

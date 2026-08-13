@@ -1457,10 +1457,18 @@ export function ContactsListPage() {
               onSelectClassification={(name) =>
                 setClassificationSheet({ name, color: classificationConfig[name]?.color })
               }
+              // classificationFilter é string[] (o seletor do topo é múltiplo).
+              // Clicar na fatia filtra só por ela; clicar de novo na mesma
+              // limpa. Antes gravava a string crua no state do array: o filtro
+              // ia pro fetch como `classification: "Cliente"` em vez de lista.
               onFilterClassification={(name) =>
-                setClassificationFilter(prev => (prev === name ? 'all' : name))
+                setClassificationFilter(prev =>
+                  prev.length === 1 && prev[0] === name ? [] : [name]
+                )
               }
-              selectedClassification={classificationFilter}
+              selectedClassification={
+                classificationFilter.length === 1 ? classificationFilter[0] : undefined
+              }
               onSelectProfession={(prof) =>
                 setProfessionFilter(prev =>
                   prev !== undefined && prev === prof ? undefined : prof

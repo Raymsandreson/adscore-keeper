@@ -207,20 +207,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Pendências do cliente (o que ELE ficou de fazer) — ver useClientCommitments
   const [showCommitments, setShowCommitments] = useState(false);
   const [commitmentDraft, setCommitmentDraft] = useState<CommitmentDraft | null>(null);
-  /** Conversas em que o aviso de pendências já apareceu nesta sessão. */
-  const commitmentAlertShown = useRef<Set<string>>(new Set());
-  /**
-   * Avisar ao abrir a conversa. Fica no navegador porque é preferência de quem
-   * atende: quem trabalha o dia todo na mesma conversa não quer o painel
-   * pulando toda hora.
-   */
-  const [commitmentAlertEnabled, setCommitmentAlertEnabled] = useState(() => {
-    try { return localStorage.getItem('wa-commitment-alert') !== 'off'; } catch { return true; }
-  });
-  const toggleCommitmentAlert = useCallback((v: boolean) => {
-    setCommitmentAlertEnabled(v);
-    try { localStorage.setItem('wa-commitment-alert', v ? 'on' : 'off'); } catch { /* modo anônimo */ }
-  }, []);
   const commitments = useClientCommitments({
     leadId: conversation.lead_id,
     phone: conversation.phone,
@@ -242,24 +228,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     replyExternalId: string | null;
   } | null>(null);
 
-  /**
-   * Entrou na conversa e o cliente tem pendência em aberto: mostra a lista uma
-   * vez por conversa por sessão. É o lembrete que faltava — antes a barra ficava
-   * no topo e passava despercebida no meio do atendimento.
+  /*
+   * O painel de pendências NÃO abre sozinho ao entrar na conversa (removido em
+   * ago/2026 a pedido do usuário: pulava na cara toda vez que entrava no menu
+   * WhatsApp). Quem avisa é a `ClientCommitmentsBar` no topo — abrir é clique.
    */
-  useEffect(() => {
-    if (!commitmentAlertEnabled) return;
-    if (commitments.loading || commitments.analyzing) return;
-    if (commitments.open.length === 0) return;
-    const key = `${conversation.phone}|${conversation.instance_name || ''}`;
-    if (commitmentAlertShown.current.has(key)) return;
-    commitmentAlertShown.current.add(key);
-    setCommitmentDraft(null);
-    setShowCommitments(true);
-  }, [
-    commitmentAlertEnabled, commitments.loading, commitments.analyzing,
-    commitments.open.length, conversation.phone, conversation.instance_name,
-  ]);
   const [leadPanelWidth, setLeadPanelWidth] = useState(480);
   const leadPanelDragRef = useRef<{ startX: number; startW: number } | null>(null);
   const [showLeadEdit, setShowLeadEdit] = useState(false);
@@ -3741,8 +3714,6 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         onStartRemind={armarCobranca}
         onOpenReminderMessage={abrirMensagemDaCobranca}
         onDraftMessage={(t) => { setInputMode('message'); setNewMessage(t); }}
-        alertEnabled={commitmentAlertEnabled}
-        onAlertEnabledChange={toggleCommitmentAlert}
         teamOptions={commitmentTeamOptions}
         suggestedResolver={suggestedResolver}
         resolveDonoNome={resolveDonoPendencia}

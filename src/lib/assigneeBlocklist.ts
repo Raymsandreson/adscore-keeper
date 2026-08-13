@@ -52,6 +52,17 @@ export const ASSIGNEE_BLOCKLIST: ReadonlySet<string> = new Set<string>([
   // atividades pendentes dela foram para a Luana Barros. Rollback em
   // scratchpad/rollback-maria-clara-mendes-20260811.sql.
   'a4eab7b5-8bcc-473e-804c-c412348b2aa1', // Maria Clara Mendes (mariaclaramendeso2014@gmail.com)
+  // Removida em 13/08/2026. Diferente das contas acima, esta era de uma
+  // funcionária de verdade: 452 atividades atribuídas, 555 apontamentos de
+  // tempo e 660 ações no audit log, ativa até 12/08. O histórico todo ficou —
+  // profiles e auth_uuid_mapping inclusive, senão o nome vira UUID cru nas
+  // ~2.900 referências. Acesso cortado no Externo: org_user_status.active=false
+  // (linha INSERIDA, ela não tinha nenhuma — sem linha o UserStatusGuard não
+  // bloqueia), user_roles, 2 instâncias de WhatsApp, push_subscriptions,
+  // team_members e 4 team_conversation_members apagados, e a conta espelho do
+  // auth do Externo banida. Os 13 processos em_andamento seguem no nome dela
+  // por decisão do gestor. Rollback em scratchpad/rollback-thaires-20260813.sql.
+  '3dbad7c4-2bce-4bb8-9fb5-2c53784f86f8', // Thaíres Luana Leal Mendes (thairesmendesadv@gmail.com)
 ]);
 
 /**
