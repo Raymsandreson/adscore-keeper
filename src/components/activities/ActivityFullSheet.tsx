@@ -1497,6 +1497,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formProcessId={formProcessId} formProcessTitle={formProcessTitle}
                 formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
                 workflowOptions={workflowOptions}
+                inheritedFlowName={leadPreview?.board_id
+                  ? (allBoards.find(b => b.id === leadPreview.board_id)?.name || 'fluxo do lead')
+                  : null}
                 formClientNameOverride={formClientNameOverride}
                 setFormClientNameOverride={setFormClientNameOverride}
                 formIsSystem={formIsSystem} setFormIsSystem={setFormIsSystem}

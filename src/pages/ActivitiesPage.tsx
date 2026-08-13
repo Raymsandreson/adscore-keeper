@@ -1141,7 +1141,11 @@ const ActivitiesPage = () => {
       toast.error('Informe a data de notificação');
       return;
     }
-    if (!formWorkflowId && !formIsSystem && !formIsManagement) {
+    // Lead com board (funil ou POP) dispensa POP próprio: a atividade herda o
+    // fluxo do lead em runtime (activeStepBoardId / barra de progresso). Não
+    // gravamos o board do lead em workflow_id — id de funil ali quebraria os
+    // filtros e contadores de POP, que assumem só boards 'workflow'.
+    if (!formWorkflowId && !formIsSystem && !formIsManagement && !leadPreview?.board_id) {
       toast.error('Selecione um POP para continuar');
       return;
     }
@@ -3201,6 +3205,9 @@ const ActivitiesPage = () => {
       formProcessId={formProcessId} formProcessTitle={formProcessTitle}
       formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
       workflowOptions={workflowOptions}
+      inheritedFlowName={leadPreview?.board_id
+        ? (leadPreview.board_name || allBoards.find(b => b.id === leadPreview.board_id)?.name || 'fluxo do lead')
+        : null}
       formCampaignId={formCampaignId} setFormCampaignId={setFormCampaignId}
       formClientNameOverride={formClientNameOverride}
       setFormClientNameOverride={setFormClientNameOverride}

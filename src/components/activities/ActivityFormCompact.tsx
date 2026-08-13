@@ -211,6 +211,13 @@ interface ActivityFormCompactProps {
   formProcessId: string; formProcessTitle: string;
   formWorkflowId: string; setFormWorkflowId: (v: string) => void;
   workflowOptions: { id: string; name: string }[];
+  /**
+   * Nome do board do lead vinculado (funil ou POP). Quando presente e nenhum POP
+   * foi escolhido, a atividade herda esse fluxo em runtime — o campo POP deixa de
+   * bloquear e mostra a herança. O id do board NÃO é gravado em workflow_id:
+   * funil ali quebraria os filtros/contadores de POP, que assumem só board 'workflow'.
+   */
+  inheritedFlowName?: string | null;
   formCampaignId?: string; setFormCampaignId?: (v: string) => void;
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
@@ -1110,16 +1117,18 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         )}
         <div className="col-span-full">
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            POP {(props.formIsSystem || props.formIsManagement) ? '(opcional)' : '*'}
+            POP {(props.formIsSystem || props.formIsManagement)
+              ? '(opcional)'
+              : (!props.formWorkflowId && props.inheritedFlowName) ? '(herdado do lead)' : '*'}
           </span>
           <Select value={props.formWorkflowId || undefined} onValueChange={props.setFormWorkflowId}>
             <SelectTrigger
               className={cn(
                 "h-8 text-xs mt-0.5",
-                !props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && "border-destructive/60 ring-1 ring-destructive/20"
+                !props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && !props.inheritedFlowName && "border-destructive/60 ring-1 ring-destructive/20"
               )}
             >
-              <SelectValue placeholder="Selecione um POP" />
+              <SelectValue placeholder={props.inheritedFlowName ? `Herdado do lead: ${props.inheritedFlowName}` : 'Selecione um POP'} />
             </SelectTrigger>
             <SelectContent>
               {props.workflowOptions.length === 0 ? (
@@ -1134,7 +1143,13 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
             </SelectContent>
           </Select>
           {!props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && (
-            <p className="text-[10px] text-destructive mt-0.5">Selecione um POP para continuar</p>
+            props.inheritedFlowName ? (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Sem POP próprio — segue o fluxo do lead ({props.inheritedFlowName}). Escolha um POP só se quiser sobrescrever.
+              </p>
+            ) : (
+              <p className="text-[10px] text-destructive mt-0.5">Selecione um POP para continuar</p>
+            )
           )}
         </div>
 
