@@ -46,6 +46,39 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
 Tabelas: `pop_marcos`, `pop_marco_sinais` (Externo). POP de referência: board
 `Trabalhistas judicial — marcos (rascunho)`.
 
+### O progresso do processo NÃO mora no checklist
+
+Erro que já custou meio dia: tratar a migração de checklist como se fosse a migração do POP.
+
+| O que mede | Onde mora |
+|---|---|
+| **Progresso do processo** (estação X de Y) | `process_pop_marcos` + `pop_marcos` — **é isto** |
+| Barra do lead / % do funil | `lead_checklist_instances` via `calculateHierarchicalProgress` |
+| Produtividade da equipe | passos e objetivos dos checklists |
+
+Passo e objetivo são **instrução de como conduzir** — não são o progresso. Trocar o POP de
+marcos exige repontar `process_pop_marcos` (o dado do progresso), `pop_marco_gabarito` e
+`pop_fontes`; o que publica de fato é `team_workflow_boards`. Migrar checklist é opcional
+— serve só para o processo não chegar com a ficha em branco.
+
+**Executado em 12/08/2026:** 1.432 detecções, 331 gabaritos e 2 fontes repontados para o
+board de marcos; 644 checklists migrados junto. Backups `zz_*_bkp_20260812`.
+
+### Três armadilhas desta migração, todas medidas
+
+1. **Índice parcial `uniq_lci_por_lead`** `(lead_id, board_id, stage_id, checklist_template_id) WHERE process_id IS NULL`.
+   Quando dois stages antigos viram um marco só, o mesmo lead fica com duas instâncias
+   disputando a vaga. Foram 22 pares. Resolvido mantendo a mais completa e deixando a
+   duplicata no board antigo — nada apagado.
+2. **Confira instância × destino, não template × template.** Validar a partição comparando
+   os dois templates diz que "20 = 10+7+3, tudo casa" e mesmo assim 135 passos marcados
+   ficam para trás: as instâncias guardam ids de versões anteriores do POP. A conferência
+   só vale se for medida contra as instâncias, no mesmo instante do INSERT.
+3. **Edição concorrente do POP.** Um save do editor às 20:28 reescreveu os 26 templates em
+   10 segundos e zerou três objetivos (nome virou "Objetivo", 0 passos). Antes de migrar,
+   confira `checklist_templates.updated_at`; se estiver fresco, alguém está no editor.
+   Recuperação: `workflow_revisions`, que guarda o snapshot completo por revisão.
+
 **Pendente:** migrar os checklists com trabalho já feito para os marcos. Plano vigente em
 `supabase/migrations-external/PLANO_20260812_migrar_checklists_para_marco.sql` — o prefixo
 `PLANO_` existe para **não** rodar sozinho. O plano de 08/08 está marcado ⛔ OBSOLETO: ele
