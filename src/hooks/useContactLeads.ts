@@ -184,33 +184,61 @@ export const useContactLeadCounts = (contactIds: string[]) => {
   return { counts, loading };
 };
 
-// Hook to search for leads to link
+// Hook to search for leads to link.
+// Busca por nome/telefone/email e também por número de processo (lead_processes).
 export const useSearchLeads = () => {
   const [results, setResults] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const searchLeads = async (query: string, excludeIds: string[] = []) => {
-    if (!query.trim()) {
+    const term = query.trim();
+    if (!term) {
       setResults([]);
       return;
     }
 
     setLoading(true);
     try {
-      let queryBuilder = db
-        .from('leads')
-        .select('id, lead_name, lead_phone, lead_email, status, city, state')
-        .or(`lead_name.ilike.%${query}%,lead_phone.ilike.%${query}%,lead_email.ilike.%${query}%`)
-        .limit(10);
+      const [leadRes, procRes] = await Promise.all([
+        db
+          .from('leads')
+          .select('id, lead_name, lead_phone, lead_email, status, city, state')
+          .or(`lead_name.ilike.%${term}%,lead_phone.ilike.%${term}%,lead_email.ilike.%${term}%`)
+          .limit(10),
+        db
+          .from('lead_processes')
+          .select('lead_id, process_number')
+          .ilike('process_number', `%${term}%`)
+          .limit(10),
+      ]);
 
-      if (excludeIds.length > 0) {
-        queryBuilder = queryBuilder.not('id', 'in', `(${excludeIds.join(',')})`);
+      if (leadRes.error) throw leadRes.error;
+      // Falha na busca por processo não derruba a busca por nome
+      const procRows = procRes.error ? [] : (procRes.data || []);
+
+      const processesByLead = new Map<string, string[]>();
+      procRows.forEach((p) => {
+        if (!p.lead_id || !p.process_number) return;
+        processesByLead.set(p.lead_id, [...(processesByLead.get(p.lead_id) || []), p.process_number]);
+      });
+
+      let merged: any[] = leadRes.data || [];
+      const missingIds = [...processesByLead.keys()].filter((id) => !merged.some((l) => l.id === id));
+      if (missingIds.length > 0) {
+        const { data: procLeads, error: procLeadsError } = await db
+          .from('leads')
+          .select('id, lead_name, lead_phone, lead_email, status, city, state')
+          .in('id', missingIds);
+        if (procLeadsError) throw procLeadsError;
+        merged = merged.concat(procLeads || []);
       }
 
-      const { data, error } = await queryBuilder;
+      const enriched = merged.map((l) => ({
+        ...l,
+        matched_process_numbers: processesByLead.get(l.id),
+      }));
 
-      if (error) throw error;
-      setResults(data || []);
+      setResults(excludeIds.length > 0 ? enriched.filter((l) => !excludeIds.includes(l.id)) : enriched);
     } catch (error) {
       console.error('Error searching leads:', error);
       setResults([]);
