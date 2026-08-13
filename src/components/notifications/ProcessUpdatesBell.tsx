@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, BellRing, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2, BadgeCheck, AlertTriangle,
-  ListChecks, X, ChevronDown, ChevronRight, Users,
+  ListChecks, X, ChevronDown, ChevronRight, Users, Sparkles,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
@@ -22,7 +22,7 @@ import { cloudFunctions } from '@/lib/functionRouter';
 import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useProcessUpdates, FETCH_LIMIT, type UpdateCategoria, type ProcessUpdate, type UpdateNotificacao } from '@/hooks/useProcessUpdates';
+import { useProcessUpdates, FETCH_LIMIT, JANELA_DIAS, type UpdateCategoria, type ProcessUpdate, type UpdateNotificacao } from '@/hooks/useProcessUpdates';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
@@ -243,8 +243,22 @@ function UpdateRow({
           {titulo && (
             <p className="text-[11px] mt-0.5 font-medium leading-snug line-clamp-2">{titulo}</p>
           )}
+          {/* O que o e-mail do tribunal quis dizer, em português. Vem pronto do
+              banco (escrito na captura), então aparecer aqui não custa chamada
+              de IA nenhuma — e é o que a pessoa lê ao varrer a lista. O texto
+              cru continua embaixo, porque resumo não substitui o que foi
+              comunicado oficialmente. */}
+          {update.resumo_ia && (
+            <p className="text-[11px] mt-0.5 leading-snug flex gap-1">
+              <Sparkles className="h-3 w-3 shrink-0 mt-px text-primary" />
+              <span className="text-foreground/90">{update.resumo_ia}</span>
+            </p>
+          )}
           {assunto && assunto !== titulo && (
-            <p className={cn('text-[11px] mt-0.5 line-clamp-2', titulo ? 'text-muted-foreground' : 'text-foreground/85')}>
+            <p className={cn(
+              'text-[11px] mt-0.5 line-clamp-2',
+              titulo || update.resumo_ia ? 'text-muted-foreground' : 'text-foreground/85',
+            )}>
               {assunto}
             </p>
           )}
@@ -294,6 +308,9 @@ function UpdateRow({
 
 const ESFERA_STORAGE_KEY = 'process_updates_esfera_filtro';
 
+/** Linhas renderizadas por vez. Ver mais é clique, não rolagem infinita. */
+const PAGINA = 100;
+
 /**
  * Sino de atualizações processuais.
  *
@@ -312,8 +329,6 @@ export function ProcessUpdatesBell({
   processLabel?: string | null;
 }) {
   const escopado = !!processId;
-  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified } =
-    useProcessUpdates({ processId });
   const { createActivity } = useLeadActivities();
   const { profile, user } = useAuthContext();
   const navigate = useNavigate();
@@ -327,6 +342,20 @@ export function ProcessUpdatesBell({
   // Num processo só, "30 dias" esconderia justamente a resposta que se foi
   // buscar ali ("tem alguma?") quando a última movimentação é de um mês atrás.
   const [periodo, setPeriodo] = useState<Periodo>(escopado ? 'tudo' : '30d');
+
+  // Janela da BUSCA (não do filtro): o sino traz o período inteiro do banco em
+  // vez das N linhas mais recentes da tabela. Num processo só não há janela —
+  // são poucas linhas e a pergunta ali é "tem alguma, de quando for?".
+  const desde = useMemo(() => {
+    if (escopado || periodo === 'tudo') return null;
+    const d = new Date();
+    d.setDate(d.getDate() - JANELA_DIAS);
+    return diaLocal(d);
+  }, [escopado, periodo]);
+
+  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified, totalNoBanco } =
+    useProcessUpdates({ processId, desde });
+
   const [open, setOpen] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
@@ -417,17 +446,25 @@ export function ProcessUpdatesBell({
     [baseSemPeriodo, faixas, periodo],
   );
 
+  // O que vai para o DOM. A busca passou a trazer o período inteiro (452 em
+  // 12/08/2026), e 452 cards com badge, resumo e detalhe de uma vez é rolagem
+  // travada. O que pagina é a renderização — a contagem do chip continua sendo
+  // a do período, senão o número volta a mentir.
+  const [visiveis, setVisiveis] = useState(PAGINA);
+  useEffect(() => { setVisiveis(PAGINA); }, [filtro, esferaFiltro, soNaoNotificadas, periodo]);
+  const paginadas = useMemo(() => filtered.slice(0, visiveis), [filtered, visiveis]);
+
   const countByPeriodo = useMemo(() => {
     const acc = {} as Record<Periodo, number>;
     for (const p of PERIODOS) acc[p.value] = baseSemPeriodo.filter((u) => dentroDaFaixa(u, faixas[p.value])).length;
     return acc;
   }, [baseSemPeriodo, faixas]);
 
-  // O sino carrega as FETCH_LIMIT mais recentes. Hoje, Ontem e 7 dias cabem
-  // folgado nisso (12/08: 22 · 11/08: 26), mas 30 dias e Tudo estouram — o
-  // número ali seria o do teto, não o do banco. Daí o "+": 100+ é verdade,
-  // 100 cravado não é.
-  const noTeto = updates.length >= FETCH_LIMIT;
+  // Sobrou movimentação no banco fora do que foi carregado? Só então o chip
+  // ganha "+". Com a janela de 30 dias (452 linhas em 12/08/2026) o teto de
+  // FETCH_LIMIT não é alcançado e os números passam a ser exatos — o "+"
+  // sobrevive para o caso de a janela estourar o teto um dia.
+  const noTeto = updates.length >= FETCH_LIMIT || (totalNoBanco !== null && totalNoBanco > updates.length);
 
   const countByCategoria = useMemo(() => {
     const acc = {} as Record<string, number>;
@@ -641,6 +678,39 @@ export function ProcessUpdatesBell({
   }, [fieldSettings, systemOabs, user?.id, resolveUserName, getTemplateForContext, profile?.full_name]);
 
   /**
+   * O que a equipe já registrou neste processo. Entra no prompt como modelo de
+   * tom e de andamento — a função de IA já sabe receber isso, mas o sino nunca
+   * mandou: a dica saía sem saber que o passo anterior já tinha sido cumprido.
+   */
+  const atividadesAnteriores = useCallback(async (processId: string) => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const client = db as any;
+      const { data, error } = await client
+        .from('lead_activities')
+        .select('title, status, activity_type, what_was_done, current_status_notes, next_steps, created_at')
+        .eq('process_id', processId)
+        .order('created_at', { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (data || []).map((a: any) => ({
+        title: a.title,
+        status: a.status,
+        type: a.activity_type,
+        what_was_done: a.what_was_done,
+        current_status: a.current_status_notes,
+        next_steps: a.next_steps,
+        date: (a.created_at || '').slice(0, 10),
+      }));
+    } catch (err) {
+      // Contexto extra que falha não pode derrubar a dica.
+      console.warn('[ProcessUpdatesBell] atividades anteriores indisponíveis:', err);
+      return [];
+    }
+  }, []);
+
+  /**
    * Passo em aberto do POP daquele processo — a dica de "o que fazer agora",
    * de graça, direto do banco. Sem POP, devolve a fase da régua de marcos.
    */
@@ -675,11 +745,18 @@ export function ProcessUpdatesBell({
   ): Promise<SugestaoIA | null> => {
     try {
       const eventos = u.eventos || [];
+      const anteriores = await atividadesAnteriores(u.process_id);
       const { data, error } = await cloudFunctions.invoke('activity-from-movement', {
         body: {
+          // O servidor busca os e-mails do tribunal daquele CNJ e lê o processo
+          // inteiro antes de dizer o que fazer. Sem isso a dica saía de uma
+          // linha só — muitas vezes o cabeçalho do push, que não diz nada.
+          include_email_history: true,
           movement: {
             data: u.data_movimentacao,
             tipo: CATEGORIAS[u.categoria]?.label,
+            // O texto do tribunal, nunca o resumo: resumo é derivado, e alimentar
+            // a IA com a própria saída dela empilha erro em cima de erro.
             conteudo: u.descricao || u.titulo,
           },
           // Os eventos do próprio e-mail entram como contexto recente: é o
@@ -688,6 +765,7 @@ export function ProcessUpdatesBell({
           activity_context: {
             process_title: u.processo_titulo,
             process_number: u.numero_cnj,
+            previous_activities: anteriores,
             workflow: passo
               ? {
                   step_label: passo.stepLabel || undefined,
@@ -711,7 +789,7 @@ export function ProcessUpdatesBell({
       toast.error(err instanceof Error ? err.message : 'Erro ao pedir a dica à IA');
       return null;
     }
-  }, []);
+  }, [atividadesAnteriores]);
 
   /** Cria a atividade da movimentação — com o rascunho da IA, quando houver. */
   const criarAtividadeDoPasso = useCallback(async (u: ProcessUpdate, rascunho?: SugestaoIA) => {
@@ -862,8 +940,8 @@ export function ProcessUpdatesBell({
   // Só o que está na tela conta: seleção que sobrevive à troca de filtro
   // mandaria mensagem que a pessoa não está mais vendo.
   const selecionadosVisiveis = useMemo(
-    () => filtered.filter((u) => selecionados.has(u.id)),
-    [filtered, selecionados],
+    () => paginadas.filter((u) => selecionados.has(u.id)),
+    [paginadas, selecionados],
   );
 
   const clientesSelecionados = useMemo(
@@ -871,18 +949,18 @@ export function ProcessUpdatesBell({
     [selecionadosVisiveis],
   );
 
-  const todosVisiveisMarcados = filtered.length > 0 && selecionadosVisiveis.length === filtered.length;
+  const todosVisiveisMarcados = paginadas.length > 0 && selecionadosVisiveis.length === paginadas.length;
 
   const alternarTodosVisiveis = useCallback(() => {
     setSelecionados((prev) => {
       const next = new Set(prev);
-      const marcar = !filtered.every((u) => next.has(u.id));
-      for (const u of filtered) {
+      const marcar = !paginadas.every((u) => next.has(u.id));
+      for (const u of paginadas) {
         if (marcar) next.add(u.id); else next.delete(u.id);
       }
       return next;
     });
-  }, [filtered]);
+  }, [paginadas]);
 
   /** Agrupa por cliente, monta a mensagem de cada um e abre a revisão. */
   const prepararLote = async () => {
@@ -1200,14 +1278,23 @@ export function ProcessUpdatesBell({
           <span className="text-[10px] text-muted-foreground pr-1">Período:</span>
           {PERIODOS.map((p) => {
             const count = countByPeriodo[p.value] || 0;
-            // "+" só quando o período pegou tudo que foi carregado e a carga
-            // está no teto — aí o que falta é banco, não filtro.
-            const truncado = noTeto && count === baseSemPeriodo.length;
+            // "+" quando o período pegou tudo que foi carregado e ainda sobrou
+            // no banco — aí o que falta é banco, não filtro. "Tudo" é sempre
+            // parcial enquanto a busca estiver limitada à janela de 30 dias:
+            // clicar nele é o que amplia a busca.
+            const truncado = (noTeto || (p.value === 'tudo' && desde !== null))
+              && count === baseSemPeriodo.length;
             return (
               <button
                 key={p.value}
                 onClick={() => setPeriodo(p.value)}
-                title={truncado ? `Mais de ${count} — o sino carrega as ${FETCH_LIMIT} mais recentes` : undefined}
+                title={
+                  truncado
+                    ? (p.value === 'tudo' && desde !== null
+                        ? `Mais de ${count} — clique para buscar além dos últimos ${JANELA_DIAS} dias`
+                        : `Mais de ${count} — o sino carrega até ${FETCH_LIMIT} de uma vez`)
+                    : undefined
+                }
                 className={cn(
                   'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors',
                   periodo === p.value ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent',
@@ -1245,7 +1332,8 @@ export function ProcessUpdatesBell({
                 : `Nenhuma atualização nesse período${filtro !== 'todas' ? ' e categoria' : ''}.`}
             </p>
           ) : (
-            filtered.map((u) => (
+            <>
+            {paginadas.map((u) => (
               <UpdateRow
                 key={u.id}
                 update={u}
@@ -1265,7 +1353,22 @@ export function ProcessUpdatesBell({
                 selecionado={selecionados.has(u.id)}
                 onToggleSelecao={(upd) => alternarSelecao(upd.id)}
               />
-            ))
+            ))}
+            {/* Quantas ficaram de fora da tela — e o botão para trazê-las. Sem
+                isto, "100 de 452" seria de novo indistinguível de "452". */}
+            {filtered.length > paginadas.length && (
+              <div className="p-3 text-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setVisiveis((v) => v + PAGINA)}
+                >
+                  Ver mais {Math.min(PAGINA, filtered.length - paginadas.length)} de {filtered.length - paginadas.length} restantes
+                </Button>
+              </div>
+            )}
+            </>
           )}
         </ScrollArea>
         {/* Barra do lote: no fluxo, com borda — nada de flutuante por cima da
@@ -1278,7 +1381,7 @@ export function ProcessUpdatesBell({
                 onClick={alternarTodosVisiveis}
                 className="text-[11px] text-primary hover:underline shrink-0"
               >
-                {todosVisiveisMarcados ? 'Limpar seleção' : `Marcar as ${filtered.length} da lista`}
+                {todosVisiveisMarcados ? 'Limpar seleção' : `Marcar as ${paginadas.length} da lista`}
               </button>
               <span className="text-[11px] text-muted-foreground truncate">
                 {selecionadosVisiveis.length === 0

@@ -211,6 +211,20 @@ interface ActivityFormCompactProps {
   formProcessId: string; formProcessTitle: string;
   formWorkflowId: string; setFormWorkflowId: (v: string) => void;
   workflowOptions: { id: string; name: string }[];
+  /**
+   * Nome do board do lead vinculado (funil ou POP). Quando presente e nenhum POP
+   * foi escolhido, a atividade herda esse fluxo em runtime — o campo POP deixa de
+   * bloquear e mostra a herança. O id do board NÃO é gravado em workflow_id:
+   * funil ali quebraria os filtros/contadores de POP, que assumem só board 'workflow'.
+   */
+  inheritedFlowName?: string | null;
+  /**
+   * Funis de captação, opção de vínculo SÓ em atividade interna/gerenciamento:
+   * lá o usuário escolhe primeiro o tipo (nada / POP / funil) e depois a lista.
+   * O id do funil vai em workflow_id mesmo — o filtro de fluxo da ActivitiesPage
+   * lista funis que aparecem em atividades, então seguem visíveis nos contadores.
+   */
+  funnelOptions?: { id: string; name: string }[];
   formCampaignId?: string; setFormCampaignId?: (v: string) => void;
   formClientNameOverride?: string;
   setFormClientNameOverride?: (v: string) => void;
@@ -765,6 +779,11 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [linkLeadOpen, setLinkLeadOpen] = useState(false);
   const [linkContactOpen, setLinkContactOpen] = useState(false);
   const [linkCaseOpen, setLinkCaseOpen] = useState(false);
+  // Atividade interna: tipo de vínculo de fluxo escolhido ANTES da lista (POP,
+  // Funil ou nenhum). Só vale enquanto nada foi selecionado — com um id em
+  // formWorkflowId o tipo deriva do próprio id, senão dessincronizava ao
+  // reabrir outra atividade.
+  const [internalFlowKind, setInternalFlowKind] = useState<'none' | 'pop' | 'funnel'>('none');
   /** Nada vinculado ainda — só aí os atalhos de Lead/Caso/Contato fazem sentido. */
   const semVinculo = !props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId;
   // availableCases traz só os 500 casos mais recentes (há 1500+) — casos antigos
@@ -1109,32 +1128,99 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
         )}
         <div className="col-span-full">
+          {(() => {
+            const isInternal = props.formIsSystem || props.formIsManagement;
+            const allFunnels = props.funnelOptions || [];
+            const selectedIsFunnel = !!props.formWorkflowId && allFunnels.some(f => f.id === props.formWorkflowId);
+
+            if (isInternal) {
+              // Interna: primeiro escolhe O QUE vincular (nada / POP / funil),
+              // e só então a lista do tipo escolhido aparece.
+              const kind = props.formWorkflowId ? (selectedIsFunnel ? 'funnel' : 'pop') : internalFlowKind;
+              const pick = (next: 'none' | 'pop' | 'funnel') => {
+                setInternalFlowKind(next);
+                if (props.formWorkflowId && (next === 'none' || (next === 'funnel') !== selectedIsFunnel)) {
+                  props.setFormWorkflowId('');
+                }
+              };
+              const options = kind === 'funnel' ? allFunnels : props.workflowOptions;
+              return (<>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  Vincular fluxo (opcional)
+                </span>
+                <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                  <Button type="button" variant={kind === 'none' ? 'default' : 'outline'} size="sm" className="h-6 px-2 text-[10px]" onClick={() => pick('none')}>
+                    Sem vínculo
+                  </Button>
+                  <Button type="button" variant={kind === 'pop' ? 'default' : 'outline'} size="sm" className="h-6 px-2 text-[10px]" onClick={() => pick('pop')}>
+                    POP
+                  </Button>
+                  <Button type="button" variant={kind === 'funnel' ? 'default' : 'outline'} size="sm" className="h-6 px-2 text-[10px]" onClick={() => pick('funnel')}>
+                    Funil
+                  </Button>
+                </div>
+                {kind !== 'none' && (
+                  <Select value={props.formWorkflowId || undefined} onValueChange={props.setFormWorkflowId}>
+                    <SelectTrigger className="h-8 text-xs mt-1">
+                      <SelectValue placeholder={kind === 'funnel' ? 'Selecione um funil' : 'Selecione um POP'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {options.length === 0 ? (
+                        <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                          {kind === 'funnel' ? 'Nenhum funil cadastrado' : 'Nenhum POP cadastrado'}
+                        </div>
+                      ) : (
+                        options.map(o => (
+                          <SelectItem key={o.id} value={o.id} className="text-xs">{o.name}</SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+              </>);
+            }
+
+            // Não-interna: POP (obrigatório, salvo herança do lead). Se um funil
+            // ficou selecionado de quando a atividade era interna, ele entra na
+            // lista só pra o valor não aparecer vazio.
+            const options = selectedIsFunnel
+              ? [...props.workflowOptions, ...allFunnels.filter(f => f.id === props.formWorkflowId)]
+              : props.workflowOptions;
+            return (<>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-            POP {(props.formIsSystem || props.formIsManagement) ? '(opcional)' : '*'}
+            POP {(!props.formWorkflowId && props.inheritedFlowName) ? '(herdado do lead)' : '*'}
           </span>
           <Select value={props.formWorkflowId || undefined} onValueChange={props.setFormWorkflowId}>
             <SelectTrigger
               className={cn(
                 "h-8 text-xs mt-0.5",
-                !props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && "border-destructive/60 ring-1 ring-destructive/20"
+                !props.formWorkflowId && !props.inheritedFlowName && "border-destructive/60 ring-1 ring-destructive/20"
               )}
             >
-              <SelectValue placeholder="Selecione um POP" />
+              <SelectValue placeholder={props.inheritedFlowName ? `Herdado do lead: ${props.inheritedFlowName}` : 'Selecione um POP'} />
             </SelectTrigger>
             <SelectContent>
-              {props.workflowOptions.length === 0 ? (
+              {options.length === 0 ? (
                 <div className="px-2 py-1.5 text-xs text-muted-foreground">
                   Nenhum POP cadastrado
                 </div>
               ) : (
-                props.workflowOptions.map(w => (
+                options.map(w => (
                   <SelectItem key={w.id} value={w.id} className="text-xs">{w.name}</SelectItem>
                 ))
               )}
             </SelectContent>
           </Select>
+            </>);
+          })()}
           {!props.formWorkflowId && !props.formIsSystem && !props.formIsManagement && (
-            <p className="text-[10px] text-destructive mt-0.5">Selecione um POP para continuar</p>
+            props.inheritedFlowName ? (
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Sem POP próprio — segue o fluxo do lead ({props.inheritedFlowName}). Escolha um POP só se quiser sobrescrever.
+              </p>
+            ) : (
+              <p className="text-[10px] text-destructive mt-0.5">Selecione um POP para continuar</p>
+            )
           )}
         </div>
 

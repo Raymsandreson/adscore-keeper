@@ -204,6 +204,7 @@ export function AppSidebar() {
   };
 
   const openCommandPalette = () => {
+    if (isMobile) setOpenMobile(false);
     const event = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true });
     document.dispatchEvent(event);
   };
@@ -343,7 +344,10 @@ export function AppSidebar() {
             {/* Mentions */}
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={() => setMentionsOpen(true)}
+                onClick={() => {
+                  if (isMobile) setOpenMobile(false);
+                  setMentionsOpen(true);
+                }}
                 tooltip="Chat"
               >
                 <span className="relative">
@@ -368,6 +372,7 @@ export function AppSidebar() {
               <SidebarMenuButton
                 onClick={async () => {
                   if (hasUpdate) {
+                    if (isMobile) setOpenMobile(false);
                     setUpdateNotesOpen(true);
                     return;
                   }
@@ -376,6 +381,7 @@ export function AppSidebar() {
                   setChecking(false);
                   if (result === 'update-found') {
                     setHasPwaUpdate(true);
+                    if (isMobile) setOpenMobile(false);
                     setUpdateNotesOpen(true);
                   } else if (result === 'no-sw') {
                     toast.info('Recarregando app...');

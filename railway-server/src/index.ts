@@ -74,6 +74,7 @@ import { handler as transcribeTeamAudio } from './functions/transcribe-team-audi
 import { handler as suggestStepActions } from './functions/suggest-step-actions';
 import { handler as suggestStepCompletion } from './functions/suggest-step-completion';
 import { handler as editWorkflow } from './functions/edit-workflow';
+import { handler as generateWorkflow } from './functions/generate-workflow';
 import { handler as suggestRevisionReason } from './functions/suggest-revision-reason';
 import { handler as wipeInstanceAgentLabels } from './functions/wipe-instance-agent-labels';
 import { handler as transcodeAudioOpus } from './functions/transcode-audio-opus';
@@ -84,6 +85,7 @@ import { handler as detectClientCommitments } from './functions/detect-client-co
 import { handler as detectGroupCaseReports } from './functions/detect-group-case-reports';
 import { handler as callToActivities } from './functions/call-to-activities';
 import { handler as activityFromMovement } from './functions/activity-from-movement';
+import { handler as summarizeProcessUpdates } from './functions/summarize-process-updates';
 import { handler as generateActivityTitle } from './functions/generate-activity-title';
 import { handler as nearbyEstablishments } from './functions/nearby-establishments';
 import { handler as dailyTeamReport } from './functions/daily-team-report';
@@ -149,6 +151,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'suggest-step-actions': suggestStepActions,
   'suggest-step-completion': suggestStepCompletion,
   'edit-workflow': editWorkflow,
+  'generate-workflow': generateWorkflow,
   'suggest-revision-reason': suggestRevisionReason,
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
@@ -162,6 +165,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'detect-group-case-reports': detectGroupCaseReports, // IA lê grupos marcados e acha gente relatando acidente
   'call-to-activities': callToActivities,
   'activity-from-movement': activityFromMovement,
+  'summarize-process-updates': summarizeProcessUpdates, // resume o e-mail do tribunal na captura, para o card do sino
   'generate-activity-title': generateActivityTitle,
   'nearby-establishments': nearbyEstablishments,
   'daily-team-report': dailyTeamReport,
@@ -650,6 +654,41 @@ async function runProcessualSync() {
 // Escalonado dos demais (60s/120s/180s) pra não competirem no boot.
 setTimeout(runProcessualSync, 240_000);
 setInterval(runProcessualSync, PROCESSUAL_SYNC_INTERVAL_MS);
+
+// ============================================================
+// CRON: resumo por IA do que caiu no processo.
+//
+// O sino abre com até 100 cards; resumir no render seria 100 chamadas de IA
+// por abertura. Aqui cada movimentação é resumida UMA vez, logo depois de
+// chegar, e vira texto no banco (process_updates.resumo_ia).
+//
+// De 10 em 10 minutos, 20 por rodada = 120/hora, folgado sobre o fluxo real
+// (~200 movimentações por semana, medido em 12/08/2026). Enquanto houver
+// atraso a fila anda sozinha; quando zera, a rodada não faz nada e não
+// chama IA nenhuma.
+// ============================================================
+const SUMMARIZE_UPDATES_INTERVAL_MS = 10 * 60 * 1000;
+async function runSummarizeProcessUpdates() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/summarize-process-updates`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({}),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    // Fila vazia é o caso comum — só loga quando resumiu algo ou quebrou.
+    if (json?.resumidas > 0 || json?.success === false || !resp.ok) {
+      console.log(
+        `[cron:summarize-process-updates] status=${resp.status} resumidas=${json?.resumidas ?? 0} tentadas=${json?.tentadas ?? 0}${json?.sem_material ? ` sem_material=${json.sem_material}` : ''}${json?.error ? ` error=${json.error}` : ''}`,
+      );
+    }
+  } catch (err) {
+    console.warn('[cron:summarize-process-updates] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Depois do sync processual (240s): resumir antes de capturar seria resumir o vazio.
+setTimeout(runSummarizeProcessUpdates, 300_000);
+setInterval(runSummarizeProcessUpdates, SUMMARIZE_UPDATES_INTERVAL_MS);
 
 // ============================================================
 // CRON: importa audiências da planilha, 1x por dia às

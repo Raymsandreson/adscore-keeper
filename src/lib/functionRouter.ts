@@ -59,6 +59,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'suggest-step-actions': 'railway',
   'suggest-step-completion': 'railway', // POP: IA lê movimentações + comando ("já foi feito acordo") e sugere os passos a marcar
   'edit-workflow': 'railway', // POP: editar com IA (agora inclui status/resultados do POP, não só passos)
+  'generate-workflow': 'railway', // POP: criar com IA — versão com responsáveis por cargo (team), prazos e sugestão de cargos; Cloud mantém a versão antiga como fallback
   'suggest-revision-reason': 'railway', // POP: IA sugere motivo+categoria da revisão a partir do diff
   'wipe-instance-agent-labels': 'railway',
   'bpc-sheet-sync': 'railway',

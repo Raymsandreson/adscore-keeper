@@ -9,7 +9,8 @@
 // =============================================================================
 import { db } from '@/integrations/supabase';
 import type { ChecklistItem } from '@/hooks/useChecklists';
-import { resolverResponsavel, type OrigemResponsavel } from '@/lib/popResponsavel';
+import { resolverResponsavel, resolverResponsavelComCargos, type OrigemResponsavel } from '@/lib/popResponsavel';
+import { fetchCargoMap } from '@/lib/popCargo';
 
 interface InstanciaChecklist {
   id: string;
@@ -60,7 +61,7 @@ export async function fetchLeadSteps(
 
   const [boardRes, instancesRes, leadRes, linksRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (db as any).from('kanban_boards').select('stages, notificacoes_assignee_id').eq('id', boardId).maybeSingle(),
+    (db as any).from('kanban_boards').select('stages, notificacoes_assignee_id, settings').eq('id', boardId).maybeSingle(),
     db
       .from('lead_checklist_instances')
       .select('items, checklist_template_id, stage_id, id')
@@ -79,18 +80,26 @@ export async function fetchLeadSteps(
   ]);
 
   const board = boardRes.data as {
-    stages?: Array<{ id: string; name: string; assigneeId?: string | null }>;
+    stages?: Array<{ id: string; name: string; assigneeId?: string | null; assigneeCargo?: string | null }>;
     notificacoes_assignee_id?: string | null;
+    settings?: { responsible_team_id?: string | null; objetivo_cargos?: Record<string, string> } | null;
   } | null;
   const stages = board?.stages || [];
   // Último degrau nomeado da cascata: quem recebe as notificações deste POP.
   const responsavelDoPop = board?.notificacoes_assignee_id || null;
   const stageNameById: Record<string, string> = {};
   const stageAssigneeById: Record<string, string | null> = {};
+  const stageCargoById: Record<string, string | null> = {};
   stages.forEach((s) => {
     stageNameById[s.id] = s.name;
     stageAssigneeById[s.id] = s.assigneeId ?? null;
+    stageCargoById[s.id] = s.assigneeCargo ?? null;
   });
+  // Responsável por CARGO: o time vinculado ao POP traduz cargo → pessoa na
+  // hora (src/lib/popCargo.ts). Sem time, o mapa é vazio e cada nível com só
+  // cargo desce a cascata.
+  const cargoMap = await fetchCargoMap(board?.settings?.responsible_team_id || null);
+  const objetivoCargos = board?.settings?.objetivo_cargos || {};
   const lead = leadRes.data as { status?: string; processual_responsible_id?: string | null } | null;
   const currentStageId = lead?.status || null;
   const responsavelDoProcesso = lead?.processual_responsible_id || null;
@@ -120,13 +129,21 @@ export async function fetchLeadSteps(
   for (const inst of instances) {
     const items = inst.items || [];
     for (const it of items) {
-      const { assigneeId, origem } = resolverResponsavel({
-        passo: it.assigneeId,
-        objetivo: objetivoAssignee[`${inst.stage_id}|${inst.checklist_template_id}`],
-        fase: stageAssigneeById[inst.stage_id],
-        processo: responsavelDoProcesso,
-        pop: responsavelDoPop,
-      });
+      const { assigneeId, origem } = resolverResponsavelComCargos(
+        {
+          passo: it.assigneeId,
+          objetivo: objetivoAssignee[`${inst.stage_id}|${inst.checklist_template_id}`],
+          fase: stageAssigneeById[inst.stage_id],
+          processo: responsavelDoProcesso,
+          pop: responsavelDoPop,
+        },
+        {
+          passo: it.assigneeCargo,
+          objetivo: objetivoCargos[`${inst.stage_id}|${inst.checklist_template_id}`],
+          fase: stageCargoById[inst.stage_id],
+        },
+        cargoMap.membroPorCargo,
+      );
       steps.push({
         stepId: it.id,
         stepLabel: it.label,

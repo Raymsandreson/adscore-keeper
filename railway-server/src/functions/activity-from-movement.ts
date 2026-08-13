@@ -19,6 +19,7 @@
 //            next_steps, solicitacao, resposta_juizo, notes }, clarifying_question? }
 import type { RequestHandler } from 'express';
 import { geminiChat } from '../lib/gemini';
+import { buscarEmailsDoProcesso, formatarEmails } from '../lib/processual-email-context';
 
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 
@@ -116,11 +117,21 @@ function buildContextSections(ctx: ActivityContext, recent: MovementItem[]): str
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
-    const { movement, recent_movements, activity_context, activity_types } = (req.body || {}) as {
+    const {
+      movement, recent_movements, activity_context, activity_types, include_email_history,
+    } = (req.body || {}) as {
       movement?: MovementItem;
       recent_movements?: MovementItem[];
       activity_context?: ActivityContext;
       activity_types?: ActivityTypeOption[];
+      /**
+       * Puxa do Externo os e-mails do tribunal daquele CNJ e joga no prompt.
+       *
+       * Opt-in, não padrão: esta função também é chamada da aba de
+       * movimentações do processo, e mudar o contexto de todo mundo de uma vez
+       * mudaria a saída de quem não pediu. Quem liga hoje é o sino.
+       */
+      include_email_history?: boolean;
     };
 
     const movText = (movement?.conteudo || '').toString().trim();
@@ -135,10 +146,23 @@ export const handler: RequestHandler = async (req, res) => {
       : '- tarefa: Tarefa\n- acompanhamento: Acompanhamento';
     const allowedKeys = types.map((t) => String(t.key));
 
+    // Histórico de e-mails do tribunal. O push de hoje frequentemente é só o
+    // cabeçalho ("[TRT15] [PUSH] Atualizações de Informações Processuais");
+    // o que explica o processo está nos e-mails anteriores.
+    let emailHistory = '';
+    if (include_email_history && ctx.process_number) {
+      try {
+        emailHistory = formatarEmails(await buscarEmailsDoProcesso(ctx.process_number));
+      } catch (err) {
+        // Contexto extra que falha não pode derrubar a dica: segue sem ele.
+        console.warn('[activity-from-movement] histórico de e-mails indisponível:', err instanceof Error ? err.message : err);
+      }
+    }
+
     const ctxText = `Contexto do processo:
 - Processo: ${ctx.process_title || '—'}${ctx.process_number ? ` (nº ${ctx.process_number})` : ''}
 - Caso: ${ctx.case_title || '—'}
-- Cliente/Lead: ${ctx.lead_name || '—'}${buildContextSections(ctx, recent_movements || [])}
+- Cliente/Lead: ${ctx.lead_name || '—'}${buildContextSections(ctx, recent_movements || [])}${emailHistory}
 
 MOVIMENTAÇÃO A PARTIR DA QUAL CRIAR A ATIVIDADE:
 ${fmtMovement(movement || {})}
@@ -158,6 +182,7 @@ Sua tarefa: preencher os campos abaixo de forma FIEL ao teor da movimentação, 
 - "Solicitação": o que foi pedido/determinado pela vara/juízo na movimentação — só se houver.
 - "Resposta do juízo": decisão/despacho/posição do juízo — só se a movimentação trouxer.
 - "Observações": só se houver algo relevante que não caiba nos demais campos.
+- Quando houver "E-MAILS DO TRIBUNAL SOBRE ESTE PROCESSO", eles são o histórico do que já foi comunicado: use-os para entender em que ponto o processo está e o que já foi cumprido. A movimentação clicada continua sendo o fato gerador desta atividade — os e-mails são contexto, não o assunto.
 - Seja fiel: NÃO invente fatos, nomes, datas ou prazos que não estejam na movimentação ou no contexto. Mas INFERIR o encaminhamento natural (o que fazer em seguida) a partir do teor da movimentação e do histórico é esperado e desejado — isso não é "inventar".
 - NÃO SEJA REDUNDANTE: cada um dos três campos centrais tem função distinta (fato ocorrido ≠ situação atual ≠ ação seguinte); não repita a mesma frase nos três. Para solicitação/resposta do juízo/observações, deixar vazio é preferível a repetir.
 - Se a movimentação for realmente ambígua/insuficiente, preencha o que der (ainda assim os três campos centrais) e retorne "clarifying_question". Se estiver claro, OMITA clarifying_question.
