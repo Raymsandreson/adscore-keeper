@@ -16,6 +16,7 @@
 // avisa; a cascata desce para o próximo degrau.
 // =============================================================================
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface CargoMap {
   /** Cargos existentes no time (nome de exibição, sem duplicatas). */
@@ -59,6 +60,24 @@ export async function fetchCargoMap(teamId: string | null | undefined): Promise<
       const entry = porCargo.get(k) || { display, userIds: [] };
       entry.userIds.push(r.user_id);
       porCargo.set(k, entry);
+    }
+
+    // Cargos FORMAIS (job_positions, Cloud) entram como opção mesmo sem
+    // ocupante no time — é o que fecha o ciclo "IA sugere cargo → usuário
+    // confirma e cria → IA/usuário atribui nos passos → pessoa é definida
+    // depois". Sem ocupante o cargo não resolve (membroPorCargo null) e a
+    // cascata segue; o seletor mostra "— ninguém no time".
+    try {
+      const { data: posRows } = await (supabase as any)
+        .from('job_positions').select('name').eq('is_active', true);
+      for (const p of ((posRows as { name: string | null }[]) || [])) {
+        const display = (p.name || '').trim();
+        if (!display) continue;
+        const k = chave(display);
+        if (!porCargo.has(k)) porCargo.set(k, { display, userIds: [] });
+      }
+    } catch (e) {
+      console.warn('Cargos formais indisponíveis (segue só com os do time):', e);
     }
 
     return {

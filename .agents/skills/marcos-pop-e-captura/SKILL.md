@@ -74,6 +74,15 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
     `team_member_cargos` = quem faz o quê NESTE time (resolve responsável do
     POP); `job_positions` = ficha formal da função (descrição, salário, trilha).
     A ligação é por NOME do cargo, e a IA já lê as duas (buildTeamForAI).
+  - **Sugestão de cargo da IA CRIA cargo ao confirmar** (`CargoSugestoesCard`,
+    no card âmbar): cada sugestão tem seletor "quem assume?" (opcional) +
+    botão Criar — nasce a ficha formal com o motivo da IA como descrição e,
+    com ocupante escolhido, o cargo do time junto. Pra isso funcionar sem
+    ocupante, `fetchCargoMap` passou a INCLUIR os cargos formais ativos
+    (job_positions) nas opções — sem ocupante não resolve pessoa (cascata
+    segue) e o seletor mostra "— ninguém no time". Fluxo completo: IA sugere →
+    confirma (cria) → IA/usuário atribui nos passos → pessoa é definida na
+    seção "Time e cargos" quando o usuário decidir.
 - **Prazo por passo** — `src/lib/popPrazo.ts`: dias úteis, dias corridos ou meses.
   Feriado **não** é considerado; está declarado no arquivo.
 - **IA do POP atribui responsável e prazo** (ago/2026) — criar/editar com IA no
