@@ -42,6 +42,17 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
   processo. Definir no nível de cima vale para tudo abaixo sem responsável próprio.
 - **Prazo por passo** — `src/lib/popPrazo.ts`: dias úteis, dias corridos ou meses.
   Feriado **não** é considerado; está declarado no arquivo.
+- **IA do POP atribui responsável e prazo** (ago/2026) — criar/editar com IA no
+  `WorkflowBuilder` envia a equipe (cargo por time de `team_member_cargos` no Externo +
+  cargo formal com atribuições de `job_positions`/`member_positions` no Cloud) e a IA
+  pode setar `assigneeId` nos três níveis (preferindo o mais alto da cascata) e
+  `prazoValor`/`prazoUnidade` por passo. Id que não é de perfil real é descartado no
+  front. Se o POP exigir função que nenhum cargo cobre, a IA devolve `sugestoes_cargos`
+  (card âmbar ao lado do changelog). As duas functions rodam no **Railway**
+  (`railway-server/src/functions/{generate,edit}-workflow.ts`); as cópias do Cloud são
+  fallback sem esses campos. Armadilha corrigida junto: a edição por IA reconstruía as
+  fases e **zerava** responsáveis, prazos, messageTemplates e stagnationDays — hoje o
+  front restaura do estado anterior tudo que a IA omitir.
 
 Tabelas: `pop_marcos`, `pop_marco_sinais` (Externo). POP de referência: board
 `Trabalhistas judicial — marcos (rascunho)`.
