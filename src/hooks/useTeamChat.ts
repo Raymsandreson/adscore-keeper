@@ -279,11 +279,14 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       .eq('entity_type', entityType)
       .eq('entity_id', entityId)
       .is('deleted_at', null)
-      .order('created_at', { ascending: true })
+      // Últimas 200, não as 200 primeiras: asc + limit congela a conversa
+      // ao passar do teto (mesmo defeito do chat geral, 12/08/2026).
+      .order('created_at', { ascending: false })
       .limit(200);
     if (data) {
-      cacheSet(cacheKey, data as TeamMessage[]);
-      setMessagesState(data as TeamMessage[]);
+      const janela = (data as TeamMessage[]).slice().reverse();
+      cacheSet(cacheKey, janela);
+      setMessagesState(janela);
     }
     setLoading(false);
     console.debug(`[team-chat] ${cacheKey} carregou em ${Math.round(performance.now() - started)}ms`);

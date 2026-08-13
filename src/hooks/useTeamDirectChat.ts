@@ -54,6 +54,44 @@ const TYPING_TTL_MS = 5000;
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
 
+/** Quantas mensagens a tela segura de uma vez. */
+const MESSAGE_WINDOW = 200;
+
+/**
+ * Traz as ÚLTIMAS mensagens da conversa (janela deslizante).
+ * Ordenar asc + limit pegava as N mais ANTIGAS: ao passar de N a conversa
+ * congelava e nada novo aparecia mais (Chat Geral, 208 mensagens, 12/08/2026).
+ */
+async function fetchMessageWindow(conversationId: string) {
+  const { data, error } = await externalSupabase
+    .from('team_messages')
+    .select('*')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: false })
+    .limit(MESSAGE_WINDOW);
+
+  if (error || !data) return { data: null, error };
+  return { data: (data as TeamMessage[]).slice().reverse(), error: null };
+}
+
+/**
+ * Junta a janela recém-buscada com o que já está na tela, preservando o que
+ * chegou por Realtime/envio otimista e ainda não apareceu no fetch.
+ * Devolve o array anterior quando nada mudou, pra não re-renderizar à toa.
+ */
+function mergeMessageWindow(prev: TeamMessage[], fresh: TeamMessage[]): TeamMessage[] {
+  const fetchedIds = new Set(fresh.map((m) => m.id));
+  const oldestFetched = fresh[0]?.created_at ?? '';
+  const pending = prev.filter((m) => !fetchedIds.has(m.id) && m.created_at >= oldestFetched);
+
+  const next = pending.length
+    ? [...fresh, ...pending].sort((a, b) => a.created_at.localeCompare(b.created_at))
+    : fresh;
+
+  if (next.length === prev.length && next.every((m, i) => m.id === prev[i]?.id)) return prev;
+  return next;
+}
+
 export function useTeamDirectChat() {
   const { user } = useAuthContext();
   const [conversations, setConversations] = useState<TeamConversation[]>([]);
@@ -213,12 +251,7 @@ export function useTeamDirectChat() {
   const fetchMessages = useCallback(async (conversationId: string) => {
     await ensureExternalSession();
 
-    const { data, error } = await externalSupabase
-      .from('team_messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
-      .limit(200);
+    const { data, error } = await fetchMessageWindow(conversationId);
 
     if (error) {
       console.error('Error fetching messages:', error);
@@ -226,7 +259,7 @@ export function useTeamDirectChat() {
       return;
     }
 
-    setMessages((data as TeamMessage[]) || []);
+    setMessages(data || []);
 
     if (user?.id) {
       await externalSupabase
@@ -350,19 +383,9 @@ export function useTeamDirectChat() {
     const pollInterval = setInterval(async () => {
       try {
         await ensureExternalSession();
-        const { data } = await externalSupabase
-          .from('team_messages')
-          .select('*')
-          .eq('conversation_id', activeConversationId)
-          .order('created_at', { ascending: true })
-          .limit(200);
+        const { data } = await fetchMessageWindow(activeConversationId);
         if (!data) return;
-        setMessages((prev) => {
-          if (data.length === prev.length && data.every((m, i) => (m as any).id === prev[i]?.id)) {
-            return prev;
-          }
-          return data as TeamMessage[];
-        });
+        setMessages((prev) => mergeMessageWindow(prev, data));
       } catch (e) {
         // silencioso — só fallback
       }
