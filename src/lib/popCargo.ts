@@ -4,9 +4,11 @@
 // Fonte: team_member_cargos (Externo) — cargo por membro de cada time, texto
 // livre, chaveado por NOME do time. O POP guarda o ID do time
 // (settings.responsible_team_id), então a tradução passa por teams (id → name)
-// antes de chegar aos cargos. Renomear o time órfã os cargos hoje; enquanto
-// isso não for corrigido na tabela, este módulo devolve vazio nesse caso (e a
-// cascata segue pelos degraus de pessoa).
+// antes de chegar aos cargos. Renomear o time pelo TeamsManager migra as
+// linhas de cargo para o novo nome (desde 13/08/2026); se um rename entrar
+// por outra via e órfã-los, este módulo devolve vazio (e a cascata segue
+// pelos degraus de pessoa). Edição inline dos cargos no contexto do POP:
+// src/components/workflow/PopTeamCargosSection.tsx.
 //
 // Regra de empate: cargo com MAIS DE UM ocupante no time não resolve (null).
 // Dono de passo precisa ser único — premissa do sino e das atividades — e

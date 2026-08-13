@@ -76,6 +76,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { fetchCargoMap, type CargoMap } from '@/lib/popCargo';
+import { PopTeamCargosSection } from '@/components/workflow/PopTeamCargosSection';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
   DndContext,
@@ -278,6 +279,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // Cargos do time vinculado — alimentam o seletor de responsável por cargo
   // nos três níveis. Sem time vinculado o mapa é vazio e o seletor avisa.
   const [teamCargoMap, setTeamCargoMap] = useState<CargoMap>({ cargos: [], membroPorCargo: () => null, ocupantes: () => 0 });
+  // Incrementado pela seção "Time e cargos" quando um cargo é editado inline —
+  // força o recarregamento do CargoMap sem trocar o time.
+  const [cargoMapVersion, setCargoMapVersion] = useState(0);
   // Quem recebe as notificações de atualização dos processos deste POP.
   // Penúltimo degrau da cascata de responsável (ver src/lib/popResponsavel.ts):
   // só entra quando nem o passo, nem o objetivo, nem a fase, nem o lead têm
@@ -340,12 +344,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   };
 
   // Recarrega os cargos sempre que o time vinculado muda (inclusive ao abrir
-  // um POP pra edição, que seta formResponsibleTeamId).
+  // um POP pra edição, que seta formResponsibleTeamId) ou quando a seção
+  // "Time e cargos" edita um cargo inline (cargoMapVersion).
   useEffect(() => {
     let vivo = true;
     void fetchCargoMap(formResponsibleTeamId || null).then(map => { if (vivo) setTeamCargoMap(map); });
     return () => { vivo = false; };
-  }, [formResponsibleTeamId]);
+  }, [formResponsibleTeamId, cargoMapVersion]);
 
   // Reset viewMode when sheet opens based on props
   useEffect(() => {
@@ -373,12 +378,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     fetchTemplates();
 
     // Times para o seletor de "Time responsável" (Externo, mesmo banco de team_managers).
-    (async () => {
-      await ensureExternalSession();
-      const { data } = await externalSupabase.from('teams').select('id, name').order('name');
-      if (data) setTeamsList(data as { id: string; name: string }[]);
-    })();
+    void refreshTeamsList();
   }, [open, initialOpenStepId, initialOpenStepChat, initialHighlightMsgId]);
+
+  const refreshTeamsList = async () => {
+    await ensureExternalSession();
+    const { data } = await externalSupabase.from('teams').select('id, name').order('name');
+    if (data) setTeamsList(data as { id: string; name: string }[]);
+  };
 
   // Handle initialEditBoardId or initialCreateNew after boards load
   useEffect(() => {
@@ -1862,6 +1869,19 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     (a pessoa é resolvida pelo cargo, na hora). O gerente do time também é avisado quando houver
                     mensagem no chat de qualquer passo deste POP.
                   </p>
+
+                  {/* Membros e cargos do time vinculado, editáveis sem sair do POP.
+                      O time segue global (mesmas tabelas do TeamsManager) — isto é
+                      só a janela de edição no contexto onde o cargo é usado. */}
+                  <PopTeamCargosSection
+                    teamId={formResponsibleTeamId}
+                    teamName={teamsList.find(t => t.id === formResponsibleTeamId)?.name}
+                    onCargosChanged={() => setCargoMapVersion(v => v + 1)}
+                    onTeamCreated={async (t) => {
+                      await refreshTeamsList();
+                      setFormResponsibleTeamId(t.id);
+                    }}
+                  />
                 </div>
               )}
 

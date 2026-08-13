@@ -51,7 +51,19 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
   `settings.objetivo_cargos` ("stageId|templateId"). **Time vinculado é OBRIGATÓRIO
   em POP** (save e autosave bloqueiam sem ele). A IA (generate/edit-workflow, Railway)
   atribui por cargo e sugere cargos faltantes (`sugestoes_cargos`). Atenção:
-  `team_member_cargos` é chaveado por NOME do time — renomear time órfã os cargos.
+  `team_member_cargos` é chaveado por NOME do time — renomear pelo TeamsManager migra
+  as linhas junto (13/08/2026); rename por SQL direto ainda órfã.
+- **Seção "Time e cargos" no editor de POP (13/08/2026)** —
+  `PopTeamCargosSection.tsx`, logo abaixo do seletor de time: membros do time
+  vinculado com cargo editável inline (upsert em `team_member_cargos`, mesma chave
+  do TeamsManager), incluir pessoa no time e criar time novo sem sair do POP
+  (insert no Cloud + `sync_teams_snapshot` pro Externo antes de vincular). Editar
+  cargo ali recarrega o CargoMap dos seletores na hora (`cargoMapVersion`).
+  Decisão de arquitetura: time é entidade GLOBAL (criado em Membros OU no POP,
+  mesmas tabelas) — o POP só vincula e edita; não existe cadastro paralelo. A IA
+  continua atuando DENTRO do POP (já recebe marcos, objetivos, passos e cargos).
+  Contexto: em 13/08/2026 `team_member_cargos` estava com 0 linhas em produção —
+  ninguém preenchia cargo porque a única porta era Configurações → Times.
 - **Prazo por passo** — `src/lib/popPrazo.ts`: dias úteis, dias corridos ou meses.
   Feriado **não** é considerado; está declarado no arquivo.
 - **IA do POP atribui responsável e prazo** (ago/2026) — criar/editar com IA no

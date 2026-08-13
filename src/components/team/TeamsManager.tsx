@@ -50,7 +50,7 @@ import { DirectorPicker } from './DirectorPicker';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { invalidateInactiveUserIds } from '@/lib/inactiveUsers';
 
-const ALL_METRICS = [
+export const ALL_METRICS = [
   { key: 'replies', label: 'Respostas' },
   { key: 'dms', label: 'DMs' },
   { key: 'leads', label: 'Leads cadastrados' },
@@ -517,8 +517,34 @@ export function TeamsManager() {
         board_id: boardId || null,
       };
       if (editingTeam) {
+        const oldName = editingTeam.name;
         const { error } = await supabase.from('teams').update(payload).eq('id', editingTeam.id);
         if (error) throw error;
+        // team_member_cargos (Externo) é chaveado por NOME do time: renomear
+        // sem migrar as linhas órfã os cargos — e o POP resolve responsável
+        // por cargo através desse nome (src/lib/popCargo.ts).
+        if (oldName !== name) {
+          try {
+            await ensureExternalSession();
+            const { data: rows } = await ((externalSupabase as any).from('team_member_cargos') as any)
+              .select('user_id, cargo').eq('team_name', oldName);
+            if (rows?.length) {
+              const { error: upErr } = await ((externalSupabase as any).from('team_member_cargos') as any)
+                .upsert((rows as { user_id: string; cargo: string | null }[]).map(r => ({
+                  team_name: name,
+                  user_id: r.user_id,
+                  cargo: r.cargo,
+                  updated_at: new Date().toISOString(),
+                })), { onConflict: 'team_name,user_id' });
+              if (upErr) throw upErr;
+              await ((externalSupabase as any).from('team_member_cargos') as any)
+                .delete().eq('team_name', oldName);
+            }
+          } catch (e) {
+            console.error('[TeamsManager] Failed to migrate cargos on rename:', e);
+            toast.warning('Time renomeado, mas os cargos não acompanharam o novo nome — confira os cargos dos membros.');
+          }
+        }
         toast.success('Time atualizado!');
       } else {
         const { error } = await supabase.from('teams').insert(payload);
@@ -527,7 +553,10 @@ export function TeamsManager() {
       }
       setDialogOpen(false);
       resetForm();
-      fetchTeams();
+      await fetchTeams();
+      // Recarrega os cargos: depois de um rename as chaves `${team_name}|user`
+      // do estado local apontariam para o nome antigo.
+      fetchOrg();
     } catch (error: any) {
       toast.error(error.message || 'Erro ao salvar time');
     } finally {
