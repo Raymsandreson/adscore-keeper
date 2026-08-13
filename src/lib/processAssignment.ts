@@ -419,12 +419,7 @@ function pickInssPrevAssignee(
     .map((o, i) => `${i + 1} - ${o.shortName}${i === suggestedIdx ? '   ← sugerido' : ''}`)
     .join('\n');
 
-  const ultimo = prevNumber ? Number(prevNumber.slice(-1)) : NaN;
-  const alvo = prevNumber
-    ? `PREV ${prevNumber} (final ${prevNumber.slice(-1)}${
-        Number.isNaN(ultimo) ? '' : ultimo % 2 === 0 ? ' — par' : ' — ímpar'
-      })`
-    : 'caso PREV';
+  const alvo = prevNumber ? `PREV ${prevNumber}` : 'caso PREV';
   const titulo = {
     'novo-caso': `Novo caso ${alvo}\nQuem responde pela parte ADMINISTRATIVA?`,
     'primeiro-judicial': `1º processo JUDICIAL do ${alvo}\nQuem responde pela parte JUDICIAL?\n(não muda o responsável administrativo)`,
