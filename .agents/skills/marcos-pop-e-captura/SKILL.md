@@ -40,6 +40,18 @@ esses processos estavam de verdade. Acordo homologado no TST não põe o process
 - Todas as fases ficam visíveis sempre.
 - **Responsável em cascata** — `src/lib/popResponsavel.ts`: passo → objetivo → fase →
   processo. Definir no nível de cima vale para tudo abaixo sem responsável próprio.
+- **Responsável por CARGO (13/08/2026)** — o jeito principal de designar. Cada nível
+  aponta um cargo ("Advogado de audiência") e a pessoa é resolvida NA HORA pelo time
+  vinculado ao POP (`settings.responsible_team_id` → `teams` → `team_member_cargos`,
+  Externo) — trocar quem ocupa o cargo no time atualiza todos os POPs de uma vez.
+  Pessoa explícita no mesmo nível vence o cargo (exceção legítima); cargo sem ocupante
+  ou com 2+ (empate) desce a cascata. Resolução: `resolverResponsavelComCargos`
+  (popResponsavel.ts) + `src/lib/popCargo.ts`. Persistência SEM migration: fase em
+  `stages[].assigneeCargo`, passo em `items[].assigneeCargo`, objetivo em
+  `settings.objetivo_cargos` ("stageId|templateId"). **Time vinculado é OBRIGATÓRIO
+  em POP** (save e autosave bloqueiam sem ele). A IA (generate/edit-workflow, Railway)
+  atribui por cargo e sugere cargos faltantes (`sugestoes_cargos`). Atenção:
+  `team_member_cargos` é chaveado por NOME do time — renomear time órfã os cargos.
 - **Prazo por passo** — `src/lib/popPrazo.ts`: dias úteis, dias corridos ou meses.
   Feriado **não** é considerado; está declarado no arquivo.
 - **IA do POP atribui responsável e prazo** (ago/2026) — criar/editar com IA no
