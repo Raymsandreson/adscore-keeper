@@ -87,9 +87,13 @@ import {
   INSS_PREV_OPTIONS,
 } from '@/lib/processAssignment';
 
-const JOSE = INSS_PREV_OPTIONS[2];      // rodízio administrativo do final 4
-const ISABELA = INSS_PREV_OPTIONS[6];   // judicial de final par
-const GISELE = INSS_PREV_OPTIONS[5];    // judicial de final ímpar
+const ANDRESSA = INSS_PREV_OPTIONS[0];     // administrativo de final ímpar
+const MARIA_LYDIA = INSS_PREV_OPTIONS[3];  // administrativo de final par
+const ISABELA = INSS_PREV_OPTIONS[6];      // judicial de final par
+const GISELE = INSS_PREV_OPTIONS[5];       // judicial de final ímpar
+// Fora da escolha desde 13/08/2026, mas ainda dono de casos antigos: usado aqui
+// como responsável já gravado, para provar que o caso legado não é mexido.
+const JOSE = INSS_PREV_OPTIONS[2];
 
 /** Simula o usuário aceitando o valor pré-preenchido pelo rodízio. */
 const aceitaSugestao = vi.fn((_msg: string, def?: string) => def ?? '');
@@ -142,9 +146,20 @@ describe('processo administrativo em caso PREV', () => {
     const r = await inssNoPrev1984('administrativo');
 
     expect(aceitaSugestao).toHaveBeenCalledTimes(1);
-    // final 4 → rodízio administrativo cai no José
+    // final 4 → par → Maria Lydia
+    expect(r.assignedName).toBe(MARIA_LYDIA.userName);
+    expect(state.updates).toEqual([
+      { id: 'case-1', coluna: 'assigned_to', valor: `ext:${MARIA_LYDIA.userId}` },
+    ]);
+  });
+
+  it('caso legado do José não é reatribuído pela regra nova', async () => {
+    state.caseAssignee = `ext:${JOSE.userId}`;
+
+    const r = await inssNoPrev1984('administrativo');
+
     expect(r.assignedName).toBe(JOSE.userName);
-    expect(state.updates).toEqual([{ id: 'case-1', coluna: 'assigned_to', valor: `ext:${JOSE.userId}` }]);
+    expect(state.updates).toHaveLength(0);
   });
 });
 
@@ -241,10 +256,13 @@ describe('pickCaseAssigneeForNewCase', () => {
     expect(aceitaSugestao).not.toHaveBeenCalled();
   });
 
-  it('sugere pelo rodízio administrativo — na criação ainda não há processo', async () => {
+  it('sugere pela paridade administrativa — na criação ainda não há processo', async () => {
     const r = await pickCaseAssigneeForNewCase('PREV 1984', '✅PREV 1984 - AMANDA');
 
-    expect(r).toEqual({ extAssignedTo: `ext:${JOSE.userId}`, assignedName: JOSE.userName });
+    expect(r).toEqual({
+      extAssignedTo: `ext:${MARIA_LYDIA.userId}`,
+      assignedName: MARIA_LYDIA.userName,
+    });
   });
 
   it('cancelar deixa o caso sem responsável', async () => {
@@ -283,12 +301,12 @@ describe('isPrevCase', () => {
 });
 
 describe('caso LEAD do funil previdenciário', () => {
-  it('a criação pergunta e sugere pelo rodízio, como em qualquer PREV', async () => {
+  it('a criação pergunta e sugere pela paridade, como em qualquer PREV', async () => {
     const r = await pickCaseAssigneeForNewCase('2005', '✅LEAD 2005 - (BPC LOAS)');
 
     expect(aceitaSugestao).toHaveBeenCalledTimes(1);
-    // final 5 → José, exatamente o que foi corrigido à mão no incidente
-    expect(r).toEqual({ extAssignedTo: `ext:${JOSE.userId}`, assignedName: JOSE.userName });
+    // final 5 → ímpar → Andressa
+    expect(r).toEqual({ extAssignedTo: `ext:${ANDRESSA.userId}`, assignedName: ANDRESSA.userName });
   });
 
   it('o processo herda o dono do caso sem perguntar de novo', async () => {
@@ -317,17 +335,30 @@ describe('rede de segurança do Benefício INSS', () => {
   // no criador. Como "Benefício INSS" é previdenciário por definição, chegar
   // aqui significa nomenclatura nova — e perguntar deixa isso visível na hora.
   it('caso sem marcador nenhum pergunta em vez de atribuir a quem cadastrou', async () => {
-    aceitaSugestao.mockReturnValueOnce('3' as any); // 3 = José na lista do prompt
+    // Final 3 sugeriria Andressa (1); o usuário digita 2 e a escolha dele vale.
+    aceitaSugestao.mockReturnValueOnce('2' as any);
 
     const r = await resolveProcessAssignment(
       'Benefício INSS', 'Juliane Carlesso', 'cloud-user', '1683', 'administrativo', 'case-9',
     );
 
     expect(aceitaSugestao).toHaveBeenCalledTimes(1);
-    expect(r.assignedName).toBe(JOSE.userName);
+    expect(r.assignedName).toBe(MARIA_LYDIA.userName);
     expect(state.updates).toEqual([
-      { id: 'case-9', coluna: 'assigned_to', valor: `ext:${JOSE.userId}` },
+      { id: 'case-9', coluna: 'assigned_to', valor: `ext:${MARIA_LYDIA.userId}` },
     ]);
+  });
+
+  it('opção fora da lista da trilha não atribui ninguém', async () => {
+    // A lista administrativa tem 2 opções; "3" era o José até ago/2026.
+    aceitaSugestao.mockReturnValueOnce('3' as any);
+
+    const r = await resolveProcessAssignment(
+      'Benefício INSS', 'Juliane Carlesso', 'cloud-user', '1683', 'administrativo', 'case-9',
+    );
+
+    expect(r.extAssignedTo).toBe('ext:cloud-user');
+    expect(state.updates).toHaveLength(0);
   });
 
   it('cancelar ainda cai no criador — mas agora foi uma escolha, não um silêncio', async () => {

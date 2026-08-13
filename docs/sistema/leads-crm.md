@@ -102,18 +102,21 @@ Duas regras que valem entender:
 Um caso PREV pode ter frente **administrativa** e **judicial** ao mesmo tempo, então ele tem
 **dois responsáveis**, um por trilha, cada um na sua coluna de `legal_cases` (UUID do Externo):
 
-| Coluna | Trilha | Regra |
-|---|---|---|
-| `assigned_to` | administrativa | rodízio pelo **último dígito** do número do PREV |
-| `assigned_to_judicial` | judicial | **ímpar → Gisele**, **par → Isabela** |
+As duas trilhas dividem pela **paridade do último dígito** do número do PREV:
 
-| Final do PREV | Administrativo |
-|---|---|
-| 0 e 1 | Andressa |
-| 2 e 3 | Keliane |
-| 4 e 5 | José |
-| 6 e 7 | Maria Lydia |
-| 8 e 9 | Vanessa |
+| Coluna | Trilha | Final ímpar | Final par |
+|---|---|---|---|
+| `assigned_to` | administrativa | **Andressa** | **Maria Lydia** |
+| `assigned_to_judicial` | judicial | **Gisele** | **Isabela** |
+
+Até 13/08/2026 a trilha administrativa era um rodízio de cinco por faixa de dígito
+(0-1 Andressa · 2-3 Keliane · 4-5 José · 6-7 Maria Lydia · 8-9 Vanessa). A firma passou a dividir
+o protocolo entre duas pessoas, e **Keliane, José Francisco e Vanessa saíram da escolha**: não são
+mais sugeridos nem aparecem nos seletores de caso PREV. Os casos que já eram deles **não foram
+mexidos** — continuam com o dono de sempre, e o "Editar caso" mostra esse dono como opção extra
+para que salvar não o apague (`foraDaLista` em `CasesPage.tsx`). Os três seguem em
+`INSS_PREV_OPTIONS`, que é o catálogo que resolve **nome** de UUID (avatar da lista de casos,
+`useCaseAssignees`); quem **pode ser escolhido** está em `PREV_TRILHA_OPTIONS`.
 
 **As trilhas são independentes e nunca se sobrescrevem.** Cada processo e cada atividade herda
 do responsável da **sua própria** trilha (atividade sem `process_id` conta como administrativa).
@@ -139,12 +142,14 @@ ele fez bate exatamente com o rodízio, o que virou teste. Daí veio a rede de s
 
 Onde a escolha aparece:
 
-1. **Na criação do caso** — número/título de caso previdenciário abre um `window.prompt` com os 7
-   assessores, já preenchido com o sugerido pelo dígito. Define o responsável **administrativo**.
-2. **No 1º processo judicial do caso** — prompt sugerindo Gisele/Isabela. Define o responsável
+1. **Na criação do caso** — número/título de caso previdenciário abre um `window.prompt` com
+   Andressa e Maria Lydia, já preenchido com quem a paridade indica. Define o responsável
+   **administrativo**.
+2. **No 1º processo judicial do caso** — prompt com Gisele e Isabela. Define o responsável
    **judicial** e não encosta no administrativo. Do 2º judicial em diante, herda calado.
 3. **Processo administrativo** — herda calado. Só pergunta se a trilha ainda não tem dono.
 4. **Editar Caso** — campos "Responsável administrativo" e "Responsável judicial" (só em PREV),
+   cada um listando as duas pessoas da sua trilha (mais o dono atual, quando ele está fora dela),
    para consertar uma escolha errada sem depender de cadastrar processo.
 
 Detalhes que valem entender:
@@ -154,9 +159,11 @@ Detalhes que valem entender:
   fixo (Natasha/Wanessa/João Vitor/Abderaman) só vale fora do PREV.
 - Sem número legível, o prompt abre sem pré-seleção em vez de chutar.
 - **Cancelar nunca apaga**: a trilha fica sem dono e o próximo processo dela pergunta de novo.
-- A **Keliane** da lista é a `Keliane Sousa Amorim Araújo`. `KEILANE DE LIMA TEIXEIRA` está na
+- A **Keliane** do catálogo é a `Keliane Sousa Amorim Araújo`. `KEILANE DE LIMA TEIXEIRA` está na
   `ASSIGNEE_BLOCKLIST` e um teste garante que ela não entre aqui.
-- Caso **CASO** (não previdenciário) continua indo direto pra Maria Clara, sem prompt.
+- Caso **CASO** (não previdenciário) com "Benefício INSS" continua indo direto pro
+  `INSS_CASO_DEFAULT`, sem prompt — **José Francisco** desde 10/08/2026 (era a 2ª conta, nunca
+  usada, da Maria Clara, onde 10 atividades empilharam sem ninguém ver).
 - **Rede de segurança do "Benefício INSS"**: esse processo é previdenciário por definição, então
   um caso que não é `PREV`, não é `LEAD` numerado e não é `CASO` significa **nomenclatura nova** —
   e aí o prompt abre (sem pré-seleção) em vez de atribuir calado a quem cadastrou. É o que
@@ -164,9 +171,13 @@ Detalhes que valem entender:
 - O número sai do `case_number` (`extractPrevNumber`), com o título como segundo recurso. Nos
   casos `LEAD` o `case_number` costuma vir digitado só com o número (`2005`) e o prefixo sobra
   no título — por isso o título não é opcional aqui.
-- Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (rodízio,
-  `extractPrevNumber`) e `caseAssignee.test.ts` (herança por trilha, `isPrevCase`, rede de
-  segurança).
+- Regra em `src/lib/processAssignment.ts`, coberta por `prevAssignee.test.ts` (paridade das duas
+  trilhas, composição de `PREV_TRILHA_OPTIONS`, `extractPrevNumber`) e `caseAssignee.test.ts`
+  (herança por trilha, caso legado que não é reatribuído, `isPrevCase`, rede de segurança).
+- **A regra só vale daqui pra frente.** Ela decide o dono de caso/processo/atividade **novos**;
+  nada varre o que já existe. Para mover trabalho já criado, os caminhos são os de sempre:
+  trocar o responsável em "Editar caso" (propaga para as atividades vivas via
+  `aplicar_responsavel_do_caso_nas_atividades`) ou a reatribuição em lote na tela de Atividades.
 
 #### Onde o responsável aparece em `/casos`
 
