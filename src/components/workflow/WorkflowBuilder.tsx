@@ -75,6 +75,7 @@ import { toast } from 'sonner';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { fetchCargoMap, type CargoMap } from '@/lib/popCargo';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
   DndContext,
@@ -185,6 +186,8 @@ interface PhaseObjective {
   isExpanded: boolean;
   /** Responsável do objetivo. Herda para os passos sem responsável próprio. */
   assigneeId?: string | null;
+  /** Responsável do objetivo por CARGO do time vinculado (persiste em settings.objetivo_cargos). */
+  assigneeCargo?: string | null;
 }
 
 interface PhaseConfig {
@@ -200,6 +203,8 @@ interface PhaseConfig {
    * este POP tem 24 fases e ~200 passos, e ninguém preencheria um a um.
    */
   assigneeId?: string | null;
+  /** Responsável da fase por CARGO do time vinculado (persiste em stages[].assigneeCargo). */
+  assigneeCargo?: string | null;
 }
 
 type ViewMode = 'list' | 'edit';
@@ -236,6 +241,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     const p = profilesParaHeranca.find(x => x.user_id === id || x.id === id);
     return p?.full_name || p?.email || null;
   };
+  /** Nome herdado de um nível: pessoa explícita vence; senão o cargo definido lá. */
+  const nomeHerdado = (assigneeId?: string | null, cargo?: string | null): string | null => {
+    const pessoa = nomeDoResponsavel(assigneeId);
+    if (pessoa) return pessoa;
+    return cargo ? `Cargo: ${cargo}` : null;
+  };
 
   /** stage_id → marco. A fase é o marco, então a linha da fase mostra os dois. */
   const marcoPorStage = useMemo(() => {
@@ -264,6 +275,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   // (mesmo banco de team_managers, então o id casa na hora de notificar).
   const [formResponsibleTeamId, setFormResponsibleTeamId] = useState<string>('');
   const [teamsList, setTeamsList] = useState<{ id: string; name: string }[]>([]);
+  // Cargos do time vinculado — alimentam o seletor de responsável por cargo
+  // nos três níveis. Sem time vinculado o mapa é vazio e o seletor avisa.
+  const [teamCargoMap, setTeamCargoMap] = useState<CargoMap>({ cargos: [], membroPorCargo: () => null, ocupantes: () => 0 });
   // Quem recebe as notificações de atualização dos processos deste POP.
   // Penúltimo degrau da cascata de responsável (ver src/lib/popResponsavel.ts):
   // só entra quando nem o passo, nem o objetivo, nem a fase, nem o lead têm
@@ -324,6 +338,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const stopSpacePropagation = (e: KeyboardEvent<HTMLElement>) => {
     if (e.key === ' ' || e.code === 'Space') e.stopPropagation();
   };
+
+  // Recarrega os cargos sempre que o time vinculado muda (inclusive ao abrir
+  // um POP pra edição, que seta formResponsibleTeamId).
+  useEffect(() => {
+    let vivo = true;
+    void fetchCargoMap(formResponsibleTeamId || null).then(map => { if (vivo) setTeamCargoMap(map); });
+    return () => { vivo = false; };
+  }, [formResponsibleTeamId]);
 
   // Reset viewMode when sheet opens based on props
   useEffect(() => {
@@ -454,6 +476,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       const validUserIds = new Set(profilesParaHeranca.flatMap(p => [p.user_id, p.id]).filter(Boolean));
       const saneAssignee = (v: unknown, prev: string | null | undefined): string | null | undefined =>
         typeof v === 'string' && validUserIds.has(v) ? v : prev;
+      // Cargo devolvido pela IA só entra se existir no time vinculado — cargo
+      // inventado nunca resolveria pra pessoa nenhuma.
+      const cargosValidos = new Map(teamCargoMap.cargos.map(c => [c.toLowerCase(), c]));
+      const saneCargo = (v: unknown, prev: string | null | undefined): string | null | undefined =>
+        typeof v === 'string' && cargosValidos.has(v.trim().toLowerCase())
+          ? cargosValidos.get(v.trim().toLowerCase())
+          : prev;
       const PRAZO_UNIDADES: ReadonlyArray<ChecklistItem['prazoUnidade']> = ['dias_uteis', 'dias', 'meses'];
       const sanePrazo = (step: any, prev?: ChecklistItem): Pick<ChecklistItem, 'prazoValor' | 'prazoUnidade'> => {
         const valor = typeof step.prazoValor === 'number' && step.prazoValor > 0
@@ -485,12 +514,14 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             stageName: p.stageName,
             stageColor: p.stageColor,
             assigneeId: p.assigneeId ?? null,
+            assigneeCargo: p.assigneeCargo ?? null,
             objectives: p.objectives.map(o => ({
               templateId: o.templateId,
               name: o.name,
               description: o.description,
               is_mandatory: o.is_mandatory,
               assigneeId: o.assigneeId ?? null,
+              assigneeCargo: o.assigneeCargo ?? null,
               steps: o.items.map(s => ({
                 id: s.id,
                 label: s.label,
@@ -500,6 +531,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 nextStageId: s.nextStageId,
                 setStatusId: s.setStatusId,
                 assigneeId: s.assigneeId ?? null,
+                assigneeCargo: s.assigneeCargo ?? null,
                 prazoValor: s.prazoValor ?? null,
                 prazoUnidade: s.prazoUnidade ?? null,
                 answers: s.answers,
@@ -515,6 +547,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             currentWorkflow,
             activityTypes: activityTypes.map(t => t.label),
             team,
+            cargosDoTime: teamCargoMap.cargos,
           },
         });
 
@@ -562,6 +595,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           stageName: phase.stageName,
           stageColor: phase.stageColor || '#3b82f6',
           assigneeId: saneAssignee(phase.assigneeId, prevPhase?.assigneeId),
+          assigneeCargo: saneCargo(phase.assigneeCargo, prevPhase?.assigneeCargo),
           stagnationDays: prevPhase?.stagnationDays,
           objectives: (phase.objectives || []).map((obj: any) => {
             const templateId = validTemplateIds.has(obj.templateId)
@@ -575,6 +609,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             description: obj.description || '',
             is_mandatory: obj.is_mandatory || false,
             assigneeId: saneAssignee(obj.assigneeId, prevObj?.assigneeId),
+            assigneeCargo: saneCargo(obj.assigneeCargo, prevObj?.assigneeCargo),
             items: (obj.steps || []).map((step: any) => ({
               id: step.id || crypto.randomUUID(),
               label: step.label,
@@ -584,6 +619,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               nextStageId: step.nextStageId || undefined,
               setStatusId: step.setStatusId ?? prevStepsById.get(step.id)?.setStatusId,
               assigneeId: saneAssignee(step.assigneeId, prevStepsById.get(step.id)?.assigneeId),
+              assigneeCargo: saneCargo(step.assigneeCargo, prevStepsById.get(step.id)?.assigneeCargo),
               ...sanePrazo(step, prevStepsById.get(step.id)),
               // Campos que a IA não conhece: sobrevivem sempre do estado anterior.
               messageTemplates: prevStepsById.get(step.id)?.messageTemplates,
@@ -657,6 +693,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
             description: aiPrompt,
             activityTypes: activityTypes.map(t => t.label),
             team,
+            cargosDoTime: teamCargoMap.cargos,
           },
         });
 
@@ -671,11 +708,13 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           stageName: phase.name,
           stageColor: phase.color || '#3b82f6',
           assigneeId: saneAssignee(phase.assigneeId, null),
+          assigneeCargo: saneCargo(phase.assigneeCargo, null),
           objectives: (phase.objectives || []).map((obj: any) => ({
             name: obj.name,
             description: obj.description || '',
             is_mandatory: obj.is_mandatory || false,
             assigneeId: saneAssignee(obj.assigneeId, null),
+            assigneeCargo: saneCargo(obj.assigneeCargo, null),
             items: (obj.steps || []).map((step: any) => ({
               id: crypto.randomUUID(),
               label: step.label,
@@ -683,6 +722,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
               script: step.script || undefined,
               activityType: step.activityType || undefined,
               assigneeId: saneAssignee(step.assigneeId, null),
+              assigneeCargo: saneCargo(step.assigneeCargo, null),
               ...sanePrazo(step),
               docChecklist: step.docChecklist?.length
                 ? step.docChecklist.map((d: any) => ({ id: crypto.randomUUID(), label: d.label, type: d.type || 'documentos' }))
@@ -711,7 +751,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     setEditingBoardId(board.id);
     setFormName(board.name);
     setFormDescription(board.description || '');
-    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[]; process_name_template?: string; responsible_team_id?: string } }).settings;
+    const cfg = (board as { settings?: { resultados?: { id: string; label: string; marco?: string | null }[]; resultado_esperado_id?: string; resultado_esperado_ids?: string[]; process_name_template?: string; responsible_team_id?: string; objetivo_cargos?: Record<string, string> } }).settings;
     const cfgResultados = cfg?.resultados || [];
     const cfgEspIds = Array.isArray(cfg?.resultado_esperado_ids)
       ? cfg!.resultado_esperado_ids!
@@ -733,6 +773,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
       fetchTemplates(),
     ]);
     const tmplList = freshTemplates.length > 0 ? freshTemplates : templates;
+    // Cargo do objetivo mora em settings (chave "stageId|templateId") porque o
+    // link (checklist_stage_links) não tem coluna pra isso e settings já é o
+    // lar das configurações do POP.
+    const objetivoCargos = cfg?.objetivo_cargos || {};
     const phaseConfigs: PhaseConfig[] = board.stages.map(stage => {
       const stageLinks = links.filter(l => l.stage_id === stage.id);
       const objectives: PhaseObjective[] = stageLinks.map(link => {
@@ -745,6 +789,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           items: tmpl?.items || [],
           isExpanded: false,
           assigneeId: link.assignee_id || null,
+          assigneeCargo: objetivoCargos[`${stage.id}|${link.checklist_template_id}`] || null,
         };
       });
       return {
@@ -753,6 +798,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         stageColor: stage.color,
         stagnationDays: stage.stagnationDays,
         assigneeId: stage.assigneeId || null,
+        assigneeCargo: stage.assigneeCargo || null,
         objectives,
         isExpanded: false,
       };
@@ -1020,6 +1066,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     });
   };
 
+  const updateStepCargo = (phaseIdx: number, objIdx: number, stepId: string, assigneeCargo: string | null) => {
+    updateObjective(phaseIdx, objIdx, {
+      items: phases[phaseIdx].objectives[objIdx].items.map(s => s.id === stepId ? { ...s, assigneeCargo } : s),
+    });
+  };
+
   // Prazo esperado do passo (src/lib/popPrazo.ts). Valor e unidade andam juntos:
   // limpar o valor tem que limpar a unidade, senão sobra "úteis" sem número.
   const updateStepPrazo = (
@@ -1225,6 +1277,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     if (isPersistingRef.current) return null;
     if (!formName.trim() || phases.length === 0) return null;
 
+    // Time vinculado é OBRIGATÓRIO no POP: é ele que resolve os responsáveis
+    // por cargo. Sem time, cargo não vira pessoa e o POP fica sem dono.
+    if (boardType === 'workflow' && !formResponsibleTeamId) {
+      if (silent) {
+        setAutosaveStatus('error');
+        setAutosaveError('POP sem time vinculado — selecione o time responsável para salvar.');
+      } else {
+        toast.error('Vincule um time responsável ao POP antes de salvar (obrigatório).');
+      }
+      return null;
+    }
+
     isPersistingRef.current = true;
     if (!silent) setSaving(true);
     if (silent) setAutosaveStatus('saving');
@@ -1248,8 +1312,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         color: p.stageColor,
         stagnationDays: p.stagnationDays,
         assigneeId: p.assigneeId || null,
+        assigneeCargo: p.assigneeCargo || null,
       }));
 
+      // Settings gravados NESTE save — base para o update pós-loop que grava
+      // objetivo_cargos (não dá pra reler de `boards`, que pode estar stale).
+      let settingsEscritos: Record<string, unknown> = {};
       let boardId: string;
       if (editingBoardId) {
         const existingSettings = (boards.find(b => b.id === editingBoardId) as { settings?: Record<string, unknown> } | undefined)?.settings || {};
@@ -1258,6 +1326,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         // um próprio (Indeferido, Extinto, Desistido → INDEFERIDO).
         const cleanResultados = formResultados.map(r => ({ id: r.id, label: r.label.trim(), marco: r.marco || null, ...(r.estagio ? { estagio: r.estagio } : {}) })).filter(r => r.label);
         const espIds = formResultadoEsperadoIds.filter(id => cleanResultados.some(r => r.id === id));
+        settingsEscritos = { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null, process_name_template: formProcessNameTemplate.trim() || null, responsible_team_id: formResponsibleTeamId || null };
         await updateBoard(editingBoardId, {
           name: latestName.trim(),
           description: latestDesc.trim() || null,
@@ -1266,7 +1335,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           notificacoes_assignee_id: formNotificacoesAssigneeId || null,
           // resultado_esperado_ids = fonte da verdade (múltiplos); resultado_esperado_id
           // = primeiro, mantido por compat com o ranking atual e o LeadEditDialog.
-          settings: { ...existingSettings, resultados: cleanResultados, resultado_esperado_ids: espIds, resultado_esperado_id: espIds[0] || null, process_name_template: formProcessNameTemplate.trim() || null, responsible_team_id: formResponsibleTeamId || null },
+          settings: settingsEscritos,
         } as Partial<KanbanBoard>);
         boardId = editingBoardId;
       } else {
@@ -1279,6 +1348,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           notificacoes_assignee_id: formNotificacoesAssigneeId || null,
         } as any);
         boardId = created.id;
+        // Criação não gravava settings nenhum — o time vinculado escolhido no
+        // form se perdia até o próximo save em edição. Entra no update pós-loop.
+        settingsEscritos = { responsible_team_id: formResponsibleTeamId || null };
       }
 
       const existingLinks = await fetchStageLinks(boardId);
@@ -1326,6 +1398,21 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
           }
         }
       }
+
+      // Cargo do objetivo persiste em settings.objetivo_cargos (chave
+      // "stageId|templateId"). Roda DEPOIS do loop porque objetivo novo só
+      // ganha templateId no save acima. Grava sempre (mapa vazio limpa cargos
+      // de objetivos removidos), partindo de settingsEscritos deste save —
+      // reler de `boards` poderia clobber os resultados recém-gravados.
+      const objetivoCargos: Record<string, string> = {};
+      for (const ph of phasesForPersist) {
+        for (const o of ph.objectives) {
+          if (o.templateId && o.assigneeCargo) objetivoCargos[`${ph.stageId}|${o.templateId}`] = o.assigneeCargo;
+        }
+      }
+      await updateBoard(boardId, {
+        settings: { ...settingsEscritos, objetivo_cargos: objetivoCargos },
+      } as Partial<KanbanBoard>);
 
       // Devolve ao ESTADO os templateIds criados neste save. Sem isso o objetivo
       // novo continuava sem id no editor e o autosave seguinte criava OUTRO
@@ -1754,24 +1841,26 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                 <div>
                   <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
                     <MessagesSquare className="h-3.5 w-3.5" />
-                    Time responsável
+                    Time responsável <span className="text-destructive">*</span>
                   </Label>
                   <Select
                     value={formResponsibleTeamId || '__none__'}
                     onValueChange={v => setFormResponsibleTeamId(v === '__none__' ? '' : v)}
                   >
-                    <SelectTrigger className="mt-1 h-9 text-sm">
-                      <SelectValue placeholder="Sem time responsável" />
+                    <SelectTrigger className={`mt-1 h-9 text-sm ${!formResponsibleTeamId ? 'border-destructive/60' : ''}`}>
+                      <SelectValue placeholder="Selecione o time (obrigatório)" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="__none__"><span className="text-muted-foreground">Sem time responsável</span></SelectItem>
+                      <SelectItem value="__none__"><span className="text-muted-foreground">Selecione o time (obrigatório)</span></SelectItem>
                       {teamsList.map(t => (
                         <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <p className="text-[10px] text-muted-foreground mt-1">
-                    O gerente deste time é avisado (notificação) quando houver mensagem no chat de qualquer passo deste POP.
+                    Obrigatório: os cargos deste time viram as opções de responsável de fase, objetivo e passo
+                    (a pessoa é resolvida pelo cargo, na hora). O gerente do time também é avisado quando houver
+                    mensagem no chat de qualquer passo deste POP.
                   </p>
                 </div>
               )}
@@ -2004,6 +2093,10 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                          <ResponsavelSelect
                            compact
                            value={phase.assigneeId}
+                           cargos={teamCargoMap.cargos}
+                           ocupantes={teamCargoMap.ocupantes}
+                           cargoValue={phase.assigneeCargo}
+                           onChangeCargo={(c) => setPhases(prev => prev.map((p, i) => i === phaseIdx ? { ...p, assigneeCargo: c } : p))}
                            onChange={(id) => setPhases(prev => prev.map((p, i) => i === phaseIdx ? { ...p, assigneeId: id } : p))}
                          />
                        </div>
@@ -2070,9 +2163,15 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                  <ResponsavelSelect
                                    compact
                                    value={obj.assigneeId}
-                                   herdadoDe={nomeDoResponsavel(phase.assigneeId)
-                                     ? { nome: nomeDoResponsavel(phase.assigneeId)!, nivel: 'da fase' }
+                                   cargos={teamCargoMap.cargos}
+                                   ocupantes={teamCargoMap.ocupantes}
+                                   cargoValue={obj.assigneeCargo}
+                                   herdadoDe={nomeHerdado(phase.assigneeId, phase.assigneeCargo)
+                                     ? { nome: nomeHerdado(phase.assigneeId, phase.assigneeCargo)!, nivel: 'da fase' }
                                      : null}
+                                   onChangeCargo={(c) => setPhases(prev => prev.map((p, i) => i === phaseIdx
+                                     ? { ...p, objectives: p.objectives.map((o, j) => j === objIdx ? { ...o, assigneeCargo: c } : o) }
+                                     : p))}
                                    onChange={(id) => setPhases(prev => prev.map((p, i) => i === phaseIdx
                                      ? { ...p, objectives: p.objectives.map((o, j) => j === objIdx ? { ...o, assigneeId: id } : o) }
                                      : p))}
@@ -2305,12 +2404,17 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                                               compact
                                               className="flex-1"
                                               value={step.assigneeId}
+                                              cargos={teamCargoMap.cargos}
+                                              ocupantes={teamCargoMap.ocupantes}
+                                              cargoValue={step.assigneeCargo}
                                               herdadoDe={(() => {
-                                                const herdado = obj.assigneeId || phase.assigneeId;
-                                                const nome = nomeDoResponsavel(herdado);
-                                                if (!nome) return null;
-                                                return { nome, nivel: obj.assigneeId ? 'do objetivo' : 'da fase' };
+                                                const doObjetivo = nomeHerdado(obj.assigneeId, obj.assigneeCargo);
+                                                if (doObjetivo) return { nome: doObjetivo, nivel: 'do objetivo' };
+                                                const daFase = nomeHerdado(phase.assigneeId, phase.assigneeCargo);
+                                                if (daFase) return { nome: daFase, nivel: 'da fase' };
+                                                return null;
                                               })()}
+                                              onChangeCargo={(c) => updateStepCargo(phaseIdx, objIdx, step.id, c)}
                                               onChange={(id) => updateStepAssignee(phaseIdx, objIdx, step.id, id)}
                                             />
                                           </div>
@@ -3360,8 +3464,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
         <div className="space-y-3">
           <p className="text-sm text-muted-foreground">
             {aiMode === 'edit'
-              ? 'Descreva o que quer alterar no fluxo. A IA vai identificar onde encaixar as mudanças e informar o que foi alterado. Ela também pode definir responsáveis (pelo cargo de cada um no time) e prazos por passo, e sugere cargos se faltar função no time.'
-              : 'Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists — com responsáveis pelo cargo de cada um no time, prazos por passo, e sugestão de cargos se faltar função no time.'}
+              ? 'Descreva o que quer alterar no fluxo. A IA vai identificar onde encaixar as mudanças e informar o que foi alterado. Ela também pode definir responsáveis por CARGO do time vinculado (a pessoa é resolvida pelo cargo) e prazos por passo, e sugere cargos se faltar função no time.'
+              : 'Descreva o tipo de fluxo que precisa e a IA criará automaticamente as fases, objetivos, passos, scripts e checklists — com responsáveis por CARGO do time vinculado, prazos por passo, e sugestão de cargos se faltar função no time.'}
           </p>
           <Textarea
             value={aiPrompt}

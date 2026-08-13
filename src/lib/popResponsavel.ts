@@ -92,3 +92,66 @@ export const ORIGEM_LABEL: Record<OrigemResponsavel, string> = {
   pop: 'responsável de notificações do POP',
   nenhum: 'sem responsável',
 };
+
+// =============================================================================
+// Responsável por CARGO (13/08/2026).
+//
+// Em vez de apontar uma pessoa, o nível do POP pode apontar um CARGO ("Advogado
+// de audiência"), e a pessoa é resolvida na hora pelo time vinculado ao POP
+// (settings.responsible_team_id + team_member_cargos do Externo). Trocar quem
+// ocupa o cargo no time atualiza todos os POPs de uma vez, sem editar nenhum.
+//
+// Dentro de cada nível, pessoa explícita vence o cargo — é a exceção legítima
+// ("este passo é do João, independente do cargo"). Cargo que não resolve
+// (ninguém no time com ele, ou MAIS DE UM — dono precisa ser único, premissa
+// do sino e das atividades) desce a cascata como se o nível estivesse vazio.
+// =============================================================================
+
+export interface CargoNiveis {
+  /** assigneeCargo gravado no próprio passo (checklist_templates.items[].assigneeCargo). */
+  passo?: string | null;
+  /** Cargo do objetivo naquela fase (kanban_boards.settings.objetivo_cargos["stageId|templateId"]). */
+  objetivo?: string | null;
+  /** assigneeCargo da fase (kanban_boards.stages[].assigneeCargo). */
+  fase?: string | null;
+}
+
+/**
+ * Resolve a cascata aceitando pessoa OU cargo em cada nível do POP.
+ *
+ * `membroPorCargo` traduz cargo → user_id pelo time vinculado ao POP, e deve
+ * devolver null quando o cargo não existe no time ou tem mais de um ocupante
+ * (empate desce a cascata). Ver src/lib/popCargo.ts.
+ */
+export function resolverResponsavelComCargos(
+  pessoas: ResponsavelNiveis,
+  cargos: CargoNiveis,
+  membroPorCargo: (cargo: string) => string | null,
+): ResponsavelResolvido {
+  const porNivel = (pessoa: string | null | undefined, cargo: string | null | undefined): string | null => {
+    const p = limpo(pessoa);
+    if (p) return p;
+    const c = limpo(cargo);
+    if (c) return membroPorCargo(c);
+    return null;
+  };
+
+  const passo = porNivel(pessoas.passo, cargos.passo);
+  if (passo) return { assigneeId: passo, origem: 'passo' };
+
+  const objetivo = porNivel(pessoas.objetivo, cargos.objetivo);
+  if (objetivo) return { assigneeId: objetivo, origem: 'objetivo' };
+
+  const fase = porNivel(pessoas.fase, cargos.fase);
+  if (fase) return { assigneeId: fase, origem: 'fase' };
+
+  // Dos degraus do POP pra baixo não existe cargo — processo e notificações
+  // do POP são sempre pessoa.
+  const processo = limpo(pessoas.processo);
+  if (processo) return { assigneeId: processo, origem: 'processo' };
+
+  const pop = limpo(pessoas.pop);
+  if (pop) return { assigneeId: pop, origem: 'pop' };
+
+  return { assigneeId: null, origem: 'nenhum' };
+}

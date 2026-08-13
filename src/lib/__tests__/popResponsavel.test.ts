@@ -52,3 +52,46 @@ describe('resolverResponsavel', () => {
     expect(r.assigneeId).toBe('D');
   });
 });
+
+// ─── Responsável por CARGO (13/08/2026) ───
+// O nível pode apontar um cargo do time vinculado ao POP em vez de uma pessoa;
+// membroPorCargo traduz cargo → user_id (null = cargo inexistente ou empate).
+import { resolverResponsavelComCargos } from '../popResponsavel';
+
+describe('resolverResponsavelComCargos', () => {
+  const time = (mapa: Record<string, string | null>) => (cargo: string) => mapa[cargo] ?? null;
+
+  it('cargo no nível resolve pela pessoa do time', () => {
+    const r = resolverResponsavelComCargos({}, { fase: 'Advogado' }, time({ Advogado: 'U1' }));
+    expect(r).toEqual({ assigneeId: 'U1', origem: 'fase' });
+  });
+
+  it('pessoa explícita no nível vence o cargo do mesmo nível', () => {
+    const r = resolverResponsavelComCargos({ passo: 'PESSOA' }, { passo: 'Advogado' }, time({ Advogado: 'U1' }));
+    expect(r).toEqual({ assigneeId: 'PESSOA', origem: 'passo' });
+  });
+
+  it('cargo que não resolve (empate ou ninguém) desce a cascata', () => {
+    const r = resolverResponsavelComCargos(
+      { processo: 'D' },
+      { passo: 'Advogado', fase: 'Estagiário' },
+      time({ Advogado: null, Estagiário: null }),
+    );
+    expect(r).toEqual({ assigneeId: 'D', origem: 'processo' });
+  });
+
+  it('cargo do passo vence pessoa da fase — o nível mais específico manda', () => {
+    const r = resolverResponsavelComCargos({ fase: 'PESSOA_FASE' }, { passo: 'Advogado' }, time({ Advogado: 'U1' }));
+    expect(r).toEqual({ assigneeId: 'U1', origem: 'passo' });
+  });
+
+  it('sem cargo e sem pessoa em nível algum, devolve nenhum', () => {
+    const r = resolverResponsavelComCargos({}, {}, time({}));
+    expect(r).toEqual({ assigneeId: null, origem: 'nenhum' });
+  });
+
+  it('comporta-se igual à cascata antiga quando só há pessoas', () => {
+    const r = resolverResponsavelComCargos({ objetivo: 'B', fase: 'C' }, {}, time({}));
+    expect(r).toEqual({ assigneeId: 'B', origem: 'objetivo' });
+  });
+});

@@ -13,6 +13,11 @@ export interface KanbanStage {
    * tiverem responsável próprio (src/lib/popResponsavel.ts).
    */
   assigneeId?: string | null;
+  /**
+   * Responsável da fase por CARGO, resolvido pelo time vinculado ao POP
+   * (src/lib/popCargo.ts). assigneeId explícito vence.
+   */
+  assigneeCargo?: string | null;
 }
 
 export interface KanbanBoard {

@@ -15,10 +15,11 @@ const MODEL = process.env.GENERATE_WORKFLOW_AI_MODEL || 'google/gemini-3.6-flash
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    const { description, activityTypes, team } = (req.body || {}) as {
+    const { description, activityTypes, team, cargosDoTime } = (req.body || {}) as {
       description?: string;
       activityTypes?: string[];
       team?: Array<{ userId: string; nome: string; cargos: string[]; atribuicoes?: string }>;
+      cargosDoTime?: string[];
     };
 
     const systemPrompt = `Você é um especialista em criação de fluxos de trabalho (POPs) para um CRM jurídico (escritório de advocacia focado em acidentes de trabalho e INSS).
@@ -39,10 +40,14 @@ ${activityTypes?.length ? `Tipos de atividade disponíveis: ${activityTypes.join
 ${Array.isArray(team) && team.length ? `EQUIPE DO ESCRITÓRIO (com cargos e atribuições de cada um):
 ${JSON.stringify(team)}
 
+${Array.isArray(cargosDoTime) && cargosDoTime.length ? `CARGOS DO TIME VINCULADO A ESTE POP (use nestes exatos termos em "assigneeCargo"):
+${JSON.stringify(cargosDoTime)}` : ''}
+
 RESPONSÁVEIS E PRAZOS:
-- Fases, objetivos e passos aceitam "assigneeId": use SOMENTE um userId EXATO da lista acima. Nunca invente id nem use nome no lugar do id.
-- O responsável cai em cascata (fase → objetivo → passo): prefira definir no nível mais alto que fizer sentido e deixe os níveis de baixo sem assigneeId para herdar. Não repita o mesmo responsável passo a passo.
-- Escolha o responsável pelo encaixe entre o trabalho da fase/passo e o cargo/atribuições do membro. Sem encaixe claro, NÃO defina responsável — deixe herdar.
+- O jeito PREFERIDO de designar responsável é por CARGO: fases, objetivos e passos aceitam "assigneeCargo", com um cargo EXATO da lista CARGOS DO TIME acima. A pessoa é resolvida automaticamente pelo time vinculado ao POP — nunca invente cargo fora da lista.
+- "assigneeId" (userId EXATO da lista EQUIPE) é exceção: use somente quando o usuário pedir uma pessoa específica pelo nome. Nunca preencha assigneeCargo e assigneeId no mesmo item.
+- O responsável cai em cascata (fase → objetivo → passo): prefira definir no nível mais alto que fizer sentido e deixe os níveis de baixo vazios para herdar. Não repita o mesmo cargo passo a passo.
+- Escolha o cargo pelo encaixe entre o trabalho da fase/passo e as atribuições do cargo. Sem encaixe claro, NÃO defina responsável — deixe herdar.
 - Passos aceitam prazo: "prazoValor" (número > 0) + "prazoUnidade" ("dias_uteis", "dias" ou "meses"). Prazo processual normalmente corre em dias úteis.
 - Se o POP exigir uma função que NENHUM cargo do time cobre, liste-a em "sugestoes_cargos" (cargo + motivo) em vez de atribuir a pessoa errada.` : ''}
 
@@ -74,7 +79,8 @@ IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia 
                     properties: {
                       name: { type: 'string' },
                       color: { type: 'string' },
-                      assigneeId: { type: 'string', description: 'userId do responsável da fase (da lista EQUIPE). Omitir para herdar.' },
+                      assigneeCargo: { type: 'string', description: 'Cargo responsável pela fase (da lista CARGOS DO TIME). Jeito preferido. Omitir para herdar.' },
+                      assigneeId: { type: 'string', description: 'userId do responsável da fase (da lista EQUIPE). Exceção — só quando o usuário pedir pessoa específica.' },
                       objectives: {
                         type: 'array',
                         items: {
@@ -83,7 +89,8 @@ IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia 
                             name: { type: 'string' },
                             description: { type: 'string' },
                             is_mandatory: { type: 'boolean' },
-                            assigneeId: { type: 'string', description: 'userId do responsável do objetivo (da lista EQUIPE). Omitir para herdar da fase.' },
+                            assigneeCargo: { type: 'string', description: 'Cargo responsável pelo objetivo (da lista CARGOS DO TIME). Jeito preferido. Omitir para herdar da fase.' },
+                            assigneeId: { type: 'string', description: 'userId do responsável do objetivo (da lista EQUIPE). Exceção — só quando o usuário pedir pessoa específica.' },
                             steps: {
                               type: 'array',
                               items: {
@@ -93,7 +100,8 @@ IMPORTANTE: Gere conteúdo prático e realista para um escritório de advocacia 
                                   description: { type: 'string' },
                                   script: { type: 'string' },
                                   activityType: { type: 'string' },
-                                  assigneeId: { type: 'string', description: 'userId do responsável do passo (da lista EQUIPE). Omitir para herdar.' },
+                                  assigneeCargo: { type: 'string', description: 'Cargo responsável pelo passo (da lista CARGOS DO TIME). Jeito preferido. Omitir para herdar.' },
+                                  assigneeId: { type: 'string', description: 'userId do responsável do passo (da lista EQUIPE). Exceção — só quando o usuário pedir pessoa específica.' },
                                   prazoValor: { type: 'number', description: 'Prazo esperado do passo (junto com prazoUnidade).' },
                                   prazoUnidade: { type: 'string', enum: ['dias_uteis', 'dias', 'meses'] },
                                   docChecklist: {

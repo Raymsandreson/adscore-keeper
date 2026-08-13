@@ -75,6 +75,11 @@ export interface ChecklistItem {
    */
   assigneeId?: string | null;
   /**
+   * Responsável por CARGO: a pessoa é resolvida na hora pelo time vinculado ao
+   * POP (src/lib/popCargo.ts). Pessoa explícita (assigneeId) vence o cargo.
+   */
+  assigneeCargo?: string | null;
+  /**
    * Prazo esperado para executar o passo — usado para medir quem está dentro do
    * prazo. Unidade separada porque prazo processual corre em DIAS ÚTEIS
    * (src/lib/popPrazo.ts); guardar tudo em corridos erraria 2 dias por semana.
