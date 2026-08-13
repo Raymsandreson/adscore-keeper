@@ -23,6 +23,14 @@ import { buscarEmailsDoProcesso, formatarEmails } from '../lib/processual-email-
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 /** Por rodada. O cron roda de 10 em 10 minutos, então isso é folga sobre o fluxo real (~200/semana). */
 const LIMITE_PADRAO = 20;
+/**
+ * Janela do backfill. Sem ela, ligar a coluna joga as 2.057 movimentações
+ * históricas na fila de uma vez — 17 horas de varredura e outras tantas
+ * chamadas de IA para resumir processo que ninguém vai reabrir. Movimentação
+ * velha continua mostrando o texto cru, como sempre mostrou.
+ * `0` desliga o corte (varre tudo).
+ */
+const JANELA_DIAS = Number(process.env.SUMMARIZE_UPDATES_WINDOW_DAYS ?? 30);
 /** E-mails do processo que entram no prompt do RESUMO. O histórico completo é assunto da dica de próximo passo, não daqui. */
 const EMAILS_NO_RESUMO = 3;
 
@@ -88,7 +96,15 @@ export const handler: RequestHandler = async (req, res) => {
       // `resumo_ia_at` e não `resumo_ia`: linha que a IA não conseguiu resumir
       // fica carimbada e sai da fila, senão o varredor tentaria de novo para
       // sempre as mesmas.
-      q = q.is('resumo_ia_at', null)
+      q = q.is('resumo_ia_at', null);
+      if (JANELA_DIAS > 0) {
+        const corte = new Date(Date.now() - JANELA_DIAS * 24 * 60 * 60 * 1000).toISOString();
+        // Linha sem data de movimentação existe (Escavador/backfill), e um
+        // `gte` seco a descartaria para sempre — daí o segundo ramo pelo
+        // created_at, que toda linha tem.
+        q = q.or(`data_movimentacao.gte.${corte.slice(0, 10)},and(data_movimentacao.is.null,created_at.gte.${corte})`);
+      }
+      q = q
         .order('data_movimentacao', { ascending: false, nullsFirst: false })
         .order('created_at', { ascending: false })
         .limit(teto);
