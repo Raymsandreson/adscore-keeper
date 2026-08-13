@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { montarPlano } from '../BulkReassignSheet';
+import { montarPlano, resumoCarga, diaDaAtividade } from '../BulkReassignSheet';
 import type { LeadActivity } from '@/hooks/useLeadActivities';
 
 const DEST = 'dest-uuid';
@@ -108,5 +108,58 @@ describe('montarPlano — pré-checagem do índice dedup', () => {
     expect(p.mover).toHaveLength(0);
     expect(p.puladas).toHaveLength(0);
     expect(p.jaSao.map(a => a.id)).toEqual(['ja-dele']);
+  });
+});
+
+describe('diaDaAtividade', () => {
+  it('deadline manda, notification_date é reserva', () => {
+    expect(diaDaAtividade({ deadline: '2026-08-20', notification_date: '2026-08-10' })).toBe('2026-08-20');
+    expect(diaDaAtividade({ deadline: null, notification_date: '2026-08-10' })).toBe('2026-08-10');
+    expect(diaDaAtividade({ deadline: null, notification_date: null })).toBeNull();
+  });
+
+  it('corta datetime legado sem deslocar o dia por fuso', () => {
+    expect(diaDaAtividade({ deadline: '2026-08-20T12:00:00.000Z', notification_date: null })).toBe('2026-08-20');
+  });
+});
+
+describe('resumoCarga — quanto o destino fica com no dia', () => {
+  const carga = new Map([['2026-08-13', 4], ['2026-08-20', 1]]);
+
+  it('modo manter: uma linha por dia envolvido, somando à carga existente', () => {
+    const linhas = resumoCarga(
+      [
+        atv({ id: 'a', deadline: '2026-08-20' }),
+        atv({ id: 'b', deadline: '2026-08-13' }),
+        atv({ id: 'c', deadline: '2026-08-13' }),
+      ],
+      carga, 'manter', null,
+    );
+    expect(linhas).toEqual([
+      { dia: '2026-08-13', jaTem: 4, entram: 2 },
+      { dia: '2026-08-20', jaTem: 1, entram: 1 },
+    ]);
+  });
+
+  it('modo hoje/outro: tudo cai num dia só', () => {
+    const linhas = resumoCarga(
+      [atv({ id: 'a', deadline: '2026-08-20' }), atv({ id: 'b', deadline: null })],
+      carga, 'hoje', '2026-08-13',
+    );
+    expect(linhas).toEqual([{ dia: '2026-08-13', jaTem: 4, entram: 2 }]);
+  });
+
+  it('dia sem carga registrada começa em zero', () => {
+    const linhas = resumoCarga([atv({ deadline: '2026-09-01' })], carga, 'manter', null);
+    expect(linhas).toEqual([{ dia: '2026-09-01', jaTem: 0, entram: 1 }]);
+  });
+
+  it('sem data fica em linha própria, no fim e sem carga', () => {
+    const linhas = resumoCarga(
+      [atv({ id: 'a', deadline: null, notification_date: null }), atv({ id: 'b', deadline: '2026-08-13' })],
+      carga, 'manter', null,
+    );
+    expect(linhas.map(l => l.dia)).toEqual(['2026-08-13', null]);
+    expect(linhas[1]).toEqual({ dia: null, jaTem: 0, entram: 1 });
   });
 });
