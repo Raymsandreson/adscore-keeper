@@ -13,6 +13,9 @@ export interface TeamConversation {
   name: string | null;
   created_at: string;
   updated_at: string;
+  created_by?: string | null;
+  /** Quantos participantes o grupo tem (só preenchido em type='group'). */
+  memberCount?: number;
   otherMemberName?: string;
   otherMemberId?: string;
   lastMessage?: string;
@@ -53,6 +56,23 @@ export interface TypingPeer {
 const TYPING_TTL_MS = 5000;
 
 const GENERAL_CHAT_NAME = '💬 Chat Geral da Equipe';
+
+/**
+ * Grupos cuja composição é sincronizada por outra tela: "👥" pela aba Times,
+ * "📊" pelo relatório diário e "💬" pelo Chat Geral (todo mundo). Mexer nos
+ * membros deles pelo chat seria desfeito no próximo sync, então lá os
+ * participantes ficam só-leitura.
+ */
+const MANAGED_GROUP_PREFIX = /^[👥📊💬]\s*/u;
+
+export function isManagedGroup(conv: { type?: string | null; name?: string | null }): boolean {
+  return conv?.type === 'group' && MANAGED_GROUP_PREFIX.test(conv.name || '');
+}
+
+/** Tira o prefixo reservado: grupo do usuário não pode se passar por grupo de time. */
+function sanitizeGroupName(name: string): string {
+  return (name || '').trim().replace(MANAGED_GROUP_PREFIX, '').trim();
+}
 
 /** Quantas mensagens a tela segura de uma vez. */
 const MESSAGE_WINDOW = 200;
@@ -208,6 +228,8 @@ export function useTeamDirectChat() {
             .neq('sender_id', user.id)
             .gt('created_at', lastRead);
 
+          const memberCount = (allMembers || []).filter((m) => m.conversation_id === conv.id).length;
+
           let otherMemberName: string | undefined;
           let otherMemberId: string | undefined;
 
@@ -224,6 +246,7 @@ export function useTeamDirectChat() {
 
           return {
             ...conv,
+            memberCount,
             otherMemberName,
             otherMemberId,
             lastMessage: lastMsg?.content || '',
@@ -598,6 +621,216 @@ export function useTeamDirectChat() {
     }
   }, [user?.id, fetchConversations]);
 
+  /** Participantes atuais de uma conversa (user_ids do Cloud). */
+  const fetchConversationMembers = useCallback(async (conversationId: string): Promise<string[]> => {
+    if (!conversationId) return [];
+    try {
+      await ensureExternalSession();
+      const { data, error } = await externalSupabase
+        .from('team_conversation_members')
+        .select('user_id')
+        .eq('conversation_id', conversationId);
+      if (error) throw error;
+      return (data || []).map((m) => m.user_id as string);
+    } catch (e) {
+      console.error('Error fetching conversation members:', e);
+      toast.error('Não foi possível carregar os participantes.');
+      return [];
+    }
+  }, []);
+
+  /**
+   * Cria um grupo com as pessoas escolhidas e já abre a conversa.
+   * A mensagem de abertura também serve de aviso: é ela que dispara o Web Push
+   * pra quem foi incluído.
+   */
+  const createGroupConversation = useCallback(async (
+    name: string,
+    members: { id: string; name: string }[]
+  ): Promise<string | null> => {
+    if (!user?.id) return null;
+
+    const cleanName = sanitizeGroupName(name);
+    if (!cleanName) {
+      toast.error('Dê um nome ao grupo.');
+      return null;
+    }
+
+    const chosen = members.filter((m) => m.id && m.id !== user.id);
+    const memberIds = [...new Set(chosen.map((m) => m.id))];
+    if (memberIds.length === 0) {
+      toast.error('Escolha pelo menos uma pessoa para o grupo.');
+      return null;
+    }
+
+    try {
+      await ensureExternalSession();
+
+      const { data: conv, error } = await (externalSupabase.from('team_conversations') as any)
+        .insert({ type: 'group', name: cleanName, created_by: user.id })
+        .select('id')
+        .single();
+      if (error || !conv?.id) throw error || new Error('conversa criada sem id');
+
+      const { error: membersError } = await (externalSupabase.from('team_conversation_members') as any)
+        .insert([user.id, ...memberIds].map((uid) => ({ conversation_id: conv.id, user_id: uid })));
+
+      if (membersError) {
+        // Grupo sem membros não aparece na lista de ninguém — desfaz em vez de
+        // deixar conversa órfã no banco.
+        await (externalSupabase.from('team_conversations') as any).delete().eq('id', conv.id);
+        throw membersError;
+      }
+
+      const nomes = chosen.map((m) => m.name).join(', ');
+      await sendTeamDirectMessage(
+        conv.id as string,
+        user.id,
+        user.email,
+        `👋 ${myNameRef.current || 'Alguém'} criou o grupo "${cleanName}" com: ${nomes}.`,
+        { senderName: myNameRef.current }
+      );
+
+      await fetchConversations();
+      setActiveConversationId(conv.id as string);
+      toast.success('Grupo criado');
+      return conv.id as string;
+    } catch (e) {
+      console.error('Error creating group conversation:', e);
+      toast.error('Não foi possível criar o grupo.');
+      return null;
+    }
+  }, [user?.id, user?.email, fetchConversations]);
+
+  const addGroupMembers = useCallback(async (
+    conversationId: string,
+    members: { id: string; name: string }[]
+  ): Promise<boolean> => {
+    if (!user?.id || !conversationId || members.length === 0) return false;
+
+    try {
+      await ensureExternalSession();
+
+      // (conversation_id, user_id) é UNIQUE: duas pessoas adicionando a mesma
+      // ao mesmo tempo dariam 23505, por isso o upsert ignorando duplicado.
+      const { error } = await (externalSupabase.from('team_conversation_members') as any)
+        .upsert(
+          members.map((m) => ({ conversation_id: conversationId, user_id: m.id })),
+          { onConflict: 'conversation_id,user_id', ignoreDuplicates: true }
+        );
+      if (error) throw error;
+
+      await sendTeamDirectMessage(
+        conversationId,
+        user.id,
+        user.email,
+        `➕ ${myNameRef.current || 'Alguém'} adicionou ${members.map((m) => m.name).join(', ')} ao grupo.`,
+        { senderName: myNameRef.current }
+      );
+
+      await fetchConversations();
+      toast.success(members.length > 1 ? 'Participantes adicionados' : 'Participante adicionado');
+      return true;
+    } catch (e) {
+      console.error('Error adding group members:', e);
+      toast.error('Não foi possível adicionar ao grupo.');
+      return false;
+    }
+  }, [user?.id, user?.email, fetchConversations]);
+
+  const removeGroupMember = useCallback(async (
+    conversationId: string,
+    member: { id: string; name: string }
+  ): Promise<boolean> => {
+    if (!user?.id || !conversationId) return false;
+
+    try {
+      await ensureExternalSession();
+      const { error } = await externalSupabase
+        .from('team_conversation_members')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('user_id', member.id);
+      if (error) throw error;
+
+      await sendTeamDirectMessage(
+        conversationId,
+        user.id,
+        user.email,
+        `➖ ${myNameRef.current || 'Alguém'} removeu ${member.name} do grupo.`,
+        { senderName: myNameRef.current }
+      );
+
+      await fetchConversations();
+      toast.success('Participante removido');
+      return true;
+    } catch (e) {
+      console.error('Error removing group member:', e);
+      toast.error('Não foi possível remover do grupo.');
+      return false;
+    }
+  }, [user?.id, user?.email, fetchConversations]);
+
+  const leaveGroup = useCallback(async (conversationId: string): Promise<boolean> => {
+    if (!user?.id || !conversationId) return false;
+
+    try {
+      await ensureExternalSession();
+      // Avisa antes de sair: depois do delete a conversa some da minha lista.
+      await sendTeamDirectMessage(
+        conversationId,
+        user.id,
+        user.email,
+        `🚪 ${myNameRef.current || 'Alguém'} saiu do grupo.`,
+        { senderName: myNameRef.current }
+      );
+
+      const { error } = await externalSupabase
+        .from('team_conversation_members')
+        .delete()
+        .eq('conversation_id', conversationId)
+        .eq('user_id', user.id);
+      if (error) throw error;
+
+      setActiveConversationId(null);
+      await fetchConversations();
+      toast.success('Você saiu do grupo');
+      return true;
+    } catch (e) {
+      console.error('Error leaving group:', e);
+      toast.error('Não foi possível sair do grupo.');
+      return false;
+    }
+  }, [user?.id, user?.email, fetchConversations]);
+
+  const renameGroup = useCallback(async (conversationId: string, name: string): Promise<boolean> => {
+    if (!user?.id || !conversationId) return false;
+
+    const cleanName = sanitizeGroupName(name);
+    if (!cleanName) {
+      toast.error('Dê um nome ao grupo.');
+      return false;
+    }
+
+    try {
+      await ensureExternalSession();
+      // Sem tocar em updated_at: renomear não deve jogar o grupo pro topo da lista.
+      const { error } = await externalSupabase
+        .from('team_conversations')
+        .update({ name: cleanName })
+        .eq('id', conversationId);
+      if (error) throw error;
+
+      setConversations((prev) => prev.map((c) => (c.id === conversationId ? { ...c, name: cleanName } : c)));
+      toast.success('Nome do grupo atualizado');
+      return true;
+    } catch (e) {
+      console.error('Error renaming group:', e);
+      toast.error('Não foi possível renomear o grupo.');
+      return false;
+    }
+  }, [user?.id]);
+
   return {
     conversations,
     messages,
@@ -611,6 +844,12 @@ export function useTeamDirectChat() {
     dismissPending,
     startDirectChat,
     ensureGeneralChat,
+    createGroupConversation,
+    fetchConversationMembers,
+    addGroupMembers,
+    removeGroupMember,
+    leaveGroup,
+    renameGroup,
     fetchConversations,
     fetchMessages,
     otherMembersReadAt,
