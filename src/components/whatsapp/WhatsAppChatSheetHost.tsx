@@ -53,6 +53,10 @@ export function WhatsAppChatSheetHost() {
       <DashboardChatPreview
         open
         onOpenChange={(open) => { if (!open) setChat(null); }}
+        // De cima pra baixo: quem clicou num popup de notificação mantém os
+        // popups (top-center, z-121) à vista por cima do drawer (z-50) e não
+        // perde os avisos que ainda não tratou.
+        direction="top"
         phone={chat.phone}
         contactName={chat.contactName}
         instanceName={chat.instanceName}

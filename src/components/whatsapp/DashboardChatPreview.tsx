@@ -107,9 +107,11 @@ interface Props {
   highlightMessageId?: string | null;
   /** Abre já com a lista de pendências expandida (entrada pela etiqueta de pendência). */
   initialCommitmentsOpen?: boolean;
+  /** Lado por onde o drawer entra. `top` = de cima pra baixo (abertura via popup de notificação). */
+  direction?: 'top' | 'bottom';
 }
 
-export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId, highlightMessageId, initialCommitmentsOpen }: Props) {
+export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId, highlightMessageId, initialCommitmentsOpen, direction = 'bottom' }: Props) {
   const { user, profile } = useAuthContext();
   // Visão alternável: conversa principal (grupo) vs privado unificado — todas as conversas
   // individuais da equipe com o contato, sem filtrar instância.
@@ -1618,11 +1620,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
 
   return (
     <>
-    <Drawer open={open} onOpenChange={(nextOpen) => {
+    <Drawer direction={direction} open={open} onOpenChange={(nextOpen) => {
       if (lightboxUrl && !nextOpen) return;
       onOpenChange(nextOpen);
     }}>
-      <DrawerContent className="max-h-[92vh] flex flex-col">
+      <DrawerContent direction={direction} className="max-h-[92vh] flex flex-col">
         <DrawerHeader className="pb-2 shrink-0">
           <div className="flex items-center justify-between">
             <div className="min-w-0 flex-1">

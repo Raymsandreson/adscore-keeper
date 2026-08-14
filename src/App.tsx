@@ -15,6 +15,7 @@ import { TeamChatNotifications } from "@/components/chat/TeamChatNotifications";
 import { PushNotificationPrompt } from "@/components/chat/PushNotificationPrompt";
 import { TeamChatDeepLink } from "@/components/chat/TeamChatDeepLink";
 import { PushNotificationBridge } from "@/components/notifications/PushNotificationBridge";
+import { AppNavigationBridge } from "@/components/AppNavigationBridge";
 import { WhatsAppChatSheetHost } from "@/components/whatsapp/WhatsAppChatSheetHost";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
@@ -332,6 +333,9 @@ function SidebarLayout() {
                 postMessage e a ponte decide o destino. Conversa do WhatsApp
                 abre na folha, sem tirar a pessoa da página em que está. */}
             <PushNotificationBridge />
+            {/* Clique em popup de notificação navega sem recarregar a página —
+                recarga apagava todos os popups que ainda estavam na tela. */}
+            <AppNavigationBridge />
             <WhatsAppChatSheetHost />
             <ActivityTimerOverlay />
             {/* Sem expediente aberto, aviso em tela cheia com o POP de início de

@@ -3,6 +3,7 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { appNavigate } from '@/lib/appNavigation';
 
 // Rótulo por tipo de notificação (tabela activity_notifications no Externo).
 const TYPE_LABELS: Record<string, string> = {
@@ -75,9 +76,12 @@ export function ActivityNotificationsListener() {
         action: n.activity_id
           ? {
               label: 'Abrir atividade',
-              onClick: () => {
+              onClick: (event: { preventDefault: () => void }) => {
+                // Mantém o popup na tela após abrir (o padrão do sonner é fechar no clique).
+                event.preventDefault();
                 markSeen(n.id);
-                window.location.assign(`/?openActivity=${n.activity_id}`);
+                // SPA, não recarga: recarregar apagava os outros popups da tela.
+                appNavigate(`/?openActivity=${n.activity_id}`);
               },
             }
           : undefined,

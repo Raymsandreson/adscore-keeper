@@ -28,7 +28,7 @@ interface TeamNotificationToastProps {
   onOpen: () => void | Promise<void>;
   onMuteForMinutes: (minutes: number | null) => void;
   onReply?: (reply: string) => Promise<void>;
-  /** Chamado quando o usuário fecha o popup deliberadamente (X ou swipe) sem responder */
+  /** Chamado quando o usuário fecha o popup deliberadamente (X ou swipe) sem responder nem abrir o chat */
   onManualDismiss?: () => void;
 }
 
@@ -61,6 +61,9 @@ export function TeamNotificationToast({
   const [sending, setSending] = useState(false);
   // Imagem sempre abre no visualizador interno — nunca em outra página.
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  // Já abriu o chat por este popup? Fechar depois disso não é "ignorou a
+  // mensagem" — não pode virar recibo de "viu e fechou sem responder".
+  const openedRef = useRef(false);
 
   // Swipe-to-dismiss state
   const touchStartX = useRef<number | null>(null);
@@ -93,7 +96,7 @@ export function TeamNotificationToast({
         containerRef.current.style.transform = `translateX(${dir})`;
         containerRef.current.style.opacity = '0';
       }
-      onManualDismiss?.();
+      if (!openedRef.current) onManualDismiss?.();
       setTimeout(() => toast.dismiss(toastId), 200);
     } else {
       // Snap back
@@ -108,8 +111,11 @@ export function TeamNotificationToast({
   };
 
   const handleOpen = async () => {
+    openedRef.current = true;
     await onOpen();
-    toast.dismiss(toastId);
+    // NÃO descarta o popup: a conversa abre por cima (drawer de cima pra
+    // baixo) e o aviso continua na tela até o X, o swipe, a resposta ou o
+    // tempo — assim nenhuma notificação se perde no clique.
   };
 
   const handleReply = async () => {
@@ -148,7 +154,7 @@ export function TeamNotificationToast({
       <button
         type="button"
         onClick={() => {
-          onManualDismiss?.();
+          if (!openedRef.current) onManualDismiss?.();
           toast.dismiss(toastId);
         }}
         className="absolute top-1.5 right-1.5 p-1 rounded-md hover:bg-accent text-muted-foreground z-10"
