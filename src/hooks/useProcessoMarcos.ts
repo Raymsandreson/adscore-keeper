@@ -29,7 +29,7 @@ export interface MarcoReguaRow {
   terminal: boolean;
   estado: MarcoEstado;
   data_detectada: string | null;
-  /** movimento | documento | escavador_texto | escavador_grau */
+  /** movimento | documento | escavador_texto | escavador_grau | campo_processo */
   fonte: string | null;
   tem_prova_documental: boolean;
   atual: boolean;
@@ -43,6 +43,7 @@ export const FONTE_LABEL: Record<string, string> = {
   documento: 'documento do processo',
   escavador_texto: 'Escavador',
   escavador_grau: 'Escavador',
+  campo_processo: 'capa do processo',
 };
 
 export interface ReguaDoProcesso {
