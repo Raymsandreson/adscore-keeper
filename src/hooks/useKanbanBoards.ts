@@ -42,8 +42,23 @@ export interface KanbanBoard {
    * Penúltimo degrau da cascata de responsável — ver src/lib/popResponsavel.ts.
    */
   notificacoes_assignee_id?: string | null;
+  /**
+   * Configs do quadro (jsonb). Chaves conhecidas: resultados/resultado_esperado_*
+   * (KPI do POP) e `archived` (quadro arquivado — some das listagens e das
+   * seleções, mas nada é apagado; desarquivar reverte tudo).
+   */
+  settings?: Record<string, unknown> | null;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Quadro arquivado: não aparece na listagem de POPs/funis (a não ser com
+ * "Mostrar arquivados") nem nos seletores de vínculo (processo, atividade,
+ * campanha…). Aceita tanto o KanbanBoard do hook quanto linha crua do banco.
+ */
+export function isBoardArchived(board: { settings?: unknown } | null | undefined): boolean {
+  return (board?.settings as { archived?: boolean } | null | undefined)?.archived === true;
 }
 
 const fetchBoardsFromDB = async (adAccountId?: string): Promise<KanbanBoard[]> => {
@@ -238,6 +253,17 @@ export const useKanbanBoards = (adAccountId?: string) => {
     await updateBoard(boardId, { stages: newStages });
   };
 
+  /**
+   * Arquiva/desarquiva o quadro gravando `settings.archived`. Mescla com os
+   * settings existentes pra não perder o KPI de resultado esperado do POP.
+   */
+  const setBoardArchived = async (boardId: string, archived: boolean) => {
+    const board = boards.find(b => b.id === boardId);
+    if (!board) return;
+    const settings = { ...(board.settings || {}), archived };
+    await updateBoard(boardId, { settings } as Partial<KanbanBoard>);
+  };
+
   const selectedBoard = boards.find(b => b.id === selectedBoardId) || null;
 
   return {
@@ -254,5 +280,6 @@ export const useKanbanBoards = (adAccountId?: string) => {
     updateStage,
     deleteStage,
     reorderStages,
+    setBoardArchived,
   };
 };

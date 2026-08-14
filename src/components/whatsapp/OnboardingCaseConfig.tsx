@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { externalSupabase } from '@/integrations/supabase/external-client';
+import { isBoardArchived } from '@/hooks/useKanbanBoards';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
@@ -29,6 +31,7 @@ interface Board {
   name: string;
   board_type?: string;
   product_service_id?: string | null;
+  settings?: Record<string, unknown> | null;
 }
 
 interface Props {
@@ -56,7 +59,8 @@ export function OnboardingCaseConfig({ boardId }: Props) {
           .select('id, auto_create_process, process_workflows')
           .eq('board_id', boardId)
           .maybeSingle(),
-        (supabase as any).from('kanban_boards').select('id, name, board_type, product_service_id').order('display_order'),
+        // kanban_boards é tabela de negócio → banco EXTERNO (ver db-routing.ts).
+        (externalSupabase as any).from('kanban_boards').select('id, name, board_type, product_service_id, settings').order('display_order'),
         (supabase as any).from('specialized_nuclei').select('id, name, prefix').eq('is_active', true).order('name'),
         (supabase as any).from('products_services').select('id, name, nucleus_id'),
         (supabase as any).from('profiles').select('user_id, full_name').order('full_name'),
@@ -106,7 +110,7 @@ export function OnboardingCaseConfig({ boardId }: Props) {
     return <div className="flex items-center justify-center py-8"><Loader2 className="h-5 w-5 animate-spin" /></div>;
   }
 
-  const workflowBoards = boards.filter((b) => b.board_type === 'workflow');
+  const workflowBoards = boards.filter((b) => b.board_type === 'workflow' && !isBoardArchived(b));
 
   return (
     <div className="space-y-4">

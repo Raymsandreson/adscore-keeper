@@ -23,7 +23,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { useLeadProcesses, LeadProcess } from '@/hooks/useLeadProcesses';
-import { KanbanBoard } from '@/hooks/useKanbanBoards';
+import { KanbanBoard, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { Plus, Scale, Gavel, FileText, Trash2, Edit3, Archive, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
@@ -289,7 +289,7 @@ export function LeadProcessesTab({ leadId, boards }: LeadProcessesTabProps) {
                   <SelectValue placeholder="Selecione um fluxo..." />
                 </SelectTrigger>
                 <SelectContent>
-                  {boards.filter(b => b.board_type === 'workflow').map(b => (
+                  {boards.filter(b => b.board_type === 'workflow' && !isBoardArchived(b)).map(b => (
                     <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                   ))}
                 </SelectContent>

@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { useProcessCustomFields, ProcessCustomField, FieldType } from '@/hooks/useProcessCustomFields';
-import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useKanbanBoards, isBoardArchived } from '@/hooks/useKanbanBoards';
 
 // Editor dedicado de campos personalizados de PROCESSO. Espelha a ideia do
 // CustomFieldsManager do lead, porém: (1) escopo por workflow (board_type='workflow')
@@ -32,7 +32,7 @@ const fieldTypeLabels: Record<FieldType, string> = {
 
 export function ProcessCustomFieldsManager({ adAccountId }: ProcessCustomFieldsManagerProps) {
   const { boards } = useKanbanBoards();
-  const workflows = useMemo(() => boards.filter((b: any) => b.board_type === 'workflow'), [boards]);
+  const workflows = useMemo(() => boards.filter((b: any) => b.board_type === 'workflow' && !isBoardArchived(b)), [boards]);
 
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string>('all');
   const workflowFilter = selectedWorkflowId === 'all' ? undefined : selectedWorkflowId;

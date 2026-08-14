@@ -13,7 +13,7 @@ import { WorkflowProgressView } from '@/components/workflow/WorkflowProgressView
 import { WorkflowBuilder } from '@/components/workflow/WorkflowBuilder';
 import { BoardsList } from '@/components/board/BoardsList';
 import { TeamChatButton } from '@/components/chat/TeamChatButton';
-import { KanbanBoard, KanbanStage } from '@/hooks/useKanbanBoards';
+import { KanbanBoard, KanbanStage, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 
 interface LeadBasic {
@@ -214,7 +214,7 @@ const WorkflowProgressPage = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {boards
-                    .filter(b => (b as any).board_type === 'workflow')
+                    .filter(b => (b as any).board_type === 'workflow' && !isBoardArchived(b))
                     .map(b => (
                       <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                     ))}
@@ -239,7 +239,7 @@ const WorkflowProgressPage = () => {
                 </SelectTrigger>
                 <SelectContent>
                   {boards
-                    .filter(b => (b as any).board_type === 'workflow')
+                    .filter(b => (b as any).board_type === 'workflow' && !isBoardArchived(b))
                     .map(b => (
                       <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
                     ))}

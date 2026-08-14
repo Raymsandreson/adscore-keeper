@@ -12,6 +12,7 @@
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
+import { isBoardArchived } from '@/hooks/useKanbanBoards';
 import type { MarcoTipo } from '@/hooks/useProcessMovements';
 
 // integrations/supabase/types.ts é gerado do CLOUD; as tabelas e RPCs de metas
@@ -129,7 +130,7 @@ export function useTeamProcessGoals() {
       const [progressRes, teamsRes, boardsRes, mapRes, procRes] = await Promise.all([
         ext.rpc<TeamProcessGoalProgress[]>('team_process_goals_progress'),
         db.from('teams').select('id, name, color').order('name'),
-        db.from('kanban_boards').select('id, name').eq('board_type', 'workflow').order('name'),
+        db.from('kanban_boards').select('id, name, settings').eq('board_type', 'workflow').order('name'),
         ext.from('team_workflow_boards').select('team_id, board_id'),
         db.from('lead_processes').select('workflow_id').is('deleted_at', null),
       ]);
@@ -147,12 +148,15 @@ export function useTeamProcessGoals() {
         if (p.workflow_id) counts.set(p.workflow_id, (counts.get(p.workflow_id) || 0) + 1);
       });
 
-      setBoards(((boardsRes.data as { id: string; name: string }[]) || []).map(b => ({
-        id: b.id,
-        name: b.name,
-        team_id: boardTeam.get(b.id) || null,
-        process_count: counts.get(b.id) || 0,
-      })));
+      // POP arquivado não entra no seletor de meta nova.
+      setBoards(((boardsRes.data as { id: string; name: string; settings?: unknown }[]) || [])
+        .filter(b => !isBoardArchived(b))
+        .map(b => ({
+          id: b.id,
+          name: b.name,
+          team_id: boardTeam.get(b.id) || null,
+          process_count: counts.get(b.id) || 0,
+        })));
     } catch (e) {
       console.error('Erro ao carregar metas processuais do time:', e);
       setError(e instanceof Error ? e.message : 'Erro ao carregar metas');

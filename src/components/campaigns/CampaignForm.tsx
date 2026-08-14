@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCreateCampaign, useUpdateCampaign, type Campaign, type CampaignStatus } from '@/hooks/useCampaigns';
-import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useKanbanBoards, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { useAuthContext } from '@/contexts/AuthContext';
 
 interface Props {
@@ -28,7 +28,7 @@ export default function CampaignForm({ open, onOpenChange, campaign, onSaved }: 
   const create = useCreateCampaign();
   const update = useUpdateCampaign();
   const { boards } = useKanbanBoards();
-  const workflowBoards = boards.filter((b) => b.board_type === 'workflow');
+  const workflowBoards = boards.filter((b) => b.board_type === 'workflow' && !isBoardArchived(b));
 
   const [form, setForm] = useState({
     name: '',

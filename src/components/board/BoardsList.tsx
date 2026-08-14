@@ -10,9 +10,9 @@ import {
   Pagination, PaginationContent, PaginationItem, PaginationLink,
   PaginationNext, PaginationPrevious, PaginationEllipsis,
 } from "@/components/ui/pagination";
-import { Search, Plus, RefreshCw, Scale, List, Grid3x3, Filter as FilterIcon } from "lucide-react";
+import { Search, Plus, RefreshCw, Scale, List, Grid3x3, Filter as FilterIcon, Archive } from "lucide-react";
 import { db } from "@/integrations/supabase";
-import { useKanbanBoards } from "@/hooks/useKanbanBoards";
+import { useKanbanBoards, isBoardArchived } from "@/hooks/useKanbanBoards";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
@@ -83,7 +83,7 @@ interface BoardsListProps {
  */
 export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
   const navigate = useNavigate();
-  const { boards, fetchBoards, deleteBoard } = useKanbanBoards();
+  const { boards, fetchBoards, deleteBoard, setBoardArchived } = useKanbanBoards();
   const { confirmDelete, ConfirmDeleteDialog } = useConfirmDelete();
   const copy = COPY[boardType];
 
@@ -113,9 +113,16 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
     [boards, boardType]
   );
 
+  // Arquivados ficam ocultos por padrão; o botão "Arquivados (N)" revela.
+  const [showArchived, setShowArchived] = useState(false);
+  const activeBoards = useMemo(() => typedBoards.filter(b => !isBoardArchived(b)), [typedBoards]);
+  const archivedBoards = useMemo(() => typedBoards.filter(b => isBoardArchived(b)), [typedBoards]);
+
+  // Com "Mostrar arquivados" ligado, os arquivados entram no fim da lista.
   const filtered = useMemo(
-    () => typedBoards.filter(b => b.name.toLowerCase().includes(search.toLowerCase())),
-    [typedBoards, search]
+    () => (showArchived ? [...activeBoards, ...archivedBoards] : activeBoards)
+      .filter(b => b.name.toLowerCase().includes(search.toLowerCase())),
+    [showArchived, activeBoards, archivedBoards, search]
   );
 
   const perPage = PER_PAGE[viewMode];
@@ -172,13 +179,14 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
     },
   });
 
+  // Sumário conta só os ativos — arquivado não é "POP Ativo".
   const totalLeads = useMemo(
-    () => Object.values(totalsByBoard || {}).reduce((s, n) => s + n, 0),
-    [totalsByBoard]
+    () => activeBoards.reduce((s, b) => s + (totalsByBoard?.[b.id] || 0), 0),
+    [activeBoards, totalsByBoard]
   );
   const boardsWithLeads = useMemo(
-    () => typedBoards.filter(b => (totalsByBoard?.[b.id] || 0) > 0).length,
-    [typedBoards, totalsByBoard]
+    () => activeBoards.filter(b => (totalsByBoard?.[b.id] || 0) > 0).length,
+    [activeBoards, totalsByBoard]
   );
 
   const openProcessesSheet = async (board: { id: string; name: string }) => {
@@ -215,6 +223,18 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
       toast.error("Erro ao carregar processos");
     } finally {
       setLoadingProcesses(false);
+    }
+  };
+
+  // Arquivar não apaga nada: o quadro só some das listagens e seleções.
+  const handleToggleArchive = async (board: { id: string; name: string }, archived: boolean) => {
+    try {
+      await setBoardArchived(board.id, archived);
+      toast.success(archived
+        ? `"${board.name}" arquivado — não aparece mais nas listas e seleções.`
+        : `"${board.name}" desarquivado.`);
+    } catch {
+      /* updateBoard já mostra o toast de erro */
     }
   };
 
@@ -260,6 +280,19 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
             </Button>
           ))}
         </div>
+        {archivedBoards.length > 0 && (
+          <Button
+            variant={showArchived ? "secondary" : "outline"}
+            onClick={() => { setShowArchived(v => !v); setPage(1); }}
+            title={showArchived
+              ? "Ocultar os quadros arquivados"
+              : `Mostrar ${archivedBoards.length} arquivado${archivedBoards.length > 1 ? "s" : ""}`}
+            aria-pressed={showArchived}
+          >
+            <Archive className="h-4 w-4 mr-2" />
+            Arquivados ({archivedBoards.length})
+          </Button>
+        )}
         <Button onClick={() => { setEditBoardId(null); setShowBuilder(true); }}>
           <Plus className="h-4 w-4 mr-2" />
           {copy.createLabel}
@@ -272,7 +305,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card className="border-border/50">
           <CardContent className="pt-4 pb-3 text-center">
-            <div className="text-2xl font-bold text-primary">{typedBoards.length}</div>
+            <div className="text-2xl font-bold text-primary">{activeBoards.length}</div>
             <div className="text-xs text-muted-foreground">{copy.summaryActive}</div>
           </CardContent>
         </Card>
@@ -285,7 +318,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
         <Card className="border-border/50">
           <CardContent className="pt-4 pb-3 text-center">
             <div className="text-2xl font-bold text-foreground">
-              {typedBoards.reduce((sum, b) => sum + (b.stages?.length || 0), 0)}
+              {activeBoards.reduce((sum, b) => sum + (b.stages?.length || 0), 0)}
             </div>
             <div className="text-xs text-muted-foreground">Etapas Total</div>
           </CardContent>
@@ -329,6 +362,9 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 onOpenProcesses={() => openProcessesSheet({ id: board.id, name: board.name })}
                 processCount={processCounts?.[board.id] || 0}
                 onDelete={() => handleDelete({ id: board.id, name: board.name })}
+                archived={isBoardArchived(board)}
+                onToggleArchive={() =>
+                  handleToggleArchive({ id: board.id, name: board.name }, !isBoardArchived(board))}
               />
             ))}
           </div>

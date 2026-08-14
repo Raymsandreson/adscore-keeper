@@ -37,7 +37,7 @@ import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgres
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAuthContext } from '@/contexts/AuthContext';
-import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useKanbanBoards, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
@@ -234,7 +234,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const { types: activityTypes } = useActivityTypes();
   const { user } = useAuthContext();
   const { boards: allBoards } = useKanbanBoards();
-  const workflowOptions = allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name }));
+  const workflowOptions = allBoards.filter(b => b.board_type === 'workflow' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name }));
   const profiles = useProfilesList();
   // Desativados na aba Times somem do seletor de assessor (filterAssignableMembers).
   useInactiveUserIds();
@@ -1504,7 +1504,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 formProcessId={formProcessId} formProcessTitle={formProcessTitle}
                 formWorkflowId={formWorkflowId} setFormWorkflowId={setFormWorkflowId}
                 workflowOptions={workflowOptions}
-                funnelOptions={allBoards.filter(b => b.board_type === 'funnel').map(b => ({ id: b.id, name: b.name }))}
+                funnelOptions={allBoards.filter(b => b.board_type === 'funnel' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name }))}
                 inheritedFlowName={leadPreview?.board_id
                   ? (allBoards.find(b => b.id === leadPreview.board_id)?.name || 'fluxo do lead')
                   : null}

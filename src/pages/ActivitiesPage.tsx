@@ -82,7 +82,7 @@ import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel'
 import { useTimeBlockSettings } from '@/hooks/useTimeBlockSettings';
 import { useAcolhedores } from '@/hooks/useAcolhedores';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
-import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useKanbanBoards, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { cn } from '@/lib/utils';
@@ -512,13 +512,13 @@ const ActivitiesPage = () => {
   const { types: dbActivityTypes } = useActivityTypes();
   const { boards: allBoards } = useKanbanBoards();
   const workflowOptions = useMemo(
-    () => allBoards.filter(b => b.board_type === 'workflow').map(b => ({ id: b.id, name: b.name })),
+    () => allBoards.filter(b => b.board_type === 'workflow' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name })),
     [allBoards]
   );
   // Funis: opção de vínculo só pra atividade interna/gerenciamento (o id do funil
   // vai em workflow_id). O filtro de fluxo abaixo os lista quando usados.
   const funnelOptions = useMemo(
-    () => allBoards.filter(b => b.board_type === 'funnel').map(b => ({ id: b.id, name: b.name })),
+    () => allBoards.filter(b => b.board_type === 'funnel' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name })),
     [allBoards]
   );
   // Filtro de fluxo: POPs sempre; funis só os que alguma atividade referencia,
