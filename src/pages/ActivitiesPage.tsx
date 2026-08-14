@@ -61,7 +61,7 @@ import {
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
   Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark, DollarSign,
-  ArrowRightLeft, CheckSquare,
+  ArrowRightLeft, CheckSquare, CalendarClock,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
@@ -87,7 +87,9 @@ import { useAcolhedores } from '@/hooks/useAcolhedores';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
 import { useKanbanBoards, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger } from '@/components/ui/context-menu';
+import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
+import { buildPostponeOptions, formatPostponeDate } from '@/lib/postponeDates';
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
@@ -1835,6 +1837,34 @@ const ActivitiesPage = () => {
       description: randomChurchillQuote(),
       duration: 6000,
     });
+  };
+
+  /**
+   * Adiar: troca prazo + notificação e para por aí — não conclui, não cria
+   * filha, não passa pelo pop-up de previsão de tempo. Até 14/08/2026 não havia
+   * caminho nenhum para isso, e quem precisava adiar acabava no
+   * "Concluir + próxima", que conclui a atividade na data velha e deixa um clone
+   * na nova (incidente PREV 180: 8 conclusões em 10 minutos).
+   *
+   * A validação de ausência registrada (aba Férias) continua valendo: ela mora
+   * no `updateActivity`, que devolve `false` e já mostra o motivo.
+   */
+  const handlePostpone = async (activityId: string, dateStr: string) => {
+    const ok = await updateActivity(
+      activityId,
+      { deadline: dateStr, notification_date: dateStr } as any,
+      { successMessage: null },
+    );
+    if (!ok) return;
+    toast.success(`Adiada para ${formatPostponeDate(dateStr)}`);
+    // Ficha aberta nesta mesma atividade: sincroniza o formulário. Sem isso, um
+    // Salvar logo depois regravaria o prazo antigo por cima do adiamento.
+    if (selectedActivity?.id === activityId) {
+      setFormDeadline(dateStr);
+      setFormNotificationDate(dateStr);
+      setSelectedActivity(prev => prev ? ({ ...prev, deadline: dateStr, notification_date: dateStr } as any) : prev);
+    }
+    fetchActivities(getFilterParams());
   };
 
   const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
@@ -5205,6 +5235,29 @@ const ActivitiesPage = () => {
                     </ContextMenuTrigger>
 
                     <ContextMenuContent>
+                      {/* Adiar direto do cartão: o caso mais comum ("não vou
+                          fazer isto hoje") não deveria exigir abrir a ficha.
+                          Para uma data específica, o popover "Adiar" da ficha
+                          tem o seletor. */}
+                      {activity.status !== 'concluida' && (
+                        <>
+                          <ContextMenuSub>
+                            <ContextMenuSubTrigger>
+                              <CalendarClock className="h-3.5 w-3.5 mr-2" />
+                              Adiar
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent>
+                              {buildPostponeOptions().map(o => (
+                                <ContextMenuItem key={o.key} onClick={() => handlePostpone(activity.id, o.dateStr)}>
+                                  {o.label}
+                                  <span className="ml-2 text-muted-foreground">{o.when}</span>
+                                </ContextMenuItem>
+                              ))}
+                            </ContextMenuSubContent>
+                          </ContextMenuSub>
+                          <ContextMenuSeparator />
+                        </>
+                      )}
                       <ContextMenuItem
                         onClick={() => {
                           window.open(`${window.location.origin}/?openActivity=${activity.id}`, '_blank');
@@ -6184,6 +6237,13 @@ const ActivitiesPage = () => {
                     >
                       <Trash2 className="h-3.5 w-3.5" /> Excluir
                     </Button>
+                    {selectedActivity && selectedActivity.status !== 'concluida' && (
+                      <PostponeActivityPopover
+                        currentDeadline={selectedActivity.deadline}
+                        disabled={noteAttachmentsUploading}
+                        onPostpone={(d) => handlePostpone(selectedActivity.id, d)}
+                      />
+                    )}
                     <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleUpdate}>Salvar</Button>
                     {selectedActivity?.status !== 'concluida' && (() => {
                       const audioTarget = leadPreview?.whatsapp_group_id || null;

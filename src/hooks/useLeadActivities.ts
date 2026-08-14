@@ -443,7 +443,17 @@ export function useLeadActivities() {
     }
   };
 
-  const updateActivity = async (id: string, updates: Partial<LeadActivity>) => {
+  /**
+   * @param opts.successMessage texto do toast de sucesso. `null` não mostra
+   * nenhum — usado por quem já dá o próprio retorno (ex.: "Adiada para 18/08").
+   * @returns `true` só quando a linha foi mesmo gravada. Bloqueio por ausência
+   * registrada e erro de banco devolvem `false` (cada um com o seu toast).
+   */
+  const updateActivity = async (
+    id: string,
+    updates: Partial<LeadActivity>,
+    opts?: { successMessage?: string | null },
+  ): Promise<boolean> => {
     try {
       const { data: { user } } = await cloudSupabase.auth.getUser();
 
@@ -470,7 +480,7 @@ export function useLeadActivities() {
         if (conflicts.length > 0) {
           const who = conflicts.map(c => `${c.user_name || 'Responsável'} — ${describeTimeOff(c)}`).join('; ');
           toast.error(`Prazo cai em ausência registrada: ${who}. Escolha outra data ou outro responsável.`, { duration: 8000 });
-          return;
+          return false;
         }
       }
 
@@ -512,10 +522,13 @@ export function useLeadActivities() {
           .is('lead_id', null);
       }
 
-      toast.success('Atividade atualizada!');
+      const successMessage = opts && 'successMessage' in opts ? opts.successMessage : 'Atividade atualizada!';
+      if (successMessage) toast.success(successMessage);
+      return true;
     } catch (error) {
       console.error('Error updating activity:', error);
       toast.error('Erro ao atualizar atividade');
+      return false;
     }
   };
 
