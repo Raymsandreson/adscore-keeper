@@ -81,6 +81,19 @@ Aba dentro do painel de detalhes do processo (entre "Marcos" e "Movimentações"
 
 ---
 
+## Arquivar POP / funil (ago/2026)
+
+Um quadro (POP **ou** funil — mesmo componente, `BoardsList`/`BoardCard`) pode ser **arquivado** sem apagar nada: o flag vive em `kanban_boards.settings.archived` (jsonb — **sem coluna nova, sem migration**). Ação "Arquivar"/"Desarquivar" no próprio card; helper `isBoardArchived()` e `setBoardArchived()` em `src/hooks/useKanbanBoards.ts`.
+
+Efeitos do arquivado:
+- **Some da listagem** de POPs/funis por padrão; botão **"Arquivados (N)"** no topo revela (card esmaecido + badge "Arquivado"). Sumário ("POPs Ativos", leads, etapas) conta só os ativos.
+- **Some dos seletores de vínculo**: novo processo (`AddProcessDialog`, `LeadProcessesTab`), troca de POP na ficha (`ProcessDetailSheet` — mantém o POP atual visível com sufixo "(arquivado)"), caso (`CaseWorkflowBoard`), atividades (`ActivitiesPage`, `ActivityFullSheet`), modelos de mensagem, campanhas, onboarding de grupo, campos personalizados, metas processuais (`useTeamProcessGoals`), progresso (`WorkflowProgressPage`) e o seletor do kanban (`UnifiedKanbanManager` — o quadro aberto na tela permanece).
+- **Nada muda nos dados**: processos/leads já vinculados continuam apontando pro quadro e abrindo normalmente; desarquivar reverte tudo.
+
+Teste de regressão: `src/components/board/__tests__/BoardsList.archive.test.tsx`.
+
+---
+
 ## Revisões do POP — histórico, categoria e impacto
 
 O POP é vivo: o gerente ajusta conforme a prática e os testes do dia a dia. Cada `Salvar` no editor (WorkflowBuilder) que altere algo abre **"Registrar alteração no POP"** e grava uma revisão em `workflow_revisions` (Externo) — snapshot completo + diff + quem/quando.

@@ -21,7 +21,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { toast } from 'sonner';
-import { KanbanBoard } from '@/hooks/useKanbanBoards';
+import { KanbanBoard, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { autoCreatePartiesFromEnvolvidos } from '@/utils/escavadorPartyUtils';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -141,7 +141,8 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
   // Load boards if not provided
   const [loadedBoards, setLoadedBoards] = useState<KanbanBoard[]>([]);
-  const activeBoards = (boards.length > 0 ? boards : loadedBoards).filter(b => b.board_type === 'workflow');
+  const activeBoards = (boards.length > 0 ? boards : loadedBoards)
+    .filter(b => b.board_type === 'workflow' && !isBoardArchived(b));
 
   // Dados do cliente/caso pra alimentar tokens do template de nome do processo
   // ({client_name}, {victim_name}, {city_state}). Carregados 1x ao abrir.

@@ -373,7 +373,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   const [loadingDocuments, setLoadingDocuments] = useState(false);
   const [fetchingEscavadorDocs, setFetchingEscavadorDocs] = useState(false);
   const [generatingSummary, setGeneratingSummary] = useState(false);
-  const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string; settings?: PopResultConfig | null }[]>([]);
+  const [workflowBoards, setWorkflowBoards] = useState<{ id: string; name: string; archived?: boolean; settings?: PopResultConfig | null }[]>([]);
   const [openActivityId, setOpenActivityId] = useState<string | null>(null);
   // "Criar atividade a partir da movimentação": key da mov em processamento + rascunho (IA).
   const [creatingMovKey, setCreatingMovKey] = useState<string | null>(null);
@@ -392,6 +392,9 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         setWorkflowBoards((data || []).map((b: any) => ({
           id: b.id,
           name: b.name,
+          // Arquivado sai do seletor de POP, mas fica no state: o processo já
+          // vinculado a ele precisa continuar mostrando nome e config de resultado.
+          archived: b.settings?.archived === true,
           settings: b.settings
             ? {
                 resultados: b.settings.resultados || [],
@@ -1649,9 +1652,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             </SelectTrigger>
             <SelectContent className="z-[9999]">
               <SelectItem value="__none__">Nenhum</SelectItem>
-              {workflowBoards.map(wf => (
-                <SelectItem key={wf.id} value={wf.id}>{wf.name}</SelectItem>
-              ))}
+              {workflowBoards
+                .filter(wf => !wf.archived || wf.id === form.workflow_id)
+                .map(wf => (
+                  <SelectItem key={wf.id} value={wf.id}>
+                    {wf.name}{wf.archived ? " (arquivado)" : ""}
+                  </SelectItem>
+                ))}
             </SelectContent>
           </Select>
 

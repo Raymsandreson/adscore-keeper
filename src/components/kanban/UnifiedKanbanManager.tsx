@@ -65,7 +65,7 @@ import { AccidentLeadForm, AccidentLeadFormData } from '@/components/leads/Accid
 import { useContactClassifications } from '@/hooks/useContactClassifications';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { AccidentDataExtractor, ExtractedAccidentData, CurrentLeadData } from '@/components/leads/AccidentDataExtractor';
-import { useKanbanBoards } from '@/hooks/useKanbanBoards';
+import { useKanbanBoards, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { useLeads, Lead, LeadStatus } from '@/hooks/useLeads';
 import { useLeadDetails } from '@/hooks/useLeadDetails';
 import { useLeadStageHistory } from '@/hooks/useLeadStageHistory';
@@ -313,9 +313,10 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   // dropdown precisa mostrar o que está na tela — mas listar todos os POPs pro
   // time comercial seria só ruído.
   const selectorBoards = useMemo(() => {
-    const funnels = visibleBoards.filter(b => b.board_type !== 'workflow');
+    // Arquivado também sai do seletor — só entra se for o quadro aberto na tela.
+    const funnels = visibleBoards.filter(b => b.board_type !== 'workflow' && !isBoardArchived(b));
     const current = visibleBoards.find(b => b.id === selectedBoardId);
-    return current && current.board_type === 'workflow' ? [...funnels, current] : funnels;
+    return current && !funnels.some(f => f.id === current.id) ? [...funnels, current] : funnels;
   }, [visibleBoards, selectedBoardId]);
 
   // Leads hook

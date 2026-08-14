@@ -13,6 +13,7 @@ import { FileText, Plus, Trash2, Sparkles, Copy, Save, Loader2 } from 'lucide-re
 import { useActivityMessageTemplates, TEMPLATE_VARIABLES, ActivityMessageTemplate } from '@/hooks/useActivityMessageTemplates';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { isBoardArchived } from '@/hooks/useKanbanBoards';
 import { toast } from 'sonner';
 
 interface Board {
@@ -43,10 +44,11 @@ export function ActivityMessageTemplateSettings() {
   }, [open]);
 
   const fetchBoards = async () => {
-    const { data } = await externalSupabase.from('kanban_boards').select('id, name, board_type').order('name');
+    const { data } = await externalSupabase.from('kanban_boards').select('id, name, board_type, settings').order('name');
     if (data) {
-      setBoards(data.filter(b => b.board_type !== 'workflow'));
-      setWorkflows(data.filter(b => b.board_type === 'workflow'));
+      const visiveis = data.filter(b => !isBoardArchived(b as { settings?: unknown }));
+      setBoards(visiveis.filter(b => b.board_type !== 'workflow'));
+      setWorkflows(visiveis.filter(b => b.board_type === 'workflow'));
     }
   };
 

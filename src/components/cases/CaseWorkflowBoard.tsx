@@ -13,7 +13,7 @@ import { toast } from 'sonner';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { askStepTiming } from '@/components/checklists/askStepTiming';
 import { isStepBlockedBySubItems, pendingSubItems } from '@/lib/stepSubitems';
-import { KanbanStage } from '@/hooks/useKanbanBoards';
+import { KanbanStage, isBoardArchived } from '@/hooks/useKanbanBoards';
 import { insertChecklistInstancesTolerant } from '@/lib/checklistInstanceInsert';
 import { cn } from '@/lib/utils';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -57,24 +57,29 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
 
   const fetchWorkflowBoards = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      // kanban_boards é tabela de negócio → banco EXTERNO (ver db-routing.ts).
+      const { data, error } = await externalSupabase
         .from('kanban_boards')
-        .select('id, name, stages')
+        .select('id, name, stages, settings')
         .eq('board_type', 'workflow')
         .order('display_order');
       if (error) throw error;
-      const parsed = (data || []).map(b => ({
-        ...b,
-        stages: (b.stages as unknown as KanbanStage[]) || [],
-      }));
-      setWorkflowBoards(parsed);
 
       const { data: caseData } = await externalSupabase
         .from('legal_cases')
         .select('workflow_board_id')
         .eq('id', caseId)
         .maybeSingle();
-      
+
+      // POP arquivado sai da seleção, mas o já vinculado ao caso permanece.
+      const parsed = (data || [])
+        .filter(b => !isBoardArchived(b as { settings?: unknown }) || b.id === caseData?.workflow_board_id)
+        .map(b => ({
+          ...b,
+          stages: (b.stages as unknown as KanbanStage[]) || [],
+        }));
+      setWorkflowBoards(parsed);
+
       if (caseData?.workflow_board_id) {
         setSelectedBoardId(caseData.workflow_board_id);
       } else if (parsed.length === 1) {

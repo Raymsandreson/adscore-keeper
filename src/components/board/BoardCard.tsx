@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2 } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2, Archive, ArchiveRestore } from "lucide-react";
 import { WorkflowVisualizationDialog } from "@/components/workflow/WorkflowVisualizationDialog";
 import { db } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
@@ -74,6 +74,9 @@ interface BoardCardProps {
   onOpenProcesses?: () => void;
   processCount?: number;
   onDelete?: () => void;
+  /** Quadro arquivado: card esmaecido, badge "Arquivado" e ação de desarquivar. */
+  archived?: boolean;
+  onToggleArchive?: () => void;
 }
 
 export function BoardCard({
@@ -89,6 +92,8 @@ export function BoardCard({
   onOpenProcesses,
   processCount = 0,
   onDelete,
+  archived = false,
+  onToggleArchive,
 }: BoardCardProps) {
   const navigate = useNavigate();
   const isPop = boardType === "workflow";
@@ -298,6 +303,22 @@ export function BoardCard({
         <Settings className="h-3.5 w-3.5 mr-1.5" />
         Editar
       </Button>
+      {onToggleArchive && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={onToggleArchive}
+          title={archived
+            ? `Voltar a exibir este ${typeLabel} nas listas e seleções`
+            : `Ocultar este ${typeLabel} das listas e seleções sem apagar nada`}
+        >
+          {archived
+            ? <ArchiveRestore className="h-3.5 w-3.5 mr-1.5" />
+            : <Archive className="h-3.5 w-3.5 mr-1.5" />}
+          {archived ? "Desarquivar" : "Arquivar"}
+        </Button>
+      )}
       {onDelete && (
         <Button
           variant="outline"
@@ -317,6 +338,13 @@ export function BoardCard({
     </div>
   );
 
+  const archivedBadge = archived ? (
+    <Badge variant="outline" className="text-[10px] shrink-0 text-muted-foreground gap-1">
+      <Archive className="h-2.5 w-2.5" />
+      Arquivado
+    </Badge>
+  ) : null;
+
   const dialogos = (
     <WorkflowVisualizationDialog
       board={board}
@@ -330,7 +358,10 @@ export function BoardCard({
   if (variant === "lista") {
     return (
       <>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/50 bg-card p-3 hover:shadow-sm transition-shadow">
+        <div className={cn(
+          "flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border/50 bg-card p-3 hover:shadow-sm transition-shadow",
+          archived && "opacity-60"
+        )}>
           <LayoutGrid className="h-4 w-4 text-primary shrink-0" />
           <div className="flex-1 min-w-[180px]">
             <div className="text-sm font-semibold truncate">{board.name}</div>
@@ -338,6 +369,7 @@ export function BoardCard({
               <div className="text-[11px] text-muted-foreground line-clamp-1">{board.description}</div>
             )}
           </div>
+          {archivedBadge}
           <Badge variant="secondary" className="text-xs shrink-0">
             {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
             {totalItems} {unitLabel}
@@ -356,17 +388,20 @@ export function BoardCard({
   if (variant === "grade") {
     return (
       <>
-        <Card className="border-border/50 hover:shadow-md transition-all">
+        <Card className={cn("border-border/50 hover:shadow-md transition-all", archived && "opacity-60")}>
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="text-sm font-semibold flex items-center gap-2 min-w-0">
                 <LayoutGrid className="h-4 w-4 text-primary shrink-0" />
                 <span className="truncate">{board.name}</span>
               </CardTitle>
-              <Badge variant="secondary" className="text-xs shrink-0">
-                {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
-                {totalItems}
-              </Badge>
+              <div className="flex items-center gap-1.5 shrink-0">
+                {archivedBadge}
+                <Badge variant="secondary" className="text-xs shrink-0">
+                  {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
+                  {totalItems}
+                </Badge>
+              </div>
             </div>
             {board.description && (
               <CardDescription className="text-xs line-clamp-1">{board.description}</CardDescription>
@@ -398,7 +433,7 @@ export function BoardCard({
 
   // ─── FUNIL: card completo ───
   return (
-    <Card className={cn("border-border/50 hover:shadow-md transition-all group", expanded && "lg:col-span-2")}>
+    <Card className={cn("border-border/50 hover:shadow-md transition-all group", expanded && "lg:col-span-2", archived && "opacity-60")}>
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between gap-2">
           <CardTitle className="text-base font-semibold flex items-center gap-2 min-w-0">
@@ -406,6 +441,7 @@ export function BoardCard({
             <span className="truncate">{board.name}</span>
           </CardTitle>
           <div className="flex items-center gap-2 shrink-0">
+            {archivedBadge}
             <Badge variant="secondary" className="text-xs">
               {isPop ? <Scale className="h-3 w-3 mr-1" /> : <Users className="h-3 w-3 mr-1" />}
               {totalItems} {unitLabel}
