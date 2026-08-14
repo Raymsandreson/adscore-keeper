@@ -184,6 +184,31 @@ resolvida (2 soft-deletes, ficou a linha "ACIDENTE DE TRABALHO") e o
 `0016662-44.2026` consultado (sem 404 — capa + 1 marco). Resultado:
 **272 de 272 trabalhistas com marco (100%)**.
 
+### Carteira do POP no editor (14/08/2026)
+
+Botão "Carteira do POP" no editor de POP (`WorkflowBuilder`, junto das seções
+de marcos) abre `PopCarteiraSheet` — Sheet, sem redirecionar. Fonte: RPC
+`pop_carteira_marcos(board_id)` no Externo, uma linha por (processo × cliente).
+Mostra por marco a relação de processos com DIAS em cada um, valores por
+estágio financeiro (chips na ordem da régua FIDC), e no topo: carteira total,
+tempo médio no marco, idade média, índice de sucesso, custo (CAC) e
+rentabilidade. Números do primeiro load (POP trabalhista): 493 processos,
+R$ 21,17 mi, média de 337 dias no marco atual.
+
+Três regras que o código respeita e quem mexer precisa manter:
+
+- **Valor = última decisão por (processo × cliente)** via `DISTINCT ON` — somar
+  `jm_valores` direto infla 2,6x. O aviso "valor do processo, não caixa" está
+  na tela, em texto corrido, não em tooltip.
+- **Índice de sucesso divide pelos AVALIÁVEIS**, não pelos decididos: dos 239
+  decididos do POP trabalhista só 62 têm leitura em `jm_decisoes` — "decidido
+  sem valor" sem leitura é buraco de captura, não derrota. Honesto: 71/77 =
+  92%; ingênuo: 30%. A coluna `tem_leitura` existe para isso.
+- **Custo (CAC)**: o snapshot de `leads` do Externo está com `cac` ZERADO
+  (14/08); o hook `useCarteiraDoPop` busca o valor vivo no Cloud (`authClient`)
+  e usa o snapshot como fallback. Sem custo em nenhum lead, a tela diz isso em
+  vez de mostrar rentabilidade zero.
+
 **404 é categoria, não falha:** no backfill de 14/08 dos nunca-consultados,
 ~26 CNJs (todos ajuizados em 2026) deram `Escavador 404` — ainda não
 indexados. A edge NÃO carimba `data_ultima_verificacao` nesses, então eles

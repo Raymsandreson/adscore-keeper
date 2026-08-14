@@ -98,6 +98,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PopMarcosSection } from './PopMarcosSection';
+import { PopCarteiraSheet } from './PopCarteiraSheet';
+import { Wallet } from 'lucide-react';
 import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { ResponsavelSelect } from './ResponsavelSelect';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -295,6 +297,8 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const processTemplateRef = useRef<HTMLTextAreaElement>(null);
   const [newPhaseName, setNewPhaseName] = useState('');
   const [saving, setSaving] = useState(false);
+  // Sheet da carteira do POP (processos por marco, tempo, estágio financeiro, custo).
+  const [carteiraAberta, setCarteiraAberta] = useState(false);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
@@ -2717,6 +2721,35 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     objetivo e passo, porque marco é do POP: um lado diz onde o
                     processo está (automático), o outro o que a equipe faz. */}
                 {editingBoardId ? <PopMarcosSection boardId={editingBoardId} /> : null}
+
+                {/* Carteira do POP — a régua de marcos com o dinheiro em cima.
+                    Abre em Sheet por cima do editor (regra da casa: nunca
+                    redirecionar); só existe em POP salvo, porque a carteira é
+                    lida por board_id. */}
+                {editingBoardId ? (
+                  <div className="mt-4 rounded-lg border p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 text-sm font-semibold">
+                          <Wallet className="h-4 w-4" /> Carteira do POP
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Processos por marco com tempo em cada um, valores por estágio
+                          financeiro, média de tempo, índice de sucesso e custo da carteira.
+                        </p>
+                      </div>
+                      <Button variant="outline" size="sm" className="shrink-0" onClick={() => setCarteiraAberta(true)}>
+                        Abrir carteira
+                      </Button>
+                    </div>
+                    <PopCarteiraSheet
+                      boardId={editingBoardId}
+                      boardName={formName}
+                      open={carteiraAberta}
+                      onOpenChange={setCarteiraAberta}
+                    />
+                  </div>
+                ) : null}
 
                 {/* Padrão de Nome do Processo — disponível nos dois tipos: funil
                     (comercial) e POP (processual) têm as mesmas funcionalidades,
