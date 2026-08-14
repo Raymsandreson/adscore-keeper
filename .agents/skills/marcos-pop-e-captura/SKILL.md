@@ -186,8 +186,12 @@ resolvida (2 soft-deletes, ficou a linha "ACIDENTE DE TRABALHO") e o
 
 ### Carteira do POP no editor (14/08/2026)
 
-Botão "Carteira do POP" no editor de POP (`WorkflowBuilder`, junto das seções
-de marcos) abre `PopCarteiraSheet` — Sheet, sem redirecionar. Fonte: RPC
+`PopCarteiraSheet` — Sheet, sem redirecionar — abre por TRÊS caminhos: botão
+"Carteira" no card do POP (`BoardCard`), atalho "Visão geral da carteira"
+dentro do sheet "Processos do POP" (`BoardsList`), e a seção "Carteira do POP"
+no editor (`WorkflowBuilder`). O do card existe porque o usuário navegava pela
+lista de POPs e não achava a carteira escondida no editor (14/08). Valores
+sempre com centavos. Confirmado funcionando em produção pelo usuário em 14/08. Fonte: RPC
 `pop_carteira_marcos(board_id)` no Externo, uma linha por (processo × cliente).
 Mostra por marco a relação de processos com DIAS em cada um, valores por
 estágio financeiro (chips na ordem da régua FIDC), e no topo: carteira total,
