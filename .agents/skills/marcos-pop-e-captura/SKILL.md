@@ -137,15 +137,48 @@ Sem ele o percentual cairia sozinho conforme a movimentação velha sai da janel
 Passos = TRABALHO da equipe (percentual por objetivo e `team_process_goals_progress`,
 que **não** mudou). Não junte as duas num número só.
 
-### As quatro leituras, e a que faltava
+### As leituras (5 desde 14/08/2026)
 
-| fonte | processos | o que dá |
+| fonte | processos (14/08) | o que dá |
 |---|---|---|
-| `movimento` (TPU/DataJud) | 183 | código determinístico |
-| `escavador_texto` | **274** | `classificacao_predita.nome` — a maior cobertura |
-| `movimento_grau` | 87 | subida de instância pelo `grau` |
-| `documento` | 74 | título em `jm_documentos` |
-| `escavador_grau` | 58 | subida pelo `fonte.grau` (1/2/3) |
+| `movimento` (TPU/DataJud) | 197 | código determinístico |
+| `escavador_texto` | **372** | `classificacao_predita.nome` — a maior cobertura |
+| `escavador_grau` | 88 | subida pelo `fonte.grau` (1/2/3) |
+| `documento` | 78 | título em `jm_documentos` |
+| `campo_processo` | 36 | **ajuizamento pela CAPA** (`data_distribuicao`/`data_inicio`), prioridade 3 — só vale se nenhuma movimentação detectou. Existe porque a janela de 20 expulsa a distribuição dos processos antigos (66 trabalhistas só tinham expediente na janela). |
+
+### A régua saiu do POP trabalhista (14/08/2026)
+
+285 dos 681 processos com CNJ estavam sem marco NENHUM — 217 deles COM
+movimentação do Escavador baixada. Causa: a régua só materializa marco se o
+POP do processo tiver `pop_marcos`, e só o trabalhista tinha. Migration
+`20260814130000_marcos_escavador_todos_os_pops.sql`:
+
+- Régua **previdenciária judicial** (14 fases + acordo/suspensão como estados,
+  SEM audiência de conciliação) em 6 POPs: BPC JUDICIAL, POP - BPC -
+  Administrativo (93 CNJs judicializados moravam lá), Salário Maternidade,
+  Auxílio Doença, Auxílio Acidente (board judicial), Pensão por Morte.
+- Régua **cível** (idem + conciliação do art. 334) em Justiça Comum e Seguro.
+- Sinais copiados **por chave** do board trabalhista em uso — as chaves são
+  as mesmas de propósito; chave exclusiva do trabalhista fica de fora pelo join.
+- Marco→fase mapeado só onde o board tem fase judicial inequívoca; Salário
+  Maternidade (board 100% administrativo) ficou com `stage_id null`: régua e
+  percentual funcionam, fase não é movida.
+
+Resultado medido: 396 → **558 processos com marco**; 139 fases andaram
+sozinhas no primeiro tick (81 = BPC-Adm indo para "4. Fase Judicial").
+
+**Atenção ao board:** o POP trabalhista EM USO agora é `0bcd8be6-…47e15`
+("Trabalhistas judicial — marcos"); `b436c043-…` foi renomeado para "(fases
+antigas — desativado)" e está sem processos. Migration antiga que cite
+b436c043 como "em uso" está falando do passado.
+
+**404 é categoria, não falha:** no backfill de 14/08 dos nunca-consultados,
+~26 CNJs (todos ajuizados em 2026) deram `Escavador 404` — ainda não
+indexados. A edge NÃO carimba `data_ultima_verificacao` nesses, então eles
+continuam aparecendo como "nunca consultados"; re-tentar é de graça só
+quando chegarem no push do e-mail. Fora do formato CNJ estrito a edge pula
+sem custo (`sem_cnj`).
 
 O Escavador tem código TPU em **0%** das 7.284 movimentações e classificação em
 **100%** — por isso o tipo `'texto'`, criado em 08/08 e vazio até aqui. Nunca

@@ -240,9 +240,9 @@ Exigir dígito puro em `nb` não é preciosismo: dos 199 na faixa de 7-12 dígit
 
 Resolvidas em 06/08/2026 e removidas desta lista: fase de execução na régua, critério do acórdão, exigência de homologação no acordo, conciliação no cível e trilha do INSS administrativo.
 
-1. **Backfill dos 259 processos com CNJ que nunca foram consultados** (`data_ultima_verificacao is null`) — 259 chamadas ao Escavador. A edge `backfill-process-marcos` já sabe atacar só quem nunca foi consultado (`3b269f3`).
+1. ~~Backfill dos processos com CNJ que nunca foram consultados~~ — **feito em 14/08/2026**: 7 lotes da `backfill-process-marcos` com `apenas_nunca_buscados`. Dos ~46 em formato CNJ ainda não tentados, 20 tinham movimentação (baixada e extraída) e **~26 deram `Escavador 404`** — todos ajuizados em 2026, ainda não indexados. A edge não carimba `data_ultima_verificacao` no 404, então continuam contando como "nunca consultados"; entram de graça quando aparecerem no push. Números fora do formato CNJ estrito são pulados sem custo (`sem_cnj`).
 2. **Monitores**: `process_movement_monitors` está com 0 linhas. Sem cadastrar os processos ativos, o sync não roda sozinho e a cobertura só cresce por backfill manual.
-3. **Gerar Petição Inicial a partir de `data_distribuicao`** quando não houver movimentação (97 processos com marco sem petição inicial)?
+3. ~~Gerar Petição Inicial a partir de `data_distribuicao`~~ — **feito em 14/08/2026, na régua de POP-marcos** (não nas 12 estações): fonte `campo_processo` na `vw_pop_marcos_regua` gera o marco `ajuizamento` pela menor entre `data_distribuicao` e `data_inicio`, com prioridade abaixo de qualquer movimentação (36 processos ganharam ajuizamento assim). As 12 estações de `process_movements` seguem sem essa fonte. Junto veio a extensão da régua aos POPs previdenciários e cíveis — migration `20260814130000_marcos_escavador_todos_os_pops.sql`, detalhes na skill `marcos-pop-e-captura`.
 4. **Estação 11 (Precatório/RPV) está zerada** — conferir se são casos que não apareceram ainda ou classificação caindo em Pagamento.
 5. **Inquérito/criminal**: criar marcos próprios ou deixar fora da régua?
 6. ~~Os 913 processos sem CNJ~~ — **resolvido em 07/08/2026**: não são processos, são itens de checklist do POP. Ficam fora da régua porque não deveriam estar nela. Ver "O denominador não é 1.776" na seção 3.
