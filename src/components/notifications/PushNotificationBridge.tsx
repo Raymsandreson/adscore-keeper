@@ -20,9 +20,9 @@ import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
  *     Central de Notificações e passa batido. O SW repassa o payload e o aviso
  *     aparece DENTRO do WhatsJUD, com o mesmo popup do chat de equipe.
  *
- * Mensagem de WhatsApp abre a conversa na folha (de baixo pra cima, sem sair da
- * página). Qualquer outra URL de push (chat de equipe, funil) navega normal —
- * essas também estavam mortas pelo mesmo motivo.
+ * Mensagem de WhatsApp abre a conversa na folha (de cima pra baixo, sem sair da
+ * página e sem descartar os popups). Qualquer outra URL de push (chat de
+ * equipe, funil) navega normal — essas também estavam mortas pelo mesmo motivo.
  */
 
 const MUTE_KEY = 'wa-push-toast-mute';

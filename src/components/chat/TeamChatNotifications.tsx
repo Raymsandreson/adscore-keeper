@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { AtSign, MessageCircle, EyeOff, AlarmClock } from 'lucide-react';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
+import { appNavigate } from '@/lib/appNavigation';
 import {
   getActiveTeamChatConversation,
   getActiveTeamChatEntity,
@@ -506,7 +507,8 @@ export function TeamChatNotifications() {
     const openEntityChat = async (options: { entityType: string; entityId: string; messageId?: string }) => {
       const url = await getEntityChatUrl(options);
       if (!url) return;
-      window.location.assign(url);
+      // SPA, não recarga: recarregar a página apagava os outros popups da tela.
+      appNavigate(url);
     };
 
     void Promise.all([loadTeamConversationContext(), loadCurrentUserName()]);
