@@ -225,11 +225,22 @@ Proteção desde 06/08/2026 (`railway-server/src/lib/label-name-guard.ts`): ante
 
 **Propósito**: mensageria interna — conversas diretas, grupo Geral e grupos por time, com áudio, menções a pessoas e a entidades (lead/contato/atividade), urgência e sugestão de resposta por IA.
 
-- "Geral" — abre o chat geral; "Nova" — conversa direta por nome.
+- "Geral" — abre o chat geral; "Nova" — conversa direta por nome, e é de lá que sai **"Novo grupo"**.
 - Filtros: busca, "Filtrar por time", "Responder (n)" (esperam resposta sua), "Aguardando".
 - Na conversa: mencionar lead/contato/atividade, enviar arquivo, "Marcar como urgente", "Sugerir resposta com IA", `@` menciona pessoas, gravar áudio.
 - Por mensagem: "Responder", "Reenviar como urgente", "Marcar como resolvida"; mostra sua média de tempo de resposta (30 dias).
 - Na aba **Menções**, a menção que você fez e ficou sem resposta pode ser **cobrada** (❗ Importante / 🚨 Urgente) — popup na tela do outro e "visto" registrado. Ver "Cobrar resposta urgente na menção".
+
+### Grupos criados pela equipe (desde 14/08/2026)
+
+Antes disso todo grupo do chat nascia fora dele: o Chat Geral pela RPC `ensure_team_general_conversation` e os `👥 {time}` no botão "Sincronizar grupos do chat" da aba Times. Quem quisesse juntar 4 pessoas num assunto não tinha caminho — sobrava conversa direta repetida.
+
+- **"Nova" → "Novo grupo"**: nome + seleção múltipla de pessoas. A lista usa o mesmo filtro do seletor de `@menção` (sem desativados do `org_user_status` e sem as contas de teste/duplicadas da `ASSIGNEE_BLOCKLIST`), então não dá pra montar grupo com conta-fantasma.
+- **Participantes**: o cabeçalho do grupo mostra quantos são e abre a tela de membros **dentro do painel** (o voltar devolve pra conversa). Lá dá pra renomear, **adicionar**, **remover** e **sair do grupo** — remover e sair pedem confirmação na própria linha.
+- Cada ação escreve uma mensagem no grupo ("criou o grupo", "adicionou X", "removeu Y", "saiu do grupo"). É ela que dispara o Web Push: `send-team-push` resolve destinatário por `team_conversation_members` da conversa, então quem entra fica sabendo mesmo com o app fechado.
+- **Grupos sincronizados são só-leitura**: `👥` (times), `📊` (relatório diário) e `💬` (Chat Geral) mostram os participantes mas não deixam editar — a composição deles vem da aba Times/relatório e seria desfeita no próximo sync. O nome digitado também perde esses prefixos, pra grupo do usuário não se passar por grupo de time (que é o que alimenta o filtro "Filtrar por time").
+- Nada de schema novo: `team_conversations.type='group'` e `team_conversation_members` já existiam, a RLS do Externo dá `ALL` para `authenticated` nas duas e o `UNIQUE (conversation_id, user_id)` é o que sustenta o upsert de "adicionar" contra clique duplo. Código em `useTeamDirectChat` (`createGroupConversation`, `addGroupMembers`, `removeGroupMember`, `leaveGroup`, `renameGroup`) e `components/chat/TeamGroupPanels.tsx`.
+- Limite conhecido: sair sendo o último deixa a conversa sem ninguém (fica no banco, invisível pra todos) — não há exclusão de grupo.
 
 ### Criar atividade a partir de mensagens (IA) — **já existe**
 - Ícone de atividade numa mensagem entra no **modo seleção**: dá pra tocar em outras mensagens pra incluir/remover (o rodapé mostra "n mensagens selecionadas").
