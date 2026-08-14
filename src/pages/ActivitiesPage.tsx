@@ -36,7 +36,7 @@ import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
-import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
+import { CompleteAndNotifyDialog, fetchLeadGroupOptions, type GroupOption } from '@/components/activities/CompleteAndNotifyDialog';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -562,6 +562,29 @@ const ActivitiesPage = () => {
     () => (leadPreviewRaw && leadPreviewRaw.lead_id === formLeadId ? leadPreviewRaw : null),
     [leadPreviewRaw, formLeadId],
   );
+  // Grupos do lead buscados junto com a ficha, para o dialog de "Concluir +
+  // próxima" abrir pronto. Antes ele buscava no clique, com o conteúdo inteiro
+  // escondido atrás do spinner: 1 round-trip quando o lead tem grupo e 2 em
+  // série quando não tem — justamente o caso mais comum — a cada atividade da
+  // fila do workflow.
+  const [leadGroupsRaw, setLeadGroupsRaw] = useState<{ lead_id: string; groups: GroupOption[] } | null>(null);
+  // Mesmo carimbo do preview, pela mesma razão: grupo de outro lead não pode
+  // virar destino de mensagem. Sem correspondência, o dialog busca na hora.
+  const preloadedLeadGroups = useMemo(
+    () => (leadGroupsRaw && leadGroupsRaw.lead_id === formLeadId ? leadGroupsRaw.groups : null),
+    [leadGroupsRaw, formLeadId],
+  );
+  const preloadLeadGroups = useCallback((leadId: string | null | undefined) => {
+    if (!leadId) {
+      setLeadGroupsRaw(null);
+      return;
+    }
+    fetchLeadGroupOptions(leadId)
+      .then(groups => setLeadGroupsRaw({ lead_id: leadId, groups }))
+      // Falha não vira lista vazia ("nenhum grupo vinculado" seria mentira):
+      // zera o preload e o dialog refaz a busca no clique, como antes.
+      .catch(() => setLeadGroupsRaw(null));
+  }, []);
 
   const getFilterParams = () => ({
     // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
@@ -1491,6 +1514,9 @@ const ActivitiesPage = () => {
     }
 
     if (activity.lead_id) {
+      // Em paralelo com o resto da ficha: quando o usuário chegar no "Concluir +
+      // próxima", os grupos já estão em memória.
+      preloadLeadGroups(activity.lead_id);
       promises.push(
         Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).is('deleted_at', null),
@@ -2187,6 +2213,7 @@ const ActivitiesPage = () => {
       });
     }
     if (activity.lead_id) {
+      preloadLeadGroups(activity.lead_id);
       try {
         const [casesData, linkedData, leadPreviewRes] = await Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).is('deleted_at', null),
@@ -2326,6 +2353,8 @@ const ActivitiesPage = () => {
     setFormProcessTitle('');
     setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
+    // Troca de lead no formulário: refaz o preload dos grupos para o lead novo.
+    preloadLeadGroups(leadId);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).then(({ data }) => {
       setLeadCases(data || []);
@@ -3375,6 +3404,9 @@ const ActivitiesPage = () => {
                 .eq('id', formLeadId);
               if (error) throw error;
               setLeadPreview((prev) => prev ? { ...prev, whatsapp_group_id: g.jid } : prev);
+              // Vínculo feito com a ficha aberta: o preload virou passado. Zerar
+              // faz o dialog buscar na hora e enxergar o grupo recém-vinculado.
+              setLeadGroupsRaw(null);
               toast.success('Grupo vinculado ao lead.');
             } catch (e: any) {
               toast.error('Falha ao vincular grupo: ' + (e?.message || 'erro desconhecido'));
@@ -6519,6 +6551,7 @@ const ActivitiesPage = () => {
         onConfirm={handleCompleteAndCreateNextWithNotify}
         leadId={formLeadId || null}
         buildMsg={buildMsg}
+        preloadedGroups={preloadedLeadGroups}
       />
 
       <AssessorSummaryShareDialog
