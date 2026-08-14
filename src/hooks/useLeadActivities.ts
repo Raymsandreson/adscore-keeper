@@ -70,6 +70,8 @@ export interface LeadActivity {
   is_management?: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
+  /** Campanha de CRM vinculada. */
+  crm_campaign_id?: string | null;
   /** Movimentação do sino que gerou esta atividade (migration 20260811210000). */
   process_update_id?: string | null;
   cobranca_phone?: string | null;
@@ -305,6 +307,16 @@ export function useLeadActivities() {
           what_was_done: activity.what_was_done || null,
           current_status_notes: activity.current_status_notes || null,
           next_steps: activity.next_steps || null,
+          // Solicitação / Resposta do juízo ficaram de fora deste insert desde
+          // que os campos existem: o formulário mandava, o hook descartava e o
+          // texto sumia sem erro nenhum. Nenhuma das 109 (solicitacao) / 113
+          // (resposta_juizo) linhas preenchidas em produção nasceu com valor —
+          // todas vieram de uma edição posterior. Mesma coisa com a previsão de
+          // tempo confirmada no pop-up de criação (98 linhas, 0 na criação).
+          solicitacao: activity.solicitacao || null,
+          resposta_juizo: activity.resposta_juizo || null,
+          estimated_minutes: activity.estimated_minutes ?? null,
+          crm_campaign_id: activity.crm_campaign_id || null,
           matrix_quadrant: activity.matrix_quadrant || null,
           case_id: activity.case_id || null,
           case_title: activity.case_title || null,
