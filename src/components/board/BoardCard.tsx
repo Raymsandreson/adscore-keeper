@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2, Archive, ArchiveRestore } from "lucide-react";
+import { LayoutGrid, Users, ArrowRight, Settings, Maximize2, Minimize2, Target, CheckCircle2, CalendarIcon, ExternalLink, X, GitBranch, Scale, Trash2, Archive, ArchiveRestore, Wallet } from "lucide-react";
 import { WorkflowVisualizationDialog } from "@/components/workflow/WorkflowVisualizationDialog";
 import { db } from "@/integrations/supabase";
 import { useQuery } from "@tanstack/react-query";
@@ -72,6 +72,8 @@ interface BoardCardProps {
   onOpenTeam: () => void;
   onEdit: () => void;
   onOpenProcesses?: () => void;
+  /** Carteira do POP (marcos × dinheiro × tempo) — só faz sentido em POP. */
+  onOpenCarteira?: () => void;
   processCount?: number;
   onDelete?: () => void;
   /** Quadro arquivado: card esmaecido, badge "Arquivado" e ação de desarquivar. */
@@ -90,6 +92,7 @@ export function BoardCard({
   onOpenTeam,
   onEdit,
   onOpenProcesses,
+  onOpenCarteira,
   processCount = 0,
   onDelete,
   archived = false,
@@ -293,6 +296,18 @@ export function BoardCard({
               {processCount}
             </Badge>
           )}
+        </Button>
+      )}
+      {onOpenCarteira && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={onOpenCarteira}
+          title="Visão geral da carteira: processos por marco, tempo em cada um, valores por estágio financeiro, índice de sucesso e custo"
+        >
+          <Wallet className="h-3.5 w-3.5 mr-1.5" />
+          Carteira
         </Button>
       )}
       <Button variant="outline" size="sm" className="text-xs" onClick={onOpenTeam}>
