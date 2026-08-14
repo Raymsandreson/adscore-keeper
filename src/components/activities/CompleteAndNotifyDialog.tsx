@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -21,11 +21,57 @@ const AUDIO_TONES = [
   { key: 'custom', label: '💬 Personalizado', prompt: '' },
 ];
 
-interface GroupOption {
+export interface GroupOption {
   id: string;
   label: string;
   group_jid: string;
   group_name: string | null;
+}
+
+/**
+ * Grupos do lead no formato do seletor deste dialog.
+ *
+ * Extraída do efeito abaixo para que a ficha da atividade possa pré-carregar os
+ * grupos enquanto o usuário ainda preenche o formulário (ver `preloadedGroups`).
+ * A busca é a mesma de sempre: `lead_whatsapp_groups` primeiro e o campo legado
+ * `leads.whatsapp_group_id` só quando não há nenhum vinculado — o segundo
+ * round-trip existe apenas nesse caso.
+ */
+export async function fetchLeadGroupOptions(leadId: string): Promise<GroupOption[]> {
+  const { data } = await externalSupabase
+    .from('lead_whatsapp_groups')
+    .select('id, label, group_jid, group_name')
+    .eq('lead_id', leadId);
+
+  const groupOptions: GroupOption[] = (data || [])
+    .filter((g: any) => g.group_jid)
+    .map((g: any) => ({
+      id: g.id,
+      label: g.label || g.group_name || g.group_jid,
+      group_jid: g.group_jid,
+      group_name: g.group_name,
+    }));
+
+  // Also check legacy whatsapp_group_id on leads table
+  if (groupOptions.length === 0) {
+    // Externo: é onde os leads vivem. Lendo o legado do Cloud, o texto podia
+    // ir para um grupo diferente do que o áudio (que lê do externo) usa.
+    const { data: lead } = await externalSupabase
+      .from('leads')
+      .select('whatsapp_group_id, lead_name')
+      .eq('id', leadId)
+      .maybeSingle();
+    if (lead?.whatsapp_group_id) {
+      groupOptions.push({
+        id: 'legacy',
+        label: `Grupo ${lead.lead_name || 'do Lead'}`,
+        group_jid: lead.whatsapp_group_id,
+        group_name: lead.lead_name,
+      });
+    }
+  }
+
+  return groupOptions;
 }
 
 interface CompleteAndNotifyDialogProps {
@@ -34,9 +80,15 @@ interface CompleteAndNotifyDialogProps {
   onConfirm: (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => Promise<void>;
   leadId: string | null;
   buildMsg: (() => string) | null;
+  /**
+   * Grupos já buscados pela ficha para ESTE lead. Quando vem preenchido, o
+   * dialog abre sem round-trip e sem spinner. `null` mantém a busca no clique
+   * (lead ainda carregando, preload falhou ou grupo vinculado agora há pouco).
+   */
+  preloadedGroups?: GroupOption[] | null;
 }
 
-export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buildMsg }: CompleteAndNotifyDialogProps) {
+export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buildMsg, preloadedGroups = null }: CompleteAndNotifyDialogProps) {
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -49,6 +101,11 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
   const [customPrompt, setCustomPrompt] = useState('');
   const [generatingAudioText, setGeneratingAudioText] = useState(false);
 
+  // Lido por ref, e não como dependência: se o preload chegasse com o dialog já
+  // aberto, reexecutar o efeito apagaria a escolha que o usuário acabou de fazer.
+  const preloadedRef = useRef(preloadedGroups);
+  preloadedRef.current = preloadedGroups;
+
   // Fetch groups for the lead
   useEffect(() => {
     if (!open || !leadId) return;
@@ -59,48 +116,30 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
     setGroups([]);
     setSelectedGroupId('');
     setNotifyGroup('no');
-    setLoading(true);
-    let cancelado = false;
-    (async () => {
-      const { data } = await externalSupabase
-        .from('lead_whatsapp_groups')
-        .select('id, label, group_jid, group_name')
-        .eq('lead_id', leadId);
 
-      const groupOptions: GroupOption[] = (data || [])
-        .filter((g: any) => g.group_jid)
-        .map((g: any) => ({
-          id: g.id,
-          label: g.label || g.group_name || g.group_jid,
-          group_jid: g.group_jid,
-          group_name: g.group_name,
-        }));
-
-      // Also check legacy whatsapp_group_id on leads table
-      if (groupOptions.length === 0) {
-        // Externo: é onde os leads vivem. Lendo o legado do Cloud, o texto podia
-        // ir para um grupo diferente do que o áudio (que lê do externo) usa.
-        const { data: lead } = await externalSupabase
-          .from('leads')
-          .select('whatsapp_group_id, lead_name')
-          .eq('id', leadId)
-          .maybeSingle();
-        if (lead?.whatsapp_group_id) {
-          groupOptions.push({
-            id: 'legacy',
-            label: `Grupo ${lead.lead_name || 'do Lead'}`,
-            group_jid: lead.whatsapp_group_id,
-            group_name: lead.lead_name,
-          });
-        }
-      }
-
-      // Resposta de um lead que não está mais aberto não pode virar destino.
-      if (cancelado) return;
+    const aplicar = (groupOptions: GroupOption[]) => {
       setGroups(groupOptions);
       if (groupOptions.length === 1) setSelectedGroupId(groupOptions[0].id);
       if (groupOptions.length > 0) setNotifyGroup('yes');
       setLoading(false);
+    };
+
+    // Ficha já buscou os grupos deste lead: abre pronto, sem round-trip e sem
+    // spinner. Buscar no clique era o gargalo do "Concluir + próxima" — 1 a 2
+    // idas ao banco por atividade, multiplicadas pela fila do modo workflow.
+    const preloaded = preloadedRef.current;
+    if (preloaded) {
+      aplicar(preloaded);
+      return;
+    }
+
+    setLoading(true);
+    let cancelado = false;
+    (async () => {
+      const groupOptions = await fetchLeadGroupOptions(leadId);
+      // Resposta de um lead que não está mais aberto não pode virar destino.
+      if (cancelado) return;
+      aplicar(groupOptions);
     })().catch(() => {
       if (cancelado) return;
       setLoading(false);

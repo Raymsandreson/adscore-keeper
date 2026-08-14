@@ -29,11 +29,14 @@ import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
+import { CompleteAndNotifyDialog, fetchLeadGroupOptions, type GroupOption } from '@/components/activities/CompleteAndNotifyDialog';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
@@ -438,6 +441,8 @@ const ActivitiesPage = () => {
   const [chatOpen, setChatOpen] = useState(false);
   const [teamChatOpen, setTeamChatOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'form' | 'context'>('form');
+  const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
+  const [completeNotifySource, setCompleteNotifySource] = useState<'sheet' | 'workflow'>('sheet');
   const [showLeadSheet, setShowLeadSheet] = useState(false);
   // Aba inicial do sheet do lead: 'casos' quando aberto pelo botão Caso do workflow.
   const [leadSheetTab, setLeadSheetTab] = useState<string | undefined>(undefined);
@@ -557,6 +562,29 @@ const ActivitiesPage = () => {
     () => (leadPreviewRaw && leadPreviewRaw.lead_id === formLeadId ? leadPreviewRaw : null),
     [leadPreviewRaw, formLeadId],
   );
+  // Grupos do lead buscados junto com a ficha, para o dialog de "Concluir +
+  // próxima" abrir pronto. Antes ele buscava no clique, com o conteúdo inteiro
+  // escondido atrás do spinner: 1 round-trip quando o lead tem grupo e 2 em
+  // série quando não tem — justamente o caso mais comum — a cada atividade da
+  // fila do workflow.
+  const [leadGroupsRaw, setLeadGroupsRaw] = useState<{ lead_id: string; groups: GroupOption[] } | null>(null);
+  // Mesmo carimbo do preview, pela mesma razão: grupo de outro lead não pode
+  // virar destino de mensagem. Sem correspondência, o dialog busca na hora.
+  const preloadedLeadGroups = useMemo(
+    () => (leadGroupsRaw && leadGroupsRaw.lead_id === formLeadId ? leadGroupsRaw.groups : null),
+    [leadGroupsRaw, formLeadId],
+  );
+  const preloadLeadGroups = useCallback((leadId: string | null | undefined) => {
+    if (!leadId) {
+      setLeadGroupsRaw(null);
+      return;
+    }
+    fetchLeadGroupOptions(leadId)
+      .then(groups => setLeadGroupsRaw({ lead_id: leadId, groups }))
+      // Falha não vira lista vazia ("nenhum grupo vinculado" seria mentira):
+      // zera o preload e o dialog refaz a busca no clique, como antes.
+      .catch(() => setLeadGroupsRaw(null));
+  }, []);
 
   const getFilterParams = () => ({
     // 'atrasada' é situação derivada (prazo vencido), não um status do banco.
@@ -1193,7 +1221,13 @@ const ActivitiesPage = () => {
       typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
       samples: estimateSamplesFor(formType),
     });
-    if (!estimateChoice.confirmed) return; // voltou pro formulário
+    if (!estimateChoice.confirmed) {
+      // Sair do pop-up (ESC, clique fora, "Voltar ao formulário") cancelava a
+      // criação em SILÊNCIO: a ficha seguia preenchida e parecia ter salvo.
+      // Incidente 14/08/2026 — ver o gêmeo no handleUpdate.
+      toast.warning('Atividade NÃO criada — a previsão de tempo não foi confirmada. O formulário continua preenchido.', { duration: 8000 });
+      return;
+    }
     setFormEstimatedMinutesState(estimateChoice.minutes);
 
     const baseData = {
@@ -1486,6 +1520,9 @@ const ActivitiesPage = () => {
     }
 
     if (activity.lead_id) {
+      // Em paralelo com o resto da ficha: quando o usuário chegar no "Concluir +
+      // próxima", os grupos já estão em memória.
+      preloadLeadGroups(activity.lead_id);
       promises.push(
         Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).is('deleted_at', null),
@@ -1659,7 +1696,18 @@ const ActivitiesPage = () => {
         typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
         samples: estimateSamplesFor(formType),
       });
-      if (!choice.confirmed) return;
+      if (!choice.confirmed) {
+        // Falha silenciosa: quem mudava o Prazo, clicava em Salvar e fechava
+        // este pop-up (ESC/clique fora/"Voltar ao formulário") não gravava nada
+        // e não recebia nenhum aviso — o campo continuava mostrando a data nova
+        // (state do form), então parecia salvo, e a atividade seguia no dia
+        // velho. Como 8.697 das 8.728 atividades abertas estão sem previsão, o
+        // pop-up aparece em praticamente todo Salvar. Incidente 14/08/2026
+        // (PREV 180): sem conseguir adiar, a assessora recorreu ao
+        // "Concluir + próxima" 8 vezes em 10 minutos.
+        toast.warning('Alterações NÃO salvas — a previsão de tempo não foi confirmada. O formulário continua com o que você digitou.', { duration: 8000 });
+        return;
+      }
       estimateToSave = choice.minutes;
       setFormEstimatedMinutesState(choice.minutes);
     }
@@ -1789,22 +1837,18 @@ const ActivitiesPage = () => {
     });
   };
 
-  // "Concluir + próxima" executa direto, sem pop-up intermediário. O antigo
-  // CompleteAndNotifyDialog perguntava sobre notificar o grupo e, para isso,
-  // buscava os grupos do lead no banco a cada clique — spinner + 2 cliques por
-  // atividade, o que travava a fila do modo workflow (13/08/2026). Notificar o
-  // grupo continua possível pelo "Enviar ao grupo" dentro da própria ficha.
-  const startCompleteAndNext = (source: 'sheet' | 'workflow') => {
+  const openCompleteAndNotify = (source: 'sheet' | 'workflow') => {
     if (noteAttachmentsUploadingRef.current) {
       toast.info('Aguarde o envio dos anexos terminar antes de concluir.');
       return;
     }
-    void handleCompleteAndCreateNext(source);
+    setCompleteNotifySource(source);
+    setCompleteNotifyOpen(true);
   };
 
   const completeAndCreateLockRef = useRef(false);
 
-  const handleCompleteAndCreateNext = async (source: 'sheet' | 'workflow') => {
+  const handleCompleteAndCreateNextWithNotify = async (notifyOptions?: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
     if (!selectedActivity) return;
     // Prevent double execution
     if (completeAndCreateLockRef.current) return;
@@ -1968,6 +2012,10 @@ const ActivitiesPage = () => {
         }
       }
 
+      if (notifyOptions) {
+        await sendGroupNotification(notifyOptions);
+      }
+
       // Sem a próxima, a atividade fica concluída e órfã — avisa em vez de
       // anunciar sucesso, e mantém a ficha aberta para refazer na hora.
       if (!nextCreated) {
@@ -1981,7 +2029,7 @@ const ActivitiesPage = () => {
       toast.success('Atividade concluída e próxima criada!');
 
 
-      if (source === 'workflow') {
+      if (completeNotifySource === 'workflow') {
         const timeSpent = getActivityTimeSpent();
         setWorkflowCompleted(prev => [...prev, { activity: currentActivity, action: 'completed_next', timeSpent }]);
         workflowAdvance();
@@ -1991,6 +2039,80 @@ const ActivitiesPage = () => {
       }
     } finally {
       completeAndCreateLockRef.current = false;
+    }
+  };
+
+  const sendGroupNotification = async (options: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
+    try {
+      // Instância remetente: grupo NUNCA usa o default pessoal — a mensagem é da
+      // firma, não do usuário logado. Incidente 04/08/2026 (FAMÍLIA 250): o texto
+      // saiu por "Atendimento Processual" (default legado gravado no Cloud, campo
+      // que o ProfilePage nem escreve mais) enquanto o áudio do MESMO envio saiu
+      // por "Atendimento Previdenciário", que já usava o helper. Mesmo critério do
+      // sendVoiceToWa, pra texto e áudio saírem sempre pela mesma instância.
+      let instanceId: string | undefined;
+      let instanceName: string | undefined;
+      if (isWhatsAppGroupId(options.groupJid)) {
+        instanceName = await resolveGroupSenderInstanceName(options.groupJid);
+      } else {
+        // Alvo pessoa (não ocorre pelo dialog, que só oferece grupos): default do
+        // perfil no EXTERNO, fonte da verdade. O homônimo no Cloud é legado.
+        try {
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const extUserId = await remapToExternal(authUser?.id || null);
+          if (extUserId) {
+            const { data: profile } = await externalSupabase
+              .from('profiles')
+              .select('default_instance_id')
+              .eq('user_id', extUserId)
+              .maybeSingle();
+            instanceId = (profile as any)?.default_instance_id || undefined;
+          }
+        } catch (e) {
+          console.warn('[sendGroupNotification] falha lendo profile:', e);
+        }
+      }
+
+      // Send text message
+      const sendBody: Record<string, any> = {
+        phone: options.groupJid,
+        chat_id: options.groupJid,
+        message: options.message,
+        lead_id: formLeadId || null,
+      };
+      if (instanceId) sendBody.instance_id = instanceId;
+      if (instanceName) sendBody.instance_name = instanceName;
+
+      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+      if (error || !data?.success) {
+        toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
+      } else {
+        toast.success('Mensagem enviada ao grupo!');
+      }
+
+      // Send audio if requested
+      if (options.sendAudio && options.audioText) {
+        const { data: ttsData } = await cloudFunctions.invoke('elevenlabs-tts', {
+          body: { text: options.audioText },
+        });
+        if (ttsData?.audio_url) {
+          await cloudFunctions.invoke('send-whatsapp', {
+            body: {
+              action: 'send_media',
+              phone: options.groupJid,
+              chat_id: options.groupJid,
+              media_url: ttsData.audio_url,
+              media_type: 'audio/mpeg',
+              lead_id: formLeadId || null,
+              ...(instanceId ? { instance_id: instanceId } : {}),
+              ...(instanceName ? { instance_name: instanceName } : {}),
+            },
+          });
+          toast.success('Áudio enviado ao grupo!');
+        }
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Erro ao notificar grupo');
     }
   };
 
@@ -2108,6 +2230,7 @@ const ActivitiesPage = () => {
       });
     }
     if (activity.lead_id) {
+      preloadLeadGroups(activity.lead_id);
       try {
         const [casesData, linkedData, leadPreviewRes] = await Promise.all([
           externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', activity.lead_id).is('deleted_at', null),
@@ -2195,7 +2318,7 @@ const ActivitiesPage = () => {
   };
 
   const handleWorkflowCompleteAndNext = () => {
-    startCompleteAndNext('workflow');
+    openCompleteAndNotify('workflow');
   };
 
   const handleWorkflowSkip = () => {
@@ -2247,6 +2370,8 @@ const ActivitiesPage = () => {
     setFormProcessTitle('');
     setFormWorkflowId(''); setFormCampaignId('');
     setCaseProcesses([]);
+    // Troca de lead no formulário: refaz o preload dos grupos para o lead novo.
+    preloadLeadGroups(leadId);
     // Load cases for this lead
     externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).then(({ data }) => {
       setLeadCases(data || []);
@@ -3296,6 +3421,9 @@ const ActivitiesPage = () => {
                 .eq('id', formLeadId);
               if (error) throw error;
               setLeadPreview((prev) => prev ? { ...prev, whatsapp_group_id: g.jid } : prev);
+              // Vínculo feito com a ficha aberta: o preload virou passado. Zerar
+              // faz o dialog buscar na hora e enxergar o grupo recém-vinculado.
+              setLeadGroupsRaw(null);
               toast.success('Grupo vinculado ao lead.');
             } catch (e: any) {
               toast.error('Falha ao vincular grupo: ' + (e?.message || 'erro desconhecido'));
@@ -6065,7 +6193,7 @@ const ActivitiesPage = () => {
                           <Button
                             size="sm"
                             className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground rounded-r-none"
-                            onClick={() => startCompleteAndNext('sheet')}
+                            onClick={() => openCompleteAndNotify('sheet')}
                             disabled={noteAttachmentsUploading}
                           >
                             <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
@@ -6107,7 +6235,7 @@ const ActivitiesPage = () => {
                                     } finally {
                                       setSendingPendingAudio(false);
                                     }
-                                    startCompleteAndNext('sheet');
+                                    openCompleteAndNotify('sheet');
                                   }}
                                 >
                                   <Mic className="h-3.5 w-3.5 mr-2" /> Concluir + próxima e enviar áudio no grupo
@@ -6433,6 +6561,15 @@ const ActivitiesPage = () => {
           onUpdated={() => { activityChain.reload(); fetchActivities(getFilterParams()); }}
         />
       )}
+
+      <CompleteAndNotifyDialog
+        open={completeNotifyOpen}
+        onClose={() => setCompleteNotifyOpen(false)}
+        onConfirm={handleCompleteAndCreateNextWithNotify}
+        leadId={formLeadId || null}
+        buildMsg={buildMsg}
+        preloadedGroups={preloadedLeadGroups}
+      />
 
       <AssessorSummaryShareDialog
         open={shareSummaryOpen}
