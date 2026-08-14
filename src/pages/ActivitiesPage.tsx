@@ -1221,7 +1221,13 @@ const ActivitiesPage = () => {
       typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
       samples: estimateSamplesFor(formType),
     });
-    if (!estimateChoice.confirmed) return; // voltou pro formulário
+    if (!estimateChoice.confirmed) {
+      // Sair do pop-up (ESC, clique fora, "Voltar ao formulário") cancelava a
+      // criação em SILÊNCIO: a ficha seguia preenchida e parecia ter salvo.
+      // Incidente 14/08/2026 — ver o gêmeo no handleUpdate.
+      toast.warning('Atividade NÃO criada — a previsão de tempo não foi confirmada. O formulário continua preenchido.', { duration: 8000 });
+      return;
+    }
     setFormEstimatedMinutesState(estimateChoice.minutes);
 
     const baseData = {
@@ -1690,7 +1696,18 @@ const ActivitiesPage = () => {
         typeLabel: dbActivityTypes.find(t => t.key === formType)?.label || null,
         samples: estimateSamplesFor(formType),
       });
-      if (!choice.confirmed) return;
+      if (!choice.confirmed) {
+        // Falha silenciosa: quem mudava o Prazo, clicava em Salvar e fechava
+        // este pop-up (ESC/clique fora/"Voltar ao formulário") não gravava nada
+        // e não recebia nenhum aviso — o campo continuava mostrando a data nova
+        // (state do form), então parecia salvo, e a atividade seguia no dia
+        // velho. Como 8.697 das 8.728 atividades abertas estão sem previsão, o
+        // pop-up aparece em praticamente todo Salvar. Incidente 14/08/2026
+        // (PREV 180): sem conseguir adiar, a assessora recorreu ao
+        // "Concluir + próxima" 8 vezes em 10 minutos.
+        toast.warning('Alterações NÃO salvas — a previsão de tempo não foi confirmada. O formulário continua com o que você digitou.', { duration: 8000 });
+        return;
+      }
       estimateToSave = choice.minutes;
       setFormEstimatedMinutesState(choice.minutes);
     }

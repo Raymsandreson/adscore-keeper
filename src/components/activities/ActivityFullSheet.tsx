@@ -972,7 +972,12 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         typeLabel: activityTypes.find(t => t.key === formType)?.label || null,
         samples: estimateSamplesFor(formType),
       });
-      if (!estimateChoice.confirmed) return; // voltou pro formulário
+      if (!estimateChoice.confirmed) {
+        // Mesmo silêncio do Salvar: sair do pop-up cancelava a criação sem
+        // nenhum aviso, com a ficha preenchida parecendo salva. 14/08/2026.
+        toast.warning('Atividade NÃO criada — a previsão de tempo não foi confirmada. O formulário continua preenchido.', { duration: 8000 });
+        return;
+      }
       setFormEstimatedMinutesState(estimateChoice.minutes);
 
       setSaving(true);
@@ -1029,7 +1034,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         typeLabel: activityTypes.find(t => t.key === formType)?.label || null,
         samples: estimateSamplesFor(formType),
       });
-      if (!choice.confirmed) return;
+      if (!choice.confirmed) {
+        // Fechar este pop-up descartava a edição em silêncio (inclusive uma
+        // troca de prazo), sem toast e sem deixar rastro no audit log — o
+        // UPDATE nunca chegava a acontecer. 14/08/2026.
+        toast.warning('Alterações NÃO salvas — a previsão de tempo não foi confirmada. O formulário continua com o que você digitou.', { duration: 8000 });
+        return;
+      }
       estimateToSave = choice.minutes;
       setFormEstimatedMinutesState(choice.minutes);
     }
