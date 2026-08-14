@@ -15,6 +15,8 @@ import { db } from "@/integrations/supabase";
 import { useKanbanBoards, isBoardArchived } from "@/hooks/useKanbanBoards";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
+import { PopCarteiraSheet } from "@/components/workflow/PopCarteiraSheet";
+import { Wallet } from "lucide-react";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 import { BoardCard, type BoardType } from "@/components/board/BoardCard";
 import type { BoardViewMode } from "@/components/kanban/StageFunnelChart";
@@ -102,6 +104,8 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
 
   // Aba lateral com a relação de processos vinculados ao quadro
   const [processesBoard, setProcessesBoard] = useState<{ id: string; name: string } | null>(null);
+  // Carteira do POP: visão geral (marcos × dinheiro × tempo) em Sheet.
+  const [carteiraBoard, setCarteiraBoard] = useState<{ id: string; name: string } | null>(null);
   const [boardProcesses, setBoardProcesses] = useState<LeadProcess[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<LeadProcess | null>(null);
@@ -360,6 +364,9 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 onOpenTeam={() => setTeamBoard({ id: board.id, name: board.name })}
                 onEdit={() => { setEditBoardId(board.id); setShowBuilder(true); }}
                 onOpenProcesses={() => openProcessesSheet({ id: board.id, name: board.name })}
+                onOpenCarteira={boardType === "workflow"
+                  ? () => setCarteiraBoard({ id: board.id, name: board.name })
+                  : undefined}
                 processCount={processCounts?.[board.id] || 0}
                 onDelete={() => handleDelete({ id: board.id, name: board.name })}
                 archived={isBoardArchived(board)}
@@ -440,6 +447,14 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
         />
       )}
 
+      <PopCarteiraSheet
+        boardId={carteiraBoard?.id || null}
+        boardName={carteiraBoard?.name || ''}
+        open={!!carteiraBoard}
+        onOpenChange={(o) => { if (!o) setCarteiraBoard(null); }}
+      />
+
+
       {/* Aba lateral: processos vinculados ao quadro */}
       <Sheet
         open={!!processesBoard}
@@ -453,6 +468,21 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
             </SheetTitle>
             <SheetDescription className="truncate">{processesBoard?.name}</SheetDescription>
           </SheetHeader>
+
+          {/* Atalho para a visão geral da carteira — a lista abaixo é o detalhe
+              processo a processo; a carteira é o agregado (marcos × dinheiro ×
+              tempo). Abre por cima, sem perder esta aba. */}
+          {boardType === "workflow" && processesBoard && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 w-full"
+              onClick={() => setCarteiraBoard(processesBoard)}
+            >
+              <Wallet className="h-3.5 w-3.5 mr-1.5" />
+              Visão geral da carteira
+            </Button>
+          )}
 
           <div className="flex-1 overflow-y-auto mt-4">
             {loadingProcesses ? (
