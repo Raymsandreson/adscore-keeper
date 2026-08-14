@@ -6629,6 +6629,11 @@ const ActivitiesPage = () => {
         leadId={formLeadId || null}
         buildMsg={buildMsg}
         preloadedGroups={preloadedLeadGroups}
+        // Prazo mexido no formulário: o dialog avisa que "Concluir + próxima"
+        // conclui ESTA atividade na data velha e oferece o adiar de verdade.
+        currentDeadline={selectedActivity?.deadline || null}
+        nextDeadline={formDeadline || null}
+        onPostponeInstead={selectedActivity ? (d) => handlePostpone(selectedActivity.id, d) : undefined}
       />
 
       <AssessorSummaryShareDialog
