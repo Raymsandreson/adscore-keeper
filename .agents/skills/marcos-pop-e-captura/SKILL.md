@@ -173,6 +173,16 @@ sozinhas no primeiro tick (81 = BPC-Adm indo para "4. Fase Judicial").
 antigas — desativado)" e está sem processos. Migration antiga que cite
 b436c043 como "em uso" está falando do passado.
 
+**A capa entra sozinha desde 14/08/2026:** `backfill-process-marcos` (v8),
+nos modos backfill/push, faz UMA consulta extra ao endpoint do processo
+quando `data_distribuicao`/`data_inicio` estão vazios e persiste a capa —
+depois disso a condição nunca mais dispara para aquele processo. Também
+aceita `process_ids` para reconsultar uma lista exata. Foi o que zerou os
+trabalhistas com janela só de expediente: reconsulta de 9 → 9 capas salvas →
+**273 de 274 trabalhistas com marco** (o 1 restante nunca foi consultado,
+decisão de custo do usuário). Duplicidade conhecida: `0010566-42.2020` tem
+3 linhas do mesmo lead — o usuário optou por não deduplicar em 14/08.
+
 **404 é categoria, não falha:** no backfill de 14/08 dos nunca-consultados,
 ~26 CNJs (todos ajuizados em 2026) deram `Escavador 404` — ainda não
 indexados. A edge NÃO carimba `data_ultima_verificacao` nesses, então eles
