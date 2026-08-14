@@ -46,7 +46,9 @@ export function ActivityMessageTemplateSettings() {
   const fetchBoards = async () => {
     const { data } = await externalSupabase.from('kanban_boards').select('id, name, board_type, settings').order('name');
     if (data) {
-      const visiveis = data.filter(b => !isBoardArchived(b as { settings?: unknown }));
+      // `settings` não está nos tipos gerados de kanban_boards — cast por unknown.
+      const visiveis = ((data as unknown) as { id: string; name: string; board_type: string | null; settings?: unknown }[])
+        .filter(b => !isBoardArchived(b));
       setBoards(visiveis.filter(b => b.board_type !== 'workflow'));
       setWorkflows(visiveis.filter(b => b.board_type === 'workflow'));
     }

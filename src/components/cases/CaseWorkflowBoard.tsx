@@ -72,7 +72,9 @@ export function CaseWorkflowBoard({ caseId, processes, onProcessUpdated }: CaseW
         .maybeSingle();
 
       // POP arquivado sai da seleção, mas o já vinculado ao caso permanece.
-      const parsed = (data || [])
+      // `settings` não está nos tipos gerados de kanban_boards — o cast por
+      // unknown evita o SelectQueryError sem mexer no types.ts gerado.
+      const parsed = (((data || []) as unknown) as { id: string; name: string; stages: unknown; settings?: unknown }[])
         .filter(b => !isBoardArchived(b as { settings?: unknown }) || b.id === caseData?.workflow_board_id)
         .map(b => ({
           ...b,

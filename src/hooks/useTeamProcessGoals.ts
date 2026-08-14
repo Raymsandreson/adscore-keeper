@@ -149,7 +149,7 @@ export function useTeamProcessGoals() {
       });
 
       // POP arquivado não entra no seletor de meta nova.
-      setBoards(((boardsRes.data as { id: string; name: string; settings?: unknown }[]) || [])
+      setBoards((((boardsRes.data as unknown) as { id: string; name: string; settings?: unknown }[]) || [])
         .filter(b => !isBoardArchived(b))
         .map(b => ({
           id: b.id,
