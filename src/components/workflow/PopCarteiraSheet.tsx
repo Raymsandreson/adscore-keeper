@@ -27,7 +27,7 @@ interface Props {
 }
 
 const brl = (v: number) =>
-  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const dias = (d: number | null) => (d == null ? '—' : d === 0 ? 'hoje' : `${d} d`);
 
