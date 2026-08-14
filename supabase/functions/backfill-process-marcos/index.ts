@@ -56,6 +56,10 @@ interface Corpo {
   /** Revisão por IA do que o parser de palavra-chave classificou. Padrão: ligada.
    *  Desligar só pra comparar comportamentos — o parser sozinho errava 51% (05/08/2026). */
   usar_ia?: boolean;
+  /** Restringe a uma lista exata de lead_processes.id — para reconsultar
+   *  processos específicos (ex.: os 8 trabalhistas com janela só de expediente)
+   *  sem pagar a varredura por offset da base inteira. */
+  process_ids?: string[];
   /** Só processos que NUNCA foram consultados (data_ultima_verificacao null).
    *  Sem isto o backfill varre por created_at e regasta cota em quem já está em
    *  dia: medido em 06/08/2026, 406 dos 625 CNJ tinham sido verificados nos
@@ -132,12 +136,15 @@ Deno.serve(async (req: Request) => {
 
     let query = supabase
       .from('lead_processes')
-      .select('id, process_number, case_id, lead_id, movimentacoes')
+      .select('id, process_number, case_id, lead_id, movimentacoes, data_distribuicao, data_inicio')
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .range(offset, offset + limit - 1);
 
     if (corpo.workflow_id) query = query.eq('workflow_id', corpo.workflow_id);
+    if (Array.isArray(corpo.process_ids) && corpo.process_ids.length) {
+      query = query.in('id', corpo.process_ids.slice(0, LIMITE_MAXIMO));
+    }
     if (mode !== 'reextract') query = query.not('process_number', 'is', null);
     if (cnjsDoPush) query = query.in('process_number', cnjsDoPush);
     if (corpo.apenas_nunca_buscados) query = query.is('data_ultima_verificacao', null);
@@ -157,6 +164,7 @@ Deno.serve(async (req: Request) => {
     let marcosInseridos = 0;
     let semMovimentacao = 0;
     let semCnj = 0;
+    let capasSalvas = 0;
     let iaDescartou = 0;
     let iaCorrigiu = 0;
     let jaJulgados = 0;
@@ -182,6 +190,33 @@ Deno.serve(async (req: Request) => {
           const d = await resp.json();
           movs = d.items || d.data || (Array.isArray(d) ? d : []);
 
+          // A distribuição dos processos antigos já saiu da janela de 20
+          // movimentações; sem a CAPA (data_distribuicao/data_inicio) eles
+          // ficam sem nem o marco de ajuizamento (fonte campo_processo da
+          // régua). O endpoint de movimentações não devolve capa, então quem
+          // não a tem paga UMA consulta extra — uma vez só: salva, a condição
+          // nunca mais dispara para o processo.
+          const capaExtra: Record<string, unknown> = {};
+          if (!p.data_distribuicao && !p.data_inicio) {
+            try {
+              const capaResp = await fetch(
+                `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(cnj!)}`,
+                { headers: { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' } },
+              );
+              if (capaResp.ok) {
+                const raw = await capaResp.json();
+                const capa = raw?.fontes?.[0]?.capa ?? {};
+                if (capa.data_distribuicao) capaExtra.data_distribuicao = capa.data_distribuicao;
+                if (raw?.data_inicio) capaExtra.data_inicio = raw.data_inicio;
+                if (raw?.ano_inicio) capaExtra.ano_inicio = raw.ano_inicio;
+                if (Object.keys(capaExtra).length) capasSalvas++;
+              }
+              await sleep(PAUSA_MS);
+            } catch {
+              // Capa é bônus: falha aqui não pode derrubar o sync de movimentações.
+            }
+          }
+
           if (!dryRun) {
             await supabase
               .from('lead_processes')
@@ -189,6 +224,7 @@ Deno.serve(async (req: Request) => {
                 movimentacoes: movs,
                 quantidade_movimentacoes: movs.length,
                 data_ultima_verificacao: new Date().toISOString(),
+                ...capaExtra,
               })
               .eq('id', p.id);
           }
@@ -275,6 +311,7 @@ Deno.serve(async (req: Request) => {
       com_movimentacoes: comMovimentacoes,
       sem_movimentacao: semMovimentacao,
       sem_cnj: semCnj,
+      capas_salvas: capasSalvas,
       marcos_extraidos: marcosExtraidos,
       marcos_inseridos: marcosInseridos,
       usar_ia: usarIa,
