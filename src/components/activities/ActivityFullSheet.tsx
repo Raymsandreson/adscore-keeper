@@ -32,6 +32,8 @@ import { ActivityDocumentUpload } from '@/components/activities/ActivityDocument
 import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
 import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
 import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
+import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
+import { formatPostponeDate } from '@/lib/postponeDates';
 import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
@@ -1063,6 +1065,27 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     onOpenChange(false);
   };
 
+  /**
+   * Adiar sem concluir e sem criar filha — mesmo caminho da ActivitiesPage. Não
+   * fecha a ficha: adiar não é sair da atividade. O bloqueio por ausência
+   * registrada mora no `updateActivity`, que devolve `false` com o motivo.
+   */
+  const handlePostpone = async (dateStr: string) => {
+    if (!activityId) return;
+    const ok = await updateActivity(
+      activityId,
+      { deadline: dateStr, notification_date: dateStr } as any,
+      { successMessage: null },
+    );
+    if (!ok) return;
+    toast.success(`Adiada para ${formatPostponeDate(dateStr)}`);
+    // Formulário sincronizado: sem isto, um Salvar depois regravaria o prazo antigo.
+    setFormDeadline(dateStr);
+    setFormNotificationDate(dateStr);
+    setSelectedActivity(prev => prev ? ({ ...prev, deadline: dateStr, notification_date: dateStr } as any) : prev);
+    onUpdated?.();
+  };
+
   const handleDelete = async () => {
     if (!activityId) return;
     await deleteActivity(activityId);
@@ -1599,6 +1622,12 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             )}
             <div className="flex gap-2 ml-auto">
               <Button variant="outline" size="sm" onClick={handleClose}>Cancelar</Button>
+              {!isCreate && selectedActivity?.status !== 'concluida' && (
+                <PostponeActivityPopover
+                  currentDeadline={selectedActivity?.deadline}
+                  onPostpone={handlePostpone}
+                />
+              )}
               {!isCreate && selectedActivity?.status !== 'concluida' && (
                 <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs bg-success hover:bg-success/90 text-success-foreground border-0">
                   <CheckCircle2 className="h-3 w-3" /> Concluir
