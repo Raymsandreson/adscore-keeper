@@ -47,6 +47,8 @@ export interface LeadActivity {
   estimated_minutes?: number | null;
   /** Data e hora da reunião (só quando activity_type = 'reuniao'). timestamptz no Externo. */
   meeting_at?: string | null;
+  /** Retorno agendado (voltar a falar com o cliente/parte). timestamptz no Externo. */
+  callback_at?: string | null;
   completed_at: string | null;
   completed_by: string | null;
   completed_by_name: string | null;
@@ -300,6 +302,9 @@ export function useLeadActivities() {
           deadline: activity.deadline || null,
           notification_date: activity.notification_date || null,
           meeting_at: activity.meeting_at || null,
+          // Coluna criada em 20260814190000; sem ela aqui, retorno agendado
+          // preenchido na criação seria descartado igual à Solicitação.
+          callback_at: activity.callback_at || null,
           notes: activity.notes || null,
           created_by: extUserId,
           contact_id: activity.contact_id || null,

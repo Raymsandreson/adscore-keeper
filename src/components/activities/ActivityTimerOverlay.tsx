@@ -1182,11 +1182,11 @@ function SwitchActivityDialog({
 
       let q = db
         .from('lead_activities')
-        // NÃO pedir callback_at aqui: a coluna ainda não foi aplicada no Externo
-        // (migration 20260721120000 pendente) e o PostgREST erra a query inteira,
-        // zerando a lista ("Nenhuma atividade pendente"). keyDate já cai pra
-        // meeting_at/deadline/notification_date. Voltar a incluir após aplicar a migration.
-        .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at')
+        // callback_at voltou ao select em 14/08/2026, quando a coluna foi enfim
+        // criada no Externo (migration 20260814190000) — antes disso o PostgREST
+        // errava a query INTEIRA (42703) e a lista aparecia vazia em silêncio
+        // ("Nenhuma atividade pendente"). keyDate volta a ordenar por ela.
+        .select('id, title, activity_type, lead_name, status, priority, deadline, notification_date, meeting_at, callback_at')
         .is('deleted_at', null)
         .neq('status', 'concluida');
       if (mine.length) q = q.or(`assigned_to.in.(${mine.join(',')}),assigned_to_ids.ov.{${mine.join(',')}}`);
