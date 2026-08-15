@@ -613,3 +613,56 @@ alerta da conferência nomeia os casos: apagar a ficha errada perde histórico.
 
 O alerta de ficha repetida baixou de **alto para atenção** depois da dedup — o total do
 POP já está certo, o cadastro duplicado virou higiene.
+
+---
+
+## Valor ATUALIZADO da condenação — juros e correção (15/08/2026)
+
+Migration `20260815200000_pop_carteira_marcos_valor_atualizado.sql`. Decidido com o
+usuário: o corrigido anda **AO LADO** do nominal, nunca no lugar — a carteira continua
+somando o nominal, que é o que FIDC/Tercon/Limine leem.
+
+### A base já tinha tudo; faltava ligar
+
+- **`jm_indices`** — `SELIC_SIMPLES_JT` (1995-01→2026-07) e `TCM_ESTADUAL`
+  (1964-01→2026-07). `coeficiente` é o multiplicador da competência até `referencia`;
+  a competência da própria referência vale 1.0.
+- **`jm_decisoes.termo_inicial_jcm`** — início de juros e correção, em 435 das 439
+  decisões. Quando falta, cai na `data_decisao` e a linha vem com `jcm_termo_estimado`.
+
+### Índice pelo RAMO, dígito 14 do CNJ
+
+| segmento | ramo | índice |
+|---|---|---|
+| 5 | Justiça do Trabalho | `SELIC_SIMPLES_JT` |
+| 8 | Justiça Estadual | `TCM_ESTADUAL` |
+| outro | — | **nenhum**, não corrige |
+
+Justiça Federal (segmento 4) tem manual próprio de cálculo: aplicar TCM_ESTADUAL nela
+seria mentira. Hoje os 51 processos de segmento 2/4 deste POP não têm valor lançado, então
+ninguém fica sem índice — quando tiverem, a tela diz "sem índice para este ramo" e o
+total avisa que o corrigido está subestimado.
+
+**O termo é o da decisão QUE VALE**, não de qualquer uma. Corrigir pela sentença quando
+o acórdão é que vale dá número errado — a `valor_vigente` carrega o termo junto do valor.
+
+### A RPC entrega insumos, o front multiplica
+
+`jcm_indice`, `jcm_termo_inicial`, `jcm_termo_estimado`, `jcm_coeficiente`,
+`jcm_referencia`. De propósito: a conferência mostra a conta inteira
+(`R$ 75.202,69 × 1,6161 = R$ 121.520,00 · SELIC simples de 15/01/2020 até jul/2026`)
+em vez de um número mágico que ninguém consegue contestar.
+
+**A data limite anda sempre junto do número.** `jcm_referencia` é até quando a tabela
+corrige (2026-07-01 enquanto estamos em 15/08/2026) — valor corrigido sem dizer até
+quando não serve para negociar. Manter a `jm_indices` atualizada é o que mantém o número
+vivo; ela venceu, o número congela sem avisar ninguém além dessa data na tela.
+
+### Impacto medido (POP trabalhista, 15/08/2026)
+
+| | |
+|---|---|
+| nominal | R$ 20.292.233,25 |
+| atualizado até jul/2026 | R$ 26.010.426,00 (**+28,2%**) |
+| cobertura | 223 de 223 partes com valor |
+| termo estimado | 2 partes |

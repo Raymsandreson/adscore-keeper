@@ -27,16 +27,15 @@
 // =============================================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import { onlyDigits, cnjVariantes } from '@/lib/cnj';
+import { onlyDigits, cnjVariantes, parseCnj } from '@/lib/cnj';
 
 /** O client é tipado com o schema do Cloud; as tabelas do Externo não estão lá. */
+interface FiltroExterno {
+  eq: (coluna: string, valor: unknown) => FiltroExterno;
+  in: (coluna: string, valores: unknown[]) => FiltroExterno;
+}
 const externo = db as unknown as {
-  from: (t: string) => {
-    select: (c: string) => {
-      eq: (c: string, v: unknown) => never;
-      in: (c: string, v: unknown[]) => never;
-    };
-  };
+  from: (t: string) => { select: (c: string) => FiltroExterno };
 };
 type Consulta = { data: Record<string, unknown>[] | null; error: { message?: string } | null };
 
@@ -44,6 +43,8 @@ export interface DecisaoJm {
   dec_id: string;
   processo_cnj: string;
   data_decisao: string | null;
+  /** Início de juros e correção — a data que a correção monetária usa. */
+  termo_inicial_jcm: string | null;
   tipo_evento: string | null;
   instancia: string | null;
   abrangencia: string | null;
@@ -104,6 +105,15 @@ export interface ClienteConferido {
   descartadas: { decisao: DecisaoJm | null; valor: number }[];
   pago: number;
   estagio: string;
+  /** valor × coeficiente. Igual ao nominal quando o ramo não tem índice. */
+  valorAtualizado: number;
+  /** false = sem índice/competência: o "atualizado" é o nominal repetido. */
+  corrigido: boolean;
+  /** Data de início de juros e correção usada — da decisão que vale. */
+  termoInicial: string | null;
+  /** Veio da data da decisão porque a decisão não tinha `termo_inicial_jcm`. */
+  termoEstimado: boolean;
+  coeficiente: number | null;
 }
 
 export interface DuplicataProcesso {
@@ -161,12 +171,19 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
   const [duplicatas, setDuplicatas] = useState<DuplicataProcesso[]>([]);
   /** Ordem do marco "sentença" NESTE POP — a régua de "o mérito já saiu". */
   const [ordemSentenca, setOrdemSentenca] = useState<number | null>(null);
+  /** Correção monetária: coeficiente por competência (AAAA-MM-01) do índice do ramo. */
+  const [jcm, setJcm] = useState<{
+    indice: string | null;
+    referencia: string | null;
+    coeficientes: Record<string, number>;
+  }>({ indice: null, referencia: null, coeficientes: {} });
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     if (!alvo) {
       setDecisoes([]); setValores([]); setPagamentos([]); setMarcos([]); setDuplicatas([]);
+      setJcm({ indice: null, referencia: null, coeficientes: {} });
       return;
     }
     setLoading(true);
@@ -177,7 +194,7 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
 
       const [dec, val, pag, ppm, pm, dup] = await Promise.all([
         externo.from('jm_decisoes')
-          .select('dec_id, processo_cnj, data_decisao, tipo_evento, instancia, abrangencia, rotulo_original, titulo, orgao, relator, link, flag_revisar')
+          .select('dec_id, processo_cnj, data_decisao, termo_inicial_jcm, tipo_evento, instancia, abrangencia, rotulo_original, titulo, orgao, relator, link, flag_revisar')
           .in('processo_cnj', variantes) as unknown as Promise<Consulta>,
         externo.from('jm_valores')
           .select('id, dec_id, cliente, dano_moral, dano_estetico, base_calculo, flag_correcao')
@@ -265,6 +282,39 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
         }
       }
 
+      // Correção monetária: índice pelo ramo do CNJ (mesma regra da RPC — dígito
+      // 14 é o segmento do Judiciário), coeficiente pela competência do termo
+      // inicial de cada decisão. Ramo sem índice carregado fica sem correção, e
+      // a tela diz isso em vez de aplicar um índice de outro ramo.
+      const segmento = parseCnj(alvo.cnj)?.segment ?? null;
+      const indiceDoRamo = segmento === 5 ? 'SELIC_SIMPLES_JT'
+        : segmento === 8 ? 'TCM_ESTADUAL'
+        : null;
+      const competencias = [...new Set(
+        ((dec.data || []) as unknown as DecisaoJm[])
+          .map(d => (d.termo_inicial_jcm || d.data_decisao || '').slice(0, 7))
+          .filter(Boolean)
+          .map(ym => `${ym}-01`),
+      )];
+      if (indiceDoRamo && competencias.length) {
+        const { data: idx } = await (externo.from('jm_indices')
+          .select('indice, competencia, coeficiente, referencia')
+          .eq('indice', indiceDoRamo)
+          .in('competencia', competencias) as unknown as Promise<Consulta>);
+        const coeficientes: Record<string, number> = {};
+        let referencia: string | null = null;
+        for (const r of (idx || [])) {
+          // Guarda extra: mock/servidor que ignore o filtro não pode misturar índice.
+          if (r.indice != null && r.indice !== indiceDoRamo) continue;
+          const c = Number(r.coeficiente);
+          if (Number.isFinite(c)) coeficientes[String(r.competencia)] = c;
+          if (r.referencia) referencia = String(r.referencia);
+        }
+        setJcm({ indice: indiceDoRamo, referencia, coeficientes });
+      } else {
+        setJcm({ indice: null, referencia: null, coeficientes: {} });
+      }
+
       setDuplicatas(fichas
         .map(r => ({
           id: String(r.id),
@@ -320,6 +370,14 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
       const danoEstetico = num(usada?.dano_estetico);
       const valor = danoMoral + danoEstetico;
       const pago = pagoPorCliente.get(cliente) || 0;
+
+      // Correção monetária da PARTE: o termo é o da decisão que vale para ela.
+      const decUsada = porDecId.get(usada?.dec_id || '') || null;
+      const termoInicial = decUsada?.termo_inicial_jcm || decUsada?.data_decisao || null;
+      const termoEstimado = !decUsada?.termo_inicial_jcm && !!decUsada?.data_decisao;
+      const competencia = termoInicial ? `${termoInicial.slice(0, 7)}-01` : null;
+      const coef = competencia ? jcm.coeficientes[competencia] ?? null : null;
+      const corrigido = coef != null && Number.isFinite(coef);
       const estagio = pago > 0 ? 'PAGO'
         : temAcordo ? 'A_RECEBER'
         : marcoAtual?.estagioSugerido ? marcoAtual.estagioSugerido
@@ -330,7 +388,12 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
         valor,
         danoMoral,
         danoEstetico,
-        decisaoUsada: porDecId.get(usada?.dec_id || '') || null,
+        valorAtualizado: valor * (corrigido ? (coef as number) : 1),
+        corrigido,
+        termoInicial,
+        termoEstimado,
+        coeficiente: corrigido ? coef : null,
+        decisaoUsada: decUsada,
         descartadas: ordenadas.slice(1).map(v => ({
           decisao: porDecId.get(v.dec_id || '') || null,
           valor: num(v.dano_moral) + num(v.dano_estetico),
@@ -339,9 +402,12 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
         estagio,
       };
     }).sort((a, b) => b.valor - a.valor);
-  }, [valores, decisoes, pagamentos, marcoAtual, temAcordo]);
+  }, [valores, decisoes, pagamentos, marcoAtual, temAcordo, jcm]);
 
   const totalConferido = useMemo(() => clientes.reduce((s, c) => s + c.valor, 0), [clientes]);
+  /** Carteira deste processo com juros e correção — ao lado do nominal. */
+  const totalAtualizado = useMemo(
+    () => clientes.reduce((s, c) => s + c.valorAtualizado, 0), [clientes]);
   const totalPago = useMemo(() => clientes.reduce((s, c) => s + c.pago, 0), [clientes]);
   const somaIngenua = useMemo(
     () => valores.reduce((s, v) => s + num(v.dano_moral) + num(v.dano_estetico), 0),
@@ -462,7 +528,8 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
   return {
     marcos, marcoAtual, temAcordo, suspenso, ordemSentenca, leadDoProcesso,
     clientes, decisoes, valores, pagamentos, duplicatas,
-    totalConferido, totalPago, somaIngenua,
+    totalConferido, totalAtualizado, somaIngenua, totalPago,
+    jcmIndice: jcm.indice, jcmReferencia: jcm.referencia,
     alertas, loading, erro, recarregar: carregar,
   };
 }

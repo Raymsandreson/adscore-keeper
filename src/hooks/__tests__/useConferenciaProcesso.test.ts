@@ -22,8 +22,8 @@ const CNJ = '0000491-34.2020.5.05.0101';
 const { dbMock } = vi.hoisted(() => {
   const dados: Record<string, unknown[]> = {
     jm_decisoes: [
-      { dec_id: 'd-sentenca', processo_cnj: '0000491-34.2020.5.05.0101', data_decisao: '2023-03-10', tipo_evento: 'Sentença', instancia: '1º grau', abrangencia: null, rotulo_original: null, titulo: null, orgao: '1ª VT', relator: null, link: null, flag_revisar: null },
-      { dec_id: 'd-acordao', processo_cnj: '0000491-34.2020.5.05.0101', data_decisao: '2024-08-01', tipo_evento: 'Acórdão', instancia: '2º grau', abrangencia: null, rotulo_original: null, titulo: null, orgao: 'TRT5', relator: null, link: null, flag_revisar: null },
+      { dec_id: 'd-sentenca', processo_cnj: '0000491-34.2020.5.05.0101', data_decisao: '2023-03-10', termo_inicial_jcm: '2023-03-10', tipo_evento: 'Sentença', instancia: '1º grau', abrangencia: null, rotulo_original: null, titulo: null, orgao: '1ª VT', relator: null, link: null, flag_revisar: null },
+      { dec_id: 'd-acordao', processo_cnj: '0000491-34.2020.5.05.0101', data_decisao: '2024-08-01', termo_inicial_jcm: '2024-08-01', tipo_evento: 'Acórdão', instancia: '2º grau', abrangencia: null, rotulo_original: null, titulo: null, orgao: 'TRT5', relator: null, link: null, flag_revisar: null },
     ],
     jm_valores: [
       { id: 1, dec_id: 'd-sentenca', processo_cnj: '0000491-34.2020.5.05.0101', cliente: 'MARIA', dano_moral: 50000, dano_estetico: 0, base_calculo: null, flag_correcao: null },
@@ -57,6 +57,11 @@ const { dbMock } = vi.hoisted(() => {
     leads: [
       { id: 'lead-A', lead_name: 'ANTONIA COQUEIRO' },
       { id: 'lead-B', lead_name: 'VALDEZIR RODRIGUES' },
+    ],
+    // CNJ do teste e trabalhista (segmento 5) -> SELIC_SIMPLES_JT.
+    jm_indices: [
+      { indice: 'SELIC_SIMPLES_JT', competencia: '2024-08-01', coeficiente: 1.25, referencia: '2026-07-01' },
+      { indice: 'SELIC_SIMPLES_JT', competencia: '2023-03-01', coeficiente: 1.4, referencia: '2026-07-01' },
     ],
   };
 
@@ -126,6 +131,22 @@ describe('useConferenciaProcesso', () => {
     // E o alerta avisa que as fichas estão em casos diferentes.
     expect(dup?.detalhe).toContain('ANTONIA COQUEIRO');
     expect(dup?.detalhe).toContain('VALDEZIR RODRIGUES');
+  });
+
+  it('corrige a parte pelo termo inicial da decisão que vale', async () => {
+    const { result } = renderHook(() => useConferenciaProcesso(alvo));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const maria = result.current.clientes[0];
+    // Vale o acórdão (ago/2024, coef 1,25) — NÃO a sentença (mar/2023, 1,4).
+    expect(maria.termoInicial).toBe('2024-08-01');
+    expect(maria.coeficiente).toBe(1.25);
+    expect(maria.valorAtualizado).toBeCloseTo(125000, 2);
+    expect(result.current.totalAtualizado).toBeCloseTo(125000, 2);
+    // O nominal segue intacto ao lado.
+    expect(result.current.totalConferido).toBe(100000);
+    expect(result.current.jcmIndice).toBe('SELIC_SIMPLES_JT');
+    expect(result.current.jcmReferencia).toBe('2026-07-01');
   });
 
   it('diz de qual caso é cada ficha do CNJ', async () => {

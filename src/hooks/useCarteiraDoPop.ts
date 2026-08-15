@@ -61,12 +61,32 @@ export interface CarteiraPopLinha {
   lead_nome: string | null;
   /** Nomes de TODOS os leads do CNJ (ficha irmã pode ser de outro caso). */
   leads_nomes: string[] | null;
+  /** Índice de correção do ramo: SELIC_SIMPLES_JT (trabalhista) ou TCM_ESTADUAL. */
+  jcm_indice: string | null;
+  /** Data de início de juros e correção da decisão que vale. */
+  jcm_termo_inicial: string | null;
+  /** Sem `termo_inicial_jcm` na decisão: caiu na data da decisão. */
+  jcm_termo_estimado: boolean | null;
+  /** Multiplicador da competência do termo até `jcm_referencia`. */
+  jcm_coeficiente: number | null;
+  /** Até quando a tabela de índices corrige — a tela mostra essa data. */
+  jcm_referencia: string | null;
 }
 
 /** Uma parte do processo com o valor dela — litisconsórcio tem um valor por pessoa. */
 export interface ParteDoProcesso {
   cliente: string;
+  /** Valor NOMINAL, como saiu da decisão. É o que a carteira soma. */
   valor: number;
+  /** valor × coeficiente. Igual ao nominal quando não há índice para o ramo. */
+  valorAtualizado: number;
+  /** false = ramo sem índice carregado; o "atualizado" é só o nominal repetido. */
+  corrigido: boolean;
+  indice: string | null;
+  termoInicial: string | null;
+  /** Termo veio da data da decisão, não de `termo_inicial_jcm`. */
+  termoEstimado: boolean;
+  coeficiente: number | null;
   pago: number;
   estagio: string;
 }
@@ -90,6 +110,10 @@ export interface ProcessoDoMarco {
   leadNome: string | null;
   /** Todos os leads do CNJ — com ficha repetida, pode ser mais de um caso. */
   leadsNomes: string[];
+  /** Soma das partes com juros e correção. Anda AO LADO do nominal, não no lugar. */
+  valorAtualizado: number;
+  /** Alguma parte ficou sem índice — o "atualizado" está subestimado. */
+  temParteSemCorrecao: boolean;
 }
 
 export interface GrupoMarco {
@@ -98,6 +122,8 @@ export interface GrupoMarco {
   rotulo: string;
   processos: ProcessoDoMarco[];
   valor: number;
+  /** Soma nominal com juros e correção — ao lado do nominal, não no lugar. */
+  valorAtualizado: number;
   pago: number;
   diasMedio: number | null;
   porEstagio: Record<string, number>;
@@ -179,23 +205,39 @@ export function useCarteiraDoPop(boardId: string | null) {
         cadastros: Number(l.cadastros_do_cnj || 1),
         leadNome: l.lead_nome ?? null,
         leadsNomes: l.leads_nomes ?? [],
+        valorAtualizado: 0,
+        temParteSemCorrecao: false,
         _ordem: l.marco_ordem ?? -1,
         _chave: l.marco_chave || 'sem_marco',
         _rotulo: l.marco_rotulo || 'Sem marco detectado',
       };
       const valorDaParte = Number(l.valor_condenacao || 0);
       const pagoDaParte = Number(l.valor_pago || 0);
+      // Correção monetária: valor × coeficiente do índice do ramo, do termo
+      // inicial da decisão que vale até `jcm_referencia`. Sem coeficiente, o
+      // atualizado é o próprio nominal — nunca inventar índice.
+      const coef = l.jcm_coeficiente == null ? null : Number(l.jcm_coeficiente);
+      const corrigido = coef != null && Number.isFinite(coef);
+      const atualizadoDaParte = valorDaParte * (corrigido ? coef : 1);
       if (l.cliente) {
         p.clientes += 1;
         // Guarda a abertura: clicar no valor mostra quanto é de cada parte.
         p.partes.push({
           cliente: l.cliente,
           valor: valorDaParte,
+          valorAtualizado: atualizadoDaParte,
+          corrigido,
+          indice: l.jcm_indice ?? null,
+          termoInicial: l.jcm_termo_inicial ?? null,
+          termoEstimado: Boolean(l.jcm_termo_estimado),
+          coeficiente: corrigido ? coef : null,
           pago: pagoDaParte,
           estagio: l.estagio_financeiro,
         });
+        if (!corrigido && valorDaParte > 0) p.temParteSemCorrecao = true;
       }
       p.valor += valorDaParte;
+      p.valorAtualizado += atualizadoDaParte;
       p.pago += pagoDaParte;
       porProcesso.set(l.process_id, p);
     }
@@ -205,10 +247,12 @@ export function useCarteiraDoPop(boardId: string | null) {
     for (const p of porProcesso.values()) {
       const g = mapa.get(p._chave) || {
         ordem: p._ordem, chave: p._chave, rotulo: p._rotulo,
-        processos: [], valor: 0, pago: 0, diasMedio: null, porEstagio: {}, _dias: [],
+        processos: [], valor: 0, valorAtualizado: 0, pago: 0, diasMedio: null,
+        porEstagio: {}, _dias: [],
       };
       g.processos.push(p);
       g.valor += p.valor;
+      g.valorAtualizado += p.valorAtualizado;
       g.pago += p.pago;
       g.porEstagio[p.estagio] = (g.porEstagio[p.estagio] || 0) + p.valor;
       if (p.diasNoMarco != null) g._dias.push(p.diasNoMarco);
@@ -227,12 +271,22 @@ export function useCarteiraDoPop(boardId: string | null) {
   const totais = useMemo(() => {
     const processos = new Map<string, CarteiraPopLinha>();
     const porEstagio: Record<string, number> = {};
-    let valor = 0, pago = 0;
+    let valor = 0, pago = 0, valorAtualizado = 0, partesSemCorrecao = 0;
+    let corrigidoAte: string | null = null;
     for (const l of linhas) {
       if (!processos.has(l.process_id)) processos.set(l.process_id, l);
-      valor += Number(l.valor_condenacao || 0);
+      const v = Number(l.valor_condenacao || 0);
+      const coef = l.jcm_coeficiente == null ? null : Number(l.jcm_coeficiente);
+      const corrigido = coef != null && Number.isFinite(coef);
+      valor += v;
+      valorAtualizado += v * (corrigido ? coef : 1);
+      if (!corrigido && v > 0) partesSemCorrecao += 1;
+      // A tabela de índices tem uma referência só; guardar a mais recente basta.
+      if (l.jcm_referencia && (!corrigidoAte || l.jcm_referencia > corrigidoAte)) {
+        corrigidoAte = l.jcm_referencia;
+      }
       pago += Number(l.valor_pago || 0);
-      porEstagio[l.estagio_financeiro] = (porEstagio[l.estagio_financeiro] || 0) + Number(l.valor_condenacao || 0);
+      porEstagio[l.estagio_financeiro] = (porEstagio[l.estagio_financeiro] || 0) + v;
     }
 
     const procs = [...processos.values()];
@@ -275,6 +329,12 @@ export function useCarteiraDoPop(boardId: string | null) {
       /** Partes (processo × pessoa) — o valor é por parte, não por processo. */
       partes: linhas.filter(l => l.cliente).length,
       valor,
+      /** Carteira com juros e correção, até `corrigidoAte`. NÃO substitui `valor`. */
+      valorAtualizado,
+      /** Data limite da tabela de índices — sem ela o número não serve pra negociar. */
+      corrigidoAte,
+      /** Partes com valor que ficaram sem índice: o atualizado está subestimado. */
+      partesSemCorrecao,
       pago,
       porEstagio,
       mediaDiasNoMarco: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,

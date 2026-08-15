@@ -43,6 +43,14 @@ const brl = (v: number) =>
 
 const dias = (d: number | null) => (d == null ? '—' : d === 0 ? 'hoje' : `${d} d`);
 
+/** "2026-07-01" -> "jul/2026". A data limite da correção vai sempre junto do número. */
+const mesAno = (iso: string) => {
+  const m = iso.match(/^(\d{4})-(\d{2})/);
+  if (!m) return iso;
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${meses[Number(m[2]) - 1]}/${m[1]}`;
+};
+
 function EstagioChips({ porEstagio, compact }: { porEstagio: Record<string, number>; compact?: boolean }) {
   const presentes = ESTAGIO_ORDEM.filter(e => (porEstagio[e] || 0) > 0);
   if (!presentes.length) return null;
@@ -82,7 +90,14 @@ function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcess
           <span className="shrink-0 text-xs text-muted-foreground">média {dias(grupo.diasMedio)}</span>
         )}
         {grupo.valor > 0 && (
-          <span className="shrink-0 text-xs font-semibold">{brl(grupo.valor)}</span>
+          <span className="flex shrink-0 flex-col items-end leading-tight">
+            <span className="text-xs font-semibold">{brl(grupo.valor)}</span>
+            {grupo.valorAtualizado > grupo.valor + 0.01 && (
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                {brl(grupo.valorAtualizado)} corrigido
+              </span>
+            )}
+          </span>
         )}
       </button>
       {aberto && (
@@ -135,7 +150,16 @@ function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcess
                 {p.clientes > 1 && (
                   <span className="text-muted-foreground">{p.clientes} partes</span>
                 )}
-                {p.valor > 0 && <span className="font-medium">{brl(p.valor)}</span>}
+                {p.valor > 0 && (
+                  <span className="flex flex-col items-end leading-tight">
+                    <span className="font-medium">{brl(p.valor)}</span>
+                    {p.valorAtualizado > p.valor + 0.01 && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                        {brl(p.valorAtualizado)} corrigido
+                      </span>
+                    )}
+                  </span>
+                )}
               </button>
 
               <button
@@ -232,9 +256,25 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Carteira</div>
                 <div className="text-lg font-semibold">{brl(totais.valor)}</div>
+                {totais.valorAtualizado > totais.valor + 0.01 && (
+                  <div className="text-xs">
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {brl(totais.valorAtualizado)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '}com juros e correção{totais.corrigidoAte ? ` (até ${mesAno(totais.corrigidoAte)})` : ''}
+                    </span>
+                  </div>
+                )}
                 <div className="text-xs text-muted-foreground">
                   {totais.processos} processos · {totais.partes} partes · pago {brl(totais.pago)}
                 </div>
+                {totais.partesSemCorrecao > 0 && (
+                  <div className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                    {totais.partesSemCorrecao} parte(s) sem índice para o ramo — entram no atualizado
+                    pelo valor nominal, então o corrigido está subestimado.
+                  </div>
+                )}
                 {totais.cnjsComFichaRepetida > 0 && (
                   <div className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
                     <Copy className="mt-0.5 h-3 w-3 shrink-0" />
@@ -295,7 +335,10 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
             <p className="text-[11px] leading-snug text-muted-foreground">
               Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa
               do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
-              de um processo para ver quanto é de cada parte. Índice de sucesso:
+              de um processo para ver quanto é de cada parte. O valor CORRIGIDO (em verde) aplica
+              juros e correção do termo inicial de cada decisão até a data da tabela de índices —
+              SELIC simples nos trabalhistas, TCM nos estaduais; a carteira continua somando o
+              nominal. Índice de sucesso:
               entre os decididos com leitura de decisão (ou acordo), quantos saíram com valor
               fixado ou acordo homologado — decidido sem leitura é buraco de captura e fica fora
               da conta.

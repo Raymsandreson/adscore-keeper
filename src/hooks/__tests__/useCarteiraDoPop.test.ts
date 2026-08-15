@@ -27,6 +27,8 @@ const { dbMock, authMock } = vi.hoisted(() => {
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 100,
       cadastros_do_cnj: 2, leads_do_cnj: ['lead-A', 'lead-B'],
       lead_nome: 'ANTONIA COQUEIRO', leads_nomes: ['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES'],
+      jcm_indice: 'SELIC_SIMPLES_JT', jcm_termo_inicial: '2020-01-15',
+      jcm_termo_estimado: false, jcm_coeficiente: 1.6161, jcm_referencia: '2026-07-01',
     },
     {
       process_id: 'p1', lead_id: 'lead-A', process_number: '0000491-34.2020.5.05.0101',
@@ -38,6 +40,8 @@ const { dbMock, authMock } = vi.hoisted(() => {
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 100,
       cadastros_do_cnj: 2, leads_do_cnj: ['lead-A', 'lead-B'],
       lead_nome: 'ANTONIA COQUEIRO', leads_nomes: ['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES'],
+      jcm_indice: 'SELIC_SIMPLES_JT', jcm_termo_inicial: '2020-01-15',
+      jcm_termo_estimado: false, jcm_coeficiente: 1.6161, jcm_referencia: '2026-07-01',
     },
     {
       process_id: 'p2', lead_id: 'lead-C', process_number: '0001240-82.2020.5.06.0211',
@@ -49,6 +53,9 @@ const { dbMock, authMock } = vi.hoisted(() => {
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 50,
       cadastros_do_cnj: 1, leads_do_cnj: ['lead-C'],
       lead_nome: 'JOSE DA SILVA', leads_nomes: ['JOSE DA SILVA'],
+      // Ramo sem índice carregado (Justiça Federal): não corrige, não inventa.
+      jcm_indice: null, jcm_termo_inicial: '2021-03-01',
+      jcm_termo_estimado: false, jcm_coeficiente: null, jcm_referencia: null,
     },
   ];
 
@@ -114,6 +121,30 @@ describe('useCarteiraDoPop', () => {
     expect(result.current.totais.cnjsComFichaRepetida).toBe(1);
     // A ficha repetida não aparece como processo separado — a RPC já deduplicou.
     expect(result.current.grupos[0].processos).toHaveLength(2);
+  });
+
+  it('corrige cada parte pelo coeficiente do ramo e mantém o nominal ao lado', async () => {
+    const { result } = renderHook(() => useCarteiraDoPop('board-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const proc = result.current.grupos[0].processos.find(p => p.processId === 'p1')!;
+    // 75.202,69 x 1,6161 por parte, duas partes.
+    expect(proc.valor).toBeCloseTo(150405.38, 2);
+    expect(proc.valorAtualizado).toBeCloseTo(150405.38 * 1.6161, 2);
+    expect(proc.partes[0].coeficiente).toBe(1.6161);
+    expect(proc.partes[0].corrigido).toBe(true);
+
+    // Sem índice para o ramo: atualizado = nominal, e o total avisa.
+    const semIndice = result.current.grupos[0].processos.find(p => p.processId === 'p2')!;
+    expect(semIndice.valorAtualizado).toBe(semIndice.valor);
+    expect(semIndice.temParteSemCorrecao).toBe(true);
+    expect(result.current.totais.partesSemCorrecao).toBe(1);
+
+    // O nominal NÃO muda: o corrigido anda ao lado.
+    expect(result.current.totais.valor).toBeCloseTo(180405.38, 2);
+    expect(result.current.totais.valorAtualizado)
+      .toBeCloseTo(150405.38 * 1.6161 + 30000, 2);
+    expect(result.current.totais.corrigidoAte).toBe('2026-07-01');
   });
 
   it('conta o CAC do lead irmão, que a ficha canônica não carrega', async () => {

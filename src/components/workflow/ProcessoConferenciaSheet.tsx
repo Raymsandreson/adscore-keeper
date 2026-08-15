@@ -34,6 +34,19 @@ const dataBR = (d: string | null) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 };
 
+/** "2026-07-01" -> "jul/2026". Número corrigido sem data não serve pra negociar. */
+const mesAno = (iso: string | null) => {
+  const m = (iso || '').match(/^(\d{4})-(\d{2})/);
+  if (!m) return '—';
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${meses[Number(m[2]) - 1]}/${m[1]}`;
+};
+
+const INDICE_LABEL: Record<string, string> = {
+  SELIC_SIMPLES_JT: 'SELIC simples (Justiça do Trabalho)',
+  TCM_ESTADUAL: 'TCM (Justiça Estadual)',
+};
+
 const CORES: Record<NivelAlerta, string> = {
   alto: 'border-destructive/40 bg-destructive/10 text-destructive',
   atencao: 'border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400',
@@ -73,8 +86,8 @@ interface Props {
 export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props) {
   const {
     marcos, marcoAtual, temAcordo, suspenso, clientes, pagamentos, duplicatas,
-    totalConferido, totalPago, somaIngenua, alertas, loading, erro, recarregar,
-    leadDoProcesso,
+    totalConferido, totalAtualizado, totalPago, somaIngenua, alertas, loading, erro,
+    recarregar, leadDoProcesso, jcmIndice, jcmReferencia,
   } = useConferenciaProcesso(alvo);
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
@@ -215,7 +228,16 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             <Secao
               refSecao={secaoValores}
               titulo={clientes.length === 1 ? 'Valor da parte' : `Valor por parte (${clientes.length})`}
-              acao={<span className="text-xs font-semibold">{brl(totalConferido)}</span>}
+              acao={
+                <span className="flex flex-col items-end leading-tight">
+                  <span className="text-xs font-semibold">{brl(totalConferido)}</span>
+                  {totalAtualizado > totalConferido + 0.01 && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                      {brl(totalAtualizado)} corrigido
+                    </span>
+                  )}
+                </span>
+              }
             >
               {clientes.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
@@ -233,7 +255,14 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                         <span className="min-w-0 truncate text-sm font-medium">{c.cliente}</span>
                         <span className="flex items-center gap-2">
                           <Badge variant="outline" className="text-[9px]">{ESTAGIO_LABEL[c.estagio] || c.estagio}</Badge>
-                          <span className="text-sm font-semibold">{brl(c.valor)}</span>
+                          <span className="flex flex-col items-end leading-tight">
+                            <span className="text-sm font-semibold">{brl(c.valor)}</span>
+                            {c.valorAtualizado > c.valor + 0.01 && (
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                                {brl(c.valorAtualizado)} corrigido
+                              </span>
+                            )}
+                          </span>
                         </span>
                       </div>
 
@@ -246,6 +275,21 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                           <div>
                             moral {brl(c.danoMoral)} + estético {brl(c.danoEstetico)}
                           </div>
+                          {/* A conta inteira, para o número poder ser contestado. */}
+                          {c.corrigido ? (
+                            <div className="text-emerald-700 dark:text-emerald-400">
+                              {brl(c.valor)} × {c.coeficiente?.toFixed(4)} = <span className="font-semibold">{brl(c.valorAtualizado)}</span>
+                              <span className="text-muted-foreground">
+                                {' '}· {jcmIndice ? INDICE_LABEL[jcmIndice] || jcmIndice : 'índice'} de{' '}
+                                {dataBR(c.termoInicial)} até {mesAno(jcmReferencia)}
+                                {c.termoEstimado && ' · termo estimado pela data da decisão'}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="text-amber-600 dark:text-amber-400">
+                              Sem índice de correção para este ramo — o valor fica pelo nominal.
+                            </div>
+                          )}
                           {c.decisaoUsada.link && (
                             /* Site do tribunal: não roda dentro do app — exceção legítima. */
                             <a
@@ -359,8 +403,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             )}
 
             <p className="pb-2 text-[11px] leading-snug text-muted-foreground">
-              Tudo nesta tela é leitura — conferir não altera nada. Os números repetem as regras da carteira:
-              valor é quanto o processo vale (última decisão por cliente), não o caixa do escritório.
+              Tudo nesta tela é leitura — conferir não altera nada. Os números repetem as regras da
+              carteira: valor é quanto o processo vale (última decisão de cada parte), não o caixa do
+              escritório. O corrigido aplica juros e correção do termo inicial de cada decisão até
+              {' '}{mesAno(jcmReferencia)} — a carteira continua somando o nominal.
             </p>
           </>
         )}
