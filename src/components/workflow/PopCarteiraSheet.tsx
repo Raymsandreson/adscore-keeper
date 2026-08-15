@@ -97,9 +97,21 @@ function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcess
                 onClick={() => acoes.onAbrirFicha(p.processId)}
                 title="Abrir a ficha do processo"
               >
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="font-mono">{p.cnj}</span>
-                  {p.titulo ? <span className="ml-1.5 text-muted-foreground">{p.titulo}</span> : null}
+                <span className="min-w-0 flex-1">
+                  {/* De quem é o processo vem primeiro: o título é o que a equipe
+                      digitou ("Processo", "PA M") e muitas vezes não identifica ninguém. */}
+                  <span className="block truncate font-medium">
+                    {p.leadNome || <span className="italic text-muted-foreground">sem lead vinculado</span>}
+                    {p.leadsNomes.length > 1 && (
+                      <span className="ml-1 font-normal text-amber-600 dark:text-amber-400">
+                        +{p.leadsNomes.length - 1}
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="font-mono">{p.cnj}</span>
+                    {p.titulo ? <span className="ml-1.5">{p.titulo}</span> : null}
+                  </span>
                 </span>
                 {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
                 {p.suspenso && <PauseCircle className="h-3 w-3 shrink-0 text-amber-500" aria-label="suspenso" />}
@@ -186,6 +198,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
       boardId,
       cnj: p.cnj,
       titulo: p.titulo,
+      leadNome: p.leadNome,
       valorNaCarteira: p.valor,
       foco,
     });

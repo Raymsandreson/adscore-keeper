@@ -48,10 +48,15 @@ const { dbMock } = vi.hoisted(() => {
       { chave: 'suspensao', rotulo: 'Suspensão', ordem: 27, atravessa_fases: true, estagio_financeiro_sugerido: null },
     ],
     lead_processes: [
-      { id: 'proc-1', title: 'Indenização', process_number: '0000491-34.2020.5.05.0101', workflow_id: 'board-1', created_at: '2024-01-01', deleted_at: null },
-      { id: 'proc-2', title: 'ACIDENTE DE TRABALHO', process_number: '0000491-34.2020.5.05.0101', workflow_id: 'board-1', created_at: '2024-02-01', deleted_at: null },
+      { id: 'proc-1', title: 'Indenização', process_number: '0000491-34.2020.5.05.0101', workflow_id: 'board-1', created_at: '2024-01-01', deleted_at: null, lead_id: 'lead-A' },
+      // Ficha irmã em OUTRO caso: apagar a errada perderia histórico.
+      { id: 'proc-2', title: 'ACIDENTE DE TRABALHO', process_number: '0000491-34.2020.5.05.0101', workflow_id: 'board-1', created_at: '2024-02-01', deleted_at: null, lead_id: 'lead-B' },
       // Apagado: a RPC ignora, a conferência também.
-      { id: 'proc-3', title: 'lixo', process_number: '0000491-34.2020.5.05.0101', workflow_id: 'board-1', created_at: '2024-03-01', deleted_at: '2024-04-01' },
+      { id: 'proc-3', title: 'lixo', process_number: '0000491-34.2020.5.05.0101', workflow_id: 'board-1', created_at: '2024-03-01', deleted_at: '2024-04-01', lead_id: 'lead-A' },
+    ],
+    leads: [
+      { id: 'lead-A', lead_name: 'ANTONIA COQUEIRO' },
+      { id: 'lead-B', lead_name: 'VALDEZIR RODRIGUES' },
     ],
   };
 
@@ -116,7 +121,20 @@ describe('useConferenciaProcesso', () => {
     // Duas linhas vivas; a apagada fica de fora.
     expect(result.current.duplicatas).toHaveLength(2);
     const dup = result.current.alertas.find(a => a.titulo.includes('cadastrado'));
-    expect(dup?.nivel).toBe('alto');
+    // Depois da dedup na RPC o total já está certo: é higiene, não erro de número.
+    expect(dup?.nivel).toBe('atencao');
+    // E o alerta avisa que as fichas estão em casos diferentes.
+    expect(dup?.detalhe).toContain('ANTONIA COQUEIRO');
+    expect(dup?.detalhe).toContain('VALDEZIR RODRIGUES');
+  });
+
+  it('diz de qual caso é cada ficha do CNJ', async () => {
+    const { result } = renderHook(() => useConferenciaProcesso(alvo));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.leadDoProcesso).toBe('ANTONIA COQUEIRO');
+    expect(result.current.duplicatas.map(d => d.leadNome).sort())
+      .toEqual(['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES']);
   });
 
   it('não conta parcela prevista como caixa e mantém o estágio da carteira', async () => {

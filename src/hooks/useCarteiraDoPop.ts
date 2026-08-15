@@ -57,6 +57,10 @@ export interface CarteiraPopLinha {
   cadastros_do_cnj: number | null;
   /** Todos os leads do CNJ — o custo soma por aqui, não por `lead_id`. */
   leads_do_cnj: string[] | null;
+  /** Nome do lead da ficha canônica — de quem é o processo. */
+  lead_nome: string | null;
+  /** Nomes de TODOS os leads do CNJ (ficha irmã pode ser de outro caso). */
+  leads_nomes: string[] | null;
 }
 
 /** Uma parte do processo com o valor dela — litisconsórcio tem um valor por pessoa. */
@@ -82,6 +86,10 @@ export interface ProcessoDoMarco {
   partes: ParteDoProcesso[];
   /** > 1 = o CNJ tem ficha repetida neste POP (a dedup já protegeu o total). */
   cadastros: number;
+  /** De quem é o processo: o lead (caso) da ficha canônica. */
+  leadNome: string | null;
+  /** Todos os leads do CNJ — com ficha repetida, pode ser mais de um caso. */
+  leadsNomes: string[];
 }
 
 export interface GrupoMarco {
@@ -169,6 +177,8 @@ export function useCarteiraDoPop(boardId: string | null) {
         suspenso: l.suspenso,
         partes: [],
         cadastros: Number(l.cadastros_do_cnj || 1),
+        leadNome: l.lead_nome ?? null,
+        leadsNomes: l.leads_nomes ?? [],
         _ordem: l.marco_ordem ?? -1,
         _chave: l.marco_chave || 'sem_marco',
         _rotulo: l.marco_rotulo || 'Sem marco detectado',

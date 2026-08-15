@@ -74,6 +74,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   const {
     marcos, marcoAtual, temAcordo, suspenso, clientes, pagamentos, duplicatas,
     totalConferido, totalPago, somaIngenua, alertas, loading, erro, recarregar,
+    leadDoProcesso,
   } = useConferenciaProcesso(alvo);
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
@@ -90,7 +91,14 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
     <Sheet open={!!alvo} onOpenChange={open => { if (!open) onClose(); }}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-xl">
         <SheetHeader className="space-y-1">
-          <SheetTitle className="text-base">Conferência do processo</SheetTitle>
+          <SheetTitle className="text-base">
+            {/* De quem é o processo no lugar de maior destaque — o CNJ não diz
+                nada para quem lê, o nome do caso diz. */}
+            {leadDoProcesso || alvo?.leadNome || 'Conferência do processo'}
+          </SheetTitle>
+          {(leadDoProcesso || alvo?.leadNome) && (
+            <p className="text-xs text-muted-foreground">Conferência do processo</p>
+          )}
           <p className="break-all font-mono text-xs text-muted-foreground">{formatCnj(onlyDigits(alvo?.cnj))}</p>
           {alvo?.titulo && <p className="text-xs text-muted-foreground">{alvo.titulo}</p>}
         </SheetHeader>
@@ -325,7 +333,14 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                 </p>
                 {duplicatas.map(d => (
                   <div key={d.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
-                    <span className="min-w-0 flex-1 truncate">{d.title || '(sem título)'}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        {d.leadNome || <span className="italic text-muted-foreground">sem lead vinculado</span>}
+                      </span>
+                      <span className="block truncate text-[11px] text-muted-foreground">
+                        {d.title || '(sem título)'}
+                      </span>
+                    </span>
                     {d.esta && <Badge variant="secondary" className="shrink-0 text-[9px]">este</Badge>}
                     {d.workflowId !== alvo?.boardId && (
                       <Badge variant="outline" className="shrink-0 text-[9px]">outro POP</Badge>

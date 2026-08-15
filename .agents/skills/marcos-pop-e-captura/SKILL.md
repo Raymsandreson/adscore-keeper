@@ -596,3 +596,20 @@ parcelas recebidas (R$ 596.000) em 14 CNJs, mas só **1** desses CNJs está no P
 trabalhista, e a parcela dele está com `valor_pago` nulo. Enquanto isso não for
 corrigido na origem, "realizado − custo" da carteira é sempre negativo pelo custo
 inteiro.
+
+### De quem é o processo (15/08/2026)
+
+Migration `20260815170000_pop_carteira_marcos_lead_nome.sql`: a RPC devolve
+`lead_nome` (o caso da ficha canônica) e `leads_nomes` (todos os leads do CNJ). Fonte é
+`leads.lead_name` do **próprio Externo** — o snapshot está vivo (updated_at do mesmo
+dia) com 19.973 de 19.974 leads nomeados, e 713 de 713 processos do POP com lead chegam
+a um nome; não precisa ir ao Cloud. Verificado depois de aplicar: 475 processos, 473
+com nome, carteira inalterada em R$ 20.292.233,25.
+
+Na tela o nome do caso vem em cima e o CNJ + título viram a segunda linha, menores — o
+`title` de `lead_processes` é o que a equipe digitou ("Processo", "PA M") e muitas vezes
+não identifica ninguém. CNJ com fichas em casos DIFERENTES ganha "+N" na linha, e o
+alerta da conferência nomeia os casos: apagar a ficha errada perde histórico.
+
+O alerta de ficha repetida baixou de **alto para atenção** depois da dedup — o total do
+POP já está certo, o cadastro duplicado virou higiene.

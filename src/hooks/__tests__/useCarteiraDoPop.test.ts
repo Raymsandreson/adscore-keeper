@@ -26,6 +26,7 @@ const { dbMock, authMock } = vi.hoisted(() => {
       tem_acordo: false, suspenso: false, estagio_financeiro: 'CONDENACAO',
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 100,
       cadastros_do_cnj: 2, leads_do_cnj: ['lead-A', 'lead-B'],
+      lead_nome: 'ANTONIA COQUEIRO', leads_nomes: ['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES'],
     },
     {
       process_id: 'p1', lead_id: 'lead-A', process_number: '0000491-34.2020.5.05.0101',
@@ -36,6 +37,7 @@ const { dbMock, authMock } = vi.hoisted(() => {
       tem_acordo: false, suspenso: false, estagio_financeiro: 'CONDENACAO',
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 100,
       cadastros_do_cnj: 2, leads_do_cnj: ['lead-A', 'lead-B'],
+      lead_nome: 'ANTONIA COQUEIRO', leads_nomes: ['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES'],
     },
     {
       process_id: 'p2', lead_id: 'lead-C', process_number: '0001240-82.2020.5.06.0211',
@@ -46,6 +48,7 @@ const { dbMock, authMock } = vi.hoisted(() => {
       tem_acordo: false, suspenso: false, estagio_financeiro: 'CONDENACAO',
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 50,
       cadastros_do_cnj: 1, leads_do_cnj: ['lead-C'],
+      lead_nome: 'JOSE DA SILVA', leads_nomes: ['JOSE DA SILVA'],
     },
   ];
 
@@ -105,6 +108,9 @@ describe('useCarteiraDoPop', () => {
 
     const proc = result.current.grupos[0].processos.find(p => p.processId === 'p1')!;
     expect(proc.cadastros).toBe(2);
+    // De quem é o processo, e o aviso de que a ficha irmã é de OUTRO caso.
+    expect(proc.leadNome).toBe('ANTONIA COQUEIRO');
+    expect(proc.leadsNomes).toHaveLength(2);
     expect(result.current.totais.cnjsComFichaRepetida).toBe(1);
     // A ficha repetida não aparece como processo separado — a RPC já deduplicou.
     expect(result.current.grupos[0].processos).toHaveLength(2);

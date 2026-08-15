@@ -112,6 +112,9 @@ export interface DuplicataProcesso {
   processNumber: string | null;
   workflowId: string | null;
   createdAt: string | null;
+  /** De qual caso é esta ficha — fichas irmãs podem ser de leads diferentes. */
+  leadId: string | null;
+  leadNome: string | null;
   /** É a linha que está aberta na conferência. */
   esta: boolean;
 }
@@ -128,6 +131,8 @@ export interface AlvoConferencia {
   boardId: string;
   cnj: string;
   titulo?: string | null;
+  /** Nome do caso que a carteira já tem em mão — evita cabeçalho vazio no load. */
+  leadNome?: string | null;
   /** Valor que a carteira está exibindo — a conferência compara com o recalculado. */
   valorNaCarteira?: number;
   /** Abriu clicando no valor: a tela já rola para a abertura por parte. */
@@ -187,7 +192,7 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
           .select('chave, rotulo, ordem, atravessa_fases, estagio_financeiro_sugerido')
           .eq('board_id', alvo.boardId) as unknown as Promise<Consulta>,
         externo.from('lead_processes')
-          .select('id, title, process_number, workflow_id, created_at, deleted_at')
+          .select('id, title, process_number, workflow_id, created_at, deleted_at, lead_id')
           .in('process_number', variantes) as unknown as Promise<Consulta>,
       ]);
 
@@ -241,15 +246,34 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
       setMarcos(lista.sort((a, b) => (b.ordem ?? -1) - (a.ordem ?? -1)));
 
       const digitosAlvo = onlyDigits(alvo.cnj);
-      setDuplicatas(((dup.data || []) as Record<string, unknown>[])
+      const fichas = ((dup.data || []) as Record<string, unknown>[])
         // Mesma cláusula da RPC: cadastro apagado não conta.
-        .filter(r => r.deleted_at == null && onlyDigits(r.process_number as string) === digitosAlvo)
+        .filter(r => r.deleted_at == null && onlyDigits(r.process_number as string) === digitosAlvo);
+
+      // De quem é cada ficha. Mesma fonte da carteira (snapshot vivo do Externo,
+      // 19.973 de 19.974 leads com nome em 15/08/2026) — nada de ir ao Cloud só
+      // por isso. Falhar aqui não derruba a conferência: fica sem o nome.
+      const leadIds = [...new Set(fichas.map(r => r.lead_id).filter(Boolean))] as string[];
+      const nomePorLead = new Map<string, string>();
+      if (leadIds.length) {
+        const { data: leads } = await (externo.from('leads')
+          .select('id, lead_name')
+          .in('id', leadIds) as unknown as Promise<Consulta>);
+        for (const l of (leads || [])) {
+          const nome = String(l.lead_name ?? '').trim();
+          if (nome) nomePorLead.set(String(l.id), nome);
+        }
+      }
+
+      setDuplicatas(fichas
         .map(r => ({
           id: String(r.id),
           title: (r.title as string) ?? null,
           processNumber: (r.process_number as string) ?? null,
           workflowId: r.workflow_id ? String(r.workflow_id) : null,
           createdAt: (r.created_at as string) ?? null,
+          leadId: r.lead_id ? String(r.lead_id) : null,
+          leadNome: r.lead_id ? nomePorLead.get(String(r.lead_id)) ?? null : null,
           esta: String(r.id) === alvo.processId,
         }))
         .sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || '')));
@@ -261,6 +285,12 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
   }, [alvo]);
 
   useEffect(() => { void carregar(); }, [carregar]);
+
+  /** De quem é ESTE processo — o lead (caso) da ficha aberta. */
+  const leadDoProcesso = useMemo(
+    () => duplicatas.find(d => d.esta)?.leadNome ?? null,
+    [duplicatas],
+  );
 
   const marcoAtual = useMemo(() => marcos.find(m => m.atual) || null, [marcos]);
   const temAcordo = useMemo(() => marcos.some(m => m.chave === 'acordo_homologado'), [marcos]);
@@ -324,12 +354,15 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
 
     const copias = duplicatas.length;
     if (copias > 1) {
+      const casos = [...new Set(duplicatas.map(d => d.leadNome).filter(Boolean))] as string[];
       out.push({
-        nivel: 'alto',
+        nivel: 'atencao',
         titulo: `Este CNJ está cadastrado ${copias} vezes`,
-        detalhe: `A carteira agrupa por cadastro, não por CNJ — o valor deste processo está entrando `
-          + `${copias} vezes no total do POP (${copias} × ${totalConferido.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}). `
-          + `Manter um cadastro só resolve o número.`,
+        detalhe: 'A carteira já conta este CNJ uma vez só (dedup de 15/08/2026), então o total do POP '
+          + 'está certo. O cadastro duplicado continua e vale limpar'
+          + (casos.length > 1
+            ? ` — atenção: as fichas estão em casos diferentes (${casos.join(', ')}), então apagar a errada perde histórico.`
+            : '.'),
       });
     }
 
@@ -427,7 +460,7 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
   }, [alvo, loading, duplicatas, marcos, marcoAtual, decisoes, valores, clientes, totalConferido, temAcordo, ordemSentenca]);
 
   return {
-    marcos, marcoAtual, temAcordo, suspenso, ordemSentenca,
+    marcos, marcoAtual, temAcordo, suspenso, ordemSentenca, leadDoProcesso,
     clientes, decisoes, valores, pagamentos, duplicatas,
     totalConferido, totalPago, somaIngenua,
     alertas, loading, erro, recarregar: carregar,
