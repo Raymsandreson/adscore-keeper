@@ -44,6 +44,11 @@ const brl = (v: number) =>
 const dias = (d: number | null) => (d == null ? '—' : d === 0 ? 'hoje' : `${d} d`);
 
 /** "2026-07-01" -> "jul/2026". A data limite da correção vai sempre junto do número. */
+const INDICE_CURTO: Record<string, string> = {
+  SELIC_SIMPLES_JT: 'SELIC',
+  TCM_ESTADUAL: 'TCM',
+};
+
 const mesAno = (iso: string) => {
   const m = iso.match(/^(\d{4})-(\d{2})/);
   if (!m) return iso;
@@ -266,6 +271,15 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                     </span>
                   </div>
                 )}
+                {/* Índices com cadências diferentes: a SELIC vem do Bacen todo dia,
+                    a TCM ainda é manual. Dizer só a mais nova enganaria. */}
+                {Object.keys(totais.referenciasPorIndice).length > 1 && (
+                  <div className="text-[11px] text-muted-foreground">
+                    {Object.entries(totais.referenciasPorIndice)
+                      .map(([i, r]) => `${INDICE_CURTO[i] || i} até ${mesAno(r)}`)
+                      .join(' · ')}
+                  </div>
+                )}
                 <div className="text-xs text-muted-foreground">
                   {totais.processos} processos · {totais.partes} partes · pago {brl(totais.pago)}
                 </div>
@@ -337,7 +351,8 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
               de um processo para ver quanto é de cada parte. O valor CORRIGIDO (em verde) aplica
               juros e correção do termo inicial de cada decisão até a data da tabela de índices —
-              SELIC simples nos trabalhistas, TCM nos estaduais; a carteira continua somando o
+              SELIC simples nos trabalhistas (buscada no Bacen todo dia), TCM nos estaduais (ainda
+              carregada à mão, por isso pode ficar para trás); a carteira continua somando o
               nominal. Índice de sucesso:
               entre os decididos com leitura de decisão (ou acordo), quantos saíram com valor
               fixado ou acordo homologado — decidido sem leitura é buraco de captura e fica fora

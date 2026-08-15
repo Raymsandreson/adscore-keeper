@@ -273,6 +273,7 @@ export function useCarteiraDoPop(boardId: string | null) {
     const porEstagio: Record<string, number> = {};
     let valor = 0, pago = 0, valorAtualizado = 0, partesSemCorrecao = 0;
     let corrigidoAte: string | null = null;
+    const referenciasPorIndice: Record<string, string> = {};
     for (const l of linhas) {
       if (!processos.has(l.process_id)) processos.set(l.process_id, l);
       const v = Number(l.valor_condenacao || 0);
@@ -281,9 +282,16 @@ export function useCarteiraDoPop(boardId: string | null) {
       valor += v;
       valorAtualizado += v * (corrigido ? coef : 1);
       if (!corrigido && v > 0) partesSemCorrecao += 1;
-      // A tabela de índices tem uma referência só; guardar a mais recente basta.
-      if (l.jcm_referencia && (!corrigidoAte || l.jcm_referencia > corrigidoAte)) {
-        corrigidoAte = l.jcm_referencia;
+      // Cada índice tem a SUA safra e cadências diferentes: a SELIC vem do
+      // Bacen todo dia, a TCM ainda é carregada à mão. Guardar a MAIOR data
+      // faria a tela prometer uma atualização que metade da carteira não teve,
+      // então `corrigidoAte` é a MENOR — e as duas ficam visíveis ao lado.
+      if (corrigido && l.jcm_referencia) {
+        if (!corrigidoAte || l.jcm_referencia < corrigidoAte) corrigidoAte = l.jcm_referencia;
+        if (l.jcm_indice) {
+          const atual = referenciasPorIndice[l.jcm_indice];
+          if (!atual || l.jcm_referencia > atual) referenciasPorIndice[l.jcm_indice] = l.jcm_referencia;
+        }
       }
       pago += Number(l.valor_pago || 0);
       porEstagio[l.estagio_financeiro] = (porEstagio[l.estagio_financeiro] || 0) + v;
@@ -331,8 +339,11 @@ export function useCarteiraDoPop(boardId: string | null) {
       valor,
       /** Carteira com juros e correção, até `corrigidoAte`. NÃO substitui `valor`. */
       valorAtualizado,
-      /** Data limite da tabela de índices — sem ela o número não serve pra negociar. */
+      /** Data limite da correção — a MENOR entre os índices, para não prometer
+       *  atualização que parte da carteira não teve. */
       corrigidoAte,
+      /** Safra vigente de cada índice: a tela detalha quando elas divergem. */
+      referenciasPorIndice,
       /** Partes com valor que ficaram sem índice: o atualizado está subestimado. */
       partesSemCorrecao,
       pago,

@@ -28,7 +28,7 @@ const { dbMock, authMock } = vi.hoisted(() => {
       cadastros_do_cnj: 2, leads_do_cnj: ['lead-A', 'lead-B'],
       lead_nome: 'ANTONIA COQUEIRO', leads_nomes: ['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES'],
       jcm_indice: 'SELIC_SIMPLES_JT', jcm_termo_inicial: '2020-01-15',
-      jcm_termo_estimado: false, jcm_coeficiente: 1.6161, jcm_referencia: '2026-07-01',
+      jcm_termo_estimado: false, jcm_coeficiente: 1.6161, jcm_referencia: '2026-08-01',
     },
     {
       process_id: 'p1', lead_id: 'lead-A', process_number: '0000491-34.2020.5.05.0101',
@@ -41,7 +41,7 @@ const { dbMock, authMock } = vi.hoisted(() => {
       cadastros_do_cnj: 2, leads_do_cnj: ['lead-A', 'lead-B'],
       lead_nome: 'ANTONIA COQUEIRO', leads_nomes: ['ANTONIA COQUEIRO', 'VALDEZIR RODRIGUES'],
       jcm_indice: 'SELIC_SIMPLES_JT', jcm_termo_inicial: '2020-01-15',
-      jcm_termo_estimado: false, jcm_coeficiente: 1.6161, jcm_referencia: '2026-07-01',
+      jcm_termo_estimado: false, jcm_coeficiente: 1.6161, jcm_referencia: '2026-08-01',
     },
     {
       process_id: 'p2', lead_id: 'lead-C', process_number: '0001240-82.2020.5.06.0211',
@@ -53,9 +53,9 @@ const { dbMock, authMock } = vi.hoisted(() => {
       decidido: true, sucesso: true, tem_leitura: true, custo_lead: 50,
       cadastros_do_cnj: 1, leads_do_cnj: ['lead-C'],
       lead_nome: 'JOSE DA SILVA', leads_nomes: ['JOSE DA SILVA'],
-      // Ramo sem índice carregado (Justiça Federal): não corrige, não inventa.
-      jcm_indice: null, jcm_termo_inicial: '2021-03-01',
-      jcm_termo_estimado: false, jcm_coeficiente: null, jcm_referencia: null,
+      // TCM ainda é manual: safra atrasada em relação à SELIC do Bacen.
+      jcm_indice: 'TCM_ESTADUAL', jcm_termo_inicial: '2021-03-01',
+      jcm_termo_estimado: false, jcm_coeficiente: 1.1, jcm_referencia: '2026-07-01',
     },
   ];
 
@@ -134,17 +134,24 @@ describe('useCarteiraDoPop', () => {
     expect(proc.partes[0].coeficiente).toBe(1.6161);
     expect(proc.partes[0].corrigido).toBe(true);
 
-    // Sem índice para o ramo: atualizado = nominal, e o total avisa.
-    const semIndice = result.current.grupos[0].processos.find(p => p.processId === 'p2')!;
-    expect(semIndice.valorAtualizado).toBe(semIndice.valor);
-    expect(semIndice.temParteSemCorrecao).toBe(true);
-    expect(result.current.totais.partesSemCorrecao).toBe(1);
-
     // O nominal NÃO muda: o corrigido anda ao lado.
     expect(result.current.totais.valor).toBeCloseTo(180405.38, 2);
     expect(result.current.totais.valorAtualizado)
-      .toBeCloseTo(150405.38 * 1.6161 + 30000, 2);
+      .toBeCloseTo(150405.38 * 1.6161 + 30000 * 1.1, 2);
+    expect(result.current.totais.partesSemCorrecao).toBe(0);
+  });
+
+  it('reporta a MENOR data de correção quando os índices estão em safras diferentes', async () => {
+    const { result } = renderHook(() => useCarteiraDoPop('board-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    // SELIC já em ago (vem do Bacen todo dia), TCM parada em jul (ainda manual).
+    // Dizer "até ago" prometeria atualização que as partes estaduais não tiveram.
     expect(result.current.totais.corrigidoAte).toBe('2026-07-01');
+    expect(result.current.totais.referenciasPorIndice).toEqual({
+      SELIC_SIMPLES_JT: '2026-08-01',
+      TCM_ESTADUAL: '2026-07-01',
+    });
   });
 
   it('conta o CAC do lead irmão, que a ficha canônica não carrega', async () => {

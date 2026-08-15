@@ -666,3 +666,47 @@ vivo; ela venceu, o número congela sem avisar ninguém além dessa data na tela
 | atualizado até jul/2026 | R$ 26.010.426,00 (**+28,2%**) |
 | cobertura | 223 de 223 partes com valor |
 | termo estimado | 2 partes |
+
+### SELIC vem do Bacen sozinha (15/08/2026)
+
+Migrations `20260815220000_pop_carteira_marcos_safra_indice.sql` e
+`20260815230000_jm_selic_sync_bacen.sql`.
+
+**Fonte:** Bacen SGS série **4390** (Selic acumulada no mês, % a.m.), endpoint público
+sem chave. A chamada sai do **Postgres via pg_net** — a rede do app não precisa alcançar
+o Bacen (e de fato o sandbox de dev não alcança: gateway responde 403).
+
+**A regra, e a prova de que é a certa:** `coeficiente(competência) = 1 + Σ SELIC(m)/100`,
+de `competência` até o mês **anterior** à `referencia` — a SELIC do mês de referência não
+incide (regra da tabela única do TST/CSJT; por isso competência = referência vale 1,0).
+Reconstruindo a série desde 1995 e comparando com as 379 linhas que já existiam:
+**379 idênticas, 0 divergentes, diferença máxima 0,0000.** Não é aproximação nova — é a
+conta que já produzia a tabela.
+
+**SAFRA, não sobrescrita.** `jm_indices` tem chave única `(indice, competencia,
+referencia)`. Cada rodada grava uma safra nova e preserva as anteriores.
+
+> ⚠️ **Bug latente fechado junto:** a RPC juntava em `jm_indices` sem filtrar
+> `referencia`. Com uma safra só funcionava; na primeira safra nova o join casaria duas
+> linhas por competência e **a carteira inteira duplicaria, em silêncio**. A CTE
+> `indice_vigente` (`distinct on (indice, competencia) order by referencia desc`) fecha
+> isso. Quem escrever query nova contra `jm_indices` tem que fazer o mesmo.
+
+**Pipeline em dois passos** (pg_net é assíncrono), com rastro em `jm_indices_sync`:
+`jm_selic_sync_disparar()` (cron `5 9 * * *`) → `jm_selic_sync_aplicar()` (cron
+`*/30 * * * *`, no-op sem pendente). Salvaguardas — a tabela **não é tocada** se: HTTP ≠
+200, JSON ilegível, ou menos de 300 competências (resposta truncada). Pendente com mais
+de 6h vira `perdida`, porque `net._http_response` expira nesse prazo e ficaria pendurado
+para sempre. Em qualquer falha a safra anterior continua valendo.
+
+**Ciclo testado de ponta a ponta em 15/08/2026:** safra 08/2026 gravada, 380
+competências, 4 segundos. Carteira depois: 475 processos (não duplicou), nominal intacto
+R$ 20.292.233,25, atualizado R$ 26.235.513,97 — exatamente +1,22% sobre os R$ 18,45 mi
+trabalhistas, que é a SELIC de julho entrando.
+
+**TCM_ESTADUAL continua manual** — o Bacen não publica correção monetária estadual, ela
+vem do TJ. Isso deixa os índices em cadências diferentes, e a tela passou a dizer a
+verdade sobre isso: `corrigidoAte` é a **MENOR** referência entre os índices (nunca a
+maior, que prometeria atualização que metade da carteira não teve), com a safra de cada
+um ao lado ("SELIC até ago/2026 · TCM até jul/2026"). Achar fonte automática para a TCM
+é a próxima dívida daqui.
