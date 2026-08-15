@@ -667,46 +667,60 @@ vivo; ela venceu, o número congela sem avisar ninguém além dessa data na tela
 | cobertura | 223 de 223 partes com valor |
 | termo estimado | 2 partes |
 
-### SELIC vem do Bacen sozinha (15/08/2026)
+### Índices vêm do Bacen sozinhos — e o tick que estava travado (15/08/2026)
 
-Migrations `20260815220000_pop_carteira_marcos_safra_indice.sql` e
-`20260815230000_jm_selic_sync_bacen.sql`.
+**Já existia** `jm_indices_tick()`, no cron `jm_indices_diario` (`30 7 * * *`): busca
+SELIC (SGS **4390**) e IPCA (SGS **7478**) no Bacen via **pg_net** e atualiza os DOIS
+índices — SELIC por **soma** simples, TCM por **produto** (1+IPCA). Validado contra as
+tabelas oficiais. **Procure por ele antes de escrever qualquer sync de índice.**
 
-**Fonte:** Bacen SGS série **4390** (Selic acumulada no mês, % a.m.), endpoint público
-sem chave. A chamada sai do **Postgres via pg_net** — a rede do app não precisa alcançar
-o Bacen (e de fato o sandbox de dev não alcança: gateway responde 403).
+> ⚠️ **Erro caro cometido em 15/08/2026:** construí um pipeline paralelo
+> (`jm_selic_sync_*`) sem procurar o que já existia. Além de duplicar trabalho, ele
+> **quebrou** o original — o tick começa com `if exists (referencia = mês corrente) then
+> return 'ja_atualizado'`, e a safra parcial que o paralelo criou (só SELIC) fez o tick
+> desistir de criar a TCM. Removido na migration `20260816000000`. A lição não é sobre
+> índice: é `grep`/`pg_get_functiondef` **antes** de construir, não depois.
 
-**A regra, e a prova de que é a certa:** `coeficiente(competência) = 1 + Σ SELIC(m)/100`,
-de `competência` até o mês **anterior** à `referencia` — a SELIC do mês de referência não
-incide (regra da tabela única do TST/CSJT; por isso competência = referência vale 1,0).
-Reconstruindo a série desde 1995 e comparando com as 379 linhas que já existiam:
-**379 idênticas, 0 divergentes, diferença máxima 0,0000.** Não é aproximação nova — é a
-conta que já produzia a tabela.
+**Por que a tabela estava parada em jul/2026 — deadlock por resposta expirada.** O tick
+disparava as buscas e processava num tick seguinte, com esta guarda de re-disparo:
+
+```sql
+and (x2.id is null or x2.status_code = 200)   -- ERRADO
+```
+
+`net._http_response` expira em ~6h. Depois disso `x2.id is null` fica verdadeiro para
+sempre, o `not exists` nunca libera, e a função nunca mais re-dispara. Travou em
+01/08/2026 e ficou mudo. Corrigido para:
+
+```sql
+and (x2.status_code = 200
+     or (x2.id is null and h2.created_at > now() - interval '2 hours'))
+```
+
+Pedido recente sem resposta ainda pode chegar; pedido velho sem resposta expirou e
+precisa de um novo. **Toda fila baseada em `net._http_response` precisa desta janela** —
+é a terceira vez que essa armadilha aparece nesta base.
+
+**Verificado de ponta a ponta:** tick devolveu `aguardando_bacen_202607` (re-disparou —
+antes ficava mudo), respostas 200 (SELIC jul 1,22% · IPCA jul 0,06%), tick seguinte
+`atualizado_para_2026-08`. Safra 08/2026 completa: SELIC 380 competências, TCM 743. O
+coeficiente de 2020-01 ficou **1,6283** = 1,6161 (safra de julho) + 1,22%, batendo com o
+cálculo independente feito reconstruindo a série inteira do Bacen desde 1995 — que
+também já havia reproduzido as 379 linhas antigas com **0 divergências**. Carteira: 475
+processos, nominal R$ 20.292.233,25 intacto, atualizado R$ 26.236.887,71, nenhuma parte
+sem correção, os dois índices em ago/2026.
+
+**A regra do coeficiente:** `1 + Σ SELIC(m)/100` da competência até o mês **anterior** à
+referência — a SELIC do mês de referência não incide (regra da tabela única do TST/CSJT;
+por isso competência = referência vale 1,0).
 
 **SAFRA, não sobrescrita.** `jm_indices` tem chave única `(indice, competencia,
-referencia)`. Cada rodada grava uma safra nova e preserva as anteriores.
+referencia)` e guarda o histórico. Quem consultar tem que eleger a mais recente —
+`jm_coef()` já fazia (`order by referencia desc limit 1`), a `pop_carteira_marcos` não
+fazia e duplicaria a carteira inteira a cada mês novo; corrigido com a CTE
+`indice_vigente` (`distinct on (indice, competencia) order by referencia desc`) na
+migration `20260815220000`. **Query nova contra `jm_indices` tem que fazer o mesmo.**
 
-> ⚠️ **Bug latente fechado junto:** a RPC juntava em `jm_indices` sem filtrar
-> `referencia`. Com uma safra só funcionava; na primeira safra nova o join casaria duas
-> linhas por competência e **a carteira inteira duplicaria, em silêncio**. A CTE
-> `indice_vigente` (`distinct on (indice, competencia) order by referencia desc`) fecha
-> isso. Quem escrever query nova contra `jm_indices` tem que fazer o mesmo.
-
-**Pipeline em dois passos** (pg_net é assíncrono), com rastro em `jm_indices_sync`:
-`jm_selic_sync_disparar()` (cron `5 9 * * *`) → `jm_selic_sync_aplicar()` (cron
-`*/30 * * * *`, no-op sem pendente). Salvaguardas — a tabela **não é tocada** se: HTTP ≠
-200, JSON ilegível, ou menos de 300 competências (resposta truncada). Pendente com mais
-de 6h vira `perdida`, porque `net._http_response` expira nesse prazo e ficaria pendurado
-para sempre. Em qualquer falha a safra anterior continua valendo.
-
-**Ciclo testado de ponta a ponta em 15/08/2026:** safra 08/2026 gravada, 380
-competências, 4 segundos. Carteira depois: 475 processos (não duplicou), nominal intacto
-R$ 20.292.233,25, atualizado R$ 26.235.513,97 — exatamente +1,22% sobre os R$ 18,45 mi
-trabalhistas, que é a SELIC de julho entrando.
-
-**TCM_ESTADUAL continua manual** — o Bacen não publica correção monetária estadual, ela
-vem do TJ. Isso deixa os índices em cadências diferentes, e a tela passou a dizer a
-verdade sobre isso: `corrigidoAte` é a **MENOR** referência entre os índices (nunca a
-maior, que prometeria atualização que metade da carteira não teve), com a safra de cada
-um ao lado ("SELIC até ago/2026 · TCM até jul/2026"). Achar fonte automática para a TCM
-é a próxima dívida daqui.
+**Na tela:** `corrigidoAte` é a **MENOR** referência entre os índices, nunca a maior —
+se um índice ficar para trás, prometer a data do mais novo mentiria para metade da
+carteira. A safra de cada um aparece ao lado quando divergem.
