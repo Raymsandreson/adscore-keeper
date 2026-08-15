@@ -553,9 +553,32 @@ inflados**. Exemplo: `0000491-34.2020.5.05.0101` aparece 4 vezes ("PA M", "Inden
 "Processo", "0000491-34.2020.5.05.0101 - ACIDENTE DE TRABALHO"), cada uma levando os
 R$ 376.013,45 dos 5 clientes.
 
-Correção pendente — dois caminhos, e o certo é o segundo:
-1. limpar os cadastros duplicados (resolve hoje, não impede amanhã);
-2. `pop_carteira_marcos` deduplicar por `cnj_num` antes de somar (resolve sempre).
+**RESOLVIDO em 15/08/2026** — migration
+`20260815120000_pop_carteira_marcos_dedup_cnj.sql`: a RPC passou a percorrer **CNJ**,
+não cadastro (`distinct on (cnj_num)`, ficha canônica eleita por ter marco → maior
+ordem → mais marcos → mais recente → id). Verificado em produção depois de aplicar:
+**494 → 475 processos, R$ 21.168.246,70 → R$ 20.292.233,25**.
+
+Antes de escolher o critério, dois riscos foram medidos:
+
+- **Perder marco?** Não. Nos 17 grupos duplicados dentro do mesmo POP, ZERO têm marco
+  divergente entre as fichas irmãs — a captura grava por CNJ, não por ficha.
+- **Perder custo? SIM, se feito ingenuamente.** Em 6 dos 17 grupos as fichas irmãs
+  pertencem a **leads diferentes** (litisconsorte que entrou como lead próprio).
+  Descartar a ficha irmã descartaria o CAC daquele lead e faria a rentabilidade mentir
+  para cima. Por isso as colunas novas `leads_do_cnj` (todos os leads do CNJ — é por
+  onde `useCarteiraDoPop` soma o custo agora) e `cadastros_do_cnj` (quantas fichas
+  existem, para a tela avisar). Confirmado: **298 → 298 leads**, nenhum perdido.
+
+Limpar os cadastros duplicados continua valendo, mas agora é higiene — não é mais o
+total que depende disso. A tela avisa quantos CNJs estão nessa situação.
+
+### O valor é por PARTE
+
+`jm_valores` tem uma linha por (decisão × pessoa) e a RPC devolve (CNJ × parte) — um
+litisconsórcio tem um valor por pessoa. Clicar no valor na carteira abre a conferência
+já rolada na abertura por parte (`AlvoConferencia.foco = 'valores'`); a linha mostra
+"N partes" e o cabeçalho da carteira, o total de partes do POP.
 
 ### Alertas que a tela levanta
 
@@ -565,3 +588,11 @@ de decisão (alto quando já passou da sentença deste POP) · valor sem `dec_id
 duas decisões da mesma data com valores diferentes (a "última decisão" vira sorteio) ·
 clientes em estágios financeiros diferentes (a carteira joga o valor inteiro num só) ·
 divergência entre o valor exibido e o recalculado · decisão com `flag_revisar`.
+
+### Achado aberto: `pago` da carteira dá R$ 0
+
+Medido em 15/08/2026 e **não** causado pela dedup — é dado. `jm_pagamentos` tem 441
+parcelas recebidas (R$ 596.000) em 14 CNJs, mas só **1** desses CNJs está no POP
+trabalhista, e a parcela dele está com `valor_pago` nulo. Enquanto isso não for
+corrigido na origem, "realizado − custo" da carteira é sempre negativo pelo custo
+inteiro.

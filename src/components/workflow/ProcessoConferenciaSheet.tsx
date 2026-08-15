@@ -12,6 +12,7 @@
 //      (somar todas infla ~2,6x; a tela mostra a soma ingênua para comparação).
 //   4. Pagamentos — o que virou caixa de verdade.
 // =============================================================================
+import { useEffect, useRef } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,9 +46,14 @@ const ICONE: Record<NivelAlerta, typeof AlertTriangle> = {
   info: Info,
 };
 
-function Secao({ titulo, children, acao }: { titulo: string; children: React.ReactNode; acao?: React.ReactNode }) {
+function Secao({ titulo, children, acao, refSecao }: {
+  titulo: string;
+  children: React.ReactNode;
+  acao?: React.ReactNode;
+  refSecao?: React.Ref<HTMLElement>;
+}) {
   return (
-    <section className="rounded-lg border">
+    <section ref={refSecao} className="rounded-lg border">
       <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{titulo}</h3>
         {acao}
@@ -72,6 +78,13 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
+
+  // Quem chegou clicando NO VALOR quer ver a abertura por parte, não os alertas.
+  const secaoValores = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (alvo?.foco !== 'valores' || loading || !secaoValores.current) return;
+    secaoValores.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [alvo?.foco, alvo?.processId, loading]);
 
   return (
     <Sheet open={!!alvo} onOpenChange={open => { if (!open) onClose(); }}>
@@ -190,9 +203,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
               )}
             </Secao>
 
-            {/* 3. Valor */}
+            {/* 3. Valor — a abertura por parte */}
             <Secao
-              titulo="Valor por cliente"
+              refSecao={secaoValores}
+              titulo={clientes.length === 1 ? 'Valor da parte' : `Valor por parte (${clientes.length})`}
               acao={<span className="text-xs font-semibold">{brl(totalConferido)}</span>}
             >
               {clientes.length === 0 ? (
@@ -201,6 +215,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                 </p>
               ) : (
                 <>
+                  <p className="text-[11px] leading-snug text-muted-foreground">
+                    O valor é de cada PARTE, não do processo. O que a carteira mostra é a soma
+                    das {clientes.length} {clientes.length === 1 ? 'parte' : 'partes'} abaixo.
+                  </p>
                   {clientes.map(c => (
                     <div key={c.cliente} className="rounded-md border p-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">

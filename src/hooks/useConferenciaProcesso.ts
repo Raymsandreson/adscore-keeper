@@ -130,6 +130,8 @@ export interface AlvoConferencia {
   titulo?: string | null;
   /** Valor que a carteira está exibindo — a conferência compara com o recalculado. */
   valorNaCarteira?: number;
+  /** Abriu clicando no valor: a tela já rola para a abertura por parte. */
+  foco?: 'valores';
 }
 
 const num = (v: unknown) => Number(v ?? 0) || 0;

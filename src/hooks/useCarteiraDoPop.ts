@@ -2,14 +2,24 @@
 // Carteira do POP — a régua de marcos com o dinheiro, o tempo e o custo em cima.
 //
 // Fonte: RPC `pop_carteira_marcos(board_id)` no Externo, uma linha por
-// (processo × cliente) — granularidade do vocabulário FIDC. Este hook agrega:
+// (CNJ × parte) — granularidade do vocabulário FIDC. Este hook agrega:
 //   - por MARCO: processos, valor por estágio financeiro, tempo médio no marco;
 //   - TOTAIS: valor por estágio e da carteira, média de dias no marco, idade
 //     média, índice de sucesso, custo (CAC dos leads) e rentabilidade.
 //
+// DEDUP POR CNJ (15/08/2026): a RPC passou a devolver UMA ficha canônica por
+// CNJ. Antes ela percorria cadastros, e CNJ cadastrado duas vezes tinha o valor
+// somado duas vezes — R$ 876.013,45 inflados no POP trabalhista. Junto vieram
+// `cadastros_do_cnj` (quantas fichas existem, para a tela avisar) e
+// `leads_do_cnj` (TODOS os leads do CNJ).
+//
 // CUSTO: o snapshot de leads do Externo está com cac zerado (14/08/2026), então
 // o hook busca o valor vivo no CLOUD (authClient, casa nativa dos leads) e usa
 // o do Externo como fallback. Falha no Cloud não derruba a carteira.
+// O custo percorre `leads_do_cnj`, não `lead_id`: em 6 dos 17 grupos duplicados
+// as fichas irmãs pertencem a leads DIFERENTES (litisconsorte que entrou como
+// lead próprio). Usar só o lead da ficha canônica perderia o CAC desses 6 e
+// faria a rentabilidade mentir para cima.
 //
 // AVISO QUE A TELA REPETE: valor é "quanto o processo vale" (última decisão por
 // cliente), não caixa do escritório — cota do cliente e honorário ainda não são
@@ -43,6 +53,18 @@ export interface CarteiraPopLinha {
   /** Existe leitura de decisão na jurimetria (jm_decisoes) para este CNJ. */
   tem_leitura: boolean;
   custo_lead: number | null;
+  /** Quantas fichas de `lead_processes` existem para este CNJ neste POP. */
+  cadastros_do_cnj: number | null;
+  /** Todos os leads do CNJ — o custo soma por aqui, não por `lead_id`. */
+  leads_do_cnj: string[] | null;
+}
+
+/** Uma parte do processo com o valor dela — litisconsórcio tem um valor por pessoa. */
+export interface ParteDoProcesso {
+  cliente: string;
+  valor: number;
+  pago: number;
+  estagio: string;
 }
 
 export interface ProcessoDoMarco {
@@ -56,6 +78,10 @@ export interface ProcessoDoMarco {
   estagio: string;
   temAcordo: boolean;
   suspenso: boolean;
+  /** O valor do processo é a SOMA das partes — aqui está a abertura. */
+  partes: ParteDoProcesso[];
+  /** > 1 = o CNJ tem ficha repetida neste POP (a dedup já protegeu o total). */
+  cadastros: number;
 }
 
 export interface GrupoMarco {
@@ -96,7 +122,10 @@ export function useCarteiraDoPop(boardId: string | null) {
       setLinhas(rows);
 
       // CAC vivo no Cloud, em lotes — o snapshot do Externo é o fallback.
-      const leadIds = [...new Set(rows.map(r => r.lead_id).filter(Boolean))] as string[];
+      // Todos os leads do CNJ, não só o da ficha canônica (ver cabeçalho).
+      const leadIds = [...new Set(
+        rows.flatMap(r => (r.leads_do_cnj?.length ? r.leads_do_cnj : [r.lead_id])).filter(Boolean),
+      )] as string[];
       const mapa: Record<string, number> = {};
       for (let i = 0; i < leadIds.length; i += 200) {
         const chunk = leadIds.slice(i, i + 200);
@@ -124,7 +153,7 @@ export function useCarteiraDoPop(boardId: string | null) {
   useEffect(() => { void carregar(); }, [carregar]);
 
   const grupos = useMemo<GrupoMarco[]>(() => {
-    // Primeiro consolida POR PROCESSO (linhas são processo × cliente).
+    // Primeiro consolida POR PROCESSO (linhas são CNJ × parte).
     const porProcesso = new Map<string, ProcessoDoMarco & { _ordem: number; _chave: string; _rotulo: string }>();
     for (const l of linhas) {
       const p = porProcesso.get(l.process_id) || {
@@ -138,15 +167,29 @@ export function useCarteiraDoPop(boardId: string | null) {
         estagio: l.estagio_financeiro,
         temAcordo: l.tem_acordo,
         suspenso: l.suspenso,
+        partes: [],
+        cadastros: Number(l.cadastros_do_cnj || 1),
         _ordem: l.marco_ordem ?? -1,
         _chave: l.marco_chave || 'sem_marco',
         _rotulo: l.marco_rotulo || 'Sem marco detectado',
       };
-      if (l.cliente) p.clientes += 1;
-      p.valor += Number(l.valor_condenacao || 0);
-      p.pago += Number(l.valor_pago || 0);
+      const valorDaParte = Number(l.valor_condenacao || 0);
+      const pagoDaParte = Number(l.valor_pago || 0);
+      if (l.cliente) {
+        p.clientes += 1;
+        // Guarda a abertura: clicar no valor mostra quanto é de cada parte.
+        p.partes.push({
+          cliente: l.cliente,
+          valor: valorDaParte,
+          pago: pagoDaParte,
+          estagio: l.estagio_financeiro,
+        });
+      }
+      p.valor += valorDaParte;
+      p.pago += pagoDaParte;
       porProcesso.set(l.process_id, p);
     }
+    for (const p of porProcesso.values()) p.partes.sort((a, b) => b.valor - a.valor);
 
     const mapa = new Map<string, GrupoMarco & { _dias: number[] }>();
     for (const p of porProcesso.values()) {
@@ -195,19 +238,32 @@ export function useCarteiraDoPop(boardId: string | null) {
     const sucessos = avaliaveis.filter(p => p.sucesso);
 
     // Custo por LEAD distinto (um lead com 2 processos custa uma vez só).
+    // Percorre TODOS os leads do CNJ: ficha irmã pode ser de outro lead, e o
+    // CAC dele continua sendo custo real da carteira.
     const custoPorLead = new Map<string, number>();
+    const todosOsLeads = new Set<string>();
     for (const p of procs) {
-      if (!p.lead_id) continue;
-      const v = custoCloud[p.lead_id] ?? Number(p.custo_lead || 0);
-      if (v > 0) custoPorLead.set(p.lead_id, v);
+      const ids = p.leads_do_cnj?.length ? p.leads_do_cnj : (p.lead_id ? [p.lead_id] : []);
+      for (const id of ids) {
+        todosOsLeads.add(id);
+        // O snapshot do Externo só traz o cac da ficha canônica; para os irmãos
+        // o Cloud é a única fonte.
+        const v = custoCloud[id] ?? (id === p.lead_id ? Number(p.custo_lead || 0) : 0);
+        if (v > 0) custoPorLead.set(id, v);
+      }
     }
     const custo = [...custoPorLead.values()].reduce((s, v) => s + v, 0);
     const leadsComCusto = custoPorLead.size;
-    const leadsTotal = new Set(procs.map(p => p.lead_id).filter(Boolean)).size;
+    const leadsTotal = todosOsLeads.size;
 
     return {
       processos: procs.length,
       semMarco: procs.filter(p => !p.marco_chave).length,
+      /** CNJs com mais de uma ficha — a dedup já protegeu o total, mas o cadastro
+       *  duplicado continua lá e vale limpar. */
+      cnjsComFichaRepetida: procs.filter(p => Number(p.cadastros_do_cnj || 1) > 1).length,
+      /** Partes (processo × pessoa) — o valor é por parte, não por processo. */
+      partes: linhas.filter(l => l.cliente).length,
       valor,
       pago,
       porEstagio,

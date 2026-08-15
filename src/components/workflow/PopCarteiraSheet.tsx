@@ -20,7 +20,7 @@ import { Suspense, lazy, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, ChevronRight, Handshake, Loader2, PauseCircle, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Handshake, Loader2, PauseCircle, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco, type ProcessoDoMarco } from '@/hooks/useCarteiraDoPop';
@@ -62,7 +62,7 @@ function EstagioChips({ porEstagio, compact }: { porEstagio: Record<string, numb
 
 interface AcoesProcesso {
   onAbrirFicha: (processId: string) => void;
-  onConferir: (p: ProcessoDoMarco) => void;
+  onConferir: (p: ProcessoDoMarco, foco?: 'valores') => void;
   abrindoId: string | null;
 }
 
@@ -103,11 +103,36 @@ function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcess
                 </span>
                 {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
                 {p.suspenso && <PauseCircle className="h-3 w-3 shrink-0 text-amber-500" aria-label="suspenso" />}
-                {p.clientes > 1 && <span className="shrink-0 text-muted-foreground">{p.clientes} clientes</span>}
-                {p.valor > 0 && <span className="shrink-0 font-medium">{brl(p.valor)}</span>}
-                <span className="w-14 shrink-0 text-right text-muted-foreground" title="tempo neste marco">
-                  {dias(p.diasNoMarco)}
-                </span>
+                {p.cadastros > 1 && (
+                  <Copy
+                    className="h-3 w-3 shrink-0 text-amber-500"
+                    aria-label={`CNJ com ${p.cadastros} cadastros`}
+                  />
+                )}
+              </button>
+
+              {/* O valor é a SOMA DAS PARTES: clicar abre a abertura por parte. */}
+              <button
+                type="button"
+                className="flex shrink-0 items-center gap-2 rounded px-1 py-1 text-right hover:bg-muted"
+                onClick={() => acoes.onConferir(p, 'valores')}
+                title={p.partes.length
+                  ? `Ver o valor de cada parte (${p.partes.length})`
+                  : 'Conferir o valor'}
+              >
+                {p.clientes > 1 && (
+                  <span className="text-muted-foreground">{p.clientes} partes</span>
+                )}
+                {p.valor > 0 && <span className="font-medium">{brl(p.valor)}</span>}
+              </button>
+
+              <button
+                type="button"
+                className="w-14 shrink-0 rounded px-1 py-1 text-right text-muted-foreground hover:bg-muted"
+                onClick={() => acoes.onAbrirFicha(p.processId)}
+                title="tempo neste marco"
+              >
+                {dias(p.diasNoMarco)}
               </button>
               <button
                 type="button"
@@ -154,7 +179,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
     }
   };
 
-  const conferir = (p: ProcessoDoMarco) => {
+  const conferir = (p: ProcessoDoMarco, foco?: 'valores') => {
     if (!boardId) return;
     setConferindo({
       processId: p.processId,
@@ -162,6 +187,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
       cnj: p.cnj,
       titulo: p.titulo,
       valorNaCarteira: p.valor,
+      foco,
     });
   };
 
@@ -193,7 +219,18 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Carteira</div>
                 <div className="text-lg font-semibold">{brl(totais.valor)}</div>
-                <div className="text-xs text-muted-foreground">{totais.processos} processos · pago {brl(totais.pago)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {totais.processos} processos · {totais.partes} partes · pago {brl(totais.pago)}
+                </div>
+                {totais.cnjsComFichaRepetida > 0 && (
+                  <div className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                    <Copy className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>
+                      {totais.cnjsComFichaRepetida} CNJ(s) com ficha repetida. O total acima já conta
+                      cada um uma vez só — mas vale limpar o cadastro duplicado.
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tempo médio</div>
@@ -243,8 +280,9 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
             </div>
 
             <p className="text-[11px] leading-snug text-muted-foreground">
-              Valores = quanto o processo vale (última decisão de cada cliente), não o caixa do
-              escritório — cota do cliente e honorário ainda não são separados. Índice de sucesso:
+              Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa
+              do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
+              de um processo para ver quanto é de cada parte. Índice de sucesso:
               entre os decididos com leitura de decisão (ou acordo), quantos saíram com valor
               fixado ou acordo homologado — decidido sem leitura é buraco de captura e fica fora
               da conta.
