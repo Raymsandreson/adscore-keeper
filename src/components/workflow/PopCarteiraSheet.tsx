@@ -10,14 +10,26 @@
 // devolve exatamente onde estava. Regra de vocabulário: o valor exibido é o do
 // PROCESSO (última decisão por cliente), não o caixa do escritório — o aviso
 // fica visível na tela, não em tooltip.
+//
+// Clicar na linha abre a FICHA do processo (ProcessDetailSheet); o botão de
+// escudo abre a CONFERÊNCIA — de onde saiu aquele valor e aquele marco. Os dois
+// sheets são IRMÃOS deste, nunca filhos: dois Dialogs do Radix aninhados brigam
+// por foco (mesma solução do TeamMarcoProcessosSheet).
 // =============================================================================
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, ChevronRight, Handshake, PauseCircle } from 'lucide-react';
-import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco } from '@/hooks/useCarteiraDoPop';
+import { ChevronDown, ChevronRight, Handshake, Loader2, PauseCircle, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
+import { db, ensureExternalSession } from '@/integrations/supabase';
+import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco, type ProcessoDoMarco } from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
+import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
+import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
+
+// A ficha do processo é pesada: entra sob demanda, como no TeamMarcoProcessosSheet.
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface Props {
   boardId: string | null;
@@ -48,7 +60,13 @@ function EstagioChips({ porEstagio, compact }: { porEstagio: Record<string, numb
   );
 }
 
-function GrupoDoMarco({ grupo }: { grupo: GrupoMarco }) {
+interface AcoesProcesso {
+  onAbrirFicha: (processId: string) => void;
+  onConferir: (p: ProcessoDoMarco) => void;
+  abrindoId: string | null;
+}
+
+function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcesso }) {
   const [aberto, setAberto] = useState(false);
   return (
     <div className="rounded-lg border">
@@ -71,18 +89,37 @@ function GrupoDoMarco({ grupo }: { grupo: GrupoMarco }) {
         <div className="space-y-1 border-t p-2">
           <EstagioChips porEstagio={grupo.porEstagio} compact />
           {grupo.processos.map(p => (
-            <div key={p.processId} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
-              <span className="min-w-0 flex-1 truncate">
-                <span className="font-mono">{p.cnj}</span>
-                {p.titulo ? <span className="ml-1.5 text-muted-foreground">{p.titulo}</span> : null}
-              </span>
-              {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
-              {p.suspenso && <PauseCircle className="h-3 w-3 shrink-0 text-amber-500" aria-label="suspenso" />}
-              {p.clientes > 1 && <span className="shrink-0 text-muted-foreground">{p.clientes} clientes</span>}
-              {p.valor > 0 && <span className="shrink-0 font-medium">{brl(p.valor)}</span>}
-              <span className="w-14 shrink-0 text-right text-muted-foreground" title="tempo neste marco">
-                {dias(p.diasNoMarco)}
-              </span>
+            <div key={p.processId} className="flex items-center gap-1 rounded pr-1 text-xs hover:bg-muted/40">
+              {/* Clique na linha = ficha do processo, em aba lateral por cima desta. */}
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left"
+                onClick={() => acoes.onAbrirFicha(p.processId)}
+                title="Abrir a ficha do processo"
+              >
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="font-mono">{p.cnj}</span>
+                  {p.titulo ? <span className="ml-1.5 text-muted-foreground">{p.titulo}</span> : null}
+                </span>
+                {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
+                {p.suspenso && <PauseCircle className="h-3 w-3 shrink-0 text-amber-500" aria-label="suspenso" />}
+                {p.clientes > 1 && <span className="shrink-0 text-muted-foreground">{p.clientes} clientes</span>}
+                {p.valor > 0 && <span className="shrink-0 font-medium">{brl(p.valor)}</span>}
+                <span className="w-14 shrink-0 text-right text-muted-foreground" title="tempo neste marco">
+                  {dias(p.diasNoMarco)}
+                </span>
+              </button>
+              <button
+                type="button"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => acoes.onConferir(p)}
+                title="Conferir de onde saiu o valor e o marco"
+                aria-label={`Conferir ${p.cnj}`}
+              >
+                {acoes.abrindoId === p.processId
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <ShieldCheck className="h-3.5 w-3.5" />}
+              </button>
             </div>
           ))}
         </div>
@@ -93,8 +130,45 @@ function GrupoDoMarco({ grupo }: { grupo: GrupoMarco }) {
 
 export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
   const { grupos, totais, loading, erro } = useCarteiraDoPop(open ? boardId : null);
+  /** Linha inteira de lead_processes — o ProcessDetailSheet espera o registro. */
+  const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
+  const [abrindoId, setAbrindoId] = useState<string | null>(null);
+  const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+
+  const abrirFicha = async (processId: string) => {
+    setAbrindoId(processId);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await db
+        .from('lead_processes')
+        .select('*')
+        .eq('id', processId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Processo não encontrado'); return; }
+      setFichaAberta(data as Record<string, unknown>);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
+    } finally {
+      setAbrindoId(null);
+    }
+  };
+
+  const conferir = (p: ProcessoDoMarco) => {
+    if (!boardId) return;
+    setConferindo({
+      processId: p.processId,
+      boardId,
+      cnj: p.cnj,
+      titulo: p.titulo,
+      valorNaCarteira: p.valor,
+    });
+  };
+
+  const acoes: AcoesProcesso = { onAbrirFicha: abrirFicha, onConferir: conferir, abrindoId };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
         <SheetHeader>
@@ -178,11 +252,30 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
 
             {/* Por marco */}
             <div className="space-y-1.5">
-              {grupos.map(g => <GrupoDoMarco key={g.chave} grupo={g} />)}
+              {grupos.map(g => <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} />)}
             </div>
           </>
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Conferência e ficha: irmãs do sheet da carteira, não filhas. */}
+    <ProcessoConferenciaSheet
+      alvo={conferindo}
+      onClose={() => setConferindo(null)}
+      onAbrirFicha={id => void abrirFicha(id)}
+    />
+
+    <Suspense fallback={null}>
+      {fichaAberta && (
+        <ProcessDetailSheet
+          open={!!fichaAberta}
+          onOpenChange={aberto => { if (!aberto) setFichaAberta(null); }}
+          process={fichaAberta}
+          mode="sheet"
+        />
+      )}
+    </Suspense>
+    </>
   );
 }

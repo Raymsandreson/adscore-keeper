@@ -526,3 +526,42 @@ para isso e está vazio.
 - [ ] Código TPU: 237/238/239 é provimento em 2º grau. 219/220/221 é procedência, **só G1**.
 - [ ] Audiência só conta com complemento `realizada` — designada não é marco (840
       designadas vs 526 realizadas; contar designação dava mediana de 7 dias).
+
+---
+
+## Conferir o número antes de acreditar nele (15/08/2026)
+
+Na Carteira do POP, clicar na linha do processo abre a **ficha** (`ProcessDetailSheet`,
+aba lateral por cima); o botão de escudo abre a **conferência**
+(`ProcessoConferenciaSheet` + `useConferenciaProcesso`), que mostra a matéria prima do
+número: qual decisão virou o valor e quais foram descartadas, qual movimentação detectou
+o marco atual (com fonte e prova documental), pagamentos recebidos vs. previstos, e os
+outros cadastros do mesmo CNJ.
+
+Tudo é SELECT direto no Externo — `jm_decisoes`, `jm_valores`, `jm_pagamentos`,
+`process_pop_marcos`, `pop_marcos`, `lead_processes` já têm policy de SELECT para
+`authenticated`. Nenhuma RPC nova, nenhuma escrita. O hook **replica** as regras da
+`pop_carteira_marcos` de propósito: se a conferência divergir da carteira, a tela acusa.
+
+### O buraco que a conferência achou de cara
+
+**A carteira agrupa por cadastro, não por CNJ.** O mesmo CNJ com duas linhas em
+`lead_processes` entra duas vezes no total do POP. Medido em 15/08/2026 no POP
+trabalhista (`0bcd8be6-3aa5-4ab0-8091-9987bdc47e15`): **494 cadastros para 475 CNJs
+distintos → R$ 21.168.246,70 exibidos contra R$ 20.292.233,25 reais, R$ 876.013,45
+inflados**. Exemplo: `0000491-34.2020.5.05.0101` aparece 4 vezes ("PA M", "Indenização",
+"Processo", "0000491-34.2020.5.05.0101 - ACIDENTE DE TRABALHO"), cada uma levando os
+R$ 376.013,45 dos 5 clientes.
+
+Correção pendente — dois caminhos, e o certo é o segundo:
+1. limpar os cadastros duplicados (resolve hoje, não impede amanhã);
+2. `pop_carteira_marcos` deduplicar por `cnj_num` antes de somar (resolve sempre).
+
+### Alertas que a tela levanta
+
+CNJ cadastrado N vezes · sem marco de fase detectado · marco atual sem data · marco
+gravado que não existe mais no POP (o inner join com `pop_marcos` derruba) · sem leitura
+de decisão (alto quando já passou da sentença deste POP) · valor sem `dec_id` válido ·
+duas decisões da mesma data com valores diferentes (a "última decisão" vira sorteio) ·
+clientes em estágios financeiros diferentes (a carteira joga o valor inteiro num só) ·
+divergência entre o valor exibido e o recalculado · decisão com `flag_revisar`.
