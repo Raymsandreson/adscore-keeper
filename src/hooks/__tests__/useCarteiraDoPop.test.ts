@@ -203,7 +203,7 @@ describe('useCarteiraDoPop', () => {
   it('recorta a carteira pela busca — totais, marcos e linhas do mesmo recorte', async () => {
     // "erere" só existe em p1 (cidade de lead_processes). O dinheiro do topo
     // tem que virar o de p1, senão a tela mostra total que não é o da lista.
-    const { result } = renderHook(() => useCarteiraDoPop('board-1', 'erere'));
+    const { result } = renderHook(() => useCarteiraDoPop('board-1', { busca: 'erere' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
     await waitFor(() => expect(result.current.totais.processos).toBe(1));
 
@@ -217,13 +217,33 @@ describe('useCarteiraDoPop', () => {
   });
 
   it('busca sem resultado zera os totais em vez de mostrar a carteira inteira', async () => {
-    const { result } = renderHook(() => useCarteiraDoPop('board-1', 'nao existe esse termo'));
+    const { result } = renderHook(() => useCarteiraDoPop('board-1', { busca: 'nao existe esse termo' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
     expect(result.current.grupos).toHaveLength(0);
     expect(result.current.totais.processos).toBe(0);
     expect(result.current.totais.valor).toBe(0);
     expect(result.current.totaisCarteira.processos).toBe(2);
+  });
+
+  it('filtra por janela de protocolo e combina com a busca', async () => {
+    // p1 protocolado em 02/05/2020, p2 em 01/06/2020.
+    const so_p1 = renderHook(() =>
+      useCarteiraDoPop('board-1', { protocoloDe: '2020-01-01', protocoloAte: '2020-05-31' }));
+    await waitFor(() => expect(so_p1.result.current.loading).toBe(false));
+    await waitFor(() => expect(so_p1.result.current.totais.processos).toBe(1));
+    expect(so_p1.result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p1']);
+    expect(so_p1.result.current.totais.valor).toBeCloseTo(150405.38, 2);
+
+    // Janela que pega os dois, mas a busca ainda recorta para p2.
+    const combinado = renderHook(() =>
+      useCarteiraDoPop('board-1', { busca: 'jose', protocoloDe: '2020-01-01' }));
+    await waitFor(() => expect(combinado.result.current.loading).toBe(false));
+    await waitFor(() => expect(combinado.result.current.totais.processos).toBe(1));
+    expect(combinado.result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p2']);
+
+    // Os anos ofertados no "por ano" saem dos processos, não de lista fixa.
+    expect(so_p1.result.current.anosDeProtocolo).toEqual([2020]);
   });
 
   it('conta o CAC do lead irmão, que a ficha canônica não carrega', async () => {

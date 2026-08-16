@@ -134,6 +134,8 @@ export interface ProcessoDoMarco {
   valorAtualizado: number;
   /** Alguma parte ficou sem índice — o "atualizado" está subestimado. */
   temParteSemCorrecao: boolean;
+  /** Data do protocolo (ajuizamento/distribuição), ISO. Nem todo processo tem. */
+  ajuizamentoEm: string | null;
   /** Cidade/UF/tribunal do processo. Quase sempre vazio (ver LocalDoProcesso). */
   local: LocalDoProcesso;
   /** Tudo que a busca da tela varre, já normalizado — montado uma vez aqui para
@@ -159,12 +161,21 @@ export const ESTAGIO_ORDEM = [
   'PROJETADO', 'CONDENACAO', 'A_RECEBER', 'VENCIDO', 'EM_EXECUCAO', 'DEPOSITADO_EM_JUIZO', 'PAGO', 'INDEFERIDO',
 ];
 
-/**
- * @param busca Filtra a carteira por caso/lead, parte, título, CNJ (com ou sem
- *   pontuação) e cidade/UF/tribunal/órgão. Cada termo separado por espaço tem
- *   que bater. Vazio = carteira inteira.
- */
-export function useCarteiraDoPop(boardId: string | null, busca = '') {
+export interface FiltroCarteira {
+  /** Caso/lead, parte, título, CNJ (com ou sem pontuação), cidade/UF/tribunal.
+   *  Cada termo separado por espaço tem que bater. */
+  busca?: string;
+  /** Protocolo (ajuizamento) a partir desta data, ISO. */
+  protocoloDe?: string | null;
+  /** Protocolo até esta data, ISO (inclusive). */
+  protocoloAte?: string | null;
+}
+
+/** Filtra a carteira. Filtro vazio = carteira inteira. */
+export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira = {}) {
+  // Desestruturado para as deps dos memos serem PRIMITIVAS: o objeto de filtro
+  // é recriado a cada render da tela e invalidaria tudo a cada tecla.
+  const { busca = '', protocoloDe = null, protocoloAte = null } = filtro;
   const [linhas, setLinhas] = useState<CarteiraPopLinha[]>([]);
   const [custoCloud, setCustoCloud] = useState<Record<string, number>>({});
   const [locais, setLocais] = useState<Record<string, LocalDoProcesso>>({});
@@ -265,6 +276,7 @@ export function useCarteiraDoPop(boardId: string | null, busca = '') {
         leadsNomes: l.leads_nomes ?? [],
         valorAtualizado: 0,
         temParteSemCorrecao: false,
+        ajuizamentoEm: l.ajuizamento_em ?? null,
         local: locais[l.process_id] || { uf: null, cidade: null, tribunal: null, orgao: null },
         busca: '',
         _ordem: l.marco_ordem ?? -1,
@@ -355,11 +367,25 @@ export function useCarteiraDoPop(boardId: string | null, busca = '') {
     [busca],
   );
 
+  /** Protocolo dentro da janela. Sem data de protocolo, o processo fica de fora
+   *  quando há janela — a tela avisa quantos são, para o número não sumir calado. */
+  const noPeriodo = useCallback((p: ProcessoDoMarco) => {
+    if (!protocoloDe && !protocoloAte) return true;
+    if (!p.ajuizamentoEm) return false;
+    if (protocoloDe && p.ajuizamentoEm < protocoloDe) return false;
+    if (protocoloAte && p.ajuizamentoEm > protocoloAte) return false;
+    return true;
+  }, [protocoloDe, protocoloAte]);
+
+  const filtrando = termos.length > 0 || !!protocoloDe || !!protocoloAte;
+
   const grupos = useMemo<GrupoMarco[]>(() => {
-    if (!termos.length) return gruposTodos;
+    if (!filtrando) return gruposTodos;
     return gruposTodos
       .map(g => {
-        const processos = g.processos.filter(p => termos.every(t => p.busca.includes(t)));
+        const processos = g.processos.filter(
+          p => termos.every(t => p.busca.includes(t)) && noPeriodo(p),
+        );
         const porEstagio: Record<string, number> = {};
         for (const p of processos) porEstagio[p.estagio] = (porEstagio[p.estagio] || 0) + p.valor;
         const dias = processos.map(p => p.diasNoMarco).filter((d): d is number => d != null);
@@ -374,15 +400,15 @@ export function useCarteiraDoPop(boardId: string | null, busca = '') {
         };
       })
       .filter(g => g.processos.length > 0);
-  }, [gruposTodos, termos]);
+  }, [gruposTodos, termos, noPeriodo, filtrando]);
 
   /** As linhas (CNJ × parte) dos processos que sobraram — é delas que sai o
    *  dinheiro do topo, para o total bater com a lista. */
   const linhasVisiveis = useMemo(() => {
-    if (!termos.length) return linhas;
+    if (!filtrando) return linhas;
     const ids = new Set(grupos.flatMap(g => g.processos.map(p => p.processId)));
     return linhas.filter(l => ids.has(l.process_id));
-  }, [linhas, grupos, termos]);
+  }, [linhas, grupos, filtrando]);
 
   const totais = useMemo(
     () => calcularTotais(linhasVisiveis, custoCloud),
@@ -395,7 +421,22 @@ export function useCarteiraDoPop(boardId: string | null, busca = '') {
     [linhas, custoCloud],
   );
 
-  return { linhas, grupos, totais, totaisCarteira, loading, erro, recarregar: carregar };
+  /** Anos com processo protocolado, do mais novo para o mais velho — é o que a
+   *  tela oferece no "Por ano", em vez de uma lista fixa que envelhece. */
+  const anosDeProtocolo = useMemo(() => {
+    const anos = new Set<number>();
+    for (const g of gruposTodos) {
+      for (const p of g.processos) {
+        if (p.ajuizamentoEm) anos.add(Number(p.ajuizamentoEm.slice(0, 4)));
+      }
+    }
+    return [...anos].filter(a => a > 1900).sort((a, b) => b - a);
+  }, [gruposTodos]);
+
+  return {
+    linhas, grupos, totais, totaisCarteira, anosDeProtocolo,
+    filtrando, loading, erro, recarregar: carregar,
+  };
 }
 
 /** Os agregados da carteira a partir das linhas (CNJ × parte) que estiverem na
@@ -470,6 +511,9 @@ function calcularTotais(linhas: CarteiraPopLinha[], custoCloud: Record<string, n
       cnjsComFichaRepetida: procs.filter(p => Number(p.cadastros_do_cnj || 1) > 1).length,
       /** Partes (processo × pessoa) — o valor é por parte, não por processo. */
       partes: linhas.filter(l => l.cliente).length,
+      /** Sem data de protocolo: somem quando se filtra por período, então a
+       *  tela precisa dizer quantos são em vez de deixar o número encolher. */
+      semProtocolo: procs.filter(p => !p.ajuizamento_em).length,
       valor,
       /** Carteira com juros e correção, até `corrigidoAte`. NÃO substitui `valor`. */
       valorAtualizado,

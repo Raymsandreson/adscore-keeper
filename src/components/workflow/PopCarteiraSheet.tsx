@@ -21,13 +21,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, ChevronRight, Copy, Handshake, Loader2, PauseCircle, Search, ShieldCheck, X } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  CalendarDays, ChevronDown, ChevronRight, Copy, Handshake, Loader2, PauseCircle, Search, ShieldCheck, X,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import {
-  useCarteiraDoPop, ESTAGIO_ORDEM, normalizarBusca,
-  type GrupoMarco, type ProcessoDoMarco,
-} from '@/hooks/useCarteiraDoPop';
+import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco, type ProcessoDoMarco } from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
@@ -52,6 +52,33 @@ const INDICE_CURTO: Record<string, string> = {
   SELIC_SIMPLES_JT: 'SELIC',
   TCM_ESTADUAL: 'TCM',
 };
+
+/** Presets do período, na régua dos prints da Jurimetria. "Por ano" não é lista
+ *  fixa: os anos saem dos processos que o POP tem, e envelhecem junto com eles. */
+const PERIODOS: { valor: string; rotulo: string }[] = [
+  { valor: 'tudo', rotulo: 'Protocolo: qualquer data' },
+  { valor: '30', rotulo: 'Protocolo: últimos 30 dias' },
+  { valor: '90', rotulo: 'Protocolo: últimos 90 dias' },
+  { valor: '120', rotulo: 'Protocolo: últimos 120 dias' },
+  { valor: '365', rotulo: 'Protocolo: últimos 365 dias' },
+];
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Traduz o preset escolhido na janela [de, até] que o hook entende. */
+function janelaDoPeriodo(periodo: string, de: string, ate: string): { de: string | null; ate: string | null } {
+  if (periodo === 'tudo') return { de: null, ate: null };
+  if (periodo === 'personalizado') return { de: de || null, ate: ate || null };
+  if (periodo.startsWith('ano:')) {
+    const ano = periodo.slice(4);
+    return { de: `${ano}-01-01`, ate: `${ano}-12-31` };
+  }
+  const dias = Number(periodo);
+  if (!Number.isFinite(dias)) return { de: null, ate: null };
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - dias);
+  return { de: iso(inicio), ate: null };
+}
 
 const mesAno = (iso: string) => {
   const m = iso.match(/^(\d{4})-(\d{2})/);
@@ -213,9 +240,20 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
 
 export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
   const [busca, setBusca] = useState('');
+  const [periodo, setPeriodo] = useState<string>('tudo');
+  /** Só usados quando o período é "personalizado". */
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+
+  const janela = janelaDoPeriodo(periodo, de, ate);
   // O filtro vive no hook: os agregados do topo têm que sair do MESMO recorte
   // que a lista, senão a carteira mostra um valor que não é o que está listado.
-  const { grupos, totais, totaisCarteira, loading, erro } = useCarteiraDoPop(open ? boardId : null, busca);
+  const { grupos, totais, totaisCarteira, anosDeProtocolo, filtrando, loading, erro } =
+    useCarteiraDoPop(open ? boardId : null, {
+      busca,
+      protocoloDe: janela.de,
+      protocoloAte: janela.ate,
+    });
   /** Linha inteira de lead_processes — o ProcessDetailSheet espera o registro. */
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
@@ -255,8 +293,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
 
   const acoes: AcoesProcesso = { onAbrirFicha: abrirFicha, onConferir: conferir, abrindoId };
 
-  /** Só para saber se a busca está ativa — o recorte em si é feito no hook. */
-  const filtrando = normalizarBusca(busca.trim()).length > 0;
+  const limparFiltros = () => { setBusca(''); setPeriodo('tudo'); setDe(''); setAte(''); };
 
   return (
     <>
@@ -406,11 +443,62 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                   </button>
                 )}
               </div>
+              {/* Período do protocolo — a régua dos presets veio da Jurimetria,
+                  mas num Select só: no Sheet não cabe menu dentro de menu. */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Select value={periodo} onValueChange={setPeriodo}>
+                  <SelectTrigger className="h-8 w-auto min-w-[13rem] text-xs">
+                    <CalendarDays className="mr-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PERIODOS.map(p => (
+                      <SelectItem key={p.valor} value={p.valor} className="text-xs">{p.rotulo}</SelectItem>
+                    ))}
+                    {anosDeProtocolo.map(a => (
+                      <SelectItem key={a} value={`ano:${a}`} className="text-xs">
+                        Protocolo em {a}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="personalizado" className="text-xs">Protocolo: personalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {periodo === 'personalizado' && (
+                  <>
+                    <Input
+                      type="date" value={de} onChange={e => setDe(e.target.value)}
+                      className="h-8 w-auto text-xs" aria-label="Protocolo a partir de"
+                    />
+                    <span className="text-xs text-muted-foreground">até</span>
+                    <Input
+                      type="date" value={ate} onChange={e => setAte(e.target.value)}
+                      className="h-8 w-auto text-xs" aria-label="Protocolo até"
+                    />
+                  </>
+                )}
+
+                {filtrando && (
+                  <button
+                    type="button"
+                    className="rounded px-1.5 py-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    onClick={limparFiltros}
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
               {filtrando && (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-[11px] leading-snug text-muted-foreground">
                   {totais.processos === 0
-                    ? 'Nenhum processo com esse termo.'
+                    ? 'Nenhum processo com esse filtro.'
                     : `${totais.processos} de ${totaisCarteira.processos} processos · os valores acima são só destes.`}
+                  {/* Filtrar por data esconde quem não tem data. Dizer quantos são
+                      evita a leitura errada de que eles sumiram da carteira. */}
+                  {(janela.de || janela.ate) && totaisCarteira.semProtocolo > 0 && (
+                    <> · {totaisCarteira.semProtocolo} processo(s) sem data de protocolo ficam de fora.</>
+                  )}
                 </p>
               )}
             </div>
