@@ -20,7 +20,7 @@ Tudo no **Supabase Externo** `kmedldlepwiityjsdahz`. **Nenhuma referência a `jm
 | `jm_valores` | 1.652 | `dano_moral`, `dano_estetico`, `base_calculo`, `meses_pensionamento`, `hs_pct` |
 | `jm_pagamentos` | 1.022 | parcelas: `n_parcela`, `data_prevista`, `data_recebida`, `status`, `desagio` |
 | `jm_movimentos` | 37.649 | movimentações (DataJud) |
-| `jm_lancamentos` | 4.364 | caixa realizado, com `responsavel` e `categoria` |
+| `jm_lancamentos` | 4.364 | caixa realizado, com `responsavel` e `categoria`; desde 16/08/2026 tem `parte_id`/`parte_conciliacao` (§10.1) |
 | `jm_decisoes` | 439 | decisões, com `termo_inicial_jcm` (base da correção) |
 | `jm_marco_config` | 22 | **a régua de marcos da jurimetria** (ver §4) |
 | `jm_acordos` | 6 | acordos com `n_parcelas`, `multa_pct` |
@@ -183,3 +183,85 @@ O que a tela precisa entregar, quando chegar a hora: filtro **carteira / todas**
 2. Reimportar a planilha: quais abas ainda valem, agora que se sabe que a `Tab. Aux` é a que interessa?
 3. Sync recorrente da planilha, ou a planilha deixa de ser fonte e o banco passa a ser?
 4. Qual régua de marcos morre — ou as duas convivem, cada uma no seu lugar?
+
+---
+
+## 10. 16/08/2026 — o lançamento passou a ter dono (e o que isso destravou)
+
+Ponto de partida da sessão: a carteira do POP trabalhista mostrava **pago R$ 0,00** com
+R$ 172 mil de honorários lançados no caso 88. A causa é o §3 deste documento — a RPC
+soma `jm_pagamentos.valor_pago`, e essa coluna está preenchida em **10 de 1.022** linhas.
+
+### 10.1 `jm_lancamentos.parte_id` — conciliação por chave, não por texto
+
+Colunas novas (aditivas): `parte_id` (FK para `jm_partes`) e `parte_conciliacao`, que
+registra COMO cada linha casou. Mesmo desenho de `jm_pagamentos`, que já tinha `parte_id`
+em 100% das 1.022 linhas — o lado dos pagamentos nunca precisou de conciliação por nome.
+
+Três passes, do mais seguro ao mais frouxo, sobre as 1.441 linhas de cota do cliente
+(categoria `Indenização`; honorário, comissão e despesa não têm parte):
+
+| | Linhas | Regra |
+|---|---|---|
+| `EXATO` | 1.356 | CNJ + nome normalizado (sem acento, espaço colapsado) idêntico |
+| `PREFIXO` | 59 | nome truncado **e candidata única** no CNJ |
+| `REVISAR` | 26 | não resolvido — não se adivinha |
+
+**98,2% com dono.** O passe de prefixo exige candidata única de propósito: dois irmãos
+"SOARES RODRIGUES" no mesmo CNJ vão para revisão, nunca para o chute. Os 4 casos que ele
+resolveu, conferidos um a um: `Chloe`→CHLOE ISABELLA AMARAL VIANA, `JOSE CARLOS FERREIRA
+DIAS`→JOSÉ CARLOS FERREIRA, `FRANCISCA SOARES NETO`→FRANCISCA SOARES NETO RODRIGUES,
+`MARIA MARCELINA SANTOS (HERDEIRAS)`→MARIA MARCELINA SANTOS.
+
+### 10.2 Descoberta: o buraco era falta de parte, não grafia
+
+Antes de conciliar, a hipótese era divergência de escrita. Medido: das 362 linhas que não
+casavam, **340 eram de CNJ sem NENHUMA parte cadastrada** e só 22 eram grafia. Daí a ordem
+que se provou certa — **completar as partes primeiro, conciliar depois**. Fazer o inverso
+teria resolvido 6% e deixado a impressão de que o resto era "nome errado".
+
+Foram criadas **21 partes em 12 CNJs**, e antes delas **12 fichas em `jm_processos`**: a FK
+`jm_partes.processo_cnj → jm_processos` exige o processo primeiro, e esses 12 tinham
+dinheiro lançado sem nunca terem entrado na jurimetria (são 22 assim em toda a base).
+As fichas nasceram com `caso` (da planilha), `uf_proc` (derivada do CNJ) e
+`flag = 'FICHA_MINIMA_CADASTRAR_COMPLETO'` — `origem` só aceita INTERNO/EXTERNO.
+
+**Erro cometido e revertido na hora:** a query das partes alcançou 38 pessoas em vez das 21
+combinadas, incluindo CNJs do grupo de revisão manual. Veio `HS` (sigla de honorário
+sucumbencial) virando "parte", `GABRIELA` sem sobrenome, e as herdeiras do
+`0018250-98.2017.5.16.0007` duplicadas em duas grafias. As 17 excedentes foram apagadas
+antes de qualquer coisa referenciá-las. **Lição: filtro de conciliação não serve como
+filtro de cadastro** — o primeiro pode ser largo, o segundo tem que ser a lista exata.
+
+### 10.3 UF derivada do CNJ
+
+`lead_processes.estado_origem_sigla` estava preenchida em 85 de 475 processos do POP
+trabalhista (18%), o que tornava inútil qualquer filtro por estado. A UF foi derivada do
+próprio CNJ (TRT para ramo 5, TJ para ramo 8) em **302 processos** → **81% de cobertura**.
+
+O mapa não foi assumido de cabeça: foi **conferido contra os 63 processos que já tinham UF
+cadastrada — 63 acertos, 0 divergências**, incluindo os que a memória erra (TJSP=`8.26`,
+TJSE=`8.25`). Ficaram de fora os TRTs que cobrem dois estados (8 PA/AP, 10 DF/TO, 11 AM/RR,
+14 RO/AC), o ramo federal e 7 números fora do padrão CNJ — nesses o número não diz o estado.
+Backup em `zz_uf_derivada_cnj_bkp_20260816` (id + valor derivado); rollback é
+`set estado_origem_sigla = null` onde bate com o backup.
+
+### 10.4 O que ainda trava o `valor_pago` — decisão pendente
+
+Cruzando `jm_pagamentos (parte_id, n_parcela)` com os lançamentos já conciliados:
+
+| | Parcelas |
+|---|---|
+| casam com lançamento | 492 (R$ 5.728.212,60 realizados) |
+| … e já marcadas `RECEBIDA` | 315 |
+| … mas com status ≠ `RECEBIDA` | 177 ← dinheiro lançado, status não atualizado |
+| `RECEBIDA` **sem** lançamento | 398 (284 cuja parte não tem lançamento nenhum) |
+| `PREVISTA` sem lançamento | 110 (108 com data futura — correto) |
+
+Gravar `valor_pago` só com o que casa cobriria 492 de 713 recebidas. **Não foi gravado**:
+metade preenchida engana mais que zero, e as 398 exigem saber se o dinheiro não entrou, se
+entrou sem lançamento, ou se o `RECEBIDA` está errado.
+
+E há uma regra do vocabulário que impede coluna única: **cota do cliente e honorário são
+recebíveis distintos e nunca se somam**. `valor_pago` como um número só já nasce ambíguo —
+o desenho certo é separar as duas linhas antes de gravar qualquer coisa.
