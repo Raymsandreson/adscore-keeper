@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { useTeamDirectChat, TeamMessage } from '@/hooks/useTeamDirectChat';
+import { useTeamDirectChat, isManagedGroup, TeamMessage } from '@/hooks/useTeamDirectChat';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
 
@@ -43,6 +43,7 @@ import { useNavigate } from 'react-router-dom';
 import { TeamChatEntityMention, renderMessageWithMentions, EntityMention, EntityMentionType } from './TeamChatEntityMention';
 import { ChatMessageActions } from './ChatMessageActions';
 import { ForwardMessagePicker } from './ForwardMessagePicker';
+import { NewGroupPanel, GroupMembersPanel, GroupPerson } from './TeamGroupPanels';
 import {
   buildForwardContent,
   buildPrivateReplyHeader,
@@ -70,11 +71,19 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
   const {
     conversations, messages, activeConversationId, setActiveConversationId,
     loading, sendingMessage, sendMessage, sendMessageTo, alertMessageAgain, dismissPending, startDirectChat, ensureGeneralChat,
+    createGroupConversation, fetchConversationMembers, addGroupMembers, removeGroupMember, leaveGroup, renameGroup,
     otherMembersReadAt, typingPeers, sendTypingSignal,
   } = useTeamDirectChat();
   const profiles = useProfilesList();
   const [messageText, setMessageText] = useState('');
   const [showNewChat, setShowNewChat] = useState(false);
+  // Grupo: criação e tela de participantes da conversa aberta.
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [showGroupMembers, setShowGroupMembers] = useState(false);
+  const [groupMemberIds, setGroupMemberIds] = useState<string[]>([]);
+  const [groupMembersLoading, setGroupMembersLoading] = useState(false);
+  const [groupBusy, setGroupBusy] = useState(false);
   const [convSearch, setConvSearch] = useState('');
   const [newChatSearch, setNewChatSearch] = useState('');
   const [teamFilter, setTeamFilter] = useState('all');
@@ -157,6 +166,28 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     if (inactiveIds.has(uid)) return true;
     return profiles.length > 0 && !profiles.some(p => p.user_id === uid);
   };
+
+  // Quem pode entrar em grupo: mesmo critério do seletor de @menção — sem
+  // desativados e sem as contas de teste/duplicadas da blocklist.
+  const groupPeople: GroupPerson[] = useMemo(() => (
+    filterAssignableMembers(profiles)
+      .filter(p => p.user_id !== user?.id && !inactiveIds.has(p.user_id))
+      .map(p => ({ id: p.user_id, name: p.full_name || p.email || 'Sem nome', email: p.email }))
+  ), [profiles, inactiveIds, user?.id]);
+
+  const personName = useCallback((uid: string) => {
+    const p = profiles.find(pp => pp.user_id === uid);
+    return p?.full_name || p?.email || 'Membro';
+  }, [profiles]);
+
+  const loadGroupMembers = useCallback(async (conversationId: string) => {
+    setGroupMembersLoading(true);
+    try {
+      setGroupMemberIds(await fetchConversationMembers(conversationId));
+    } finally {
+      setGroupMembersLoading(false);
+    }
+  }, [fetchConversationMembers]);
 
   // Filtered members for @mention picker
   const mentionCandidates = (() => {
@@ -1062,6 +1093,51 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
       ? (activeConv.name || 'Chat em Grupo')
       : (activeConv?.otherMemberName || 'Chat');
 
+    // Participantes do grupo: tela DENTRO do painel — o voltar devolve pra conversa.
+    if (showGroupMembers && activeConv?.type === 'group') {
+      const memberPeople: GroupPerson[] = groupMemberIds.map(uid => {
+        const p = profiles.find(pp => pp.user_id === uid);
+        return { id: uid, name: p?.full_name || p?.email || 'Membro', email: p?.email ?? null };
+      });
+      const memberSet = new Set(groupMemberIds);
+
+      return (
+        <GroupMembersPanel
+          groupName={convTitle}
+          managed={isManagedGroup(activeConv)}
+          loading={groupMembersLoading}
+          busy={groupBusy}
+          members={memberPeople}
+          candidates={groupPeople.filter(p => !memberSet.has(p.id))}
+          currentUserId={user?.id}
+          onBack={() => setShowGroupMembers(false)}
+          onRename={async (name) => {
+            setGroupBusy(true);
+            await renameGroup(activeConversationId, name);
+            setGroupBusy(false);
+          }}
+          onAdd={async (people) => {
+            setGroupBusy(true);
+            await addGroupMembers(activeConversationId, people);
+            await loadGroupMembers(activeConversationId);
+            setGroupBusy(false);
+          }}
+          onRemove={async (person) => {
+            setGroupBusy(true);
+            await removeGroupMember(activeConversationId, person);
+            await loadGroupMembers(activeConversationId);
+            setGroupBusy(false);
+          }}
+          onLeave={async () => {
+            setGroupBusy(true);
+            const ok = await leaveGroup(activeConversationId);
+            setGroupBusy(false);
+            if (ok) setShowGroupMembers(false);
+          }}
+        />
+      );
+    }
+
     return (
       <div className="flex flex-col h-full">
         <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
@@ -1075,6 +1151,18 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
           </Avatar>
           <span className="text-sm font-medium truncate">{convTitle}</span>
           <div className="ml-auto flex items-center gap-2 shrink-0">
+            {activeConv?.type === 'group' && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-1.5 text-xs gap-1 text-muted-foreground"
+                title="Participantes do grupo"
+                onClick={() => { setShowGroupMembers(true); loadGroupMembers(activeConversationId); }}
+              >
+                <Users className="h-3.5 w-3.5" />
+                {activeConv.memberCount ?? ''}
+              </Button>
+            )}
             {activeConv?.type === 'direct' && activeConv.otherMemberId && (
               <Button
                 variant="ghost"
@@ -1567,6 +1655,27 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
     );
   }
 
+  // Novo grupo (nome + participantes)
+  if (showNewGroup) {
+    return (
+      <NewGroupPanel
+        people={groupPeople}
+        creating={creatingGroup}
+        onCancel={() => setShowNewGroup(false)}
+        onCreate={async (name, members) => {
+          setCreatingGroup(true);
+          const conversationId = await createGroupConversation(name, members);
+          setCreatingGroup(false);
+          if (conversationId) {
+            setShowNewGroup(false);
+            setShowNewChat(false);
+            setNewChatSearch('');
+          }
+        }}
+      />
+    );
+  }
+
   // New chat selection
   if (showNewChat) {
     const newChatQuery = newChatSearch.trim().toLowerCase();
@@ -1597,6 +1706,20 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         </div>
         <ScrollArea className="flex-1">
           <div className="divide-y">
+            <button
+              onClick={() => setShowNewGroup(true)}
+              className="w-full text-left px-4 py-3 hover:bg-accent/50 transition-colors flex items-center gap-3"
+            >
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="text-xs bg-primary/20 text-primary">
+                  <Users className="h-3.5 w-3.5" />
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium truncate">Novo grupo</div>
+                <div className="text-[10px] text-muted-foreground truncate">Conversa com várias pessoas</div>
+              </div>
+            </button>
             {otherProfiles.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-6">Ninguém encontrado com esse nome.</p>
             )}
@@ -1791,7 +1914,7 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
         ) : conversations.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground text-xs text-center gap-2 px-6">
             <MessageCircle className="h-8 w-8 opacity-30" />
-            <p>Nenhuma conversa ainda.<br/>Clique em <b>"Geral"</b> para o chat da equipe ou <b>"Nova"</b> para conversa direta.</p>
+            <p>Nenhuma conversa ainda.<br/>Clique em <b>"Geral"</b> para o chat da equipe ou <b>"Nova"</b> para conversa direta — é lá também que se cria um <b>grupo</b>.</p>
           </div>
         ) : filteredConversations.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-6">
@@ -1827,7 +1950,9 @@ export function TeamDirectChatPanel({ intent, onIntentHandled }: TeamDirectChatP
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium truncate">{title}</span>
                       {conv.type === 'group' && (
-                        <Badge variant="secondary" className="text-[9px] h-4 px-1">grupo</Badge>
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1">
+                          grupo{conv.memberCount ? ` · ${conv.memberCount}` : ''}
+                        </Badge>
                       )}
                       {pending === 'responder' && (
                         <span

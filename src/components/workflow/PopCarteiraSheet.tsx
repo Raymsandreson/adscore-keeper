@@ -10,14 +10,30 @@
 // devolve exatamente onde estava. Regra de vocabulário: o valor exibido é o do
 // PROCESSO (última decisão por cliente), não o caixa do escritório — o aviso
 // fica visível na tela, não em tooltip.
+//
+// Clicar na linha abre a FICHA do processo (ProcessDetailSheet); o botão de
+// escudo abre a CONFERÊNCIA — de onde saiu aquele valor e aquele marco. Os dois
+// sheets são IRMÃOS deste, nunca filhos: dois Dialogs do Radix aninhados brigam
+// por foco (mesma solução do TeamMarcoProcessosSheet).
 // =============================================================================
-import { useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, ChevronRight, Handshake, PauseCircle } from 'lucide-react';
-import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco } from '@/hooks/useCarteiraDoPop';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  CalendarDays, ChevronDown, ChevronRight, Copy, Handshake, Loader2, PauseCircle, Search, ShieldCheck, X,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { db, ensureExternalSession } from '@/integrations/supabase';
+import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco, type ProcessoDoMarco } from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
+import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
+import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
+
+// A ficha do processo é pesada: entra sob demanda, como no TeamMarcoProcessosSheet.
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 interface Props {
   boardId: string | null;
@@ -30,6 +46,46 @@ const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const dias = (d: number | null) => (d == null ? '—' : d === 0 ? 'hoje' : `${d} d`);
+
+/** "2026-07-01" -> "jul/2026". A data limite da correção vai sempre junto do número. */
+const INDICE_CURTO: Record<string, string> = {
+  SELIC_SIMPLES_JT: 'SELIC',
+  TCM_ESTADUAL: 'TCM',
+};
+
+/** Presets do período, na régua dos prints da Jurimetria. "Por ano" não é lista
+ *  fixa: os anos saem dos processos que o POP tem, e envelhecem junto com eles. */
+const PERIODOS: { valor: string; rotulo: string }[] = [
+  { valor: 'tudo', rotulo: 'Protocolo: qualquer data' },
+  { valor: '30', rotulo: 'Protocolo: últimos 30 dias' },
+  { valor: '90', rotulo: 'Protocolo: últimos 90 dias' },
+  { valor: '120', rotulo: 'Protocolo: últimos 120 dias' },
+  { valor: '365', rotulo: 'Protocolo: últimos 365 dias' },
+];
+
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Traduz o preset escolhido na janela [de, até] que o hook entende. */
+function janelaDoPeriodo(periodo: string, de: string, ate: string): { de: string | null; ate: string | null } {
+  if (periodo === 'tudo') return { de: null, ate: null };
+  if (periodo === 'personalizado') return { de: de || null, ate: ate || null };
+  if (periodo.startsWith('ano:')) {
+    const ano = periodo.slice(4);
+    return { de: `${ano}-01-01`, ate: `${ano}-12-31` };
+  }
+  const dias = Number(periodo);
+  if (!Number.isFinite(dias)) return { de: null, ate: null };
+  const inicio = new Date();
+  inicio.setDate(inicio.getDate() - dias);
+  return { de: iso(inicio), ate: null };
+}
+
+const mesAno = (iso: string) => {
+  const m = iso.match(/^(\d{4})-(\d{2})/);
+  if (!m) return iso;
+  const meses = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  return `${meses[Number(m[2]) - 1]}/${m[1]}`;
+};
 
 function EstagioChips({ porEstagio, compact }: { porEstagio: Record<string, number>; compact?: boolean }) {
   const presentes = ESTAGIO_ORDEM.filter(e => (porEstagio[e] || 0) > 0);
@@ -48,8 +104,22 @@ function EstagioChips({ porEstagio, compact }: { porEstagio: Record<string, numb
   );
 }
 
-function GrupoDoMarco({ grupo }: { grupo: GrupoMarco }) {
-  const [aberto, setAberto] = useState(false);
+interface AcoesProcesso {
+  onAbrirFicha: (processId: string) => void;
+  onConferir: (p: ProcessoDoMarco, foco?: 'valores') => void;
+  abrindoId: string | null;
+}
+
+function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
+  grupo: GrupoMarco;
+  acoes: AcoesProcesso;
+  /** Busca ativa: o marco já abre mostrando o que sobrou do filtro. Sem isso a
+   *  pessoa digita, o grupo continua fechado e parece que não achou nada. */
+  abrirSempre?: boolean;
+}) {
+  const [manual, setManual] = useState(false);
+  const aberto = abrirSempre || manual;
+  const setAberto = (fn: (v: boolean) => boolean) => setManual(v => fn(abrirSempre || v));
   return (
     <div className="rounded-lg border">
       <button
@@ -64,25 +134,102 @@ function GrupoDoMarco({ grupo }: { grupo: GrupoMarco }) {
           <span className="shrink-0 text-xs text-muted-foreground">média {dias(grupo.diasMedio)}</span>
         )}
         {grupo.valor > 0 && (
-          <span className="shrink-0 text-xs font-semibold">{brl(grupo.valor)}</span>
+          <span className="flex shrink-0 flex-col items-end leading-tight">
+            <span className="text-xs font-semibold">{brl(grupo.valor)}</span>
+            {grupo.valorAtualizado > grupo.valor + 0.01 && (
+              <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                {brl(grupo.valorAtualizado)} corrigido
+              </span>
+            )}
+          </span>
         )}
       </button>
       {aberto && (
         <div className="space-y-1 border-t p-2">
           <EstagioChips porEstagio={grupo.porEstagio} compact />
           {grupo.processos.map(p => (
-            <div key={p.processId} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
-              <span className="min-w-0 flex-1 truncate">
-                <span className="font-mono">{p.cnj}</span>
-                {p.titulo ? <span className="ml-1.5 text-muted-foreground">{p.titulo}</span> : null}
-              </span>
-              {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
-              {p.suspenso && <PauseCircle className="h-3 w-3 shrink-0 text-amber-500" aria-label="suspenso" />}
-              {p.clientes > 1 && <span className="shrink-0 text-muted-foreground">{p.clientes} clientes</span>}
-              {p.valor > 0 && <span className="shrink-0 font-medium">{brl(p.valor)}</span>}
-              <span className="w-14 shrink-0 text-right text-muted-foreground" title="tempo neste marco">
+            <div key={p.processId} className="flex items-center gap-1 rounded pr-1 text-xs hover:bg-muted/40">
+              {/* Clique na linha = ficha do processo, em aba lateral por cima desta. */}
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-2 rounded px-1.5 py-1 text-left"
+                onClick={() => acoes.onAbrirFicha(p.processId)}
+                title="Abrir a ficha do processo"
+              >
+                <span className="min-w-0 flex-1">
+                  {/* De quem é o processo vem primeiro: o título é o que a equipe
+                      digitou ("Processo", "PA M") e muitas vezes não identifica ninguém. */}
+                  <span className="block truncate font-medium">
+                    {p.leadNome || <span className="italic text-muted-foreground">sem lead vinculado</span>}
+                    {p.leadsNomes.length > 1 && (
+                      <span className="ml-1 font-normal text-amber-600 dark:text-amber-400">
+                        +{p.leadsNomes.length - 1}
+                      </span>
+                    )}
+                  </span>
+                  <span className="block truncate text-[11px] text-muted-foreground">
+                    <span className="font-mono">{p.cnj}</span>
+                    {p.titulo ? <span className="ml-1.5">{p.titulo}</span> : null}
+                    {(p.local.cidade || p.local.uf) && (
+                      <span className="ml-1.5">
+                        · {[p.local.cidade, p.local.uf].filter(Boolean).join('/')}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
+                {p.suspenso && <PauseCircle className="h-3 w-3 shrink-0 text-amber-500" aria-label="suspenso" />}
+                {p.cadastros > 1 && (
+                  <Copy
+                    className="h-3 w-3 shrink-0 text-amber-500"
+                    aria-label={`CNJ com ${p.cadastros} cadastros`}
+                  />
+                )}
+              </button>
+
+              {/* O valor é a SOMA DAS PARTES: clicar abre a abertura por parte. */}
+              <button
+                type="button"
+                className="flex shrink-0 items-center gap-2 rounded px-1 py-1 text-right hover:bg-muted"
+                onClick={() => acoes.onConferir(p, 'valores')}
+                title={p.partes.length
+                  ? `Ver o valor de cada parte (${p.partes.length})`
+                  : 'Conferir o valor'}
+              >
+                {p.clientes > 1 && (
+                  <span className="text-muted-foreground">{p.clientes} partes</span>
+                )}
+                {p.valor > 0 && (
+                  <span className="flex flex-col items-end leading-tight">
+                    <span className="font-medium">{brl(p.valor)}</span>
+                    {p.valorAtualizado > p.valor + 0.01 && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                        {brl(p.valorAtualizado)} corrigido
+                      </span>
+                    )}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                className="w-14 shrink-0 rounded px-1 py-1 text-right text-muted-foreground hover:bg-muted"
+                onClick={() => acoes.onAbrirFicha(p.processId)}
+                title="tempo neste marco"
+              >
                 {dias(p.diasNoMarco)}
-              </span>
+              </button>
+              <button
+                type="button"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                onClick={() => acoes.onConferir(p)}
+                title="Conferir de onde saiu o valor e o marco"
+                aria-label={`Conferir ${p.cnj}`}
+              >
+                {acoes.abrindoId === p.processId
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <ShieldCheck className="h-3.5 w-3.5" />}
+              </button>
             </div>
           ))}
         </div>
@@ -92,9 +239,64 @@ function GrupoDoMarco({ grupo }: { grupo: GrupoMarco }) {
 }
 
 export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
-  const { grupos, totais, loading, erro } = useCarteiraDoPop(open ? boardId : null);
+  const [busca, setBusca] = useState('');
+  const [periodo, setPeriodo] = useState<string>('tudo');
+  /** Só usados quando o período é "personalizado". */
+  const [de, setDe] = useState('');
+  const [ate, setAte] = useState('');
+
+  const janela = janelaDoPeriodo(periodo, de, ate);
+  // O filtro vive no hook: os agregados do topo têm que sair do MESMO recorte
+  // que a lista, senão a carteira mostra um valor que não é o que está listado.
+  const { grupos, totais, totaisCarteira, anosDeProtocolo, filtrando, loading, erro } =
+    useCarteiraDoPop(open ? boardId : null, {
+      busca,
+      protocoloDe: janela.de,
+      protocoloAte: janela.ate,
+    });
+  /** Linha inteira de lead_processes — o ProcessDetailSheet espera o registro. */
+  const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
+  const [abrindoId, setAbrindoId] = useState<string | null>(null);
+  const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+
+  const abrirFicha = async (processId: string) => {
+    setAbrindoId(processId);
+    try {
+      await ensureExternalSession();
+      const { data, error } = await db
+        .from('lead_processes')
+        .select('*')
+        .eq('id', processId)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Processo não encontrado'); return; }
+      setFichaAberta(data as Record<string, unknown>);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
+    } finally {
+      setAbrindoId(null);
+    }
+  };
+
+  const conferir = (p: ProcessoDoMarco, foco?: 'valores') => {
+    if (!boardId) return;
+    setConferindo({
+      processId: p.processId,
+      boardId,
+      cnj: p.cnj,
+      titulo: p.titulo,
+      leadNome: p.leadNome,
+      valorNaCarteira: p.valor,
+      foco,
+    });
+  };
+
+  const acoes: AcoesProcesso = { onAbrirFicha: abrirFicha, onConferir: conferir, abrindoId };
+
+  const limparFiltros = () => { setBusca(''); setPeriodo('tudo'); setDe(''); setAte(''); };
 
   return (
+    <>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
         <SheetHeader>
@@ -108,7 +310,10 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
           </div>
         ) : erro ? (
           <p className="text-sm text-destructive">{erro}</p>
-        ) : totais.processos === 0 ? (
+        ) : totaisCarteira.processos === 0 ? (
+          // A carteira INTEIRA vazia é o estado vazio de verdade. Busca sem
+          // resultado não pode cair aqui: sumiria com o campo e prenderia a
+          // pessoa numa tela vazia, sem como limpar o que digitou.
           <p className="text-sm text-muted-foreground">
             Nenhum processo com CNJ vinculado a este POP.
           </p>
@@ -119,7 +324,43 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Carteira</div>
                 <div className="text-lg font-semibold">{brl(totais.valor)}</div>
-                <div className="text-xs text-muted-foreground">{totais.processos} processos · pago {brl(totais.pago)}</div>
+                {totais.valorAtualizado > totais.valor + 0.01 && (
+                  <div className="text-xs">
+                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                      {brl(totais.valorAtualizado)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {' '}com juros e correção{totais.corrigidoAte ? ` (até ${mesAno(totais.corrigidoAte)})` : ''}
+                    </span>
+                  </div>
+                )}
+                {/* Índices com cadências diferentes: a SELIC vem do Bacen todo dia,
+                    a TCM ainda é manual. Dizer só a mais nova enganaria. */}
+                {Object.keys(totais.referenciasPorIndice).length > 1 && (
+                  <div className="text-[11px] text-muted-foreground">
+                    {Object.entries(totais.referenciasPorIndice)
+                      .map(([i, r]) => `${INDICE_CURTO[i] || i} até ${mesAno(r)}`)
+                      .join(' · ')}
+                  </div>
+                )}
+                <div className="text-xs text-muted-foreground">
+                  {totais.processos} processos · {totais.partes} partes · pago {brl(totais.pago)}
+                </div>
+                {totais.partesSemCorrecao > 0 && (
+                  <div className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                    {totais.partesSemCorrecao} parte(s) sem índice para o ramo — entram no atualizado
+                    pelo valor nominal, então o corrigido está subestimado.
+                  </div>
+                )}
+                {totais.cnjsComFichaRepetida > 0 && (
+                  <div className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
+                    <Copy className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>
+                      {totais.cnjsComFichaRepetida} CNJ(s) com ficha repetida. O total acima já conta
+                      cada um uma vez só — mas vale limpar o cadastro duplicado.
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tempo médio</div>
@@ -169,20 +410,127 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
             </div>
 
             <p className="text-[11px] leading-snug text-muted-foreground">
-              Valores = quanto o processo vale (última decisão de cada cliente), não o caixa do
-              escritório — cota do cliente e honorário ainda não são separados. Índice de sucesso:
+              Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa
+              do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
+              de um processo para ver quanto é de cada parte. O valor CORRIGIDO (em verde) aplica
+              juros e correção do termo inicial de cada decisão até a data da tabela de índices —
+              SELIC simples nos trabalhistas (buscada no Bacen todo dia), TCM nos estaduais (ainda
+              carregada à mão, por isso pode ficar para trás); a carteira continua somando o
+              nominal. Índice de sucesso:
               entre os decididos com leitura de decisão (ou acordo), quantos saíram com valor
               fixado ou acordo homologado — decidido sem leitura é buraco de captura e fica fora
               da conta.
             </p>
 
+            {/* Busca da lista por marco — caso, cliente, CNJ, cidade/UF */}
+            <div className="space-y-1">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={e => setBusca(e.target.value)}
+                  placeholder="Buscar caso, cliente, processo, CNJ, cidade ou UF"
+                  className="h-9 pl-8 pr-8 text-sm"
+                />
+                {busca && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setBusca('')}
+                    aria-label="Limpar busca"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {/* Período do protocolo — a régua dos presets veio da Jurimetria,
+                  mas num Select só: no Sheet não cabe menu dentro de menu. */}
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Select value={periodo} onValueChange={setPeriodo}>
+                  <SelectTrigger className="h-8 w-auto min-w-[13rem] text-xs">
+                    <CalendarDays className="mr-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PERIODOS.map(p => (
+                      <SelectItem key={p.valor} value={p.valor} className="text-xs">{p.rotulo}</SelectItem>
+                    ))}
+                    {anosDeProtocolo.map(a => (
+                      <SelectItem key={a} value={`ano:${a}`} className="text-xs">
+                        Protocolo em {a}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="personalizado" className="text-xs">Protocolo: personalizado</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {periodo === 'personalizado' && (
+                  <>
+                    <Input
+                      type="date" value={de} onChange={e => setDe(e.target.value)}
+                      className="h-8 w-auto text-xs" aria-label="Protocolo a partir de"
+                    />
+                    <span className="text-xs text-muted-foreground">até</span>
+                    <Input
+                      type="date" value={ate} onChange={e => setAte(e.target.value)}
+                      className="h-8 w-auto text-xs" aria-label="Protocolo até"
+                    />
+                  </>
+                )}
+
+                {filtrando && (
+                  <button
+                    type="button"
+                    className="rounded px-1.5 py-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                    onClick={limparFiltros}
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {filtrando && (
+                <p className="text-[11px] leading-snug text-muted-foreground">
+                  {totais.processos === 0
+                    ? 'Nenhum processo com esse filtro.'
+                    : `${totais.processos} de ${totaisCarteira.processos} processos · os valores acima são só destes.`}
+                  {/* Filtrar por data esconde quem não tem data. Dizer quantos são
+                      evita a leitura errada de que eles sumiram da carteira. */}
+                  {(janela.de || janela.ate) && totaisCarteira.semProtocolo > 0 && (
+                    <> · {totaisCarteira.semProtocolo} processo(s) sem data de protocolo ficam de fora.</>
+                  )}
+                </p>
+              )}
+            </div>
+
             {/* Por marco */}
             <div className="space-y-1.5">
-              {grupos.map(g => <GrupoDoMarco key={g.chave} grupo={g} />)}
+              {grupos.map(g => (
+                <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} abrirSempre={filtrando} />
+              ))}
             </div>
           </>
         )}
       </SheetContent>
     </Sheet>
+
+    {/* Conferência e ficha: irmãs do sheet da carteira, não filhas. */}
+    <ProcessoConferenciaSheet
+      alvo={conferindo}
+      onClose={() => setConferindo(null)}
+      onAbrirFicha={id => void abrirFicha(id)}
+    />
+
+    <Suspense fallback={null}>
+      {fichaAberta && (
+        <ProcessDetailSheet
+          open={!!fichaAberta}
+          onOpenChange={aberto => { if (!aberto) setFichaAberta(null); }}
+          process={fichaAberta}
+          mode="sheet"
+        />
+      )}
+    </Suspense>
+    </>
   );
 }

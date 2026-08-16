@@ -47,6 +47,8 @@ export interface LeadActivity {
   estimated_minutes?: number | null;
   /** Data e hora da reunião (só quando activity_type = 'reuniao'). timestamptz no Externo. */
   meeting_at?: string | null;
+  /** Retorno agendado (voltar a falar com o cliente/parte). timestamptz no Externo. */
+  callback_at?: string | null;
   completed_at: string | null;
   completed_by: string | null;
   completed_by_name: string | null;
@@ -70,6 +72,8 @@ export interface LeadActivity {
   is_management?: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
+  /** Campanha de CRM vinculada. */
+  crm_campaign_id?: string | null;
   /** Movimentação do sino que gerou esta atividade (migration 20260811210000). */
   process_update_id?: string | null;
   cobranca_phone?: string | null;
@@ -298,6 +302,9 @@ export function useLeadActivities() {
           deadline: activity.deadline || null,
           notification_date: activity.notification_date || null,
           meeting_at: activity.meeting_at || null,
+          // Coluna criada em 20260814190000; sem ela aqui, retorno agendado
+          // preenchido na criação seria descartado igual à Solicitação.
+          callback_at: activity.callback_at || null,
           notes: activity.notes || null,
           created_by: extUserId,
           contact_id: activity.contact_id || null,
@@ -305,6 +312,16 @@ export function useLeadActivities() {
           what_was_done: activity.what_was_done || null,
           current_status_notes: activity.current_status_notes || null,
           next_steps: activity.next_steps || null,
+          // Solicitação / Resposta do juízo ficaram de fora deste insert desde
+          // que os campos existem: o formulário mandava, o hook descartava e o
+          // texto sumia sem erro nenhum. Nenhuma das 109 (solicitacao) / 113
+          // (resposta_juizo) linhas preenchidas em produção nasceu com valor —
+          // todas vieram de uma edição posterior. Mesma coisa com a previsão de
+          // tempo confirmada no pop-up de criação (98 linhas, 0 na criação).
+          solicitacao: activity.solicitacao || null,
+          resposta_juizo: activity.resposta_juizo || null,
+          estimated_minutes: activity.estimated_minutes ?? null,
+          crm_campaign_id: activity.crm_campaign_id || null,
           matrix_quadrant: activity.matrix_quadrant || null,
           case_id: activity.case_id || null,
           case_title: activity.case_title || null,
