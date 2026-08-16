@@ -21,6 +21,11 @@
 // lead próprio). Usar só o lead da ficha canônica perderia o CAC desses 6 e
 // faria a rentabilidade mentir para cima.
 //
+// BUSCA (16/08/2026): passar `busca` recorta a carteira inteira — grupos,
+// linhas e TOTAIS saem do mesmo recorte, então o dinheiro do topo é sempre o
+// dinheiro do que está listado. `totaisCarteira` fica ao lado com a carteira
+// inteira, para a tela dizer "N de 475 processos" sem refazer a conta.
+//
 // AVISO QUE A TELA REPETE: valor é "quanto o processo vale" (última decisão por
 // cliente), não caixa do escritório — cota do cliente e honorário ainda não são
 // separados. Rentabilidade aqui compara custo de aquisição com esse valor e com
@@ -154,7 +159,12 @@ export const ESTAGIO_ORDEM = [
   'PROJETADO', 'CONDENACAO', 'A_RECEBER', 'VENCIDO', 'EM_EXECUCAO', 'DEPOSITADO_EM_JUIZO', 'PAGO', 'INDEFERIDO',
 ];
 
-export function useCarteiraDoPop(boardId: string | null) {
+/**
+ * @param busca Filtra a carteira por caso/lead, parte, título, CNJ (com ou sem
+ *   pontuação) e cidade/UF/tribunal/órgão. Cada termo separado por espaço tem
+ *   que bater. Vazio = carteira inteira.
+ */
+export function useCarteiraDoPop(boardId: string | null, busca = '') {
   const [linhas, setLinhas] = useState<CarteiraPopLinha[]>([]);
   const [custoCloud, setCustoCloud] = useState<Record<string, number>>({});
   const [locais, setLocais] = useState<Record<string, LocalDoProcesso>>({});
@@ -234,7 +244,7 @@ export function useCarteiraDoPop(boardId: string | null) {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
-  const grupos = useMemo<GrupoMarco[]>(() => {
+  const gruposTodos = useMemo<GrupoMarco[]>(() => {
     // Primeiro consolida POR PROCESSO (linhas são CNJ × parte).
     const porProcesso = new Map<string, ProcessoDoMarco & { _ordem: number; _chave: string; _rotulo: string }>();
     for (const l of linhas) {
@@ -336,7 +346,63 @@ export function useCarteiraDoPop(boardId: string | null) {
       .sort((a, b) => b.ordem - a.ordem);
   }, [linhas, locais]);
 
-  const totais = useMemo(() => {
+  // ---- Busca -----------------------------------------------------------
+  // Filtrar é recortar a carteira: o dinheiro do topo, os marcos e as linhas
+  // passam todos pelo MESMO recorte, senão a tela mostra um total que não
+  // corresponde ao que está listado embaixo dele.
+  const termos = useMemo(
+    () => normalizarBusca(busca.trim()).split(/\s+/).filter(Boolean),
+    [busca],
+  );
+
+  const grupos = useMemo<GrupoMarco[]>(() => {
+    if (!termos.length) return gruposTodos;
+    return gruposTodos
+      .map(g => {
+        const processos = g.processos.filter(p => termos.every(t => p.busca.includes(t)));
+        const porEstagio: Record<string, number> = {};
+        for (const p of processos) porEstagio[p.estagio] = (porEstagio[p.estagio] || 0) + p.valor;
+        const dias = processos.map(p => p.diasNoMarco).filter((d): d is number => d != null);
+        return {
+          ...g,
+          processos,
+          porEstagio,
+          valor: processos.reduce((s, p) => s + p.valor, 0),
+          valorAtualizado: processos.reduce((s, p) => s + p.valorAtualizado, 0),
+          pago: processos.reduce((s, p) => s + p.pago, 0),
+          diasMedio: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
+        };
+      })
+      .filter(g => g.processos.length > 0);
+  }, [gruposTodos, termos]);
+
+  /** As linhas (CNJ × parte) dos processos que sobraram — é delas que sai o
+   *  dinheiro do topo, para o total bater com a lista. */
+  const linhasVisiveis = useMemo(() => {
+    if (!termos.length) return linhas;
+    const ids = new Set(grupos.flatMap(g => g.processos.map(p => p.processId)));
+    return linhas.filter(l => ids.has(l.process_id));
+  }, [linhas, grupos, termos]);
+
+  const totais = useMemo(
+    () => calcularTotais(linhasVisiveis, custoCloud),
+    [linhasVisiveis, custoCloud],
+  );
+
+  /** A carteira INTEIRA, sem o filtro — a tela usa para dizer "N de 475". */
+  const totaisCarteira = useMemo(
+    () => calcularTotais(linhas, custoCloud),
+    [linhas, custoCloud],
+  );
+
+  return { linhas, grupos, totais, totaisCarteira, loading, erro, recarregar: carregar };
+}
+
+/** Os agregados da carteira a partir das linhas (CNJ × parte) que estiverem na
+ *  mesa. Função pura de propósito: a mesma conta serve para a carteira inteira
+ *  e para o recorte de uma busca — duas contas diferentes divergiriam. */
+function calcularTotais(linhas: CarteiraPopLinha[], custoCloud: Record<string, number>) {
+  {
     const processos = new Map<string, CarteiraPopLinha>();
     const porEstagio: Record<string, number> = {};
     let valor = 0, pago = 0, valorAtualizado = 0, partesSemCorrecao = 0;
@@ -431,7 +497,5 @@ export function useCarteiraDoPop(boardId: string | null) {
       /** Valor da carteira ÷ custo — potencial, no vocabulário do aviso da tela. */
       multiploPotencial: custo > 0 ? valor / custo : null,
     };
-  }, [linhas, custoCloud]);
-
-  return { linhas, grupos, totais, loading, erro, recarregar: carregar };
+  }
 }

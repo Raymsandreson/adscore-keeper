@@ -16,7 +16,7 @@
 // sheets são IRMÃOS deste, nunca filhos: dois Dialogs do Radix aninhados brigam
 // por foco (mesma solução do TeamMarcoProcessosSheet).
 // =============================================================================
-import { Suspense, lazy, useMemo, useState } from 'react';
+import { Suspense, lazy, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -212,8 +212,10 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
 }
 
 export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
-  const { grupos, totais, loading, erro } = useCarteiraDoPop(open ? boardId : null);
   const [busca, setBusca] = useState('');
+  // O filtro vive no hook: os agregados do topo têm que sair do MESMO recorte
+  // que a lista, senão a carteira mostra um valor que não é o que está listado.
+  const { grupos, totais, totaisCarteira, loading, erro } = useCarteiraDoPop(open ? boardId : null, busca);
   /** Linha inteira de lead_processes — o ProcessDetailSheet espera o registro. */
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
@@ -253,41 +255,8 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
 
   const acoes: AcoesProcesso = { onAbrirFicha: abrirFicha, onConferir: conferir, abrindoId };
 
-  // Filtro só da LISTA por marco. Os agregados do topo continuam sendo os da
-  // carteira inteira de propósito: "carteira" é o que o POP vale, não o que
-  // sobrou de uma busca — mudar isso faria a tela responder outra pergunta.
-  // Cada termo separado por espaço tem que bater (busca "88 ererê" = os dois).
-  const termos = useMemo(
-    () => normalizarBusca(busca.trim()).split(/\s+/).filter(Boolean),
-    [busca],
-  );
-  const gruposFiltrados = useMemo(() => {
-    if (!termos.length) return grupos;
-    return grupos
-      .map(g => {
-        const processos = g.processos.filter(p => termos.every(t => p.busca.includes(t)));
-        // O cabeçalho do marco tem que falar do que está listado embaixo dele:
-        // contagem filtrada com valor do grupo inteiro seria uma conta que não
-        // fecha na tela.
-        const porEstagio: Record<string, number> = {};
-        for (const p of processos) porEstagio[p.estagio] = (porEstagio[p.estagio] || 0) + p.valor;
-        const dias = processos.map(p => p.diasNoMarco).filter((d): d is number => d != null);
-        return {
-          ...g,
-          processos,
-          porEstagio,
-          valor: processos.reduce((s, p) => s + p.valor, 0),
-          valorAtualizado: processos.reduce((s, p) => s + p.valorAtualizado, 0),
-          pago: processos.reduce((s, p) => s + p.pago, 0),
-          diasMedio: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
-        };
-      })
-      .filter(g => g.processos.length > 0);
-  }, [grupos, termos]);
-  const achados = useMemo(
-    () => gruposFiltrados.reduce((s, g) => s + g.processos.length, 0),
-    [gruposFiltrados],
-  );
+  /** Só para saber se a busca está ativa — o recorte em si é feito no hook. */
+  const filtrando = normalizarBusca(busca.trim()).length > 0;
 
   return (
     <>
@@ -304,7 +273,10 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
           </div>
         ) : erro ? (
           <p className="text-sm text-destructive">{erro}</p>
-        ) : totais.processos === 0 ? (
+        ) : totaisCarteira.processos === 0 ? (
+          // A carteira INTEIRA vazia é o estado vazio de verdade. Busca sem
+          // resultado não pode cair aqui: sumiria com o campo e prenderia a
+          // pessoa numa tela vazia, sem como limpar o que digitou.
           <p className="text-sm text-muted-foreground">
             Nenhum processo com CNJ vinculado a este POP.
           </p>
@@ -434,19 +406,19 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                   </button>
                 )}
               </div>
-              {termos.length > 0 && (
+              {filtrando && (
                 <p className="text-[11px] text-muted-foreground">
-                  {achados === 0
+                  {totais.processos === 0
                     ? 'Nenhum processo com esse termo.'
-                    : `${achados} de ${totais.processos} processos · os totais acima continuam sendo os da carteira inteira.`}
+                    : `${totais.processos} de ${totaisCarteira.processos} processos · os valores acima são só destes.`}
                 </p>
               )}
             </div>
 
             {/* Por marco */}
             <div className="space-y-1.5">
-              {gruposFiltrados.map(g => (
-                <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} abrirSempre={termos.length > 0} />
+              {grupos.map(g => (
+                <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} abrirSempre={filtrando} />
               ))}
             </div>
           </>

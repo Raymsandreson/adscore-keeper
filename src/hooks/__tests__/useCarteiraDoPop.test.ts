@@ -200,6 +200,32 @@ describe('useCarteiraDoPop', () => {
     expect(p2.busca).toContain('jose da silva');
   });
 
+  it('recorta a carteira pela busca — totais, marcos e linhas do mesmo recorte', async () => {
+    // "erere" só existe em p1 (cidade de lead_processes). O dinheiro do topo
+    // tem que virar o de p1, senão a tela mostra total que não é o da lista.
+    const { result } = renderHook(() => useCarteiraDoPop('board-1', 'erere'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.totais.processos).toBe(1));
+
+    expect(result.current.totais.valor).toBeCloseTo(150405.38, 2);
+    expect(result.current.totais.partes).toBe(2);
+    expect(result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p1']);
+    expect(result.current.grupos[0].valor).toBeCloseTo(150405.38, 2);
+    // A carteira inteira continua disponível ao lado, para a tela dizer "1 de 2".
+    expect(result.current.totaisCarteira.processos).toBe(2);
+    expect(result.current.totaisCarteira.valor).toBeCloseTo(180405.38, 2);
+  });
+
+  it('busca sem resultado zera os totais em vez de mostrar a carteira inteira', async () => {
+    const { result } = renderHook(() => useCarteiraDoPop('board-1', 'nao existe esse termo'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.grupos).toHaveLength(0);
+    expect(result.current.totais.processos).toBe(0);
+    expect(result.current.totais.valor).toBe(0);
+    expect(result.current.totaisCarteira.processos).toBe(2);
+  });
+
   it('conta o CAC do lead irmão, que a ficha canônica não carrega', async () => {
     const { result } = renderHook(() => useCarteiraDoPop('board-1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
