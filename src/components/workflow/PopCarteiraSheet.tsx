@@ -27,7 +27,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco, type ProcessoDoMarco } from '@/hooks/useCarteiraDoPop';
+import {
+  useCarteiraDoPop, ESTAGIO_ORDEM, MARCO_ATUAL,
+  type GrupoMarco, type ProcessoDoMarco,
+} from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
@@ -53,14 +56,15 @@ const INDICE_CURTO: Record<string, string> = {
   TCM_ESTADUAL: 'TCM',
 };
 
-/** Presets do período, na régua dos prints da Jurimetria. "Por ano" não é lista
- *  fixa: os anos saem dos processos que o POP tem, e envelhecem junto com eles. */
+/** Presets do período, na régua dos prints da Jurimetria. Qual data eles
+ *  recortam é o outro seletor que decide — como nos prints, que separam
+ *  "Data de distribuição" (o campo) de "Últimos 90 dias" (a janela). */
 const PERIODOS: { valor: string; rotulo: string }[] = [
-  { valor: 'tudo', rotulo: 'Protocolo: qualquer data' },
-  { valor: '30', rotulo: 'Protocolo: últimos 30 dias' },
-  { valor: '90', rotulo: 'Protocolo: últimos 90 dias' },
-  { valor: '120', rotulo: 'Protocolo: últimos 120 dias' },
-  { valor: '365', rotulo: 'Protocolo: últimos 365 dias' },
+  { valor: 'tudo', rotulo: 'qualquer data' },
+  { valor: '30', rotulo: 'últimos 30 dias' },
+  { valor: '90', rotulo: 'últimos 90 dias' },
+  { valor: '120', rotulo: 'últimos 120 dias' },
+  { valor: '365', rotulo: 'últimos 365 dias' },
 ];
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -240,6 +244,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
 
 export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
   const [busca, setBusca] = useState('');
+  const [campoData, setCampoData] = useState<string>('ajuizamento');
   const [periodo, setPeriodo] = useState<string>('tudo');
   /** Só usados quando o período é "personalizado". */
   const [de, setDe] = useState('');
@@ -248,12 +253,12 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   const janela = janelaDoPeriodo(periodo, de, ate);
   // O filtro vive no hook: os agregados do topo têm que sair do MESMO recorte
   // que a lista, senão a carteira mostra um valor que não é o que está listado.
-  const { grupos, totais, totaisCarteira, anosDeProtocolo, filtrando, loading, erro } =
-    useCarteiraDoPop(open ? boardId : null, {
-      busca,
-      protocoloDe: janela.de,
-      protocoloAte: janela.ate,
-    });
+  const {
+    grupos, totais, totaisCarteira, camposDeData, anosDisponiveis,
+    semADataEscolhida, filtrando, loading, erro,
+  } = useCarteiraDoPop(open ? boardId : null, {
+    busca, campoData, de: janela.de, ate: janela.ate,
+  });
   /** Linha inteira de lead_processes — o ProcessDetailSheet espera o registro. */
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
@@ -294,6 +299,13 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   const acoes: AcoesProcesso = { onAbrirFicha: abrirFicha, onConferir: conferir, abrindoId };
 
   const limparFiltros = () => { setBusca(''); setPeriodo('tudo'); setDe(''); setAte(''); };
+
+  /** Rótulo do campo escolhido, para as frases da tela falarem a mesma língua
+   *  do seletor ("34 sem data de Trânsito em julgado"). */
+  const rotuloDoCampo =
+    campoData === MARCO_ATUAL
+      ? 'entrada no marco atual'
+      : (camposDeData.find(c => c.chave === campoData)?.rotulo || 'protocolo');
 
   return (
     <>
@@ -446,21 +458,40 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               {/* Período do protocolo — a régua dos presets veio da Jurimetria,
                   mas num Select só: no Sheet não cabe menu dentro de menu. */}
               <div className="flex flex-wrap items-center gap-1.5">
-                <Select value={periodo} onValueChange={setPeriodo}>
-                  <SelectTrigger className="h-8 w-auto min-w-[13rem] text-xs">
+                {/* QUAL data — a lista sai dos marcos que este POP realmente tem,
+                    com quantos processos têm cada uma. POP diferente, datas
+                    diferentes: lista chumbada ofereceria marco de outro fluxo. */}
+                <Select value={campoData} onValueChange={setCampoData}>
+                  <SelectTrigger className="h-8 w-auto min-w-[12rem] text-xs">
                     <CalendarDays className="mr-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={MARCO_ATUAL} className="text-xs">
+                      Data de entrada no marco atual
+                    </SelectItem>
+                    {camposDeData.map(c => (
+                      <SelectItem key={c.chave} value={c.chave} className="text-xs">
+                        Data de {c.rotulo.toLowerCase()}
+                        <span className="ml-1 text-muted-foreground">({c.processos})</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                {/* A JANELA sobre a data escolhida. */}
+                <Select value={periodo} onValueChange={setPeriodo}>
+                  <SelectTrigger className="h-8 w-auto min-w-[10rem] text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {PERIODOS.map(p => (
                       <SelectItem key={p.valor} value={p.valor} className="text-xs">{p.rotulo}</SelectItem>
                     ))}
-                    {anosDeProtocolo.map(a => (
-                      <SelectItem key={a} value={`ano:${a}`} className="text-xs">
-                        Protocolo em {a}
-                      </SelectItem>
+                    {anosDisponiveis.map(a => (
+                      <SelectItem key={a} value={`ano:${a}`} className="text-xs">em {a}</SelectItem>
                     ))}
-                    <SelectItem value="personalizado" className="text-xs">Protocolo: personalizado</SelectItem>
+                    <SelectItem value="personalizado" className="text-xs">personalizado</SelectItem>
                   </SelectContent>
                 </Select>
 
@@ -496,8 +527,8 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                     : `${totais.processos} de ${totaisCarteira.processos} processos · os valores acima são só destes.`}
                   {/* Filtrar por data esconde quem não tem data. Dizer quantos são
                       evita a leitura errada de que eles sumiram da carteira. */}
-                  {(janela.de || janela.ate) && totaisCarteira.semProtocolo > 0 && (
-                    <> · {totaisCarteira.semProtocolo} processo(s) sem data de protocolo ficam de fora.</>
+                  {(janela.de || janela.ate) && semADataEscolhida > 0 && (
+                    <> · {semADataEscolhida} processo(s) sem data de {rotuloDoCampo.toLowerCase()} ficam de fora.</>
                   )}
                 </p>
               )}

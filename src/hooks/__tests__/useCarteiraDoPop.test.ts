@@ -81,12 +81,27 @@ const { dbMock, authMock } = vi.hoisted(() => {
     },
   ];
 
+  // Datas por marco (process_pop_marcos): p1 transitou e foi arquivado, p2 só
+  // tem sentença. É o que permite filtrar por "data de trânsito em julgado".
+  const marcos = [
+    { process_id: 'p1', marco_chave: 'ajuizamento', rotulo: 'Ajuizamento', ordem: 2, data_detectada: '2020-05-02' },
+    { process_id: 'p1', marco_chave: 'sentenca', rotulo: 'Sentença', ordem: 7, data_detectada: '2022-08-10' },
+    { process_id: 'p1', marco_chave: 'transito_julgado', rotulo: 'Trânsito em julgado', ordem: 18, data_detectada: '2023-02-15' },
+    { process_id: 'p1', marco_chave: 'arquivamento_definitivo', rotulo: 'Arquivamento definitivo', ordem: 25, data_detectada: '2023-06-01' },
+    { process_id: 'p2', marco_chave: 'ajuizamento', rotulo: 'Ajuizamento', ordem: 2, data_detectada: '2020-06-01' },
+    { process_id: 'p2', marco_chave: 'sentenca', rotulo: 'Sentença', ordem: 7, data_detectada: '2024-01-20' },
+  ];
+
   return {
     dbMock: {
       rpc: () => Promise.resolve({ data: linhas, error: null }),
       from: () => {
         const q: Record<string, unknown> = {};
         q.select = () => q;
+        q.eq = () => q;
+        q.not = () => q;
+        // Uma página só: o hook para quando o lote vem com menos de 1000.
+        q.range = () => Promise.resolve({ data: marcos, error: null });
         q.in = (_c: string, ids: string[]) =>
           Promise.resolve({ data: processos.filter(p => ids.includes(p.id)), error: null });
         return q;
@@ -229,7 +244,7 @@ describe('useCarteiraDoPop', () => {
   it('filtra por janela de protocolo e combina com a busca', async () => {
     // p1 protocolado em 02/05/2020, p2 em 01/06/2020.
     const so_p1 = renderHook(() =>
-      useCarteiraDoPop('board-1', { protocoloDe: '2020-01-01', protocoloAte: '2020-05-31' }));
+      useCarteiraDoPop('board-1', { de: '2020-01-01', ate: '2020-05-31' }));
     await waitFor(() => expect(so_p1.result.current.loading).toBe(false));
     await waitFor(() => expect(so_p1.result.current.totais.processos).toBe(1));
     expect(so_p1.result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p1']);
@@ -237,13 +252,40 @@ describe('useCarteiraDoPop', () => {
 
     // Janela que pega os dois, mas a busca ainda recorta para p2.
     const combinado = renderHook(() =>
-      useCarteiraDoPop('board-1', { busca: 'jose', protocoloDe: '2020-01-01' }));
+      useCarteiraDoPop('board-1', { busca: 'jose', de: '2020-01-01' }));
     await waitFor(() => expect(combinado.result.current.loading).toBe(false));
     await waitFor(() => expect(combinado.result.current.totais.processos).toBe(1));
     expect(combinado.result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p2']);
 
     // Os anos ofertados no "por ano" saem dos processos, não de lista fixa.
-    expect(so_p1.result.current.anosDeProtocolo).toEqual([2020]);
+    expect(so_p1.result.current.anosDisponiveis).toEqual([2020]);
+  });
+
+  it('filtra por QUALQUER data do processo, não só pelo protocolo', async () => {
+    // p1 transitou em 15/02/2023; p2 nem transitou. Filtrar por trânsito em
+    // julgado em 2023 tem que deixar só p1 — e o dinheiro segue junto.
+    const porTransito = renderHook(() => useCarteiraDoPop('board-1', {
+      campoData: 'transito_julgado', de: '2023-01-01', ate: '2023-12-31',
+    }));
+    await waitFor(() => expect(porTransito.result.current.loading).toBe(false));
+    await waitFor(() => expect(porTransito.result.current.totais.processos).toBe(1));
+    expect(porTransito.result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p1']);
+    // p2 não tem a data escolhida: some do recorte, mas a tela sabe dizer quantos.
+    expect(porTransito.result.current.semADataEscolhida).toBe(1);
+
+    // Mesma janela, outro campo: sentença em 2024 é só p2.
+    const porSentenca = renderHook(() => useCarteiraDoPop('board-1', {
+      campoData: 'sentenca', de: '2024-01-01', ate: '2024-12-31',
+    }));
+    await waitFor(() => expect(porSentenca.result.current.loading).toBe(false));
+    await waitFor(() => expect(porSentenca.result.current.totais.processos).toBe(1));
+    expect(porSentenca.result.current.grupos[0].processos.map(p => p.processId)).toEqual(['p2']);
+
+    // O catálogo de datas sai dos marcos do POP, na ordem da régua.
+    expect(porTransito.result.current.camposDeData.map(c => c.chave)).toEqual([
+      'ajuizamento', 'sentenca', 'transito_julgado', 'arquivamento_definitivo',
+    ]);
+    expect(porTransito.result.current.camposDeData.find(c => c.chave === 'sentenca')?.processos).toBe(2);
   });
 
   it('conta o CAC do lead irmão, que a ficha canônica não carrega', async () => {
