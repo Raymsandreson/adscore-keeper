@@ -73,6 +73,21 @@ export interface CarteiraPopLinha {
   jcm_referencia: string | null;
 }
 
+/** Onde o processo corre. Vem de `lead_processes`, não da RPC — e vem vazio na
+ *  maioria: medido em 16/08/2026 no POP trabalhista, 85 de 475 processos têm UF
+ *  e 73 têm cidade. Por isso a busca da tela varre também o nome do lead, que na
+ *  prática carrega a cidade ("Caso 88 - Mauro- Ererê/CE"). */
+export interface LocalDoProcesso {
+  uf: string | null;
+  cidade: string | null;
+  tribunal: string | null;
+  orgao: string | null;
+}
+
+/** Sem acento e em minúscula: buscar "ererê" tem que achar "Ererê" e "EREREE". */
+export const normalizarBusca = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 /** Uma parte do processo com o valor dela — litisconsórcio tem um valor por pessoa. */
 export interface ParteDoProcesso {
   cliente: string;
@@ -114,6 +129,11 @@ export interface ProcessoDoMarco {
   valorAtualizado: number;
   /** Alguma parte ficou sem índice — o "atualizado" está subestimado. */
   temParteSemCorrecao: boolean;
+  /** Cidade/UF/tribunal do processo. Quase sempre vazio (ver LocalDoProcesso). */
+  local: LocalDoProcesso;
+  /** Tudo que a busca da tela varre, já normalizado — montado uma vez aqui para
+   *  o filtro não reprocessar 475 processos a cada tecla digitada. */
+  busca: string;
 }
 
 export interface GrupoMarco {
@@ -137,6 +157,7 @@ export const ESTAGIO_ORDEM = [
 export function useCarteiraDoPop(boardId: string | null) {
   const [linhas, setLinhas] = useState<CarteiraPopLinha[]>([]);
   const [custoCloud, setCustoCloud] = useState<Record<string, number>>({});
+  const [locais, setLocais] = useState<Record<string, LocalDoProcesso>>({});
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -177,6 +198,33 @@ export function useCarteiraDoPop(boardId: string | null) {
         }
       }
       setCustoCloud(mapa);
+
+      // Onde o processo corre — a RPC não devolve, então vem de `lead_processes`
+      // em lote. É só para a BUSCA da tela: falhar aqui não pode derrubar a
+      // carteira, por isso o try/catch próprio e o estado separado.
+      const processIds = [...new Set(rows.map(r => r.process_id).filter(Boolean))];
+      const ondeCorre: Record<string, LocalDoProcesso> = {};
+      for (let i = 0; i < processIds.length; i += 200) {
+        const chunk = processIds.slice(i, i + 200);
+        try {
+          const { data: procs } = await db
+            .from('lead_processes')
+            .select('id, estado_origem, estado_origem_sigla, unidade_origem_cidade, tribunal, tribunal_sigla, orgao_julgador')
+            .in('id', chunk);
+          for (const p of (procs || []) as Record<string, string | null>[]) {
+            if (!p.id) continue;
+            ondeCorre[p.id] = {
+              uf: p.estado_origem_sigla ?? p.estado_origem ?? null,
+              cidade: p.unidade_origem_cidade ?? null,
+              tribunal: p.tribunal_sigla ?? p.tribunal ?? null,
+              orgao: p.orgao_julgador ?? null,
+            };
+          }
+        } catch {
+          break; // sem localidade a busca ainda acha por caso, CNJ, parte e título
+        }
+      }
+      setLocais(ondeCorre);
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -207,6 +255,8 @@ export function useCarteiraDoPop(boardId: string | null) {
         leadsNomes: l.leads_nomes ?? [],
         valorAtualizado: 0,
         temParteSemCorrecao: false,
+        local: locais[l.process_id] || { uf: null, cidade: null, tribunal: null, orgao: null },
+        busca: '',
         _ordem: l.marco_ordem ?? -1,
         _chave: l.marco_chave || 'sem_marco',
         _rotulo: l.marco_rotulo || 'Sem marco detectado',
@@ -241,7 +291,25 @@ export function useCarteiraDoPop(boardId: string | null) {
       p.pago += pagoDaParte;
       porProcesso.set(l.process_id, p);
     }
-    for (const p of porProcesso.values()) p.partes.sort((a, b) => b.valor - a.valor);
+    for (const p of porProcesso.values()) {
+      p.partes.sort((a, b) => b.valor - a.valor);
+      // O CNJ entra duas vezes de propósito: com pontuação (como está na tela) e
+      // só dígitos, para "0011351" e "00113516320225150031" acharem o mesmo
+      // processo. O nome do lead carrega o número do caso e, quase sempre, a
+      // cidade — é o que salva a busca por lugar nos 82% sem UF cadastrada.
+      p.busca = normalizarBusca([
+        p.leadNome || '',
+        ...p.leadsNomes,
+        p.cnj,
+        p.cnj.replace(/\D/g, ''),
+        p.titulo || '',
+        ...p.partes.map(parte => parte.cliente),
+        p.local.cidade || '',
+        p.local.uf || '',
+        p.local.tribunal || '',
+        p.local.orgao || '',
+      ].join(' '));
+    }
 
     const mapa = new Map<string, GrupoMarco & { _dias: number[] }>();
     for (const p of porProcesso.values()) {
@@ -266,7 +334,7 @@ export function useCarteiraDoPop(boardId: string | null) {
         diasMedio: _dias.length ? Math.round(_dias.reduce((s, d) => s + d, 0) / _dias.length) : null,
       }))
       .sort((a, b) => b.ordem - a.ordem);
-  }, [linhas]);
+  }, [linhas, locais]);
 
   const totais = useMemo(() => {
     const processos = new Map<string, CarteiraPopLinha>();

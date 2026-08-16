@@ -16,14 +16,18 @@
 // sheets são IRMÃOS deste, nunca filhos: dois Dialogs do Radix aninhados brigam
 // por foco (mesma solução do TeamMarcoProcessosSheet).
 // =============================================================================
-import { Suspense, lazy, useState } from 'react';
+import { Suspense, lazy, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ChevronDown, ChevronRight, Copy, Handshake, Loader2, PauseCircle, ShieldCheck } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Handshake, Loader2, PauseCircle, Search, ShieldCheck, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import { useCarteiraDoPop, ESTAGIO_ORDEM, type GrupoMarco, type ProcessoDoMarco } from '@/hooks/useCarteiraDoPop';
+import {
+  useCarteiraDoPop, ESTAGIO_ORDEM, normalizarBusca,
+  type GrupoMarco, type ProcessoDoMarco,
+} from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
@@ -79,8 +83,16 @@ interface AcoesProcesso {
   abrindoId: string | null;
 }
 
-function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcesso }) {
-  const [aberto, setAberto] = useState(false);
+function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
+  grupo: GrupoMarco;
+  acoes: AcoesProcesso;
+  /** Busca ativa: o marco já abre mostrando o que sobrou do filtro. Sem isso a
+   *  pessoa digita, o grupo continua fechado e parece que não achou nada. */
+  abrirSempre?: boolean;
+}) {
+  const [manual, setManual] = useState(false);
+  const aberto = abrirSempre || manual;
+  const setAberto = (fn: (v: boolean) => boolean) => setManual(v => fn(abrirSempre || v));
   return (
     <div className="rounded-lg border">
       <button
@@ -131,6 +143,11 @@ function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcess
                   <span className="block truncate text-[11px] text-muted-foreground">
                     <span className="font-mono">{p.cnj}</span>
                     {p.titulo ? <span className="ml-1.5">{p.titulo}</span> : null}
+                    {(p.local.cidade || p.local.uf) && (
+                      <span className="ml-1.5">
+                        · {[p.local.cidade, p.local.uf].filter(Boolean).join('/')}
+                      </span>
+                    )}
                   </span>
                 </span>
                 {p.temAcordo && <Handshake className="h-3 w-3 shrink-0 text-emerald-500" aria-label="acordo homologado" />}
@@ -196,6 +213,7 @@ function GrupoDoMarco({ grupo, acoes }: { grupo: GrupoMarco; acoes: AcoesProcess
 
 export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
   const { grupos, totais, loading, erro } = useCarteiraDoPop(open ? boardId : null);
+  const [busca, setBusca] = useState('');
   /** Linha inteira de lead_processes — o ProcessDetailSheet espera o registro. */
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
@@ -234,6 +252,42 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   };
 
   const acoes: AcoesProcesso = { onAbrirFicha: abrirFicha, onConferir: conferir, abrindoId };
+
+  // Filtro só da LISTA por marco. Os agregados do topo continuam sendo os da
+  // carteira inteira de propósito: "carteira" é o que o POP vale, não o que
+  // sobrou de uma busca — mudar isso faria a tela responder outra pergunta.
+  // Cada termo separado por espaço tem que bater (busca "88 ererê" = os dois).
+  const termos = useMemo(
+    () => normalizarBusca(busca.trim()).split(/\s+/).filter(Boolean),
+    [busca],
+  );
+  const gruposFiltrados = useMemo(() => {
+    if (!termos.length) return grupos;
+    return grupos
+      .map(g => {
+        const processos = g.processos.filter(p => termos.every(t => p.busca.includes(t)));
+        // O cabeçalho do marco tem que falar do que está listado embaixo dele:
+        // contagem filtrada com valor do grupo inteiro seria uma conta que não
+        // fecha na tela.
+        const porEstagio: Record<string, number> = {};
+        for (const p of processos) porEstagio[p.estagio] = (porEstagio[p.estagio] || 0) + p.valor;
+        const dias = processos.map(p => p.diasNoMarco).filter((d): d is number => d != null);
+        return {
+          ...g,
+          processos,
+          porEstagio,
+          valor: processos.reduce((s, p) => s + p.valor, 0),
+          valorAtualizado: processos.reduce((s, p) => s + p.valorAtualizado, 0),
+          pago: processos.reduce((s, p) => s + p.pago, 0),
+          diasMedio: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
+        };
+      })
+      .filter(g => g.processos.length > 0);
+  }, [grupos, termos]);
+  const achados = useMemo(
+    () => gruposFiltrados.reduce((s, g) => s + g.processos.length, 0),
+    [gruposFiltrados],
+  );
 
   return (
     <>
@@ -359,9 +413,41 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               da conta.
             </p>
 
+            {/* Busca da lista por marco — caso, cliente, CNJ, cidade/UF */}
+            <div className="space-y-1">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={e => setBusca(e.target.value)}
+                  placeholder="Buscar caso, cliente, processo, CNJ, cidade ou UF"
+                  className="h-9 pl-8 pr-8 text-sm"
+                />
+                {busca && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                    onClick={() => setBusca('')}
+                    aria-label="Limpar busca"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+              {termos.length > 0 && (
+                <p className="text-[11px] text-muted-foreground">
+                  {achados === 0
+                    ? 'Nenhum processo com esse termo.'
+                    : `${achados} de ${totais.processos} processos · os totais acima continuam sendo os da carteira inteira.`}
+                </p>
+              )}
+            </div>
+
             {/* Por marco */}
             <div className="space-y-1.5">
-              {grupos.map(g => <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} />)}
+              {gruposFiltrados.map(g => (
+                <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} abrirSempre={termos.length > 0} />
+              ))}
             </div>
           </>
         )}

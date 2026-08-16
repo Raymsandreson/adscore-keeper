@@ -66,8 +66,32 @@ const { dbMock, authMock } = vi.hoisted(() => {
     { id: 'lead-C', cac: 50, ad_spend_at_conversion: null },
   ];
 
+  // Onde cada processo corre: p1 tem cidade/UF cadastradas, p2 não tem nada —
+  // é a proporção real da base (85 de 475 processos com UF em 16/08/2026).
+  const processos = [
+    {
+      id: 'p1', estado_origem: 'BAHIA', estado_origem_sigla: 'BA',
+      unidade_origem_cidade: 'Ererê', tribunal: 'TRT5', tribunal_sigla: 'TRT5',
+      orgao_julgador: '1ª Vara do Trabalho',
+    },
+    {
+      id: 'p2', estado_origem: null, estado_origem_sigla: null,
+      unidade_origem_cidade: null, tribunal: null, tribunal_sigla: null,
+      orgao_julgador: null,
+    },
+  ];
+
   return {
-    dbMock: { rpc: () => Promise.resolve({ data: linhas, error: null }) },
+    dbMock: {
+      rpc: () => Promise.resolve({ data: linhas, error: null }),
+      from: () => {
+        const q: Record<string, unknown> = {};
+        q.select = () => q;
+        q.in = (_c: string, ids: string[]) =>
+          Promise.resolve({ data: processos.filter(p => ids.includes(p.id)), error: null });
+        return q;
+      },
+    },
     authMock: {
       from: () => {
         const q: Record<string, unknown> = {};
@@ -152,6 +176,28 @@ describe('useCarteiraDoPop', () => {
       SELIC_SIMPLES_JT: '2026-08-01',
       TCM_ESTADUAL: '2026-07-01',
     });
+  });
+
+  it('monta o texto de busca com caso, CNJ, partes, título e cidade/UF', async () => {
+    const { result } = renderHook(() => useCarteiraDoPop('board-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    const p1 = result.current.grupos[0].processos.find(p => p.processId === 'p1')!;
+    expect(p1.local).toEqual({
+      uf: 'BA', cidade: 'Ererê', tribunal: 'TRT5', orgao: '1ª Vara do Trabalho',
+    });
+    // Nome do lead, parte, título e cidade — tudo sem acento e em minúscula.
+    for (const termo of ['antonia coqueiro', 'valdezir', 'indenizacao', 'erere', 'ba', 'trt5']) {
+      expect(p1.busca).toContain(termo);
+    }
+    // CNJ com e sem pontuação: a pessoa digita dos dois jeitos.
+    expect(p1.busca).toContain('0000491-34.2020.5.05.0101');
+    expect(p1.busca).toContain('00004913420205050101');
+
+    // Processo sem localidade cadastrada não quebra nem inventa lugar.
+    const p2 = result.current.grupos[0].processos.find(p => p.processId === 'p2')!;
+    expect(p2.local).toEqual({ uf: null, cidade: null, tribunal: null, orgao: null });
+    expect(p2.busca).toContain('jose da silva');
   });
 
   it('conta o CAC do lead irmão, que a ficha canônica não carrega', async () => {
