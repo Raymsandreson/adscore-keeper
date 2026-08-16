@@ -6,6 +6,7 @@ import { ClientCommitmentsBar } from './ClientCommitmentsBar';
 import { CommitmentItemCard, type CommitmentCardItem } from './ClientCommitmentsPanel';
 import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments } from '@/hooks/useClientCommitments';
+import { useTopToastStackHeight } from '@/hooks/useTopToastStackHeight';
 import { buildReminderText } from '@/lib/clientCommitments';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { Badge } from '@/components/ui/badge';
@@ -113,6 +114,12 @@ interface Props {
 
 export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, contactName, instanceName, privatePhone, hasLead, hasContact, wasResponded, responseTimeMinutes, onConversationUpdated, onOpenChat, campaignBoardId, campaignStageId, highlightMessageId, initialCommitmentsOpen, direction = 'bottom' }: Props) {
   const { user, profile } = useAuthContext();
+  // Drawer de cima pra baixo começa abaixo da pilha de popups (nada sobreposto
+  // à conversa). Teto de 45% da tela: com muitos popups a conversa ainda vive.
+  const topToastStackBottom = useTopToastStackHeight(direction === 'top' && open);
+  const topDrawerOffset = direction === 'top'
+    ? Math.min(topToastStackBottom > 0 ? topToastStackBottom + 8 : 0, Math.round((typeof window !== 'undefined' ? window.innerHeight : 800) * 0.45))
+    : 0;
   // Visão alternável: conversa principal (grupo) vs privado unificado — todas as conversas
   // individuais da equipe com o contato, sem filtrar instância.
   const [viewMode, setViewMode] = useState<'main' | 'private'>('main');
@@ -1624,7 +1631,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       if (lightboxUrl && !nextOpen) return;
       onOpenChange(nextOpen);
     }}>
-      <DrawerContent direction={direction} className="max-h-[92vh] flex flex-col">
+      <DrawerContent
+        direction={direction}
+        className="max-h-[92vh] flex flex-col"
+        // De cima pra baixo, mas SEMPRE abaixo dos popups de notificação: o
+        // painel começa na borda inferior da pilha de toasts, então nenhum
+        // aviso cobre o conteúdo da conversa (e nenhum se perde).
+        style={direction === 'top' ? { top: topDrawerOffset, maxHeight: `calc(100dvh - ${topDrawerOffset + 8}px)` } : undefined}
+      >
         <DrawerHeader className="pb-2 shrink-0">
           <div className="flex items-center justify-between">
             <div className="min-w-0 flex-1">
