@@ -78,6 +78,31 @@ export interface CarteiraPopLinha {
   jcm_referencia: string | null;
 }
 
+/** Honorário do escritório que ENTROU no caixa, por CNJ. Vem da planilha
+ *  importada (`jm_lancamentos`), não da carteira — é a fatia do escritório,
+ *  enquanto o valor da carteira é o processo inteiro. Nunca some os dois. */
+export interface HonorarioDoCnj {
+  valor: number;
+  lancamentos: number;
+  /** Data do lançamento mais recente deste CNJ. */
+  ultimo: string | null;
+}
+
+/** O caixa de honorário que a planilha registra e quanto dele esta carteira
+ *  consegue enxergar — o resto é buraco de cadastro, e a tela diz qual. */
+export interface HonorariosDaPlanilha {
+  /** Tudo que a planilha tem em `Honorários` até hoje. */
+  total: number;
+  lancamentos: number;
+  /** Lançamento sem CNJ nenhum: não tem processo onde cair. */
+  semCnj: number;
+  /** Honorário em CNJ que existe na planilha mas não nesta carteira. */
+  foraDaCarteira: number;
+  cnjsForaDaCarteira: number;
+  /** Lançamento mais recente da planilha — a régua de quão velho está o import. */
+  ultimo: string | null;
+}
+
 /** Onde o processo corre. Vem de `lead_processes`, não da RPC — e vem vazio na
  *  maioria: medido em 16/08/2026 no POP trabalhista, 85 de 475 processos têm UF
  *  e 73 têm cidade. Por isso a busca da tela varre também o nome do lead, que na
@@ -199,6 +224,11 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
   const { busca = '', campoData = 'ajuizamento', de = null, ate = null } = filtro;
   const [linhas, setLinhas] = useState<CarteiraPopLinha[]>([]);
   const [custoCloud, setCustoCloud] = useState<Record<string, number>>({});
+  /** cnj_num -> honorário recebido, da planilha. Fora da RPC de propósito. */
+  const [honorariosPorCnj, setHonorariosPorCnj] = useState<Record<string, HonorarioDoCnj>>({});
+  const [honorarios, setHonorarios] = useState<HonorariosDaPlanilha>({
+    total: 0, lancamentos: 0, semCnj: 0, foraDaCarteira: 0, cnjsForaDaCarteira: 0, ultimo: null,
+  });
   const [locais, setLocais] = useState<Record<string, LocalDoProcesso>>({});
   /** process_id -> { marco_chave -> data }. Uma data por marco, de process_pop_marcos. */
   const [datasPorProcesso, setDatasPorProcesso] = useState<Record<string, Record<string, string>>>({});
@@ -317,6 +347,73 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
       }
       setDatasPorProcesso(porProcesso);
       setCamposDeData([...catalogo.values()].sort((a, b) => a.ordem - b.ordem));
+
+      // HONORÁRIO DO CAIXA (17/08/2026) — a carteira mede quanto o processo
+      // VALE; o que o escritório RECEBEU mora na planilha importada
+      // (`jm_lancamentos`) e nunca chegou nesta tela. O estágio PAGO da RPC só
+      // enxerga `jm_pagamentos`, que cobre 39 CNJs no banco inteiro e apenas 3
+      // dos 475 deste POP — por isso o painel dizia "Pago R$ 620.129,86"
+      // (que nem é dinheiro: é a condenação das partes marcadas PAGO) com
+      // R$ 3,3 milhões de honorário lançado nos mesmos processos. As duas
+      // contas ficam LADO A LADO na tela, nunca somadas.
+      //
+      // RECORTE, medido no banco em 17/08/2026: categoria `Honorários` EXATA.
+      // `Honorários a receber` tem lançamento datado até 2037 (é previsão, não
+      // caixa), `Honorários Adiantados Oriz` é antecipação de fundo e
+      // `Honorários adv parceiro` é repasse a terceiro — nenhum é honorário
+      // que entrou por este processo. `tipo` vem 'ENTRADA', nulo ou 'OUTRO';
+      // 'OUTRO' fica fora porque o `tipo_raw` dele é 'Indenização'/'Repasse'.
+      //
+      // Falhar aqui não pode derrubar a carteira: try/catch próprio e estado
+      // separado, como o custo e a localidade acima. `db as any` porque
+      // `jm_lancamentos` não está no `types.ts` gerado (mesmo caminho do
+      // `process_pop_marcos`).
+      try {
+        const cnjsDaCarteira = new Set(rows.map(r => r.cnj_num).filter(Boolean));
+        const hoje = new Date().toISOString().slice(0, 10);
+        const porCnj: Record<string, HonorarioDoCnj> = {};
+        const resumo: HonorariosDaPlanilha = {
+          total: 0, lancamentos: 0, semCnj: 0, foraDaCarteira: 0, cnjsForaDaCarteira: 0, ultimo: null,
+        };
+        const cnjsFora = new Set<string>();
+        for (let inicio = 0; ; inicio += 1000) {
+          const { data: lanc } = await (db as any)
+            .from('jm_lancamentos')
+            .select('processo_cnj, valor_caixa, data')
+            .eq('categoria', 'Honorários')
+            .or('tipo.is.null,tipo.eq.ENTRADA')
+            .lte('data', hoje)
+            .range(inicio, inicio + 999);
+          const lote = (lanc || []) as {
+            processo_cnj: string | null; valor_caixa: number | null; data: string | null;
+          }[];
+          for (const l of lote) {
+            const valor = Number(l.valor_caixa || 0);
+            resumo.total += valor;
+            resumo.lancamentos += 1;
+            if (l.data && (!resumo.ultimo || l.data > resumo.ultimo)) resumo.ultimo = l.data;
+            const cnj = String(l.processo_cnj || '').replace(/\D/g, '');
+            // CNJ tem 20 dígitos; menos de 15 é lixo de digitação, não processo.
+            if (cnj.length < 15) { resumo.semCnj += valor; continue; }
+            if (!cnjsDaCarteira.has(cnj)) {
+              resumo.foraDaCarteira += valor;
+              cnjsFora.add(cnj);
+              continue;
+            }
+            const h = porCnj[cnj] || { valor: 0, lancamentos: 0, ultimo: null };
+            h.valor += valor;
+            h.lancamentos += 1;
+            if (l.data && (!h.ultimo || l.data > h.ultimo)) h.ultimo = l.data;
+            porCnj[cnj] = h;
+          }
+          if (lote.length < 1000) break;
+        }
+        resumo.cnjsForaDaCarteira = cnjsFora.size;
+        setHonorariosPorCnj(porCnj);
+        setHonorarios(resumo);
+      } catch {
+        // Sem a planilha a carteira continua inteira: só a linha de caixa some.
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : String(e));
     } finally {
@@ -494,14 +591,14 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
   }, [linhas, grupos, filtrando]);
 
   const totais = useMemo(
-    () => calcularTotais(linhasVisiveis, custoCloud),
-    [linhasVisiveis, custoCloud],
+    () => calcularTotais(linhasVisiveis, custoCloud, honorariosPorCnj),
+    [linhasVisiveis, custoCloud, honorariosPorCnj],
   );
 
   /** A carteira INTEIRA, sem o filtro — a tela usa para dizer "N de 475". */
   const totaisCarteira = useMemo(
-    () => calcularTotais(linhas, custoCloud),
-    [linhas, custoCloud],
+    () => calcularTotais(linhas, custoCloud, honorariosPorCnj),
+    [linhas, custoCloud, honorariosPorCnj],
   );
 
   /** Anos que existem NO CAMPO ESCOLHIDO, do mais novo para o mais velho — é o
@@ -528,14 +625,18 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
 
   return {
     linhas, grupos, totais, totaisCarteira, camposDeData, anosDisponiveis,
-    semADataEscolhida, filtrando, loading, erro, recarregar: carregar,
+    semADataEscolhida, honorarios, filtrando, loading, erro, recarregar: carregar,
   };
 }
 
 /** Os agregados da carteira a partir das linhas (CNJ × parte) que estiverem na
  *  mesa. Função pura de propósito: a mesma conta serve para a carteira inteira
  *  e para o recorte de uma busca — duas contas diferentes divergiriam. */
-function calcularTotais(linhas: CarteiraPopLinha[], custoCloud: Record<string, number>) {
+function calcularTotais(
+  linhas: CarteiraPopLinha[],
+  custoCloud: Record<string, number>,
+  honorariosPorCnj: Record<string, HonorarioDoCnj> = {},
+) {
   {
     const processos = new Map<string, CarteiraPopLinha>();
     const porEstagio: Record<string, number> = {};
@@ -596,6 +697,20 @@ function calcularTotais(linhas: CarteiraPopLinha[], custoCloud: Record<string, n
     const leadsComCusto = custoPorLead.size;
     const leadsTotal = todosOsLeads.size;
 
+    // Honorário recebido dos processos que estão NA MESA — segue o recorte da
+    // busca junto com o resto. Uma vez por CNJ: o lançamento é do processo, e
+    // as linhas aqui são CNJ × parte (17 partes para 3 CNJs no PAGO de hoje).
+    let honorarioRecebido = 0, honorarioLancamentos = 0, honorarioCnjs = 0;
+    let honorarioUltimo: string | null = null;
+    for (const cnj of new Set(procs.map(p => p.cnj_num))) {
+      const h = honorariosPorCnj[cnj];
+      if (!h) continue;
+      honorarioRecebido += h.valor;
+      honorarioLancamentos += h.lancamentos;
+      honorarioCnjs += 1;
+      if (h.ultimo && (!honorarioUltimo || h.ultimo > honorarioUltimo)) honorarioUltimo = h.ultimo;
+    }
+
     return {
       processos: procs.length,
       semMarco: procs.filter(p => !p.marco_chave).length,
@@ -615,6 +730,13 @@ function calcularTotais(linhas: CarteiraPopLinha[], custoCloud: Record<string, n
       /** Partes com valor que ficaram sem índice: o atualizado está subestimado. */
       partesSemCorrecao,
       pago,
+      /** Honorário do escritório que ENTROU (planilha), nos CNJs deste recorte.
+       *  Outra régua que `valor`/`pago`: é a fatia do escritório, não o
+       *  processo inteiro. A tela mostra separado e não soma. */
+      honorarioRecebido,
+      honorarioLancamentos,
+      honorarioCnjs,
+      honorarioUltimo,
       porEstagio,
       mediaDiasNoMarco: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
       mediaIdadeDias: idades.length ? Math.round(idades.reduce((s, d) => s + d, 0) / idades.length) : null,

@@ -92,16 +92,32 @@ const { dbMock, authMock } = vi.hoisted(() => {
     { process_id: 'p2', marco_chave: 'sentenca', rotulo: 'Sentença', ordem: 7, data_detectada: '2024-01-20' },
   ];
 
+  // Honorário lançado na planilha (`jm_lancamentos`, categoria Honorários).
+  // Os quatro destinos possíveis estão aqui de propósito: dois lançamentos no
+  // CNJ de p1 (que tem DUAS partes — o dinheiro não pode contar duas vezes),
+  // um em p2, um em CNJ que não está nesta carteira e um sem CNJ nenhum.
+  const lancamentos = [
+    { processo_cnj: '0000491-34.2020.5.05.0101', valor_caixa: 10000, data: '2025-03-10' },
+    { processo_cnj: '0000491-34.2020.5.05.0101', valor_caixa: 5000, data: '2026-06-30' },
+    { processo_cnj: '0001240-82.2020.5.06.0211', valor_caixa: 2000, data: '2024-11-05' },
+    { processo_cnj: '0009999-99.2019.5.10.0001', valor_caixa: 7000, data: '2026-07-01' },
+    { processo_cnj: null, valor_caixa: 3000, data: '2023-02-02' },
+  ];
+
   return {
     dbMock: {
       rpc: () => Promise.resolve({ data: linhas, error: null }),
-      from: () => {
+      from: (tabela: string) => {
         const q: Record<string, unknown> = {};
         q.select = () => q;
         q.eq = () => q;
         q.not = () => q;
+        q.or = () => q;
+        q.lte = () => q;
         // Uma página só: o hook para quando o lote vem com menos de 1000.
-        q.range = () => Promise.resolve({ data: marcos, error: null });
+        q.range = () => Promise.resolve({
+          data: tabela === 'jm_lancamentos' ? lancamentos : marcos, error: null,
+        });
         q.in = (_c: string, ids: string[]) =>
           Promise.resolve({ data: processos.filter(p => ids.includes(p.id)), error: null });
         return q;
@@ -296,5 +312,38 @@ describe('useCarteiraDoPop', () => {
     expect(result.current.totais.leadsTotal).toBe(3);
     expect(result.current.totais.leadsComCusto).toBe(3);
     expect(result.current.totais.custo).toBe(400);
+  });
+
+  it('soma o honorário da planilha UMA VEZ por CNJ, não por parte', async () => {
+    const { result } = renderHook(() => useCarteiraDoPop('board-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.totais.honorarioRecebido).toBeGreaterThan(0));
+
+    // p1 (10.000 + 5.000) + p2 (2.000). p1 tem DUAS partes: contar por linha
+    // daria 32.000 e inventaria R$ 15 mil de honorário que não existe.
+    expect(result.current.totais.honorarioRecebido).toBe(17000);
+    expect(result.current.totais.honorarioLancamentos).toBe(3);
+    expect(result.current.totais.honorarioCnjs).toBe(2);
+    expect(result.current.totais.honorarioUltimo).toBe('2026-06-30');
+
+    // O que a planilha tem e a carteira NÃO enxerga fica visível, não sumido:
+    // é exatamente o buraco que fazia o painel parecer errado.
+    expect(result.current.honorarios.total).toBe(27000);
+    expect(result.current.honorarios.foraDaCarteira).toBe(7000);
+    expect(result.current.honorarios.cnjsForaDaCarteira).toBe(1);
+    expect(result.current.honorarios.semCnj).toBe(3000);
+    expect(result.current.honorarios.ultimo).toBe('2026-07-01');
+  });
+
+  it('o honorário segue o recorte da busca, como o resto do dinheiro', async () => {
+    const { result } = renderHook(() => useCarteiraDoPop('board-1', { busca: 'JOSE' }));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    await waitFor(() => expect(result.current.totais.processos).toBe(1));
+
+    // Só p2 na mesa: o honorário do topo é o de p2, não o da carteira inteira.
+    expect(result.current.totais.honorarioRecebido).toBe(2000);
+    expect(result.current.totais.honorarioCnjs).toBe(1);
+    // A carteira inteira continua ao lado, para a tela dizer "N de 2".
+    expect(result.current.totaisCarteira.honorarioRecebido).toBe(17000);
   });
 });

@@ -393,3 +393,97 @@ serve para desqualificar, nunca para classificar sozinha.
 Faltam **1.074 peças** já baixadas e ainda não lidas (fora da fila porque seus
 processos não têm parcela pendente). Custo estimado: ordem de US$ 1–3 no Gemini
 2.5 Flash.
+
+## 11. 17/08/2026 — "Pago R$ 620 mil" com R$ 3,3 milhões de honorário lançado
+
+O painel **Carteira · Trabalhistas judicial — marcos** mostrava `Pago:
+R$ 620.129,86` enquanto a planilha de lançamentos tinha mais de R$ 10 milhões em
+`Honorários`. Nada estava somando errado — eram três problemas empilhados.
+
+### 11.1 O chip PAGO nunca foi dinheiro
+
+`EstagioChips` soma **valor de condenação** por estágio, não valor recebido. O
+chip PAGO é "quanto valem os processos que já têm pagamento registrado". Medido
+na RPC `pop_carteira_marcos` em 17/08/2026:
+
+| estágio | partes | CNJs | valor (condenação) | valor_pago |
+|---|---|---|---|---|
+| CONDENACAO | 236 | 103 | 16.609.393,39 | 0 |
+| A_RECEBER | 61 | 41 | 3.062.710,00 | 0 |
+| **PAGO** | **17** | **3** | **620.129,86** | **874.124,24** |
+| EM_EXECUCAO | 17 | 17 | 0 | 0 |
+| PROJETADO | 344 | 318 | 0 | 0 |
+
+Os dois números de "pago" na mesma tela (620.129,86 no chip, 874.124,24 no card)
+são contas diferentes da mesma linha — e nenhuma das duas é o caixa do
+escritório.
+
+### 11.2 O estágio PAGO enxerga 3 de 475 processos
+
+`pop_carteira_marcos` decide o estágio por `jm_pagamentos`
+(`when coalesce(pg.total_pago,0) > 0 then 'PAGO'`). `jm_pagamentos` tem 1.022
+linhas em **39 CNJs** no banco inteiro, e só **3** deles estão neste POP de 475.
+Os outros 472 processos não têm como sair de PROJETADO/CONDENACAO, por
+construção — não é dado faltando, é a régua não alcançando.
+
+### 11.3 A planilha estava no banco e ninguém lia
+
+`jm_lancamentos` (4.364 linhas, último import **08/07/2026**) tinha o dinheiro.
+O único código que a lia era `vw_jm_parcela_leitura`, filtrando
+`categoria = 'INDENIZAÇÃO'` exato — honorário ficava de fora por construção.
+`cnj_na_base` está **NULL nas 4.364 linhas**: a coluna nunca foi preenchida.
+
+### 11.4 O recorte do que é honorário RECEBIDO
+
+Fechado com contagem no banco, não por nome de categoria:
+
+- `Honorários` — **é caixa**. 523 linhas, R$ 9,96 mi. Todas com data no passado.
+- `Honorários a receber` — **não é**. Lançamentos datados em 2027, 2030, 2035,
+  2037 (pensionamento mês a mês). É previsão.
+- `Honorários Adiantados Oriz` — **não é**. Antecipação de fundo; uma linha só
+  responde por R$ 3,0 mi de caixa contra R$ 888 mil de competência.
+- `Honorários adv parceiro` — **não é**. Repasse a terceiro (`tipo_raw` =
+  'Repasse').
+
+Regra que ficou no código: `categoria = 'Honorários'` exata, `tipo` ENTRADA ou
+nulo, `data <= hoje`.
+
+### 11.5 Onde o honorário cai (e onde some)
+
+Dos honorários da planilha, por destino do CNJ:
+
+| destino | lançamentos | valor |
+|---|---|---|
+| CNJ deste POP trabalhista | 110 | **3.302.102,03** |
+| CNJ que não existe em `lead_processes` | 506 | 7.334.843,40 |
+| sem CNJ no lançamento | 128 | 4.320.873,06 |
+
+O buraco maior não é de cálculo: é **cadastro**. Metade do honorário aponta para
+processo que não está na base.
+
+### 11.6 O que foi entregue
+
+`useCarteiraDoPop` passou a ler `jm_lancamentos` direto (RLS já permite select
+para `authenticated`; sem RPC nova, sem DDL) e expõe:
+
+- `totais.honorarioRecebido` / `honorarioLancamentos` / `honorarioCnjs` /
+  `honorarioUltimo` — segue o recorte da busca, como o resto do dinheiro;
+- `honorarios` — total da planilha, quanto está fora da carteira e quanto está
+  sem CNJ, para a tela mostrar o buraco em vez de escondê-lo.
+
+O painel ganhou a linha **"Honorários recebidos (caixa)"**, separada dos chips de
+estágio, e o aviso passou a dizer o que o chip PAGO é. **As duas contas nunca se
+somam**: honorário é a fatia do escritório, a carteira é o processo inteiro.
+
+Provas em `useCarteiraDoPop.test.ts`: honorário conta uma vez por CNJ (p1 tem 2
+partes — por linha daria 32.000 em vez de 17.000) e segue o recorte da busca.
+
+### 11.7 O que ficou de fora
+
+- **Reimportar a planilha.** O import é de 08/07/2026: 523 linhas de
+  `Honorários` no banco contra 575 na planilha do Raym. Os números acima estão
+  ~1 mês atrasados.
+- **Conciliar lançamento → estágio.** O estágio PAGO continua olhando só
+  `jm_pagamentos`. Fazer o lançamento contábil mover o estágio exige casar por
+  parte (`parte_id` está preenchido em 1.415 de 4.364 linhas) e muda o valor de
+  todos os chips — não foi feito, e não deve ser feito sobre base de julho.

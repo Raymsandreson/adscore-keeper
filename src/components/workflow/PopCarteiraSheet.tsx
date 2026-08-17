@@ -255,7 +255,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   // que a lista, senão a carteira mostra um valor que não é o que está listado.
   const {
     grupos, totais, totaisCarteira, camposDeData, anosDisponiveis,
-    semADataEscolhida, filtrando, loading, erro,
+    semADataEscolhida, honorarios, filtrando, loading, erro,
   } = useCarteiraDoPop(open ? boardId : null, {
     busca, campoData, de: janela.de, ate: janela.ate,
   });
@@ -421,6 +421,45 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               <EstagioChips porEstagio={totais.porEstagio} />
             </div>
 
+            {/* Honorário que ENTROU — a planilha, não a carteira. Fica FORA dos
+                chips de estágio de propósito: o chip PAGO mede a condenação dos
+                processos com pagamento registrado (3 de 475 hoje), enquanto isto
+                aqui é o caixa de honorário lançado. Somar os dois misturaria a
+                fatia do escritório com o processo inteiro. */}
+            <div className="rounded-lg border p-2.5">
+              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                Honorários recebidos (caixa)
+              </div>
+              {totais.honorarioRecebido > 0 ? (
+                <div className="space-y-1">
+                  <div className="text-sm">
+                    <span className="font-semibold">{brl(totais.honorarioRecebido)}</span>
+                    <span className="text-muted-foreground">
+                      {' '}em {totais.honorarioLancamentos} lançamento{totais.honorarioLancamentos === 1 ? '' : 's'}
+                      {' '}de {totais.honorarioCnjs} processo{totais.honorarioCnjs === 1 ? '' : 's'}
+                      {totais.honorarioUltimo ? ` · último em ${mesAno(totais.honorarioUltimo)}` : ''}
+                    </span>
+                  </div>
+                  {(honorarios.foraDaCarteira > 0 || honorarios.semCnj > 0) && (
+                    <div className="text-[11px] leading-snug text-muted-foreground">
+                      A planilha tem {brl(honorarios.total)} em honorários no total
+                      {honorarios.foraDaCarteira > 0 && (
+                        <> · {brl(honorarios.foraDaCarteira)} em {honorarios.cnjsForaDaCarteira} CNJ(s)
+                          que não estão nesta carteira</>
+                      )}
+                      {honorarios.semCnj > 0 && <> · {brl(honorarios.semCnj)} sem CNJ no lançamento</>}
+                      {honorarios.ultimo && <> · lançamento mais novo: {mesAno(honorarios.ultimo)}</>}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  Nenhum lançamento de honorário da planilha bate com os CNJs desta carteira
+                  {honorarios.total > 0 ? ` — a planilha tem ${brl(honorarios.total)} em honorários, mas em outros processos ou sem CNJ.` : '.'}
+                </div>
+              )}
+            </div>
+
             <p className="text-[11px] leading-snug text-muted-foreground">
               Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa
               do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
@@ -428,7 +467,11 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               juros e correção do termo inicial de cada decisão até a data da tabela de índices —
               SELIC simples nos trabalhistas (buscada no Bacen todo dia), TCM nos estaduais (ainda
               carregada à mão, por isso pode ficar para trás); a carteira continua somando o
-              nominal. Índice de sucesso:
+              nominal. O chip PAGO não é dinheiro recebido: é a condenação dos processos que já
+              têm pagamento registrado em <code>jm_pagamentos</code>, que hoje cobre 3 dos 475 —
+              o caixa de honorário está na linha de cima, vindo da planilha de lançamentos, e as
+              duas contas não se somam (honorário é a fatia do escritório, a carteira é o
+              processo inteiro). Índice de sucesso:
               entre os decididos com leitura de decisão (ou acordo), quantos saíram com valor
               fixado ou acordo homologado — decidido sem leitura é buraco de captura e fica fora
               da conta.
