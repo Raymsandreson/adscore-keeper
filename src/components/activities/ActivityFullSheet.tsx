@@ -1595,9 +1595,18 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
               {!isCreate && (
                 <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
-                  <ExternalLink className="h-3 w-3" /> Tela cheia
+                  <ExternalLink className="h-3 w-3" /> Atividade
                 </Button>
               )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsFullscreen(v => !v)}
+                className="h-8 w-8 shrink-0"
+                title={isFullscreen ? 'Sair da tela cheia' : 'Expandir para tela cheia'}
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"
