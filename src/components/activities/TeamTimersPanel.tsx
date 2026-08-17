@@ -11,6 +11,9 @@ import { Button } from '@/components/ui/button';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { getTimeOffForDate, TIME_OFF_TYPE_LABELS, type TimeOffEntry } from '@/lib/timeOff';
+// Presença é regra de negócio (decide quem a gestão cobra), então mora no lib e
+// tem teste próprio — ver src/lib/__tests__/teamPresence.test.ts.
+import { appOnlyShift, notStarted } from '@/lib/teamPresence';
 
 /** Contexto do alerta — muda as frases prontas e o rótulo do botão. */
 type AlertContext = 'idle' | 'break' | 'not_started';
@@ -44,12 +47,12 @@ type PanelView = 'now' | 'rank';
 
 const dbAny = db as unknown as SupabaseClient;
 
-/**
- * "Não iniciou" ≠ "off": quem bateu o ponto e já encerrou também fica 'off',
- * mas apareceu no sistema hoje. Aqui o alvo é só quem não começou o expediente
- * (nenhum segundo produtivo nem ocioso registrado no dia).
- */
-const notStarted = (m: MemberStatus) => m.state === 'off' && m.dayActive === 0 && m.dayIdle === 0;
+/** HH:MM no fuso de quem usa o sistema, para o selo dizer desde quando. */
+const hhmm = (iso: string) =>
+  new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit',
+  }).format(new Date(iso));
+
 const matchesFilter = (m: MemberStatus, f: StatusFilter) =>
   f === 'all' ? true : f === 'not_started' ? notStarted(m) : m.state === f;
 
@@ -101,6 +104,12 @@ interface MemberStatus {
   currentSecs: number;   // segundos da sessão atual (ativo se working, ocioso se idle)
   dayActive: number;     // total produtivo hoje
   dayIdle: number;       // total ocioso hoje
+  /** Bateu ponto hoje (`work_shifts`), mesmo que já tenha encerrado. */
+  shiftToday: boolean;
+  /** Turno em aberto agora — é o que dá à gestão o encerrar remoto. */
+  shiftOpen: boolean;
+  /** Entrada do primeiro turno de hoje, para o selo dizer desde quando. */
+  shiftStartedAt: string | null;
 }
 
 interface TeamGroup {
@@ -243,9 +252,20 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
       // 3) Sessões de HOJE (Externo) — status ao vivo + totais do dia por membro.
       // Filtra por work_date (partição por dia): antes somava active_seconds
       // vitalício de qualquer linha "tocada hoje", inflando o total (ex.: 12h50).
-      const { data: entries } = await dbAny.from('activity_time_entries')
-        .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at, break_type, break_note, estimated_minutes')
-        .eq('work_date', brasiliaToday());
+      const today = brasiliaToday();
+      const [{ data: entries }, { data: shifts }] = await Promise.all([
+        dbAny.from('activity_time_entries')
+          .select('user_id, activity_id, activity_title, activity_type, active_seconds, idle_seconds, status, ended_at, started_at, break_type, break_note, estimated_minutes')
+          .eq('work_date', today),
+        // Ponto do dia — a outra fonte de presença (ver `notStarted`). A tabela
+        // não tem work_date: o corte é por started_at, e o índice é
+        // (user_id, started_at desc). O offset fixo -03:00 vale porque o
+        // Brasil não tem horário de verão desde 2019, e é o mesmo fuso que
+        // brasiliaToday() usa para fechar o dia logo acima.
+        dbAny.from('work_shifts')
+          .select('user_id, started_at, ended_at')
+          .gte('started_at', `${today}T00:00:00-03:00`),
+      ]);
 
       type Entry = {
         user_id: string; activity_id: string | null; activity_title: string | null;
@@ -266,12 +286,28 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         if (!u.latest || ts > prevTs) u.latest = r;
       }
 
+      // Ponto por membro. Pode haver mais de um turno no dia (quem encerra e
+      // volta): aberto se QUALQUER um segue sem saída, e a entrada é a do
+      // primeiro — é a hora em que a pessoa apareceu.
+      type Shift = { user_id: string; started_at: string; ended_at: string | null };
+      const shiftByUser = new Map<string, { open: boolean; startedAt: string }>();
+      for (const s of ((shifts as Shift[]) || [])) {
+        const prev = shiftByUser.get(s.user_id);
+        shiftByUser.set(s.user_id, {
+          open: (prev?.open || false) || !s.ended_at,
+          startedAt: prev && prev.startedAt < s.started_at ? prev.startedAt : s.started_at,
+        });
+      }
+
       const now = Date.now();
       const statusOf = (extId: string, cloudId: string, name: string): MemberStatus => {
         const u = byUser.get(extId);
+        const shift = shiftByUser.get(extId);
         const base: MemberStatus = {
           extUserId: extId, cloudUserId: cloudId, name, state: 'off', activityTitle: null, activityType: null, activityId: null,
           currentSecs: 0, dayActive: u?.dayActive || 0, dayIdle: u?.dayIdle || 0,
+          shiftToday: Boolean(shift), shiftOpen: shift?.open || false,
+          shiftStartedAt: shift?.startedAt || null,
         };
         const latest = u?.latest;
         if (!latest || latest.status !== 'running') return base;
@@ -368,9 +404,11 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         members: buildMembers((memberCloudIdsByTeam.get(t.id) || []).filter(cid => !leadershipCloudIds.has(cid))),
       })).filter(g => g.members.length > 0));
 
-      // "Sem time": só quem tem cronômetro hoje (esconde inativos — contas avulsas poluem)
+      // "Sem time": só quem apareceu hoje — cronômetro OU ponto (o app bate
+      // ponto sem cronometrar; sem `shiftToday` aqui ele sumiria do painel).
+      // Esconde inativos, que é o ponto do filtro: contas avulsas poluem.
       const noTeam = buildMembers(cloudIds.filter(cid => !inSomeTeam.has(cid) && !leadershipCloudIds.has(cid)))
-        .filter(m => m.state !== 'off' || m.dayActive > 0 || m.dayIdle > 0);
+        .filter(m => m.state !== 'off' || m.dayActive > 0 || m.dayIdle > 0 || m.shiftToday);
       if (noTeam.length > 0) result.push({ id: '__none__', name: 'Sem time', color: null, members: noTeam });
 
       setGroups(result);
@@ -669,9 +707,13 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                       </span>
                     ) : (
+                      // Bolinha vazada = ponto aberto sem cronômetro rodando.
+                      // Não é a verde pulsante (essa é atividade em andamento)
+                      // nem a cinza de ausente: a pessoa está no expediente.
                       <span className={`h-2 w-2 rounded-full shrink-0 ${
                         m.state === 'idle' ? 'bg-amber-400'
                         : m.state === 'break' ? (breakOverdue(m) ? 'bg-red-500' : 'bg-sky-400')
+                        : m.shiftOpen ? 'border border-emerald-500'
                         : 'bg-muted-foreground/30'}`} />
                     )}
                     <div className="min-w-0 flex-1">
@@ -684,6 +726,16 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                             title={`Está de ${m.awayLabel.toLowerCase()} hoje, mas com atividade em andamento`}
                           >
                             {m.awayLabel}
+                          </span>
+                        )}
+                        {appOnlyShift(m) && (
+                          <span
+                            className="ml-1 text-[10px] font-normal rounded px-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                            title={m.shiftOpen
+                              ? 'Bateu ponto pelo app. O app registra o expediente mas não cronometra — por isso não há tempo de atividade aqui.'
+                              : 'Bateu e encerrou o ponto pelo app hoje. O app não cronometra.'}
+                          >
+                            ponto pelo app
                           </span>
                         )}
                       </div>
@@ -707,7 +759,11 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                         )}
                         {m.state === 'off' && (notStarted(m)
                           ? 'Não iniciou o expediente hoje'
-                          : `Hoje: ${formatHMS(m.dayActive)} produtivo · fora do ar`)}
+                          : appOnlyShift(m)
+                            ? (m.shiftOpen
+                              ? `Em expediente${m.shiftStartedAt ? ` desde ${hhmm(m.shiftStartedAt)}` : ''} · sem cronômetro`
+                              : 'Expediente do dia encerrado · sem cronômetro')
+                            : `Hoje: ${formatHMS(m.dayActive)} produtivo · fora do ar`)}
                       </div>
                     </div>
                     {m.activityId && (
@@ -732,7 +788,10 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
                     {notStarted(m) && (
                       <MemberAlertButton member={m} context="not_started" onSend={sendIdleAlert} />
                     )}
-                    {canManage && m.state !== 'off' && (
+                    {/* Turno aberto sem cronômetro (app) também precisa do menu:
+                        é o único jeito de a gestão fechar o ponto de quem largou
+                        o celular — e é o comando que também fecha work_shifts. */}
+                    {canManage && (m.state !== 'off' || m.shiftOpen) && (
                       <MemberActionsButton member={m} onCommand={sendCommand} />
                     )}
                     {m.state !== 'off' && (
@@ -798,7 +857,9 @@ function MemberActionsButton({
             <span className="block text-[11px] text-muted-foreground leading-snug mt-0.5">
               {canPause
                 ? 'Salva o tempo da sessão atual; daí em diante conta como ocioso.'
-                : 'Já está ocioso — nada em andamento para pausar.'}
+                : member.state === 'off'
+                  ? 'Sem cronômetro rodando — nada para pausar. Só o encerrar vale aqui.'
+                  : 'Já está ocioso — nada em andamento para pausar.'}
             </span>
           </button>
           {!confirmEnd ? (
