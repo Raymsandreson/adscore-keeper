@@ -128,13 +128,33 @@ export default function ProcessesPage() {
     }
   }, []);
 
-  // Auto-open process from URL param
+  // Auto-open process from URL param.
+  //
+  // NÃO espera a lista: ela vem em páginas de 1.000 sobre 1.500+ processos, e o
+  // link de fora (planilha, mensagem, e-mail) abria só depois de baixar tudo —
+  // no celular isso fica em "Carregando processos… 0 processos" e o clique
+  // parece não funcionar. Aqui o processo é buscado direto pelo id; a lista
+  // continua carregando por trás para a navegação normal.
+  const autoAbertoRef = useRef<string | null>(null);
   useEffect(() => {
     const openId = searchParams.get('openProcess');
-    if (openId && processes.length > 0 && !selectedProcess) {
-      const found = processes.find(p => p.id === openId);
-      if (found) openProcess(found);
-    }
+    if (!openId || selectedProcess || autoAbertoRef.current === openId) return;
+    autoAbertoRef.current = openId;
+
+    const naLista = processes.find(p => p.id === openId);
+    if (naLista) { void openProcess(naLista); return; }
+
+    void (async () => {
+      const { data, error } = await externalSupabase
+        .from('lead_processes')
+        .select('*')
+        .eq('id', openId)
+        .is('deleted_at', null)
+        .maybeSingle();
+      if (error) { toast.error('Erro ao abrir processo: ' + errMessage(error)); return; }
+      if (!data) { toast.error('Processo não encontrado — pode ter sido excluído.'); return; }
+      setSelectedProcess(data);
+    })();
   }, [searchParams, processes, selectedProcess, openProcess]);
 
   const filtered = processes.filter((p) => {
