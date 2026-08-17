@@ -65,6 +65,7 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
+import { EventsAgenda } from '@/components/activities/EventsAgenda';
 import { alternarComShift, alternarSelecaoDoPool, podarSelecao } from '@/lib/activitySelection';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
@@ -481,8 +482,9 @@ const ActivitiesPage = () => {
     })();
     return () => { cancelled = true; };
   }, [showProcessSheetId]);
-  const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
-  const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
+  const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks' | 'eventos'>('activities_viewMode', 'blocks');
+  // Coerção defensiva: o valor vem do localStorage e pode ser lixo antigo.
+  const viewMode = (viewModeRaw === 'list' ? 'list' : viewModeRaw === 'eventos' ? 'eventos' : 'blocks') as 'list' | 'blocks' | 'eventos';
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
@@ -2892,6 +2894,33 @@ const ActivitiesPage = () => {
   }, [selectedActivities, confirmDelete, exitSelection, fetchActivities, selectedActivity]);
 
   /**
+   * Abre a ficha de uma atividade a partir do id, em painel por cima da tela.
+   *
+   * A agenda de eventos lê de outras tabelas (`hearings`, processos) e alcança
+   * atividade que não está no lote carregado pelos filtros da página — por isso
+   * busca no banco quando não acha em memória, em vez de navegar para outra
+   * rota.
+   */
+  const abrirAtividadePorId = useCallback(async (id: string) => {
+    const emMemoria = activities.find(a => a.id === id);
+    if (emMemoria) { void handleOpenEdit(emMemoria); return; }
+    const { data, error } = await (externalSupabase as any)
+      .from('lead_activities')
+      .select('*')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !data) {
+      toast.error('Não deu para abrir esta atividade');
+      return;
+    }
+    void handleOpenEdit(data as LeadActivity);
+    // handleOpenEdit é redefinida a cada render (não é useCallback); prender a
+    // referência aqui congelaria o estado que ela lê.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities]);
+
+  /**
    * Cabeçalho do modo seleção. Renderizado nas DUAS visões: na Lista, sobre os
    * cards; nos Blocos, dentro do painel do bloco aberto.
    *
@@ -3958,6 +3987,19 @@ const ActivitiesPage = () => {
               <List className="h-3.5 w-3.5" />
               Lista
             </button>
+            <button
+              onClick={() => setViewMode('eventos')}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                viewMode === 'eventos'
+                  ? "bg-primary-foreground text-primary shadow-sm"
+                  : "text-primary-foreground/70 hover:text-primary-foreground"
+              )}
+              title="Audiências, perícias e prazos do dia seguinte"
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              Eventos
+            </button>
             <a
               href="/tv/atividades"
               onClick={(e) => {
@@ -4938,15 +4980,25 @@ const ActivitiesPage = () => {
         })()}
 
 
+        {/* Agenda de eventos do dia seguinte (audiências, perícias, prazos) */}
+        {viewMode === 'eventos' && (
+          <div className={cn(
+            "flex flex-col overflow-hidden min-h-0",
+            isEditing ? "hidden md:flex shrink-0 border-r w-[36rem]" : "flex-1",
+          )}>
+            <EventsAgenda onAbrirAtividade={abrirAtividadePorId} />
+          </div>
+        )}
+
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div
           className={cn(
             "relative flex-col overflow-hidden transition-all",
-            viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex shrink-0 border-r" : "flex flex-1")
+            viewMode !== 'list' ? "hidden" : (isEditing ? "hidden md:flex shrink-0 border-r" : "flex flex-1")
           )}
-          style={isEditing && viewMode !== 'blocks' ? { width: listColWidth, minWidth: 280 } : undefined}
+          style={isEditing && viewMode === 'list' ? { width: listColWidth, minWidth: 280 } : undefined}
         >
-          {isEditing && viewMode !== 'blocks' && (
+          {isEditing && viewMode === 'list' && (
             <div
               role="separator"
               aria-orientation="vertical"
