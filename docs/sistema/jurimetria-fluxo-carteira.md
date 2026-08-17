@@ -265,3 +265,56 @@ entrou sem lançamento, ou se o `RECEBIDA` está errado.
 E há uma regra do vocabulário que impede coluna única: **cota do cliente e honorário são
 recebíveis distintos e nunca se somam**. `valor_pago` como um número só já nasce ambíguo —
 o desenho certo é separar as duas linhas antes de gravar qualquer coisa.
+
+### 10.5 A NF é o carimbo do honorário; o silêncio é o carimbo da parcela
+
+Duas regras de negócio que o Raym trouxe e que os dados confirmaram:
+
+**1. NF preenchida = honorário recebido.** A nota se emite quando o escritório recebe;
+cota do cliente não gera nota. Confere: em 925 linhas de "a receber" (honorário e
+indenização) **nenhuma** tem NF. Mas a NF está preenchida em poucos casos — no caso 88,
+das 10 linhas de honorário realizado só a parcela 1 tem nota (R$ 10.909,09 de
+R$ 172.288,53). Na base: R$ 7,17 mi com NF contra R$ 2,79 mi sem. Ou seja, **NF prova
+faturamento, não recebimento** — serve para saber o que falta faturar, não para ser a
+régua do "pago".
+
+**2. No silêncio do executado, presume-se pago.** Quando fica inadimplente, o exequente
+se manifesta nos autos. A *ausência* de movimentação depois do vencimento é sinal, e
+isso virou `vw_jm_parcela_leitura`: `PAGO` (351 parcelas, R$ 5,10 mi),
+`PAGO_PRESUMIDO` (368, R$ 583 mil), `INADIMPLENCIA_SUSPEITA` (88, R$ 826 mil),
+`A_RECEBER` (215). Validada contra o caso 88, que sai 1–8 `PAGO` e 9–11
+`INADIMPLENCIA_SUSPEITA` — a história real.
+
+### 10.6 O marco "Levantamento / pagamento" era um sinal errado
+
+O TPU **277** ("Convenção das Partes para Satisfação Voluntária da Obrigação em Execução")
+estava cadastrado como sinal do marco `pagamento` em **10 POPs**. Isso não é levantamento
+— é o combinado de COMO pagar. Como `pagamento` tem ordem 24 e `execucao_iniciada` tem 20,
+o processo subia ao topo da régua e travava: o caso 88 ficou 846 dias em "Levantamento /
+pagamento" tendo ido para execução com IDPJ.
+
+Sinal removido (backup em `zz_pop_marco_sinais_bkp_20260816`) e marcos recalculados. Depois
+disso, **`process_pop_marcos` não tem NENHUM marco `pagamento` na base inteira** — nunca
+houve detecção real de pagamento. O código certo existe e está sem sinal: **12548
+"Expedição de alvará de levantamento"**.
+
+Para auditar o resto, duas views novas:
+
+- `vw_pop_tpu_cobertura` — código TPU visto × sinal cadastrado. Hoje: 180 códigos, 36 com
+  sinal, **144 sem sinal tocando 4.146 processos**, dos quais 47 tocam 10+ processos.
+- `vw_pop_sinais_ociosos` — sinal que nenhum movimento casa. Hoje: 0.
+
+Armadilha do método: **não casar por texto**. O código 12066 é "Cumprimento de Levantamento
+da Suspensão" (59 processos) e casaria com "levantamento" sem ter nada a ver com dinheiro.
+
+### 10.7 Etiqueta ≠ marco (decisão do Raym)
+
+IDPJ e inadimplência **não viram marco**: nem todo processo passa por eles, e entrariam no
+denominador do progresso. A régua já tem os campos para isso em `pop_marcos`:
+`eventual` (fora do progresso), `atravessa_fases` (estado que não sequestra a fase — já
+usado por *Acordo homologado* e *Suspensão*) e `terminal`. Etiqueta nova entra como
+`eventual = true` + `atravessa_fases = true`.
+
+Nota: hoje **os 27 marcos do POP trabalhista estão com `eventual = false`**, ou seja perícia
+e embargos contam como etapa obrigatória de todo processo — o progresso está subestimado
+para quem não passa por eles.
