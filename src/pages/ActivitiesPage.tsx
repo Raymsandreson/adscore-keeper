@@ -29,8 +29,7 @@ import { splitAIFields, type AIFieldConflict, type AIReviewedField } from '@/lib
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
 import { resolveLeadAudioTarget } from '@/lib/leadWhatsAppTarget';
-import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
-import { resolveGroupSenderInstanceName } from '@/lib/whatsappGroupInstance';
+import { sendActivityGroupNotification, type GroupNotifyOptions } from '@/lib/activityGroupNotification';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
@@ -2072,79 +2071,8 @@ const ActivitiesPage = () => {
     }
   };
 
-  const sendGroupNotification = async (options: { groupJid: string; message: string; sendAudio: boolean; audioText?: string }) => {
-    try {
-      // Instância remetente: grupo NUNCA usa o default pessoal — a mensagem é da
-      // firma, não do usuário logado. Incidente 04/08/2026 (FAMÍLIA 250): o texto
-      // saiu por "Atendimento Processual" (default legado gravado no Cloud, campo
-      // que o ProfilePage nem escreve mais) enquanto o áudio do MESMO envio saiu
-      // por "Atendimento Previdenciário", que já usava o helper. Mesmo critério do
-      // sendVoiceToWa, pra texto e áudio saírem sempre pela mesma instância.
-      let instanceId: string | undefined;
-      let instanceName: string | undefined;
-      if (isWhatsAppGroupId(options.groupJid)) {
-        instanceName = await resolveGroupSenderInstanceName(options.groupJid);
-      } else {
-        // Alvo pessoa (não ocorre pelo dialog, que só oferece grupos): default do
-        // perfil no EXTERNO, fonte da verdade. O homônimo no Cloud é legado.
-        try {
-          const { data: { user: authUser } } = await supabase.auth.getUser();
-          const extUserId = await remapToExternal(authUser?.id || null);
-          if (extUserId) {
-            const { data: profile } = await externalSupabase
-              .from('profiles')
-              .select('default_instance_id')
-              .eq('user_id', extUserId)
-              .maybeSingle();
-            instanceId = (profile as any)?.default_instance_id || undefined;
-          }
-        } catch (e) {
-          console.warn('[sendGroupNotification] falha lendo profile:', e);
-        }
-      }
-
-      // Send text message
-      const sendBody: Record<string, any> = {
-        phone: options.groupJid,
-        chat_id: options.groupJid,
-        message: options.message,
-        lead_id: formLeadId || null,
-      };
-      if (instanceId) sendBody.instance_id = instanceId;
-      if (instanceName) sendBody.instance_name = instanceName;
-
-      const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
-      if (error || !data?.success) {
-        toast.error(data?.error || 'Erro ao enviar mensagem ao grupo');
-      } else {
-        toast.success('Mensagem enviada ao grupo!');
-      }
-
-      // Send audio if requested
-      if (options.sendAudio && options.audioText) {
-        const { data: ttsData } = await cloudFunctions.invoke('elevenlabs-tts', {
-          body: { text: options.audioText },
-        });
-        if (ttsData?.audio_url) {
-          await cloudFunctions.invoke('send-whatsapp', {
-            body: {
-              action: 'send_media',
-              phone: options.groupJid,
-              chat_id: options.groupJid,
-              media_url: ttsData.audio_url,
-              media_type: 'audio/mpeg',
-              lead_id: formLeadId || null,
-              ...(instanceId ? { instance_id: instanceId } : {}),
-              ...(instanceName ? { instance_name: instanceName } : {}),
-            },
-          });
-          toast.success('Áudio enviado ao grupo!');
-        }
-      }
-    } catch (e: any) {
-      toast.error(e.message || 'Erro ao notificar grupo');
-    }
-  };
+  const sendGroupNotification = (options: GroupNotifyOptions) =>
+    sendActivityGroupNotification(options, formLeadId || null);
 
   const handleDelete = (id: string) => {
     confirmDelete(
