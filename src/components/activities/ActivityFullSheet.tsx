@@ -39,6 +39,7 @@ import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/a
 import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
 import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
 import { formatPostponeDate } from '@/lib/postponeDates';
+import { buildMotherContentPatch } from '@/lib/activityChainMother';
 import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
@@ -1120,6 +1121,28 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         chain_root_id: current.chain_root_id || current.id,
       } as Partial<LeadActivity>;
 
+      // A mãe guarda o texto digitado antes de ser concluída — mesma regra da
+      // ActivitiesPage (`activityChainMother.ts`): só os 6 campos de texto, sem
+      // data e sem título, e campo vazio não apaga o que ela já tem.
+      const motherPatch = buildMotherContentPatch(
+        {
+          what_was_done: formWhatWasDone || null,
+          current_status_notes: formCurrentStatus || null,
+          next_steps: formNextSteps || null,
+          notes: formNotes || null,
+          solicitacao: formSolicitacao || null,
+          resposta_juizo: formRespostaJuizo || null,
+        },
+        current as any,
+      );
+      if (Object.keys(motherPatch).length > 0) {
+        const ok = await updateActivity(current.id, motherPatch as any, { successMessage: null });
+        if (!ok) {
+          toast.error('Nada foi concluído: o texto da atividade não pôde ser salvo. Tente de novo.', { duration: 8000 });
+          return;
+        }
+      }
+
       await completeActivity(current.id);
       await stopTimerFor(current.id); // concluir encerra o cronômetro
       toast.success('Atividade concluída! 🎉');
@@ -2061,11 +2084,6 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         onConfirm={handleCompleteAndNext}
         leadId={formLeadId || null}
         buildMsg={buildMsg}
-        // Prazo mexido no formulário: o dialog avisa que "Concluir + próxima"
-        // conclui ESTA atividade na data velha e oferece o adiar de verdade.
-        currentDeadline={selectedActivity?.deadline || null}
-        nextDeadline={formDeadline || null}
-        onPostponeInstead={selectedActivity ? handlePostpone : undefined}
       />
 
       <Dialog open={financeOpen} onOpenChange={setFinanceOpen}>

@@ -92,6 +92,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
 import { buildPostponeOptions, formatPostponeDate } from '@/lib/postponeDates';
+import { buildMotherContentPatch } from '@/lib/activityChainMother';
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
@@ -2001,6 +2002,33 @@ const ActivitiesPage = () => {
         chain_root_id: currentActivity.chain_root_id || currentActivity.id,
         ...buildAssigneesPayload(),
       };
+
+      // A mãe guarda o que foi digitado ANTES de ser concluída. Até 17/08/2026
+      // o clique concluía sem gravar nada dela: o texto ia só para a filha, e a
+      // etapa encerrada ficava no histórico sem dizer o que foi feito nela
+      // (medido: 56 mães vazias com a filha cheia em 1.000 elos, mais 151 com
+      // versão divergente). Só os 6 campos de texto — data, título e
+      // responsável ficam de fora, ver `activityChainMother.ts`.
+      const motherPatch = buildMotherContentPatch(
+        {
+          what_was_done: formWhatWasDone || null,
+          current_status_notes: formCurrentStatus || null,
+          next_steps: formNextSteps || null,
+          notes: formNotes || null,
+          solicitacao: formSolicitacao || null,
+          resposta_juizo: formRespostaJuizo || null,
+        },
+        currentActivity as any,
+      );
+      if (Object.keys(motherPatch).length > 0) {
+        // Falhou: não conclui. Concluir por cima perderia o relato do trabalho
+        // de vez — mesma postura do flush de anexos acima.
+        const ok = await updateActivity(currentActivity.id, motherPatch as any, { successMessage: null });
+        if (!ok) {
+          toast.error('Nada foi concluído: o texto da atividade não pôde ser salvo. Tente de novo.', { duration: 8000 });
+          return;
+        }
+      }
 
       // Conclude the current activity without overwriting its existing data
       await completeActivity(currentActivity.id);
@@ -6754,11 +6782,6 @@ const ActivitiesPage = () => {
         leadId={formLeadId || null}
         buildMsg={buildMsg}
         preloadedGroups={preloadedLeadGroups}
-        // Prazo mexido no formulário: o dialog avisa que "Concluir + próxima"
-        // conclui ESTA atividade na data velha e oferece o adiar de verdade.
-        currentDeadline={selectedActivity?.deadline || null}
-        nextDeadline={formDeadline || null}
-        onPostponeInstead={selectedActivity ? (d) => handlePostpone(selectedActivity.id, d) : undefined}
       />
 
       <AssessorSummaryShareDialog

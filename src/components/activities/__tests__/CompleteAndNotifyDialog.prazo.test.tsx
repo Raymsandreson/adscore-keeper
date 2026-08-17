@@ -1,17 +1,21 @@
 /**
- * "Concluir + próxima" com o prazo mexido no formulário.
+ * "Concluir + próxima" com o prazo mexido no formulário: o pop-up NÃO comenta.
  *
- * Trocar o prazo e clicar nesse botão NÃO adia: a atividade aberta é concluída
- * com o prazo antigo e a data nova vai só para a filha. Quem só queria adiar
- * acabava concluindo — no PREV 180 (14/08/2026) foram 8 conclusões em 10
- * minutos, uma por tentativa. O dialog passou a dizer o que vai acontecer e a
- * oferecer o adiar de verdade.
+ * Entre 14/08 e 17/08/2026 este dialog mostrava um aviso amarelo ("Você mudou o
+ * prazo de X para Y") com um atalho "Só adiar" (commit e35e37ecb). Nasceu do
+ * PREV 180, quando o botão era usado como adiar por falta de um Adiar de
+ * verdade — que passou a existir no mesmo dia (87d01cbd7), no action bar, ao
+ * lado deste botão.
  *
- * Invariantes cobertos:
- *  1. sem mudança de prazo, nada de aviso (o caminho normal não ganha ruído);
- *  2. com mudança, o aviso mostra as DUAS datas;
- *  3. o atalho adia e fecha, sem concluir nada;
- *  4. sem `onPostponeInstead`, o aviso continua, mas sem botão que não funciona.
+ * O aviso saiu em 17/08/2026 por não distinguir nada: nos 1.000 elos de cadeia
+ * mais recentes do banco, 946 (94,6%) nascem com prazo MAIOR que o da mãe,
+ * contra 53 que repetem a data. Mudar a data É o caminho normal — a data nova é
+ * a da próxima etapa. Um aviso que aparece em 19 de cada 20 cliques só ensina a
+ * clicar por cima.
+ *
+ * Fluxo correto, e o que este teste tranca: a mãe fica concluída com a data em
+ * que venceu, a próxima nasce na data nova, e o pop-up trata só da notificação
+ * no grupo. Quem for reintroduzir o aviso passa por aqui primeiro.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -55,82 +59,39 @@ vi.mock('sonner', () => ({
 
 import { CompleteAndNotifyDialog } from '../CompleteAndNotifyDialog';
 
-const HOJE = '2026-08-14';
-const DEPOIS = '2026-08-18';
-const ANTES = '2026-08-10';
-
-interface Cenario {
-  currentDeadline?: string | null;
-  nextDeadline?: string | null;
-  onPostponeInstead?: ((d: string) => void) | undefined;
-  onConfirm?: () => Promise<void>;
-  onClose?: () => void;
-}
-
-const renderDialog = (c: Cenario = {}) =>
+const renderDialog = (over: { onConfirm?: () => Promise<void>; onClose?: () => void } = {}) =>
   render(
     <CompleteAndNotifyDialog
       open
-      onClose={c.onClose ?? (() => {})}
-      onConfirm={c.onConfirm ?? (async () => {})}
+      onClose={over.onClose ?? (() => {})}
+      onConfirm={over.onConfirm ?? (async () => {})}
       leadId="lead-1"
       buildMsg={() => 'mensagem'}
       preloadedGroups={[]}
-      currentDeadline={c.currentDeadline ?? null}
-      nextDeadline={c.nextDeadline ?? null}
-      onPostponeInstead={c.onPostponeInstead}
     />,
   );
-
-const avisoDoPrazo = () => screen.queryByText(/Você mudou o prazo de/);
 
 describe('CompleteAndNotifyDialog — prazo alterado antes de concluir', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('prazo intocado: nenhum aviso', async () => {
-    renderDialog({ currentDeadline: HOJE, nextDeadline: HOJE, onPostponeInstead: vi.fn() });
+  it('não avisa nada sobre prazo, nem oferece adiar', async () => {
+    renderDialog();
     await screen.findByText('Concluir e Criar Próxima Atividade');
-    expect(avisoDoPrazo()).not.toBeInTheDocument();
+
+    expect(screen.queryByText(/mudou o prazo/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /adiar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /não concluir/i })).not.toBeInTheDocument();
   });
 
-  it('atividade sem prazo gravado: nenhum aviso (não há de/para a mostrar)', async () => {
-    renderDialog({ currentDeadline: null, nextDeadline: DEPOIS, onPostponeInstead: vi.fn() });
-    await screen.findByText('Concluir e Criar Próxima Atividade');
-    expect(avisoDoPrazo()).not.toBeInTheDocument();
-  });
-
-  it('prazo adiado: o aviso mostra a data velha e a nova', async () => {
-    renderDialog({ currentDeadline: HOJE, nextDeadline: DEPOIS, onPostponeInstead: vi.fn() });
-
-    const aviso = await screen.findByText(/Você mudou o prazo de/);
-    expect(aviso).toHaveTextContent('14/08');
-    expect(aviso).toHaveTextContent('18/08');
-  });
-
-  it('o atalho adia com a data NOVA, fecha e não conclui nada', async () => {
-    const onPostponeInstead = vi.fn();
+  it('o pop-up trata só da notificação: confirmar conclui direto', async () => {
     const onConfirm = vi.fn(async () => {});
     const onClose = vi.fn();
-    renderDialog({ currentDeadline: HOJE, nextDeadline: DEPOIS, onPostponeInstead, onConfirm, onClose });
+    renderDialog({ onConfirm, onClose });
 
-    fireEvent.click(await screen.findByRole('button', { name: /Só adiar para 18\/08/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Concluir$/ }));
 
-    await waitFor(() => expect(onPostponeInstead).toHaveBeenCalledWith(DEPOIS));
+    // Sem grupo vinculado não vai notificação nenhuma junto.
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith());
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  it('prazo puxado para trás: o rótulo deixa de dizer "adiar"', async () => {
-    renderDialog({ currentDeadline: HOJE, nextDeadline: ANTES, onPostponeInstead: vi.fn() });
-
-    expect(await screen.findByRole('button', { name: /Só mudar o prazo para 10\/08/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Só adiar/i })).not.toBeInTheDocument();
-  });
-
-  it('sem handler de adiar, o aviso fica mas o botão não aparece', async () => {
-    renderDialog({ currentDeadline: HOJE, nextDeadline: DEPOIS, onPostponeInstead: undefined });
-
-    expect(await screen.findByText(/Você mudou o prazo de/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /não concluir/i })).not.toBeInTheDocument();
   });
 });
