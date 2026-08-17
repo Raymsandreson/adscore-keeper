@@ -70,6 +70,27 @@ async function resolveOwnerByInstance(supabase: any, instanceName?: string | nul
   return ownerProfile?.user_id || null
 }
 
+/** Rótulo canônico de caso em atividade: "<nº do caso> - <título>". */
+function formatCaseLabel(caseNumber?: string | null, title?: string | null): string {
+  const trim = (v?: string | null) => (v || '').replace(/^[\s\-–—]+/, '').replace(/[\s\-–—]+$/, '')
+  return [caseNumber, title].map(trim).filter(Boolean).join(' - ')
+}
+
+/** Caso do lead quando há exatamente um vivo; null se não há ou se há mais de um. */
+async function findSingleLeadCase(
+  extClient: any,
+  leadId?: string | null,
+): Promise<{ id: string; case_number: string | null; title: string | null } | null> {
+  if (!leadId) return null
+  const { data } = await extClient
+    .from('legal_cases')
+    .select('id, case_number, title')
+    .eq('lead_id', leadId)
+    .is('deleted_at', null)
+    .limit(2)
+  return data?.length === 1 ? data[0] : null
+}
+
 async function resolveFirstBoardStageId(supabase: any, boardId: string | null): Promise<string | null> {
   if (!boardId) return null
   const { data: board } = await supabase
@@ -458,6 +479,11 @@ Deno.serve(async (req) => {
         const docName = localDoc.document_name || 'Documento'
 
         const createdByExtId = localDoc.created_by ? await remapToExternal(extClient, localDoc.created_by) : null
+        // `zapsign_documents` não guarda case_id, então o caso sai do lead — e só
+        // quando é um só: com dois casos abertos não dá para saber a qual documento
+        // pertence, e chutar é pior que deixar em branco. Sem isto a atividade
+        // nascia sem caso nenhum (572 de 664 até 17/08/2026).
+        const linkedCase = await findSingleLeadCase(extClient, localDoc.lead_id)
         await extClient.from('lead_activities').insert({
           lead_id: localDoc.lead_id,
           lead_name: localDoc.signer_name || 'Documento',
@@ -469,6 +495,8 @@ Deno.serve(async (req) => {
           created_by: createdByExtId,
           deadline: new Date().toISOString().slice(0, 10),
           completed_at: isDocFullySigned ? new Date().toISOString() : null,
+          case_id: linkedCase?.id || null,
+          case_title: linkedCase ? formatCaseLabel(linkedCase.case_number, linkedCase.title) : null,
         })
         console.log('Activity created for signer:', signerName)
       } catch (actErr) {

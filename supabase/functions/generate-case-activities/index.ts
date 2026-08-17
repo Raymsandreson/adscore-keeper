@@ -81,9 +81,19 @@ serve(async (req) => {
     // 4. Fetch process tracking data
     const { data: caseData } = await extClient
       .from("legal_cases")
-      .select("id, case_number, description, nucleus_id")
+      .select("id, case_number, title, description, nucleus_id, deleted_at")
       .eq("lead_id", lead_id)
       .limit(5);
+
+    // Caso a vincular nas atividades geradas: só quando o lead tem exatamente um
+    // caso vivo — com dois ou mais não dá para saber a qual a atividade pertence.
+    // Sem isto elas nasciam sem case_id, apesar de a função se chamar
+    // generate-case-activities e já ter o caso em mãos.
+    const liveCases = (caseData || []).filter((c: any) => !c.deleted_at);
+    const linkedCase = liveCases.length === 1 ? liveCases[0] : null;
+    const linkedCaseTitle = linkedCase
+      ? [linkedCase.case_number, linkedCase.title].filter(Boolean).join(" - ")
+      : null;
 
     let processData: any[] = [];
     if (caseData && caseData.length > 0) {
@@ -273,6 +283,8 @@ Regras:
       const activityData = {
         lead_id: lead.id,
         lead_name: lead.lead_name,
+        case_id: linkedCase?.id || null,
+        case_title: linkedCaseTitle,
         title: act.title,
         description: act.description,
         activity_type: act.activity_type,
