@@ -710,8 +710,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormCaseId(''); setFormCaseTitle('');
     setFormProcessId(''); setFormProcessTitle('');
     setCaseProcesses([]);
-    const { data } = await externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', lid);
+    const { data } = await externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', lid).is('deleted_at', null);
     setLeadCases((data as CaseRow[]) || []);
+    // Lead com um caso só entra vinculado sozinho — mesma regra da tela de
+    // Atividades. Dois ou mais casos: em branco, porque não dá para adivinhar.
+    if (data?.length === 1) {
+      const unico = data[0] as CaseRow;
+      setFormCaseId(unico.id);
+      setFormCaseTitle(`${unico.case_number} - ${unico.title}`);
+      const { data: procs } = await externalSupabase
+        .from('lead_processes')
+        .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+        .eq('case_id', unico.id);
+      setCaseProcesses((procs as ProcessRow[]) || []);
+    }
     loadContactsForLead(lid);
     loadLeadPreview(lid);
   };
@@ -1101,7 +1113,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
    * Anexos: em modo edição o `ActivityNotesField` grava cada anexo na hora (tem
    * `activity_id`), então aqui não existe fila pendente pra descarregar antes de
    * concluir — diferente do fluxo da ActivitiesPage, que também abre a ficha em
-   * modo criação. O que a próxima NÃO herda é a cópia dos anexos da anterior.
+   * modo criação. A cópia dos anexos da mãe para a filha vale igual nas duas
+   * telas desde `ef0a82ae2` (a fonte é o banco), logo abaixo.
    */
   const handleCompleteAndNext = async (notifyOptions?: GroupNotifyOptions) => {
     if (!activityId || !selectedActivity) return;
