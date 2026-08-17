@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
