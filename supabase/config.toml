@@ -169,3 +169,8 @@ verify_jwt = false
 
 [functions.whatsapp-fetch-history]
 verify_jwt = false
+
+# Chamada pelo próprio banco via pg_net (jm_ler_disparar), sem sessão de usuário.
+# Não expõe dado: recebe documento_id e grava no banco; o retorno é só o status.
+[functions.jm-ler-peca]
+verify_jwt = false
