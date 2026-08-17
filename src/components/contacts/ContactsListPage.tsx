@@ -63,6 +63,34 @@ const PARTY_ROLE_LABELS: Record<string, string> = {
   advogado: 'Advogado',
 };
 
+/**
+ * Processo de cada grupo do WhatsApp, vindo de `vw_grupo_processo_conciliacao`
+ * (Supabase externo). O nome do grupo carrega o nº do caso ("Caso 88 - ...") e é
+ * por ele que a jurimetria acha o CNJ — os grupos são a única ponte que existe
+ * hoje para os processos que não têm lead nem caso cadastrado.
+ *
+ * Casa SÓ PELO INTEIRO (decisão do Raym, 17/08/2026): "Caso 10.1" e "Caso 11.1"
+ * usam o sufixo para OUTRA parte/processo do mesmo caso, então casar com o
+ * sufixo juntaria pessoas diferentes.
+ *
+ * `cnj_do_lead`   → o grupo já tem lead com processo cadastrado (ficha existe).
+ * `cnj_sugerido`  → a jurimetria tem processo com esse nº de caso e NINGUÉM
+ *                   cadastrou ficha ainda. É sugestão, não vínculo.
+ * `qtd_sugerida>1`→ ambíguo: o mesmo nº de caso aponta para mais de um CNJ.
+ *                   Nunca vincular automático — precisa de gente decidindo.
+ */
+interface GrupoProcesso {
+  group_jid: string;
+  cnj_do_lead: string | null;
+  cnj_sugerido: string | null;
+  sugestao_detalhe: string | null;
+  qtd_sugerida: number;
+  so_na_jurimetria: boolean;
+}
+
+/** Só os dígitos: CNJ é escrito com e sem pontuação em todo lugar. */
+const soDigitos = (s: string | null | undefined) => (s || '').replace(/\D/g, '');
+
 export function ContactsListPage() {
   const navigate = useNavigate();
   const [chatPreview, setChatPreview] = useState<{ phone: string; instance_name: string | null; contact_name: string | null } | null>(null);
@@ -395,6 +423,8 @@ export function ContactsListPage() {
   const [showGroupFilters, setShowGroupFilters] = useState(false);
   const [auditMode, setAuditMode] = useState(true);
   const [auditOnlyMismatch, setAuditOnlyMismatch] = useState(false);
+  /** Só os grupos cujo processo existe na jurimetria e ainda não tem ficha. */
+  const [auditOnlySemFicha, setAuditOnlySemFicha] = useState(false);
   const [leadStatusFilter, setLeadStatusFilter] = useState<Set<string>>(new Set());
   const [leadLinkFilter, setLeadLinkFilter] = useState<'all' | 'with' | 'without'>('all');
   const [boardFilter, setBoardFilter] = useState<Set<string>>(new Set());
@@ -404,12 +434,14 @@ export function ContactsListPage() {
   const [creatorFilter, setCreatorFilter] = useState<string>('all');
   // Larguras das colunas do modo auditoria (estilo planilha — usuário arrasta o limite direito)
   const [auditColW, setAuditColW] = useState<Record<string, number>>({
-    check: 36, leadN: 90, caseN: 70, groupName: 280, leadName: 220, createdAt: 130, createdBy: 220, actions: 60,
+    check: 36, leadN: 90, caseN: 70, groupName: 280, leadName: 220, processo: 190, createdAt: 130, createdBy: 220, actions: 60,
   });
   // Filtros por coluna (texto livre, "contém") — estilo Google Sheets
   const [auditColFilter, setAuditColFilter] = useState<Record<string, string>>({
-    leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '',
+    leadN: '', caseN: '', groupName: '', leadName: '', processo: '', createdAt: '', createdBy: '',
   });
+  /** group_jid → processo (ver GrupoProcesso). Vazio até a aba Grupos abrir. */
+  const [grupoProcesso, setGrupoProcesso] = useState<Map<string, GrupoProcesso>>(new Map());
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -417,6 +449,55 @@ export function ContactsListPage() {
   useEffect(() => {
     fetchAgentsAndAssignments();
     fetchGroups();
+  }, []);
+
+  // Processo de cada grupo. Carrega uma vez, quando a aba Grupos abre: são 224
+  // linhas (uma por grupo com "Caso N" no nome), não vale carregar junto com a
+  // lista de contatos. A view já entrega o grão certo — um grupo por linha.
+  useEffect(() => {
+    if (activeTab !== 'groups' || grupoProcesso.size > 0) return;
+    let cancelado = false;
+    (async () => {
+      try {
+        await ensureExternalSession();
+        const { data, error } = await (db as any)
+          .from('vw_grupo_processo_conciliacao')
+          .select('group_jid, cnj_do_lead, cnj_sugerido, sugestao_detalhe, qtd_sugerida, so_na_jurimetria');
+        if (cancelado || error || !data) return;
+        setGrupoProcesso(new Map((data as GrupoProcesso[]).map(r => [r.group_jid, r])));
+      } catch (e) {
+        // Falha aqui não pode derrubar a aba: a coluna simplesmente fica vazia.
+        console.error('[ContactsListPage] conciliação grupo→processo falhou', e);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [activeTab, grupoProcesso.size]);
+
+  /**
+   * Abre a ficha do processo por CNJ, por cima da lista (nunca redireciona).
+   * Só funciona para processo que TEM ficha em `lead_processes` — o que só
+   * existe na jurimetria não tem o que abrir ainda, e a coluna sinaliza isso.
+   */
+  const openProcessoPorCnj = useCallback(async (cnj: string) => {
+    const primeiro = cnj.split(',')[0].trim();
+    setLoadingShortcut(`cnj:${primeiro}`);
+    try {
+      const { data, error } = await db
+        .from('lead_processes')
+        .select('*')
+        .eq('process_number', primeiro)
+        .is('deleted_at', null)
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Este processo ainda não tem ficha cadastrada.'); return; }
+      setProcessToOpen(data);
+    } catch (e) {
+      console.error('Erro ao abrir processo por CNJ:', e);
+      toast.error('Não consegui abrir este processo.');
+    } finally {
+      setLoadingShortcut(null);
+    }
   }, []);
 
   // Enquanto a sync em massa estiver rodando, ela faz milhares de upserts nos
@@ -2314,9 +2395,20 @@ export function ContactsListPage() {
                 const caseLabel = caseDigits
                   ? `caso ${caseDigits} ${g.product_case_prefix ? `${g.product_case_prefix}-${caseDigits}` : ''}`
                   : '';
+                // O CNJ entra na busca geral: colar um nº de processo no campo tem
+                // que achar o grupo, com ou sem pontuação. Vale tanto o processo já
+                // cadastrado quanto o sugerido pela jurimetria — quem procura o
+                // processo quer justamente achar o grupo que ainda não tem ficha.
+                // Só a partir de 6 dígitos: "88" aparece dentro de quase todo CNJ
+                // (são 20 dígitos), e buscar caso 88 traria a base inteira.
+                const proc = grupoProcesso.get(g.group_jid);
+                const procDigits = soDigitos(`${proc?.cnj_do_lead || ''} ${proc?.cnj_sugerido || ''}`);
                 const haystack = norm([g.group_name, leadLabel, caseLabel].join(' '));
                 const textMatch = tokens.length > 0 && tokens.every(t => haystack.includes(t));
-                const numberMatch = !!queryDigits && [groupDigits, caseDigits, leadDigits].some(value => value.includes(queryDigits));
+                const numberMatch = !!queryDigits
+                  && (queryDigits.length >= 6
+                    ? [groupDigits, caseDigits, leadDigits, procDigits].some(value => value.includes(queryDigits))
+                    : [groupDigits, caseDigits, leadDigits].some(value => value.includes(queryDigits)));
                 return textMatch || numberMatch;
               };
 
@@ -2343,6 +2435,10 @@ export function ContactsListPage() {
                 }
                 return true;
               });
+
+              if (auditMode && auditOnlySemFicha) {
+                visible = visible.filter(g => grupoProcesso.get(g.group_jid)?.so_na_jurimetria);
+              }
 
               if (auditMode && auditOnlyMismatch) {
                 visible = visible.filter(g => {
@@ -2415,7 +2511,7 @@ export function ContactsListPage() {
                 !!groupSearch.trim() ||
                 leadLinkFilter !== 'all' ||
                 leadStatusFilter.size > 0 ||
-                (auditMode && auditOnlyMismatch);
+                (auditMode && (auditOnlyMismatch || auditOnlySemFicha));
               // Performance: com busca textual ativa, limitar render a 150
               // (renderizar 2000 linhas a cada tecla trava o mobile).
               const RENDER_CAP = deferredGroupSearch.trim()
@@ -2441,6 +2537,7 @@ export function ContactsListPage() {
                   if (!ng || !nl) return true;
                   return !ng.includes(nl) && !nl.includes(ng);
                 }).length;
+                const semFicha = visible.filter(g => grupoProcesso.get(g.group_jid)?.so_na_jurimetria).length;
                 // Lista única de criadores (a partir dos grupos atualmente filtrados, antes do recorte por criador)
                 const creatorMap = new Map<string, string>();
                 for (const g of groups) {
@@ -2460,6 +2557,14 @@ export function ContactsListPage() {
                     case 'caseN': return g.case_number || '';
                     case 'groupName': return g.group_name || '';
                     case 'leadName': return g.lead_name || '';
+                    // Filtrar por processo tem que achar tanto "0000892-33.2016..."
+                    // quanto "000089233" — ninguém digita o CNJ pontuado.
+                    case 'processo': {
+                      const p = grupoProcesso.get(g.group_jid);
+                      if (!p) return '';
+                      const cnj = p.cnj_do_lead || p.cnj_sugerido || '';
+                      return `${cnj} ${soDigitos(cnj)}`;
+                    }
                     case 'createdAt': return g.created_at ? new Date(g.created_at).toLocaleString('pt-BR') : '';
                     case 'createdBy': return (g.owner_phone || g.creator_instance_name) ? creatorLabel(g) : '';
                     default: return '';
@@ -2479,7 +2584,7 @@ export function ContactsListPage() {
                 const cappedAfterCols = colFilterActive ? visibleAfterCols.slice(0, RENDER_CAP) : capped;
 
                 // Grid template a partir das larguras (px). Última coluna em 1fr seria ruim aqui — manter px.
-                const cols = ['check', 'leadN', 'caseN', 'groupName', 'leadName', 'createdAt', 'createdBy', 'actions'] as const;
+                const cols = ['check', 'leadN', 'caseN', 'groupName', 'leadName', 'processo', 'createdAt', 'createdBy', 'actions'] as const;
                 const gridTemplate = cols.map(c => `${auditColW[c]}px`).join(' ');
                 const startResize = (col: string, e: React.MouseEvent) => {
                   e.preventDefault();
@@ -2537,6 +2642,19 @@ export function ContactsListPage() {
                         <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                         {mismatched} divergente(s)
                       </span>
+                      {/* O trabalho de conciliação em uma linha: grupo cujo nº de
+                          caso acha processo na jurimetria e ninguém cadastrou ficha. */}
+                      {semFicha > 0 && (
+                        <button
+                          type="button"
+                          className={`flex items-center gap-1 rounded px-1.5 py-0.5 ${auditOnlySemFicha ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'hover:bg-accent'}`}
+                          onClick={() => setAuditOnlySemFicha(v => !v)}
+                          title="Grupos cujo processo existe na jurimetria mas ainda não tem ficha cadastrada. Clique para ver só eles."
+                        >
+                          <Scale className="h-3.5 w-3.5" />
+                          {semFicha} sem ficha de processo
+                        </button>
+                      )}
                       <div className="flex items-center gap-2 ml-auto">
                         <span className="text-[11px]">Criado por:</span>
                         <Select value={creatorFilter} onValueChange={setCreatorFilter}>
@@ -2557,7 +2675,7 @@ export function ContactsListPage() {
                           </Button>
                         )}
                         {colFilterActive && (
-                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', groupName: '', leadName: '', createdAt: '', createdBy: '' })}>
+                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setAuditColFilter({ leadN: '', caseN: '', groupName: '', leadName: '', processo: '', createdAt: '', createdBy: '' })}>
                             Limpar filtros de coluna
                           </Button>
                         )}
@@ -2569,6 +2687,7 @@ export function ContactsListPage() {
                       {headerCell({ col: 'caseN', label: 'Nº caso', title: 'Sequência de leads fechados (leads.case_number) — ex: PREV 1448. Editável pelo lápis.' })}
                       {headerCell({ col: 'groupName', label: 'Nome do grupo' })}
                       {headerCell({ col: 'leadName', label: 'Nome do lead', align: 'center' })}
+                      {headerCell({ col: 'processo', label: 'Processo', title: 'CNJ do processo do grupo. Vem do lead quando já existe ficha; em âmbar é sugestão da jurimetria pelo nº do caso no nome do grupo (ainda sem ficha). Filtre com ou sem pontuação.' })}
                       {headerCell({ col: 'createdAt', label: 'Criado em', title: 'Data e hora de criação do grupo no WhatsApp' })}
                       {headerCell({ col: 'createdBy', label: 'Criado por', title: 'Telefone/instância de quem criou o grupo' })}
                       <div className="relative"><span></span></div>
@@ -2647,6 +2766,44 @@ export function ContactsListPage() {
                               ? highlight(group.lead_name, groupSearchScope === 'lead')
                               : (group.lead_id ? '(sem nome)' : '+ vincular lead')}
                           </span>
+                          {(() => {
+                            const p = grupoProcesso.get(group.group_jid);
+                            if (!p) {
+                              return <span className="text-[11px] text-muted-foreground">—</span>;
+                            }
+                            // Processo com ficha: clicável, abre por cima da lista.
+                            if (p.cnj_do_lead) {
+                              const varios = p.cnj_do_lead.includes(',');
+                              return (
+                                <span
+                                  className="text-[11px] font-mono truncate cursor-pointer hover:underline"
+                                  title={`Abrir processo${varios ? ` (${p.cnj_do_lead})` : ''}`}
+                                  onClick={(e) => { e.stopPropagation(); void openProcessoPorCnj(p.cnj_do_lead!); }}
+                                >
+                                  {p.cnj_do_lead.split(',')[0].trim()}
+                                  {varios && <span className="text-muted-foreground"> +{p.cnj_do_lead.split(',').length - 1}</span>}
+                                </span>
+                              );
+                            }
+                            // Só na jurimetria: não há ficha para abrir. Mostrar como
+                            // sugestão é o ponto da tela — é o trabalho que falta fazer.
+                            const ambiguo = p.qtd_sugerida > 1;
+                            return (
+                              <span
+                                className={`text-[11px] font-mono truncate flex items-center gap-1 ${ambiguo ? 'text-amber-600' : 'text-emerald-700 dark:text-emerald-400'}`}
+                                title={
+                                  (ambiguo
+                                    ? `AMBÍGUO — o nº do caso aponta para ${p.qtd_sugerida} processos. Não dá para vincular sozinho:\n`
+                                    : 'Sugestão da jurimetria pelo nº do caso no nome do grupo — ainda sem ficha cadastrada:\n')
+                                  + (p.sugestao_detalhe || p.cnj_sugerido || '')
+                                }
+                              >
+                                {ambiguo && <AlertTriangle className="h-3 w-3 shrink-0" />}
+                                <span className="truncate">{(p.cnj_sugerido || '').split(',')[0].trim()}</span>
+                                {ambiguo && <span className="shrink-0">+{p.qtd_sugerida - 1}</span>}
+                              </span>
+                            );
+                          })()}
                           <span
                             className={`text-[11px] tabular-nums flex items-center gap-1 ${group.created_at ? 'text-foreground' : 'text-muted-foreground italic'}`}
                             title={group.created_at ? new Date(group.created_at).toLocaleString('pt-BR') : 'Data de criação do grupo desconhecida — clique no botão para buscar na UazAPI'}
