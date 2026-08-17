@@ -163,6 +163,21 @@ export function parseCnj(raw: string | null | undefined): CnjInfo | null {
   };
 }
 
+/**
+ * As formas em que o MESMO processo pode estar gravado, para usar em `.in()`.
+ *
+ * Por que existe: as tabelas de jurimetria (`jm_decisoes`, `jm_valores`,
+ * `jm_pagamentos`) guardam o CNJ com máscara; `lead_processes.process_number`
+ * guarda o que a equipe digitou, com ou sem. As RPCs resolvem isso aplicando
+ * `regexp_replace(..., '[^0-9]', '', 'g')` dos dois lados — no front não dá pra
+ * usar regexp dentro do filtro, então a consulta tem que oferecer as variantes.
+ */
+export function cnjVariantes(valor: string | null | undefined): string[] {
+  const cru = String(valor ?? '').trim();
+  const digits = onlyDigits(cru);
+  return [...new Set([cru, formatCnj(digits), digits].filter(Boolean))];
+}
+
 /** Chave de casamento fino contato ↔ processo: tribunal + unidade de origem. */
 export const cnjUnitKey = (courtCode: string, originCode: string) =>
   `${courtCode}:${originCode}`;

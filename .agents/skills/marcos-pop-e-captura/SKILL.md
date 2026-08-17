@@ -526,3 +526,201 @@ para isso e está vazio.
 - [ ] Código TPU: 237/238/239 é provimento em 2º grau. 219/220/221 é procedência, **só G1**.
 - [ ] Audiência só conta com complemento `realizada` — designada não é marco (840
       designadas vs 526 realizadas; contar designação dava mediana de 7 dias).
+
+---
+
+## Conferir o número antes de acreditar nele (15/08/2026)
+
+Na Carteira do POP, clicar na linha do processo abre a **ficha** (`ProcessDetailSheet`,
+aba lateral por cima); o botão de escudo abre a **conferência**
+(`ProcessoConferenciaSheet` + `useConferenciaProcesso`), que mostra a matéria prima do
+número: qual decisão virou o valor e quais foram descartadas, qual movimentação detectou
+o marco atual (com fonte e prova documental), pagamentos recebidos vs. previstos, e os
+outros cadastros do mesmo CNJ.
+
+Tudo é SELECT direto no Externo — `jm_decisoes`, `jm_valores`, `jm_pagamentos`,
+`process_pop_marcos`, `pop_marcos`, `lead_processes` já têm policy de SELECT para
+`authenticated`. Nenhuma RPC nova, nenhuma escrita. O hook **replica** as regras da
+`pop_carteira_marcos` de propósito: se a conferência divergir da carteira, a tela acusa.
+
+### O buraco que a conferência achou de cara
+
+**A carteira agrupa por cadastro, não por CNJ.** O mesmo CNJ com duas linhas em
+`lead_processes` entra duas vezes no total do POP. Medido em 15/08/2026 no POP
+trabalhista (`0bcd8be6-3aa5-4ab0-8091-9987bdc47e15`): **494 cadastros para 475 CNJs
+distintos → R$ 21.168.246,70 exibidos contra R$ 20.292.233,25 reais, R$ 876.013,45
+inflados**. Exemplo: `0000491-34.2020.5.05.0101` aparece 4 vezes ("PA M", "Indenização",
+"Processo", "0000491-34.2020.5.05.0101 - ACIDENTE DE TRABALHO"), cada uma levando os
+R$ 376.013,45 dos 5 clientes.
+
+**RESOLVIDO em 15/08/2026** — migration
+`20260815120000_pop_carteira_marcos_dedup_cnj.sql`: a RPC passou a percorrer **CNJ**,
+não cadastro (`distinct on (cnj_num)`, ficha canônica eleita por ter marco → maior
+ordem → mais marcos → mais recente → id). Verificado em produção depois de aplicar:
+**494 → 475 processos, R$ 21.168.246,70 → R$ 20.292.233,25**.
+
+Antes de escolher o critério, dois riscos foram medidos:
+
+- **Perder marco?** Não. Nos 17 grupos duplicados dentro do mesmo POP, ZERO têm marco
+  divergente entre as fichas irmãs — a captura grava por CNJ, não por ficha.
+- **Perder custo? SIM, se feito ingenuamente.** Em 6 dos 17 grupos as fichas irmãs
+  pertencem a **leads diferentes** (litisconsorte que entrou como lead próprio).
+  Descartar a ficha irmã descartaria o CAC daquele lead e faria a rentabilidade mentir
+  para cima. Por isso as colunas novas `leads_do_cnj` (todos os leads do CNJ — é por
+  onde `useCarteiraDoPop` soma o custo agora) e `cadastros_do_cnj` (quantas fichas
+  existem, para a tela avisar). Confirmado: **298 → 298 leads**, nenhum perdido.
+
+Limpar os cadastros duplicados continua valendo, mas agora é higiene — não é mais o
+total que depende disso. A tela avisa quantos CNJs estão nessa situação.
+
+### O valor é por PARTE
+
+`jm_valores` tem uma linha por (decisão × pessoa) e a RPC devolve (CNJ × parte) — um
+litisconsórcio tem um valor por pessoa. Clicar no valor na carteira abre a conferência
+já rolada na abertura por parte (`AlvoConferencia.foco = 'valores'`); a linha mostra
+"N partes" e o cabeçalho da carteira, o total de partes do POP.
+
+### Alertas que a tela levanta
+
+CNJ cadastrado N vezes · sem marco de fase detectado · marco atual sem data · marco
+gravado que não existe mais no POP (o inner join com `pop_marcos` derruba) · sem leitura
+de decisão (alto quando já passou da sentença deste POP) · valor sem `dec_id` válido ·
+duas decisões da mesma data com valores diferentes (a "última decisão" vira sorteio) ·
+clientes em estágios financeiros diferentes (a carteira joga o valor inteiro num só) ·
+divergência entre o valor exibido e o recalculado · decisão com `flag_revisar`.
+
+### Achado aberto: `pago` da carteira dá R$ 0
+
+Medido em 15/08/2026 e **não** causado pela dedup — é dado. `jm_pagamentos` tem 441
+parcelas recebidas (R$ 596.000) em 14 CNJs, mas só **1** desses CNJs está no POP
+trabalhista, e a parcela dele está com `valor_pago` nulo. Enquanto isso não for
+corrigido na origem, "realizado − custo" da carteira é sempre negativo pelo custo
+inteiro.
+
+### De quem é o processo (15/08/2026)
+
+Migration `20260815170000_pop_carteira_marcos_lead_nome.sql`: a RPC devolve
+`lead_nome` (o caso da ficha canônica) e `leads_nomes` (todos os leads do CNJ). Fonte é
+`leads.lead_name` do **próprio Externo** — o snapshot está vivo (updated_at do mesmo
+dia) com 19.973 de 19.974 leads nomeados, e 713 de 713 processos do POP com lead chegam
+a um nome; não precisa ir ao Cloud. Verificado depois de aplicar: 475 processos, 473
+com nome, carteira inalterada em R$ 20.292.233,25.
+
+Na tela o nome do caso vem em cima e o CNJ + título viram a segunda linha, menores — o
+`title` de `lead_processes` é o que a equipe digitou ("Processo", "PA M") e muitas vezes
+não identifica ninguém. CNJ com fichas em casos DIFERENTES ganha "+N" na linha, e o
+alerta da conferência nomeia os casos: apagar a ficha errada perde histórico.
+
+O alerta de ficha repetida baixou de **alto para atenção** depois da dedup — o total do
+POP já está certo, o cadastro duplicado virou higiene.
+
+---
+
+## Valor ATUALIZADO da condenação — juros e correção (15/08/2026)
+
+Migration `20260815200000_pop_carteira_marcos_valor_atualizado.sql`. Decidido com o
+usuário: o corrigido anda **AO LADO** do nominal, nunca no lugar — a carteira continua
+somando o nominal, que é o que FIDC/Tercon/Limine leem.
+
+### A base já tinha tudo; faltava ligar
+
+- **`jm_indices`** — `SELIC_SIMPLES_JT` (1995-01→2026-07) e `TCM_ESTADUAL`
+  (1964-01→2026-07). `coeficiente` é o multiplicador da competência até `referencia`;
+  a competência da própria referência vale 1.0.
+- **`jm_decisoes.termo_inicial_jcm`** — início de juros e correção, em 435 das 439
+  decisões. Quando falta, cai na `data_decisao` e a linha vem com `jcm_termo_estimado`.
+
+### Índice pelo RAMO, dígito 14 do CNJ
+
+| segmento | ramo | índice |
+|---|---|---|
+| 5 | Justiça do Trabalho | `SELIC_SIMPLES_JT` |
+| 8 | Justiça Estadual | `TCM_ESTADUAL` |
+| outro | — | **nenhum**, não corrige |
+
+Justiça Federal (segmento 4) tem manual próprio de cálculo: aplicar TCM_ESTADUAL nela
+seria mentira. Hoje os 51 processos de segmento 2/4 deste POP não têm valor lançado, então
+ninguém fica sem índice — quando tiverem, a tela diz "sem índice para este ramo" e o
+total avisa que o corrigido está subestimado.
+
+**O termo é o da decisão QUE VALE**, não de qualquer uma. Corrigir pela sentença quando
+o acórdão é que vale dá número errado — a `valor_vigente` carrega o termo junto do valor.
+
+### A RPC entrega insumos, o front multiplica
+
+`jcm_indice`, `jcm_termo_inicial`, `jcm_termo_estimado`, `jcm_coeficiente`,
+`jcm_referencia`. De propósito: a conferência mostra a conta inteira
+(`R$ 75.202,69 × 1,6161 = R$ 121.520,00 · SELIC simples de 15/01/2020 até jul/2026`)
+em vez de um número mágico que ninguém consegue contestar.
+
+**A data limite anda sempre junto do número.** `jcm_referencia` é até quando a tabela
+corrige (2026-07-01 enquanto estamos em 15/08/2026) — valor corrigido sem dizer até
+quando não serve para negociar. Manter a `jm_indices` atualizada é o que mantém o número
+vivo; ela venceu, o número congela sem avisar ninguém além dessa data na tela.
+
+### Impacto medido (POP trabalhista, 15/08/2026)
+
+| | |
+|---|---|
+| nominal | R$ 20.292.233,25 |
+| atualizado até jul/2026 | R$ 26.010.426,00 (**+28,2%**) |
+| cobertura | 223 de 223 partes com valor |
+| termo estimado | 2 partes |
+
+### Índices vêm do Bacen sozinhos — e o tick que estava travado (15/08/2026)
+
+**Já existia** `jm_indices_tick()`, no cron `jm_indices_diario` (`30 7 * * *`): busca
+SELIC (SGS **4390**) e IPCA (SGS **7478**) no Bacen via **pg_net** e atualiza os DOIS
+índices — SELIC por **soma** simples, TCM por **produto** (1+IPCA). Validado contra as
+tabelas oficiais. **Procure por ele antes de escrever qualquer sync de índice.**
+
+> ⚠️ **Erro caro cometido em 15/08/2026:** construí um pipeline paralelo
+> (`jm_selic_sync_*`) sem procurar o que já existia. Além de duplicar trabalho, ele
+> **quebrou** o original — o tick começa com `if exists (referencia = mês corrente) then
+> return 'ja_atualizado'`, e a safra parcial que o paralelo criou (só SELIC) fez o tick
+> desistir de criar a TCM. Removido na migration `20260816000000`. A lição não é sobre
+> índice: é `grep`/`pg_get_functiondef` **antes** de construir, não depois.
+
+**Por que a tabela estava parada em jul/2026 — deadlock por resposta expirada.** O tick
+disparava as buscas e processava num tick seguinte, com esta guarda de re-disparo:
+
+```sql
+and (x2.id is null or x2.status_code = 200)   -- ERRADO
+```
+
+`net._http_response` expira em ~6h. Depois disso `x2.id is null` fica verdadeiro para
+sempre, o `not exists` nunca libera, e a função nunca mais re-dispara. Travou em
+01/08/2026 e ficou mudo. Corrigido para:
+
+```sql
+and (x2.status_code = 200
+     or (x2.id is null and h2.created_at > now() - interval '2 hours'))
+```
+
+Pedido recente sem resposta ainda pode chegar; pedido velho sem resposta expirou e
+precisa de um novo. **Toda fila baseada em `net._http_response` precisa desta janela** —
+é a terceira vez que essa armadilha aparece nesta base.
+
+**Verificado de ponta a ponta:** tick devolveu `aguardando_bacen_202607` (re-disparou —
+antes ficava mudo), respostas 200 (SELIC jul 1,22% · IPCA jul 0,06%), tick seguinte
+`atualizado_para_2026-08`. Safra 08/2026 completa: SELIC 380 competências, TCM 743. O
+coeficiente de 2020-01 ficou **1,6283** = 1,6161 (safra de julho) + 1,22%, batendo com o
+cálculo independente feito reconstruindo a série inteira do Bacen desde 1995 — que
+também já havia reproduzido as 379 linhas antigas com **0 divergências**. Carteira: 475
+processos, nominal R$ 20.292.233,25 intacto, atualizado R$ 26.236.887,71, nenhuma parte
+sem correção, os dois índices em ago/2026.
+
+**A regra do coeficiente:** `1 + Σ SELIC(m)/100` da competência até o mês **anterior** à
+referência — a SELIC do mês de referência não incide (regra da tabela única do TST/CSJT;
+por isso competência = referência vale 1,0).
+
+**SAFRA, não sobrescrita.** `jm_indices` tem chave única `(indice, competencia,
+referencia)` e guarda o histórico. Quem consultar tem que eleger a mais recente —
+`jm_coef()` já fazia (`order by referencia desc limit 1`), a `pop_carteira_marcos` não
+fazia e duplicaria a carteira inteira a cada mês novo; corrigido com a CTE
+`indice_vigente` (`distinct on (indice, competencia) order by referencia desc`) na
+migration `20260815220000`. **Query nova contra `jm_indices` tem que fazer o mesmo.**
+
+**Na tela:** `corrigidoAte` é a **MENOR** referência entre os índices, nunca a maior —
+se um índice ficar para trás, prometer a data do mais novo mentiria para metade da
+carteira. A safra de cada um aparece ao lado quando divergem.
