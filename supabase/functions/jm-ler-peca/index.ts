@@ -21,14 +21,13 @@
 // `jm_documento_leitura.revisado_por` é o que promove leitura a número oficial.
 // =============================================================================
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { geminiChat, GeminiError } from '../_shared/gemini.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const MODEL = 'google/gemini-2.5-flash';
+const MODEL = 'gemini-2.5-flash';
 const BUCKET = 'jm-autos';
 
 const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve o que ela diz sobre DINHEIRO e sobre o ESTADO da execução.
@@ -100,36 +99,50 @@ Deno.serve(async (req: Request) => {
     for (let i = 0; i < bytes.length; i += 8192) {
       bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
     }
-    const dataUri = `data:application/pdf;base64,${btoa(bin)}`;
+    const base64 = btoa(bin);
+
+    // API do Google no formato nativo, não pelo _shared/gemini.ts: aqui o PDF vai
+    // como inline_data e `responseMimeType: application/json` obriga o modelo a
+    // devolver JSON puro — sem cerca de markdown para limpar depois.
+    const chave = Deno.env.get('GOOGLE_AI_API_KEY');
+    if (!chave) return json({ success: false, error: 'GOOGLE_AI_API_KEY não configurada' });
 
     let lido: Record<string, unknown>;
     try {
-      const resposta = await geminiChat({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text:
-                  `Processo: ${doc.processo_cnj}\n` +
-                  `Título da peça nos autos: ${doc.titulo ?? '(sem título)'}\n` +
-                  `Data do documento: ${doc.data_documento ?? '(sem data)'}\n` +
-                  `Leia a peça anexa e devolva o JSON conforme instruído.`,
-              },
-              { type: 'image_url', image_url: { url: dataUri } },
-            ],
-          },
-        ],
-      });
-      const bruto = resposta?.choices?.[0]?.message?.content ?? '';
-      const limpo = String(bruto).replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
-      lido = JSON.parse(limpo);
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(chave)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{
+              role: 'user',
+              parts: [
+                {
+                  text:
+                    `Processo: ${doc.processo_cnj}\n` +
+                    `Título da peça nos autos: ${doc.titulo ?? '(sem título)'}\n` +
+                    `Data do documento: ${doc.data_documento ?? '(sem data)'}\n` +
+                    `Leia a peça anexa e devolva o JSON conforme instruído.`,
+                },
+                { inline_data: { mime_type: 'application/pdf', data: base64 } },
+              ],
+            }],
+            // temperatura 0: extração de dado de peça não é lugar de criatividade
+            generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+          }),
+        },
+      );
+      if (!r.ok) {
+        const detalhe = (await r.text()).replace(/\s+/g, ' ').slice(0, 300);
+        return json({ success: false, documento_id, error: `gemini ${r.status}: ${detalhe}` });
+      }
+      const resposta = await r.json();
+      const bruto = resposta?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      lido = JSON.parse(String(bruto));
     } catch (e) {
-      const status = e instanceof GeminiError ? e.status : 500;
-      return json({ success: false, documento_id, error: `leitura ${status}: ${String((e as Error)?.message).slice(0, 300)}` });
+      return json({ success: false, documento_id, error: `leitura: ${String((e as Error)?.message).slice(0, 300)}` });
     }
 
     const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
