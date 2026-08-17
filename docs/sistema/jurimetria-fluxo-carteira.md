@@ -347,3 +347,49 @@ Armadilha do grão: `whatsapp_groups_index` guarda uma linha por
 O que a tela **não** faz: nada aqui escreve. `cnj_sugerido` é sugestão, mostrada em verde
 (ou âmbar com ⚠ quando `qtd_sugerida > 1`), e não vira `lead_processes` sozinho. Vínculo
 automático em caso ambíguo criaria ficha para a pessoa errada.
+
+### 10.9 As 232 peças lidas — e o que elas mudaram (e o que não)
+
+`jm_ler_disparar(p_limit)` solta a fila por pg_net; `jm-ler-peca` lê e grava em
+`jm_documento_leitura`. 232/232 lidas, confiança média 0,96–1,00.
+
+O que saiu:
+
+| espécie | peças | inadimplência | condenação somada |
+|---|---:|---:|---:|
+| DESPACHO | 154 | 8 | R$ 1,71 mi |
+| ATA_AUDIENCIA | 34 | 0 | R$ 4,80 mi |
+| DECISAO | 26 | 1 | R$ 4,03 mi |
+| SENTENCA | 7 | 0 | R$ 2,00 mi |
+| EXTINCAO_QUITACAO | 7 | 0 | — |
+| ACORDO | 3 | 0 | R$ 1,61 mi |
+
+**Inadimplência em 5 processos**, nenhum deles visível pelo DataJud — o caso 88
+(IDPJ + penhora de R$ 21.769,35, o mesmo valor que a Luana anotou à mão),
+descumprimento de acordo com multa de 10% em `0000249-26.2020.5.14.0004`, e
+10 parcelas pendentes em `0000604-65.2019.5.06.0401`.
+
+**O ganho na régua foi modesto, e é honesto dizer:** `INADIMPLENCIA` foi de 15
+para 30 parcelas e `PRECISA_LER` de 297 para 282. O **valor** em `PRECISA_LER`
+não mudou (R$ 583.622,06) — as 15 parcelas que saíram têm `valor_previsto` nulo.
+A razão é simples: só **22 processos** têm parcela em `PRECISA_LER` e só **19**
+têm PDF baixado. O gargalo não é leitura, é coleta.
+
+**Primeiro alvará detectado da base.** Fora da fila, 4 peças com título de
+dinheiro foram lidas à mão: alvará de **R$ 153.677,91** (08/10/2024,
+`0002701-92.2017.5.22.0003`) e comprovantes de R$ 25.330,28 e R$ 2.000. Até aqui
+`process_pop_marcos` não tinha NENHUM marco `pagamento` na base inteira (§10.6).
+
+Armadilha reconfirmada: das 18 peças com "comprovante/alvará" no título, a
+maioria é comprovante de **residência**, de **postagem** e **AR dos Correios**.
+Por isso a v3 da `vw_jm_parcela_leitura` decide pelo que a peça DIZ
+(`jm_documento_leitura.especie`), não pelo título.
+
+Ressalva registrada na v3: "intimado a comprovar o recolhimento das custas" é
+inadimplência do PROCESSO, não da parcela do cliente — 2 dos 5 processos
+marcados falam só disso, e a view os descarta por heurística de texto. Heurística
+serve para desqualificar, nunca para classificar sozinha.
+
+Faltam **1.074 peças** já baixadas e ainda não lidas (fora da fila porque seus
+processos não têm parcela pendente). Custo estimado: ordem de US$ 1–3 no Gemini
+2.5 Flash.
