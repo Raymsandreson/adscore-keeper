@@ -98,6 +98,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PopMarcosSection } from './PopMarcosSection';
+import { PopCodigosAuditoria } from './PopCodigosAuditoria';
 import { PopCarteiraSheet } from './PopCarteiraSheet';
 import { Wallet } from 'lucide-react';
 import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
@@ -2721,6 +2722,7 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     objetivo e passo, porque marco é do POP: um lado diz onde o
                     processo está (automático), o outro o que a equipe faz. */}
                 {editingBoardId ? <PopMarcosSection boardId={editingBoardId} /> : null}
+                {editingBoardId ? <PopCodigosAuditoria boardId={editingBoardId} /> : null}
 
                 {/* Carteira do POP — a régua de marcos com o dinheiro em cima.
                     Abre em Sheet por cima do editor (regra da casa: nunca
