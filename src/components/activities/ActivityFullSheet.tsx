@@ -33,6 +33,7 @@ import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
+import type { Attachment } from '@/components/activities/ActivityNotesField';
 import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
 import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
 import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
@@ -1161,6 +1162,46 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         nextCreated = (await createActivity(nextData)) as LeadActivity | null;
       } catch (e) {
         console.error('[completeAndNext] criação da próxima falhou', e);
+      }
+
+      // Anexos da mãe vão para a filha (mesma regra da ActivitiesPage, commit
+      // f1e75f4): a fonte é o BANCO, não o que foi anexado nesta abertura da
+      // ficha — anexo colocado dias antes ficava de fora e a próxima nascia sem
+      // as imagens, que pareciam perdidas. Aqui não existe fila pendente: em
+      // modo edição o ActivityNotesField grava cada anexo na hora.
+      if (nextCreated?.id) {
+        try {
+          const { data: atts, error: attsErr } = await externalSupabase
+            .from('activity_attachments')
+            .select('file_url, file_name, file_type, file_size, attachment_type, link_url, link_title')
+            .eq('activity_id', current.id);
+          if (attsErr) throw attsErr;
+          const extUid = await remapToExternal(user?.id || null);
+          const seen = new Set<string>();
+          const unique = ((atts || []) as Attachment[]).filter(a => {
+            if (!a.file_url || seen.has(a.file_url)) return false;
+            seen.add(a.file_url);
+            return true;
+          });
+          const rows = unique.map(a => ({
+            activity_id: nextCreated.id,
+            file_url: a.file_url,
+            file_name: a.file_name,
+            file_type: a.file_type,
+            file_size: a.file_size ?? null,
+            attachment_type: a.attachment_type,
+            link_url: a.link_url ?? null,
+            link_title: a.link_title ?? null,
+            created_by: extUid,
+          }));
+          if (rows.length > 0) {
+            const { error: carryErr } = await externalSupabase.from('activity_attachments').insert(rows);
+            if (carryErr) throw carryErr;
+          }
+        } catch (e) {
+          console.error('[completeAndNext] carry-over de anexos falhou', e);
+          toast.error('Anexos não foram replicados na nova atividade');
+        }
       }
 
       if (notifyOptions) await sendActivityGroupNotification(notifyOptions, formLeadId || null);
