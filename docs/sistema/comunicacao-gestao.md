@@ -342,7 +342,7 @@ O alerta que aparece na barra de notificações do celular e **fica lá até ser
 
 **Propósito**: gestão da equipe — produtividade, metas, avaliações, membros, times, férias, permissões e perfis de acesso.
 
-- Pílulas: Produtividade, Métricas, Metas, Metas Processuais, Avaliações, Tráfego, Membros, Times, Férias, Embaixadores, Carreira, Rotinas, WhatsApp (permissões de instância), Cartões, Contas, Acessos, Perfis.
+- Pílulas: Produtividade, Métricas, Metas, Metas Processuais, **Foco dos Gerentes**, Avaliações, Tráfego, Membros, Times, Férias, Embaixadores, Carreira, Rotinas, WhatsApp (permissões de instância), Cartões, Contas, Acessos, Perfis.
 
 **Fluxo recomendado**: Membros pra cadastrar pessoa; Acessos/Perfis pra permissões; Produtividade pro acompanhamento diário.
 
@@ -366,6 +366,39 @@ O alerta que aparece na barra de notificações do celular e **fica lá até ser
 - Fluxo médio: média simples, por processo, do % de itens marcados nas `lead_checklist_instances` do POP. **É foto do estado atual** — o checklist não guarda data por item, então esse número não é recortado pelo período.
 
 **Limite conhecido (jul/2026)**: marcos processuais dependem do sync de movimentações do Escavador — só 89 de 1.647 processos tinham marco. A causa não é o parser: apenas 782 processos têm número CNJ, 81 têm `escavador_raw` salvo e `process_movement_monitors` está **vazio**, então a `check-process-movements` (que só varre monitores ativos) nunca baixa movimentação nova. O painel avisa quando a meta cai num time sem marco registrado.
+
+---
+
+## Foco dos Gerentes (Equipe → aba "Foco dos Gerentes") — desde 17/08/2026
+
+**Propósito**: cada gerente tem uma **área de foco com piso de porcentagem** — "o de vendas tem que ter pelo menos 80% em vendas" — e, na carteira processual, o resultado que conta: **quantos processos entraram e quantos saíram**, por acordo ou por execução.
+
+Um card por gerente (quem é gestor de time em `team_managers` ou de setor em `org_sectors`), quem está **abaixo do piso primeiro**. Configuração em painel lateral, sem sair da lista.
+
+### Esforço — a % na área
+
+- **Conta por tipo OU pelo assunto/contexto.** A atividade concluída entra no foco se o tipo estiver marcado **ou** se alguma palavra da área aparecer em assunto, descrição, "o que foi feito", "próximo passo", observação de status ou no processo/caso vinculado. Comparação sem acento e sem caixa (`unaccent` + `lower`): "audiencia" acha "AUDIÊNCIA".
+- **Por que o texto existe**: o tipo cadastrado erra. Medição de 17/08/2026 na gerente processual (60 dias, 261 concluídas) — **só pelo tipo: 139 = 53%; pelo tipo ou pelo assunto: 226 = 87%**. As 89 de diferença estavam com tipo "Tarefa" genérico e assunto inequívoco: "Prestar esclarecimentos sobre minuta de acordo", "VERIFICAR SENTENÇA", "Cobrar manifestação da juíza após o prazo". O card mostra quantas o assunto resgatou — é o tamanho do erro de tipagem, sem auditar atividade por atividade.
+- **A barra tem a marca do piso** e o card lista os tipos **fora da área** (onde o foco vaza).
+- **Prévia antes de salvar**: o painel de configuração mostra, ao vivo, o % que aquela combinação de tipos + palavras daria nos últimos 60 dias, quantas vieram pelo tipo e quantas só pelo assunto (RPC `manager_focus_preview`). Há sugestões de palavras por área ("processual", "vendas") como ponto de partida.
+
+### Resultado — entrou × saiu
+
+- **Entrada**: processos da carteira com marco `peticao_inicial` no período. **Saída**: `acordo` (acordo) e `cumprimento_sentenca` / `precatorio_rpv` / `pagamento` (execução).
+- **Vazão** = saiu ÷ entrou. Abaixo de 100% a fila cresce — o card diz em quantos. É a tradução de "o que não entra não sai, e se não sai não conseguimos colocar mais para entrar".
+- **Piso da carteira** (opcional): % da carteira que precisa sair no período. **Meta de saídas** (opcional): número absoluto.
+- Carteira do gerente = processos dos times que ele gerencia, pela view `vw_process_assignment` — **a mesma atribuição das Metas Processuais por Time**, não uma regra paralela.
+
+**Por que a entrada sai do marco e não do cadastro** (medido em 17/08/2026): `lead_processes.created_at` marcou 1.019 de 1.864 processos nos últimos 60 dias — é data de importação, não de entrada, e inflaria a conta; `data_distribuicao` está preenchida em só 171 de 1.864. O marco do tribunal é a única fonte simétrica à da saída.
+
+### Onde mais aparece
+
+- **Telão** (`/tv-atividades`): card "Foco dos Gerentes" na coluna lateral, abaixo do Top de Avaliação — empilha, não cobre nada. Na vista de um time mostra só o gestor daquele time; na vista geral e no grupo gerencial, todos. Atualiza sozinho a cada 60s no modo TV.
+- **Relatório diário** (`daily-team-report`, Railway): o foco do mês entra no **parecer sobre a gestão** de cada time (com onde o foco vazou) e vira a seção **"Foco e vazão dos gestores"** do relatório de diretoria. Falha da RPC não derruba o relatório — o bloco simplesmente não aparece.
+
+**Onde mora**: tabela `manager_focus_targets` e RPCs `manager_focus_status` / `manager_focus_activity_types` / `manager_focus_preview` (Externo; migrations `20260817120000` e `20260817140000`). Front: `useManagerFocus.ts`, `ManagerFocusPanel.tsx`, `TvFocoGerentesPanel.tsx`.
+
+**Limite conhecido**: a palavra-chave é literal (`like`), não semântica — "acordo" acha "acordo" e "ACORDO", mas não entende sinônimo que ninguém escreveu. E a entrada/saída herda o limite dos marcos acima: processo sem movimentação baixada não entra nem sai em número nenhum.
 
 ---
 
