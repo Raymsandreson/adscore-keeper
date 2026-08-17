@@ -13,10 +13,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
-import { ActivityFormCompact } from '@/components/activities/ActivityFormCompact';
+import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { CompleteAndNotifyDialog } from '@/components/activities/CompleteAndNotifyDialog';
+import { sendActivityGroupNotification, type GroupNotifyOptions } from '@/lib/activityGroupNotification';
+import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
 import { ProcessUpdatesBell } from '@/components/notifications/ProcessUpdatesBell';
 import { useLinkedCaseProcess } from '@/hooks/useLinkedCaseProcess';
@@ -29,6 +33,7 @@ import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
 import { ActivityDocumentUpload } from '@/components/activities/ActivityDocumentUpload';
+import type { Attachment } from '@/components/activities/ActivityNotesField';
 import { AIFieldMergeDialog, type AIFieldOrigin } from '@/components/activities/AIFieldMergeDialog';
 import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/activities/useKeepAsObserverPrompt';
 import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
@@ -56,6 +61,15 @@ import { MessageSquare } from 'lucide-react';
 // caixa de pendências usa pra não tirar a pessoa da tela.
 const DashboardChatPreview = lazy(() =>
   import('@/components/whatsapp/DashboardChatPreview').then((m) => ({ default: m.DashboardChatPreview }))
+);
+
+// Chats abertos pelo menu "Mais" da barra de ações — carregados sob demanda pra
+// não pesar a abertura da ficha (a maioria das vezes ninguém abre nenhum dos dois).
+const TeamChatSheet = lazy(() =>
+  import('@/components/chat/TeamChatSheet').then((m) => ({ default: m.TeamChatSheet }))
+);
+const ActivityChatSheet = lazy(() =>
+  import('@/components/activities/ActivityChatSheet').then((m) => ({ default: m.ActivityChatSheet }))
 );
 
 /**
@@ -232,6 +246,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [leadSearch, setLeadSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [caseSearch, setCaseSearch] = useState('');
+  // Barra de ações completa (mesma da tela de Atividades): "Próximos passos",
+  // conversa do lead, menu "Mais" (Chat Equipe / Chat IA) e "Concluir + próxima".
+  // Antes só existiam na tela cheia, e quem abria a atividade pela lista do caso
+  // tinha que sair da ficha pra usar qualquer uma delas.
+  const [nextStepsOpen, setNextStepsOpen] = useState(false);
+  const [leadChatOpen, setLeadChatOpen] = useState(false);
+  const [teamChatOpen, setTeamChatOpen] = useState(false);
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [completeNotifyOpen, setCompleteNotifyOpen] = useState(false);
+  const completeAndCreateLockRef = useRef(false);
 
   const { types: activityTypes } = useActivityTypes();
   const { user } = useAuthContext();
@@ -1068,6 +1092,162 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   };
 
   /**
+   * "Concluir + próxima" — mesmo contrato da ActivitiesPage: conclui ESTA
+   * atividade e cria a seguinte com o que está no formulário, já ligada na
+   * cadeia (`parent_activity_id` + `chain_root_id`). Solicitação e Resposta do
+   * juízo nascem em branco: são específicas da atividade que acabou.
+   *
+   * Anexos: em modo edição o `ActivityNotesField` grava cada anexo na hora (tem
+   * `activity_id`), então aqui não existe fila pendente pra descarregar antes de
+   * concluir — diferente do fluxo da ActivitiesPage, que também abre a ficha em
+   * modo criação. O que a próxima NÃO herda é a cópia dos anexos da anterior.
+   */
+  const handleCompleteAndNext = async (notifyOptions?: GroupNotifyOptions) => {
+    if (!activityId || !selectedActivity) return;
+    if (completeAndCreateLockRef.current) return;
+    completeAndCreateLockRef.current = true;
+    try {
+      const current = selectedActivity;
+      const nextData = {
+        ...buildPayload(),
+        solicitacao: null,
+        resposta_juizo: null,
+        status: 'pendente',
+        // Feedback/reagendamento são da atividade que acabou — a próxima começa limpa.
+        feedback: null,
+        rescheduled_to: null,
+        parent_activity_id: current.id,
+        chain_root_id: current.chain_root_id || current.id,
+      } as Partial<LeadActivity>;
+
+      await completeActivity(current.id);
+      await stopTimerFor(current.id); // concluir encerra o cronômetro
+      toast.success('Atividade concluída! 🎉');
+
+      // Assunto da próxima: o que o usuário escreveu SEMPRE vence. A IA só
+      // nomeia quando o campo está vazio. Best-effort — nunca trava a cadeia.
+      if (!String(nextData.title || '').trim()) {
+        try {
+          const { data: titleData } = await routedFunctions.invoke('generate-activity-title', {
+            body: {
+              fields: {
+                what_was_done: nextData.what_was_done || undefined,
+                current_status: nextData.current_status_notes || undefined,
+                next_steps: nextData.next_steps || undefined,
+                notes: nextData.notes || undefined,
+              },
+              context: {
+                process_title: nextData.process_title || undefined,
+                case_title: nextData.case_title || undefined,
+                lead_name: nextData.lead_name || undefined,
+                activity_type: nextData.activity_type || undefined,
+              },
+              step: stepContext ? {
+                step_label: stepContext.stepLabel,
+                phase_label: stepContext.phaseLabel || undefined,
+              } : undefined,
+            },
+          });
+          if (titleData?.success && titleData.title) nextData.title = titleData.title;
+        } catch (e) {
+          console.warn('[completeAndNext] geração de título por IA falhou; próxima nasce sem assunto', e);
+        }
+      }
+
+      // A atual JÁ está concluída: se o insert falhar, a cadeia para aqui. O
+      // createActivity devolve null em silêncio (dedup em voo, prazo em ausência
+      // registrada, índice único de pendente duplicada) e lança em erro de banco.
+      let nextCreated: LeadActivity | null = null;
+      try {
+        nextCreated = (await createActivity(nextData)) as LeadActivity | null;
+      } catch (e) {
+        console.error('[completeAndNext] criação da próxima falhou', e);
+      }
+
+      // Anexos da mãe vão para a filha (mesma regra da ActivitiesPage, commit
+      // f1e75f4): a fonte é o BANCO, não o que foi anexado nesta abertura da
+      // ficha — anexo colocado dias antes ficava de fora e a próxima nascia sem
+      // as imagens, que pareciam perdidas. Aqui não existe fila pendente: em
+      // modo edição o ActivityNotesField grava cada anexo na hora.
+      if (nextCreated?.id) {
+        try {
+          const { data: atts, error: attsErr } = await externalSupabase
+            .from('activity_attachments')
+            .select('file_url, file_name, file_type, file_size, attachment_type, link_url, link_title')
+            .eq('activity_id', current.id);
+          if (attsErr) throw attsErr;
+          const extUid = await remapToExternal(user?.id || null);
+          const seen = new Set<string>();
+          const unique = ((atts || []) as Attachment[]).filter(a => {
+            if (!a.file_url || seen.has(a.file_url)) return false;
+            seen.add(a.file_url);
+            return true;
+          });
+          const rows = unique.map(a => ({
+            activity_id: nextCreated.id,
+            file_url: a.file_url,
+            file_name: a.file_name,
+            file_type: a.file_type,
+            file_size: a.file_size ?? null,
+            attachment_type: a.attachment_type,
+            link_url: a.link_url ?? null,
+            link_title: a.link_title ?? null,
+            created_by: extUid,
+          }));
+          if (rows.length > 0) {
+            const { error: carryErr } = await externalSupabase.from('activity_attachments').insert(rows);
+            if (carryErr) throw carryErr;
+          }
+        } catch (e) {
+          console.error('[completeAndNext] carry-over de anexos falhou', e);
+          toast.error('Anexos não foram replicados na nova atividade');
+        }
+      }
+
+      if (notifyOptions) await sendActivityGroupNotification(notifyOptions, formLeadId || null);
+
+      onUpdated?.();
+      if (!nextCreated) {
+        // Concluída e órfã: avisa em vez de anunciar sucesso, e mantém a ficha
+        // aberta pra refazer na hora.
+        toast.error('Atividade concluída, mas a PRÓXIMA não foi criada. Confira o aviso acima e crie a próxima manualmente.', { duration: 12000 });
+        return;
+      }
+      toast.success('Atividade concluída e próxima criada!');
+      setCompleteNotifyOpen(false);
+      onOpenChange(false);
+    } finally {
+      completeAndCreateLockRef.current = false;
+    }
+  };
+
+  /** Reabrir atividade concluída — mesmos dois destinos da tela de Atividades. */
+  const handleReopen = async (status: 'pendente' | 'em_andamento') => {
+    if (!activityId) return;
+    await updateActivity(activityId, {
+      status,
+      completed_at: null,
+      completed_by: null,
+      completed_by_name: null,
+    });
+    setFormStatus(status);
+    setSelectedActivity(prev => prev ? { ...prev, status, completed_at: null, completed_by: null, completed_by_name: null } : prev);
+    onUpdated?.();
+  };
+
+  /** Duplicar: cópia pendente da atividade aberta (mesmo comportamento da lista). */
+  const handleClone = async () => {
+    if (!selectedActivity) return;
+    const { id, created_at, updated_at, completed_at, completed_by, completed_by_name, ...cloneData } = selectedActivity;
+    const created = await createActivity({
+      ...cloneData,
+      title: `${selectedActivity.title} (cópia)`,
+      status: 'pendente',
+    });
+    if (created) onUpdated?.();
+  };
+
+  /**
    * Adiar sem concluir e sem criar filha — mesmo caminho da ActivitiesPage. Não
    * fecha a ficha: adiar não é sair da atividade. O bloqueio por ausência
    * registrada mora no `updateActivity`, que devolve `false` com o motivo.
@@ -1219,6 +1399,49 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 </Button>
               )}
 
+              {/* Próximos passos sugeridos por IA a partir da etapa do fluxo —
+                  mesma função da tela cheia, que era o único lugar onde existia. */}
+              {!isCreate && (
+                <ActivityNextStepsAgent
+                  open={nextStepsOpen}
+                  onOpenChange={setNextStepsOpen}
+                  activityId={selectedActivity?.id}
+                  leadId={formLeadId}
+                  caseId={formCaseId}
+                  processId={formProcessId}
+                  leadPhone={leadPreview?.lead_phone}
+                  groupJid={leadPreview?.whatsapp_group_id}
+                  context={{
+                    step: stepContext ? {
+                      step_label: stepContext.stepLabel,
+                      phase_label: stepContext.phaseLabel || undefined,
+                      objective_label: stepContext.objectiveLabel || undefined,
+                      next_step: (() => {
+                        const steps = stepContext.allSteps || [];
+                        const idx = steps.findIndex((s) => s.stepId === stepContext.stepId);
+                        const after = idx >= 0 ? steps.slice(idx + 1) : steps;
+                        return (after.find((s) => !s.checked) || after[0])?.stepLabel;
+                      })(),
+                      checklist: (stepContext.docChecklist || []).map((c) => ({ label: c.label, checked: c.checked })),
+                    } : undefined,
+                    activity: {
+                      title: formTitle,
+                      type: formType,
+                      lead_name: formLeadName,
+                      process_title: formProcessTitle,
+                      current_status: stripHtmlToText(formCurrentStatus),
+                      what_was_done: stripHtmlToText(formWhatWasDone),
+                      next_steps: stripHtmlToText(formNextSteps),
+                      notes: stripHtmlToText(formNotes),
+                    },
+                  }}
+                  onApply={(text) => {
+                    const html = callFieldTextToHtml(text);
+                    setFormNextSteps((prev) => (prev && prev !== '<p></p>' ? `${prev}${html}` : html));
+                  }}
+                />
+              )}
+
               {/* Movimentações DESTE processo, sem passar pelo sino global e sem
                   sair da ficha: o sino carrega as 100 mais recentes de todo
                   mundo, então o processo desta atividade pode nem estar lá. */}
@@ -1227,6 +1450,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                   processId={formProcessId}
                   processLabel={displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || null}
                 />
+              )}
+
+              {/* Conversa do lead sem sair da ficha (grupo, ou privado quando não
+                  há grupo vinculado). Abre em painel de baixo pra cima. */}
+              {!isCreate && formLeadId && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1 shrink-0 text-green-600 border-green-200 hover:bg-green-50 dark:hover:bg-green-950/30"
+                  onClick={() => setLeadChatOpen(true)}
+                  title={leadPreview?.whatsapp_group_id ? 'Abrir grupo do WhatsApp vinculado' : 'Abrir conversa do WhatsApp'}
+                >
+                  <MessageSquare className="h-3 w-3" /> WhatsApp
+                </Button>
               )}
 
               {/* Painéis controlados pelo menu acima (gatilho sr-only sempre montado,
@@ -1614,36 +1851,120 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           </Tabs>
         )}
 
-        {/* Footer actions */}
+        {/* Barra de ações — MESMAS ações da tela cheia de Atividades. Antes daqui
+            só saíam Excluir/Cancelar/Adiar/Concluir/Salvar, e quem abria a
+            atividade pela lista do caso tinha que clicar em "Tela cheia" só pra
+            Copiar/Enviar/Duplicar. Duas linhas em vez de uma: no celular a
+            fileira única jogava os botões primários pra fora da tela. */}
         <div className="shrink-0 border-t">
-          <div className="flex items-center justify-between p-3 gap-2">
+          <div className="flex flex-col md:flex-row md:items-center gap-2 p-3">
+            {/* Utilidades da mensagem */}
             {!isCreate && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDelete}
-                className="gap-1 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="h-3 w-3" /> Excluir
-              </Button>
+              <div className="flex items-center gap-1.5 flex-wrap md:mr-auto">
+                <SendToGroupSection
+                  buildMsg={buildMsg}
+                  leadId={formLeadId}
+                  fieldSettings={fieldSettings}
+                  updateFieldSetting={updateFieldSetting}
+                  reorderFields={reorderFields}
+                  formLeadIdForTTS={formLeadId || undefined}
+                  formContactIdForTTS={formContactId || undefined}
+                  formAssignedTo={formAssignedTo || undefined}
+                  formCoAssignees={formCoAssignees}
+                  activityId={selectedActivity?.id}
+                  compactLabel
+                />
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-8 text-xs gap-1">
+                      <MoreVertical className="h-3.5 w-3.5" /> Mais
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-48">
+                    {selectedActivity?.id && (
+                      <DropdownMenuItem
+                        className="text-xs"
+                        onSelect={(e) => { e.preventDefault(); setTeamChatOpen(true); }}
+                      >
+                        <Users className="h-3.5 w-3.5 mr-2" /> Chat Equipe
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setAiChatOpen(true)} className="text-xs">
+                      <MessageCircle className="h-3.5 w-3.5 mr-2" /> Chat IA
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleClone} className="text-xs">
+                      <Copy className="h-3.5 w-3.5 mr-2" /> Duplicar
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             )}
-            <div className="flex gap-2 ml-auto">
-              <Button variant="outline" size="sm" onClick={handleClose}>Cancelar</Button>
+
+            {/* Ações principais */}
+            <div className="flex items-center gap-2 flex-wrap md:ml-auto md:justify-end">
+              {!isCreate && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDelete}
+                  className="h-8 gap-1 text-xs border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="h-3 w-3" /> Excluir
+                </Button>
+              )}
+              <Button variant="outline" size="sm" className="h-8 text-xs" onClick={handleClose}>Cancelar</Button>
+              {!isCreate && selectedActivity?.status === 'concluida' && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" variant="outline" className="h-8 text-xs gap-1">
+                      <RotateCcw className="h-3.5 w-3.5" /> Reabrir
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-40 p-1" align="end">
+                    <div className="flex flex-col gap-0.5">
+                      {([
+                        { value: 'pendente', label: 'Pendente' },
+                        { value: 'em_andamento', label: 'Em Andamento' },
+                      ] as const).map(opt => (
+                        <Button
+                          key={opt.value}
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs justify-start"
+                          onClick={() => handleReopen(opt.value)}
+                        >
+                          {opt.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
               {!isCreate && selectedActivity?.status !== 'concluida' && (
                 <PostponeActivityPopover
                   currentDeadline={selectedActivity?.deadline}
                   onPostpone={handlePostpone}
                 />
               )}
-              {!isCreate && selectedActivity?.status !== 'concluida' && (
-                <Button variant="outline" size="sm" onClick={handleComplete} className="gap-1 text-xs bg-success hover:bg-success/90 text-success-foreground border-0">
-                  <CheckCircle2 className="h-3 w-3" /> Concluir
-                </Button>
-              )}
-              <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1">
+              {/* Em criação o Salvar É a ação principal (não existe Concluir ao lado). */}
+              <Button size="sm" variant={isCreate ? 'default' : 'outline'} className="h-8 text-xs gap-1" onClick={handleSave} disabled={saving}>
                 {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
                 {isCreate ? 'Criar atividade' : 'Salvar'}
               </Button>
+              {!isCreate && selectedActivity?.status !== 'concluida' && (
+                <Button
+                  size="sm"
+                  className="h-8 text-xs gap-1 bg-warning hover:bg-warning/90 text-warning-foreground"
+                  onClick={() => setCompleteNotifyOpen(true)}
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Concluir + próxima
+                </Button>
+              )}
+              {!isCreate && selectedActivity?.status !== 'concluida' && (
+                <Button size="sm" onClick={handleComplete} className="h-8 gap-1 text-xs bg-success hover:bg-success/90 text-success-foreground border-0">
+                  <CheckCircle2 className="h-3 w-3" /> Concluir
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -1681,6 +2002,71 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
           />
         </Suspense>
       )}
+
+      {/* Conversa do lead (botão WhatsApp do cabeçalho) — mesmo painel de baixo
+          pra cima da caixa de pendências, por cima da ficha. */}
+      {leadChatOpen && (leadPreview?.whatsapp_group_id || leadPreview?.lead_phone) && (
+        <Suspense fallback={null}>
+          <DashboardChatPreview
+            open={leadChatOpen}
+            onOpenChange={(o) => { if (!o) setLeadChatOpen(false); }}
+            phone={leadPreview.whatsapp_group_id || leadPreview.lead_phone || ''}
+            contactName={formLeadName || null}
+            instanceName={null}
+            // Grupo vinculado + telefone do lead → permite alternar pro privado unificado.
+            privatePhone={leadPreview.whatsapp_group_id && leadPreview.lead_phone ? leadPreview.lead_phone : null}
+            hasLead={!!formLeadId}
+            hasContact={!!formContactId}
+            wasResponded={false}
+            responseTimeMinutes={null}
+          />
+        </Suspense>
+      )}
+
+      {/* Chat da equipe e chat com IA desta atividade — abertos pelo menu "Mais". */}
+      {selectedActivity?.id && teamChatOpen && (
+        <Suspense fallback={null}>
+          <TeamChatSheet
+            open={teamChatOpen}
+            onOpenChange={setTeamChatOpen}
+            entityType="activity"
+            entityId={selectedActivity.id}
+            entityName={selectedActivity.title}
+          />
+        </Suspense>
+      )}
+      {aiChatOpen && (
+        <Suspense fallback={null}>
+          <ActivityChatSheet
+            open={aiChatOpen}
+            onOpenChange={setAiChatOpen}
+            activityId={selectedActivity?.id || null}
+            leadId={selectedActivity?.lead_id || formLeadId || null}
+            activityTitle={selectedActivity?.title || formTitle}
+            onApplySuggestion={(suggestion) => {
+              if (suggestion.what_was_done) setFormWhatWasDone(suggestion.what_was_done);
+              if (suggestion.current_status_notes) setFormCurrentStatus(suggestion.current_status_notes);
+              if (suggestion.next_steps) setFormNextSteps(suggestion.next_steps);
+              if (suggestion.notes) setFormNotes(suggestion.notes);
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* "Concluir + próxima": conclui esta e cria a seguinte, com a opção de
+          avisar o grupo do lead no mesmo passo. */}
+      <CompleteAndNotifyDialog
+        open={completeNotifyOpen}
+        onClose={() => setCompleteNotifyOpen(false)}
+        onConfirm={handleCompleteAndNext}
+        leadId={formLeadId || null}
+        buildMsg={buildMsg}
+        // Prazo mexido no formulário: o dialog avisa que "Concluir + próxima"
+        // conclui ESTA atividade na data velha e oferece o adiar de verdade.
+        currentDeadline={selectedActivity?.deadline || null}
+        nextDeadline={formDeadline || null}
+        onPostponeInstead={selectedActivity ? handlePostpone : undefined}
+      />
 
       <Dialog open={financeOpen} onOpenChange={setFinanceOpen}>
         <DialogContent className="max-w-lg">

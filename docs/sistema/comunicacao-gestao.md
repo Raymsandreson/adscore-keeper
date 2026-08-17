@@ -277,6 +277,20 @@ Duas falhas reais no aviso de menção, corrigidas juntas:
 - O canal de participação escuta `team_chat_messages` **sem filtro no servidor** e corta no cliente contra o conjunto que você segue — a chave é `(entity_type, entity_id)`, que o filtro do Realtime não expressa. Volume medido: 15–51 msgs/dia, pico de 24 threads.
 - Migration: `supabase/migrations-external/20260812140000_team_chat_thread_followers.sql` (também corrige `mention_nudges` para `replica identity full`, como as demais tabelas do chat).
 
+### O chat da atividade é da CADEIA, não da ficha (desde 17/08/2026)
+
+"Concluir + próxima" cria uma ficha nova, com id novo. O chat interno era ancorado nesse id: a etapa seguinte nascia com a conversa **vazia** e quem respondia na ficha anterior falava com quem já tinha virado o dia. Caso que originou a mudança (cadeia "Manifestar descumprimento e requerer execução do pensionamento"): a resposta caiu às 20:30 de 04/08 na ficha que o responsável tinha deixado para trás às 20:12 — 8 mensagens espalhadas por 3 fichas, e a etapa aberta hoje sem nenhuma.
+
+- **Leitura** = união dos elos da cadeia (`.in('entity_id', ids)`); **escrita** = sempre na **raiz** (`chain_root_id || id`). Nada é movido de lugar — não houve backfill.
+- Vale para mensagem, menção (`team_chat_mentions.entity_id`), participação (`team_chat_thread_followers`) e o "responder" do popup: tudo na mesma chave, então concluir a etapa não desliga quem estava acompanhando.
+- **Quem acompanhava desde antes** continua avisado: as linhas antigas de `team_chat_thread_followers` guardam o id do ELO, e `resolveActivityChatRoots` traduz para a raiz na carga das notificações.
+- **Clicar na notificação abre a etapa VIVA**, não a raiz (que costuma estar concluída) — `resolveOpenActivityOfChain`, usado no popup e no painel de menções. Tanto faz para o conteúdo: qualquer elo mostra o thread inteiro.
+- Na conversa: selo **"Conversa contínua · N etapas desta atividade"** e divisor de dia entre as mensagens (Hoje / Ontem / data).
+- Web Push: o cliente manda `entity_ids` (os elos) e `send-team-push` procura os participantes na cadeia toda — quem falou só na etapa anterior continua sendo alcançado.
+- Banco sem as colunas da cadeia (42703) cai no comportamento antigo — chat da ficha — em vez de quebrar.
+- Código: `src/lib/activityChatThread.ts` (+ 12 testes), `useTeamChat`, `TeamChatPanel`, `TeamChatNotifications`, `MentionsPanel`, `railway-server/src/functions/send-team-push.ts`.
+- **Pendência conhecida**: cadeias anteriores a 07/08/2026 não têm `parent_activity_id` gravado (a migration da cadeia é dessa data), então nelas o histórico começa no primeiro elo que ficou ligado. Religar exige heurística (mesmo título + processo + conclusão a segundos da criação da filha) e escrita em produção.
+
 ### Filtros de origem da menção (desde 12/08/2026)
 
 O painel passou a se chamar **Chat interno** e ganhou duas dimensões de filtro, cruzáveis entre si e com as que já existiam (Todas / Não lidas / Responder / Aguardando):

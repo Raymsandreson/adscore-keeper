@@ -7,6 +7,7 @@ import { AtSign, MessageCircle, EyeOff, AlarmClock } from 'lucide-react';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import { appNavigate } from '@/lib/appNavigation';
+import { resolveActivityChatRoots, resolveActivityChatThread, resolveOpenActivityOfChain } from '@/lib/activityChatThread';
 import {
   getActiveTeamChatConversation,
   getActiveTeamChatEntity,
@@ -403,11 +404,18 @@ export function TeamChatNotifications() {
       entityName?: string | null;
       content: string;
     }) => {
+      // Responder pelo popup entra no MESMO thread do chat: em atividade, a
+      // raiz da cadeia. Popup de mensagem legada (gravada no id do elo) não
+      // pode reabrir a conversa num lugar separado.
+      const alvo = entityType === 'activity'
+        ? (await resolveActivityChatThread(entityId)).rootId
+        : entityId;
+
       const { error } = await externalSupabase
         .from('team_chat_messages')
         .insert({
           entity_type: entityType,
-          entity_id: entityId,
+          entity_id: alvo,
           entity_name: entityName || null,
           content,
           sender_id: user.id,
@@ -464,8 +472,12 @@ export function TeamChatNotifications() {
 
           return `/leads?${boardParam}openLead=${entityId}${messageParam}`;
         }
-        case 'activity':
-          return `/?openActivity=${entityId}${messageParam}`;
+        case 'activity': {
+          // O chat é da cadeia e mora na raiz, que costuma estar concluída.
+          // Abrir a etapa VIVA — a conversa é a mesma em qualquer elo.
+          const alvo = await resolveOpenActivityOfChain(entityId);
+          return `/?openActivity=${alvo}${messageParam}`;
+        }
         case 'contact':
           return `/leads?openContact=${entityId}${messageParam}`;
         case 'workflow':
@@ -627,9 +639,18 @@ export function TeamChatNotifications() {
         .select('entity_type, entity_id')
         .eq('user_id', user.id)
         .is('left_at', null);
-      followedThreadsRef.current = new Set(
-        (data || []).map((f: { entity_type: string; entity_id: string }) => `${f.entity_type}:${f.entity_id}`)
+      const seguidos = (data || []) as { entity_type: string; entity_id: string }[];
+      const chaves = new Set(seguidos.map(f => `${f.entity_type}:${f.entity_id}`));
+
+      // Linhas gravadas antes do chat virar da cadeia apontam para o id do ELO.
+      // A mensagem nova chega na raiz — sem traduzir, quem acompanhava desde
+      // antes deixaria de ser avisado ao virar a etapa.
+      const raizes = await resolveActivityChatRoots(
+        seguidos.filter(f => f.entity_type === 'activity').map(f => f.entity_id)
       );
+      for (const raiz of raizes.values()) chaves.add(`activity:${raiz}`);
+
+      followedThreadsRef.current = chaves;
     };
     void loadFollowedThreads();
 

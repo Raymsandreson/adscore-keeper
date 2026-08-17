@@ -275,11 +275,20 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
       // trânsito em julgado, acordo homologado, sentença, execução… e não só
       // pelo protocolo. Paginado de mil em mil: são 1.522 linhas no POP
       // trabalhista (16/08/2026) e o PostgREST corta em 1.000 sem avisar.
+      // `db as any` porque `process_pop_marcos` não está no `types.ts` gerado —
+      // a tabela existe no Externo (conferida em 17/08/2026: 10 colunas), mas o
+      // arquivo de tipos fica para trás de tudo que nasce fora do Lovable
+      // (`callback_at` de lead_activities e a própria RPC `pop_carteira_marcos`
+      // também não estão lá). Sem o cast, o TS resolve `.from()` contra a lista
+      // de tabelas conhecidas e derruba a build de tipos com três erros —
+      // TS2769 no nome da tabela, TS2352 no cast do lote e TS2589 ("type
+      // instantiation is excessively deep") por instanciar a união de 190
+      // tabelas. Mesmo caminho já usado no `carteiraMarcos.ts` ao lado.
       const porProcesso: Record<string, Record<string, string>> = {};
       const catalogo = new Map<string, CampoDeData>();
       try {
         for (let inicio = 0; ; inicio += 1000) {
-          const { data: marcos } = await db
+          const { data: marcos } = await (db as any)
             .from('process_pop_marcos')
             .select('process_id, marco_chave, rotulo, ordem, data_detectada')
             .eq('board_id', boardId)
