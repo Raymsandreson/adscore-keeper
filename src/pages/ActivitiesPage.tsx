@@ -1747,8 +1747,10 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
       feedback: formFeedback || null,
       rescheduled_to: formRescheduledTo || null,
-      // Só entra no update quando MUDOU — senão todo save zeraria o carimbo
-      // callback_notified_at e o lembrete dispararia de novo.
+      // Só entra no update quando MUDOU. Não existe callback_notified_at no
+      // Externo (o comentário antigo prometia esse carimbo); o ganho real é
+      // não reescrever a coluna a cada save. Campo limpo vira null aqui, então
+      // dá para desmarcar o retorno.
       ...(() => {
         const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
         const prevRaw = (selectedActivity as any).callback_at || null;
@@ -1948,6 +1950,11 @@ const ActivitiesPage = () => {
         assigned_to_name: formAssignedToName || null,
         deadline: formDeadline || null,
         notification_date: formNotificationDate || null,
+        // Retorno agendado segue prazo e notificação: as datas do formulário
+        // são as da PRÓXIMA etapa. Sem esta linha, quem preenchesse "Retorno
+        // agendado" e clicasse aqui perderia o valor calado — a mãe é
+        // concluída sem salvar o formulário.
+        callback_at: formCallbackAt ? new Date(formCallbackAt).toISOString() : null,
         notes: formNotes || null,
         contact_id: formContactId || null,
         contact_name: formContactName || null,
