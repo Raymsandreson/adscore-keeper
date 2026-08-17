@@ -1341,7 +1341,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
-      <SheetContent side={side} className={cn('w-full sm:max-w-2xl flex flex-col p-0', contentClassName)}>
+      <SheetContent side={side} className={cn('w-full flex flex-col p-0 transition-all', isFullscreen ? 'sm:max-w-[95vw]' : 'sm:max-w-2xl', contentClassName)}>
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-start justify-between gap-2">
             <SheetTitle
