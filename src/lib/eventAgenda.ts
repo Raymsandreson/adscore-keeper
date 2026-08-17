@@ -105,6 +105,45 @@ export function diaAnterior(dia: string): string {
   return dt.toISOString().slice(0, 10);
 }
 
+/** 0 = domingo … 6 = sábado. Em UTC, para a data literal não escorregar de fuso. */
+export function diaDaSemana(dia: string): number {
+  const [y, m, d] = dia.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
+
+export function ehFimDeSemana(dia: string): boolean {
+  const dow = diaDaSemana(dia);
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Os dias que a véspera prepara: de D+1 até o próximo dia ÚTIL, inclusive.
+ *
+ * Na segunda a quinta é um dia só. Na sexta são três — sábado, domingo e
+ * segunda: quem prepara na sexta precisa ver a segunda, senão a segunda nunca
+ * tem véspera.
+ *
+ * Os dias pulados entram na janela em vez de serem saltados. Parece detalhe, mas
+ * não é: audiência não cai em fim de semana (0 das 555 no banco em 17/08/2026),
+ * só que PRAZO cai — 3 dos 81 prazos vivos vencem num sábado ou domingo. Pular
+ * o fim de semana faria esses três nunca aparecerem em tela nenhuma.
+ *
+ * FERIADO NÃO É CONSIDERADO, pela mesma razão já documentada em `popPrazo.ts`:
+ * não existe tabela de feriado forense neste sistema, e ela varia por tribunal e
+ * por ano. Véspera de feriado vai mostrar o feriado, que costuma vir vazio.
+ */
+export function janelaDaVespera(vespera: string): string[] {
+  const dias: string[] = [];
+  let cursor = diaSeguinte(vespera);
+  // Teto de 7 para nunca girar sem parar, mesmo com entrada estranha.
+  for (let i = 0; i < 7; i++) {
+    dias.push(cursor);
+    if (!ehFimDeSemana(cursor)) break;
+    cursor = diaSeguinte(cursor);
+  }
+  return dias;
+}
+
 /** 'HH:MM:SS' → 'HH:MM'. Null vira null (prazo não tem hora). */
 export function horaCurta(hora?: string | null): string | null {
   const h = (hora || '').slice(0, 5);
@@ -191,15 +230,16 @@ export function atividadeMaisProxima(
 }
 
 /**
- * Monta as linhas da agenda de um dia, já ordenadas por hora (sem hora no fim).
+ * Monta as linhas da agenda da janela, ordenadas por dia e hora.
  *
  * Recebe tudo pronto — quem busca no banco é o hook. Assim a regra de quem entra
  * em qual aba fica testável sem rede.
  */
-export function montarEventosDoDia(params: {
-  dia: string;
+export function montarEventosDaJanela(params: {
+  /** Os dias que a véspera prepara (ver `janelaDaVespera`). */
+  dias: string[];
   audiencias: AudienciaLite[];
-  /** Já filtradas pelo dia: as de tipo-evento entram como linha própria. */
+  /** Já filtradas pelos dias: as de tipo Prazo entram como linha própria. */
   atividades: AtividadeLite[];
   /** key do activity_type → label cadastrado (quando existe). */
   rotuloDoTipo: Map<string, string>;
@@ -208,11 +248,13 @@ export function montarEventosDoDia(params: {
   /** process_id → atividades vivas daquele processo (para a coluna Atividade). */
   atividadesPorProcesso: Map<string, AtividadeLite[]>;
 }): EventoAgenda[] {
-  const { dia, audiencias, atividades, rotuloDoTipo, processoPorNumero, atividadesPorProcesso } = params;
+  const { dias, audiencias, atividades, rotuloDoTipo, processoPorNumero, atividadesPorProcesso } = params;
+  const naJanela = new Set(dias);
   const linhas: EventoAgenda[] = [];
 
   for (const h of audiencias) {
-    if (h.hearing_date.slice(0, 10) !== dia) continue;
+    const dia = h.hearing_date.slice(0, 10);
+    if (!naJanela.has(dia)) continue;
     const proc = h.process_number ? processoPorNumero.get(h.process_number.trim()) || null : null;
     const ligada = proc?.process_id
       ? atividadeMaisProxima(atividadesPorProcesso.get(proc.process_id) || [], dia)
@@ -238,7 +280,8 @@ export function montarEventosDoDia(params: {
 
   for (const a of atividades) {
     if (!ehAtividadeDePrazo(a.activity_type, a.activity_type ? rotuloDoTipo.get(a.activity_type) : null)) continue;
-    if ((a.deadline || '').slice(0, 10) !== dia) continue;
+    const dia = (a.deadline || '').slice(0, 10);
+    if (!naJanela.has(dia)) continue;
     linhas.push({
       chave: `atividade:${a.id}`,
       categoria: 'prazo',
@@ -257,7 +300,9 @@ export function montarEventosDoDia(params: {
     });
   }
 
+  // Dia primeiro (a janela pode ter três), hora depois, sem-hora no fim do dia.
   return linhas.sort((x, y) => {
+    if (x.dataEvento !== y.dataEvento) return x.dataEvento.localeCompare(y.dataEvento);
     if (x.horaEvento && y.horaEvento) return x.horaEvento.localeCompare(y.horaEvento);
     if (x.horaEvento) return -1;
     if (y.horaEvento) return 1;

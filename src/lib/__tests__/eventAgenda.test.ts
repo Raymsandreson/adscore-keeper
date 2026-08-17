@@ -7,7 +7,9 @@ import {
   diaAnterior,
   diaSeguinte,
   horaCurta,
-  montarEventosDoDia,
+  montarEventosDaJanela,
+  janelaDaVespera,
+  ehFimDeSemana,
   type AtividadeLite,
   type AudienciaLite,
 } from '../eventAgenda';
@@ -153,9 +155,9 @@ describe('atividadeMaisProxima', () => {
   });
 });
 
-describe('montarEventosDoDia', () => {
+describe('montarEventosDaJanela', () => {
   const base = {
-    dia: '2026-08-18',
+    dias: ['2026-08-18'],
     rotuloDoTipo: new Map([['custom_1778676343311', 'Prazo']]),
     processoPorNumero: new Map([[
       '0000242-25.2026.5.09.0663',
@@ -166,7 +168,7 @@ describe('montarEventosDoDia', () => {
 
   it('resolve o cliente da audiência pelo número do processo', () => {
     // Só 10 das 70 audiências futuras têm lead_id; 53 de 59 casam por número.
-    const [linha] = montarEventosDoDia({ ...base, audiencias: [audiencia()], atividades: [] });
+    const [linha] = montarEventosDaJanela({ ...base, audiencias: [audiencia()], atividades: [] });
     expect(linha.cliente).toBe('João da Silva');
     expect(linha.categoria).toBe('audiencia');
     expect(linha.horaEvento).toBe('14:00');
@@ -174,7 +176,7 @@ describe('montarEventosDoDia', () => {
   });
 
   it('audiência de processo desconhecido não inventa cliente', () => {
-    const [linha] = montarEventosDoDia({
+    const [linha] = montarEventosDaJanela({
       ...base,
       audiencias: [audiencia({ process_number: '9999999-99.2026.5.09.0663' })],
       atividades: [],
@@ -184,14 +186,14 @@ describe('montarEventosDoDia', () => {
   });
 
   it('marca a situação só quando a audiência não está ativa', () => {
-    const [ativa] = montarEventosDoDia({ ...base, audiencias: [audiencia()], atividades: [] });
+    const [ativa] = montarEventosDaJanela({ ...base, audiencias: [audiencia()], atividades: [] });
     expect(ativa.situacao).toBeNull();
-    const [cancelada] = montarEventosDoDia({ ...base, audiencias: [audiencia({ status: 'cancelada' })], atividades: [] });
+    const [cancelada] = montarEventosDaJanela({ ...base, audiencias: [audiencia({ status: 'cancelada' })], atividades: [] });
     expect(cancelada.situacao).toBe('cancelada');
   });
 
   it('prazo entra como linha própria e sem hora', () => {
-    const [linha] = montarEventosDoDia({
+    const [linha] = montarEventosDaJanela({
       ...base,
       audiencias: [],
       atividades: [atividade({ activity_type: 'custom_1778676343311' })],
@@ -203,7 +205,7 @@ describe('montarEventosDoDia', () => {
   });
 
   it('atividade que não é de tipo-evento fica de fora', () => {
-    const linhas = montarEventosDoDia({
+    const linhas = montarEventosDaJanela({
       ...base,
       audiencias: [],
       atividades: [atividade({ activity_type: 'tarefa' })],
@@ -214,7 +216,7 @@ describe('montarEventosDoDia', () => {
   it('atividade de audiência não duplica o evento que já veio da hearings', () => {
     // Regressão medida em 18/08/2026: HearingActivityDialog cria uma atividade
     // a partir da audiência, então o mesmo evento vinha duas vezes.
-    const linhas = montarEventosDoDia({
+    const linhas = montarEventosDaJanela({
       ...base,
       audiencias: [audiencia()],
       atividades: [atividade({ id: 'gerada', activity_type: 'audiencia', title: 'Audiência Instrução 18/08/2026' })],
@@ -225,7 +227,7 @@ describe('montarEventosDoDia', () => {
   });
 
   it('descarta o que não é do dia pedido', () => {
-    const linhas = montarEventosDoDia({
+    const linhas = montarEventosDaJanela({
       ...base,
       audiencias: [audiencia({ hearing_date: '2026-08-19' })],
       atividades: [atividade({ deadline: '2026-08-19' })],
@@ -234,7 +236,7 @@ describe('montarEventosDoDia', () => {
   });
 
   it('ordena por hora e joga o sem-hora para o fim', () => {
-    const linhas = montarEventosDoDia({
+    const linhas = montarEventosDaJanela({
       ...base,
       audiencias: [
         audiencia({ id: 'tarde', hearing_time: '16:00:00' }),
@@ -248,8 +250,8 @@ describe('montarEventosDoDia', () => {
 
 describe('contarPorCategoria', () => {
   it('conta cada aba, inclusive as vazias', () => {
-    const eventos = montarEventosDoDia({
-      dia: '2026-08-18',
+    const eventos = montarEventosDaJanela({
+      dias: ['2026-08-18'],
       rotuloDoTipo: new Map(),
       processoPorNumero: new Map(),
       atividadesPorProcesso: new Map(),
@@ -257,5 +259,98 @@ describe('contarPorCategoria', () => {
       atividades: [atividade({ activity_type: 'prazo' })],
     });
     expect(contarPorCategoria(eventos)).toEqual({ audiencia: 1, pericia: 1, prazo: 1, outros: 0 });
+  });
+});
+
+describe('janelaDaVespera', () => {
+  it('de segunda a quinta prepara um dia só', () => {
+    // 17/08/2026 é segunda.
+    expect(janelaDaVespera('2026-08-17')).toEqual(['2026-08-18']);
+    expect(janelaDaVespera('2026-08-19')).toEqual(['2026-08-20']); // qua → qui
+  });
+
+  it('na sexta cobre sábado, domingo E segunda', () => {
+    // 21/08/2026 é sexta. Sem isso a segunda nunca teria véspera.
+    expect(janelaDaVespera('2026-08-21')).toEqual(['2026-08-22', '2026-08-23', '2026-08-24']);
+  });
+
+  it('no sábado cobre domingo e segunda', () => {
+    expect(janelaDaVespera('2026-08-22')).toEqual(['2026-08-23', '2026-08-24']);
+  });
+
+  it('no domingo já é a segunda', () => {
+    expect(janelaDaVespera('2026-08-23')).toEqual(['2026-08-24']);
+  });
+
+  it('a janela sempre termina em dia útil e não pula nada no meio', () => {
+    for (const v of ['2026-08-17', '2026-08-20', '2026-08-21', '2026-08-22', '2026-08-23']) {
+      const j = janelaDaVespera(v);
+      expect(ehFimDeSemana(j[j.length - 1])).toBe(false);
+      expect(j[0]).toBe(diaSeguinte(v));
+      // dias consecutivos, sem buraco
+      for (let i = 1; i < j.length; i++) expect(j[i]).toBe(diaSeguinte(j[i - 1]));
+    }
+  });
+
+  it('atravessa a virada de mês', () => {
+    // 31/07/2026 é sexta.
+    expect(janelaDaVespera('2026-07-31')).toEqual(['2026-08-01', '2026-08-02', '2026-08-03']);
+  });
+});
+
+describe('montarEventosDaJanela — janela de vários dias', () => {
+  it('traz o prazo que vence no sábado, em vez de escondê-lo', () => {
+    // 3 dos 81 prazos vivos vencem em fim de semana. Pular o sábado faria eles
+    // nunca aparecerem em tela nenhuma.
+    const linhas = montarEventosDaJanela({
+      dias: ['2026-08-22', '2026-08-23', '2026-08-24'],
+      rotuloDoTipo: new Map(),
+      processoPorNumero: new Map(),
+      atividadesPorProcesso: new Map(),
+      audiencias: [],
+      atividades: [atividade({ id: 'sabado', activity_type: 'prazo', deadline: '2026-08-22' })],
+    });
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].dataEvento).toBe('2026-08-22');
+  });
+
+  it('cada linha guarda o SEU dia, não o primeiro da janela', () => {
+    const linhas = montarEventosDaJanela({
+      dias: ['2026-08-22', '2026-08-23', '2026-08-24'],
+      rotuloDoTipo: new Map(),
+      processoPorNumero: new Map(),
+      atividadesPorProcesso: new Map(),
+      audiencias: [audiencia({ id: 'seg', hearing_date: '2026-08-24', hearing_time: '09:00:00' })],
+      atividades: [atividade({ id: 'sab', activity_type: 'prazo', deadline: '2026-08-22' })],
+    });
+    expect(linhas.map(l => l.dataEvento)).toEqual(['2026-08-22', '2026-08-24']);
+  });
+
+  it('ordena por dia antes de ordenar por hora', () => {
+    const linhas = montarEventosDaJanela({
+      dias: ['2026-08-22', '2026-08-23', '2026-08-24'],
+      rotuloDoTipo: new Map(),
+      processoPorNumero: new Map(),
+      atividadesPorProcesso: new Map(),
+      audiencias: [
+        audiencia({ id: 'seg-cedo', hearing_date: '2026-08-24', hearing_time: '08:00:00' }),
+        audiencia({ id: 'sab-tarde', hearing_date: '2026-08-22', hearing_time: '17:00:00' }),
+      ],
+      atividades: [],
+    });
+    // O sábado às 17h vem antes da segunda às 8h: dia manda.
+    expect(linhas.map(l => l.chave)).toEqual(['audiencia:sab-tarde', 'audiencia:seg-cedo']);
+  });
+
+  it('descarta o que está fora da janela', () => {
+    const linhas = montarEventosDaJanela({
+      dias: ['2026-08-24'],
+      rotuloDoTipo: new Map(),
+      processoPorNumero: new Map(),
+      atividadesPorProcesso: new Map(),
+      audiencias: [audiencia({ hearing_date: '2026-08-25' })],
+      atividades: [atividade({ activity_type: 'prazo', deadline: '2026-08-22' })],
+    });
+    expect(linhas).toHaveLength(0);
   });
 });
