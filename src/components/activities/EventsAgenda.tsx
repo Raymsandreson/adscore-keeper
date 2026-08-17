@@ -10,10 +10,10 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { useEventosDoDia } from '@/hooks/useEventosDoDia';
+import { useEventosDaJanela } from '@/hooks/useEventosDaJanela';
 import {
   CATEGORIAS, CATEGORIA_LABEL, contarPorCategoria, diaAnterior, diaSeguinte,
-  type CategoriaEvento, type EventoAgenda,
+  janelaDaVespera, type CategoriaEvento, type EventoAgenda,
 } from '@/lib/eventAgenda';
 
 type Aba = 'todos' | CategoriaEvento;
@@ -72,6 +72,16 @@ function diaCurto(iso: string): string {
 }
 
 /**
+ * Como a janela se apresenta: um dia por extenso, ou o intervalo quando a
+ * véspera cobre o fim de semana ("22/08 (sábado) a 24/08 (segunda-feira)").
+ */
+function rotuloDaJanela(dias: string[]): string {
+  if (dias.length === 0) return '';
+  if (dias.length === 1) return dataPorExtenso(dias[0]);
+  return `${diaCurto(dias[0])} a ${diaCurto(dias[dias.length - 1])}`;
+}
+
+/**
  * Agenda de eventos do dia seguinte.
  *
  * A tela mostra o que acontece em D+1 enquanto o seletor fica em D — foi o
@@ -80,9 +90,11 @@ function diaCurto(iso: string): string {
  * Por isso o seletor diz "Véspera" e o cabeçalho da tabela repete a data real do
  * evento: sem isso a tela mostra uma data e o título fala de outra.
  *
- * Fim de semana: D+1 de sexta é sábado, que costuma vir vazio. A tela avisa em
- * vez de fingir que não há evento — quem quiser a segunda-feira avança dois
- * dias no seletor.
+ * Fim de semana: a janela vai de D+1 até o próximo dia ÚTIL, inclusive. Na sexta
+ * mostra sábado, domingo E segunda — a segunda precisa de véspera, e sexta é a
+ * véspera útil dela. Os dias pulados entram na janela em vez de serem saltados
+ * porque prazo cai em fim de semana (3 dos 81 vivos), embora audiência não caia
+ * (0 das 555). Feriado não é considerado: ver `janelaDaVespera`.
  */
 export function EventsAgenda({ onAbrirAtividade }: {
   /** Abre a ficha da atividade em painel, por cima da tela (nunca redireciona). */
@@ -91,19 +103,14 @@ export function EventsAgenda({ onAbrirAtividade }: {
   const [vespera, setVespera] = useState<string>(hojeIso);
   const [aba, setAba] = useState<Aba>('todos');
 
-  const diaDoEvento = useMemo(() => diaSeguinte(vespera), [vespera]);
-  const { eventos, isLoading, error } = useEventosDoDia(diaDoEvento);
+  const janela = useMemo(() => janelaDaVespera(vespera), [vespera]);
+  const { eventos, isLoading, error } = useEventosDaJanela(janela);
 
   const contagem = useMemo(() => contarPorCategoria(eventos), [eventos]);
   const visiveis = useMemo(
     () => (aba === 'todos' ? eventos : eventos.filter(e => e.categoria === aba)),
     [eventos, aba],
   );
-
-  const ehFimDeSemana = useMemo(() => {
-    const d = parseISO(diaDoEvento).getDay();
-    return d === 0 || d === 6;
-  }, [diaDoEvento]);
 
   const abas: { id: Aba; rotulo: string; total: number }[] = [
     { id: 'todos', rotulo: 'Todos', total: eventos.length },
@@ -174,6 +181,11 @@ export function EventsAgenda({ onAbrirAtividade }: {
         </div>
         <p className="px-3 pb-2 text-[11px] text-muted-foreground">
           Mostra o que acontece <strong>no dia seguinte</strong> à data escolhida — para preparar na véspera.
+          {janela.length > 1 && (
+            <> Como o dia seguinte cai no fim de semana, a janela vai até{' '}
+              <strong>{diaCurto(janela[janela.length - 1])}</strong>: o próximo dia útil também
+              precisa de véspera.</>
+          )}
         </p>
       </div>
 
@@ -183,14 +195,14 @@ export function EventsAgenda({ onAbrirAtividade }: {
           <div className="shrink-0 px-3 py-2 border-b bg-muted/30 flex items-center gap-2">
             <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
             <p className="text-sm font-semibold truncate">
-              {aba === 'todos' ? 'Eventos' : CATEGORIA_LABEL[aba as CategoriaEvento]} em {dataPorExtenso(diaDoEvento)}
+              {aba === 'todos' ? 'Eventos' : CATEGORIA_LABEL[aba as CategoriaEvento]} em {rotuloDaJanela(janela)}
             </p>
           </div>
 
           <ScrollArea className="flex-1 min-h-0">
             {isLoading ? (
               <div className="flex items-center justify-center gap-2 py-12 text-xs text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Carregando os eventos de {diaCurto(diaDoEvento)}...
+                <Loader2 className="h-4 w-4 animate-spin" /> Carregando os eventos de {rotuloDaJanela(janela)}...
               </div>
             ) : error ? (
               <div className="px-3 py-10 text-center text-xs text-destructive">
@@ -199,13 +211,8 @@ export function EventsAgenda({ onAbrirAtividade }: {
             ) : visiveis.length === 0 ? (
               <div className="px-3 py-12 text-center space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  Nenhum evento em {diaCurto(diaDoEvento)}.
+                  Nenhum evento em {rotuloDaJanela(janela)}.
                 </p>
-                {ehFimDeSemana && (
-                  <p className="text-[11px] text-muted-foreground/80">
-                    O dia seguinte cai no fim de semana — avance o seletor para ver o próximo dia útil.
-                  </p>
-                )}
               </div>
             ) : (
               <table className="w-full text-xs border-collapse">

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { db } from '@/integrations/supabase';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import {
-  montarEventosDoDia,
+  montarEventosDaJanela,
   type AtividadeLite,
   type AudienciaLite,
   type EventoAgenda,
@@ -10,7 +10,10 @@ import {
 } from '@/lib/eventAgenda';
 
 /**
- * Busca os eventos de UM dia (audiências, perícias e prazos) já montados.
+ * Busca os eventos de uma JANELA de dias (audiências, perícias e prazos).
+ *
+ * A janela vem de `janelaDaVespera`: normalmente um dia, mas na sexta são três
+ * (sábado, domingo e segunda) para a segunda também ter véspera.
  *
  * As fontes são três tabelas diferentes e nenhuma delas se conhece:
  *  - `hearings` traz audiência e perícia (separadas por `hearing_type`), com
@@ -23,15 +26,16 @@ import {
  *
  * Volume por dia é pequeno (2 a 9 linhas por aba), então a busca é direta, sem
  * paginação: o maior lote é o de atividades com prazo no dia (274 no pico
- * medido), bem abaixo do teto de 1000 por request do PostgREST.
+ * medido) e a janela chega a três dias, ainda abaixo do teto de 1000 por
+ * request do PostgREST.
  */
-export function useEventosDoDia(dia: string) {
+export function useEventosDaJanela(dias: string[]) {
   const { types } = useActivityTypes();
 
   const query = useQuery({
-    queryKey: ['eventos-do-dia', dia],
+    queryKey: ['eventos-da-janela', dias.join(',')],
     staleTime: 60_000,
-    enabled: /^\d{4}-\d{2}-\d{2}$/.test(dia),
+    enabled: dias.length > 0 && dias.every(d => /^\d{4}-\d{2}-\d{2}$/.test(d)),
     queryFn: async (): Promise<{ audiencias: AudienciaLite[]; atividades: AtividadeLite[]; processoPorNumero: Map<string, ProcessoResolvido>; atividadesPorProcesso: Map<string, AtividadeLite[]> }> => {
       const COLS_ATIVIDADE =
         'id, title, activity_type, deadline, priority, status, lead_id, lead_name, process_id, process_title, assigned_to_name';
@@ -41,13 +45,13 @@ export function useEventosDoDia(dia: string) {
           .from('hearings')
           .select('id, hearing_date, hearing_time, hearing_type, status, process_number, lead_id, location')
           .is('deleted_at', null)
-          .eq('hearing_date', dia),
+          .in('hearing_date', dias),
         (db as any)
           .from('lead_activities')
           .select(COLS_ATIVIDADE)
           .is('deleted_at', null)
           .neq('status', 'concluida')
-          .eq('deadline', dia),
+          .in('deadline', dias),
       ]);
       if (audRes.error) throw audRes.error;
       if (ativRes.error) throw ativRes.error;
@@ -120,8 +124,8 @@ export function useEventosDoDia(dia: string) {
   const rotuloDoTipo = new Map(types.map(t => [t.key, t.label]));
 
   const eventos: EventoAgenda[] = query.data
-    ? montarEventosDoDia({
-        dia,
+    ? montarEventosDaJanela({
+        dias,
         audiencias: query.data.audiencias,
         atividades: query.data.atividades,
         rotuloDoTipo,
