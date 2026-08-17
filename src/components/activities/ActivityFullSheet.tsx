@@ -760,8 +760,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     crm_campaign_id: formCampaignId || null,
     feedback: formFeedback || null,
     rescheduled_to: formRescheduledTo || null,
-    // Retorno agendado: só entra quando MUDOU — senão todo save zeraria o carimbo
-    // callback_notified_at e o lembrete dispararia de novo.
+    // Retorno agendado: só entra quando MUDOU. Não existe callback_notified_at
+    // no Externo (o comentário antigo prometia esse carimbo); o ganho real é
+    // não reescrever a coluna a cada save. Campo limpo vira null aqui, então
+    // dá para desmarcar o retorno.
     ...(() => {
       const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
       const prevRaw = (selectedActivity as any)?.callback_at || null;
@@ -1652,14 +1654,19 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             )}
           </div>
 
-          {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead */}
+          {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead
+              `processId` NÃO é opcional quando a atividade tem processo: sem ele a
+              barra não carrega a régua de marcos (useProcessoMarcos(null) volta vazio)
+              e cai no percentual de PASSOS EXECUTADOS. Era por isso que o caso 88
+              aparecia como "Pré-Processual · 8%" na atividade e "Execução iniciada ·
+              80%" na carteira — mesma régua, duas medidas diferentes na tela. */}
           {formLeadId && (() => {
             if (formWorkflowId) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} processId={formProcessId || null} />;
             }
             if (formProcessId) {
               if (linkedProcess?.workflow_id) {
-                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} />;
+                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} processId={formProcessId} />;
               }
               return (
                 <p className="text-[10px] text-muted-foreground italic">

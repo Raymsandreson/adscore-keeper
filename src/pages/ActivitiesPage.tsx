@@ -1746,8 +1746,10 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
       feedback: formFeedback || null,
       rescheduled_to: formRescheduledTo || null,
-      // Só entra no update quando MUDOU — senão todo save zeraria o carimbo
-      // callback_notified_at e o lembrete dispararia de novo.
+      // Só entra no update quando MUDOU. Não existe callback_notified_at no
+      // Externo (o comentário antigo prometia esse carimbo); o ganho real é
+      // não reescrever a coluna a cada save. Campo limpo vira null aqui, então
+      // dá para desmarcar o retorno.
       ...(() => {
         const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
         const prevRaw = (selectedActivity as any).callback_at || null;
@@ -1890,11 +1892,6 @@ const ActivitiesPage = () => {
       // sendo concluída — não à próxima. Persistir AGORA, antes de concluir,
       // para garantir que os arquivos não se percam.
       const pendingBeforeComplete = pendingNoteAttachmentsRef.current;
-      // Snapshot dos anexos para replicar também na próxima atividade.
-      const attachmentsToCarryOver = uniqueAttachmentsByUrl([
-        ...pendingBeforeComplete,
-        ...noteAttachmentCommitCandidatesRef.current,
-      ]);
       if (pendingBeforeComplete.length > 0) {
         try {
           await flushPendingAttachments(currentActivity.id, pendingBeforeComplete);
@@ -1903,6 +1900,34 @@ const ActivitiesPage = () => {
           toast.error('Falha ao salvar anexos da atividade atual. Tente novamente.');
           return;
         }
+      }
+
+      // Snapshot dos anexos para replicar também na próxima atividade. A fonte
+      // é o BANCO (depois do flush acima), não os refs de edição: eles só
+      // guardam o que foi anexado NESTA abertura da ficha — o
+      // commit-candidates zera a cada troca de atividade
+      // (ActivityNotesField: useEffect [activityId]) e o pending só tem anexo
+      // ainda sem id. Anexo colocado dias antes ficava de fora, a próxima
+      // nascia sem as imagens e o clique parecia ter perdido os arquivos
+      // (incidente ALTERAÇÕES SISTEMA 14/08/2026: 3 prints de 12/08 ficaram só
+      // na concluída; 60 cadeias no mesmo estado desde maio/2026).
+      let attachmentsToCarryOver: Attachment[] = uniqueAttachmentsByUrl([
+        ...pendingBeforeComplete,
+        ...noteAttachmentCommitCandidatesRef.current,
+      ]);
+      try {
+        const { data: existingAtts, error: existingAttsErr } = await externalSupabase
+          .from('activity_attachments')
+          .select('file_url, file_name, file_type, file_size, attachment_type, link_url, link_title')
+          .eq('activity_id', currentActivity.id);
+        if (existingAttsErr) throw existingAttsErr;
+        attachmentsToCarryOver = uniqueAttachmentsByUrl([
+          ...((existingAtts || []) as Attachment[]),
+          ...attachmentsToCarryOver,
+        ]);
+      } catch (e) {
+        // Best-effort: sem a leitura, replica ao menos o que veio do formulário.
+        console.error('[completeAndNext] leitura dos anexos da atual falhou', e);
       }
 
       // Capture form values BEFORE any state changes
@@ -1924,6 +1949,11 @@ const ActivitiesPage = () => {
         assigned_to_name: formAssignedToName || null,
         deadline: formDeadline || null,
         notification_date: formNotificationDate || null,
+        // Retorno agendado segue prazo e notificação: as datas do formulário
+        // são as da PRÓXIMA etapa. Sem esta linha, quem preenchesse "Retorno
+        // agendado" e clicasse aqui perderia o valor calado — a mãe é
+        // concluída sem salvar o formulário.
+        callback_at: formCallbackAt ? new Date(formCallbackAt).toISOString() : null,
         notes: formNotes || null,
         contact_id: formContactId || null,
         contact_name: formContactName || null,
