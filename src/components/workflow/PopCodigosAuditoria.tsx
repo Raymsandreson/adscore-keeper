@@ -91,7 +91,9 @@ export function PopCodigosAuditoria({ boardId }: Props) {
       await ensureExternalSession();
       const { error } = await db.from('pop_marco_sinais').insert({
         pop_marco_id: marcoId, tipo: 'tpu', codigo,
-        origem: 'auditoria', confirmado: true,
+        // `origem` só aceita 'manual' | 'ia' (check constraint). Foi gente que
+        // decidiu na auditoria, então é manual — e confirmado.
+        origem: 'manual', confirmado: true,
         motivo: 'cadastrado na auditoria de códigos do POP',
       } as never);
       if (error) throw new Error(error.message);
