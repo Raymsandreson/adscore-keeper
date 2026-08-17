@@ -4,6 +4,10 @@
  * Para cada time com gestor definido em team_managers:
  *   1. Coleta as mensagens do chat interno (últimas 24h) dos membros + gestor
  *   2. Coleta estatísticas de atividades (abertas, atrasadas, concluídas 24h)
+ *   2b. Lê o FOCO do gestor no mês (RPC manager_focus_status): % do que ele
+ *       concluiu dentro da própria área e, na carteira processual, quantos
+ *       processos saíram por acordo ou execução. Entra no parecer de gestão e
+ *       vira uma seção do relatório de diretoria.
  *   3. Gera relatório via Claude (estrutural vs pontual, pendências, próximos passos, parecer)
  *   4. Posta num grupo "📊 {time}" (gestor + diretor)
  * Ao final, gera o relatório de diretoria (avaliação dos gestores) e posta
@@ -126,6 +130,93 @@ async function activityStats(anyIds: string[], names: string[]) {
   return { abertas: abertas || 0, atrasadas: atrasadas || 0, concluidas24h: concluidas24h || 0, topAtrasadas: topAtrasadas || [] };
 }
 
+/** Linha da RPC manager_focus_status (ver migration 20260817120000). */
+interface ManagerFocus {
+  manager_user_id: string;
+  nome: string | null;
+  configurado: boolean;
+  focus_label: string | null;
+  min_percent: number | null;
+  concluidas: number;
+  no_foco: number;
+  pct: number | null;
+  atingiu: boolean | null;
+  fora: { tipo: string; label: string; n: number }[];
+  resgatadas_pelo_texto: number;
+  track_process_exits: boolean;
+  exit_target: number | null;
+  min_exit_percent: number | null;
+  processos_carteira: number;
+  entradas: number;
+  saidas: number;
+  saidas_por_acordo: number;
+  saidas_por_execucao: number;
+  pct_saida_carteira: number | null;
+  vazao_pct: number | null;
+}
+
+/**
+ * Foco dos gerentes no MÊS corrente, por Cloud UUID (a mesma chave de
+ * team_managers.manager_user_id). Mês, e não 24h: foco é padrão de alocação —
+ * um dia atípico não diz nada, e com 24h a conta oscilaria a cada manhã.
+ */
+async function fetchManagerFocus(): Promise<Map<string, ManagerFocus>> {
+  const since = new Date();
+  since.setDate(1);
+  since.setHours(0, 0, 0, 0);
+  const { data, error } = await supabase.rpc('manager_focus_status', {
+    p_since: since.toISOString(),
+    p_until: new Date().toISOString(),
+  });
+  if (error) {
+    // Relatório não pode cair por causa do foco — segue sem o bloco.
+    console.error('[daily-team-report] manager_focus_status falhou:', error.message);
+    return new Map();
+  }
+  return new Map(((data as ManagerFocus[]) || []).map((f) => [f.manager_user_id, f]));
+}
+
+/** Bloco de texto do foco para o prompt. Vazio quando não há o que dizer. */
+function focusLines(focus: ManagerFocus | undefined): string[] {
+  if (!focus) return [];
+  const out: string[] = [];
+  if (focus.configurado && focus.pct !== null) {
+    const veredito = focus.atingiu ? 'dentro do piso' : 'ABAIXO DO PISO';
+    out.push(
+      `FOCO DO GESTOR (mês): ${focus.pct}% do que ele concluiu foi da área "${focus.focus_label}" ` +
+      `— piso ${focus.min_percent}%, ${veredito} (${focus.no_foco} de ${focus.concluidas} atividades).`,
+    );
+    const fora = (focus.fora || []).slice(0, 3);
+    if (!focus.atingiu && fora.length) {
+      out.push(`ONDE O FOCO VAZOU: ${fora.map((f) => `${f.label} (${f.n})`).join(', ')}.`);
+    }
+  } else if (focus.configurado) {
+    out.push(`FOCO DO GESTOR (mês): nenhuma atividade concluída na área "${focus.focus_label}".`);
+  }
+  if (focus.track_process_exits) {
+    out.push(
+      `ENTRADA E SAÍDA DE PROCESSO (mês, carteira de ${focus.processos_carteira}): ` +
+      `entraram ${focus.entradas}, saíram ${focus.saidas}` +
+      (focus.exit_target ? ` de uma meta de ${focus.exit_target}` : '') +
+      ` — ${focus.saidas_por_acordo} por acordo, ${focus.saidas_por_execucao} por execução.` +
+      (focus.vazao_pct !== null
+        ? ` Vazão ${focus.vazao_pct}% (saiu ÷ entrou): ${
+            focus.vazao_pct >= 100 ? 'a fila diminuiu' : `a fila cresceu em ${focus.entradas - focus.saidas}`
+          }.`
+        : ''),
+    );
+    if (focus.min_exit_percent !== null && focus.pct_saida_carteira !== null) {
+      out.push(
+        `PISO DE SAÍDA: ${focus.pct_saida_carteira}% da carteira saiu no mês, ` +
+        `piso ${focus.min_exit_percent}% — ${
+          focus.pct_saida_carteira >= focus.min_exit_percent ? 'dentro' : 'ABAIXO'
+        }.`,
+      );
+    }
+  }
+  return out;
+}
+
 export const handler = async (req: Request, res: Response) => {
   const force = Boolean(req.body?.force);
   const results: Record<string, string> = {};
@@ -145,6 +236,9 @@ export const handler = async (req: Request, res: Response) => {
     const directorIds = (directorRows || []).map((d) => d.user_id);
     if (!directorIds.length) directorIds.push(FALLBACK_DIRECTOR_ID);
     const reportSenderId = directorIds[0];
+
+    // Foco de cada gerente na área dele (uma chamada para todos).
+    const focusByManager = await fetchManagerFocus();
 
     const { data: teams } = await supabase.from('teams').select('id, name, description');
     const { data: allTeamMembers } = await supabase.from('team_members').select('team_id, user_id');
@@ -207,12 +301,15 @@ export const handler = async (req: Request, res: Response) => {
           .map((m) => `[${convLabel.get(m.conversation_id) || 'conversa'}] ${m.sender_name}${m.is_urgent ? ' (URGENTE)' : ''}: ${(m.content || `(${m.message_type})`).slice(0, 300)}`);
 
         const stats = await activityStats(anyIds, memberNames);
+        const focus = focusByManager.get(mgr.manager_user_id);
+        const focusBlock = focusLines(focus);
 
         const prompt = [
           `TIME: ${teamLabel}${team?.description ? ` — ${team.description}` : ''}`,
           `GESTOR: ${mgr.manager_name || mgr.manager_user_id}`,
           `MEMBROS (cargo): ${memberNamesWithCargo.join(', ')}`,
           ``,
+          ...(focusBlock.length ? [...focusBlock, ``] : []),
           `ATIVIDADES: ${stats.abertas} abertas, ${stats.atrasadas} atrasadas, ${stats.concluidas24h} concluídas nas últimas 24h.`,
           `ATRASADAS MAIS ANTIGAS:`,
           ...stats.topAtrasadas.map((a: any) => `- ${a.title} (${a.assigned_to_name}, venceu ${a.deadline})`),
@@ -228,7 +325,7 @@ export const handler = async (req: Request, res: Response) => {
           messages: [
             {
               role: 'system',
-              content: `Você gera o relatório diário de gestão de um time de escritório jurídico brasileiro. Responda em português do Brasil, texto puro (sem markdown de cabeçalho #), máximo ~450 palavras, direto e sem floreio. Estrutura obrigatória:\n📊 RELATÓRIO DIÁRIO — {nome do time} ({data de hoje})\n\n1️⃣ RESUMO DO DIA (o que aconteceu no chat e nas atividades)\n2️⃣ PROBLEMAS: ESTRUTURAIS vs PONTUAIS (classifique cada um)\n3️⃣ PENDÊNCIAS (o que ficou sem resposta ou sem conclusão)\n4️⃣ PRÓXIMOS PASSOS (acionáveis, com responsável)\n5️⃣ PARECER SOBRE A GESTÃO (avalie objetivamente a atuação do gestor: cobrou? respondeu? registrou? atividades de monitoramento em dia?)\nSe não houve mensagens, diga isso explicitamente e avalie só pelas atividades. Não invente fatos que não estejam nos dados.`,
+              content: `Você gera o relatório diário de gestão de um time de escritório jurídico brasileiro. Responda em português do Brasil, texto puro (sem markdown de cabeçalho #), máximo ~450 palavras, direto e sem floreio. Estrutura obrigatória:\n📊 RELATÓRIO DIÁRIO — {nome do time} ({data de hoje})\n\n1️⃣ RESUMO DO DIA (o que aconteceu no chat e nas atividades)\n2️⃣ PROBLEMAS: ESTRUTURAIS vs PONTUAIS (classifique cada um)\n3️⃣ PENDÊNCIAS (o que ficou sem resposta ou sem conclusão)\n4️⃣ PRÓXIMOS PASSOS (acionáveis, com responsável)\n5️⃣ PARECER SOBRE A GESTÃO (avalie objetivamente a atuação do gestor: cobrou? respondeu? registrou? atividades de monitoramento em dia?)\nSe os dados trouxerem FOCO DO GESTOR, o parecer TEM que dizer se ele está dentro ou abaixo do piso da área dele e, quando abaixo, apontar onde o foco vazou. Se trouxerem ENTRADA E SAÍDA DE PROCESSO, trate isso como o resultado principal do gestor processual: quantos entraram, quantos saíram (por acordo e por execução) e o que a vazão diz — abaixo de 100% a fila cresce, e processo que não sai trava a entrada de caso novo.\nSe não houve mensagens, diga isso explicitamente e avalie só pelas atividades. Não invente fatos que não estejam nos dados.`,
             },
             { role: 'user', content: prompt },
           ],
@@ -253,7 +350,9 @@ export const handler = async (req: Request, res: Response) => {
         directorSummaries.push(
           `TIME ${teamLabel} (gestor: ${mgr.manager_name}): ${stats.atrasadas} atividades atrasadas, ` +
           `${stats.concluidas24h} concluídas 24h, ${teamMsgs.length} mensagens no chat. ` +
-          `Mensagens do gestor: ${teamMsgs.filter((m) => m.includes(mgr.manager_name || '###')).length}.\n${report.slice(0, 800)}`
+          `Mensagens do gestor: ${teamMsgs.filter((m) => m.includes(mgr.manager_name || '###')).length}.` +
+          (focusBlock.length ? `\n${focusBlock.join(' ')}` : '') +
+          `\n${report.slice(0, 800)}`
         );
       } catch (err) {
         console.error(`[daily-team-report] Time ${teamLabel} falhou:`, err);
@@ -270,7 +369,7 @@ export const handler = async (req: Request, res: Response) => {
         messages: [
           {
             role: 'system',
-            content: `Você assessora o diretor de um escritório jurídico brasileiro que gere diretamente os gestores de time. Com base nos relatórios de cada time abaixo, escreva o RELATÓRIO DE DIRETORIA do dia, em português do Brasil, texto puro, máximo ~500 palavras:\n📊 DIRETORIA — GESTORES ({data de hoje})\n\n• VISÃO GERAL (1-2 linhas: situação do dia entre os times)\n• RANKING DOS GESTORES do dia (melhor → pior, com 1 linha de justificativa cada)\n• ALERTAS (times sem gestão ativa, atrasos crescendo, riscos)\n• ONDE O DIRETOR DEVE AGIR AMANHÃ (máx. 3 itens, específicos)\nSem floreio, sem repetir os relatórios inteiros.`,
+            content: `Você assessora o diretor de um escritório jurídico brasileiro que gere diretamente os gestores de time. Com base nos relatórios de cada time abaixo, escreva o RELATÓRIO DE DIRETORIA do dia, em português do Brasil, texto puro, máximo ~500 palavras:\n📊 DIRETORIA — GESTORES ({data de hoje})\n\n• VISÃO GERAL (1-2 linhas: situação do dia entre os times)\n• RANKING DOS GESTORES do dia (melhor → pior, com 1 linha de justificativa cada)\n• FOCO E VAZÃO DOS GESTORES (só com os dados de FOCO DO GESTOR / ENTRADA E SAÍDA DE PROCESSO recebidos: quem está abaixo do piso da própria área, com o número, e o entrou × saiu da carteira com a vazão. Gestor sem esses dados fica de fora desta seção.)\n• ALERTAS (times sem gestão ativa, atrasos crescendo, riscos)\n• ONDE O DIRETOR DEVE AGIR AMANHÃ (máx. 3 itens, específicos)\nSem floreio, sem repetir os relatórios inteiros.`,
           },
           { role: 'user', content: directorSummaries.join('\n\n---\n\n') || 'Nenhum dado de time disponível.' },
         ],

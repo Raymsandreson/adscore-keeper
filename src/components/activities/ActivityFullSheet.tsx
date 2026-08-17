@@ -737,8 +737,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     crm_campaign_id: formCampaignId || null,
     feedback: formFeedback || null,
     rescheduled_to: formRescheduledTo || null,
-    // Retorno agendado: só entra quando MUDOU — senão todo save zeraria o carimbo
-    // callback_notified_at e o lembrete dispararia de novo.
+    // Retorno agendado: só entra quando MUDOU. Não existe callback_notified_at
+    // no Externo (o comentário antigo prometia esse carimbo); o ganho real é
+    // não reescrever a coluna a cada save. Campo limpo vira null aqui, então
+    // dá para desmarcar o retorno.
     ...(() => {
       const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
       const prevRaw = (selectedActivity as any)?.callback_at || null;

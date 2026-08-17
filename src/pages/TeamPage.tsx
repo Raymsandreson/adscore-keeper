@@ -18,6 +18,7 @@ import { CareerPlanManager } from '@/components/team/CareerPlanManager';
 import { TrafficActivityPanel } from '@/components/traffic/TrafficActivityPanel';
 import { MetricsManager } from '@/components/team/MetricsManager';
 import { TeamProcessGoals } from '@/components/team/TeamProcessGoals';
+import { ManagerFocusPanel } from '@/components/team/ManagerFocusPanel';
 import { AmbassadorCentral } from '@/components/ambassadors/AmbassadorCentral';
 import { AccessProfilesManager } from '@/components/team/AccessProfilesManager';
 import { TimeOffManager } from '@/components/team/TimeOffManager';
@@ -42,6 +43,7 @@ import {
   Shield,
   CalendarOff,
   Target,
+  Crosshair,
 } from 'lucide-react';
 
 interface TabDef {
@@ -56,6 +58,7 @@ const ALL_TABS: TabDef[] = [
   { key: 'metrics', label: 'Métricas', icon: Activity },
   { key: 'commission', label: 'Metas', icon: DollarSign },
   { key: 'processgoals', label: 'Metas Processuais', icon: Target },
+  { key: 'managerfocus', label: 'Foco dos Gerentes', icon: Crosshair },
   { key: 'evaluations', label: 'Avaliações', icon: Star },
   { key: 'traffic', label: 'Tráfego', icon: TrendingUp },
   { key: 'members', label: 'Membros', icon: Users },
@@ -77,6 +80,7 @@ function TeamTabContent({ tab, availableCards }: { tab: string; availableCards: 
     case 'metrics': return <MetricsManager />;
     case 'commission': return <CommissionGoals />;
     case 'processgoals': return <TeamProcessGoals />;
+    case 'managerfocus': return <ManagerFocusPanel />;
     case 'evaluations': return <WeeklyEvaluations />;
     case 'traffic': return <TrafficActivityPanel />;
     case 'members': return <TeamManagement />;
