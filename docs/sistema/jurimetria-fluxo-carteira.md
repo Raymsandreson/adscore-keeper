@@ -487,3 +487,43 @@ partes — por linha daria 32.000 em vez de 17.000) e segue o recorte da busca.
   `jm_pagamentos`. Fazer o lançamento contábil mover o estágio exige casar por
   parte (`parte_id` está preenchido em 1.415 de 4.364 linhas) e muda o valor de
   todos os chips — não foi feito, e não deve ser feito sobre base de julho.
+
+## 12. 17/08/2026 — o dicionário do CONTROLE FINANCEIRO (jm_lancamentos)
+
+Confirmado com o Raym e com o PDF da planilha viva: `jm_lancamentos` é o import
+do CONTROLE FINANCEIRO GRUPO PRUDÊNCIO, e a convenção central é:
+
+**A parcela nasce como "X a receber" e vira "X" quando o dinheiro cai.**
+`Honorários a receber` / `Indenização a receber` são o CRONOGRAMA (parcela a
+parcela, coluna `data` = vencimento, `n_parcela` = número); `Honorários` /
+`Indenização` são o realizado. O objetivo do parcelamento registrado é controlar
+o que dá para ADIANTAR ao cliente. Na coluna `pessoa`, honorário vem como
+HC (contratual) / HS (sucumbencial); indenização vem com o nome do cliente.
+
+### Famílias de categoria (import de 08/07/2026, 4.364 linhas, regime de caixa)
+
+Entradas de processo: Indenização (742 c/ INDENIZAÇÃO e Atrasado, R$ 15,08 mi);
+Honorários (523, R$ 9,96 mi); Honorários a receber (444, R$ 5,63 mi, até 2039);
+Honorários Adiantados Oriz (11 em 2 grafias, R$ 3,89 mi — antecipação de fundo);
+Indenização a receber (481, R$ 2,00 mi); Bradesco (1, R$ 495 mil);
+Indenização comprada (223, R$ 241 mil); Honorários adv parceiro (21 em 2
+grafias, R$ 133 mil — repasse); Parceria/Parceira (5, R$ 64 mil).
+
+Saídas: Movimentação conta (329, R$ 2,63 mi — transferência interna, não é
+despesa); FOLHA FIXO (487, R$ 1,94 mi); Empréstimo Bancário (23, R$ 948 mil);
+Imposto (38, R$ 749 mil); folha variável (~560 linhas em SETE grafias,
+~R$ 545 mil); OUTROS em 3 grafias (261, R$ 287 mil); ajuda família em 5 grafias
+(129, R$ 45 mil); PREVIDENCIÁRIO (46, R$ 24 mil); miúdas pessoais de 2023.
+
+### O que a tabela está pedindo (medido, não resolvido)
+
+- **"A receber" com data vencida**: R$ 5,05 mi em honorários e R$ 886 mil em
+  indenização. Ou VENCIDO real, ou pago sem reclassificar (caso 88, parcelas
+  9–11 de 2025, continuam "a receber"). Ninguém sabe qual dos dois sem conferir.
+- **Grafias**: qualquer soma por categoria tem que normalizar antes.
+- **`jm_pagamentos` diverge da planilha**: no caso 139 ela tem UMA parcela de
+  indenização (R$ 14.749,15) contra R$ 149 mil de fato recebidos
+  (R$ 58.496,07 de honorário + R$ 90.993,74 de indenização, ago/2025–jun/2026).
+  É ela que alimenta o "pago" e o estágio PAGO da carteira — aposentá-la em
+  favor de `jm_lancamentos` é o caminho, mas só depois de reimportar a planilha
+  (import atual: 08/07/2026).
