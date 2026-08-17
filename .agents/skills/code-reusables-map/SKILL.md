@@ -63,6 +63,12 @@ Estas eu abri o código e confirmei o que faz. Para o resto, use `describe-funct
 - **Toda** origem de rascunho cai no mesmo lugar: `ActivityFullSheet` com `mode="create"` + `draft: ActivityDraft` → `initFromDraft`. Não criar formulário próprio (ver skill/doc de formulários únicos).
 - `src/components/activities/richTextFields.ts` → `draftRichText` (texto puro → `<p>`), `callFieldTextToHtml`, `stripHtmlToText`. **Obrigatório** pra qualquer campo longo que vá pro `RichTextEditor`: o Lexical só aceita nó de bloco na raiz e **descarta texto puro em silêncio** (campo abre vazio). Coberto por testes em `src/components/activities/__tests__/`.
 
+### INSS administrativo — vínculo protocolo ↔ caso
+- `src/lib/inssVinculoCaso.ts` → **front, use este**. `buscarSugestoesDeCaso` (requerimento → CPF → nome, em contatos/leads/grupos, Externo + Cloud), `buscarCasosPorTexto` (busca manual) e `vincularProtocoloAoCaso` (grava em `inss_admin_processes`, `lead_custom_field_values` e `lead_processes`; cria o `legal_case` quando a opção é lead sem caso). Nasceu dentro do `InssAdminProcessesTab` e saiu de lá em 17/08/2026 — **não reimplemente busca de caso em tela nova**.
+- `src/components/protocolos/VincularCasoDialog.tsx` → a UI desse fluxo, usada pela aba Processos INSS e pela lista de protocolos da Visão Geral.
+- `src/lib/nomeMatch.ts` → comparação de nomes de pessoa entre fontes (INSS × lead × contato × grupo), tolerante a acento e a Sousa/Souza. Irmão do matcher do Railway.
+- `railway/inss-matcher.ts` (`findInssOrphanMatch` + `applyInssMatch`) → o robô equivalente no servidor, usado por `gmail-inss-sync` (na chegada do e-mail) e `match-inss-orphans` (cron de 15 min, 2 passadas: órfão puro e protocolo com lead sem caso).
+
 ### ZapSign
 - `railway/zapsign-webhook.ts` → grava raw em `zapsign_document_events`, atualiza `zapsign_documents`. Sempre 200. Resolve contact/lead por variantes de telefone (com/sem DDI, com/sem 9).
 - `railway/zapsign-post-sign-extras.ts` → **NÃO executa nada automaticamente**. Apenas REGISTRA 5–7 checkpoints (`confirm_funnel`, `setup_lead_close`, `create_group`, `send_initial_message`, `import_docs`, `create_case_process`, `create_onboarding_activity`) como `pending` em `onboarding_checkpoints`. Modal bloqueante no frontend é quem dispara cada passo. (Histórico: antes criava grupo+docs em paralelo, causava duplicação. Migrado em 2026-05-07.)

@@ -5,11 +5,18 @@ import InssAdminPushEmailView from "@/components/processes/InssAdminPushEmailVie
 import RegistrarProtocoloDialog, {
   type RegistrarProtocoloAlvo,
 } from "@/components/processes/RegistrarProtocoloDialog";
+import VincularCasoDialog from "@/components/protocolos/VincularCasoDialog";
 import { useLeads, type Lead } from "@/hooks/useLeads";
 import { useKanbanBoards } from "@/hooks/useKanbanBoards";
 import { db } from "@/integrations/supabase";
 import { authClient } from "@/integrations/supabase";
 import { upsertInssLeadProcess } from "@/lib/inssLeadProcess";
+import {
+  buscarCasosPorTexto,
+  buscarSugestoesDeCaso,
+  vincularProtocoloAoCaso,
+  type CaseOption,
+} from "@/lib/inssVinculoCaso";
 import { cloudFunctions } from "@/lib/functionRouter";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -119,16 +126,6 @@ interface InssHistoryRow {
   notified: boolean;
 }
 
-interface CaseOption {
-  id: string; // case_id real OU "lead:<lead_id>" quando lead ainda não tem caso
-  case_number: string;
-  title: string;
-  lead_id: string | null;
-  lead_name?: string | null;
-  matched_via?: string;
-  needs_case_creation?: boolean; // true quando id é "lead:..."
-}
-
 const statusVariant = (s?: string | null) => {
   const v = (s || "").toLowerCase();
   if (v.includes("protocol")) return "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300";
@@ -139,105 +136,11 @@ const statusVariant = (s?: string | null) => {
   return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
 };
 
-const normalizeCpf = (s?: string | null) => (s || "").replace(/\D/g, "");
 const fmtDate = (s?: string | null, withTime = false) => {
   if (!s) return null;
   try { return format(new Date(s), withTime ? "dd/MM/yyyy HH:mm" : "dd/MM/yyyy"); }
   catch { return null; }
 };
-// Normaliza texto para busca: tira acento, ignora caixa e deixa só letras/números.
-// Metáfora: antes de comparar, todos os nomes vestem o mesmo uniforme.
-const stripAccents = (s: string) =>
-  s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-const normalizeSearchText = (s?: string | null) =>
-  stripAccents(String(s || ""))
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-const tokenizeName = (s?: string | null): string[] => {
-  if (!s) return [];
-  return normalizeSearchText(s)
-    .split(/\s+/)
-    .filter((t) => t.length >= 3 && !["DOS", "DAS", "DEL", "DE", "DA", "DO", "E"].includes(t));
-};
-const safeIlikeToken = (s: string) => s.replace(/[%,()]/g, " ").trim();
-const uniqueTokens = (tokens: string[]) => Array.from(new Set(tokens));
-const accentAlternates: Record<string, string[]> = {
-  A: ["Á", "À", "Â", "Ã"],
-  E: ["É", "Ê"],
-  I: ["Í"],
-  O: ["Ó", "Ô", "Õ"],
-  U: ["Ú"],
-  C: ["Ç"],
-};
-const ilikeAccentVariants = (token: string) => {
-  const base = safeIlikeToken(token).toUpperCase();
-  const variants = new Set<string>([base]);
-  for (let i = 0; i < base.length; i++) {
-    for (const alt of accentAlternates[base[i]] || []) {
-      variants.add(`${base.slice(0, i)}${alt}${base.slice(i + 1)}`);
-    }
-  }
-  return Array.from(variants).filter(Boolean);
-};
-const buildIlikeSearchTokens = (tokens: string[]) => uniqueTokens(tokens.flatMap(ilikeAccentVariants));
-const tokenLooksMatched = (queryToken: string, candidateToken: string) => {
-  if (!queryToken || !candidateToken) return false;
-  if (candidateToken.includes(queryToken) || queryToken.includes(candidateToken)) return true;
-  const minPrefix = Math.min(5, queryToken.length, candidateToken.length);
-  if (minPrefix >= 4 && candidateToken.slice(0, minPrefix) === queryToken.slice(0, minPrefix)) return true;
-  // Pequena tolerância para Sousa/Souza e outros nomes com 1 letra diferente.
-  if (queryToken.length >= 5 && candidateToken.length >= 5 && Math.abs(queryToken.length - candidateToken.length) <= 1) {
-    let diff = Math.abs(queryToken.length - candidateToken.length);
-    const size = Math.min(queryToken.length, candidateToken.length);
-    for (let i = 0; i < size; i++) if (queryToken[i] !== candidateToken[i]) diff++;
-    return diff <= 1;
-  }
-  return false;
-};
-const tokenMatchScore = (query: string, candidate?: string | null) => {
-  const qTokens = uniqueTokens(tokenizeName(query));
-  const cTokens = uniqueTokens(tokenizeName(candidate));
-  if (!qTokens.length || !cTokens.length) return 0;
-  return qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct))).length;
-};
-// Compatibilidade de nomes (assimétrica): query = nome no processo do INSS
-// (sempre completo), candidate = nome do lead/contato/grupo (pode ser curto).
-// Regras:
-//  - Se o processo tem 3+ partes (ex: "Francisco Cicero de Sousa"), exigir que
-//    o candidato bata em pelo menos 2 tokens E pelo menos um deles seja
-//    sobrenome (não só o primeiro nome). Assim "Francisco" sozinho NÃO casa
-//    com "Francisco Cicero de Sousa", mas "Francisco Sousa" casa.
-//  - Se ambos têm 3+ tokens, exigir margem de 1 (cobre Sousa/Souza), evitando
-//    que "Maria Eduarda Medeiros Moraes" case com "Maria Eduarda Alves Maia".
-//  - Se o processo tem 1-2 partes, basta que todos os tokens da query batam.
-const namesAreCompatible = (query: string, candidate?: string | null) => {
-  const qTokens = uniqueTokens(tokenizeName(query));
-  const cTokens = uniqueTokens(tokenizeName(candidate));
-  if (!qTokens.length || !cTokens.length) return false;
-  const matched = qTokens.filter((qt) => cTokens.some((ct) => tokenLooksMatched(qt, ct)));
-  const score = matched.length;
-  if (qTokens.length >= 3) {
-    if (score < 2) return false;
-    const firstName = qTokens[0];
-    const hasSurnameMatch = matched.some((t) => t !== firstName);
-    if (!hasSurnameMatch) return false;
-    if (cTokens.length >= 3) {
-      const shorter = Math.min(qTokens.length, cTokens.length);
-      return score >= shorter - 1;
-    }
-    return true;
-  }
-  return score >= qTokens.length;
-};
-const isLooseTokenMatch = (query: string, candidate?: string | null) => {
-  const qTokens = uniqueTokens(tokenizeName(query));
-  if (!qTokens.length) return false;
-  if (qTokens.some((t) => /^\d+$/.test(t))) return tokenMatchScore(query, candidate) >= 1;
-  return namesAreCompatible(query, candidate);
-};
-
 // Decodifica entidades HTML comuns (&nbsp;, &amp;, &#39;, &#x27;, etc.) que vêm
 // no corpo dos e-mails do INSS já em texto plano mas com as entidades preservadas.
 function decodeHtmlEntities(input: string | null | undefined): string {
@@ -586,358 +489,10 @@ export default function InssAdminProcessesTab() {
     }
   };
 
-  // === Sugestões automáticas ao abrir o dialog ===
-  const fetchSuggestions = useCallback(async (proc: InssProcess) => {
-    setLoadingSuggestions(true);
-    const found = new Map<string, CaseOption>(); // case_id -> option
-
-    const addCase = async (caseId: string, via: string) => {
-      if (found.has(caseId)) return;
-      const { data: c } = await db
-        .from("legal_cases" as any)
-        .select("id, case_number, title, lead_id")
-        .eq("id", caseId)
-        .maybeSingle();
-      if (!c) return;
-      let leadName: string | null = null;
-      if ((c as any).lead_id) {
-        const { data: l } = await db
-          .from("leads" as any)
-          .select("lead_name")
-          .eq("id", (c as any).lead_id)
-          .maybeSingle();
-        leadName = (l as any)?.lead_name || null;
-      }
-      found.set(caseId, { ...(c as any), lead_name: leadName, matched_via: via });
-    };
-
-    const addLead = async (leadId: string, leadName: string | null, via: string) => {
-      const { data: cs } = await db
-        .from("legal_cases" as any)
-        .select("id, case_number, title, lead_id")
-        .eq("lead_id", leadId)
-        .limit(5);
-      for (const c of (cs || []) as any[]) {
-        if (found.has(c.id)) continue;
-        found.set(c.id, { ...c, lead_name: leadName, matched_via: via });
-      }
-    };
-
-    const reqDigits = (proc.requerimento_number || "").replace(/\D/g, "");
-    if (reqDigits) {
-      const { data: processesByNumber } = await db
-        .from("lead_processes" as any)
-        .select("lead_id, case_id, title, process_number")
-        .or(`process_number.ilike.%${reqDigits}%,title.ilike.%${reqDigits}%`)
-        .not("case_id", "is", null)
-        .order("updated_at", { ascending: false })
-        .limit(10);
-      for (const lp of (processesByNumber || []) as any[]) {
-        if (lp.case_id) await addCase(lp.case_id, `Nº do processo bate: ${lp.process_number || lp.title}`);
-        else if (lp.lead_id) await addLead(lp.lead_id, null, `Nº do processo bate: ${lp.process_number || lp.title}`);
-      }
-    }
-
-    // 1) Match por CPF exato em contacts
-    const cpf = normalizeCpf(proc.cpf_segurado);
-    if (cpf) {
-      const { data: contactsByCpf } = await db
-        .from("contacts" as any)
-        .select("id, full_name, cpf, lead_id")
-        .or(`cpf.eq.${cpf},cpf.eq.${proc.cpf_segurado}`)
-        .is("deleted_at", null)
-        .limit(10);
-      for (const ct of (contactsByCpf || []) as any[]) {
-        // contato pode estar ligado direto a lead via contacts.lead_id
-        if (ct.lead_id) await addLead(ct.lead_id, ct.full_name, `CPF bate com contato "${ct.full_name}"`);
-        // ou via tabela ponte contact_leads
-        const { data: cl } = await db
-          .from("contact_leads" as any)
-          .select("lead_id")
-          .eq("contact_id", ct.id);
-        for (const link of (cl || []) as any[]) {
-          await addLead(link.lead_id, ct.full_name, `CPF bate com contato "${ct.full_name}"`);
-        }
-      }
-
-      // 2) CPF em leads diretamente (campos comuns: cpf, document)
-      const { data: leadsByCpf } = await db
-        .from("leads" as any)
-        .select("id, lead_name")
-        .or(`cpf.eq.${cpf},cpf.eq.${proc.cpf_segurado}`)
-        .limit(10);
-      for (const l of (leadsByCpf || []) as any[]) {
-        await addLead(l.id, l.lead_name, "CPF bate com o lead");
-      }
-    }
-
-    // 3) Match por nome (tokens, tolerante a acento) em contacts (Externo + Cloud)
-    const tokens = uniqueTokens(tokenizeName(proc.nome_segurado));
-    const matchTokens = (full?: string | null) => namesAreCompatible(proc.nome_segurado || "", full);
-    if (tokens.length) {
-      const searchTokens = buildIlikeSearchTokens([...tokens].sort((a, b) => b.length - a.length).slice(0, 4));
-      const nameOr = searchTokens.map((t) => `full_name.ilike.%${t}%`).join(",");
-      // contacts no EXTERNO
-      const { data: ctExt } = await db
-        .from("contacts" as any)
-        .select("id, full_name, lead_id")
-        .or(nameOr)
-        .is("deleted_at", null)
-        .limit(100);
-      // contacts no CLOUD (alguns só existem lá)
-      const { data: ctCloud } = await authClient
-        .from("contacts" as any)
-        .select("id, full_name, lead_id")
-        .or(nameOr)
-        .is("deleted_at", null)
-        .limit(100);
-      const allContacts = [...(ctExt || []), ...(ctCloud || [])].filter((ct: any) => matchTokens(ct.full_name));
-      const seenContact = new Set<string>();
-      for (const ct of allContacts as any[]) {
-        if (seenContact.has(ct.id)) continue;
-        seenContact.add(ct.id);
-        if (ct.lead_id) await addLead(ct.lead_id, ct.full_name, `Nome bate com contato "${ct.full_name}"`);
-        const { data: cl } = await db
-          .from("contact_leads" as any)
-          .select("lead_id")
-          .eq("contact_id", ct.id);
-        for (const link of (cl || []) as any[]) {
-          await addLead(link.lead_id, ct.full_name, `Nome bate com contato "${ct.full_name}"`);
-        }
-      }
-
-      // 4) Nome em leads (Externo) — busca por tokens + filtro normalizado
-      const { data: leadsRaw } = await db
-        .from("leads" as any)
-        .select("id, lead_name")
-        .or(searchTokens.map((t) => `lead_name.ilike.%${t}%`).join(","))
-        .limit(100);
-      const leadsFiltered = (leadsRaw || []).filter((l: any) => matchTokens(l.lead_name));
-      for (const l of leadsFiltered as any[]) {
-        await addLead(l.id, l.lead_name, "Nome bate com o lead");
-      }
-
-      // 5) Nome em grupos WhatsApp vinculados — caso o grupo tenha o nome certo
-      const { data: groupsByName } = await db
-        .from("lead_whatsapp_groups" as any)
-        .select("lead_id, group_name")
-        .or(searchTokens.map((t) => `group_name.ilike.%${t}%`).join(","))
-        .limit(100);
-      const groupsFiltered = (groupsByName || []).filter((g: any) => matchTokens(g.group_name));
-      for (const g of groupsFiltered as any[]) {
-        if (g.lead_id) await addLead(g.lead_id, g.group_name, `Nome bate com grupo WhatsApp "${g.group_name}"`);
-      }
-    }
-
-    setSuggestions(Array.from(found.values()).slice(0, 12));
-    setLoadingSuggestions(false);
-  }, []);
-
-  useEffect(() => {
-    if (linkingProc) {
-      setSuggestions([]);
-      setCaseSearch("");
-      fetchSuggestions(linkingProc);
-    }
-  }, [linkingProc, fetchSuggestions]);
-
-  // Busca manual: aceita nº/título de caso, nome de lead, nome de contato, telefone, CPF
-  useEffect(() => {
-    if (!linkingProc) return;
-    const q = caseSearch.trim();
-    if (!q) { setCaseOptions([]); return; }
-    const run = async () => {
-      const results = new Map<string, CaseOption>();
-      const digitsOnly = q.replace(/\D/g, "");
-
-      // 1) Casos por número/título
-      const { data: casesByCaseFields } = await db
-        .from("legal_cases" as any)
-        .select("id, case_number, title, lead_id")
-        .or(`case_number.ilike.%${q}%,title.ilike.%${q}%`)
-        .order("created_at", { ascending: false })
-        .limit(10);
-      for (const c of (casesByCaseFields || []) as any[]) {
-        results.set(c.id, { ...c, matched_via: "Caso" });
-      }
-
-      const qTokens = uniqueTokens(tokenizeName(q));
-      const textSearchTokens = qTokens.length
-        ? buildIlikeSearchTokens(qTokens.sort((a, b) => b.length - a.length).slice(0, 5))
-        : [safeIlikeToken(q)].filter(Boolean);
-      if (!textSearchTokens.length) { setCaseOptions([]); return; }
-
-      // 2) Leads por nome / telefone / CPF — busca por pedaços, filtra sem acento/caixa
-      const leadOr: string[] = textSearchTokens.map((t) => `lead_name.ilike.%${t}%`);
-      if (digitsOnly.length >= 4) {
-        leadOr.push(`lead_phone.ilike.%${digitsOnly}%`);
-        leadOr.push(`cpf.ilike.%${digitsOnly}%`);
-      }
-      const { data: leadsRaw } = await db
-        .from("leads" as any)
-        .select("id, lead_name")
-        .or(leadOr.join(","))
-        .limit(80);
-      const leads = ((leadsRaw || []) as any[]).filter((l) =>
-        digitsOnly.length >= 4 || isLooseTokenMatch(q, l.lead_name)
-      );
-
-      // 3) Contatos por nome/telefone/CPF (Externo + Cloud)
-      const contactOr: string[] = textSearchTokens.map((t) => `full_name.ilike.%${t}%`);
-      if (digitsOnly.length >= 4) {
-        contactOr.push(`phone.ilike.%${digitsOnly}%`);
-        contactOr.push(`cpf.ilike.%${digitsOnly}%`);
-      }
-      const [ctExtR, ctCloudR] = await Promise.all([
-        db.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(80),
-        authClient.from("contacts" as any).select("id, full_name, lead_id").or(contactOr.join(",")).is("deleted_at", null).limit(80),
-      ]);
-      const contacts = [...((ctExtR.data || []) as any[]), ...((ctCloudR.data || []) as any[])].filter((ct: any) =>
-        digitsOnly.length >= 4 || isLooseTokenMatch(q, ct.full_name)
-      );
-
-      // 4) Grupos de WhatsApp por nome → leads vinculados
-      const { data: groupsRaw } = await db
-        .from("lead_whatsapp_groups" as any)
-        .select("lead_id, group_name")
-        .or(textSearchTokens.map((t) => `group_name.ilike.%${t}%`).join(","))
-        .limit(100);
-      const groups = ((groupsRaw || []) as any[]).filter((g) => isLooseTokenMatch(q, g.group_name));
-
-      // Para cada lead candidato (direto ou via contato), busca casos vinculados
-      const candidateLeads = new Map<string, { lead_name: string | null; via: string }>();
-      for (const l of leads as any[]) {
-        candidateLeads.set(l.id, { lead_name: l.lead_name, via: "Lead" });
-      }
-      for (const ct of contacts) {
-        if (ct.lead_id && !candidateLeads.has(ct.lead_id)) {
-          candidateLeads.set(ct.lead_id, { lead_name: ct.full_name, via: `Contato "${ct.full_name}"` });
-        }
-        const { data: cl } = await db.from("contact_leads" as any).select("lead_id").eq("contact_id", ct.id);
-        for (const link of (cl || []) as any[]) {
-          if (!candidateLeads.has(link.lead_id)) {
-            candidateLeads.set(link.lead_id, { lead_name: ct.full_name, via: `Contato "${ct.full_name}"` });
-          }
-        }
-      }
-      for (const g of groups as any[]) {
-        if (g.lead_id && !candidateLeads.has(g.lead_id)) {
-          candidateLeads.set(g.lead_id, { lead_name: g.group_name, via: `Grupo WhatsApp "${g.group_name}"` });
-        }
-      }
-
-      for (const [leadId, info] of candidateLeads.entries()) {
-        const { data: cs } = await db
-          .from("legal_cases" as any)
-          .select("id, case_number, title, lead_id")
-          .eq("lead_id", leadId)
-          .limit(5);
-        if (cs && cs.length) {
-          for (const c of cs as any[]) {
-            if (!results.has(c.id)) results.set(c.id, { ...c, lead_name: info.lead_name, matched_via: info.via });
-          }
-        } else {
-          // lead sem caso ainda — oferece criar
-          const key = `lead:${leadId}`;
-          results.set(key, {
-            id: key,
-            case_number: "(criar caso)",
-            title: info.lead_name || "Lead sem caso ainda",
-            lead_id: leadId,
-            lead_name: info.lead_name,
-            matched_via: info.via + " — sem caso. Clique para criar e vincular.",
-            needs_case_creation: true,
-          });
-        }
-      }
-
-      setCaseOptions(Array.from(results.values()).slice(0, 20));
-    };
-    const t = setTimeout(run, 300);
-    return () => clearTimeout(t);
-  }, [linkingProc, caseSearch]);
-
-  const INSS_FIELD_ID = "111f9a38-98c3-4f83-9095-5c469106a7bf";
-
   // Cria (ou atualiza) lead_processes com todos os dados do INSS puxados do email.
   // Lógica compartilhada com a aba "Buscar no E-mail" do Cadastrar Processo.
   const upsertLeadProcess = async (caseId: string, leadId: string | null, proc: InssProcess) => {
     await upsertInssLeadProcess({ caseId, leadId, proc, createdBy: userId });
-  };
-
-  const linkToCase = async (caseOpt: CaseOption) => {
-    if (!linkingProc) return;
-    setLinkingBusy(true);
-    try {
-      let caseId = caseOpt.id;
-      let leadId = caseOpt.lead_id;
-      let caseNumberLabel = caseOpt.case_number;
-
-      // Se for um "lead sem caso", cria o caso primeiro
-      if (caseOpt.needs_case_creation && leadId) {
-        // gera número via RPC (usa specialized_nuclei se houver)
-        const { data: newCaseNum } = await db.rpc("generate_case_number" as any, { p_nucleus_id: null } as any);
-        const { data: newCase, error: caseErr } = await db
-          .from("legal_cases" as any)
-          .insert({
-            lead_id: leadId,
-            case_number: newCaseNum || `CASO-${Date.now()}`,
-            title: linkingProc.nome_segurado || caseOpt.lead_name || "Caso INSS",
-            status: "active",
-          } as any)
-          .select("id, case_number")
-          .single();
-        if (caseErr || !newCase) throw caseErr || new Error("Falha ao criar caso");
-        caseId = (newCase as any).id;
-        caseNumberLabel = (newCase as any).case_number;
-      }
-
-      const { error } = await db
-        .from("inss_admin_processes" as any)
-        .update({
-          case_id: caseId,
-          lead_id: leadId,
-          linked_at: new Date().toISOString(),
-          linked_by: userId,
-        })
-        .eq("id", linkingProc.id);
-      if (error) throw error;
-
-      // Memoriza nº do requerimento no lead (auto-match futuro)
-      if (leadId && linkingProc.requerimento_number) {
-        await db
-          .from("lead_custom_field_values" as any)
-          .upsert(
-            {
-              lead_id: leadId,
-              field_id: INSS_FIELD_ID,
-              value_text: linkingProc.requerimento_number,
-            } as any,
-            { onConflict: "lead_id,field_id" } as any
-          );
-      }
-
-      // Cria/atualiza o lead_processes completo
-      try {
-        await upsertLeadProcess(caseId, leadId, linkingProc);
-      } catch (e: any) {
-        console.warn("Falha ao popular lead_processes:", e?.message);
-        toast.warning("Vinculado, mas não consegui popular o processo no caso: " + (e?.message || ""));
-      }
-
-      toast.success("Processo vinculado ao caso " + caseNumberLabel);
-
-      void cloudFunctions
-        .invoke("notify-inss-update", { body: { process_id: linkingProc.id } })
-        .catch(() => {});
-
-      setLinkingProc(null);
-      loadProcesses();
-    } catch (e: any) {
-      toast.error("Erro ao vincular: " + e.message);
-    } finally {
-      setLinkingBusy(false);
-    }
   };
 
   const runAutoMatch = async () => {
@@ -1472,115 +1027,14 @@ export default function InssAdminProcessesTab() {
         </p>
       </div>
 
-      {/* Dialog de vínculo */}
-      <Dialog open={!!linkingProc} onOpenChange={(open) => !open && setLinkingProc(null)}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Vincular {linkingProc?.requerimento_number} a um caso</DialogTitle>
-            {linkingProc?.nome_segurado && (
-              <p className="text-sm text-muted-foreground">
-                Segurado: <span className="font-medium">{linkingProc.nome_segurado}</span>
-                {linkingProc.cpf_segurado && <> · CPF {linkingProc.cpf_segurado}</>}
-              </p>
-            )}
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Sugestões automáticas */}
-            <div>
-              <div className="flex items-center gap-2 text-sm font-medium mb-2">
-                <Sparkles className="h-4 w-4 text-amber-500" />
-                Sugestões automáticas
-                {loadingSuggestions && (
-                  <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
-                )}
-              </div>
-              {loadingSuggestions ? (
-                <div className="text-xs text-muted-foreground py-2">Procurando matches…</div>
-              ) : suggestions.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-2">
-                  Nenhum lead/contato encontrado com esse nome ou CPF. Use a busca manual abaixo.
-                </div>
-              ) : (
-                <div className="space-y-1 max-h-48 overflow-y-auto">
-                  {suggestions.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      className="w-full text-left p-2 rounded-md hover:bg-muted text-sm border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-950/10"
-                      disabled={linkingBusy}
-                      onClick={() => linkToCase(c)}
-                    >
-                      <div className="font-medium flex items-center gap-2">
-                        {c.case_number}
-                        {c.lead_name && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <User className="h-3 w-3" /> {c.lead_name}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{c.title}</div>
-                      {c.matched_via && (
-                        <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                          ↳ {c.matched_via}
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Busca manual */}
-            <div>
-              <div className="text-sm font-medium mb-2">Busca manual</div>
-              <Input
-                placeholder="Caso, lead, contato, telefone ou CPF..."
-                value={caseSearch}
-                onChange={(e) => setCaseSearch(e.target.value)}
-              />
-              <div className="max-h-48 overflow-y-auto space-y-1 mt-2">
-                {caseOptions.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`w-full text-left p-2 rounded hover:bg-muted text-sm border ${c.needs_case_creation ? "border-blue-300 bg-blue-50/40 dark:bg-blue-950/10" : ""}`}
-                    disabled={linkingBusy}
-                    onClick={() => linkToCase(c)}
-                  >
-                    <div className="font-medium flex items-center gap-2">
-                      {c.case_number}
-                      {c.lead_name && (
-                        <span className="text-xs text-muted-foreground flex items-center gap-1">
-                          <User className="h-3 w-3" /> {c.lead_name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-xs text-muted-foreground">{c.title}</div>
-                    {c.matched_via && (
-                      <div className={`text-[11px] mt-0.5 ${c.needs_case_creation ? "text-blue-700 dark:text-blue-400" : "text-muted-foreground"}`}>
-                        ↳ {c.matched_via}
-                      </div>
-                    )}
-                  </button>
-                ))}
-                {caseSearch && caseOptions.length === 0 && (
-                  <div className="text-xs text-muted-foreground text-center py-2">
-                    Nenhum caso, lead ou contato encontrado.
-                  </div>
-                )}
-              </div>
-            </div>
-
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLinkingProc(null)}>
-              Cancelar
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Dialog de vínculo — mesmo componente usado na lista de protocolos
+          da Visão Geral (src/components/protocolos/VincularCasoDialog.tsx). */}
+      <VincularCasoDialog
+        proc={linkingProc}
+        userId={userId}
+        onClose={() => setLinkingProc(null)}
+        onVinculado={() => loadProcesses()}
+      />
 
       {/* Visualizador do e-mail completo */}
       <Dialog open={emailView.open} onOpenChange={(open) => !open && setEmailView((s) => ({ ...s, open: false }))}>
