@@ -12,6 +12,7 @@ import TeamBroadcastDialog from '@/components/tv/TeamBroadcastDialog';
 import WackyRaceTrack, { nameKey, estrelaLabel, type CarChoice, type RaceRow } from '@/components/tv/WackyRaceTrack';
 import TvCarteiraPanel from '@/components/tv/TvCarteiraPanel';
 import TvAvaliacaoPanel from '@/components/tv/TvAvaliacaoPanel';
+import TvFocoGerentesPanel from '@/components/tv/TvFocoGerentesPanel';
 // Ficha completa do processo, aberta por cima do detalhe. Lazy porque é o
 // ProcessDetailSheet inteiro — não pode entrar no bundle que a TV carrega só
 // pra mostrar ranking.
@@ -1230,12 +1231,22 @@ export default function TvAtividadesPage() {
             )}
             </div>
 
-            {/* ===== Top de Avaliação do mesmo time (janela de 30 dias) ===== */}
-            <TvAvaliacaoPanel
-              teamId={teamId && teamId !== GRUPO_GERENCIAL ? teamId : null}
-              grupo={teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null}
-              teamName={currentViewName}
-            />
+            {/* ===== Coluna lateral: avaliação em cima, foco dos gerentes
+                     embaixo. Empilham — um nunca cobre o outro. ===== */}
+            {/* Sem sticky aqui: o Top de Avaliação já tem o seu. */}
+            <div className="space-y-5">
+              <TvAvaliacaoPanel
+                teamId={teamId && teamId !== GRUPO_GERENCIAL ? teamId : null}
+                grupo={teamId === GRUPO_GERENCIAL ? GRUPO_GERENCIAL : null}
+                teamName={currentViewName}
+              />
+              {/* Vista de um time mostra o gestor dele; geral e gerencial, todos. */}
+              <TvFocoGerentesPanel
+                teamName={teamId && teamId !== GRUPO_GERENCIAL ? currentViewName : null}
+                gerencial={!teamId || teamId === GRUPO_GERENCIAL}
+                refreshMs={tv ? 60_000 : 0}
+              />
+            </div>
           </div>
         )}
       </div>

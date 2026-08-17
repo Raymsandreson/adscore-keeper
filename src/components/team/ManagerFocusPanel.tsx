@@ -26,11 +26,13 @@ import {
 } from '@/components/ui/sheet';
 import {
   Crosshair, Loader2, RefreshCw, Settings2, Target, TrendingDown, Handshake, Gavel, AlertTriangle,
+  ArrowDownToLine, ArrowUpFromLine, X, Plus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import {
   useManagerFocus, FocusPeriod, PERIOD_LABEL, ManagerFocusRow, FocusTypeCount,
+  FocusPreview, ManagerFocusInput, KEYWORD_SUGGESTIONS,
 } from '@/hooks/useManagerFocus';
 
 const PERIODS: FocusPeriod[] = ['semana', 'mes', 'trimestre', 'ano'];
@@ -123,6 +125,12 @@ function ManagerCard({ row, onConfigure }: { row: ManagerFocusRow; onConfigure: 
                       Math.max(0, Math.ceil((row.min_percent! * row.concluidas) / 100) - row.no_foco)
                     } atividades na área para bater.`}
             </p>
+            {row.resgatadas_pelo_texto > 0 && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {row.resgatadas_pelo_texto} delas só foram reconhecidas pelo assunto —
+                o tipo cadastrado estava errado.
+              </p>
+            )}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -147,21 +155,49 @@ function ManagerCard({ row, onConfigure }: { row: ManagerFocusRow; onConfigure: 
           </div>
         )}
 
-        {/* ---- Resultado: processos que saíram ---- */}
+        {/* ---- Resultado: entrou × saiu ----
+             O que não entra não sai; o que não sai trava a entrada. Por isso as
+             duas pontas ficam lado a lado, com a vazão entre elas. */}
         {row.track_process_exits && (
           <div className="rounded-lg border bg-muted/30 p-3">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground flex items-center gap-1">
-                <Target className="h-3.5 w-3.5" /> Processos que saíram no período
+                <Target className="h-3.5 w-3.5" /> Processos no período
               </p>
-              <span className="text-lg font-semibold tabular-nums">
-                {row.saidas}
-                {row.exit_target ? (
-                  <span className="text-sm font-normal text-muted-foreground"> / {row.exit_target}</span>
-                ) : null}
+              <span className="text-xs text-muted-foreground">
+                carteira: {row.processos_carteira}
               </span>
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-sm">
+
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="rounded-md bg-background/60 py-1.5">
+                <div className="text-xl font-semibold tabular-nums flex items-center justify-center gap-1">
+                  <ArrowDownToLine className="h-4 w-4 text-sky-600" />{row.entradas}
+                </div>
+                <div className="text-[10px] font-medium uppercase text-muted-foreground">Entraram</div>
+              </div>
+              <div className="rounded-md bg-background/60 py-1.5">
+                <div className="text-xl font-semibold tabular-nums flex items-center justify-center gap-1">
+                  <ArrowUpFromLine className="h-4 w-4 text-emerald-600" />{row.saidas}
+                  {row.exit_target ? (
+                    <span className="text-xs font-normal text-muted-foreground">/{row.exit_target}</span>
+                  ) : null}
+                </div>
+                <div className="text-[10px] font-medium uppercase text-muted-foreground">Saíram</div>
+              </div>
+              <div className="rounded-md bg-background/60 py-1.5">
+                <div className={cn(
+                  'text-xl font-semibold tabular-nums',
+                  row.vazao_pct === null ? 'text-muted-foreground'
+                    : row.vazao_pct >= 100 ? 'text-emerald-600' : 'text-amber-600',
+                )}>
+                  {row.vazao_pct === null ? '—' : `${row.vazao_pct}%`}
+                </div>
+                <div className="text-[10px] font-medium uppercase text-muted-foreground">Vazão</div>
+              </div>
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-sm">
               <span className="flex items-center gap-1.5">
                 <Handshake className="h-4 w-4 text-emerald-600" />
                 Acordo <strong className="tabular-nums">{row.saidas_por_acordo}</strong>
@@ -170,16 +206,23 @@ function ManagerCard({ row, onConfigure }: { row: ManagerFocusRow; onConfigure: 
                 <Gavel className="h-4 w-4 text-blue-600" />
                 Execução <strong className="tabular-nums">{row.saidas_por_execucao}</strong>
               </span>
-              <span className="text-xs text-muted-foreground ml-auto">
-                carteira: {row.processos_carteira} processos
-              </span>
+              {row.min_exit_percent !== null && row.pct_saida_carteira !== null && (
+                <span className={cn(
+                  'ml-auto text-xs font-medium',
+                  row.atingiu_saida ? 'text-emerald-600' : 'text-red-600',
+                )}>
+                  {row.pct_saida_carteira}% da carteira saiu · piso {row.min_exit_percent}%
+                </span>
+              )}
             </div>
-            {row.exit_target ? (
-              <Progress
-                value={Math.min(100, (row.saidas / row.exit_target) * 100)}
-                className="h-2 mt-2 [&>div]:bg-blue-500"
-              />
-            ) : null}
+
+            <p className="mt-2 text-xs text-muted-foreground">
+              {row.vazao_pct === null
+                ? 'Nenhum processo entrou no período — a vazão fica sem base de comparação.'
+                : row.vazao_pct >= 100
+                  ? 'Saiu mais do que entrou: a fila diminuiu.'
+                  : `Entraram ${row.entradas} e saíram ${row.saidas} — a fila cresceu em ${row.entradas - row.saidas}.`}
+            </p>
           </div>
         )}
       </CardContent>
@@ -189,36 +232,41 @@ function ManagerCard({ row, onConfigure }: { row: ManagerFocusRow; onConfigure: 
 
 /** Painel lateral de configuração — abre por cima da lista, não redireciona. */
 function FocusConfigSheet({
-  row, open, onOpenChange, fetchTypes, onSave, onClear,
+  row, open, onOpenChange, fetchTypes, previewFocus, onSave, onClear,
 }: {
   row: ManagerFocusRow | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   fetchTypes: (id: string) => Promise<FocusTypeCount[]>;
-  onSave: (input: {
-    manager_user_id: string; manager_name: string | null; focus_label: string;
-    min_percent: number; activity_type_keys: string[]; track_process_exits: boolean;
-    exit_target: number | null;
-  }) => Promise<void>;
+  previewFocus: (id: string, types: string[], keywords: string[]) => Promise<FocusPreview | null>;
+  onSave: (input: ManagerFocusInput) => Promise<void>;
   onClear: (id: string) => Promise<void>;
 }) {
   const [label, setLabel] = useState('');
   const [minPercent, setMinPercent] = useState(80);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordDraft, setKeywordDraft] = useState('');
   const [trackExits, setTrackExits] = useState(false);
   const [exitTarget, setExitTarget] = useState<string>('');
+  const [minExitPercent, setMinExitPercent] = useState<string>('');
   const [types, setTypes] = useState<FocusTypeCount[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<FocusPreview | null>(null);
 
   useEffect(() => {
     if (!row || !open) return;
     setLabel(row.focus_label || '');
     setMinPercent(row.min_percent ?? 80);
-    setSelected(new Set((row.dentro || []).map(d => d.tipo)));
+    setSelected(new Set(row.activity_type_keys || []));
+    setKeywords(row.focus_keywords || []);
+    setKeywordDraft('');
     setTrackExits(row.track_process_exits);
     setExitTarget(row.exit_target != null ? String(row.exit_target) : '');
+    setMinExitPercent(row.min_exit_percent != null ? String(row.min_exit_percent) : '');
+    setPreview(null);
     setSearch('');
     setLoading(true);
     fetchTypes(row.manager_user_id)
@@ -236,12 +284,6 @@ function FocusConfigSheet({
     return q ? types.filter(t => t.label.toLowerCase().includes(q)) : types;
   }, [types, search]);
 
-  const totalNoFoco = useMemo(
-    () => types.filter(t => selected.has(t.tipo)).reduce((s, t) => s + t.n, 0),
-    [types, selected],
-  );
-  const totalGeral = useMemo(() => types.reduce((s, t) => s + t.n, 0), [types]);
-
   const toggle = useCallback((tipo: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -250,10 +292,34 @@ function FocusConfigSheet({
     });
   }, []);
 
+  const addKeyword = useCallback((raw: string) => {
+    const k = raw.trim().toLowerCase();
+    if (!k) return;
+    setKeywords(prev => (prev.includes(k) ? prev : [...prev, k]));
+    setKeywordDraft('');
+  }, []);
+
+  // Prévia no servidor (mesma regra da conta oficial) — sem isso, escolher
+  // palavra-chave é às cegas. Debounce curto porque cada tecla mudaria a conta.
+  useEffect(() => {
+    if (!row || !open) return;
+    const types_ = Array.from(selected);
+    if (!types_.length && !keywords.length) { setPreview(null); return; }
+    const id = setTimeout(() => {
+      previewFocus(row.manager_user_id, types_, keywords)
+        .then(setPreview)
+        .catch(e => console.warn('[FocusConfigSheet] prévia:', e));
+    }, 400);
+    return () => clearTimeout(id);
+  }, [row, open, selected, keywords, previewFocus]);
+
   const handleSave = async () => {
     if (!row) return;
     if (!label.trim()) { toast.error('Dê um nome à área de foco (ex: Vendas)'); return; }
-    if (selected.size === 0) { toast.error('Escolha ao menos um tipo de atividade da área'); return; }
+    if (selected.size === 0 && keywords.length === 0) {
+      toast.error('Escolha ao menos um tipo ou uma palavra do assunto');
+      return;
+    }
     setSaving(true);
     try {
       await onSave({
@@ -262,8 +328,12 @@ function FocusConfigSheet({
         focus_label: label.trim(),
         min_percent: minPercent,
         activity_type_keys: Array.from(selected),
+        focus_keywords: keywords,
         track_process_exits: trackExits,
         exit_target: exitTarget.trim() === '' ? null : Math.max(0, Number(exitTarget) || 0),
+        min_exit_percent: minExitPercent.trim() === ''
+          ? null
+          : Math.min(100, Math.max(0, Number(minExitPercent) || 0)),
       });
       toast.success(`Foco de ${row.nome || 'gerente'}: ${label.trim()} · mínimo ${minPercent}%`);
       onOpenChange(false);
@@ -310,12 +380,97 @@ function FocusConfigSheet({
             </div>
           </div>
 
+          {/* Prévia: o efeito da configuração antes de salvar. */}
+          <div className="rounded-lg border bg-muted/40 p-3">
+            <p className="text-xs font-medium text-muted-foreground">Como fica (últimos 60 dias)</p>
+            {preview ? (
+              <>
+                <p className="mt-1 text-sm">
+                  <strong className="text-lg tabular-nums">{preview.pct ?? 0}%</strong>{' '}
+                  — {preview.no_foco} de {preview.concluidas} atividades na área.
+                </p>
+                {preview.resgatadas_pelo_texto > 0 && (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {preview.so_por_tipo} vieram pelo tipo e{' '}
+                    <strong>{preview.resgatadas_pelo_texto} só foram achadas pelo assunto</strong>{' '}
+                    — o tipo delas estava errado.
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="mt-1 text-sm text-muted-foreground">
+                Marque tipos ou adicione palavras para ver o efeito.
+              </p>
+            )}
+          </div>
+
+          {/* Palavras do assunto — vencem o tipo errado. */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="focus-kw">Palavras no assunto / contexto</Label>
+              {KEYWORD_SUGGESTIONS[label.trim().toLowerCase()] && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 text-xs"
+                  onClick={() => {
+                    const sug = KEYWORD_SUGGESTIONS[label.trim().toLowerCase()] || [];
+                    setKeywords(prev => [...new Set([...prev, ...sug])]);
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  sugestões de {label.trim().toLowerCase()}
+                </Button>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              A atividade conta como foco se o tipo estiver marcado <em>ou</em> se
+              alguma destas palavras aparecer no assunto, na descrição, no que foi
+              feito, no próximo passo ou no processo vinculado. Sem acento e sem
+              caixa — "audiencia" acha "AUDIÊNCIA".
+            </p>
+            <div className="flex gap-2">
+              <Input
+                id="focus-kw"
+                value={keywordDraft}
+                onChange={e => setKeywordDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    addKeyword(keywordDraft);
+                  }
+                }}
+                placeholder="acordo, audiência, sentença…"
+              />
+              <Button type="button" variant="outline" onClick={() => addKeyword(keywordDraft)}>
+                Adicionar
+              </Button>
+            </div>
+            {keywords.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {keywords.map(k => (
+                  <Badge key={k} variant="secondary" className="gap-1 font-normal">
+                    {k}
+                    <button
+                      type="button"
+                      onClick={() => setKeywords(prev => prev.filter(x => x !== k))}
+                      className="hover:text-destructive"
+                      aria-label={`Remover ${k}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label>Tipos que contam como foco</Label>
-              <span className="text-xs text-muted-foreground tabular-nums">
-                {totalNoFoco} de {totalGeral} nos últimos 90 dias
-                {totalGeral > 0 && ` · ${Math.round((100 * totalNoFoco) / totalGeral)}%`}
+              <span className="text-xs text-muted-foreground">
+                opcional — o assunto já cobre boa parte
               </span>
             </div>
             <Input
@@ -355,25 +510,40 @@ function FocusConfigSheet({
           <div className="rounded-lg border p-3 space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <Label htmlFor="focus-exits" className="cursor-pointer">Cobrar saída de processo</Label>
+                <Label htmlFor="focus-exits" className="cursor-pointer">Cobrar entrada e saída de processo</Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Conta os processos da carteira que saíram por acordo ou execução
-                  (cumprimento de sentença, precatório/RPV, pagamento).
+                  Conta os processos da carteira que entraram (petição inicial) e
+                  os que saíram por acordo ou execução (cumprimento de sentença,
+                  precatório/RPV, pagamento), com a vazão entre as duas pontas.
                 </p>
               </div>
               <Switch id="focus-exits" checked={trackExits} onCheckedChange={setTrackExits} />
             </div>
             {trackExits && (
-              <div className="space-y-1.5">
-                <Label htmlFor="focus-exit-target">Meta de processos no período (opcional)</Label>
-                <Input
-                  id="focus-exit-target"
-                  type="number"
-                  min={0}
-                  value={exitTarget}
-                  onChange={e => setExitTarget(e.target.value)}
-                  placeholder="sem meta — só acompanha"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="focus-exit-target">Meta de saídas (opcional)</Label>
+                  <Input
+                    id="focus-exit-target"
+                    type="number"
+                    min={0}
+                    value={exitTarget}
+                    onChange={e => setExitTarget(e.target.value)}
+                    placeholder="sem meta"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="focus-exit-pct">Piso da carteira (%)</Label>
+                  <Input
+                    id="focus-exit-pct"
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={minExitPercent}
+                    onChange={e => setMinExitPercent(e.target.value)}
+                    placeholder="sem piso"
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -414,7 +584,7 @@ function FocusConfigSheet({
 
 export function ManagerFocusPanel() {
   const [period, setPeriod] = useState<FocusPeriod>('mes');
-  const { rows, loading, error, refetch, fetchTypes, saveFocus, clearFocus } = useManagerFocus(period);
+  const { rows, loading, error, refetch, fetchTypes, previewFocus, saveFocus, clearFocus } = useManagerFocus(period);
   const [editing, setEditing] = useState<ManagerFocusRow | null>(null);
 
   // Quem está abaixo do piso vem primeiro — é o que a reunião precisa ver.
@@ -491,6 +661,7 @@ export function ManagerFocusPanel() {
         open={!!editing}
         onOpenChange={v => { if (!v) setEditing(null); }}
         fetchTypes={fetchTypes}
+        previewFocus={previewFocus}
         onSave={saveFocus}
         onClear={clearFocus}
       />

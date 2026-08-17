@@ -1,12 +1,17 @@
 // =============================================================================
 // FOCO DOS GERENTES — quanto do esforço de cada gerente cai na área de foco dele
 // (tabela manager_focus_targets + RPCs manager_focus_status /
-// manager_focus_activity_types, todas no Supabase EXTERNO).
+// manager_focus_activity_types / manager_focus_preview, no Supabase EXTERNO).
 //
-// Duas leituras no mesmo card, porque as duas metades do pedido medem coisas
-// diferentes (ver migration 20260817120000_foco_dos_gerentes.sql):
-//   - esforço:   % das atividades concluídas no período nos tipos da área.
-//   - resultado: processos da carteira que SAÍRAM (acordo × execução).
+// Duas leituras no mesmo card (migrations 20260817120000 e 20260817140000):
+//   - esforço:   % das atividades concluídas no período que são da área. Conta
+//                por TIPO ou pelo ASSUNTO/CONTEXTO — o tipo erra: na medição de
+//                17/08/2026 o tipo dava 53% e o assunto levava a 87%, porque
+//                "Prestar esclarecimentos sobre minuta de acordo" estava
+//                cadastrada como "Tarefa".
+//   - resultado: as DUAS pontas da carteira — quantos processos ENTRARAM
+//                (petição inicial) e quantos SAÍRAM (acordo × execução), com a
+//                vazão entre elas. O que não sai trava o que pode entrar.
 // =============================================================================
 import { useState, useEffect, useCallback } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
@@ -40,19 +45,42 @@ export interface ManagerFocusRow {
   min_percent: number | null;
   concluidas: number;
   no_foco: number;
+  /** Quantas o tipo teria perdido e o assunto recuperou. */
+  resgatadas_pelo_texto: number;
   /** null quando não há configuração ou não houve atividade no período. */
   pct: number | null;
   /** null = sem base para julgar (sem config ou sem atividade). */
   atingiu: boolean | null;
+  /** Configuração salva — preenche o formulário de edição. */
+  activity_type_keys: string[];
+  focus_keywords: string[];
   /** Onde o foco vaza: tipos fora da área, do maior para o menor. */
   fora: FocusTypeCount[];
   dentro: FocusTypeCount[];
   track_process_exits: boolean;
   exit_target: number | null;
+  /** Piso de % da carteira que precisa sair no período. */
+  min_exit_percent: number | null;
   processos_carteira: number;
+  /** Processos que entraram no período (marco de petição inicial). */
+  entradas: number;
   saidas: number;
   saidas_por_acordo: number;
   saidas_por_execucao: number;
+  /** Saídas sobre a carteira. */
+  pct_saida_carteira: number | null;
+  /** Saiu ÷ entrou. Abaixo de 100% a fila cresce. */
+  vazao_pct: number | null;
+  atingiu_saida: boolean | null;
+}
+
+/** Resultado da prévia: o efeito da configuração antes de salvar. */
+export interface FocusPreview {
+  concluidas: number;
+  no_foco: number;
+  so_por_tipo: number;
+  resgatadas_pelo_texto: number;
+  pct: number | null;
 }
 
 export interface ManagerFocusInput {
@@ -61,9 +89,29 @@ export interface ManagerFocusInput {
   focus_label: string;
   min_percent: number;
   activity_type_keys: string[];
+  /** Palavras do assunto/contexto que marcam a atividade como da área. */
+  focus_keywords: string[];
   track_process_exits: boolean;
   exit_target: number | null;
+  min_exit_percent: number | null;
 }
+
+/** Ponto de partida de palavras-chave por área — o usuário edita depois. */
+export const KEYWORD_SUGGESTIONS: Record<string, string[]> = {
+  processual: [
+    'acordo', 'audiencia', 'sentenca', 'peticao', 'protocolo', 'recurso',
+    'execucao', 'cumprimento', 'pericia', 'juiz', 'processo', 'manifest',
+    'contestacao', 'apelacao', 'embargos', 'laudo', 'penhora', 'alvara',
+    'intimacao', 'despacho', 'minuta', 'perito', 'honorario', 'tribunal',
+    'cejusc', 'precatorio', 'rpv', 'transito', 'prazo',
+  ],
+  vendas: [
+    'lead', 'acolhimento', 'acolhedor', 'contrato', 'fechamento', 'proposta',
+    'atendimento', 'consulta', 'caso novo', 'cadastrar caso', 'filtragem',
+    'ligacao', 'retorno', 'followup', 'follow up', 'indicacao', 'parceiro',
+    'visita', 'captacao', 'outbound', 'inbound',
+  ],
+};
 
 export type FocusPeriod = 'mes' | 'semana' | 'trimestre' | 'ano';
 
@@ -132,6 +180,20 @@ export function useManagerFocus(period: FocusPeriod = 'mes') {
     return (data || []).map(r => ({ tipo: r.activity_type, label: r.label, n: r.n }));
   }, []);
 
+  /** Efeito da configuração antes de salvar (últimos 60 dias). */
+  const previewFocus = useCallback(async (
+    managerUserId: string, types: string[], keywords: string[],
+  ): Promise<FocusPreview | null> => {
+    await ensureExternalSession();
+    const { data, error: err } = await ext.rpc<FocusPreview>('manager_focus_preview', {
+      p_manager_user_id: managerUserId,
+      p_types: types,
+      p_keywords: keywords,
+    });
+    if (err) throw new Error(err.message);
+    return (data as FocusPreview) || null;
+  }, []);
+
   const saveFocus = useCallback(async (input: ManagerFocusInput) => {
     await ensureExternalSession();
     const { error: err } = await ext.from('manager_focus_targets').upsert({
@@ -140,8 +202,10 @@ export function useManagerFocus(period: FocusPeriod = 'mes') {
       focus_label: input.focus_label,
       min_percent: input.min_percent,
       activity_type_keys: input.activity_type_keys,
+      focus_keywords: input.focus_keywords,
       track_process_exits: input.track_process_exits,
       exit_target: input.exit_target,
+      min_exit_percent: input.min_exit_percent,
     }, { onConflict: 'manager_user_id' });
     if (err) throw new Error(err.message);
     await fetchAll();
@@ -155,5 +219,5 @@ export function useManagerFocus(period: FocusPeriod = 'mes') {
     await fetchAll();
   }, [fetchAll]);
 
-  return { rows, loading, error, refetch: fetchAll, fetchTypes, saveFocus, clearFocus };
+  return { rows, loading, error, refetch: fetchAll, fetchTypes, previewFocus, saveFocus, clearFocus };
 }
