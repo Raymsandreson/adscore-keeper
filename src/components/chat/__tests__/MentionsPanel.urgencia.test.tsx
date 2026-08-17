@@ -45,9 +45,12 @@ const cobradaSemVisto = {
   id: 'sent:msg-2',
   message_id: 'msg-2',
   message: { ...aguardando.message, id: 'msg-2', content: '@Luiz Ricardo preciso hoje.' },
+  // Horários com offset explícito (-03:00, o fuso fixado no vitest.config):
+  // o painel imprime em hora local, então fixture e expectativa precisam falar
+  // a mesma língua. Com `Z` o teste só passava em máquina rodando em UTC.
   nudge: {
     level: 'urgente' as const,
-    created_at: '2026-08-11T15:57:00.000Z',
+    created_at: '2026-08-11T15:57:00-03:00',
     read_at: null,
     actor_name: 'Eu Mesmo',
     recipient_name: 'Luiz Ricardo',
@@ -60,7 +63,7 @@ const cobradaComVisto = {
   id: 'sent:msg-3',
   message_id: 'msg-3',
   message: { ...aguardando.message, id: 'msg-3', content: '@Luiz Ricardo o cliente cobrou de novo.' },
-  nudge: { ...cobradaSemVisto.nudge, read_at: '2026-08-11T17:14:00.000Z' },
+  nudge: { ...cobradaSemVisto.nudge, read_at: '2026-08-11T17:14:00-03:00' },
 };
 
 /** Menção que EU recebi e que já foi cobrada por quem me marcou. */

@@ -11,6 +11,8 @@ import { ensureRemapCache, remapToExternal } from '@/integrations/supabase/uuid-
 import { currentExtUserId } from '@/lib/currentExtUser';
 import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { getTimeOffConflicts, describeTimeOff, type TimeOffEntry } from '@/lib/timeOff';
+import { LIMITE_DIARIO_ATIVIDADES, nivelCarga, rotuloCarga } from '@/lib/activityDailyLoad';
+import { cn } from '@/lib/utils';
 import { logAudit } from '@/hooks/useAuditLog';
 import { LeadActivity } from '@/hooks/useLeadActivities';
 import { toast } from 'sonner';
@@ -555,21 +557,43 @@ export function BulkReassignSheet({
                     Carga de {target?.full_name?.split(' ')[0] || 'destino'} no dia
                   </p>
                   <div className="max-h-32 overflow-y-auto space-y-0.5">
-                    {linhasCarga.map(l => (
-                      <div key={l.dia || 'sem-data'} className="text-[11px] flex items-center gap-1.5">
-                        <span className="font-medium w-24 shrink-0">
-                          {l.dia ? format(parseISO(l.dia), "EEE, dd/MM", { locale: ptBR }) : 'sem data'}
-                        </span>
-                        {l.dia ? (
-                          <span className="text-muted-foreground">
-                            já tem {l.jaTem} → fica com <span className="font-medium text-foreground">{l.jaTem + l.entram}</span>
+                    {linhasCarga.map(l => {
+                      const total = l.jaTem + l.entram;
+                      const nivel = l.dia ? nivelCarga(total) : null;
+                      return (
+                        <div key={l.dia || 'sem-data'} className="text-[11px] flex items-center gap-1.5">
+                          <span className="font-medium w-24 shrink-0">
+                            {l.dia ? format(parseISO(l.dia), "EEE, dd/MM", { locale: ptBR }) : 'sem data'}
                           </span>
-                        ) : (
-                          <span className="text-muted-foreground">{l.entram} sem dia na agenda</span>
-                        )}
-                      </div>
-                    ))}
+                          {l.dia ? (
+                            <span className="text-muted-foreground">
+                              já tem {l.jaTem} → fica com{' '}
+                              <span className={cn(
+                                'font-medium',
+                                nivel === 'estourado' ? 'text-destructive'
+                                  : nivel === 'cheio' ? 'text-warning'
+                                  : 'text-foreground',
+                              )}>
+                                {rotuloCarga(total)}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">{l.entram} sem dia na agenda</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
+                  {/* Um dia acima do teto não impede o repasse — só avisa. */}
+                  {linhasCarga.some(l => l.dia && nivelCarga(l.jaTem + l.entram) === 'estourado') && (
+                    <p className="text-[11px] text-destructive leading-tight flex items-start gap-1.5">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                      <span>
+                        Passa do limite de {LIMITE_DIARIO_ATIVIDADES} atividades no dia. Dá para
+                        repassar mesmo assim — ou escolher outro dia em "Prazo".
+                      </span>
+                    </p>
+                  )}
                 </div>
               )}
 

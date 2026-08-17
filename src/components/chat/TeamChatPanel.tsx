@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense, Fragment } from 'react';
 import { useTeamChat, useTeamMembers, TeamMember, TeamMessage } from '@/hooks/useTeamChat';
 import { ChatMessageActions } from './ChatMessageActions';
 import { ForwardMessagePicker } from './ForwardMessagePicker';
@@ -89,7 +89,8 @@ function formatDuration(seconds?: number | null) {
 
 export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId, onMentionUsers, footerNote }: TeamChatPanelProps) {
   const { user } = useAuthContext();
-  const { messages, loading, sendMessage, updateMessage, alertMessageAgain } = useTeamChat(entityType, entityId, entityName);
+  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadRootId, threadSize } =
+    useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
   const navigate = useNavigate();
   const push = usePushNotifications();
@@ -184,11 +185,12 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   }, [entityType, entityId, appendQuote]);
 
   // Com este chat aberto na tela, popup do que chega aqui vira ruído: quem está
-  // vendo a conversa não precisa de aviso dela.
+  // vendo a conversa não precisa de aviso dela. A chave é a do THREAD (raiz da
+  // cadeia, em atividade) — é com ela que a mensagem nova chega.
   useEffect(() => {
-    setActiveTeamChatEntity(`${entityType}:${entityId}`);
+    setActiveTeamChatEntity(`${entityType}:${threadRootId}`);
     return () => setActiveTeamChatEntity(null);
-  }, [entityType, entityId]);
+  }, [entityType, threadRootId]);
 
   // Quem cuida do caso por trás deste chat (responsável processual + acolhedor).
   const { owners } = useCaseOwners(entityType, entityId, members);
@@ -865,6 +867,18 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
   const hasAttachment = (t?: string | null) => t === 'audio' || t === 'image' || t === 'file';
 
+  /** Divisor de dia da conversa: "Hoje", "Ontem" ou a data. Sempre no fuso de quem lê. */
+  const dayLabel = (iso: string) => {
+    const d = new Date(iso);
+    const dia = (x: Date) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+    const hoje = new Date();
+    const ontem = new Date(hoje);
+    ontem.setDate(hoje.getDate() - 1);
+    if (dia(d) === dia(hoje)) return 'Hoje';
+    if (dia(d) === dia(ontem)) return 'Ontem';
+    return format(d, "dd 'de' MMMM", { locale: ptBR });
+  };
+
   return (
     <div className="relative flex flex-col h-full">
       {/* Encaminhar: cobre o painel enquanto o destino é escolhido (mesmo
@@ -883,6 +897,15 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+        {/* Atividade que já virou etapa nova: a conversa é a mesma desde o
+            primeiro dia — quem chega agora vê o que foi combinado antes. */}
+        {threadSize > 1 && messages.length > 0 && (
+          <div className="flex justify-center pb-1">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+              Conversa contínua · {threadSize} etapas desta atividade
+            </span>
+          </div>
+        )}
         {messages.length === 0 && loading ? (
           /* Só a lista espera — o campo de digitação já está disponível. */
           <div className="flex items-center justify-center h-32 text-muted-foreground">
@@ -894,15 +917,27 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
             <p>Nenhuma mensagem da equipe.<br/>Use <span className="font-medium text-primary">@nome</span> para mencionar alguém.</p>
           </div>
         ) : (
-          messages.map(msg => {
+          messages.map((msg, idx) => {
             const isMe = msg.sender_id === user?.id;
             const isHighlighted = msg.id === highlightMessageId;
             const repliedMsg = msg.reply_to_id ? messages.find(m => m.id === msg.reply_to_id) : null;
             const fwdHeader = parseForward(msg.content || '').header;
             const pvtHeader = parsePrivateReply(parseForward(msg.content || '').body).header;
+            // Numa conversa que atravessa dias (e etapas), sem o dia não dá pra
+            // saber se a resposta é de hoje ou da semana passada.
+            const anterior = idx > 0 ? messages[idx - 1] : null;
+            const diaLabel = dayLabel(msg.created_at);
+            const mostrarDia = !anterior || dayLabel(anterior.created_at) !== diaLabel;
             return (
+              <Fragment key={msg.id}>
+              {mostrarDia && (
+                <div className="flex justify-center py-0.5">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+                    {diaLabel}
+                  </span>
+                </div>
+              )}
               <div
-                key={msg.id}
                 data-team-msg-id={msg.id}
                 ref={isHighlighted ? highlightRef : undefined}
                 className={cn('group flex', isMe ? 'justify-end' : 'justify-start')}
@@ -1012,6 +1047,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
                   </div>
                 </div>
               </div>
+              </Fragment>
             );
           })
         )}

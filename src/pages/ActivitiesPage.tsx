@@ -64,6 +64,8 @@ import {
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
+import { EventsAgenda } from '@/components/activities/EventsAgenda';
+import { alternarComShift, alternarSelecaoDoPool, podarSelecao } from '@/lib/activitySelection';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -479,8 +481,9 @@ const ActivitiesPage = () => {
     })();
     return () => { cancelled = true; };
   }, [showProcessSheetId]);
-  const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks'>('activities_viewMode', 'blocks');
-  const viewMode = (viewModeRaw === 'list' ? 'list' : 'blocks') as 'list' | 'blocks';
+  const [viewModeRaw, setViewMode] = usePageState<'list' | 'blocks' | 'eventos'>('activities_viewMode', 'blocks');
+  // Coerção defensiva: o valor vem do localStorage e pode ser lixo antigo.
+  const viewMode = (viewModeRaw === 'list' ? 'list' : viewModeRaw === 'eventos' ? 'eventos' : 'blocks') as 'list' | 'blocks' | 'eventos';
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState<string>('');
   const [dragOverQuadrant, setDragOverQuadrant] = useState<string | null>(null);
   const [aiSuggestingType, setAiSuggestingType] = useState(false);
@@ -2560,9 +2563,16 @@ const ActivitiesPage = () => {
       // Usa exatamente a mesma comparação de data do Prazo.
       // O input entrega YYYY-MM-DD e o banco também deve ser comparado por esse valor puro.
       const dayStr = date.length >= 10 ? date.slice(0, 10) : date;
+      // `deleted_at is null` não estava aqui: a contagem somava atividade
+      // EXCLUÍDA. Em 17/08/2026 eram 3.056 excluídas dentro das 11.785
+      // "não concluídas" — 35% de inflação sobre as 8.729 reais. Passava
+      // despercebido enquanto o badge só dizia "tem alguma coisa nesse dia";
+      // virou defeito no momento em que o número passou a ser comparado com o
+      // limite de 30 (activityDailyLoad.ts).
       let query = externalSupabase
         .from('lead_activities')
         .select('id', { count: 'exact', head: true })
+        .is('deleted_at', null)
         .eq('assigned_to', extAssignedTo)
         .neq('status', 'concluida');
       query = query.eq(column, dayStr);
@@ -2702,14 +2712,17 @@ const ActivitiesPage = () => {
   );
 
   // Some da seleção o que saiu da tela (troca de filtro, mês, busca).
+  //
+  // O corte é contra `displayedActivities` e NÃO contra `renderedActivities`:
+  // na visão de Blocos quem lista atividade uma a uma é o painel do bloco, e ele
+  // monta os itens direto de `displayedActivities`, sem o teto de `renderLimit`.
+  // Cortar pelo lote renderizado apagaria na hora a seleção feita ali. Na lista
+  // o efeito é o mesmo de antes — só deixa de descartar, calado, o que estava
+  // marcado e saiu do lote de 200 quando o usuário clica em "Mostrar mais".
   useEffect(() => {
     if (!selectionMode) return;
-    setSelectedIds(prev => {
-      const visiveis = new Set(renderedActivities.map(a => a.id));
-      const next = new Set([...prev].filter(id => visiveis.has(id)));
-      return next.size === prev.size ? prev : next;
-    });
-  }, [selectionMode, renderedActivities]);
+    setSelectedIds(prev => podarSelecao(prev, displayedActivities.map(a => a.id)));
+  }, [selectionMode, displayedActivities]);
 
   const exitSelection = useCallback(() => {
     setSelectionMode(false);
@@ -2718,34 +2731,26 @@ const ActivitiesPage = () => {
   }, []);
 
   // Shift+clique marca o intervalo desde o último card clicado.
-  const toggleSelected = useCallback((id: string, shift = false) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      const anchor = lastClickedIdRef.current;
-      if (shift && anchor && anchor !== id) {
-        const ordem = renderedActivities.map(a => a.id);
-        const i = ordem.indexOf(anchor);
-        const j = ordem.indexOf(id);
-        if (i >= 0 && j >= 0) {
-          const [ini, fim] = i < j ? [i, j] : [j, i];
-          const marcar = !next.has(id);
-          for (let k = ini; k <= fim; k++) {
-            if (marcar) next.add(ordem[k]); else next.delete(ordem[k]);
-          }
-          return next;
-        }
-      }
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+  //
+  // `pool` é a lista de onde partiu o clique — os cards da lista ou as linhas do
+  // painel do bloco. É ela que define o que "intervalo" quer dizer: shift+clique
+  // dentro do bloco não pode marcar card que o usuário não está vendo.
+  const toggleSelected = useCallback((id: string, shift = false, pool?: LeadActivity[]) => {
+    const ordem = (pool || renderedActivities).map(a => a.id);
+    setSelectedIds(prev =>
+      alternarComShift(prev, id, shift ? lastClickedIdRef.current : null, ordem),
+    );
     lastClickedIdRef.current = id;
   }, [renderedActivities]);
 
+  // Resolve sobre `displayedActivities` (superconjunto das duas visões): na
+  // lista o usuário marca cards de `renderedActivities`, nos Blocos marca linhas
+  // do painel do bloco — as duas saem daqui. Filtrar pelo lote renderizado
+  // deixaria de fora tudo que foi marcado dentro de um bloco.
   const selectedActivities = useMemo(
-    () => renderedActivities.filter(a => selectedIds.has(a.id)),
-    [renderedActivities, selectedIds],
+    () => displayedActivities.filter(a => selectedIds.has(a.id)),
+    [displayedActivities, selectedIds],
   );
-  const allRenderedSelected = renderedActivities.length > 0 && renderedActivities.every(a => selectedIds.has(a.id));
 
   // Excluir o lote selecionado. Mesmo caminho do delete individual
   // (useLeadActivities.deleteActivity): soft delete via deleted_at + descarte do
@@ -2815,6 +2820,136 @@ const ActivitiesPage = () => {
       uma ? 'Excluir' : `Excluir ${ids.length}`,
     );
   }, [selectedActivities, confirmDelete, exitSelection, fetchActivities, selectedActivity]);
+
+  /**
+   * Abre a ficha de uma atividade a partir do id, em painel por cima da tela.
+   *
+   * A agenda de eventos lê de outras tabelas (`hearings`, processos) e alcança
+   * atividade que não está no lote carregado pelos filtros da página — por isso
+   * busca no banco quando não acha em memória, em vez de navegar para outra
+   * rota.
+   */
+  const abrirAtividadePorId = useCallback(async (id: string) => {
+    const emMemoria = activities.find(a => a.id === id);
+    if (emMemoria) { void handleOpenEdit(emMemoria); return; }
+    const { data, error } = await (externalSupabase as any)
+      .from('lead_activities')
+      .select('*')
+      .eq('id', id)
+      .is('deleted_at', null)
+      .maybeSingle();
+    if (error || !data) {
+      toast.error('Não deu para abrir esta atividade');
+      return;
+    }
+    void handleOpenEdit(data as LeadActivity);
+    // handleOpenEdit é redefinida a cada render (não é useCallback); prender a
+    // referência aqui congelaria o estado que ela lê.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activities]);
+
+  /**
+   * Cabeçalho do modo seleção. Renderizado nas DUAS visões: na Lista, sobre os
+   * cards; nos Blocos, dentro do painel do bloco aberto.
+   *
+   * Mora aqui, e não colado no JSX da lista, porque era exatamente esse o
+   * defeito: a barra ficava dentro do container da coluna esquerda, que recebe
+   * `hidden` quando `viewMode === 'blocks'` — e Blocos é o padrão da tela. A
+   * feature existia desde 12/08 e ninguém conseguia chegar nela sem trocar de
+   * visão antes.
+   *
+   * `pool` = as atividades que o usuário está vendo naquele contexto. É o que
+   * "Marcar todas" marca e o que o shift+clique usa como intervalo.
+   */
+  const renderBarraSelecao = useCallback((pool: LeadActivity[]) => {
+    const todasMarcadas = pool.length > 0 && pool.every(a => selectedIds.has(a.id));
+    return (
+      <div className="shrink-0 border-b bg-card/50 px-3 py-1.5 flex items-center gap-2">
+        {!selectionMode ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+            onClick={() => setSelectionMode(true)}
+            title="Marcar várias atividades para passar a outro assessor"
+          >
+            <CheckSquare className="h-3.5 w-3.5" />
+            Selecionar
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => {
+                // Age só sobre o pool visível — o que está marcado em outro
+                // bloco continua marcado.
+                setSelectedIds(prev => alternarSelecaoDoPool(prev, pool.map(a => a.id)));
+              }}
+            >
+              {todasMarcadas ? 'Desmarcar todas' : 'Marcar todas'}
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
+            </span>
+            <Button variant="ghost" size="sm" className="h-7 text-xs ml-auto" onClick={exitSelection}>
+              Cancelar
+            </Button>
+          </>
+        )}
+      </div>
+    );
+  }, [selectionMode, selectedIds, exitSelection]);
+
+  /**
+   * Ações do lote (excluir / passar para outro assessor). Também vai nas duas
+   * visões. O aviso de "não carregadas" só faz sentido na Lista — é lá que
+   * existe o teto de `renderLimit`; o painel do bloco lista o bloco inteiro.
+   */
+  const barraAcoesLote = selectionMode && selectedIds.size > 0 ? (
+    <div className="shrink-0 border-t bg-card px-3 py-2 flex items-center gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
+      <div className="text-xs min-w-0 flex-1">
+        <span className="font-medium">
+          {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
+        </span>
+        {viewMode === 'list' && displayedActivities.length > renderLimit && (
+          <span className="text-muted-foreground block truncate">
+            há {(displayedActivities.length - renderLimit).toLocaleString('pt-BR')} não carregadas — use "Mostrar mais"
+          </span>
+        )}
+      </div>
+      {/* Nos Blocos esta barra fica FORA do painel do bloco (a seleção atravessa
+          blocos), então é a única saída visível quando o painel está fechado.
+          Na Lista o "Cancelar" já mora na barra de cima, que nunca some. */}
+      {viewMode === 'blocks' && (
+        <Button variant="ghost" size="sm" className="h-8 text-xs shrink-0" onClick={exitSelection}>
+          Cancelar
+        </Button>
+      )}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 text-xs gap-1.5 shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+        onClick={handleBulkDelete}
+        disabled={bulkDeleting}
+      >
+        {bulkDeleting
+          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          : <Trash2 className="h-3.5 w-3.5" />}
+        Excluir
+      </Button>
+      <Button
+        size="sm"
+        className="h-8 text-xs gap-1.5 shrink-0"
+        onClick={() => setBulkReassignOpen(true)}
+        disabled={bulkDeleting}
+      >
+        <ArrowRightLeft className="h-3.5 w-3.5" />
+        Passar para...
+      </Button>
+    </div>
+  ) : null;
 
   const resolveUserName = (userId: string | null) => {
     if (!userId) return null;
@@ -3780,6 +3915,19 @@ const ActivitiesPage = () => {
               <List className="h-3.5 w-3.5" />
               Lista
             </button>
+            <button
+              onClick={() => setViewMode('eventos')}
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all",
+                viewMode === 'eventos'
+                  ? "bg-primary-foreground text-primary shadow-sm"
+                  : "text-primary-foreground/70 hover:text-primary-foreground"
+              )}
+              title="Audiências, perícias e prazos do dia seguinte"
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              Eventos
+            </button>
             <a
               href="/tv/atividades"
               onClick={(e) => {
@@ -4453,6 +4601,24 @@ const ActivitiesPage = () => {
             return { ...block, dayDate, dayIdx };
           })();
 
+          // O que o painel do bloco realmente mostra depois da busca. Sobe pra
+          // cá (antes era calculado dentro do ScrollArea) porque agora a barra
+          // de seleção precisa dele: "Marcar todas" tem que marcar o que está
+          // na tela, não o bloco inteiro por trás de um filtro de busca.
+          const selectedBlockItems = (() => {
+            if (!selectedBlockData) return [] as LeadActivity[];
+            const termo = blockSearchText.trim().toLowerCase();
+            if (!termo) return selectedBlockData.items;
+            return selectedBlockData.items.filter(a =>
+              (a.title || '').toLowerCase().includes(termo) ||
+              (a.current_status_notes || '').toLowerCase().includes(termo) ||
+              (a.what_was_done || '').toLowerCase().includes(termo) ||
+              (a.next_steps || '').toLowerCase().includes(termo) ||
+              (a.notes || '').toLowerCase().includes(termo) ||
+              (a.lead_name || '').toLowerCase().includes(termo)
+            );
+          })();
+
           return (
             <div
               className={cn("relative flex flex-col overflow-hidden h-full", isEditing ? "shrink-0 border-r" : "flex-1")}
@@ -4667,19 +4833,13 @@ const ActivitiesPage = () => {
                       />
                     </div>
                   </div>
+                  {/* Mesma barra da visão em Lista: é aqui que a visão padrão
+                      (Blocos) lista atividade por atividade, então é aqui que
+                      dá pra marcar várias e passar pra outro assessor. */}
+                  {renderBarraSelecao(selectedBlockItems)}
                   <ScrollArea className="flex-1 min-h-0">
                     {(() => {
-                      const searchLower = blockSearchText.toLowerCase();
-                      const filtered = blockSearchText
-                        ? selectedBlockData.items.filter(a =>
-                            (a.title || '').toLowerCase().includes(searchLower) ||
-                            (a.current_status_notes || '').toLowerCase().includes(searchLower) ||
-                            (a.what_was_done || '').toLowerCase().includes(searchLower) ||
-                            (a.next_steps || '').toLowerCase().includes(searchLower) ||
-                            (a.notes || '').toLowerCase().includes(searchLower) ||
-                            (a.lead_name || '').toLowerCase().includes(searchLower)
-                          )
-                        : selectedBlockData.items;
+                      const filtered = selectedBlockItems;
                       if (filtered.length === 0) {
                         return (
                           <div className="px-3 py-8 text-center text-xs text-muted-foreground">
@@ -4694,10 +4854,19 @@ const ActivitiesPage = () => {
                               key={a.id}
                               className={cn(
                                 "group/blockitem px-3 py-2 transition-colors hover:bg-muted/50 cursor-pointer flex items-start gap-2",
-                                selectedActivityId === a.id && "bg-primary/10"
+                                selectedActivityId === a.id && "bg-primary/10",
+                                selectionMode && selectedIds.has(a.id) && "bg-primary/5 ring-1 ring-inset ring-primary/30"
                               )}
-                              onClick={() => handleOpenEdit(a)}
+                              onClick={(e) => {
+                                // Em modo seleção o clique marca em vez de abrir
+                                // a ficha — mesma regra dos cards da Lista.
+                                if (selectionMode) { toggleSelected(a.id, e.shiftKey, selectedBlockItems); return; }
+                                handleOpenEdit(a);
+                              }}
                             >
+                              {selectionMode && (
+                                <Checkbox checked={selectedIds.has(a.id)} className="mt-0.5 shrink-0" />
+                              )}
                               <span className={cn('mt-1 h-2 w-2 rounded-full shrink-0', selectedBlockData.cfg.color || 'bg-muted-foreground')} />
                               <div className="min-w-0 flex-1">
                                 <p className="text-xs font-medium truncate">{a.title}</p>
@@ -4708,14 +4877,16 @@ const ActivitiesPage = () => {
                                   </Badge>
                                 </div>
                               </div>
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
-                                className="shrink-0 opacity-0 group-hover/blockitem:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-destructive"
-                                title="Excluir atividade"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              {!selectionMode && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleDelete(a.id); }}
+                                  className="shrink-0 opacity-0 group-hover/blockitem:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-destructive"
+                                  title="Excluir atividade"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -4727,20 +4898,35 @@ const ActivitiesPage = () => {
                   </div>
                 </div>
               )}
+
+              {/* Ações do lote fora do painel do bloco de propósito: a seleção
+                  atravessa blocos (marca 3 em "Prazo", 2 em "Audiência") e
+                  precisa continuar alcançável depois de fechar o painel. */}
+              {barraAcoesLote}
             </div>
           );
         })()}
 
 
+        {/* Agenda de eventos do dia seguinte (audiências, perícias, prazos) */}
+        {viewMode === 'eventos' && (
+          <div className={cn(
+            "flex flex-col overflow-hidden min-h-0",
+            isEditing ? "hidden md:flex shrink-0 border-r w-[36rem]" : "flex-1",
+          )}>
+            <EventsAgenda onAbrirAtividade={abrirAtividadePorId} />
+          </div>
+        )}
+
         {/* LEFT: Calendar + Activity list (chat-style) */}
         <div
           className={cn(
             "relative flex-col overflow-hidden transition-all",
-            viewMode === 'blocks' ? "hidden" : (isEditing ? "hidden md:flex shrink-0 border-r" : "flex flex-1")
+            viewMode !== 'list' ? "hidden" : (isEditing ? "hidden md:flex shrink-0 border-r" : "flex flex-1")
           )}
-          style={isEditing && viewMode !== 'blocks' ? { width: listColWidth, minWidth: 280 } : undefined}
+          style={isEditing && viewMode === 'list' ? { width: listColWidth, minWidth: 280 } : undefined}
         >
-          {isEditing && viewMode !== 'blocks' && (
+          {isEditing && viewMode === 'list' && (
             <div
               role="separator"
               aria-orientation="vertical"
@@ -4993,40 +5179,7 @@ const ActivitiesPage = () => {
           </div>
 
           {/* Barra de seleção múltipla — passar várias atividades a outro assessor */}
-          <div className="shrink-0 border-b bg-card/50 px-3 py-1.5 flex items-center gap-2">
-            {!selectionMode ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
-                onClick={() => setSelectionMode(true)}
-                title="Marcar várias atividades para passar a outro assessor"
-              >
-                <CheckSquare className="h-3.5 w-3.5" />
-                Selecionar
-              </Button>
-            ) : (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => {
-                    if (allRenderedSelected) setSelectedIds(new Set());
-                    else setSelectedIds(new Set(renderedActivities.map(a => a.id)));
-                  }}
-                >
-                  {allRenderedSelected ? 'Desmarcar todas' : 'Marcar todas'}
-                </Button>
-                <span className="text-xs text-muted-foreground">
-                  {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
-                </span>
-                <Button variant="ghost" size="sm" className="h-7 text-xs ml-auto" onClick={exitSelection}>
-                  Cancelar
-                </Button>
-              </>
-            )}
-          </div>
+          {renderBarraSelecao(renderedActivities)}
 
           {/* Activity list - scrollable like WhatsApp chat */}
           <div className="flex-1 overflow-y-auto bg-muted/10">
@@ -5272,41 +5425,7 @@ const ActivitiesPage = () => {
           </div>
 
           {/* Ações do lote — dentro da coluna, sem cobrir card nenhum */}
-          {selectionMode && selectedIds.size > 0 && (
-            <div className="shrink-0 border-t bg-card px-3 py-2 flex items-center gap-2 shadow-[0_-2px_8px_rgba(0,0,0,0.06)]">
-              <div className="text-xs min-w-0 flex-1">
-                <span className="font-medium">
-                  {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
-                </span>
-                {displayedActivities.length > renderLimit && (
-                  <span className="text-muted-foreground block truncate">
-                    há {(displayedActivities.length - renderLimit).toLocaleString('pt-BR')} não carregadas — use "Mostrar mais"
-                  </span>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs gap-1.5 shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-                onClick={handleBulkDelete}
-                disabled={bulkDeleting}
-              >
-                {bulkDeleting
-                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  : <Trash2 className="h-3.5 w-3.5" />}
-                Excluir
-              </Button>
-              <Button
-                size="sm"
-                className="h-8 text-xs gap-1.5 shrink-0"
-                onClick={() => setBulkReassignOpen(true)}
-                disabled={bulkDeleting}
-              >
-                <ArrowRightLeft className="h-3.5 w-3.5" />
-                Passar para...
-              </Button>
-            </div>
-          )}
+          {barraAcoesLote}
         </div>
 
         {/* RIGHT: Form panel (WhatsApp chat-detail style) */}

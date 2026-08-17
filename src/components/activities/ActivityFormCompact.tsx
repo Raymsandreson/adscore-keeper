@@ -26,6 +26,9 @@ import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { TimeOffAssigneeWarning } from '@/components/activities/TimeOffAssigneeWarning';
+import {
+  LIMITE_DIARIO_ATIVIDADES, classesCarga, descreveCarga, nivelCarga, rotuloCarga,
+} from '@/lib/activityDailyLoad';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityMessageTemplateSettings } from '@/components/activities/ActivityMessageTemplateSettings';
 import { ActivityNotesField, type Attachment } from '@/components/activities/ActivityNotesField';
@@ -1481,12 +1484,14 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">📅 Prazo *</span>
             {props.deadlineDateCount !== null && props.formDeadline && (
-              <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
-                props.deadlineDateCount > 0
-                  ? "bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30"
-                  : "bg-success/15 text-success border-success/40 ring-1 ring-success/30"
-              )}>
-                {props.deadlineDateCount} atv
+              <span
+                className={cn(
+                  "text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
+                  classesCarga(nivelCarga(props.deadlineDateCount)!),
+                )}
+                title={descreveCarga(props.deadlineDateCount, props.formAssignedToName)}
+              >
+                {rotuloCarga(props.deadlineDateCount)}
               </span>
             )}
           </div>
@@ -1496,18 +1501,39 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           <div className="flex items-center justify-between mb-0.5">
             <span className="text-[10px] text-muted-foreground uppercase tracking-wider">🔔 Notificação *</span>
             {props.notifDateCount !== null && props.formNotificationDate && (
-              <span className={cn("text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
-                props.notifDateCount > 0
-                  ? "bg-warning/15 text-warning border-warning/40 ring-1 ring-warning/30"
-                  : "bg-success/15 text-success border-success/40 ring-1 ring-success/30"
-              )}>
-                {props.notifDateCount} atv
+              <span
+                className={cn(
+                  "text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm",
+                  classesCarga(nivelCarga(props.notifDateCount)!),
+                )}
+                title={descreveCarga(props.notifDateCount, props.formAssignedToName)}
+              >
+                {rotuloCarga(props.notifDateCount)}
               </span>
             )}
           </div>
           <Input type="date" value={props.formNotificationDate} onChange={e => props.setFormNotificationDate(e.target.value)} className="h-8 text-xs" />
         </div>
       </div>
+
+      {/* Aviso de dia cheio — o badge acima é discreto demais pra quem está
+          distribuindo trabalho. Só ALERTA: nada aqui impede salvar (ver o
+          porquê em src/lib/activityDailyLoad.ts). */}
+      {(() => {
+        const carga = Math.max(
+          props.formDeadline ? (props.deadlineDateCount ?? -1) : -1,
+          props.formNotificationDate ? (props.notifDateCount ?? -1) : -1,
+        );
+        if (nivelCarga(carga) !== 'estourado') return null;
+        return (
+          <div className="mt-1 flex items-start gap-1.5 rounded-md bg-destructive/10 border border-destructive/30 p-1.5">
+            <Users className="h-3 w-3 text-destructive shrink-0 mt-0.5" />
+            <p className="text-[10px] text-destructive leading-tight">
+              {descreveCarga(carga, props.formAssignedToName)}
+            </p>
+          </div>
+        );
+      })()}
 
       {/* === ROW 4b: Retorno agendado (opcional) ===
           Quando voltar a falar com o cliente/parte. Fora da grade acima de

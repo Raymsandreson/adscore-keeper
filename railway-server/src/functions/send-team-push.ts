@@ -37,6 +37,9 @@ export const handler: RequestHandler = async (req, res) => {
     const {
       entity_type,
       entity_id,
+      // Chat de atividade é da CADEIA: quem participou pode ter falado numa
+      // etapa anterior, com outro entity_id. O cliente manda os elos.
+      entity_ids,
       conversation_id,
       sender_id,
       sender_name,
@@ -72,11 +75,13 @@ export const handler: RequestHandler = async (req, res) => {
       });
     } else if (entity_id) {
       // Chat de entidade (atv/lead/processo/contato): quem já participou do thread.
+      const elos = (Array.isArray(entity_ids) ? entity_ids : []).filter(Boolean) as string[];
+      if (!elos.includes(entity_id)) elos.push(entity_id);
       const { data: parts } = await supabase
         .from('team_chat_messages')
         .select('sender_id')
         .eq('entity_type', entity_type)
-        .eq('entity_id', entity_id)
+        .in('entity_id', elos)
         .is('deleted_at', null)
         .order('created_at', { ascending: false })
         .limit(200);
