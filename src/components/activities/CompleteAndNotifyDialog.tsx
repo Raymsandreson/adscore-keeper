@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Volume2, Send, MessageCircle, Sparkles, CheckCircle2, AlertTriangle, CalendarClock } from 'lucide-react';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -36,12 +36,27 @@ export interface GroupOption {
  * A busca é a mesma de sempre: `lead_whatsapp_groups` primeiro e o campo legado
  * `leads.whatsapp_group_id` só quando não há nenhum vinculado — o segundo
  * round-trip existe apenas nesse caso.
+ *
+ * Lista vazia aqui significa "este lead não tem grupo", e o dialog desliga a
+ * notificação por causa dela. Então falha NÃO pode virar lista vazia:
+ *  - a policy do `lead_whatsapp_groups` é `TO authenticated`; sem sessão o
+ *    PostgREST devolve `[]` (zero linhas), não erro — daí o `ensureExternalSession`
+ *    antes da query. Enquanto a busca só acontecia no clique o problema não
+ *    aparecia (a sessão já estava de pé); com o pré-carregamento junto da ficha
+ *    ela passou a correr com o bootstrap;
+ *  - erro de rede/permissão sobe como exceção, e quem chamou trata (o preload
+ *    guarda `null` e o dialog volta a buscar no clique).
+ * Incidente 17/08/2026: "Concluir + próxima" parou de mandar áudio ao grupo em
+ * silêncio — o dialog exibia "(nenhum grupo vinculado)" para lead com grupo.
  */
 export async function fetchLeadGroupOptions(leadId: string): Promise<GroupOption[]> {
-  const { data } = await externalSupabase
+  await ensureExternalSession();
+
+  const { data, error } = await externalSupabase
     .from('lead_whatsapp_groups')
     .select('id, label, group_jid, group_name')
     .eq('lead_id', leadId);
+  if (error) throw error;
 
   const groupOptions: GroupOption[] = (data || [])
     .filter((g: any) => g.group_jid)
@@ -56,11 +71,12 @@ export async function fetchLeadGroupOptions(leadId: string): Promise<GroupOption
   if (groupOptions.length === 0) {
     // Externo: é onde os leads vivem. Lendo o legado do Cloud, o texto podia
     // ir para um grupo diferente do que o áudio (que lê do externo) usa.
-    const { data: lead } = await externalSupabase
+    const { data: lead, error: leadError } = await externalSupabase
       .from('leads')
       .select('whatsapp_group_id, lead_name')
       .eq('id', leadId)
       .maybeSingle();
+    if (leadError) throw leadError;
     if (lead?.whatsapp_group_id) {
       groupOptions.push({
         id: 'legacy',

@@ -72,24 +72,51 @@ export async function sendActivityGroupNotification(
       toast.success('Mensagem enviada ao grupo!');
     }
 
-    // Send audio if requested
-    if (options.sendAudio && options.audioText) {
-      const { data: ttsData } = await cloudFunctions.invoke('elevenlabs-tts', {
+    // Áudio, quando pedido. Cada etapa avisa o que aconteceu: antes o erro do
+    // TTS era descartado e o `send_media` nem era conferido — sem `audio_url` o
+    // bloco inteiro era pulado sem toast e sem log, e com URL o "Áudio enviado
+    // ao grupo!" saía mesmo que o envio tivesse falhado. Quem usava só via o
+    // "Mensagem enviada ao grupo!" do texto e concluía que tinha ido tudo.
+    if (options.sendAudio) {
+      if (!options.audioText?.trim()) {
+        toast.error('Áudio não enviado: o texto da narração ficou vazio.');
+        return;
+      }
+
+      const { data: ttsData, error: ttsError } = await cloudFunctions.invoke('elevenlabs-tts', {
         body: { text: options.audioText },
       });
-      if (ttsData?.audio_url) {
-        await cloudFunctions.invoke('send-whatsapp', {
-          body: {
-            action: 'send_media',
-            phone: options.groupJid,
-            chat_id: options.groupJid,
-            media_url: ttsData.audio_url,
-            media_type: 'audio/mpeg',
-            lead_id: leadId || null,
-            ...(instanceId ? { instance_id: instanceId } : {}),
-            ...(instanceName ? { instance_name: instanceName } : {}),
-          },
-        });
+      const audioUrl = (ttsData as { audio_url?: string } | null)?.audio_url;
+      if (ttsError || !audioUrl) {
+        const motivo =
+          (ttsData as { error?: string } | null)?.error ||
+          (ttsError instanceof Error ? ttsError.message : null) ||
+          'a geração de voz não devolveu áudio';
+        console.error('[sendActivityGroupNotification] TTS falhou:', ttsError || ttsData);
+        toast.error(`Áudio não enviado: ${motivo}`);
+        return;
+      }
+
+      const { data: mediaData, error: mediaError } = await cloudFunctions.invoke('send-whatsapp', {
+        body: {
+          action: 'send_media',
+          phone: options.groupJid,
+          chat_id: options.groupJid,
+          media_url: audioUrl,
+          media_type: 'audio/mpeg',
+          lead_id: leadId || null,
+          ...(instanceId ? { instance_id: instanceId } : {}),
+          ...(instanceName ? { instance_name: instanceName } : {}),
+        },
+      });
+      if (mediaError || !(mediaData as { success?: boolean } | null)?.success) {
+        const motivo =
+          (mediaData as { error?: string } | null)?.error ||
+          (mediaError instanceof Error ? mediaError.message : null) ||
+          'o envio ao grupo falhou';
+        console.error('[sendActivityGroupNotification] envio do áudio falhou:', mediaError || mediaData);
+        toast.error(`Áudio gerado, mas não foi ao grupo: ${motivo}`);
+      } else {
         toast.success('Áudio enviado ao grupo!');
       }
     }
