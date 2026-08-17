@@ -67,6 +67,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
 import { EventsAgenda } from '@/components/activities/EventsAgenda';
 import { alternarComShift, alternarSelecaoDoPool, podarSelecao } from '@/lib/activitySelection';
+import { deduparTiposPorRotulo, expandirChavesDeTipo, mapaCanonicoDeTipos } from '@/lib/activityTypeAliases';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ShareMenu } from '@/components/ShareMenu';
@@ -520,6 +521,20 @@ const ActivitiesPage = () => {
   const blocksViewUserId = viewMode === 'blocks' && filterAssignee.length === 1 ? filterAssignee[0] : undefined;
   const { configs: blocksViewSettings } = useTimeBlockSettings(blocksViewUserId || user?.id || undefined);
   const { types: dbActivityTypes } = useActivityTypes();
+  /**
+   * Catálogo mínimo (chave + rótulo) das duas famílias de tipo, só para
+   * reconciliar chave irmã. Fica aqui em cima porque os filtros — que rodam
+   * bem antes de `allKnownActivityTypes` existir — precisam dele.
+   */
+  const catalogoDeTipos = useMemo(
+    () => [
+      ...ACTIVITY_TYPES.map(t => ({ value: t.value, label: t.label })),
+      ...dbActivityTypes.map(t => ({ value: t.key, label: t.label })),
+    ],
+    [dbActivityTypes],
+  );
+  /** Chave → canônica, O(1). Roda por atividade na visão de Blocos. */
+  const mapaCanonico = useMemo(() => mapaCanonicoDeTipos(catalogoDeTipos), [catalogoDeTipos]);
   const { boards: allBoards } = useKanbanBoards();
   const workflowOptions = useMemo(
     () => allBoards.filter(b => b.board_type === 'workflow' && !isBoardArchived(b)).map(b => ({ id: b.id, name: b.name })),
@@ -600,7 +615,9 @@ const ActivitiesPage = () => {
       return real.length > 0 ? real : 'all';
     })(),
     overdue: filterStatus.includes('atrasada'),
-    activity_type: filterType.length > 0 ? filterType : 'all',
+    // Expande para as duas famílias de chave: escolher "Prazo" tem que trazer a
+    // seed 'prazo' (548) E o gêmeo custom_1778676343311 (390), não uma metade.
+    activity_type: filterType.length > 0 ? expandirChavesDeTipo(filterType, catalogoDeTipos) : 'all',
     assigned_to: filterAssignee.length > 0 ? filterAssignee : 'all',
     created_by: filterCreatedBy.length > 0 ? filterCreatedBy : 'all',
     lead_id: filterLead.length > 0 ? filterLead : 'all',
@@ -850,8 +867,10 @@ const ActivitiesPage = () => {
           return !!a.created_by && extIds.includes(a.created_by);
         });
       }
-      if (excludeField !== 'activity_type' && filterType.length > 0)
-        filtered = filtered.filter(a => filterType.includes(a.activity_type));
+      if (excludeField !== 'activity_type' && filterType.length > 0) {
+        const chaves = expandirChavesDeTipo(filterType, catalogoDeTipos);
+        filtered = filtered.filter(a => chaves.includes(a.activity_type));
+      }
       if (excludeField !== 'status' && filterStatus.length > 0) {
         // 'atrasada' é derivado e o raw não traz deadline — ignora na contagem.
         const realStatuses = filterStatus.filter(s => s !== 'atrasada');
@@ -878,14 +897,19 @@ const ActivitiesPage = () => {
   const countByField = useMemo(() => {
     const countFor = (fieldKey: 'lead_id' | 'contact_id' | 'assigned_to' | 'created_by' | 'activity_type' | 'status' | 'workflow_id', value: string) => {
       const filtered = getFilteredRaw(fieldKey);
-      const matching = filtered.filter(a => a[fieldKey] === value);
+      // Tipo conta o grupo inteiro: o badge de "Prazo" tem que somar a chave
+      // seed e a gêmea custom, senão mostra metade do que o filtro vai trazer.
+      const alvos = fieldKey === 'activity_type'
+        ? expandirChavesDeTipo([value], catalogoDeTipos)
+        : [value];
+      const matching = filtered.filter(a => alvos.includes(a[fieldKey] as string));
       return {
         open: matching.filter(a => a.status !== 'concluida').length,
         done: matching.filter(a => a.status === 'concluida').length,
       };
     };
     return countFor;
-  }, [getFilteredRaw]);
+  }, [getFilteredRaw, catalogoDeTipos]);
 
   const resetForm = () => {
     // Limpar aqui (e não no fim do fluxo) garante que um formulário abandonado
@@ -3194,6 +3218,22 @@ const ActivitiesPage = () => {
     return allTypes.filter(type => hasSelectValue(type.value));
   }, [dbActivityTypes, timeBlockSettings, assigneeTimeBlockSettings, activeRoutine, activities]);
 
+  /**
+   * Mesma lista, mas com uma entrada por RÓTULO e as chaves irmãs em `aliases`.
+   *
+   * Só para os resumos que a pessoa lê ("Tarefa 1.204⏳"): sem isso a mesma
+   * "Tarefa" aparece duas vezes, cada uma com metade da contagem.
+   *
+   * `allKnownActivityTypes` continua intacta de propósito — é ela que alimenta
+   * `routineActivityTypes`, que casa por chave exata contra a rotina do
+   * assessor. Deduplicar lá sumiria do formulário o tipo de quem configurou a
+   * rotina com a chave que a dedupe descartou.
+   */
+  const tiposParaResumo = useMemo(
+    () => deduparTiposPorRotulo(allKnownActivityTypes),
+    [allKnownActivityTypes],
+  );
+
   // Only show activity types that are in the assignee's routine for form selection
   const routineActivityTypes = useMemo(() => {
     // Sem rotina do assessor: mostra só os tipos base (jurídicos padrão), não
@@ -4571,11 +4611,15 @@ const ActivitiesPage = () => {
             try { return parseISO(dateStr); } catch { return null; }
           };
 
+          // Chave canônica: as duas famílias de chave do mesmo rótulo viram um
+          // bloco só. Sem isso o dia mostra um bloco cinza "tarefa" (17.282
+          // atividades da chave seed) ao lado de um bloco azul "Tarefa" (1.673
+          // do gêmeo custom) — o mesmo tipo, partido em dois.
           const getEffectiveType = (a: LeadActivity): string => {
-            if (a.lead_id && leadWorkflowActivityTypes[a.lead_id]) {
-              return leadWorkflowActivityTypes[a.lead_id];
-            }
-            return a.activity_type;
+            const bruto = (a.lead_id && leadWorkflowActivityTypes[a.lead_id])
+              ? leadWorkflowActivityTypes[a.lead_id]
+              : a.activity_type;
+            return mapaCanonico.get(bruto) || bruto;
           };
 
           // Agrega atividades do dia por tipo cadastrado.
@@ -4604,9 +4648,13 @@ const ActivitiesPage = () => {
             const slotHours = totalHours / sorted.length;
 
             return sorted.map(([type, items], idx) => {
+              // Procura nas duas famílias: só `dbActivityTypes` não acha as
+              // chaves seed e o bloco saía rotulado com a chave crua
+              // ("tarefa", "audiencia") em cinza.
               const meta = dbActivityTypes.find(t => t.key === type);
-              const label = meta?.label || type;
-              const color = meta?.color || 'bg-muted-foreground';
+              const seed = ACTIVITY_TYPES.find(t => t.value === type);
+              const label = meta?.label || seed?.label || type;
+              const color = meta?.color || seed?.header || 'bg-muted-foreground';
               const startDecimal = minHour + idx * slotHours;
               const endDecimal = startDecimal + slotHours;
               const startHour = Math.floor(startDecimal);
@@ -4643,7 +4691,7 @@ const ActivitiesPage = () => {
           });
 
           // Build type summary for left sidebar
-          const typeSummary = allKnownActivityTypes.map(t => {
+          const typeSummary = tiposParaResumo.map(t => {
             const typeActs = displayedActivities.filter(a => {
               const et = getEffectiveType(a);
               return et === t.value;
@@ -5116,8 +5164,8 @@ const ActivitiesPage = () => {
                       <div className="max-h-[300px] overflow-y-auto space-y-1">
                         {(() => {
                           const baseActivities = displayedActivities;
-                          const typeSummary = allKnownActivityTypes.map(t => {
-                            const typeActs = baseActivities.filter(a => a.activity_type === t.value);
+                          const typeSummary = tiposParaResumo.map(t => {
+                            const typeActs = baseActivities.filter(a => t.aliases.includes(a.activity_type));
                             const openCount = typeActs.filter(a => a.status !== 'concluida').length;
                             const doneCount = typeActs.filter(a => a.status === 'concluida').length;
                             return { ...t, openCount, doneCount, total: typeActs.length };
@@ -5204,9 +5252,9 @@ const ActivitiesPage = () => {
                             const memberActivities = baseActivities.filter(a => a.assigned_to === member.user_id);
                             if (memberActivities.length === 0) return null;
 
-                            const typeRows = allKnownActivityTypes
+                            const typeRows = tiposParaResumo
                               .map(t => {
-                                const typeActs = memberActivities.filter(a => a.activity_type === t.value);
+                                const typeActs = memberActivities.filter(a => t.aliases.includes(a.activity_type));
                                 const open = typeActs.filter(a => a.status !== 'concluida').length;
                                 const done = typeActs.filter(a => a.status === 'concluida').length;
                                 return { label: t.label, open, done };
