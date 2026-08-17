@@ -218,6 +218,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formCoAssignees, setFormCoAssignees] = useState<{ user_id: string; full_name: string }[]>([]);
   const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
   const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
+  // Expande o sheet para ocupar quase toda a largura da tela.
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
   // Responsáveis (Cloud UUID) da atividade como ela foi carregada — base para saber
   // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
