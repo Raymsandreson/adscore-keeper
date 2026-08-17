@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { EntityFinancialsPanel, buildFinancialLinkOptions } from '@/components/finance/EntityFinancialsPanel';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
@@ -218,6 +218,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formCoAssignees, setFormCoAssignees] = useState<{ user_id: string; full_name: string }[]>([]);
   const [loadedHadCoAssignees, setLoadedHadCoAssignees] = useState(false);
   const [formObservers, setFormObservers] = useState<{ user_id: string; full_name: string }[]>([]);
+  // Expande o sheet para ocupar quase toda a largura da tela.
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [loadedHadObservers, setLoadedHadObservers] = useState(false);
   // Responsáveis (Cloud UUID) da atividade como ela foi carregada — base para saber
   // se EU passei a atividade para outra pessoa e oferecer ficar como observador.
@@ -1339,7 +1341,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) handleClose(); else onOpenChange(o); }}>
-      <SheetContent side={side} className={cn('w-full sm:max-w-2xl flex flex-col p-0', contentClassName)}>
+      <SheetContent side={side} className={cn('w-full flex flex-col p-0 transition-all', isFullscreen ? 'sm:max-w-[95vw]' : 'sm:max-w-2xl', contentClassName)}>
         <SheetHeader className="px-4 pt-4 pb-2 shrink-0 border-b">
           <div className="flex items-start justify-between gap-2">
             <SheetTitle
@@ -1593,9 +1595,18 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
               {!isCreate && (
                 <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
-                  <ExternalLink className="h-3 w-3" /> Tela cheia
+                  <ExternalLink className="h-3 w-3" /> Atividade
                 </Button>
               )}
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsFullscreen(v => !v)}
+                className="h-8 w-8 shrink-0"
+                title={isFullscreen ? 'Sair da tela cheia' : 'Expandir para tela cheia'}
+              >
+                {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+              </Button>
               <Button
                 variant="ghost"
                 size="icon"

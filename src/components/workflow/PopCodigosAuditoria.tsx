@@ -89,13 +89,13 @@ export function PopCodigosAuditoria({ boardId }: Props) {
     setSalvando(codigo);
     try {
       await ensureExternalSession();
-      const { error } = await db.from('pop_marco_sinais').insert({
+      const { error } = await (db as any).from('pop_marco_sinais').insert({
         pop_marco_id: marcoId, tipo: 'tpu', codigo,
         // `origem` só aceita 'manual' | 'ia' (check constraint). Foi gente que
         // decidiu na auditoria, então é manual — e confirmado.
         origem: 'manual', confirmado: true,
         motivo: 'cadastrado na auditoria de códigos do POP',
-      } as never);
+      });
       if (error) throw new Error(error.message);
       toast.success('Sinal cadastrado. Vale para as próximas detecções.');
       await carregar();
@@ -111,8 +111,8 @@ export function PopCodigosAuditoria({ boardId }: Props) {
     try {
       await ensureExternalSession();
       const q = desfazer
-        ? db.from('pop_tpu_ignorado').delete().eq('board_id', boardId).eq('codigo', codigo)
-        : db.from('pop_tpu_ignorado').insert({ board_id: boardId, codigo } as never);
+        ? (db as any).from('pop_tpu_ignorado').delete().eq('board_id', boardId).eq('codigo', codigo)
+        : (db as any).from('pop_tpu_ignorado').insert({ board_id: boardId, codigo });
       const { error } = await q;
       if (error) throw new Error(error.message);
       await carregar();
