@@ -59,7 +59,7 @@ export interface UpdateNotificacao {
 }
 
 // Exportado porque o sino precisa saber quando a lista está no teto: um período
-// que abrange tudo que foi carregado vira "600+" no chip, e não "600" cravado.
+// que abrange tudo que foi carregado vira "5000+" no chip, e não número cravado.
 //
 // Era 100, e 100 mentia: em 12/08/2026 o banco tinha 452 movimentações nos
 // últimos 30 dias e 1882 no total, mas a busca pegava as 100 mais recentes de
@@ -67,12 +67,28 @@ export interface UpdateNotificacao {
 // distante era 09/12/2026), essas 100 começavam em dezembro e terminavam em
 // 04/08. O chip dizia "30 dias (100+)" para 452, e as 352 restantes não
 // existiam em lugar nenhum da tela.
-export const FETCH_LIMIT = 600;
+//
+// Depois foi 600, e 600 passou a cortar de novo: em 17/08/2026 a janela de 30
+// dias tinha 974 movimentações, então "Marcar todas" no lote pegava 600 de 974 —
+// número redondo demais para alguém desconfiar. Agora a busca PAGINA até o
+// filtro acabar (ver PAGINA_BUSCA) e isto virou só teto de segurança: a tabela
+// inteira pesa 275 kB nas colunas de texto (2576 linhas, ~750 B por linha), logo
+// 5000 linhas são ~3,7 MB — caro o suficiente para valer um limite, longe o
+// suficiente para não cortar uso real.
+export const FETCH_LIMIT = 5000;
 
 /**
- * Janela padrão da busca, em dias. O sino carrega o PERÍODO inteiro (e o teto
- * passa a valer dentro dele), em vez das N linhas mais recentes da tabela — é o
- * que faz o chip de 30 dias contar 452 e abrir 452.
+ * Linhas por requisição da paginação. 1000 é o teto que o PostgREST devolve por
+ * request no Supabase; pedir mais numa só chamada é silenciosamente truncado —
+ * que era como as 974 viravam 600 sem ninguém ver.
+ */
+const PAGINA_BUSCA = 1000;
+
+/**
+ * Janela padrão da busca, em dias. O sino carrega o PERÍODO inteiro — todas as
+ * linhas dele, paginando — em vez das N linhas mais recentes da tabela: é o que
+ * faz o chip de 30 dias contar 974 e abrir 974. Clicar em "Tudo" tira a janela e
+ * carrega a tabela inteira.
  */
 export const JANELA_DIAS = 30;
 
@@ -80,12 +96,14 @@ export const JANELA_DIAS = 30;
 // proxy nenhum entrega. Em lotes, a etiqueta continua chegando.
 const LOTE_IDS = 200;
 
+// Em paralelo, não em fila: com a busca paginada são até 5000 ids, ou 25 lotes
+// por tabela — em série isso somava dezenas de idas ao banco antes do sino
+// aparecer. São só leituras por `in (...)`, então não há ordem a respeitar.
 async function emLotes<T>(ids: string[], fn: (chunk: string[]) => Promise<T[]>): Promise<T[]> {
-  const out: T[] = [];
-  for (let i = 0; i < ids.length; i += LOTE_IDS) {
-    out.push(...await fn(ids.slice(i, i + LOTE_IDS)));
-  }
-  return out;
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += LOTE_IDS) chunks.push(ids.slice(i, i + LOTE_IDS));
+  const partes = await Promise.all(chunks.map(fn));
+  return partes.flat();
 }
 
 /** Mesma ordem do `order()` da busca — usada para reencaixar o que vem do realtime. */
@@ -94,7 +112,11 @@ const ordemDoFeed = (a: ProcessUpdate, b: ProcessUpdate): number => {
   const dbb = b.data_movimentacao || '';
   // Sem data de movimentação vai para o fim, igual ao nullsFirst: false.
   if (da !== dbb) return da && dbb ? (da < dbb ? 1 : -1) : (da ? -1 : 1);
-  return a.created_at < b.created_at ? 1 : -1;
+  if (a.created_at !== b.created_at) return a.created_at < b.created_at ? 1 : -1;
+  // Terceiro critério igual ao da busca: empate em data + created_at é comum
+  // (1164 linhas), e sem o desempate pela PK a linha vinda do realtime cairia em
+  // posição diferente da que a próxima busca daria para ela.
+  return a.id < b.id ? 1 : -1;
 };
 
 const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at, eventos, resumo_ia';
@@ -158,7 +180,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
       // FETCH_LIMIT vagas eram disputadas pela tabela inteira — e audiência
       // designada, que entra com data futura, ficava com as primeiras.
       // `count: 'exact'` vem junto para o chip saber dizer "452", e não "600+".
-      const buscar = (colunas: string) => {
+      const buscar = (colunas: string, de: number, ate: number) => {
         let q = client.from('process_updates').select(colunas, { count: 'exact' });
         if (scopeProcessId) q = q.eq('process_id', scopeProcessId);
         // Linha sem data de movimentação não pode sumir do período: o card e o
@@ -167,18 +189,65 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
         return q
           .order('data_movimentacao', { ascending: false, nullsFirst: false })
           .order('created_at', { ascending: false })
-          .limit(FETCH_LIMIT);
+          // Desempate pela PK, obrigatório para a paginação. Sem ele a ordem não
+          // é total — a tabela tem 313 grupos de empate em
+          // (data_movimentacao, created_at), o maior com 20 linhas (17/08/2026) —
+          // e o Postgres não garante a mesma ordem entre duas requisições. Na
+          // fronteira de uma página isso não só repete linha (o dedupe pegaria):
+          // ele PULA linha, que é o modo silencioso de "todas" não ser todas.
+          .order('id', { ascending: false })
+          .range(de, ate);
       };
 
-      let { data, error, count } = await buscar(COLUNAS);
-      if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_RESUMO));
-      if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_EVENTOS));
-      if (error) ({ data, error, count } = await buscar(COLUNAS_SEM_ESFERA));
-      if (error) throw error;
-      setTotalNoBanco(typeof count === 'number' ? count : null);
+      // A primeira página decide o conjunto de colunas que este banco aceita (os
+      // degraus de recuo acima); as seguintes reusam o mesmo, senão cada página
+      // repetiria as quatro tentativas.
+      let colunas = COLUNAS;
+      let pagina = await buscar(colunas, 0, PAGINA_BUSCA - 1);
+      for (const alternativa of [COLUNAS_SEM_RESUMO, COLUNAS_SEM_EVENTOS, COLUNAS_SEM_ESFERA]) {
+        if (!pagina.error) break;
+        colunas = alternativa;
+        pagina = await buscar(colunas, 0, PAGINA_BUSCA - 1);
+      }
+      if (pagina.error) throw pagina.error;
+
+      const count: number | null = typeof pagina.count === 'number' ? pagina.count : null;
+      setTotalNoBanco(count);
+
+      // "Todas" tem que ser literalmente todas: pagina até o filtro acabar, em
+      // vez de parar na primeira fatia. O que segura é o teto de segurança.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const brutas: any[] = [...(pagina.data || [])];
+      while (
+        (pagina.data?.length || 0) === PAGINA_BUSCA
+        && brutas.length < FETCH_LIMIT
+        && (count === null || brutas.length < count)
+      ) {
+        const ate = Math.min(brutas.length + PAGINA_BUSCA, FETCH_LIMIT) - 1;
+        pagina = await buscar(colunas, brutas.length, ate);
+        if (pagina.error) {
+          // Página seguinte falhou: fica com o que já veio em vez de zerar o
+          // sino. `totalNoBanco` continua maior que o carregado, então o chip
+          // mostra o "+" e a conta não mente.
+          console.warn('[useProcessUpdates] paginação interrompida:', pagina.error.message);
+          break;
+        }
+        brutas.push(...(pagina.data || []));
+      }
+
+      // Uma linha nova inserida no meio da paginação empurra o offset e faria a
+      // mesma movimentação vir em duas páginas — e id repetido no feed é chave
+      // repetida no React.
+      const vistos = new Set<string>();
+      const unicas = brutas.filter((r) => {
+        if (vistos.has(r.id)) return false;
+        vistos.add(r.id);
+        return true;
+      });
+
       // Linha antiga (ou banco sem a coluna): classifica pelo CNJ na hora, para
       // o filtro por ramo já valer sem esperar o backfill.
-      const rows = ((data || []) as ProcessUpdate[]).map((r) => ({
+      const rows = (unicas as ProcessUpdate[]).map((r) => ({
         ...r,
         esfera: r.esfera || classificarEsfera({ numeroCnj: r.numero_cnj, titulo: r.processo_titulo }),
         eventos: Array.isArray(r.eventos) ? r.eventos : null,

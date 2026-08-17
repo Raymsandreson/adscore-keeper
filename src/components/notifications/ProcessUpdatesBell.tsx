@@ -312,6 +312,35 @@ const ESFERA_STORAGE_KEY = 'process_updates_esfera_filtro';
 const PAGINA = 100;
 
 /**
+ * Preparo do lote em paralelo limitado.
+ *
+ * Cada cliente custa ~4 idas ao banco (lead + processo + POP + cargos), e
+ * "Marcar todas" num mês são 124 clientes com grupo (973 movimentações / 209
+ * leads no Externo em 17/08/2026) — em série isso é minuto de tela parada.
+ * Cinco de cada vez porque são só leituras; mais que isso é fila no Supabase
+ * sem ganho de tempo.
+ */
+const PREPARO_CONCORRENCIA = 5;
+
+/**
+ * Cadência do disparo. Espaçamento POR INSTÂNCIA, não só global: as 124
+ * mensagens de um mês saem por 9 instâncias, mas 46 delas pela mesma
+ * ("Atendimento Processual") e 33 por outra ("Raym"). Um `setTimeout` chapado
+ * entre clientes deixaria essas 46 saírem quase encostadas — que é o caminho
+ * curto para a UazAPI derrubar o número da firma.
+ */
+const GAP_MESMA_INSTANCIA_MS = 4000;
+/** Piso entre duas mensagens quaisquer, mesmo por números diferentes. */
+const GAP_GLOBAL_MS = 1200;
+/** Custo estimado do trabalho por cliente (atividade + envio + etiquetas). */
+const TRABALHO_POR_CLIENTE_MS = 2500;
+/**
+ * Acima disto o lote deixa de ser "avisar quem caiu movimentação hoje" e passa
+ * a ser disparo em massa: a revisão exige confirmação explícita do risco.
+ */
+const LOTE_GRANDE = 25;
+
+/**
  * Sino de atualizações processuais.
  *
  * Com `processId`, o mesmo painel vira atalho de UM processo — é o que a ficha
@@ -367,6 +396,12 @@ export function ProcessUpdatesBell({
   const [loteExpandido, setLoteExpandido] = useState<Set<string>>(new Set());
   /** Progresso do disparo: sem isso, 30 clientes são 45s de tela parada. */
   const [loteProgresso, setLoteProgresso] = useState<{ feitos: number; total: number } | null>(null);
+  /** Progresso do PREPARO — com 124 clientes o spinner sozinho parece travado. */
+  const [preparoProgresso, setPreparoProgresso] = useState<{ feitos: number; total: number } | null>(null);
+  /** Clientes cujo contexto não carregou: entram na revisão como aviso, não como silêncio. */
+  const [preparoFalhas, setPreparoFalhas] = useState<string[]>([]);
+  /** Ciente do risco de volume — só pedido acima de LOTE_GRANDE clientes. */
+  const [riscoAceito, setRiscoAceito] = useState(false);
 
   // ---- Destaque de CHEGADA ----
   // Separado do "tem não-lida": o anel vermelho fica enquanto houver pendência,
@@ -461,9 +496,10 @@ export function ProcessUpdatesBell({
   }, [baseSemPeriodo, faixas]);
 
   // Sobrou movimentação no banco fora do que foi carregado? Só então o chip
-  // ganha "+". Com a janela de 30 dias (452 linhas em 12/08/2026) o teto de
-  // FETCH_LIMIT não é alcançado e os números passam a ser exatos — o "+"
-  // sobrevive para o caso de a janela estourar o teto um dia.
+  // ganha "+". A busca agora pagina até o filtro acabar, então na prática os
+  // números são exatos (974 em 30 dias, 2576 na tabela em 17/08/2026) e o "+"
+  // só aparece se o teto de segurança de FETCH_LIMIT for alcançado — o que
+  // importa, porque é exatamente aí que "Marcar todas" deixaria de ser todas.
   const noTeto = updates.length >= FETCH_LIMIT || (totalNoBanco !== null && totalNoBanco > updates.length);
 
   const countByCategoria = useMemo(() => {
@@ -551,6 +587,13 @@ export function ProcessUpdatesBell({
     chave: string;
     leadName: string | null;
     groupJid: string | null;
+    /**
+     * Por qual número a mensagem sai. Resolvido no PREPARO, não no disparo: é o
+     * que permite mostrar na revisão quantas mensagens cada instância vai
+     * carregar e espaçar o envio por instância. `undefined` = sem histórico
+     * utilizável, a edge send-whatsapp escolhe.
+     */
+    instanceName: string | undefined;
     principal: ProcessUpdate;
     updates: ProcessUpdate[];
     ctx: ContextoUpdate;
@@ -937,78 +980,122 @@ export function ProcessUpdatesBell({
     setSelecionados(new Set());
   }, []);
 
-  // Só o que está na tela conta: seleção que sobrevive à troca de filtro
-  // mandaria mensagem que a pessoa não está mais vendo.
-  const selecionadosVisiveis = useMemo(
-    () => paginadas.filter((u) => selecionados.has(u.id)),
-    [paginadas, selecionados],
+  // O que conta é o FILTRO, não a paginação. `paginadas` é detalhe de
+  // renderização (100 por vez): com 384 linhas em "7 dias", marcar tudo só
+  // pegava as 100 na tela e as outras 284 sumiam do lote sem aviso. O filtro
+  // continua sendo o limite — seleção não atravessa troca de período/categoria,
+  // senão sairia mensagem do que a pessoa não está mais vendo.
+  const selecionadosNoFiltro = useMemo(
+    () => filtered.filter((u) => selecionados.has(u.id)),
+    [filtered, selecionados],
   );
 
   const clientesSelecionados = useMemo(
-    () => new Set(selecionadosVisiveis.map(chaveDoCliente)).size,
-    [selecionadosVisiveis],
+    () => new Set(selecionadosNoFiltro.map(chaveDoCliente)).size,
+    [selecionadosNoFiltro],
   );
 
-  const todosVisiveisMarcados = paginadas.length > 0 && selecionadosVisiveis.length === paginadas.length;
+  const todasDoFiltroMarcadas = filtered.length > 0 && selecionadosNoFiltro.length === filtered.length;
 
-  const alternarTodosVisiveis = useCallback(() => {
+  /** Marca (ou limpa) TUDO que o filtro atual devolve, renderizado ou não. */
+  const alternarTodasDoFiltro = useCallback(() => {
     setSelecionados((prev) => {
       const next = new Set(prev);
-      const marcar = !paginadas.every((u) => next.has(u.id));
-      for (const u of paginadas) {
+      const marcar = !filtered.every((u) => next.has(u.id));
+      for (const u of filtered) {
         if (marcar) next.add(u.id); else next.delete(u.id);
       }
       return next;
     });
-  }, [paginadas]);
+  }, [filtered]);
 
   /** Agrupa por cliente, monta a mensagem de cada um e abre a revisão. */
   const prepararLote = async () => {
-    if (!selecionadosVisiveis.length) return;
+    if (!selecionadosNoFiltro.length) return;
     setPreparandoLote(true);
+    setPreparoFalhas([]);
+    setRiscoAceito(false);
     try {
       const porCliente = new Map<string, ProcessUpdate[]>();
-      for (const u of selecionadosVisiveis) {
+      for (const u of selecionadosNoFiltro) {
         const k = chaveDoCliente(u);
         porCliente.set(k, [...(porCliente.get(k) || []), u]);
       }
+      const entradas = [...porCliente.entries()];
+      setPreparoProgresso({ feitos: 0, total: entradas.length });
 
-      const preparados: LoteCliente[] = [];
-      for (const [chave, ups] of porCliente) {
-        const principal = movimentacaoPrincipal(ups);
-        const ctx = await carregarContexto(principal);
-        const campos = camposConsolidados(ups, ctx.passoAtual?.stepLabel || null);
-        preparados.push({
-          chave,
-          leadName: ctx.lead?.lead_name || null,
-          groupJid: ctx.lead?.whatsapp_group_id || null,
-          principal,
-          updates: ups,
-          ctx,
-          campos,
-          message: montarMensagem(principal, ctx, null, campos),
-          reenvio: ups.some((x) => notificadas.has(x.id)),
-          semContexto: ctx.steps.length === 0 && !ctx.fase,
-        });
-      }
+      // Índice preservado (array esparso + filter no fim) para o resultado não
+      // depender da ordem em que as promessas voltaram.
+      const preparados: Array<LoteCliente | undefined> = new Array(entradas.length);
+      const falhas: string[] = [];
+      let cursor = 0;
+      let feitos = 0;
+
+      const trabalhar = async () => {
+        while (cursor < entradas.length) {
+          const i = cursor++;
+          const [chave, ups] = entradas[i];
+          const principal = movimentacaoPrincipal(ups);
+          try {
+            const ctx = await carregarContexto(principal);
+            const campos = camposConsolidados(ups, ctx.passoAtual?.stepLabel || null);
+            const groupJid = ctx.lead?.whatsapp_group_id || null;
+            preparados[i] = {
+              chave,
+              leadName: ctx.lead?.lead_name || null,
+              groupJid,
+              instanceName: groupJid ? await resolveGroupSenderInstanceName(groupJid) : undefined,
+              principal,
+              updates: ups,
+              ctx,
+              campos,
+              message: montarMensagem(principal, ctx, null, campos),
+              reenvio: ups.some((x) => notificadas.has(x.id)),
+              semContexto: ctx.steps.length === 0 && !ctx.fase,
+            };
+          } catch (err) {
+            // Um lead com dado quebrado não pode derrubar o preparo dos outros
+            // 123 — a pessoa perderia minutos de espera e não saberia por quê.
+            console.error('[ProcessUpdatesBell] preparo — falha em', principal.id, err);
+            falhas.push(principal.processo_titulo || principal.numero_cnj || 'processo sem título');
+          }
+          feitos++;
+          setPreparoProgresso({ feitos, total: entradas.length });
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(PREPARO_CONCORRENCIA, entradas.length) }, trabalhar),
+      );
 
       // Quem não vai sair fica no fim da revisão: o que precisa de decisão é o
       // que vai ser enviado.
-      preparados.sort((a, b) => Number(!!b.groupJid) - Number(!!a.groupJid));
-      setLote(preparados);
+      const prontos = preparados.filter((c): c is LoteCliente => !!c);
+      prontos.sort((a, b) => Number(!!b.groupJid) - Number(!!a.groupJid));
+      setPreparoFalhas(falhas);
+      if (!prontos.length) {
+        toast.error('Nenhuma mensagem pôde ser preparada');
+        return;
+      }
+      setLote(prontos);
     } catch (err) {
       console.error('[ProcessUpdatesBell] preparo do lote:', err);
       toast.error('Erro ao preparar as mensagens do lote');
     } finally {
       setPreparandoLote(false);
+      setPreparoProgresso(null);
     }
   };
 
   /**
-   * Dispara. Em série e com respiro entre um cliente e outro — a mesma cadência
-   * do envio de lista de transmissão (useBroadcastLists): trinta mensagens de
-   * uma vez pela mesma instância é o caminho curto para a UazAPI derrubar o
-   * número da firma.
+   * Dispara. Em série e com respiro entre um cliente e outro, mas o respiro é
+   * contado POR INSTÂNCIA: numa seleção de mês inteiro, 46 das 124 mensagens
+   * saem pelo mesmo número, e é a fila daquele número que derruba a conta na
+   * UazAPI — não o total. Instâncias diferentes só respeitam o piso global.
+   *
+   * A espera vem ANTES do envio e desconta o tempo que o trabalho do cliente já
+   * gastou (atividade + etiquetas): pausa depois somaria em cima do que já
+   * passou e dobraria a duração sem ganho de proteção.
    */
   const confirmarLote = async () => {
     const alvos = (lote || []).filter((c) => c.groupJid);
@@ -1018,6 +1105,9 @@ export function ProcessUpdatesBell({
 
     let enviados = 0;
     const falhas: string[] = [];
+    const ultimoPorInstancia = new Map<string, number>();
+    let ultimoEnvio = 0;
+
     for (const [i, cliente] of alvos.entries()) {
       try {
         // A atividade nasce agora, com o texto que o cliente vai receber, e uma
@@ -1027,7 +1117,17 @@ export function ProcessUpdatesBell({
           agrupadas: cliente.updates,
         });
 
-        const instanceName = await resolveGroupSenderInstanceName(cliente.groupJid!);
+        // Instância já resolvida no preparo — é a mesma que a revisão mostrou.
+        const instanceName = cliente.instanceName;
+        const chaveInstancia = instanceName || '(escolhida pela edge)';
+        const agora = Date.now();
+        const anteriorDaInstancia = ultimoPorInstancia.get(chaveInstancia);
+        const espera = Math.max(
+          ultimoEnvio ? GAP_GLOBAL_MS - (agora - ultimoEnvio) : 0,
+          anteriorDaInstancia ? GAP_MESMA_INSTANCIA_MS - (agora - anteriorDaInstancia) : 0,
+        );
+        if (espera > 0) await new Promise((r) => setTimeout(r, espera));
+
         const sendBody: Record<string, unknown> = {
           phone: cliente.groupJid,
           chat_id: cliente.groupJid,
@@ -1037,25 +1137,27 @@ export function ProcessUpdatesBell({
         if (instanceName) sendBody.instance_name = instanceName;
 
         const { data, error } = await cloudFunctions.invoke('send-whatsapp', { body: sendBody });
+        const marcado = Date.now();
+        ultimoEnvio = marcado;
+        ultimoPorInstancia.set(chaveInstancia, marcado);
         if (error || !data?.success) throw new Error(data?.error || 'envio recusado');
 
         enviados++;
         // Etiqueta em TODAS as movimentações que a mensagem cobriu, com a mesma
-        // atividade: senão as outras cinco continuariam pedindo aviso.
-        for (const u of cliente.updates) {
-          markRead(u.id);
-          await markNotified(u.id, {
-            activityId: atividade?.id || null,
-            groupJid: cliente.groupJid,
-            notifiedByName: profile?.full_name || null,
-          });
-        }
+        // atividade: senão as outras cinco continuariam pedindo aviso. Em
+        // paralelo porque um cliente com seis movimentações eram seis idas ao
+        // banco em fila, vezes 124 clientes.
+        for (const u of cliente.updates) markRead(u.id);
+        await Promise.all(cliente.updates.map((u) => markNotified(u.id, {
+          activityId: atividade?.id || null,
+          groupJid: cliente.groupJid,
+          notifiedByName: profile?.full_name || null,
+        })));
       } catch (err) {
         console.error('[ProcessUpdatesBell] lote — falha em', cliente.leadName, err);
         falhas.push(cliente.leadName || 'cliente sem nome');
       }
       setLoteProgresso({ feitos: i + 1, total: alvos.length });
-      if (i < alvos.length - 1) await new Promise((r) => setTimeout(r, 1500));
     }
 
     setLoteProgresso(null);
@@ -1073,6 +1175,34 @@ export function ProcessUpdatesBell({
   const loteComGrupo = (lote || []).filter((c) => c.groupJid);
   const loteSemGrupo = (lote || []).filter((c) => !c.groupJid);
   const loteReenvios = loteComGrupo.filter((c) => c.reenvio).length;
+
+  /**
+   * Quantas mensagens cada número vai carregar. É a informação que decide se o
+   * lote é seguro: 124 mensagens espalhadas por 9 instâncias é uma coisa, 46
+   * pelo mesmo número é outra — e só isto aqui mostra a diferença antes do
+   * clique.
+   */
+  const distribuicaoInstancia = (() => {
+    const acc = new Map<string, number>();
+    for (const c of loteComGrupo) {
+      const k = c.instanceName || 'número escolhido no envio';
+      acc.set(k, (acc.get(k) || 0) + 1);
+    }
+    return [...acc.entries()].sort((a, b) => b[1] - a[1]);
+  })();
+  const maiorFilaDeInstancia = distribuicaoInstancia[0]?.[1] || 0;
+
+  // O que manda na duração é o maior dos dois: o trabalho em série de todos os
+  // clientes ou a fila do número mais carregado.
+  const duracaoEstimadaMs = Math.max(
+    loteComGrupo.length * Math.max(TRABALHO_POR_CLIENTE_MS, GAP_GLOBAL_MS),
+    maiorFilaDeInstancia * GAP_MESMA_INSTANCIA_MS,
+  );
+  const duracaoEstimada = duracaoEstimadaMs < 90_000
+    ? `${Math.max(5, Math.ceil(duracaoEstimadaMs / 1000 / 5) * 5)} segundos`
+    : `${Math.ceil(duracaoEstimadaMs / 60_000)} minutos`;
+  const loteGrande = loteComGrupo.length > LOTE_GRANDE;
+  const podeEnviarLote = loteComGrupo.length > 0 && (!loteGrande || riscoAceito);
 
   return (
     <>
@@ -1376,35 +1506,47 @@ export function ProcessUpdatesBell({
         {modoSelecao && (
           <div className="border-t bg-muted/40 px-3 py-2 shrink-0 space-y-2">
             <div className="flex items-center justify-between gap-2">
+              {/* Marca TODO o filtro, não só as 100 renderizadas — com 384 em
+                  "7 dias" a diferença é 284 movimentações que ficavam de fora
+                  do lote sem ninguém perceber. */}
               <button
                 type="button"
-                onClick={alternarTodosVisiveis}
+                onClick={alternarTodasDoFiltro}
                 className="text-[11px] text-primary hover:underline shrink-0"
+                title={
+                  todasDoFiltroMarcadas
+                    ? 'Desmarcar tudo'
+                    : `Marcar todas as ${filtered.length} movimentações deste filtro, inclusive as que ainda não apareceram na lista`
+                }
               >
-                {todosVisiveisMarcados ? 'Limpar seleção' : `Marcar as ${paginadas.length} da lista`}
+                {todasDoFiltroMarcadas ? 'Limpar seleção' : `Marcar todas as ${filtered.length}`}
               </button>
               <span className="text-[11px] text-muted-foreground truncate">
-                {selecionadosVisiveis.length === 0
+                {selecionadosNoFiltro.length === 0
                   ? 'Nenhuma marcada'
-                  : `${selecionadosVisiveis.length} ${selecionadosVisiveis.length === 1 ? 'movimentação' : 'movimentações'} · ${clientesSelecionados} ${clientesSelecionados === 1 ? 'cliente' : 'clientes'}`}
+                  : `${selecionadosNoFiltro.length} ${selecionadosNoFiltro.length === 1 ? 'movimentação' : 'movimentações'} · ${clientesSelecionados} ${clientesSelecionados === 1 ? 'cliente' : 'clientes'}`}
               </span>
             </div>
             <Button
               size="sm"
               className="w-full h-8 text-xs gap-1.5"
-              disabled={selecionadosVisiveis.length === 0 || preparandoLote || !!loteProgresso}
+              disabled={selecionadosNoFiltro.length === 0 || preparandoLote || !!loteProgresso}
               onClick={prepararLote}
             >
               {preparandoLote || loteProgresso ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
               {loteProgresso
                 ? `Enviando ${loteProgresso.feitos}/${loteProgresso.total}...`
                 : preparandoLote
-                  ? 'Montando as mensagens...'
+                  // Com 124 clientes o preparo leva ~1 min; sem o contador a
+                  // pessoa acha que travou e recarrega a página no meio.
+                  ? preparoProgresso
+                    ? `Montando as mensagens ${preparoProgresso.feitos}/${preparoProgresso.total}...`
+                    : 'Montando as mensagens...'
                   : `Notificar ${clientesSelecionados || ''} ${clientesSelecionados === 1 ? 'cliente' : 'clientes'}`.trim()}
             </Button>
             {/* Uma mensagem por cliente é o ponto do recurso — dizer isso antes
                 do clique evita o medo de "vou mandar 43 mensagens". */}
-            {selecionadosVisiveis.length > clientesSelecionados && (
+            {selecionadosNoFiltro.length > clientesSelecionados && (
               <p className="text-[10px] text-muted-foreground leading-snug">
                 Clientes com mais de uma movimentação recebem <strong>uma mensagem só</strong>, com todas juntas.
               </p>
@@ -1458,7 +1600,16 @@ export function ProcessUpdatesBell({
     {/* Revisão do lote: uma linha por CLIENTE, com o texto inteiro sob clique.
         Nada sai sem alguém ter podido ler — é o que separa isto de notificar
         automaticamente. */}
-    <AlertDialog open={!!lote} onOpenChange={(o) => !o && setLote(null)}>
+    <AlertDialog
+      open={!!lote}
+      onOpenChange={(o) => {
+        if (o) return;
+        setLote(null);
+        // O "entendi o risco" não sobrevive ao fechamento: o próximo lote pode
+        // ter outro tamanho e outra distribuição de números.
+        setRiscoAceito(false);
+      }}
+    >
       <AlertDialogContent className="max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle>
@@ -1470,9 +1621,62 @@ export function ProcessUpdatesBell({
             <div className="space-y-2 text-left">
               <p className="text-[11px]">
                 Cada cliente recebe <strong>uma mensagem</strong>, com todas as movimentações dele juntas.
-                O envio é em série, com pausa entre um e outro — leva cerca de{' '}
-                {Math.max(1, Math.ceil((loteComGrupo.length * 1.5) / 5) * 5)} segundos.
+                O envio é em série, com pausa maior entre mensagens do mesmo número — leva cerca de{' '}
+                <strong>{duracaoEstimada}</strong>. A aba precisa ficar aberta até o fim.
               </p>
+              {/* Por qual número cada mensagem sai. É o dado que decide se o
+                  lote é seguro — total alto espalhado é tranquilo, total baixo
+                  concentrado num número só é que dá problema. */}
+              {distribuicaoInstancia.length > 0 && (
+                <div className="text-[11px] rounded-md border bg-muted/50 p-2 space-y-0.5">
+                  <p className="text-muted-foreground">Sai por:</p>
+                  {distribuicaoInstancia.map(([nome, qtd]) => (
+                    <p key={nome} className="flex justify-between gap-2">
+                      <span className="truncate">{nome}</span>
+                      <span className="shrink-0 font-medium">
+                        {qtd} {qtd === 1 ? 'mensagem' : 'mensagens'}
+                      </span>
+                    </p>
+                  ))}
+                </div>
+              )}
+              {loteGrande && (
+                <div className="text-[11px] rounded-md border border-red-500/40 bg-red-500/10 p-2 space-y-1.5">
+                  <p className="flex items-start gap-1.5 text-red-600 dark:text-red-400">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                    <span>
+                      Lote grande: <strong>{loteComGrupo.length} mensagens</strong>, sendo{' '}
+                      <strong>{maiorFilaDeInstancia}</strong> pelo mesmo número
+                      {distribuicaoInstancia[0] ? ` (${distribuicaoInstancia[0][0]})` : ''}.
+                      Volume assim em sequência é o que faz o WhatsApp bloquear a linha —
+                      e uma linha bloqueada leva os atendimentos dela junto.
+                    </span>
+                  </p>
+                  {/* `htmlFor` em vez de <label> por fora: o Checkbox do Radix é
+                      um <button>, e envolver botão em label não repassa o
+                      clique do texto — a caixa ficaria com mira de 16px. */}
+                  <div className="flex items-start gap-1.5">
+                    <Checkbox
+                      id="lote-risco-aceito"
+                      checked={riscoAceito}
+                      onCheckedChange={(v) => setRiscoAceito(v === true)}
+                      className="mt-px shrink-0"
+                    />
+                    <label htmlFor="lote-risco-aceito" className="cursor-pointer">
+                      Entendi o risco e quero enviar mesmo assim.
+                    </label>
+                  </div>
+                </div>
+              )}
+              {preparoFalhas.length > 0 && (
+                <p className="text-[11px] flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
+                  {preparoFalhas.length === 1
+                    ? '1 movimentação não pôde ser preparada e ficou de fora'
+                    : `${preparoFalhas.length} movimentações não puderam ser preparadas e ficaram de fora`}
+                  {preparoFalhas.length <= 3 ? ` (${preparoFalhas.join(', ')})` : ''}.
+                </p>
+              )}
               {loteReenvios > 0 && (
                 <p className="text-[11px] flex items-start gap-1.5 text-amber-600 dark:text-amber-400">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-px" />
@@ -1538,7 +1742,7 @@ export function ProcessUpdatesBell({
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <AlertDialogAction onClick={confirmarLote} disabled={loteComGrupo.length === 0}>
+          <AlertDialogAction onClick={confirmarLote} disabled={!podeEnviarLote}>
             Enviar {loteComGrupo.length} {loteComGrupo.length === 1 ? 'mensagem' : 'mensagens'}
           </AlertDialogAction>
         </AlertDialogFooter>
