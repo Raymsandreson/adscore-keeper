@@ -33,8 +33,14 @@ const BUCKET = 'jm-autos';
 const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve o que ela diz sobre DINHEIRO e sobre o ESTADO da execução.
 
 Devolva SOMENTE um JSON com estas chaves:
-- "especie": uma de COMPROVANTE_PAGAMENTO | ALVARA | MANIFESTACAO_INADIMPLENCIA | DECISAO | DESPACHO | ATA_AUDIENCIA | SENTENCA | ACORDO | PETICAO_INICIAL | OUTRO
-- "valor": número (use ponto decimal, sem R$ nem separador de milhar) ou null. SÓ preencha se a peça declarar um valor pago, liberado, depositado ou bloqueado. Valor de causa, de condenação genérica ou de honorário arbitrado NÃO conta aqui.
+- "especie": uma de COMPROVANTE_PAGAMENTO | ALVARA | MANIFESTACAO_INADIMPLENCIA | EXTINCAO_QUITACAO | CERTIDAO_TRANSITO | DECISAO | DESPACHO | ATA_AUDIENCIA | SENTENCA | ACORDO | PETICAO_INICIAL | OUTRO
+  * EXTINCAO_QUITACAO: extinção da execução por acordo cumprido / obrigação satisfeita. É prova de que o dinheiro entrou.
+  * CERTIDAO_TRANSITO: certidão de trânsito em julgado.
+- "valor": número (use ponto decimal, sem R$ nem separador de milhar) ou null. SÓ dinheiro que ENTROU ou saiu: pago, liberado, depositado, bloqueado. Condenação NÃO entra aqui — tem campo próprio.
+- "valor_condenacao": valor que a peça FIXA a pagar (indenização, dano moral, dano estético, pensão), ou null. É o que o processo passa a valer, não o que foi pago.
+- "valor_custas": custas processuais fixadas, ou null.
+- "valor_honorario_sucumbencial": honorário de sucumbência fixado, ou null.
+- "beneficiario_valor": nome da parte a quem o valor fixado pertence, quando a peça nomear. null se for global ou não identificável.
 - "data_evento": "AAAA-MM-DD" do fato (pagamento, liberação, bloqueio) ou null.
 - "n_parcela": número da parcela a que o valor se refere, ou null.
 - "destino_valor": COTA_CLIENTE | HONORARIO | AMBOS | INDEFINIDO.
@@ -49,7 +55,9 @@ REGRAS DURAS:
 2. "Homologação de acordo em execução" NÃO é inadimplência — é o oposto. "Extinção da execução" também não.
 3. Mero expediente, publicação, conclusão e remessa não movem dinheiro: especie OUTRO, valor null.
 4. Distinga PROMESSA de PAGAMENTO: acordo dizendo "pagará em 11 parcelas" não é comprovante. Comprovante é o que declara que JÁ foi pago/liberado.
-5. Responda apenas o JSON, sem markdown.`;
+5. Distinga FIXAR de PAGAR: acórdão que majora dano moral para R$ 300.000 preenche valor_condenacao, e valor fica null. Sentença que declara a obrigação satisfeita é EXTINCAO_QUITACAO.
+6. Em litisconsórcio, se a peça fixa valor para uma parte nomeada, preencha beneficiario_valor com o nome dela.
+7. Responda apenas o JSON, sem markdown.`;
 
 interface Documento {
   id: number;
@@ -154,6 +162,10 @@ Deno.serve(async (req: Request) => {
       data_evento: (lido.data_evento as string) ?? null,
       n_parcela: num(lido.n_parcela),
       destino_valor: (lido.destino_valor as string) ?? 'INDEFINIDO',
+      valor_condenacao: num(lido.valor_condenacao),
+      valor_custas: num(lido.valor_custas),
+      valor_honorario_sucumbencial: num(lido.valor_honorario_sucumbencial),
+      beneficiario_valor: (lido.beneficiario_valor as string) ?? null,
       inadimplencia: lido.inadimplencia === true,
       sem_bens: lido.sem_bens === true,
       recuperacao_judicial: lido.recuperacao_judicial === true,
@@ -169,7 +181,11 @@ Deno.serve(async (req: Request) => {
       .upsert(registro, { onConflict: 'documento_id' });
     if (erroGrava) return json({ success: false, documento_id, error: `gravar: ${erroGrava.message}` });
 
-    return json({ success: true, documento_id, especie: registro.especie, valor: registro.valor, inadimplencia: registro.inadimplencia });
+    return json({
+      success: true, documento_id, especie: registro.especie,
+      valor: registro.valor, valor_condenacao: registro.valor_condenacao,
+      inadimplencia: registro.inadimplencia,
+    });
   } catch (e) {
     return json({ success: false, error: String((e as Error)?.message || e).slice(0, 300) });
   }
