@@ -16,6 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { TeamDirectChatPanel } from './TeamDirectChatPanel';
 import { openTeamChatConversation, subscribeToTeamChatConversation, type TeamChatOpenIntent } from '@/lib/teamChatPanelEvents';
+import { resolveOpenActivityOfChain } from '@/lib/activityChatThread';
 
 interface MentionsPanelProps {
   open: boolean;
@@ -222,9 +223,13 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         navigate(`/leads?${boardParam}openLead=${mention.entity_id}${msgParam}`);
         break;
       }
-      case 'activity':
-        navigate(`/?openActivity=${mention.entity_id}${msgParam}`);
+      case 'activity': {
+        // A menção guarda a raiz da cadeia (o chat é dela); quem clica quer a
+        // etapa que está aberta hoje, não a ficha já concluída.
+        const alvo = await resolveOpenActivityOfChain(mention.entity_id);
+        navigate(`/?openActivity=${alvo}${msgParam}`);
         break;
+      }
       case 'contact':
         navigate(`/leads?openContact=${mention.entity_id}${msgParam}`);
         break;
