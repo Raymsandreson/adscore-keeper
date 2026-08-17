@@ -9,7 +9,7 @@
 //
 // STT: ElevenLabs Scribe v2 → fallback Gemini (lib/stt). IA: Gemini (lib/gemini).
 import type { RequestHandler } from 'express';
-import { transcribeAudio } from '../lib/stt';
+import { transcribeAudioDetailed } from '../lib/stt';
 import { geminiChat } from '../lib/gemini';
 
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
@@ -119,6 +119,9 @@ export const handler: RequestHandler = async (req, res) => {
     };
 
     let transcript = (providedTranscript || '').trim();
+    // Motivo real da falha de transcrição, para o erro parar de acusar o
+    // microfone de quem gravou quando quem caiu foi o provedor.
+    let motivoStt: string | undefined;
 
     if (!transcript) {
       if (!audio_url) return ok({ success: false, error: 'audio_url ou transcript obrigatório' });
@@ -131,11 +134,15 @@ export const handler: RequestHandler = async (req, res) => {
       const mime = resp.headers.get('content-type') || 'audio/webm';
 
       // 2) Transcrição fiel (ElevenLabs Scribe v2 → fallback Gemini).
-      transcript = await transcribeAudio(buffer, mime);
+      const stt = await transcribeAudioDetailed(buffer, mime);
+      transcript = stt.text || '';
+      motivoStt = stt.reason;
       if (!transcript || transcript === '[áudio inaudível]') {
         return ok({
           success: false,
-          error: 'Não foi possível transcrever o áudio (inaudível ou vazio).',
+          error: motivoStt
+            ? `Não foi possível transcrever o áudio — ${motivoStt}`
+            : 'Não foi possível transcrever o áudio (inaudível ou vazio).',
           transcript: transcript || '',
         });
       }

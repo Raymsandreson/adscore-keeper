@@ -31,7 +31,12 @@ const ELEVENLABS_API_KEY = process.env.ELEVENLABS_API_KEY || '';
 const VOICE_ID = process.env.TELAO_NARRATOR_VOICE_ID || 'pNInz6obpgDQGcFmaJgB';
 // turbo_v2_5 fala português, custa metade do multilingual_v2 e responde rápido
 // — o telão precisa da fala saindo enquanto o banner da ultrapassagem está lá.
-const MODEL_ID = process.env.TELAO_NARRATOR_MODEL || 'eleven_turbo_v2_5';
+// `eleven_turbo_v2_5` foi APOSENTADO pela ElevenLabs — toda chamada volta 400
+// (verificado 17/08/2026: a autenticação passa, o corpo é recusado). As últimas
+// narrações geradas no bucket são de 05/08/2026; de 06/08 em diante, nenhuma.
+// O substituto oficial é o Flash v2.5, funcionalmente equivalente e com latência
+// menor. Trocar por env var continua valendo.
+const MODEL_ID = process.env.TELAO_NARRATOR_MODEL || 'eleven_flash_v2_5';
 
 const BUCKET = 'whatsapp-media';
 const MAX_CHARS = 220;

@@ -27,7 +27,23 @@ export async function checkElevenLabsCredits(apiKey: string): Promise<ElevenLabs
 
   console.log(`ElevenLabs credits: ${used}/${limit} used, ${remaining} remaining`);
 
-  return { character_count: used, character_limit: limit, remaining, has_credits: remaining > 0 };
+  // Limite ausente/zerado é limite DESCONHECIDO, não cota estourada. A conta
+  // passou a ser medida em créditos (o painel mostra "554.413 créditos"), e se
+  // `character_limit` sumir do /v1/user/subscription o `remaining > 0` cru
+  // devolveria has_credits=false — desligando ElevenLabs (STT primário e TTS)
+  // em silêncio, com log dizendo "sem créditos (0/0)". Na dúvida, tenta: uma
+  // recusa real volta como HTTP e fica registrada, ao contrário do skip mudo.
+  const limiteDesconhecido = !(limit > 0);
+  if (limiteDesconhecido) {
+    console.warn('ElevenLabs: /v1/user/subscription não informou character_limit — seguindo como se houvesse cota');
+  }
+
+  return {
+    character_count: used,
+    character_limit: limit,
+    remaining,
+    has_credits: limiteDesconhecido || remaining > 0,
+  };
 }
 
 export async function fetchWithRetry(
