@@ -9,6 +9,7 @@ import { db, authClient } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { useActivityTypes } from '@/hooks/useActivityTypes';
 import type { Hearing } from '@/hooks/useHearings';
 import { Loader2, Search, CheckCircle2, AlertTriangle, Briefcase, FileText, CalendarPlus } from 'lucide-react';
 import { toast } from 'sonner';
@@ -49,12 +50,31 @@ interface Props {
 }
 
 /**
- * Confirma o vínculo caso/processo de uma audiência e cria a atividade
- * (lead_activities, activity_type 'audiencia') pré-preenchida com os dados dela.
+ * Confirma o vínculo caso/processo de uma audiência e cria a atividade em
+ * `lead_activities`, pré-preenchida com os dados dela. O tipo é o "Audiência"
+ * cadastrado em `activity_types` (ver `tipoAudiencia` abaixo).
  */
 export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }: Props) {
   const qc = useQueryClient();
   const profiles = useProfilesList();
+  const { types: tiposDeAtividade } = useActivityTypes();
+
+  /**
+   * Chave do tipo "Audiência" — resolvida na tabela, não fixa no código.
+   *
+   * Estava escrito `'audiencia'` cru, a chave seed. Ela funciona (o código tem
+   * uma lista base com esse rótulo), mas é o gêmeo da linha "Audiência" que o
+   * escritório cadastrou em `activity_types` — e por isso as audiências criadas
+   * aqui iam para uma metade (117 atividades) enquanto quem escolhe "Audiência"
+   * no formulário cai na outra (89). Preferir a linha da tabela faz a atividade
+   * nova nascer no mesmo tipo que a pessoa vê no seletor; a seed continua de
+   * reserva se ninguém tiver cadastrado o tipo.
+   */
+  const tipoAudiencia = useMemo(() => {
+    const norm = (s?: string | null) => (s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase();
+    return tiposDeAtividade.find(t => norm(t.label) === 'audiencia')?.key || 'audiencia';
+  }, [tiposDeAtividade]);
   const [resolving, setResolving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [caso, setCaso] = useState<CaseHit | null>(null);
@@ -216,7 +236,7 @@ export function HearingActivityDialog({ open, onOpenChange, hearing, snapshot }:
         .from('lead_activities')
         .insert({
           title: `Audiência ${snapshot.hearing_type || ''} ${dataBR} ${time}`.replace(/\s+/g, ' ').trim(),
-          activity_type: 'audiencia',
+          activity_type: tipoAudiencia,
           status: 'pendente',
           priority: 'normal',
           lead_id: caso?.lead_id || processo?.lead_id || null,
