@@ -496,9 +496,10 @@ export function ProcessUpdatesBell({
   }, [baseSemPeriodo, faixas]);
 
   // Sobrou movimentação no banco fora do que foi carregado? Só então o chip
-  // ganha "+". Com a janela de 30 dias (452 linhas em 12/08/2026) o teto de
-  // FETCH_LIMIT não é alcançado e os números passam a ser exatos — o "+"
-  // sobrevive para o caso de a janela estourar o teto um dia.
+  // ganha "+". A busca agora pagina até o filtro acabar, então na prática os
+  // números são exatos (974 em 30 dias, 2576 na tabela em 17/08/2026) e o "+"
+  // só aparece se o teto de segurança de FETCH_LIMIT for alcançado — o que
+  // importa, porque é exatamente aí que "Marcar todas" deixaria de ser todas.
   const noTeto = updates.length >= FETCH_LIMIT || (totalNoBanco !== null && totalNoBanco > updates.length);
 
   const countByCategoria = useMemo(() => {
