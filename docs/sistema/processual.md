@@ -203,7 +203,19 @@ Antes desta tela (ago/2026) a visita só existia como texto em atividade ("direc
 - Por isso os totais do painel **não batem** com "na semana"/"no mês" do card: o card conta `registrados` (chegada do e-mail), o painel conta `protocolados`.
 - Lê a tabela direto, não a RPC: a RPC devolve só contagens de propósito. Como aqui aparece nome de segurado, o painel fica atrás de um clique e nunca é montado enquanto fechado.
 - RLS de `inss_admin_processes`: policy única `TO authenticated` (`qual = true`) — a leitura depende da sessão anônima do Externo (`ensureExternalSession`), não é aberta a `anon`.
-- Teto de 500 linhas por consulta, com aviso na tela quando bate no teto. Sem índice em `protocol_date`: com 891 linhas o planner faz seq scan de qualquer jeito; se a tabela crescer uma ordem de grandeza, criar `idx` parcial (`WHERE deleted_at IS NULL`) com `CONCURRENTLY`.
+- Teto de 3.000 linhas por consulta (páginas de 1.000, o máximo do PostgREST), com aviso na tela quando bate no teto. Sem índice em `protocol_date`: com 918 linhas o planner faz seq scan de qualquer jeito; se a tabela crescer uma ordem de grandeza, criar `idx` parcial (`WHERE deleted_at IS NULL`) com `CONCURRENTLY`.
+
+**Filtro por faixa de nº do caso/PREV** (17/08/2026): responde "quantos protocolos saíram do PREV 1200 ao PREV 1400". Seletor de sequência (Todas / PREV / CASO / Sem prefixo / LEAD / SM / DG) + campos "de" e "até", que aceitam `PREV 1200` ou só `1200` — prefixo digitado no campo manda no seletor.
+
+- O número **não está no protocolo**. Vem de `legal_cases.case_number` quando há caso e de `leads.case_number` quando só há lead (277 dos 918 protocolos vivos têm lead e nenhum caso — sem essa reserva ficariam fora de qualquer faixa). Resolvido em lote, uma consulta por tabela a cada 100 ids.
+- Os dois campos são texto digitado à mão e chegaram sujos: `PREV 285`, `✅PREV 2027`, `CASO-0474`, `Caso 322`, e ainda CNJ (`0011351-63.2022.5.15.0031`), NUP (`13621.214680/2024-67`) e dígitos soltos de 10 posições. `src/lib/casoSequencia.ts` normaliza antes de comparar e **recusa** o que não é sequência, em vez de devolver um pedaço — devolver "caso 13621" de um NUP colocaria linha errada dentro da contagem. Medido nos 3.564 `case_number` do Externo: 28 recusados, todos número de processo.
+- Cobertura da faixa: 468 dos 918 protocolos têm número legível (291 PREV, 129 sem prefixo, 43 CASO, 4 SM, 1 DG). Os outros 450 não têm caso nem lead com número — o painel diz isso no cabeçalho do filtro.
+- **Ligar a faixa desliga o período** e passa a incluir requerimento sem `protocol_date`: mantendo o recorte de data, a contagem sairia truncada sem avisar. O chip "Qualquer data" fica selecionado, e um aviso explica. Clicar num preset depois disso volta a limitar por data.
+
+**Vínculo a partir do painel** (17/08/2026): linha sem `case_id` ganha botão "Vincular caso" (569 das 918 hoje), que abre `VincularCasoDialog` — sugestões automáticas por nº do requerimento, CPF e nome, mais busca manual por caso/lead/contato/telefone/CPF. Lead sem caso aparece como "(criar caso)" e o `legal_case` é criado no clique.
+
+- O diálogo e as buscas são os mesmos da aba Processos INSS: a lógica saiu de dentro do `InssAdminProcessesTab` para `src/lib/inssVinculoCaso.ts` (+ `src/lib/nomeMatch.ts`) e o componente para `src/components/protocolos/VincularCasoDialog.tsx` — 412 linhas a menos no tab, uma implementação só.
+- O botão "Vincular automático" do rodapé chama `match-inss-orphans` (Railway), o mesmo robô do cron de 15 min.
 
 **Os dois números, e por que não se somam** (levantado em 03/08/2026):
 
@@ -219,6 +231,11 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 **Alerta de sync parado**: se o `gmail-inss-sync` não roda há mais de 2h, as telas avisam. Sem isso, sync parado exibe 0 e parece que ninguém protocolou.
 
 **Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
+
+**Vínculo automático — duas passadas** (`match-inss-orphans`, cron de 15 min):
+
+1. Protocolo sem lead e sem caso (292 em 17/08/2026) → `findInssOrphanMatch` tenta nº do requerimento, NB, custom field "Nº Requerimento INSS", título de atividade, CPF e nome. Órfão com CPF é raro (16 de 292); o caminho real é o nome.
+2. Protocolo **com lead e sem caso** (277) → assume o caso mais recente daquele lead. Antes ninguém religava: o lead ganhava `legal_case` depois do vínculo e o protocolo ficava parado; 30 estavam nesse estado. Não dispara `notify-inss-update` de propósito — notificar manda WhatsApp pro cliente, e aqui não houve novidade do INSS, só arrumamos vínculo interno.
 
 **O que NÃO existe** (pedido, mas sem dado): ranking de quem protocolou. Nenhuma fonte identifica o operador — `linked_by` é 0% preenchido, responsável do caso cobre 9%, atividade "PROTOCOLAR" casada cobre 24%. Só uma captura no ato do protocolo resolve, e ela não teria histórico.
 

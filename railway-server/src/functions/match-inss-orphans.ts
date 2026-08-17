@@ -7,6 +7,19 @@ import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
  * Varre inss_admin_processes órfãos e tenta vincular usando o matcher
  * compartilhado (mesma lógica do gmail-inss-sync). Roda manualmente ou
  * via cron a cada 15min (ver src/index.ts).
+ *
+ * Duas passadas, porque "órfão" tem dois sabores:
+ *
+ *   1. sem lead e sem caso — o matcher tenta as 6 pistas (requerimento, NB,
+ *      custom field, título de atividade, CPF, nome).
+ *   2. COM lead e sem caso — o lead pode ter ganhado um legal_case depois do
+ *      vínculo, e ninguém religava: em 17/08/2026 eram 277 protocolos nesse
+ *      estado, 30 deles com caso já aberto esperando. Sem essa passada, esses
+ *      30 nunca apareceriam na ficha do caso nem numa contagem por nº de caso.
+ *
+ * A promoção NÃO dispara notify-inss-update de propósito: notificar manda
+ * WhatsApp para o cliente, e aqui não houve novidade do INSS — só arrumamos o
+ * vínculo interno.
  */
 
 export const handler: RequestHandler = async (_req, res) => {
@@ -14,6 +27,7 @@ export const handler: RequestHandler = async (_req, res) => {
   let matched = 0;
   let scanned = 0;
   let notify_fired = 0;
+  let promoted = 0;
 
   try {
     const { data: orphans, error: oErr } = await supabase
@@ -54,7 +68,45 @@ export const handler: RequestHandler = async (_req, res) => {
       }
     }
 
-    return res.json({ success: true, scanned, matched, notify_fired, errors });
+    // --- 2ª passada: protocolo com lead, mas ainda sem caso ---
+    const { data: semCaso, error: sErr } = await supabase
+      .from('inss_admin_processes')
+      .select('id, requerimento_number, lead_id')
+      .is('case_id', null)
+      .not('lead_id', 'is', null)
+      .is('deleted_at', null);
+    if (sErr) {
+      errors.push(`load lead-sem-caso: ${sErr.message}`);
+    } else {
+      const leadIds = Array.from(new Set((semCaso || []).map((p: any) => p.lead_id).filter(Boolean)));
+      // Casos em lote: 235 leads viram 3 consultas, não 235.
+      const casoPorLead = new Map<string, string>();
+      for (let i = 0; i < leadIds.length; i += 100) {
+        const { data: casos } = await supabase
+          .from('legal_cases')
+          .select('id, lead_id, created_at')
+          .in('lead_id', leadIds.slice(i, i + 100))
+          .order('created_at', { ascending: false });
+        for (const c of (casos || []) as any[]) {
+          // Ordenado por created_at desc: o primeiro que chega é o mais recente,
+          // mesma escolha que o applyInssMatch faz.
+          if (c.lead_id && !casoPorLead.has(c.lead_id)) casoPorLead.set(c.lead_id, c.id);
+        }
+      }
+
+      for (const p of (semCaso || []) as any[]) {
+        const caseId = casoPorLead.get(p.lead_id);
+        if (!caseId) continue;
+        const { error: uErr } = await supabase
+          .from('inss_admin_processes')
+          .update({ case_id: caseId, linked_at: new Date().toISOString() })
+          .eq('id', p.id);
+        if (uErr) errors.push(`${p.requerimento_number}: ${uErr.message}`);
+        else promoted++;
+      }
+    }
+
+    return res.json({ success: true, scanned, matched, promoted, notify_fired, errors });
   } catch (e: any) {
     return res.json({ success: false, error: e?.message || 'unknown' });
   }

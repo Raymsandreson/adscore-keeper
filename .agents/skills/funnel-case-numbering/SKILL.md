@@ -38,6 +38,26 @@ Exemplo: `✅ PREV 1448 — Hilda Maria / Atendente`
 
 Função auxiliar pra UI: `railway-server/src/functions/lead-close-sequence-info.ts` (retorna posição + total + lead anterior).
 
+## Para LER ou COMPARAR um case_number (filtro, faixa, ordenação)
+
+Use `src/lib/casoSequencia.ts` — não escreva regex nova. O campo é texto livre em duas tabelas e chegou sujo; medição de 17/08/2026 sobre os 3.564 `case_number` do Externo (1.800 em `legal_cases`, 1.764 em `leads`):
+
+| Forma | Exemplos | Quantos |
+|---|---|---|
+| Prefixo + número | `PREV 1394`, `CASO-0474`, `Caso 322`, `SM-0009` | maioria |
+| Emoji colado | `✅PREV 2027`, `✅️ Prev 133`, `✅prev  2048` | dezenas |
+| Só o número | `248`, `1298` — comum em `leads.case_number` | 1.291 em leads |
+| Desdobramento | `CASO 17 e 17.1`, `222.1` | ~10 |
+| **Não é sequência** | CNJ `0011351-63.2022.5.15.0031`, NUP `13621.214680/2024-67`, `1332519476` | 28 |
+
+Regras que o lib aplica:
+
+- `parseCasoSequencia(raw)` → `{ familia, numero, original }` ou **null**. Família: `PREV`/`CASO`/`LEAD`/`SM`/`DG`/`NUM` (`NUM` = sem prefixo).
+- Recusa em vez de adivinhar: bloco de 6+ dígitos, CNJ, CNJ colado (20 dígitos) e NUP viram `null`. Devolver "caso 13621" de um NUP colocaria linha errada em qualquer contagem por faixa.
+- Comparar como string ordena `PREV 1000` antes de `PREV 99` — sempre compare pelo `numero`.
+- `dentroDaFaixa(seq, { familia, de, ate })` não mistura famílias: `CASO 250` fica fora de uma faixa `PREV 100–500`. Com `familia: null` compara só o número.
+- Quem usa hoje: filtro por faixa da lista de protocolos INSS (`ProtocolosListaSheet`). Testes em `src/lib/__tests__/casoSequencia.test.ts`, com literais tirados do banco.
+
 ## Casos comuns e o que checar
 
 | Sintoma | Causa provável | Verificar |
@@ -66,6 +86,7 @@ Editar `leads.case_number` daquele lead. O `regenerate-lead-name` respeita o val
 
 ## Arquivos-chave
 
+- `src/lib/casoSequencia.ts` — lê/compara/ordena `case_number` (faixa "de … até")
 - `railway-server/src/functions/regenerate-lead-name.ts` — gera o nome
 - `railway-server/src/functions/lead-close-sequence-info.ts` — consulta posição
 - `src/components/whatsapp/BoardGroupInstancesConfig.tsx` — UI do prefixo
