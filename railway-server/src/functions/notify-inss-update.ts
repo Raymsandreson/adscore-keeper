@@ -36,6 +36,43 @@ async function humanizeStatusChange(input: {
 }
 
 
+/**
+ * Rótulo canônico de caso/processo em atividade: "<número> - <título>".
+ * Mesmo formato do `formatProcessLabel` do front (`src/lib/processLabel.ts`),
+ * reescrito aqui porque o railway-server não compartilha o bundle do app.
+ */
+function formatLabel(numero?: string | null, titulo?: string | null): string {
+  const trim = (v?: string | null) => (v || '').replace(/^[\s\-–—]+/, '').replace(/[\s\-–—]+$/, '');
+  return [numero, titulo].map(trim).filter(Boolean).join(' - ');
+}
+
+const onlyDigits = (v?: string | null) => (v || '').replace(/\D/g, '');
+
+/**
+ * Acha em `lead_processes` o processo do requerimento do INSS.
+ *
+ * `inss_admin_processes` e `lead_processes` são tabelas distintas e o elo entre
+ * elas é o número do requerimento gravado em `process_number` — que ali não tem
+ * formato garantido (pode vir com ponto/traço), daí a comparação por dígitos.
+ * Procura primeiro no caso e só depois no lead inteiro, para não pegar processo
+ * de outro caso do mesmo cliente.
+ */
+async function findLeadProcess(
+  caseId: string,
+  leadId: string | null,
+  requerimento?: string | null,
+): Promise<{ id: string; title: string | null; process_number: string | null } | null> {
+  const alvo = onlyDigits(requerimento);
+  if (!alvo) return null;
+  const cols = 'id, title, process_number';
+  const { data: doCaso } = await supabase.from('lead_processes').select(cols).eq('case_id', caseId);
+  const noCaso = (doCaso || []).find((p: any) => onlyDigits(p.process_number) === alvo);
+  if (noCaso) return noCaso as any;
+  if (!leadId) return null;
+  const { data: doLead } = await supabase.from('lead_processes').select(cols).eq('lead_id', leadId);
+  return ((doLead || []).find((p: any) => onlyDigits(p.process_number) === alvo) as any) || null;
+}
+
 async function sendUazapiText(args: {
   group_jid: string;
   text: string;
@@ -122,6 +159,14 @@ export const handler: RequestHandler = async (req, res) => {
         .maybeSingle();
       assignedTo = lead?.assigned_to || null;
     }
+
+    // Vínculo com caso e processo: até 17/08/2026 o insert levava só `lead_id`,
+    // e 205 das 252 atividades nasceram órfãs — todas com caso disponível (o
+    // guard lá em cima já barra processo sem `case_id`). O caso ia como texto na
+    // descrição, então a atividade caía na lista sem caso nem nº de processo.
+    // O processo casa pelo número do requerimento, que já está no título.
+    const process = await findLeadProcess(proc.case_id, leadId, proc.requerimento_number);
+
     await supabase.from('lead_activities').insert({
       lead_id: leadId,
       title: activityTitle,
@@ -131,6 +176,10 @@ export const handler: RequestHandler = async (req, res) => {
       priority: 'normal',
       assigned_to: assignedTo,
       deadline: new Date().toISOString().slice(0, 10),
+      case_id: proc.case_id,
+      case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
+      process_id: process?.id || null,
+      process_title: process ? formatLabel(process.process_number, process.title) || null : null,
     } as any);
 
     // 2) Acha o grupo do lead e manda zap humanizado

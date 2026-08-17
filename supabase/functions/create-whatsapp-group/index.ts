@@ -2008,6 +2008,11 @@ Deno.serve(async (req) => {
           await extClient.from('lead_activities').insert({
             lead_id: leadData.id,
             lead_name: leadData.lead_name || lead_name,
+            // O caso que gerou a atividade é este mesmo, criado logo acima: até
+            // 17/08/2026 ele só aparecia como texto na descrição e a atividade
+            // nascia sem vínculo, caindo na lista sem caso nenhum.
+            case_id: newCase.id,
+            case_title: `${caseNumber} - ${caseTitle}`,
             title: act.title,
             description: `Atividade do processo ${caseNumber}. Criada automaticamente.`,
             activity_type: act.activity_type || 'tarefa',

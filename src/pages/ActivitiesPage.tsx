@@ -2416,8 +2416,22 @@ const ActivitiesPage = () => {
     // Troca de lead no formulário: refaz o preload dos grupos para o lead novo.
     preloadLeadGroups(leadId);
     // Load cases for this lead
-    externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).then(({ data }) => {
+    externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', leadId).is('deleted_at', null).then(async ({ data }) => {
       setLeadCases(data || []);
+      // Caso único do lead entra vinculado sozinho: escolher o caso era 100%
+      // manual e ninguém lembrava — 1.116 atividades vivas ficaram sem vínculo
+      // apesar de o lead ter caso. Com dois ou mais casos não dá para adivinhar,
+      // aí segue em branco. O processo continua manual: um caso costuma ter
+      // vários itens em lead_processes e a maioria nem é processo de verdade.
+      if (data?.length !== 1) return;
+      const unico = data[0];
+      setFormCaseId(unico.id);
+      setFormCaseTitle(`${unico.case_number} - ${unico.title}`);
+      const { data: procs } = await externalSupabase
+        .from('lead_processes')
+        .select('id, title, process_number, polo_ativo, polo_passivo, cliente_polo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos, data_ultima_movimentacao')
+        .eq('case_id', unico.id);
+      setCaseProcesses((procs || []).map((p: any) => ({ id: p.id, title: p.title, process_number: p.process_number, polo_ativo: p.polo_ativo, polo_passivo: p.polo_passivo, cliente_polo: p.cliente_polo, tribunal: p.tribunal, area: p.area, assuntos: p.assuntos, workflow_id: p.workflow_id, workflow_name: p.workflow_name, envolvidos: p.envolvidos, data_ultima_movimentacao: p.data_ultima_movimentacao })));
     });
     // Load lead preview (needed for header progress bar)
     externalSupabase
