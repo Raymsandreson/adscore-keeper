@@ -318,3 +318,32 @@ usado por *Acordo homologado* e *Suspensão*) e `terminal`. Etiqueta nova entra 
 Nota: hoje **os 27 marcos do POP trabalhista estão com `eventual = false`**, ou seja perícia
 e embargos contam como etapa obrigatória de todo processo — o progresso está subestimado
 para quem não passa por eles.
+
+### 10.8 O grupo do WhatsApp como ponte para o processo sem ficha
+
+**O problema:** 485 processos da jurimetria não têm lead nem caso cadastrado. Não existe
+chave que ligue `jm_processos` a `lead_processes` para esses — ninguém nunca cadastrou.
+
+**A ponte (ideia do Raym):** o grupo de WhatsApp onde os clientes são informados tem o nº do
+caso no nome ("Caso 88 - ..."), e o mesmo nº está em `jm_processos.caso`. Casando por ele,
+sai lead + caso + processo + partes de uma vez.
+
+**Regra de casamento — só pelo inteiro.** "Caso 10.1 Marlene" e "Caso 11.1 Orileia" usam o
+sufixo para OUTRA parte/processo do mesmo caso. Casar com o sufixo juntaria pessoas
+diferentes; a regexp captura só o inteiro (`caso\s*n?º?\s*([0-9]{1,4})`).
+
+**Onde ficou:** `vw_grupo_processo_conciliacao` (migration
+`20260817190000_vw_grupo_processo_conciliacao.sql`), consumida pela coluna **Processo** da
+aba *Contatos > Grupos* em modo auditoria — a tela de conciliação que já existia e só não
+sabia de processo.
+
+Medido em 17/08/2026: **224 grupos** com nº de caso no nome, **93 com CNJ vindo do lead**,
+**131 só na jurimetria** (processo existe, ficha não), **2 ambíguos**.
+
+Armadilha do grão: `whatsapp_groups_index` guarda uma linha por
+`(group_jid, instance_name)`. A v1 da view não tinha `DISTINCT ON (group_jid)` e devolvia
+1.040 linhas para 224 grupos — o mesmo grupo repetido até 11 vezes.
+
+O que a tela **não** faz: nada aqui escreve. `cnj_sugerido` é sugestão, mostrada em verde
+(ou âmbar com ⚠ quando `qtd_sugerida > 1`), e não vira `lead_processes` sozinho. Vínculo
+automático em caso ambíguo criaria ficha para a pessoa errada.
