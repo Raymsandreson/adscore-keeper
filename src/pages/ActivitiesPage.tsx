@@ -1891,11 +1891,6 @@ const ActivitiesPage = () => {
       // sendo concluída — não à próxima. Persistir AGORA, antes de concluir,
       // para garantir que os arquivos não se percam.
       const pendingBeforeComplete = pendingNoteAttachmentsRef.current;
-      // Snapshot dos anexos para replicar também na próxima atividade.
-      const attachmentsToCarryOver = uniqueAttachmentsByUrl([
-        ...pendingBeforeComplete,
-        ...noteAttachmentCommitCandidatesRef.current,
-      ]);
       if (pendingBeforeComplete.length > 0) {
         try {
           await flushPendingAttachments(currentActivity.id, pendingBeforeComplete);
@@ -1904,6 +1899,34 @@ const ActivitiesPage = () => {
           toast.error('Falha ao salvar anexos da atividade atual. Tente novamente.');
           return;
         }
+      }
+
+      // Snapshot dos anexos para replicar também na próxima atividade. A fonte
+      // é o BANCO (depois do flush acima), não os refs de edição: eles só
+      // guardam o que foi anexado NESTA abertura da ficha — o
+      // commit-candidates zera a cada troca de atividade
+      // (ActivityNotesField: useEffect [activityId]) e o pending só tem anexo
+      // ainda sem id. Anexo colocado dias antes ficava de fora, a próxima
+      // nascia sem as imagens e o clique parecia ter perdido os arquivos
+      // (incidente ALTERAÇÕES SISTEMA 14/08/2026: 3 prints de 12/08 ficaram só
+      // na concluída; 60 cadeias no mesmo estado desde maio/2026).
+      let attachmentsToCarryOver: Attachment[] = uniqueAttachmentsByUrl([
+        ...pendingBeforeComplete,
+        ...noteAttachmentCommitCandidatesRef.current,
+      ]);
+      try {
+        const { data: existingAtts, error: existingAttsErr } = await externalSupabase
+          .from('activity_attachments')
+          .select('file_url, file_name, file_type, file_size, attachment_type, link_url, link_title')
+          .eq('activity_id', currentActivity.id);
+        if (existingAttsErr) throw existingAttsErr;
+        attachmentsToCarryOver = uniqueAttachmentsByUrl([
+          ...((existingAtts || []) as Attachment[]),
+          ...attachmentsToCarryOver,
+        ]);
+      } catch (e) {
+        // Best-effort: sem a leitura, replica ao menos o que veio do formulário.
+        console.error('[completeAndNext] leitura dos anexos da atual falhou', e);
       }
 
       // Capture form values BEFORE any state changes
