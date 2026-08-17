@@ -111,8 +111,8 @@ export function PopCodigosAuditoria({ boardId }: Props) {
     try {
       await ensureExternalSession();
       const q = desfazer
-        ? db.from('pop_tpu_ignorado').delete().eq('board_id', boardId).eq('codigo', codigo)
-        : db.from('pop_tpu_ignorado').insert({ board_id: boardId, codigo } as never);
+        ? (db as any).from('pop_tpu_ignorado').delete().eq('board_id', boardId).eq('codigo', codigo)
+        : (db as any).from('pop_tpu_ignorado').insert({ board_id: boardId, codigo });
       const { error } = await q;
       if (error) throw new Error(error.message);
       await carregar();
