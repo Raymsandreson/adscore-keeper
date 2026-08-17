@@ -5,7 +5,7 @@
 // STT: ElevenLabs Scribe v2 → fallback Gemini (lib/stt). Sem IA de preenchimento —
 // devolve só o texto fiel do que foi falado.
 import type { RequestHandler } from 'express';
-import { transcribeAudio } from '../lib/stt';
+import { transcribeAudioDetailed } from '../lib/stt';
 
 export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
@@ -24,11 +24,15 @@ export const handler: RequestHandler = async (req, res) => {
     const mime = audio_mime || resp.headers.get('content-type') || 'audio/webm';
 
     // 2) Transcrição fiel (ElevenLabs Scribe v2 → fallback Gemini).
-    const transcription = await transcribeAudio(buffer, mime);
+    const { text: transcription, reason } = await transcribeAudioDetailed(buffer, mime);
     if (!transcription || transcription === '[áudio inaudível]') {
       return ok({
         success: false,
-        error: 'Não foi possível transcrever o áudio (inaudível ou vazio).',
+        // O motivo real vem junto: sem ele, provedor fora do ar chegava ao
+        // usuário como "seu áudio está inaudível".
+        error: reason
+          ? `Não foi possível transcrever o áudio — ${reason}`
+          : 'Não foi possível transcrever o áudio (inaudível ou vazio).',
         transcription: transcription || '',
       });
     }

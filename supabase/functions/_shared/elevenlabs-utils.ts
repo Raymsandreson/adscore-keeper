@@ -30,11 +30,23 @@ export async function checkElevenLabsCredits(apiKey: string): Promise<ElevenLabs
 
   console.log(`ElevenLabs credits: ${used}/${limit} used, ${remaining} remaining`);
 
+  // Mesma correção do `railway-server/src/lib/elevenlabs-utils.ts` (17/08/2026):
+  // limite ausente/zerado é limite DESCONHECIDO, não cota estourada. A conta é
+  // medida em créditos, e o `/v1/user/subscription` deixou de informar
+  // `character_limit` — com o `remaining > 0` cru, o `has_credits` virava false
+  // e a ElevenLabs era pulada em silêncio (era o que derrubava o STT: o áudio
+  // nunca chegava na Scribe e só sobrava o fallback do Gemini, que devolvia
+  // vazio, virando "áudio inaudível ou vazio" na cara do usuário).
+  const limiteDesconhecido = !(limit > 0);
+  if (limiteDesconhecido) {
+    console.warn('ElevenLabs: /v1/user/subscription não informou character_limit — seguindo como se houvesse cota');
+  }
+
   return {
     character_count: used,
     character_limit: limit,
     remaining,
-    has_credits: remaining > 0,
+    has_credits: limiteDesconhecido || remaining > 0,
   };
 }
 

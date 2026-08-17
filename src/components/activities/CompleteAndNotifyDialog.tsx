@@ -6,8 +6,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Volume2, Send, MessageCircle, Sparkles, CheckCircle2, AlertTriangle, CalendarClock } from 'lucide-react';
-import { externalSupabase } from '@/integrations/supabase/external-client';
+import { Loader2, Volume2, Send, MessageCircle, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ensureExternalSession, externalSupabase } from '@/integrations/supabase/external-client';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { toast } from 'sonner';
 
@@ -36,12 +36,27 @@ export interface GroupOption {
  * A busca é a mesma de sempre: `lead_whatsapp_groups` primeiro e o campo legado
  * `leads.whatsapp_group_id` só quando não há nenhum vinculado — o segundo
  * round-trip existe apenas nesse caso.
+ *
+ * Lista vazia aqui significa "este lead não tem grupo", e o dialog desliga a
+ * notificação por causa dela. Então falha NÃO pode virar lista vazia:
+ *  - a policy do `lead_whatsapp_groups` é `TO authenticated`; sem sessão o
+ *    PostgREST devolve `[]` (zero linhas), não erro — daí o `ensureExternalSession`
+ *    antes da query. Enquanto a busca só acontecia no clique o problema não
+ *    aparecia (a sessão já estava de pé); com o pré-carregamento junto da ficha
+ *    ela passou a correr com o bootstrap;
+ *  - erro de rede/permissão sobe como exceção, e quem chamou trata (o preload
+ *    guarda `null` e o dialog volta a buscar no clique).
+ * Incidente 17/08/2026: "Concluir + próxima" parou de mandar áudio ao grupo em
+ * silêncio — o dialog exibia "(nenhum grupo vinculado)" para lead com grupo.
  */
 export async function fetchLeadGroupOptions(leadId: string): Promise<GroupOption[]> {
-  const { data } = await externalSupabase
+  await ensureExternalSession();
+
+  const { data, error } = await externalSupabase
     .from('lead_whatsapp_groups')
     .select('id, label, group_jid, group_name')
     .eq('lead_id', leadId);
+  if (error) throw error;
 
   const groupOptions: GroupOption[] = (data || [])
     .filter((g: any) => g.group_jid)
@@ -56,11 +71,12 @@ export async function fetchLeadGroupOptions(leadId: string): Promise<GroupOption
   if (groupOptions.length === 0) {
     // Externo: é onde os leads vivem. Lendo o legado do Cloud, o texto podia
     // ir para um grupo diferente do que o áudio (que lê do externo) usa.
-    const { data: lead } = await externalSupabase
+    const { data: lead, error: leadError } = await externalSupabase
       .from('leads')
       .select('whatsapp_group_id, lead_name')
       .eq('id', leadId)
       .maybeSingle();
+    if (leadError) throw leadError;
     if (lead?.whatsapp_group_id) {
       groupOptions.push({
         id: 'legacy',
@@ -86,27 +102,12 @@ interface CompleteAndNotifyDialogProps {
    * (lead ainda carregando, preload falhou ou grupo vinculado agora há pouco).
    */
   preloadedGroups?: GroupOption[] | null;
-  /** Prazo GRAVADO na atividade que está sendo concluída (`yyyy-MM-dd`). */
-  currentDeadline?: string | null;
-  /** Prazo que está no formulário agora — é o que vai para a filha. */
-  nextDeadline?: string | null;
-  /**
-   * Adia a atividade aberta em vez de concluir. Sem isto, o atalho não aparece
-   * e o aviso vira só texto.
-   */
-  onPostponeInstead?: (dateStr: string) => Promise<void> | void;
 }
 
-/** `2026-08-18` → `18/08`. */
-function diaMes(dateStr: string): string {
-  return `${dateStr.slice(8, 10)}/${dateStr.slice(5, 7)}`;
-}
-
-export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buildMsg, preloadedGroups = null, currentDeadline = null, nextDeadline = null, onPostponeInstead }: CompleteAndNotifyDialogProps) {
+export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buildMsg, preloadedGroups = null }: CompleteAndNotifyDialogProps) {
   const [groups, setGroups] = useState<GroupOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [postponing, setPostponing] = useState(false);
 
   // Choices
   const [notifyGroup, setNotifyGroup] = useState<'yes' | 'no'>('no');
@@ -229,30 +230,26 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
   };
 
   const hasGroups = groups.length > 0;
-  const isProcessing = submitting || generatingAudioText || postponing;
+  const isProcessing = submitting || generatingAudioText;
 
-  /**
-   * Trocar o prazo e clicar em "Concluir + próxima" NÃO adia: a atividade
-   * aberta é concluída com o prazo antigo e a data nova vai só para a filha
-   * (`handleCompleteAndCreateNextWithNotify` conclui sem regravar a mãe). Quem
-   * só queria adiar acabava concluindo — no PREV 180 foram 8 conclusões em 10
-   * minutos, cada clique deixando uma atividade concluída a mais no histórico.
-   * Quando o formulário tem prazo diferente do gravado, o dialog diz o que vai
-   * acontecer e oferece a saída certa.
+  /*
+   * NÃO voltar a avisar aqui que "o prazo foi alterado".
+   *
+   * O aviso existiu entre 14/08 e 17/08/2026 (commit e35e37ecb) porque o
+   * "Concluir + próxima" era usado como adiar, na falta de um Adiar de verdade.
+   * O Adiar passou a existir no mesmo dia (87d01cbd7) e mora no action bar, ao
+   * lado deste botão — a saída certa não precisa ser reoferecida dentro do
+   * pop-up.
+   *
+   * E o aviso não distinguia nada: medido nos 1.000 elos de cadeia mais
+   * recentes, 946 (94,6%) nascem com prazo MAIOR que o da mãe, contra 53 que
+   * repetem a data. A data nova é justamente a da próxima etapa — mudá-la é o
+   * caminho normal. Aviso que dispara em 19 de cada 20 cliques só ensina a
+   * clicar por cima.
+   *
+   * O fluxo correto, e o que o código faz: a mãe fica concluída com a data em
+   * que ela venceu, a próxima nasce na data nova.
    */
-  const prazoMudou = !!currentDeadline && !!nextDeadline && currentDeadline !== nextDeadline;
-  const paraFrente = prazoMudou && (nextDeadline as string) > (currentDeadline as string);
-
-  const adiarEmVezDeConcluir = async () => {
-    if (!onPostponeInstead || !nextDeadline) return;
-    setPostponing(true);
-    try {
-      await onPostponeInstead(nextDeadline);
-      onClose();
-    } finally {
-      setPostponing(false);
-    }
-  };
 
   return (
     <Dialog open={open} onOpenChange={v => !v && onClose()}>
@@ -273,37 +270,6 @@ export function CompleteAndNotifyDialog({ open, onClose, onConfirm, leadId, buil
           </div>
         ) : (
           <div className="space-y-4">
-            {/* Prazo mexido no formulário: diz o que o botão realmente faz e
-                oferece o adiar de verdade. Ver `prazoMudou` acima. */}
-            {prazoMudou && (
-              <div className="rounded-md border border-warning/40 bg-warning/10 p-2.5 space-y-2">
-                <div className="flex gap-2">
-                  <AlertTriangle className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                  <p className="text-xs leading-snug">
-                    Você mudou o prazo de <strong>{diaMes(currentDeadline as string)}</strong> para{' '}
-                    <strong>{diaMes(nextDeadline as string)}</strong>. Concluir agora encerra{' '}
-                    <strong>esta</strong> atividade no prazo {diaMes(currentDeadline as string)} — o{' '}
-                    {diaMes(nextDeadline as string)} vai para a <strong>próxima</strong>, que nasce como
-                    uma atividade nova.
-                  </p>
-                </div>
-                {onPostponeInstead && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={isProcessing}
-                    className="w-full h-8 text-xs gap-1"
-                    onClick={adiarEmVezDeConcluir}
-                  >
-                    {postponing
-                      ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      : <CalendarClock className="h-3.5 w-3.5" />}
-                    {paraFrente ? 'Só adiar' : 'Só mudar o prazo'} para {diaMes(nextDeadline as string)} — não concluir
-                  </Button>
-                )}
-              </div>
-            )}
-
             {/* Notify or not */}
             <RadioGroup value={notifyGroup} onValueChange={(v: 'yes' | 'no') => setNotifyGroup(v)}>
               <div className="flex items-center gap-2">

@@ -39,6 +39,7 @@ import { useKeepAsObserverPrompt, shouldAskKeepAsObserver } from '@/components/a
 import { useEstimateConfirmPrompt } from '@/components/activities/useEstimateConfirmPrompt';
 import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
 import { formatPostponeDate } from '@/lib/postponeDates';
+import { buildMotherContentPatch } from '@/lib/activityChainMother';
 import { splitAIFields, AI_FIELD_LABELS, type AIFieldConflict, type AIReviewedField } from '@/lib/activityAIFields';
 import { LeadFunnelProgressBar } from '@/components/activities/LeadFunnelProgressBar';
 import { useActivityTypes, isMeetingType } from '@/hooks/useActivityTypes';
@@ -709,8 +710,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormCaseId(''); setFormCaseTitle('');
     setFormProcessId(''); setFormProcessTitle('');
     setCaseProcesses([]);
-    const { data } = await externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', lid);
+    const { data } = await externalSupabase.from('legal_cases').select('id, case_number, title').eq('lead_id', lid).is('deleted_at', null);
     setLeadCases((data as CaseRow[]) || []);
+    // Lead com um caso só entra vinculado sozinho — mesma regra da tela de
+    // Atividades. Dois ou mais casos: em branco, porque não dá para adivinhar.
+    if (data?.length === 1) {
+      const unico = data[0] as CaseRow;
+      setFormCaseId(unico.id);
+      setFormCaseTitle(`${unico.case_number} - ${unico.title}`);
+      const { data: procs } = await externalSupabase
+        .from('lead_processes')
+        .select('id, title, process_number, polo_passivo, tribunal, area, assuntos, workflow_id, workflow_name, envolvidos')
+        .eq('case_id', unico.id);
+      setCaseProcesses((procs as ProcessRow[]) || []);
+    }
     loadContactsForLead(lid);
     loadLeadPreview(lid);
   };
@@ -1100,7 +1113,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
    * Anexos: em modo edição o `ActivityNotesField` grava cada anexo na hora (tem
    * `activity_id`), então aqui não existe fila pendente pra descarregar antes de
    * concluir — diferente do fluxo da ActivitiesPage, que também abre a ficha em
-   * modo criação. O que a próxima NÃO herda é a cópia dos anexos da anterior.
+   * modo criação. A cópia dos anexos da mãe para a filha vale igual nas duas
+   * telas desde `ef0a82ae2` (a fonte é o banco), logo abaixo.
    */
   const handleCompleteAndNext = async (notifyOptions?: GroupNotifyOptions) => {
     if (!activityId || !selectedActivity) return;
@@ -1119,6 +1133,28 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         parent_activity_id: current.id,
         chain_root_id: current.chain_root_id || current.id,
       } as Partial<LeadActivity>;
+
+      // A mãe guarda o texto digitado antes de ser concluída — mesma regra da
+      // ActivitiesPage (`activityChainMother.ts`): só os 6 campos de texto, sem
+      // data e sem título, e campo vazio não apaga o que ela já tem.
+      const motherPatch = buildMotherContentPatch(
+        {
+          what_was_done: formWhatWasDone || null,
+          current_status_notes: formCurrentStatus || null,
+          next_steps: formNextSteps || null,
+          notes: formNotes || null,
+          solicitacao: formSolicitacao || null,
+          resposta_juizo: formRespostaJuizo || null,
+        },
+        current as any,
+      );
+      if (Object.keys(motherPatch).length > 0) {
+        const ok = await updateActivity(current.id, motherPatch as any, { successMessage: null });
+        if (!ok) {
+          toast.error('Nada foi concluído: o texto da atividade não pôde ser salvo. Tente de novo.', { duration: 8000 });
+          return;
+        }
+      }
 
       await completeActivity(current.id);
       await stopTimerFor(current.id); // concluir encerra o cronômetro
@@ -2061,11 +2097,6 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
         onConfirm={handleCompleteAndNext}
         leadId={formLeadId || null}
         buildMsg={buildMsg}
-        // Prazo mexido no formulário: o dialog avisa que "Concluir + próxima"
-        // conclui ESTA atividade na data velha e oferece o adiar de verdade.
-        currentDeadline={selectedActivity?.deadline || null}
-        nextDeadline={formDeadline || null}
-        onPostponeInstead={selectedActivity ? handlePostpone : undefined}
       />
 
       <Dialog open={financeOpen} onOpenChange={setFinanceOpen}>
