@@ -24,7 +24,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-jm-key',
 };
 
 const MODEL = 'gemini-2.5-flash';
@@ -76,13 +76,27 @@ Deno.serve(async (req: Request) => {
     });
 
   try {
-    const { documento_id } = await req.json();
-    if (!documento_id) return json({ success: false, error: 'documento_id é obrigatório' });
-
     const sb = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
+
+    // Verificação de origem. A função roda com `verify_jwt = false` porque quem
+    // chama é o banco por pg_net, sem sessão de usuário — então a validação tem
+    // que ser manual aqui. Sem isso é um endpoint público que queima Gemini e
+    // lê autos de bucket privado para quem descobrir a URL.
+    // O segredo mora em `jm_config` (RLS ligada, sem policy: só service role
+    // alcança) e não em env var nem no código — nada de secret no repositório.
+    const enviada = req.headers.get('x-jm-key') ?? '';
+    const { data: cfg } = await sb
+      .from('jm_config').select('valor').eq('chave', 'jm_ler_peca_key').maybeSingle();
+    const esperada = (cfg as { valor?: string } | null)?.valor ?? '';
+    if (!esperada || enviada !== esperada) {
+      return json({ success: false, error: 'não autorizado' }, 401);
+    }
+
+    const { documento_id } = await req.json();
+    if (!documento_id) return json({ success: false, error: 'documento_id é obrigatório' });
 
     const { data: doc, error: erroDoc } = await sb
       .from('jm_documentos')
