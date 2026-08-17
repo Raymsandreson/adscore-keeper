@@ -1456,14 +1456,19 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             )}
           </div>
 
-          {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead */}
+          {/* Fluxo de trabalho: POP da atividade > workflow do processo > funil do lead
+              `processId` NÃO é opcional quando a atividade tem processo: sem ele a
+              barra não carrega a régua de marcos (useProcessoMarcos(null) volta vazio)
+              e cai no percentual de PASSOS EXECUTADOS. Era por isso que o caso 88
+              aparecia como "Pré-Processual · 8%" na atividade e "Execução iniciada ·
+              80%" na carteira — mesma régua, duas medidas diferentes na tela. */}
           {formLeadId && (() => {
             if (formWorkflowId) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} processId={formProcessId || null} />;
             }
             if (formProcessId) {
               if (linkedProcess?.workflow_id) {
-                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} />;
+                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} processId={formProcessId} />;
               }
               return (
                 <p className="text-[10px] text-muted-foreground italic">
