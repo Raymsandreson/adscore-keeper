@@ -76,7 +76,10 @@ async function listarVozes() {
   const res = await fetch('https://api.elevenlabs.io/v1/voices', {
     headers: { 'xi-api-key': ELEVENLABS_API_KEY },
   });
-  if (!res.ok) throw new Error(`voices ${res.status}`);
+  // O corpo vai junto no erro: só o status não diz nada, e este endpoint
+  // responde 200 até SEM chave nenhuma (vozes públicas), então falhar COM chave
+  // é anomalia que precisa do motivo para ser resolvida.
+  if (!res.ok) throw new Error(`voices ${res.status} — ${(await res.text()).replace(/\s+/g, ' ').trim().slice(0, 300)}`);
 
   const json = (await res.json()) as { voices?: any[] };
   const vozes = (json.voices || []).map((v) => ({
@@ -117,7 +120,12 @@ export async function handler(req: Request, res: Response, _next: unknown) {
         return res.json({ success: true, vozes: await listarVozes(), padrao: VOICE_ID });
       } catch (e) {
         console.error('[telao-narrar] listar vozes falhou:', e);
-        return res.json({ success: false, reason: 'listagem_falhou', vozes: [] });
+        return res.json({
+          success: false,
+          reason: 'listagem_falhou',
+          detalhe: e instanceof Error ? e.message : String(e),
+          vozes: [],
+        });
       }
     }
 
@@ -175,7 +183,16 @@ export async function handler(req: Request, res: Response, _next: unknown) {
     if (!ttsRes.ok) {
       const detalhe = await ttsRes.text().catch(() => '');
       console.error('[telao-narrar] ElevenLabs falhou:', ttsRes.status, detalhe.slice(0, 300));
-      return res.json({ success: false, reason: `elevenlabs_${ttsRes.status}` });
+      // O motivo sai na resposta, não só no log: `elevenlabs_400` sozinho não
+      // diz se o problema é modelo, voz, output_format ou plano — e sem isso o
+      // diagnóstico depende de acesso ao painel do Railway.
+      return res.json({
+        success: false,
+        reason: `elevenlabs_${ttsRes.status}`,
+        detalhe: detalhe.replace(/\s+/g, ' ').trim().slice(0, 300),
+        modelo: MODEL_ID,
+        voz: voiceId,
+      });
     }
 
     geracoesNaJanela++;
