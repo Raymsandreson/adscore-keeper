@@ -1,0 +1,114 @@
+# Open Finance / Celcoin — conciliação bancária
+
+Substitui a Pluggy, que parou de sincronizar em **18/03/2026**. Primeira conexão
+real autorizada em **18/08/2026** (Banco Inter PJ, Prudencio Capital).
+
+## Onde vive
+
+`supabase/functions/celcoin-open-finance/` no Supabase **Externo**
+(`kmedldlepwiityjsdahz`). **Não** no Railway: a borda da Celcoin barra tráfego de
+fora do Brasil, e o Railway sai por Santa Clara/US — toma 403 com corpo HTML de
+WAF, a requisição nem chega na aplicação. A edge sai de São Paulo. Isso também
+mantém CPF/CNPJ, saldo e extrato em território nacional (LGPD).
+
+O `functionRouter` roteia `'celcoin-open-finance': 'external'` e é o único alvo
+externo que repassa o JWT do Cloud em `x-cloud-jwt` — `callExternal` manda só a
+anon key, que é pública e não identifica ninguém.
+
+## A stack é smartkeys/openkeys, não a doc pública
+
+A doc aberta da Celcoin descreve a BaaS, outra coisa. A referência real é o
+`celcoin-data-gateway` do **Quitepay** (`~/Projetos/Quitepay`), que roda contra
+esta mesma stack em produção. Antes de mexer em endpoint, conferir lá.
+
+Dois tokens, hosts diferentes, não se substituem:
+
+| token | endpoint | como | vida | serve pra |
+|---|---|---|---|---|
+| admin | `POST {onboard}/api/portal/onboard/v2/token` | Basic auth, sem body | ~1h | criar/ler consentimento |
+| rpt | `POST {data}/api/open-keys/token` | form-urlencoded, `scope=consent:<id>` | ~5min | ler dados |
+
+O consentimento não viaja em header: está embutido no escopo do rpt_token.
+
+## Caminhos de dados são VERSIONADOS
+
+Custou meia hora de diagnóstico errado em 18/08/2026. Path sem versão devolve
+404, e 404 é tratado como "recurso não consentido" — vira `[]`, e a resposta sai
+`{"success":true,"accounts":[]}` com cara de sucesso.
+
+```
+resources/v3/resources
+accounts/v2/accounts
+accounts/v2/accounts/{accountId}/transactions
+credit-cards-accounts/v2/accounts
+credit-cards-accounts/v2/accounts/{cardId}/bills
+credit-cards-accounts/v2/accounts/{cardId}/bills/{billId}/transactions
+```
+
+**Vazio nunca é prova de que não há dado.** Se vier `[]`, conferir o log da edge
+antes de concluir qualquer coisa — o 404 engolido agora sai como `console.warn`.
+
+## As duas pontas da janela são obrigatórias
+
+O detentor recusa a janela pela metade: `422 OPFDA010 — DATA INICIAL OU DATA
+FINAL NÃO INFORMADAS`. Vale pra conta (`fromBookingDate`/`toBookingDate`) e pra
+fatura (`fromDueDate`/`toDueDate`). Sem `to` no body, o teto é hoje em Brasília;
+data UTC adiantaria um dia depois das 21h e viraria data futura pro detentor.
+
+## Convivência com a Pluggy
+
+Mesmas tabelas (`bank_transactions`, `credit_card_transactions`), separadas pela
+coluna `provider`. A UNIQUE é `(provider, pluggy_transaction_id)` e a tela de
+conciliação **não filtra por provider** — se as janelas se sobrepusessem, a mesma
+despesa apareceria duas vezes. Quem evita isso é o `syncFloor`: começa no dia
+seguinte ao último lançamento já gravado.
+
+Rollback do sync: `DELETE FROM bank_transactions WHERE provider = 'celcoin'`.
+
+## Grafia do status: AUTHORISED vs AUTHORIZED
+
+A Celcoin devolve com **Z**; o Open Finance Brasil e o nosso código usam **S**.
+Normalizar na leitura e na escrita (`normalizarStatus`). Cuidado com substring:
+`AWAITING_AUTHORIZATION` contém `AUTHORIZ` e não pode virar autorizado.
+
+## Consentimento PJ
+
+- `loggedUser` é **sempre o CPF do representante legal**, mesmo em conta PJ.
+- O CNPJ vai em `businessEntity`.
+- `CUSTOMERS_PERSONAL_*` tem que virar `CUSTOMERS_BUSINESS_*`, senão 422.
+- `expirationDateTime`: RFC3339 **sem milissegundos**, via `setUTCMonth`, e
+  recuado 1 minuto — senão 400 DADOS_INVALIDOS.
+
+### O CNPJ tem que ser o da conta, não o do contrato
+
+Erro real em 18/08/2026: usamos 47.737.984/0001-51 achando que era
+"Raymsandreson Prudêncio Advogados". É **PRUDENCIO CAPITAL LTDA** — o CNPJ do
+*contrato da Celcoin*. A firma tem duas contas Inter Empresas distintas
+(`Inter R.P.Adv` e `Inter P.CAP`, ver `pluggy_connections.custom_name`), cada uma
+exigindo seu próprio consentimento.
+
+Sintoma de CNPJ que o titular não representa: o Inter aceita o consentimento,
+emite o `urn:bancointer:...`, e **quebra na tela de autorização** com
+"Não foi possível exibir as informações". Não confundir com `invalid_request_uri`,
+que é só link expirado.
+
+CNPJs conhecidos: PRUDENCIO CAPITAL `47.737.984/0001-51`; WHATSJUD TECNOLOGIA EM
+SOFTWARE `48.628.348/0001-54` (`TermsOfServicePage.tsx`). O da R.P.Advogados não
+está em lugar nenhum do repo.
+
+## O link de autorização expira em poucos minutos
+
+O `request_uri` do PAR dura pouco — a autorização de 18/08 aconteceu 84s depois
+de gerada. Não adianta gerar e mandar depois: gerar com o titular já com o
+celular na mão. `scratchpad/of-link.sh` gera um em ~2s e aceita o CNPJ como
+argumento.
+
+## Estado em 18/08/2026
+
+| item | estado |
+|---|---|
+| Inter PJ / Prudencio Capital | **AUTHORISED** até 2027-08-18, 298 lançamentos de 19/03 a 18/08 |
+| Inter PJ / R.P.Advogados | pendente — falta o CNPJ |
+| Santander | pendente — é conta **pessoal** (`PERSONAL_BANK`), consentimento PF sem CNPJ |
+| Cartão de crédito | `list_accounts` devolve o CDPRO e `resources` mostra 1 CREDIT_CARD_ACCOUNT AVAILABLE, mas o sync trouxe **0** transações. **Não verificado** se é ausência real de fatura na janela ou defeito. |
+| Pluggy | ainda ligada, 2.583 + 5.524 linhas históricas. Só aposentar depois do financeiro validar os dados da Celcoin. |
