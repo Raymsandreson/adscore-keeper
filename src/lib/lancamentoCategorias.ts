@@ -26,6 +26,13 @@
 //                          escritório.
 //   Honorários Adv         honorário REPASSADO ao advogado parceiro. Sai da
 //   Parceiro               nossa mão: o titular é o parceiro, não o escritório.
+//   Honorários condenação  juiz FIXOU o valor e ainda não há data de pagamento.
+//                          Criada em 18/08/2026 para tirar 29 linhas (R$ 4,42 mi)
+//                          de dentro de "a receber": elas carregavam a data da
+//                          DECISÃO, não de vencimento, e por isso apareciam
+//                          vencidas há anos. Pela régua da carteira isso é
+//                          CONDENAÇÃO — valor certo, data incerta — e nunca
+//                          entra na mesma coluna do A RECEBER (inflava ~10x).
 //
 // HC × HS: na planilha a coluna PESSOA carrega "HC" (honorário contratual) ou
 // "HS" (honorário sucumbencial) nas linhas de honorário — 657 HC e 104 HS na
@@ -43,12 +50,23 @@
  */
 export type TitularLancamento = 'escritorio' | 'cliente' | 'parceiro';
 
+/**
+ * Onde o dinheiro está, na régua da carteira (skill whatsjud-fluxo-vocabulario).
+ * Derivado da categoria + data; nunca digitado.
+ *   CONDENACAO  valor certo, data incerta (a data da linha é a da decisão)
+ *   A_RECEBER   valor e data certos, no prazo
+ *   VENCIDO     tinha data, passou, não foi pago (ou não foi baixado)
+ *   REALIZADO   já é caixa
+ */
+export type EstagioLancamento = 'CONDENACAO' | 'A_RECEBER' | 'VENCIDO' | 'REALIZADO';
+
 export type EspecieLancamento =
   | 'honorario_contratual'
   | 'honorario_sucumbencial'
   | 'honorario'
   | 'adiantamento_fidc'
   | 'honorario_parceiro'
+  | 'honorario_condenacao'
   | 'cota_cliente'
   | 'credito_comprado'
   | 'operacao';
@@ -73,6 +91,7 @@ export const ESPECIE_LABEL: Record<EspecieLancamento, string> = {
   honorario: 'honorário',
   adiantamento_fidc: 'adiantado FIDC',
   honorario_parceiro: 'repasse ao parceiro',
+  honorario_condenacao: 'condenação',
   cota_cliente: 'cota do cliente',
   credito_comprado: 'crédito comprado',
   operacao: 'operação',
@@ -90,6 +109,7 @@ const normalizar = (v: string | null | undefined) =>
 export const CATEGORIAS_LANCAMENTO = [
   'Honorários Contratuais',
   'Honorários Sucumbenciais',
+  'Honorários condenação',
   'Honorários Adiantados (FIDC)',
   'Cota do Cliente',
   'Custas Processuais',
@@ -142,6 +162,12 @@ export function classificarLancamento(entrada: {
   // honorário porque PESSOA aqui traz "HC/HS <nome do parceiro>".
   if (cat.includes('parceiro')) return monta('parceiro', 'honorario_parceiro');
 
+  // Condenação: honorário fixado sem data de pagamento. NÃO é "a receber" —
+  // a data que a linha carrega é a da decisão.
+  if (cat.includes('honorari') && cat.includes('condena')) {
+    return monta('escritorio', 'honorario_condenacao', { previsto: false });
+  }
+
   if (cat.includes('honorari')) {
     // A espécie vem da categoria (lançamento manual) ou de PESSOA (planilha).
     if (cat.includes('contratu') || pessoa.startsWith('hc')) {
@@ -160,4 +186,27 @@ export function classificarLancamento(entrada: {
 
   // Custas, perícia, deslocamento, folha, imposto: operação do escritório.
   return monta('escritorio', 'operacao');
+}
+
+/**
+ * Em que estágio da régua está a linha. Precisa da DATA, que a classificação de
+ * categoria sozinha não tem — por isso é função separada e não campo de
+ * `classificarLancamento`.
+ *
+ * `hoje` entra por parâmetro para o teste não depender do relógio.
+ */
+export function estagioDoLancamento(entrada: {
+  categoria?: string | null;
+  pessoa?: string | null;
+  data?: string | null;
+  hoje?: string;
+}): EstagioLancamento {
+  const cls = classificarLancamento(entrada);
+  if (cls.especie === 'honorario_condenacao') return 'CONDENACAO';
+  if (!cls.previsto) return 'REALIZADO';
+  const hoje = entrada.hoje ?? new Date().toISOString().slice(0, 10);
+  // Sem data não dá para dizer que venceu — fica como a receber, e a tela
+  // mostra "sem data" em vez de inventar atraso.
+  if (!entrada.data) return 'A_RECEBER';
+  return entrada.data < hoje ? 'VENCIDO' : 'A_RECEBER';
 }

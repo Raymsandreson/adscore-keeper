@@ -273,7 +273,7 @@ async function buscarExistentes(chave) {
   let de = 0;
   for (;;) {
     const resp = await fetch(
-      `${SUPABASE_URL}/rest/v1/${TABELA}?select=id,ordem_origem&order=id&offset=${de}&limit=1000`,
+      `${SUPABASE_URL}/rest/v1/${TABELA}?select=id,ordem_origem,categoria&order=id&offset=${de}&limit=1000`,
       { headers: cabecalhos(chave) },
     );
     if (!resp.ok) throw new Error(`falha ao ler o banco: ${resp.status} ${await resp.text()}`);
@@ -281,7 +281,7 @@ async function buscarExistentes(chave) {
     for (const r of pagina) {
       if (r.ordem_origem == null) continue;
       if (porOrdem.has(r.ordem_origem)) ambiguas.add(r.ordem_origem);
-      else porOrdem.set(r.ordem_origem, r.id);
+      else porOrdem.set(r.ordem_origem, { id: r.id, categoria: r.categoria });
     }
     if (pagina.length < 1000) break;
     de += 1000;
@@ -290,9 +290,23 @@ async function buscarExistentes(chave) {
   return { porOrdem, ambiguas };
 }
 
-async function atualizar(chave, id, linha) {
+/**
+ * "Honorários condenação" (criada em 18/08/2026) NÃO existe na planilha: as 29
+ * linhas foram reclassificadas direto no banco porque carregavam a data da
+ * DECISÃO dentro de "Honorários a receber" e por isso apareciam vencidas há
+ * anos. Reimportar sem este guarda desfaria isso em silêncio. Enquanto a
+ * planilha não tiver a categoria, o banco manda — e o script avisa quantas
+ * segurou, para não virar divergência esquecida.
+ */
+function preservaCategoria(categoriaNoBanco, categoriaNaPlanilha) {
+  return categoriaNoBanco === 'Honorários condenação'
+    && String(categoriaNaPlanilha || '').toLowerCase().includes('a receber');
+}
+
+async function atualizar(chave, id, linha, categoriaNoBanco) {
   const corpo = {};
   for (const c of ATUALIZAVEIS) corpo[c] = linha[c];
+  if (preservaCategoria(categoriaNoBanco, linha.categoria)) delete corpo.categoria;
   const resp = await fetch(`${SUPABASE_URL}/rest/v1/${TABELA}?id=eq.${id}`, {
     method: 'PATCH',
     headers: { ...cabecalhos(chave), Prefer: 'return=minimal' },
@@ -377,11 +391,17 @@ async function main() {
   if (seco) { console.log('\n--dry-run: nada foi escrito.'); return; }
 
   let feitas = 0;
+  let categoriasPreservadas = 0;
   for (const linha of paraAtualizar) {
-    await atualizar(chave, porOrdem.get(linha.ordem_origem), linha);
+    const alvo = porOrdem.get(linha.ordem_origem);
+    if (preservaCategoria(alvo.categoria, linha.categoria)) categoriasPreservadas += 1;
+    await atualizar(chave, alvo.id, linha, alvo.categoria);
     if (++feitas % 200 === 0) console.log(`  ...${feitas}/${paraAtualizar.length} atualizadas`);
   }
   console.log(`atualizadas: ${feitas}`);
+  if (categoriasPreservadas) {
+    console.log(`  ${categoriasPreservadas} mantiveram "Honorários condenação" (a planilha ainda diz "a receber")`);
+  }
 
   if (inserirNovas && paraInserir.length) {
     for (let i = 0; i < paraInserir.length; i += LOTE) {
@@ -396,3 +416,5 @@ async function main() {
 if (process.argv[1] && process.argv[1].endsWith('import-lancamentos-planilha.mjs')) {
   main().catch((e) => { console.error('erro:', e.message); process.exit(1); });
 }
+
+export { preservaCategoria };

@@ -33,6 +33,7 @@
 // =============================================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
+import { estagioDoLancamento } from '@/lib/lancamentoCategorias';
 
 export interface CarteiraPopLinha {
   process_id: string;
@@ -86,6 +87,25 @@ export interface HonorarioDoCnj {
   lancamentos: number;
   /** Data do lançamento mais recente deste CNJ. */
   ultimo: string | null;
+}
+
+/**
+ * Honorário que a planilha diz que AINDA VAI entrar, por CNJ. Três réguas que
+ * não se somam (skill whatsjud-fluxo-vocabulario):
+ *   aVencer     valor e data certos, no prazo — é o descontável
+ *   vencido     a data passou e não foi baixado: risco de crédito OU baixa não
+ *               feita na planilha; a tela não finge saber qual dos dois
+ *   condenacao  juiz fixou, sem data de pagamento. Nunca na coluna do a vencer:
+ *               junto, o "a receber" do POP trabalhista inflava ~10x
+ */
+export interface HonorarioAReceberDoCnj {
+  aVencer: number;
+  vencido: number;
+  condenacao: number;
+  linhasAVencer: number;
+  linhasVencidas: number;
+  /** Data da parcela vencida mais antiga — a régua de quão velho é o buraco. */
+  vencidoMaisAntigo: string | null;
 }
 
 /** O caixa de honorário que a planilha registra e quanto dele esta carteira
@@ -226,6 +246,7 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
   const [custoCloud, setCustoCloud] = useState<Record<string, number>>({});
   /** cnj_num -> honorário recebido, da planilha. Fora da RPC de propósito. */
   const [honorariosPorCnj, setHonorariosPorCnj] = useState<Record<string, HonorarioDoCnj>>({});
+  const [aReceberPorCnj, setAReceberPorCnj] = useState<Record<string, HonorarioAReceberDoCnj>>({});
   const [honorarios, setHonorarios] = useState<HonorariosDaPlanilha>({
     total: 0, lancamentos: 0, semCnj: 0, foraDaCarteira: 0, cnjsForaDaCarteira: 0, ultimo: null,
   });
@@ -411,6 +432,57 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
         resumo.cnjsForaDaCarteira = cnjsFora.size;
         setHonorariosPorCnj(porCnj);
         setHonorarios(resumo);
+
+        // HONORÁRIO QUE AINDA VAI ENTRAR (18/08/2026) — pedido do Raym: "basta
+        // ter a vencer e vencido na própria carteira". Sem filtro de data aqui:
+        // é o corte por data que separa a vencer de vencido, e ele é feito
+        // linha a linha logo abaixo, pela mesma régua do resto do app.
+        const aReceber: Record<string, HonorarioAReceberDoCnj> = {};
+        const vazio = (): HonorarioAReceberDoCnj => ({
+          aVencer: 0, vencido: 0, condenacao: 0,
+          linhasAVencer: 0, linhasVencidas: 0, vencidoMaisAntigo: null,
+        });
+        for (let inicio = 0; ; inicio += 1000) {
+          const { data: prev } = await (db as any)
+            .from('jm_lancamentos')
+            .select('processo_cnj, valor_caixa, valor_competencia, data, categoria, pessoa')
+            .in('categoria', [
+              'Honorários a receber', 'Honorários condenação',
+            ])
+            .range(inicio, inicio + 999);
+          const lote = (prev || []) as {
+            processo_cnj: string | null; valor_caixa: number | null;
+            valor_competencia: number | null; data: string | null;
+            categoria: string | null; pessoa: string | null;
+          }[];
+          for (const l of lote) {
+            const cnj = String(l.processo_cnj || '').replace(/\D/g, '');
+            if (cnj.length < 15 || !cnjsDaCarteira.has(cnj)) continue;
+            // Sem valor de caixa cai no de competência; sem os dois, a linha não
+            // soma (37 linhas hoje) — nunca vira R$ 0,00 silencioso.
+            const v = l.valor_caixa ?? l.valor_competencia;
+            if (v == null) continue;
+            const valor = Number(v);
+            const estagio = estagioDoLancamento({
+              categoria: l.categoria, pessoa: l.pessoa, data: l.data, hoje,
+            });
+            const a = aReceber[cnj] || vazio();
+            if (estagio === 'CONDENACAO') a.condenacao += valor;
+            else if (estagio === 'VENCIDO') {
+              a.vencido += valor;
+              a.linhasVencidas += 1;
+              if (l.data && (!a.vencidoMaisAntigo || l.data < a.vencidoMaisAntigo)) {
+                a.vencidoMaisAntigo = l.data;
+              }
+            } else {
+              a.aVencer += valor;
+              a.linhasAVencer += 1;
+            }
+            aReceber[cnj] = a;
+          }
+          if (lote.length < 1000) break;
+        }
+        setAReceberPorCnj(aReceber);
       } catch {
         // Sem a planilha a carteira continua inteira: só a linha de caixa some.
       }
@@ -595,14 +667,14 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
   }, [linhas, grupos, filtrando]);
 
   const totais = useMemo(
-    () => calcularTotais(linhasVisiveis, custoCloud, honorariosPorCnj),
-    [linhasVisiveis, custoCloud, honorariosPorCnj],
+    () => calcularTotais(linhasVisiveis, custoCloud, honorariosPorCnj, aReceberPorCnj),
+    [linhasVisiveis, custoCloud, honorariosPorCnj, aReceberPorCnj],
   );
 
   /** A carteira INTEIRA, sem o filtro — a tela usa para dizer "N de 475". */
   const totaisCarteira = useMemo(
-    () => calcularTotais(linhas, custoCloud, honorariosPorCnj),
-    [linhas, custoCloud, honorariosPorCnj],
+    () => calcularTotais(linhas, custoCloud, honorariosPorCnj, aReceberPorCnj),
+    [linhas, custoCloud, honorariosPorCnj, aReceberPorCnj],
   );
 
   /** Anos que existem NO CAMPO ESCOLHIDO, do mais novo para o mais velho — é o
@@ -640,6 +712,7 @@ function calcularTotais(
   linhas: CarteiraPopLinha[],
   custoCloud: Record<string, number>,
   honorariosPorCnj: Record<string, HonorarioDoCnj> = {},
+  aReceberPorCnj: Record<string, HonorarioAReceberDoCnj> = {},
 ) {
   {
     const processos = new Map<string, CarteiraPopLinha>();
@@ -708,7 +781,24 @@ function calcularTotais(
     // as linhas aqui são CNJ × parte (17 partes para 3 CNJs no PAGO de hoje).
     let honorarioRecebido = 0, honorarioLancamentos = 0, honorarioCnjs = 0;
     let honorarioUltimo: string | null = null;
+    // O que ainda vai entrar, na mesma régua do resto: a vencer, vencido e
+    // condenação nunca se somam entre si.
+    let honorarioAVencer = 0, honorarioVencido = 0, honorarioCondenacao = 0;
+    let honorarioLinhasVencidas = 0, honorarioCnjsVencidos = 0;
+    let honorarioVencidoMaisAntigo: string | null = null;
     for (const cnj of new Set(procs.map(p => p.cnj_num))) {
+      const ar = aReceberPorCnj[cnj];
+      if (ar) {
+        honorarioAVencer += ar.aVencer;
+        honorarioVencido += ar.vencido;
+        honorarioCondenacao += ar.condenacao;
+        honorarioLinhasVencidas += ar.linhasVencidas;
+        if (ar.vencido > 0) honorarioCnjsVencidos += 1;
+        if (ar.vencidoMaisAntigo
+          && (!honorarioVencidoMaisAntigo || ar.vencidoMaisAntigo < honorarioVencidoMaisAntigo)) {
+          honorarioVencidoMaisAntigo = ar.vencidoMaisAntigo;
+        }
+      }
       const h = honorariosPorCnj[cnj];
       if (!h) continue;
       honorarioRecebido += h.valor;
@@ -743,6 +833,12 @@ function calcularTotais(
       honorarioLancamentos,
       honorarioCnjs,
       honorarioUltimo,
+      honorarioAVencer,
+      honorarioVencido,
+      honorarioCondenacao,
+      honorarioLinhasVencidas,
+      honorarioCnjsVencidos,
+      honorarioVencidoMaisAntigo,
       porEstagio,
       mediaDiasNoMarco: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
       mediaIdadeDias: idades.length ? Math.round(idades.reduce((s, d) => s + d, 0) / idades.length) : null,

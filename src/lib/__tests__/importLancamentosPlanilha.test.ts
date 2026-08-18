@@ -2,7 +2,7 @@
 // exportado da aba Lançamentos em 18/08/2026 e do que já está em jm_lancamentos.
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — script .mjs sem tipos; o que importa aqui é o comportamento.
-import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha } from '../../../scripts/import-lancamentos-planilha.mjs';
+import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha, preservaCategoria } from '../../../scripts/import-lancamentos-planilha.mjs';
 
 const CABECALHO = [
   'Responsável', 'DISTRIBUÍDO', 'data', 'CASO', 'Processo', 'PESSOA', 'Categoria',
@@ -98,5 +98,19 @@ describe('importador da planilha de lançamentos', () => {
       natureza_dano: 'DANO MATERIAL',
     });
     expect(linha.valor_caixa).toBeCloseTo(228.37);
+  });
+
+  describe('reclassificação que só existe no banco', () => {
+    it('mantém "Honorários condenação" quando a planilha ainda diz "a receber"', () => {
+      // As 29 linhas foram reclassificadas direto no banco; reimportar sem o
+      // guarda desfaria isso em silêncio.
+      expect(preservaCategoria('Honorários condenação', 'Honorários a receber')).toBe(true);
+    });
+
+    it('não segura nada quando a planilha muda de verdade', () => {
+      expect(preservaCategoria('Honorários condenação', 'Honorários')).toBe(false);
+      expect(preservaCategoria('Honorários a receber', 'Honorários a receber')).toBe(false);
+      expect(preservaCategoria(null, 'Honorários a receber')).toBe(false);
+    });
   });
 });

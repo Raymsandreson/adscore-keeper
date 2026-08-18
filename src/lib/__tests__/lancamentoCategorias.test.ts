@@ -2,7 +2,7 @@
 // `jm_lancamentos` (conferidas no Externo em 18/08/2026), com as variações de
 // caixa e acento que a planilha produziu ("oriz"/"Oriz", "INDENIZAÇÃO").
 import { describe, it, expect } from 'vitest';
-import { classificarLancamento } from '@/lib/lancamentoCategorias';
+import { classificarLancamento, estagioDoLancamento } from '@/lib/lancamentoCategorias';
 
 describe('classificarLancamento', () => {
   it('honorário a receber é recebível do escritório, não caixa', () => {
@@ -91,5 +91,48 @@ describe('classificarLancamento', () => {
   it('repasse ao cliente lançado à mão é dinheiro do cliente', () => {
     expect(classificarLancamento({ categoria: 'Cota do Cliente' }).titular).toBe('cliente');
     expect(classificarLancamento({ categoria: 'Pagamento Cliente' }).titular).toBe('cliente');
+  });
+
+  it('honorário de condenação não é "a receber"', () => {
+    // 29 linhas (R$ 4,42 mi) carregavam a data da DECISÃO dentro de
+    // "Honorários a receber" e por isso apareciam vencidas há anos.
+    const c = classificarLancamento({ categoria: 'Honorários condenação', pessoa: 'HC' });
+    expect(c.titular).toBe('escritorio');
+    expect(c.especie).toBe('honorario_condenacao');
+    expect(c.previsto).toBe(false);
+  });
+});
+
+describe('estagioDoLancamento', () => {
+  const hoje = '2026-08-18';
+
+  it('a receber com data futura está no prazo', () => {
+    expect(estagioDoLancamento({ categoria: 'Honorários a receber', data: '2027-01-10', hoje }))
+      .toBe('A_RECEBER');
+  });
+
+  it('a receber com data passada está vencido', () => {
+    expect(estagioDoLancamento({ categoria: 'Honorários a receber', data: '2024-03-20', hoje }))
+      .toBe('VENCIDO');
+  });
+
+  it('condenação nunca vence — a data dela é a da decisão', () => {
+    expect(estagioDoLancamento({ categoria: 'Honorários condenação', data: '2021-05-31', hoje }))
+      .toBe('CONDENACAO');
+  });
+
+  it('sem data não inventa atraso', () => {
+    expect(estagioDoLancamento({ categoria: 'Honorários a receber', data: null, hoje }))
+      .toBe('A_RECEBER');
+  });
+
+  it('o que já é caixa fica REALIZADO', () => {
+    expect(estagioDoLancamento({ categoria: 'Honorários', data: '2024-01-10', hoje })).toBe('REALIZADO');
+    expect(estagioDoLancamento({ categoria: 'Indenização', data: '2024-01-10', hoje })).toBe('REALIZADO');
+  });
+
+  it('a cota do cliente também vence', () => {
+    expect(estagioDoLancamento({ categoria: 'Indenização a receber', data: '2025-01-01', hoje }))
+      .toBe('VENCIDO');
   });
 });

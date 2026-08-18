@@ -243,3 +243,41 @@ contrato) que faltava:
 
 `Beneficiário` continua fora de propósito: o Raym confirmou que o titular
 deduzido da categoria está correto, então importar a coluna não acrescentaria.
+
+
+## Honorários a receber: a vencer, vencido e condenação (18/08/2026)
+
+O Raym perguntou quanto dá de honorários a receber e se havia data atrasada. O
+total bruto era **R$ 5.816.833,01**, com **R$ 4.997.428,78 no passado** — parecia
+inadimplência enorme. Não era.
+
+**31 linhas (R$ 4.721.335,96, 15 processos) carregavam a data da DECISÃO**, não de
+vencimento: observação "Condenação em 1º/2º grau", `n_parcela = 1`. Pela régua da
+carteira isso é **CONDENAÇÃO** (valor certo, data incerta), e a régua é explícita:
+nunca junte CONDENAÇÃO com A RECEBER na mesma coluna — superestima o descontável.
+Aqui inflava o "a receber" em ~10x e ainda fazia tudo parecer vencido há anos.
+
+Depois de separar (migração `20260818210000`, aplicada):
+
+| Régua | Valor | Linhas |
+|---|---|---|
+| **A vencer** (valor e data, no prazo — é o descontável) | R$ 519.376,09 | 577 |
+| **Vencido** (data passou de verdade) | R$ 576.120,96 | 71 |
+| **Condenação** (fixado, sem data de pagamento) | R$ 4.721.335,96 | 31 |
+
+Fonte da verdade do estágio: `estagioDoLancamento()` em
+`src/lib/lancamentoCategorias.ts` — deriva CONDENACAO / A_RECEBER / VENCIDO /
+REALIZADO de categoria + data, com `hoje` por parâmetro para o teste não depender
+do relógio. A carteira do POP mostra os três em chips próprios
+(`PopCarteiraSheet`), alimentados por `useCarteiraDoPop`, que respeita o filtro da
+tela como o resto dos totais.
+
+**O que a base NÃO diz:** se as 71 linhas vencidas são calote ou parcela paga sem
+baixa na planilha. A tela afirma isso em vez de escolher um dos dois. As mais
+antigas: R$ 185.426,38 (881 dias), R$ 112.549,15 (811 dias), R$ 60.750,00
+(1.630 dias).
+
+**Pendência conhecida:** a categoria "Honorários condenação" **não existe na
+planilha** — foi criada só no banco. O importador tem guarda
+(`preservaCategoria`) para não desfazer numa reimportação, e avisa quantas linhas
+segurou, mas o certo é criar a categoria na planilha também.
