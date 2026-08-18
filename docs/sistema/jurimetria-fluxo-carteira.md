@@ -786,3 +786,34 @@ zz_grupos, zz_nomes_leads, zz_backfill_*) e as funções zz_escavador_tick /
 zz_backfill_tick; crons zz-* zerados. `zz_jm_lancamentos_bkp_20260818` sai
 automaticamente após completar 24h (agendado). Dados que importavam já
 estão extraídos: planilha entregue, fichas criadas, capas e marcos salvos.
+
+### 13.10 Plano aprovado: aposentadoria da Tab.Aux (próxima sessão)
+
+Decisão do Raym (18/08): o sistema vira a fonte da verdade e a Tab.Aux se
+aposenta — em vez de reimportar a planilha, absorver os dados de vez.
+
+O que o banco JÁ tem: caso ↔ CNJ ↔ data de protocolo (jm_processos) e
+fichas no POP para tudo. O que vive SÓ na planilha: as colunas por parte —
+total da condenação, total da parte, total à vista, honorário contratual à
+vista, status de pagamento, fase, decisão de mérito — exatamente os campos
+previstos no vocabulário v4 para o grão (processo × cliente) em jm_partes
+(cota_cliente_liquida, honorario_contratual, etc.).
+
+Passos, na ordem:
+1. **Ingestão** — parse completo de TODAS as seções da Tab.Aux (principal,
+   previdenciário, arquivados, blocos laterais) → jm_partes + campos novos
+   aditivos. De-para coluna a coluna mostrado ao Raym ANTES de gravar.
+   Conciliação de âncora obrigatória: somas no banco batendo com a
+   planilha ao centavo (mesmo método do reimporte do financeiro, §13.3).
+2. **Tela de edição** no WhatsJUD — valores por parte na ficha do processo
+   (junto com a seção de repasses jm_repasses já desenhada). Sem a tela, a
+   equipe continua digitando no Sheets e as fontes divergem — NÃO aposentar
+   a planilha antes deste passo.
+3. **Congelamento** — Tab.Aux vira arquivo histórico somente-leitura; a
+   importação periódica morre.
+
+A planilha do CONTROLE FINANCEIRO (jm_lancamentos) segue viva por ora —
+mesma lógica se aplicará depois, quando a seção financeira estiver rodando.
+
+Gatilho combinado: o Raym abre a próxima sessão com "faz o passo 1 da
+aposentadoria da Tab.Aux".
