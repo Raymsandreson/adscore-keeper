@@ -346,3 +346,64 @@ CARVALHO" hoje é "KEILA CARVALHO SANTOS SOUSA". Mas `parte_id` é FUNÇÃO de
 (processo, pessoa): 242 combinações, zero ambíguas. O script guarda esse mapa
 antes de mexer e reaplica depois — 1.456 das 1.458 conciliações sobreviveram (as
 2 restantes eram de linhas que a planilha apagou).
+
+---
+
+## Importação da Tab. Aux (18/08/2026)
+
+Fechou o buraco que a tabela acima anunciava: a separação **cota × honorário**
+agora existe por parte, em todo processo, e não só onde há lançamento.
+
+Onde ficou: colunas novas em **`jm_partes`** (não em `jm_valores` — a granularidade
+da Tab. Aux é a PARTE, e é `jm_partes` que tem essa chave):
+
+| Coluna | O que é |
+| --- | --- |
+| `condenacao_cjcm` | total da condenação corrigida (CJCM) |
+| `cota_parte_cjcm` | quanto disso é do CLIENTE |
+| `cota_parte_vista_cjcm` | a parte do cliente paga à vista |
+| `hc_vista` / `hc_parcelado` | honorário CONTRATUAL do escritório |
+| `hs` | honorário SUCUMBENCIAL do escritório |
+| `status_pagamento` | PROJETADO / A RECEBER / PAGO / PERDIDO |
+| `fase_atual` | fase processual como está na planilha |
+| `valores_importados_em` | carimbo da última importação |
+
+Migration `20260818230500_jm_partes_valores_tab_aux.sql`, importador
+`scripts/import-tab-aux.mjs`, testes em `src/lib/__tests__/importTabAux.test.ts`.
+
+### Como o importador casa a parte
+
+Por **(processo, cliente)**: CNJ reduzido a dígitos (a planilha e o banco pontuam
+diferente) e nome normalizado sem acento, sem espaço duplo, em maiúscula. Parte que
+não existe no banco **não é inventada** — sai na lista `semParte`. Parte que aparece
+duas vezes com valores DIFERENTES sai em `ambiguas` e o script não escolhe por conta
+própria.
+
+O `VALUES` castea todo número para `numeric` e todo texto para `text`: sem isso o
+Postgres infere `text` quando a primeira tupla traz `null` e a atribuição estoura.
+
+### Resultado
+
+997 partes atualizadas · 688 com valor de condenação (as demais 309 vêm da planilha
+só com status/fase, sem valor). Totais no banco:
+
+| | |
+| --- | --- |
+| Condenação | R$ 175.338.282,55 |
+| Cota do cliente | R$ 63.992.976,45 |
+| Honorário contratual | R$ 41.030.455,24 |
+| Honorário sucumbencial | R$ 46.289.483,02 |
+
+Prova no caso que originou tudo: as 7 partes com condenação R$ 28.571,43 somam
+R$ 200.000,01 de condenação — **R$ 140.000,00 do cliente e R$ 60.000,01 do
+escritório** (8.571,43 cada). A tela mostrava os 200k como se fossem do cliente.
+
+### O que ficou de fora, de propósito
+
+- **30 partes da Tab. Aux não têm linha correspondente em `jm_partes`** — nome ou
+  processo que não existe no banco. Não foram criadas.
+- **2 partes ambíguas** (mesma parte, dois conjuntos de valores na planilha).
+- **`condenação = cota + HC + HS` não fecha em 311 das 827 linhas.** Não é erro de
+  parsing: os 1.031 registros do CSV têm 108 campos uniformes e o caso 10 bate na
+  casa decimal. São fórmulas da planilha com datas de correção diferentes entre as
+  colunas. Vale conferir na origem antes de usar essa soma como validação.
