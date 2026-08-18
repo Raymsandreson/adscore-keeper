@@ -139,6 +139,29 @@ function instanceNameVariants(name: string): string[] {
   return Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
 }
 
+/**
+ * Filtro de instância da conversa — que NÃO se aplica a grupo.
+ *
+ * Em grupo, cada instância-membro grava a sua cópia de cada mensagem, e cada
+ * uma tem um pedaço diferente do histórico: quem entrou no grupo depois só tem
+ * o que veio de lá pra cá. Medido em 750 grupos (11–18/08/2026): na metade
+ * deles a instância mais pobre enxerga 56% ou menos das mensagens, e no pior
+ * caso 2%. Ler só a instância "dona" da conversa escondia da pessoa mensagens
+ * que o colega ao lado via na tela dele. O dedup em `whatsappGroupMirror`
+ * colapsa os espelhos depois.
+ *
+ * O `limit` continua sendo de LINHAS, não de mensagens: em grupo uma página de
+ * 300 linhas rende ~115 mensagens reais (2,6 espelhos por mensagem), contra as
+ * 300 de antes. É de propósito — triplicar a página levaria a abertura de um
+ * grupo pesado de 1,5MB para 4,2MB de egress (medido no FAMILIA 374). Quem
+ * rola até o topo puxa a página seguinte automaticamente. O caminho para
+ * baratear isso é parar de trazer o `metadata` inteiro (80% do payload).
+ */
+function applyConversationInstanceFilter(query: any, phone: string, instanceName: string) {
+  if (isWhatsAppGroupId(phone)) return query;
+  return query.in('instance_name', instanceNameVariants(instanceName));
+}
+
 // Colunas da tabela conversations que espelham o retorno da RPC.
 const SUMMARY_COLUMNS =
   'phone, contact_name, contact_id, lead_id, last_message_text, last_message_at, last_direction, instance_name, unread_count, message_count';
@@ -349,11 +372,14 @@ export async function getConversationMessages(
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  let query = (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName))
+  let query = applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  )
     .order('created_at', { ascending: false })
     .limit(limit);
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
@@ -374,11 +400,14 @@ export async function getConversationMessagesSince(
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  const { data, error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName))
+  const { data, error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  )
     .gt('created_at', afterCreatedAt)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -409,11 +438,14 @@ export async function searchConversationMessages(
   const { term, fromIso, toIso, order = 'desc', limit = 60 } = opts;
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  let query = (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName));
+  let query = applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  );
   if (term && term.trim()) {
     // `%` e `_` são curingas do LIKE; `,` quebraria o parser do PostgREST.
     const escaped = term.trim().replace(/[%_,]/g, (c) => `\\${c}`);
@@ -459,11 +491,14 @@ export async function getConversationMessagesForward(
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  const { data, error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName))
+  const { data, error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  )
     .gt('created_at', afterIso)
     .order('created_at', { ascending: true })
     .limit(limit);
@@ -475,11 +510,17 @@ export async function markMessagesAsRead(
   phone: string,
   instanceName: string
 ): Promise<void> {
-  const { error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .update({ read_at: new Date().toISOString() })
-    .eq('phone', phone)
-    .in('instance_name', instanceNameVariants(instanceName))
+  // Em grupo marca em TODAS as instâncias-membro: a bolha lida é a mesma
+  // mensagem espelhada, e deixar as cópias sem `read_at` mantinha o badge de
+  // não lida aceso na conversa que o próximo usuário abrisse.
+  const { error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('phone', phone),
+    phone,
+    instanceName,
+  )
     .eq('direction', 'inbound')
     .is('read_at', null);
   if (error) throw error;
