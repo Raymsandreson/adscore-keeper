@@ -152,7 +152,8 @@ interface LinhaExtrato {
   titular: TitularLancamento | null;
   /** Contratual, sucumbencial, cota do cliente... null na parcela sem abertura. */
   especie: EspecieLancamento | null;
-  direcao: 'entrada' | 'saida' | null;
+  /** 'repasse' = dinheiro de terceiro passando pela conta (cliente/parceiro). */
+  direcao: 'entrada' | 'saida' | 'repasse' | null;
   /** true = ainda não é caixa (parcela prevista, "a receber" da planilha). */
   previsto: boolean;
   /** Antecipação do FIDC: entrou caixa, mas o processo continua tramitando. */
@@ -308,7 +309,10 @@ export function EntityFinancialsPanel({
         categoria: cat || null,
         titular: cls.titular,
         especie: cls.especie,
-        direcao: l.tipo === 'ENTRADA' ? 'entrada' : l.tipo === 'SAIDA' ? 'saida' : null,
+        direcao: l.tipo === 'ENTRADA' ? 'entrada'
+          : l.tipo === 'SAIDA' ? 'saida'
+          : l.tipo === 'REPASSE' ? 'repasse'
+          : null,
         previsto: cls.previsto,
         adiantado: cls.adiantado,
         valor: valor == null ? null : Number(valor),
@@ -396,12 +400,14 @@ export function EntityFinancialsPanel({
       // Repasse ao parceiro é linha própria, de valor igual à nossa metade —
       // não desconta do nosso honorário porque nunca entrou nele.
       if (l.titular === 'parceiro') { parceiro += l.valor; continue; }
+      // A cota do cliente conta pelo TITULAR, não pela direção: com tipo
+      // REPASSE a linha não é entrada nem saída, e cair no `else` a sumiria.
+      if (l.titular === 'cliente') { cliente += l.valor; continue; }
       if (l.direcao === 'entrada') {
-        if (l.titular === 'cliente') cliente += l.valor;
-        else if (l.especie === 'honorario_contratual') contratual += l.valor;
+        if (l.especie === 'honorario_contratual') contratual += l.valor;
         else if (l.especie === 'honorario_sucumbencial') sucumbencial += l.valor;
         else outrosHonorarios += l.valor;
-      } else if (l.direcao === 'saida' && l.titular === 'escritorio') {
+      } else if (l.direcao === 'saida') {
         despesas += l.valor;
       }
     }
@@ -659,7 +665,9 @@ export function EntityFinancialsPanel({
                   variant={linha.direcao === 'entrada' ? 'default' : linha.direcao === 'saida' ? 'destructive' : 'secondary'}
                   className="text-xs flex-shrink-0"
                 >
-                  {linha.direcao === 'entrada' ? '📥' : linha.direcao === 'saida' ? '📤' : '•'}
+                  {linha.direcao === 'entrada' ? '📥'
+                    : linha.direcao === 'saida' ? '📤'
+                    : linha.direcao === 'repasse' ? '🔁' : '•'}
                 </Badge>
                 <div className="min-w-0">
                   <p className="font-medium truncate">{linha.descricao}</p>

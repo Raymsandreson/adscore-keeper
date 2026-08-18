@@ -187,3 +187,59 @@ contratual × sucumbencial por causa disso.
 4.291 de 4.742 linhas nulas) e `Relação c/ Cliente` (o "30%" do contrato — só 7
 linhas de 4.742). Se algum dia forem importadas, o titular passa a vir do dado
 em vez da categoria.
+
+
+## A coluna TIPO: entrada, saída e REPASSE (18/08/2026)
+
+O Raym levantou a dúvida certa: *"não sei o que boto na parte do cliente e do
+parceiro porque não é entrada nem saída"*. Ele está certo, e a base mostra a
+confusão: das 1.302 linhas de indenização, 859 estavam sem tipo, 443 como
+ENTRADA e 2 já tinham "Repasse" escrito à mão.
+
+**A causa:** a coluna TIPO estava respondendo duas perguntas ao mesmo tempo —
+"para que lado o dinheiro andou" e "de quem é o dinheiro". Entrada/Saída só
+respondem a primeira. A cota do cliente que cai na conta do escritório *é* uma
+entrada de dinheiro, mas não é receita: é dever de repasse.
+
+**A régua combinada:**
+
+| Tipo | Quando usar |
+|---|---|
+| `ENTRADA` | entrou e é **nosso** — honorário (recebido ou a receber), crédito comprado, adiantamento do FIDC |
+| `SAIDA` | saiu e era **nosso** — custas, perícia, folha, imposto |
+| `REPASSE` | dinheiro de **terceiro** passando pela conta — cota do cliente e repasse ao advogado parceiro. Não é receita nem despesa |
+
+Detalhe que tira o peso da decisão: **o sistema não depende de acertar o TIPO.**
+De quem é o dinheiro sai da CATEGORIA (ver a tabela do vocabulário acima), e é
+assim que o extrato monta os totais. O TIPO é descritivo — ajuda a ler o
+extrato, não sustenta a conta. Categoria ambígua (Movimentação conta, OUTROS)
+fica sem tipo mesmo: sem régua confiável, o certo é não inventar.
+
+### Importador da planilha
+
+`scripts/import-lancamentos-planilha.mjs` — recarrega a aba Lançamentos a partir
+de um CSV exportado do Google Sheets. Testes em
+`src/lib/__tests__/importLancamentosPlanilha.test.ts` (10 casos).
+
+```
+node scripts/import-lancamentos-planilha.mjs --dry-run ~/Downloads/Lancamentos.csv
+SUPABASE_SERVICE_ROLE_KEY=... node scripts/import-lancamentos-planilha.mjs ~/Downloads/Lancamentos.csv
+```
+
+O que ele resolve, além de trazer a coluna `Relação c/ Cliente` (o percentual do
+contrato) que faltava:
+
+- **Chave `ordem_origem`** (número da linha na planilha). 4.676 das 4.742 linhas
+  têm ordem única; 66 repetem porque duas cargas foram para a mesma tabela — o
+  script pula essas e lista quais, em vez de adivinhar.
+- **Nunca sobrescreve `parte_id` nem `parte_conciliacao`** (1.458 e 1.529 linhas):
+  são da conciliação feita depois da importação e não existem na planilha.
+- **Só ATUALIZA por padrão.** Inserir linha nova exige `--inserir`, para uma
+  exportação parcial não injetar lixo.
+- **Duas colunas "Natureza".** A planilha tem duas com o mesmo nome — a de
+  recorrência e a do dano (última coluna). Mapear por nome pegava a primeira nas
+  duas e o dano vinha nulo; o mapeamento agora escolhe a ocorrência certa.
+- **Cabeçalho truncado** ("Valor (Regime de Caix") é aceito por prefixo.
+
+`Beneficiário` continua fora de propósito: o Raym confirmou que o titular
+deduzido da categoria está correto, então importar a coluna não acrescentaria.
