@@ -644,3 +644,44 @@ Pendente: número certo do caso 382 (confirmar com o time).
 **Busca por OAB**: a edge `search-escavador` já tem `buscar_por_oab` — é o
 caminho para o inventário definitivo de processos do Raym (fecha os 39 casos
 sem CNJ e valida a Tab.Aux inteira), pendente de OK por custo de créditos.
+
+### 13.8 Inventário por OAB via Escavador — rodado (18/08)
+
+Autorizado pelo Raym ("pode pesquisar" → as 3 OABs). Inscrições no CNA:
+**PI-10949** (principal), **CE-56635-A** e **PA-39418-A** (suplementares).
+
+**Como rodou** (rede do ambiente bloqueia chamada direta): edge
+`search-escavador` v17 (fix do `buscar_por_oab`: endpoint v2
+`/advogado/processos` + paginação aceitando o `links.next` inteiro como
+`cursor`, porque ele carrega `cursor`+`li` e só o cursor dá 422), invocada de
+dentro do Postgres com `pg_net` orquestrado por `pg_cron` a cada 15s
+(`zz_escavador_tick()`: dispara página, espera resposta em
+`net._http_response`, grava em `zz_escavador_oab_raw`, segue o `next`, promove
+a próxima OAB, se auto-desagenda no fim).
+
+**Resultado**: PI-10949 = 2.076 processos (21 páginas), CE-56635 = 14,
+PA-39418 = 133 (129 repetidos da PI, 4 exclusivos). **Deduplicado: 2.075 CNJs
+distintos** — 776 trabalhistas, 927 estaduais, 370 federais (inclui INSS),
+2 STJ. Normalizado em `zz_escavador_processos` (uma linha por CNJ: data de
+início, ramo pelo dígito J, polos, área/classe/assunto, órgão, valor da causa,
+OABs de origem).
+
+**Cruzamento com o WhatsJUD** (`zz_inventario` = Escavador ∪ jm_processos ∪
+Tab.Aux ∪ lead_processes, 2.126 CNJs):
+- 724 dos 2.075 têm ficha em algum board; 582 no POP marcos.
+- **413 trabalhistas sem ficha em board nenhum** — maioria antiga (2016–2018:
+  181; 2025–26: 67). Decidir escopo antes de criar ficha em massa.
+- 938 não-trabalhistas sem ficha (estaduais/federais — INSS, cível, etc.).
+- **51 CNJs só nas bases internas** (não vieram na busca por OAB): conferir se
+  o Raym não é o advogado cadastrado ou se o CNJ está errado.
+- DV inválido: os 2 conhecidos (368/382) + 2 CNJs legados do próprio Escavador
+  (2007/2017, numeração pré-CNJ que não fecha o mod 97).
+
+**Entregue**: `Inventario_Processos_OAB_20260818.xlsx` — inventário completo
+ordenado por **data de protocolo** com **nº do caso** (fonte: jm_processos >
+Tab.Aux > título da ficha), abas: completo, trabalhistas sem ficha, fora do
+Escavador, resumo. Era o pedido literal do Raym ("a sequência dos processos
+pela data de protocolo e trazendo o numero do caso").
+
+Trabalho: tabelas `zz_escavador_*` e `zz_tabaux` ficam até a decisão sobre as
+fichas; depois dropar. Cron `zz-escavador-oab` já se desagendou (verificado).
