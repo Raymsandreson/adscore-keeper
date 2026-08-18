@@ -303,6 +303,44 @@ export async function getInboxActivitySignature(
   return `${latest}|${unreadRes.count ?? 'n/a'}`;
 }
 
+/**
+ * Telefones das nossas instâncias de WhatsApp (`whatsapp_instances.owner_phone`).
+ *
+ * Em grupo, uma mensagem assinada por um destes números é NOSSA mesmo quando
+ * nenhum espelho foi gravado como `outbound` — é o caso de quem responde pelo
+ * celular, fora do sistema. Ver `@/lib/whatsappGroupMirror`.
+ *
+ * Carrega uma vez por sessão; falha degrada para o conjunto vazio (aí sobra só
+ * o sinal do espelho `outbound`), sem derrubar a conversa.
+ */
+let ourInstancePhonesPromise: Promise<ReadonlySet<string>> | null = null;
+let ourInstancePhonesCache: ReadonlySet<string> = new Set();
+
+/** Última resposta de `getOurInstancePhones`, para os caminhos síncronos. Vazio antes da 1ª carga. */
+export function getOurInstancePhonesSync(): ReadonlySet<string> {
+  return ourInstancePhonesCache;
+}
+
+export function getOurInstancePhones(): Promise<ReadonlySet<string>> {
+  if (!ourInstancePhonesPromise) {
+    ourInstancePhonesPromise = (externalSupabase as any)
+      .from('whatsapp_instances')
+      .select('owner_phone')
+      .then(({ data, error }: { data: Array<{ owner_phone: string | null }> | null; error: { message: string } | null }) => {
+        if (error) {
+          console.warn('[getOurInstancePhones] falhou:', error.message);
+          ourInstancePhonesPromise = null;
+          return new Set<string>() as ReadonlySet<string>;
+        }
+        ourInstancePhonesCache = new Set(
+          (data || []).map(i => String(i.owner_phone || '').replace(/\D/g, '')).filter(Boolean)
+        );
+        return ourInstancePhonesCache;
+      });
+  }
+  return ourInstancePhonesPromise;
+}
+
 export async function getConversationMessages(
   phone: string,
   instanceName: string,

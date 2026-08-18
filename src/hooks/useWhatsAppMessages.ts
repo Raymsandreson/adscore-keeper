@@ -16,9 +16,12 @@ import {
   linkMessagesToLead,
   linkConversationContactToLead,
   linkMessagesToContact,
+  getOurInstancePhones,
+  getOurInstancePhonesSync,
   CONVERSATIONS_PAGE_SIZE,
   type ConversationSummary,
 } from '@/integrations/supabase/external-rpc';
+import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
@@ -1697,17 +1700,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         phone: normalizeWhatsAppConversationPhone(msg.phone),
       }));
 
-      // Deduplicate group messages (same messageid from different instances)
-      const deduped: WhatsAppMessage[] = [];
-      const seenMsgIds = new Set<string>();
-      for (const m of allMsgs) {
-        const msgId = m.external_message_id?.split(':').pop();
-        const dedupKey = msgId ? `ext:${msgId}` : m.id;
-        if (!seenMsgIds.has(dedupKey)) {
-          seenMsgIds.add(dedupKey);
-          deduped.push(m);
-        }
-      }
+      // Espelhos de grupo (mesma mensagem gravada por cada instância-membro)
+      // colapsados pela MESMA regra do menu "Grupo WA" das atividades — ver
+      // `@/lib/whatsappGroupMirror`. O `direction` passa a sair do conjunto de
+      // espelhos: antes, qual deles sobrevivia decidia de que lado a bolha
+      // aparecia, e as duas telas discordavam em 20% das mensagens de grupo.
+      const deduped = dedupeMirroredMessages(allMsgs, {
+        ourPhones: await getOurInstancePhones(),
+      }) as unknown as WhatsAppMessage[];
 
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
       const lastMessage = deduped[0] || null;
@@ -1780,8 +1780,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       const seenExtIds = new Set(
         cached.map(m => m.external_message_id?.split(':').pop()).filter(Boolean)
       );
-      const older = raw
-        .map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) }))
+      const older = (dedupeMirroredMessages(
+        raw.map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) })),
+        { ourPhones: await getOurInstancePhones() },
+      ) as unknown as WhatsAppMessage[])
         .filter(m => {
           if (existingIds.has(m.id)) return false;
           const extId = m.external_message_id?.split(':').pop();
@@ -1822,8 +1824,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     const seenExtIds = new Set(
       cached.map(m => m.external_message_id?.split(':').pop()).filter(Boolean)
     );
-    const fresh = incoming
-      .map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) }))
+    const fresh = (dedupeMirroredMessages(
+      incoming.map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) })),
+      { ourPhones: getOurInstancePhonesSync() },
+    ) as unknown as WhatsAppMessage[])
       .filter(m => {
         if (existingIds.has(m.id)) return false;
         existingIds.add(m.id);
