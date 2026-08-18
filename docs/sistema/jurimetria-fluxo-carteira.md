@@ -695,3 +695,21 @@ caso e sem lead (nenhum consta nas bases internas — vincular quando
 identificado). Board: 874 → 1.056 fichas ativas (827 CNJs distintos, zero
 duplicado). Ficaram FORA por decisão: 231 trabalhistas anteriores a 2020 e
 938 não-trabalhistas.
+
+**Complemento (18/08, "pode pegar casos antes de 2020")**: +231 fichas — os
+trabalhistas do Escavador de 2013–2019 sem ficha em board nenhum, mesmo padrão
+(DV validado, anti-dup, título = polo ativo). Board: 1.056 → **1.287 fichas
+ativas** (1.057 CNJs distintos). Com isso, TODO trabalhista do inventário
+Escavador tem ficha no POP marcos, com uma exceção deliberada:
+`0001078-27.2025.5.11.0000` (incidente 2º grau TRT11, polo ativo MPT) tem
+ficha no board Fluxo BPC e ficou onde está.
+
+**Caso 382 — desfecho da investigação**: o DV 32 de `0810452-32` não fecha com
+NENHUM ano/tribunal (TJPI 2025 pediria DV 46; TJMA 2026 pediria 34) — o erro
+está na própria sequência, não só no ano. As mensagens enviadas ao grupo
+FAMÍLIA 382 (whatsapp_messages, 16 envios) citam UM único processo:
+`0000997-70.2025.5.23.0121` (JT/TRT23, indenização), que JÁ tem ficha no POP
+em `m_remessa_2grau`. O estadual `0810452-*` não aparece no Escavador nem nos
+grupos — ou a ação não existe, ou o número está todo errado na planilha.
+Flag do jm_processos atualizado com esse achado; ficha estadual segue sem
+criar até confirmação na origem.
