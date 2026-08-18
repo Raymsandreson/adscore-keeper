@@ -158,6 +158,8 @@ interface LinhaExtrato {
   previsto: boolean;
   /** Antecipação do FIDC: entrou caixa, mas o processo continua tramitando. */
   adiantado: boolean;
+  /** Valor fixado sem data de pagamento (a data da linha é a da decisão). */
+  semCronograma?: boolean;
   /** null = a importação não trouxe o valor (mostrar "sem valor", nunca R$ 0). */
   valor: number | null;
   origem: 'manual' | 'planilha' | 'parcela';
@@ -255,7 +257,7 @@ export function EntityFinancialsPanel({
         .select('id, cliente, n_parcela, data_prevista, data_recebida, valor_pago, valor_previsto, forma')
         .in('processo_cnj', variantes),
       externo.from('jm_lancamentos')
-        .select('id, data, pessoa, categoria, subcategoria, tipo, valor_caixa, valor_competencia, beneficiario, observacao')
+        .select('id, data, pessoa, categoria, subcategoria, tipo, valor_caixa, valor_competencia, beneficiario, observacao, tem_data_pagamento')
         .in('processo_cnj', variantes),
     ]);
     // Falha aqui não derruba o painel manual — extrato importado fica de fora.
@@ -294,6 +296,9 @@ export function EntityFinancialsPanel({
       // Titular, espécie e "é caixa?" saem do vocabulário — nunca de palpite
       // sobre o texto da categoria aqui dentro.
       const cls = classificarLancamento({ categoria: cat, pessoa });
+      // Linha cuja data é a da decisão (sem cronograma) é CONDENAÇÃO: tem valor,
+      // não tem prazo, e não pode ser lida como atrasada.
+      const semCronograma = l.tem_data_pagamento === false;
       // PESSOA carrega HC/HS nas linhas de honorário: aí a espécie já diz isso e
       // repetir "HC" no detalhe é ruído. Quando é nome, é de quem decorre o valor.
       const pessoaEhRotulo = !!pessoa && /^h[cs]\b/i.test(pessoa);
@@ -314,6 +319,7 @@ export function EntityFinancialsPanel({
           : l.tipo === 'REPASSE' ? 'repasse'
           : null,
         previsto: cls.previsto,
+        semCronograma,
         adiantado: cls.adiantado,
         valor: valor == null ? null : Number(valor),
         origem: 'planilha',
@@ -703,7 +709,9 @@ export function EntityFinancialsPanel({
                   <Badge variant="outline" className="hidden sm:inline-flex text-[10px]">bruto da parte</Badge>
                 )}
                 {linha.previsto && (
-                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">a receber</Badge>
+                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                    {linha.semCronograma ? 'condenação · sem data' : 'a receber'}
+                  </Badge>
                 )}
                 {linha.adiantado && (
                   <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-800">antecipado</Badge>

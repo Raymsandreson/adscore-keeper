@@ -267,17 +267,35 @@ Depois de separar (migração `20260818210000`, aplicada):
 
 Fonte da verdade do estágio: `estagioDoLancamento()` em
 `src/lib/lancamentoCategorias.ts` — deriva CONDENACAO / A_RECEBER / VENCIDO /
-REALIZADO de categoria + data, com `hoje` por parâmetro para o teste não depender
-do relógio. A carteira do POP mostra os três em chips próprios
-(`PopCarteiraSheet`), alimentados por `useCarteiraDoPop`, que respeita o filtro da
-tela como o resto dos totais.
+REALIZADO de categoria + data + `tem_data_pagamento`, com `hoje` por parâmetro
+para o teste não depender do relógio. A carteira do POP mostra os três em chips
+próprios (`PopCarteiraSheet`), alimentados por `useCarteiraDoPop`, que respeita o
+filtro da tela como o resto dos totais.
+
+### Onde o "não tem data de pagamento" mora — e a tentativa errada antes dele
+
+Primeira tentativa (migração `20260818210000`, **revertida no mesmo dia**): criar
+a categoria `Honorários condenação` para essas 31 linhas. O Raym não comprou, e
+com razão — no vocabulário do escritório **CATEGORIA diz que tipo de dinheiro é**
+(honorário, indenização, custas) e **ESTÁGIO diz onde o dinheiro está** (a
+receber, vencido, condenação). "Condenação" é estágio; pô-lo na categoria
+misturou as duas gavetas. O sintoma de que estava errado apareceu sozinho: como
+a categoria vem da planilha, a reclassificação só sobrevivia com um guarda no
+importador para não ser desfeita a cada reimportação.
+
+O fato que faltava nunca foi a categoria — era **o significado da data**. Em
+quase toda linha `data` é o vencimento; nestas 31 é o dia da decisão. Virou a
+coluna `jm_lancamentos.tem_data_pagamento` (migração `20260818230000`):
+
+- `true` (padrão) — a `data` da linha é o vencimento;
+- `false` — não há cronograma; a `data` é a da decisão. A régua lê CONDENAÇÃO.
+
+A coluna **não existe na planilha de propósito**: assim o importador não a toca e
+a marcação sobrevive a qualquer reimportação sozinha. O guarda `preservaCategoria`
+saiu do script por ter deixado de ser necessário — bom sinal de que o desenho
+novo é o certo.
 
 **O que a base NÃO diz:** se as 71 linhas vencidas são calote ou parcela paga sem
 baixa na planilha. A tela afirma isso em vez de escolher um dos dois. As mais
 antigas: R$ 185.426,38 (881 dias), R$ 112.549,15 (811 dias), R$ 60.750,00
 (1.630 dias).
-
-**Pendência conhecida:** a categoria "Honorários condenação" **não existe na
-planilha** — foi criada só no banco. O importador tem guarda
-(`preservaCategoria`) para não desfazer numa reimportação, e avisa quantas linhas
-segurou, mas o certo é criar a categoria na planilha também.

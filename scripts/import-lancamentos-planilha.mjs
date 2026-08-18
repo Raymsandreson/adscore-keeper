@@ -73,8 +73,13 @@ const COLUNAS = {
   natureza_dano: ['natureza dano', 'natureza do dano', 'natureza'],
 };
 
-/** Colunas que vêm da planilha e podem ser atualizadas. `parte_id` e
- *  `parte_conciliacao` de propósito FORA — são da conciliação, não da planilha. */
+/**
+ * Colunas que vêm da planilha e podem ser atualizadas. Ficam de fora de
+ * propósito: `parte_id` e `parte_conciliacao` (da conciliação feita depois da
+ * importação) e `tem_data_pagamento` (marca que a `data` da linha é a da
+ * decisão, não de vencimento). Nada disso existe na planilha, então reimportar
+ * não pode apagar.
+ */
 const ATUALIZAVEIS = [
   'responsavel', 'distribuido', 'data', 'processo_cnj', 'processo_raw', 'pessoa',
   'categoria', 'subcategoria', 'natureza_recorrencia', 'recorrencia', 'tipo',
@@ -290,23 +295,9 @@ async function buscarExistentes(chave) {
   return { porOrdem, ambiguas };
 }
 
-/**
- * "Honorários condenação" (criada em 18/08/2026) NÃO existe na planilha: as 29
- * linhas foram reclassificadas direto no banco porque carregavam a data da
- * DECISÃO dentro de "Honorários a receber" e por isso apareciam vencidas há
- * anos. Reimportar sem este guarda desfaria isso em silêncio. Enquanto a
- * planilha não tiver a categoria, o banco manda — e o script avisa quantas
- * segurou, para não virar divergência esquecida.
- */
-function preservaCategoria(categoriaNoBanco, categoriaNaPlanilha) {
-  return categoriaNoBanco === 'Honorários condenação'
-    && String(categoriaNaPlanilha || '').toLowerCase().includes('a receber');
-}
-
-async function atualizar(chave, id, linha, categoriaNoBanco) {
+async function atualizar(chave, id, linha) {
   const corpo = {};
   for (const c of ATUALIZAVEIS) corpo[c] = linha[c];
-  if (preservaCategoria(categoriaNoBanco, linha.categoria)) delete corpo.categoria;
   const resp = await fetch(`${SUPABASE_URL}/rest/v1/${TABELA}?id=eq.${id}`, {
     method: 'PATCH',
     headers: { ...cabecalhos(chave), Prefer: 'return=minimal' },
@@ -391,17 +382,11 @@ async function main() {
   if (seco) { console.log('\n--dry-run: nada foi escrito.'); return; }
 
   let feitas = 0;
-  let categoriasPreservadas = 0;
   for (const linha of paraAtualizar) {
-    const alvo = porOrdem.get(linha.ordem_origem);
-    if (preservaCategoria(alvo.categoria, linha.categoria)) categoriasPreservadas += 1;
-    await atualizar(chave, alvo.id, linha, alvo.categoria);
+    await atualizar(chave, porOrdem.get(linha.ordem_origem).id, linha);
     if (++feitas % 200 === 0) console.log(`  ...${feitas}/${paraAtualizar.length} atualizadas`);
   }
   console.log(`atualizadas: ${feitas}`);
-  if (categoriasPreservadas) {
-    console.log(`  ${categoriasPreservadas} mantiveram "Honorários condenação" (a planilha ainda diz "a receber")`);
-  }
 
   if (inserirNovas && paraInserir.length) {
     for (let i = 0; i < paraInserir.length; i += LOTE) {
@@ -416,5 +401,3 @@ async function main() {
 if (process.argv[1] && process.argv[1].endsWith('import-lancamentos-planilha.mjs')) {
   main().catch((e) => { console.error('erro:', e.message); process.exit(1); });
 }
-
-export { preservaCategoria };
