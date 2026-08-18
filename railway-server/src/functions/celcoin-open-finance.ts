@@ -424,6 +424,29 @@ export const handler: RequestHandler = async (req, res) => {
         return;
       }
 
+      // Diagnóstico de borda. Descobre o IP de saída deste servidor e repete a
+      // chamada de token com credencial DELIBERADAMENTE inválida. Serve para
+      // separar duas causas que se parecem: se a borda responde 400
+      // invalid_client, a requisição chega na aplicação da Celcoin e o problema
+      // é credencial; se responde HTML, foi barrada antes (WAF/CDN) e credencial
+      // nenhuma passaria. Não envia segredo: a credencial da sonda é literal.
+      case 'egress_diag': {
+        const ipr = await request('GET', 'https://api.ipify.org?format=json');
+        const bogus = Buffer.from('probe:probe').toString('base64');
+        const pr = await request('POST', `${endpoints().onboard}/api/portal/onboard/v2/token`, {
+          headers: { Authorization: `Basic ${bogus}` },
+        });
+        const raw = typeof pr.body === 'string' ? pr.body : JSON.stringify(pr.body ?? '');
+        res.json({
+          success: true,
+          egress_ip: (ipr.body as any)?.ip ?? null,
+          probe_status: pr.status,
+          probe_e_html: /^\s*<(!doctype|html)/i.test(raw),
+          probe_trecho: raw.slice(0, 200),
+        });
+        return;
+      }
+
       // Bancos participantes, para o titular escolher onde autorizar.
       case 'list_brands': {
         const brands = (await fetchBrands())
