@@ -749,3 +749,17 @@ petição inicial, 10 pagamento, 4 trânsito em julgado, 2 acórdão 2º grau, 2
 cumprimento de sentença, 1 sentença, 1 audiência de conciliação. As 333
 arquivadas ficam sem consulta por decisão de custo — reavaliar se alguma
 voltar a se mover (push por e-mail cobre).
+
+**Confirmações do Raym (18/08)**: aplicados mais 9 vínculos da lista de
+candidatos — caso 38 (2 fichas: Maria José Carlos de Sousa TRT-22 e Maria
+José dos Santos Cunha TRT-16), caso 58 (Herculano Coelho Neto), caso 240
+(Paulo Henrique Gomes Vieira), caso 308 (Antonio Alves de Araujo), caso 386
+(3 fichas: Francisco de Assis Alves Barbosa TRT-8 ×2 e Francisco de Assis
+Oliveira TRT-16 — ATENÇÃO: dois nomes distintos no mesmo caso, conferir se
+o Oliveira de 2016 é mesmo o 386), e Francisco das Chagas Silva → lead
+"Francisco das Chagas Silva do Carmo". Total de vínculos: 16.
+Fora por decisão: `0004227-50.2023.5.20.0000` é MANDADO DE SEGURANÇA do
+próprio Raym sobre honorários periciais contra o Juízo da VT de Nossa
+Senhora da Glória (TRT-20/SE, out/2023) — processo do escritório, não de
+cliente; segue sem lead. As 3 fichas com polo ativo MPT (ver §13.9) ficaram
+para o Raym conferir contra os e-mails adm@/processual@.
