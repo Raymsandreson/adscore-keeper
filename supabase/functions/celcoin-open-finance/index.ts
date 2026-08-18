@@ -396,8 +396,35 @@ function expirationFromMonths(months?: number): string {
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
-const toDateOnly = (v: unknown): string | null => String(v ?? '').match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
-const toTimeOnly = (v: unknown): string | null => String(v ?? '').match(/T(\d{2}:\d{2}:\d{2})/)?.[1] ?? null;
+// A Celcoin devolve transactionDateTime em UTC. Fatiar a string ISO gravava a
+// data e a hora de Londres: MEDIDO contra o extrato do Inter em 18/08/2026, 38
+// dos 298 lancamentos (12,8% -- os de 21h em diante) caiam no dia SEGUINTE, e as
+// 298 horas vinham 3h adiantadas. Os totais batiam, o dia a dia nao.
+// bookingDate e transaction_date ja vem sem hora: converter esses deslocaria
+// pra tras (meia-noite UTC = 21h do dia anterior aqui), entao passam intactos.
+const FUSO = 'America/Sao_Paulo';
+const fmtBrasilia = new Intl.DateTimeFormat('en-CA', {
+  timeZone: FUSO,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+});
+
+function emBrasilia(v: unknown): { date: string; time: string | null } | null {
+  const raw = String(v ?? '');
+  const m = raw.match(/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}:\d{2}))?/);
+  if (!m) return null;
+  if (!m[2]) return { date: m[1], time: null };
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return { date: m[1], time: m[2] };
+  const parts = Object.fromEntries(fmtBrasilia.formatToParts(d).map((p) => [p.type, p.value]));
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    time: `${parts.hour}:${parts.minute}:${parts.second}`,
+  };
+}
+
+const toDateOnly = (v: unknown): string | null => emBrasilia(v)?.date ?? null;
+const toTimeOnly = (v: unknown): string | null => emBrasilia(v)?.time ?? null;
 
 // Piso da janela de sincronização. A Pluggy parou em 18/03/2026 mas seus ~8 mil
 // lançamentos seguem NESTAS mesmas tabelas, e a tela de conciliação não filtra

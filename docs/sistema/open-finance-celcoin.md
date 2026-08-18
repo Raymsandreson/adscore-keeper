@@ -55,6 +55,21 @@ FINAL NÃO INFORMADAS`. Vale pra conta (`fromBookingDate`/`toBookingDate`) e pra
 fatura (`fromDueDate`/`toDueDate`). Sem `to` no body, o teto é hoje em Brasília;
 data UTC adiantaria um dia depois das 21h e viraria data futura pro detentor.
 
+## O horário vem em UTC e ninguém avisa
+
+`transactionDateTime` chega em UTC. Fatiar a string ISO grava data e hora de
+Londres. Medido contra o extrato do Inter em 18/08/2026: **38 dos 298 lançamentos
+(12,8% — os de 21h em diante) caíam no dia seguinte**, e as 298 horas vinham 3h
+adiantadas. Os totais batiam perfeitamente; só o dia a dia mentia. Converter pra
+`America/Sao_Paulo` antes de fatiar (`emBrasilia()`).
+
+Cuidado: `bookingDate` e a coluna `transaction_date` já vêm sem hora. Converter
+esses desloca pra TRÁS — meia-noite UTC é 21h do dia anterior aqui. Data pura
+passa intacta.
+
+Sintoma pra reconhecer de novo: histograma por hora com pico entre 00h e 03h e
+buraco entre 05h e 08h. Ninguém movimenta conta de madrugada e para de manhã.
+
 ## Convivência com a Pluggy
 
 Mesmas tabelas (`bank_transactions`, `credit_card_transactions`), separadas pela
@@ -107,8 +122,9 @@ argumento.
 
 | item | estado |
 |---|---|
-| Inter PJ / Prudencio Capital | **AUTHORISED** até 2027-08-18, 298 lançamentos de 19/03 a 18/08 |
+| Inter PJ / Prudencio Capital | **AUTHORISED** até 2027-08-18. 298 lançamentos de 19/03 a 18/08, **conferidos contra o extrato em PDF: diferença zero** em data e valor, os 6 meses fechando individualmente. |
 | Inter PJ / R.P.Advogados | pendente — falta o CNPJ |
 | Santander | pendente — é conta **pessoal** (`PERSONAL_BANK`), consentimento PF sem CNPJ |
 | Cartão de crédito | `list_accounts` devolve o CDPRO e `resources` mostra 1 CREDIT_CARD_ACCOUNT AVAILABLE, mas o sync trouxe **0** transações. **Não verificado** se é ausência real de fatura na janela ou defeito. |
-| Pluggy | ainda ligada, 2.583 + 5.524 linhas históricas. Só aposentar depois do financeiro validar os dados da Celcoin. |
+| Pluggy | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
+| **Sync recorrente** | **NÃO EXISTE.** Os únicos gatilhos são `OpenFinanceCallbackPage.tsx:76` (após autorizar) e o botão em `CelcoinConnectionsSheet.tsx:84`. Sem cron, sem job. Foi assim que a Pluggy morreu calada por 5 meses — o rótulo de status não serve de medidor, serve a data do último lançamento. |
