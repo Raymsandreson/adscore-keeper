@@ -125,9 +125,50 @@ expôs três furos, todos corrigidos e verificados no banco real:
    Honorários Contratuais, Honorários Sucumbenciais, Cota do Cliente.
 
 **O que continua faltando** (decidido em 18/08/2026): a separação
-cliente × honorário das parcelas antigas (ex.: caso 10 = 20.000 cliente +
-8.571,43 honorário por parte) **não existe na base** — as colunas L/M/N da
+cliente × honorário das PARCELAS (`jm_pagamentos`, ex.: caso 10 = 20.000 cliente
++ 8.571,43 honorário por parte) não existe na base — as colunas L/M/N da
 planilha "Tab. Aux" nunca foram importadas, e `jm_valores.hs_pct` está zerado.
 O Raym optou por NÃO fazer backfill de `valor_pago` com o bruto da decisão
 (12 parcelas únicas, R$ 440 mil): fica "sem valor" até vir importação correta
-da planilha, com a separação de titular junto.
+da planilha, com a separação de titular junto. **Isso vale só para as parcelas**
+— em `jm_lancamentos` a separação existe e está em uso (ver abaixo).
+
+## Vocabulário dos lançamentos (ditado pelo Raym em 18/08/2026)
+
+Fonte da verdade em código: `src/lib/lancamentoCategorias.ts`, com teste em
+`src/lib/__tests__/lancamentoCategorias.test.ts` (11 casos, os mesmos que
+existem em `jm_lancamentos`). A mesma régua classifica o lançamento manual do
+app e a linha importada da planilha.
+
+| Categoria | Titular | É caixa? | O que é |
+|---|---|---|---|
+| **Honorários a receber** | escritório | não | acordo com pagamento em data futura |
+| **Honorários** | escritório | sim | os que já foram recebidos |
+| **Honorários Adiantados Oriz** | escritório | sim, mas **não do processo** | antecipado junto ao FIDC da Oriz; o processo continua em tramitação |
+| **Indenização a receber** | cliente | não | mesma lógica do "honorários a receber", com a parte como beneficiária (líquido dela) |
+| **Indenização** | cliente | sim | valor efetivamente pago ao cliente (a cota dele) |
+| **Indenização comprada** | **escritório** | sim | o escritório comprou a indenização a receber da parte — comprado, o crédito é nosso |
+
+Três regras que caem fora da tabela e são fáceis de errar:
+
+1. **"a receber" e "recebido" são o MESMO lançamento em estados diferentes.**
+   Quando a parcela é paga, a linha muda de categoria na planilha — não nasce
+   uma linha nova. Somar os dois conta o dinheiro duas vezes. Por isso o extrato
+   mostra "a receber" num card à parte, nunca junto do caixa.
+2. **Adiantamento do FIDC não é o processo pagando.** Entra caixa, mas o
+   recebível continua vivo. Fica fora do "recebido", com aviso próprio na tela.
+3. **"Indenização comprada" é a exceção do prefixo "indenização"** — é a única
+   categoria com "indeniza" no nome cujo titular é o escritório.
+
+**HC × HS:** a coluna `PESSOA` da planilha carrega `HC` (contratual) ou `HS`
+(sucumbencial) nas linhas de honorário — 657 HC e 104 HS em `jm_lancamentos`.
+Quando `PESSOA` traz nome de pessoa (54 linhas de "Honorários a receber"), é de
+qual parte o valor decorre; o titular continua sendo o escritório, como a
+planilha marca em Beneficiário. O extrato do processo abre os cards em
+contratual × sucumbencial por causa disso.
+
+**Colunas da planilha que NÃO chegaram na base** (conferido em 18/08/2026):
+`Beneficiário` ("Escritório" no PDF, mas na base só tem conta de despesa em
+4.291 de 4.742 linhas nulas) e `Relação c/ Cliente` (o "30%" do contrato — só 7
+linhas de 4.742). Se algum dia forem importadas, o titular passa a vir do dado
+em vez da categoria.
