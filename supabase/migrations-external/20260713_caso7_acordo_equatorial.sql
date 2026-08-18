@@ -1,0 +1,31 @@
+-- Caso 7 (0000407-37.2017.5.22.0110) — resolução da "parcela-fantasma" (item #4 da fila viva).
+--
+-- Diagnóstico confirmado lendo a ata de homologação do CEJUSC-JT 2º Grau/PI de 25/11/2022
+-- (jm_decisoes D0139, PJe a5fbb79): as 6 parcelas NÃO eram fantasmas — o acordo judicial de
+-- R$600.000 com a EQUATORIAL PIAUÍ foi PAGO direto aos clientes, com comprovantes juntados na
+-- própria ata (Ids 54ffef0, 680f4f6, 8137922, 47df3f0, d135410, 5ee236f). Processo extinto com
+-- resolução do mérito (art. 487 III b c/c 924 II CPC), arquivamento DEFINITIVO.
+--
+-- Os honorários (10% = R$60k) foram, por liberalidade dos autores, ao Dr. Millon Martins da
+-- Rocha OAB-PI 6561 (filho do falecido, parte E advogado) — o ESCRITÓRIO nada recebeu nem tem
+-- a receber, como o Raym registrou ("contrato só sucumbencial, sucumbência excluída").
+--
+-- Ação executada (13/07/2026, dados — não é DDL; arquivo serve de registro/documentação):
+-- 1) jm_acordos id=6: EQUATORIAL, homologação 2022-11-25, valor_total 600000, parcela única,
+--    quitação total; clausulas com rateio (viúva 290k + 5×50k), honorário 60k ao Dr. Millon
+--    (não escritório) e flag escritorio_nada_a_receber.
+-- 2) jm_pagamentos (6 parcelas, ids 143-148): acordo_id=6, valor_previsto/valor_pago conforme
+--    ata (P0298 viúva 290000; demais 50000), data_recebida 2022-11-25, status RECEBIDA.
+--
+-- Decisão de modelagem: CONFIRMAR como pagas (não deletar) — apagar perderia o histórico real;
+-- o defeito era falta de valor/confirmação, que fazia a conciliação marcar VENCIDA_SEM_ENTRADA.
+--
+-- Efeito verificado na régua v2: Caso 7 VENCIDO -> PAGO (R$540k de cota);
+-- VENCIDO 2 -> 1 (resta só o Caso 55); PAGO 63 -> 64 (R$21,9M). Nada mais mudou.
+--
+-- Rollback:
+--   UPDATE jm_pagamentos SET acordo_id=NULL, valor_previsto=NULL, valor_pago=NULL,
+--     data_recebida='2022-11-25', valor_origem=NULL WHERE processo_cnj='0000407-37.2017.5.22.0110';
+--   DELETE FROM jm_acordos WHERE id=6;
+--
+-- Banco: EXTERNO (kmedldlepwiityjsdahz). NÃO aplicar no Cloud.
