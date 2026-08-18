@@ -403,7 +403,54 @@ escritório** (8.571,43 cada). A tela mostrava os 200k como se fossem do cliente
 - **30 partes da Tab. Aux não têm linha correspondente em `jm_partes`** — nome ou
   processo que não existe no banco. Não foram criadas.
 - **2 partes ambíguas** (mesma parte, dois conjuntos de valores na planilha).
-- **`condenação = cota + HC + HS` não fecha em 311 das 827 linhas.** Não é erro de
-  parsing: os 1.031 registros do CSV têm 108 campos uniformes e o caso 10 bate na
-  casa decimal. São fórmulas da planilha com datas de correção diferentes entre as
-  colunas. Vale conferir na origem antes de usar essa soma como validação.
+- **9 partes não fecham em nenhuma leitura das colunas** (P0544-P0548, P0702, P0703,
+  P0781, P0782 — em duas delas a cota vem MAIOR que a própria condenação). Vale
+  conferir na origem.
+
+> **Correção (18/08, mesma noite).** Registrei aqui antes que
+> `condenação = cota + HC + HS` não fechava em 311 de 827 linhas "por fórmulas com
+> datas de correção diferentes". Estava errado — era leitura errada das colunas, não
+> defeito da planilha. A identidade certa está em `src/lib/valorProcesso.ts` e fecha
+> em **679 das 688** partes com valor.
+
+---
+
+## "Quanto vale o processo" na ficha (18/08/2026)
+
+Bloco novo no topo do painel financeiro do processo (`EntityFinancialsPanel`,
+só quando `scope='process'` e há CNJ), alimentado por `jm_partes`. Mostra
+condenação, quanto é do cliente e quanto é do escritório — aberto em contratual e
+sucumbencial — mais os status das partes e a lista parte a parte.
+
+**Fica separado do extrato de propósito.** Estoque e fluxo respondem perguntas
+diferentes e o mesmo honorário aparece nos dois: aqui como direito, lá como parcela
+quando entra. O bloco tem estado próprio (`partesValor`), não passa por
+`totaisProcesso`, e a tela diz na cara "não some com o extrato abaixo".
+
+Cobertura: **186 processos** ganham o bloco — e em **114 deles não existe um único
+lançamento**, ou seja, a ficha era financeiramente vazia. Outros 168 processos têm
+partes na Tab. Aux só com status/fase, sem valor: nesses o bloco não aparece.
+
+### A identidade das colunas (medida, não suposta)
+
+```
+condenação = cota da parte + honorário contratual À VISTA + sucumbencial
+```
+
+Fecha em **679 das 688** partes com valor (98,7%). Duas armadilhas, as duas
+verificadas no dado antes de virar código:
+
+1. **`hc_parcelado` não é fatia a mais da condenação — está DENTRO da cota.** É o
+   honorário que o cliente paga em prestações com o dinheiro que recebeu, enquanto o
+   "à vista" é retido antes do repasse. Somá-lo ao lado da cota inflava o total em 55
+   partes. Daí `cotaLiquida = cota − hc_parcelado`, e o parcelado continua contando
+   como nosso. Confere por baixo: `cotaLiquida + escritório = condenação`.
+2. **Em 251 partes "TOTAL PARTE CJCM" vem zerada** e o valor do cliente está só em
+   "TOTAL À VISTA PARTE CJCM" — são as linhas ainda PROJETADAS. A cota cai para a
+   coluna à vista e o resumo conta quantas (`cotaProjetada`), para a tela dizer que
+   ali é projeção, não acordo fechado.
+
+Sem a armadilha 2 o cliente sumia da conta em 251 partes; sem a 1, o processo era
+contado a mais. Com as duas, os processos que fecham foram de 72 para 177 de 186.
+
+Lógica pura em `src/lib/valorProcesso.ts` com 12 testes — o componente só desenha.
