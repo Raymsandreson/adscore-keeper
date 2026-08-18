@@ -355,7 +355,12 @@ async function fetchPaged(
   while (page <= MAX_PAGES) {
     const r = await fetchData(consentId, resourcePath, { ...query, page, 'page-size': PAGE_SIZE }, permissions);
     if (!r.ok) {
-      if (r.status === 404) return out; // recurso ausente/não consentido não é fatal
+      if (r.status === 404) {
+        // Caminho errado devolve o MESMO 404 de "grupo não consentido". Sair
+        // calado aqui é o que disfarça bug de path/versão de resposta vazia.
+        console.warn(`[celcoin] ${resourcePath}: 404 -> devolvendo vazio (${motivo(r)})`);
+        return out;
+      }
       throw new Error(`GET ${resourcePath} falhou (HTTP ${r.status}): ${motivo(r)}`);
     }
     const data = r.body?.data;
@@ -399,6 +404,9 @@ const toTimeOnly = (v: unknown): string | null => String(v ?? '').match(/T(\d{2}
 // por provider. Como a UNIQUE é (provider, pluggy_transaction_id), a mesma
 // despesa vinda da Celcoin entraria como linha nova e o financeiro veria tudo em
 // dobro. Daí retomar do dia seguinte ao último lançamento já gravado.
+const hojeBrasilia = (): string =>
+  new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+
 async function syncFloor(table: 'bank_transactions' | 'credit_card_transactions', userId: string): Promise<string> {
   const { data } = await ext
     .from(table)
@@ -608,7 +616,7 @@ Deno.serve(async (req) => {
       case 'list_resources': {
         const consentId = String(body.consent_id || '').trim();
         if (!consentId) return json({ success: false, error: 'consent_id é obrigatório' }, 400);
-        return json({ success: true, resources: await fetchPaged(consentId, 'resources') });
+        return json({ success: true, resources: await fetchPaged(consentId, 'resources/v3/resources') });
       }
 
       case 'list_accounts': {
@@ -616,8 +624,8 @@ Deno.serve(async (req) => {
         if (!consentId) return json({ success: false, error: 'consent_id é obrigatório' }, 400);
         return json({
           success: true,
-          accounts: await fetchPaged(consentId, 'accounts'),
-          credit_cards: await fetchPaged(consentId, 'credit-cards-accounts/accounts'),
+          accounts: await fetchPaged(consentId, 'accounts/v2/accounts'),
+          credit_cards: await fetchPaged(consentId, 'credit-cards-accounts/v2/accounts'),
         });
       }
 
@@ -649,19 +657,23 @@ Deno.serve(async (req) => {
           ? (consentRow!.permissions as string[])
           : null;
 
-        const to = body.to ? String(body.to) : undefined;
+        // O Inter recusa a janela pela metade: 422 OPFDA010 "DATA INICIAL OU DATA
+        // FINAL NÃO INFORMADAS" quando só fromBookingDate viaja. As duas pontas são
+        // obrigatórias, então sem `to` no body o teto é hoje em Brasília — data UTC
+        // adiantaria um dia depois das 21h e viraria data futura pro detentor.
+        const to = body.to ? String(body.to) : hojeBrasilia();
         const bankFrom = body.from ? String(body.from) : await syncFloor('bank_transactions', userId);
         const cardFrom = body.from ? String(body.from) : await syncFloor('credit_card_transactions', userId);
         let bankCount = 0;
         let cardCount = 0;
 
-        for (const acc of await fetchPaged(consentId, 'accounts', {}, permissions)) {
+        for (const acc of await fetchPaged(consentId, 'accounts/v2/accounts', {}, permissions)) {
           const accountId = acc?.accountId;
           if (!accountId) continue;
 
           const txs = await fetchPaged(
             consentId,
-            `accounts/${encodeURIComponent(accountId)}/transactions`,
+            `accounts/v2/accounts/${encodeURIComponent(accountId)}/transactions`,
             { fromBookingDate: bankFrom, toBookingDate: to },
             permissions,
           );
@@ -703,13 +715,13 @@ Deno.serve(async (req) => {
         }
 
         // Cartão é hierárquico: conta -> fatura -> transações.
-        for (const card of await fetchPaged(consentId, 'credit-cards-accounts/accounts', {}, permissions)) {
+        for (const card of await fetchPaged(consentId, 'credit-cards-accounts/v2/accounts', {}, permissions)) {
           const cardId = card?.creditCardAccountId;
           if (!cardId) continue;
 
           const bills = await fetchPaged(
             consentId,
-            `credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills`,
+            `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills`,
             // Data de VENCIMENTO da fatura, não da compra: uma fatura de abril
             // carrega compras de março. O recorte por data de compra é o filtro
             // lá embaixo; este só evita puxar fatura à toa.
@@ -723,7 +735,7 @@ Deno.serve(async (req) => {
 
             const txs = await fetchPaged(
               consentId,
-              `credit-cards-accounts/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
+              `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
               {},
               permissions,
             );
