@@ -366,11 +366,20 @@ function maskDoc(doc: string): string {
   return '***';
 }
 
+// Open Finance Brasil limita o consent de dados a no máximo 12 meses.
+// Três detalhes que a Celcoin recusa se faltarem — os três vieram do gateway do
+// Quitepay depois que a 1ª tentativa real tomou 400 DADOS_INVALIDOS em
+// 'data.expirationDateTime fails to match the required pattern':
+//   1. SEM milissegundos: toISOString() devolve .sssZ e o padrão exigido é
+//      RFC3339 sem fração de segundo;
+//   2. setUTCMonth, não setMonth — o local desloca conforme o fuso do runtime;
+//   3. recuar 1 minuto, para nunca bater exatamente no teto do transmissor.
 function expirationFromMonths(months?: number): string {
-  const m = Math.min(Math.max(Number(months) || 12, 1), 12); // teto regulatório: 1 ano
+  const m = Math.min(12, Math.max(1, Math.round(Number(months) || 12)));
   const d = new Date();
-  d.setMonth(d.getMonth() + m);
-  return d.toISOString();
+  d.setUTCMonth(d.getUTCMonth() + m);
+  d.setUTCMinutes(d.getUTCMinutes() - 1);
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 const toDateOnly = (v: unknown): string | null => String(v ?? '').match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
