@@ -527,3 +527,56 @@ Imposto (38, R$ 749 mil); folha variável (~560 linhas em SETE grafias,
   É ela que alimenta o "pago" e o estágio PAGO da carteira — aposentá-la em
   favor de `jm_lancamentos` é o caminho, mas só depois de reimportar a planilha
   (import atual: 08/07/2026).
+
+## 13. 18/08/2026 — reimport da planilha e o buraco de cadastro medido
+
+### 13.1 Reimport de `jm_lancamentos` (diff por hash, não swap)
+
+A planilha atualizada (Drive, `Lancamentos_honorarios`, salva em 17/08) foi
+reimportada por **diff de conteúdo**: hash md5 por linha nos dois lados,
+deletar o que sumiu, inserir o que mudou/nasceu. 4.364 → **4.742 linhas**
+(+450 inseridas, −72 removidas). Vantagem do diff sobre truncate+reload:
+as ~4.290 linhas intactas **preservaram `parte_id`/flags** de graça.
+
+Verificação (banco = planilha, ao centavo): Honorários 578 / R$ 10.214.145,26;
+Indenização 793 / R$ 15.237.242,09; Honorários a receber 680 / R$ 5.816.833,01;
+Indenização a receber 503 / R$ 2.581.438,92. `importado_em` = 18/08/2026.
+Backup de rollback: `zz_jm_lancamentos_bkp_20260818` (remover após 24h).
+
+Armadilhas de normalização que geraram falso-diff (e as regras que ficaram):
+o import antigo gravou `conta` em MAIÚSCULA e NF numérica sem `.0` — o
+comparador precisa de `upper(conta)` e float-inteiro→int em TODO campo texto.
+Datas impossíveis na planilha (29/02/2022 ×6) já estavam como NULL no banco.
+Conciliação das linhas novas de cota: +54 EXATO, +4 PREFIXO, 49 REVISAR
+(CNJ novo ainda sem parte em `jm_partes` — padrão do §10.2).
+
+### 13.2 Resposta ao "não está faltando processo no POP trabalhista?" — SIM
+
+Cruzando TODO CNJ trabalhista (J=5) com dinheiro na planilha contra
+`lead_processes` (base inteira, qualquer board):
+
+| onde está o CNJ trabalhista | CNJs | recebido | a receber |
+|---|---|---|---|
+| no POP trabalhista — marcos | 36 | R$ 6,61 mi | R$ 5,36 mi |
+| **sem ficha NENHUMA na base** | **52** | **R$ 15,16 mi** | **R$ 2,75 mi** |
+
+O grosso do dinheiro histórico está em processo que nunca entrou no sistema
+(safra pré-WhatsJUD). Maiores órfãos: 0000084-44.2020.5.08.0101 (R$ 1,65 mi),
+0000417-95.2022.5.08.0110 (R$ 1,14 mi), 0000923-88.2025.5.11.0011 (R$ 1,13 mi),
+0000919-35.2021.5.05.0342 (R$ 1,08 mi) — 52 ao todo. Cadastrar essas fichas é
+o que faz a carteira e o caixa finalmente contarem a mesma história.
+(Fora do ramo trabalhista: mais 13 CNJs sem ficha, R$ 202 mil.)
+
+### 13.3 "A receber" vencidas, pós-reimport
+
+101 parcelas de honorário (R$ 5,00 mi, 41 casos) e 125 de indenização
+(R$ 771 mil, 9 casos) com data ≤ hoje e categoria ainda "a receber".
+Ou atraso real (VENCIDO) ou pago sem reclassificar — separar caso a caso
+continua pendente (a `vw_jm_parcela_leitura` v3 já faz isso por parcela
+para indenização; honorário não tem equivalente).
+
+### 13.4 Efeito no painel
+
+"Honorários recebidos (caixa)" do POP trabalhista: R$ 3,30 mi → **R$ 3,49 mi**
+(130 lançamentos, 29 CNJs, último em 10/08/2026), sem mudar código — a linha
+lê `jm_lancamentos` direto.
