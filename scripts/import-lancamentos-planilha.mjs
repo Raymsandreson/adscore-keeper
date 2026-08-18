@@ -199,13 +199,30 @@ export function mapearColunas(cabecalho) {
 }
 
 /** "30/11/2025" -> "2025-11-30". Já-ISO passa direto. Vazio -> null. */
+/**
+ * Existe no calendário? A planilha tem "29/02/2022" — e 2022 não é bissexto.
+ * O formato passava e o Postgres recusava a carga inteira na hora do insert.
+ */
+function dataExiste(iso) {
+  const [a, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(a, m - 1, d));
+  return dt.getUTCFullYear() === a && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 export function data(v) {
   const s = String(v ?? '').trim();
   if (!s) return null;
-  let m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  // Dia e mês podem vir com UM dígito: o Sheets exporta "10/8/2023" ao lado de
+  // "30/11/2025". Exigir dois zerava a data de 34 linhas em silêncio.
+  let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const iso = `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+    return dataExiste(iso) ? iso : null;
+  }
   m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+  if (!m) return null;
+  const iso = `${m[1]}-${m[2]}-${m[3]}`;
+  return dataExiste(iso) ? iso : null;
 }
 
 /** "R$ 1.234,56" -> 1234.56 · "1234.56" -> 1234.56 · "" -> null. */
@@ -458,8 +475,15 @@ create temporary table _conc on commit drop as
   select * from public.jm_lancamentos where id in (${ids});`);
     out.push(`delete from public.jm_lancamentos where id in (${ids});`);
   }
-  for (const { id, linha } of plano.atualizar) {
-    const sets = ATUALIZAVEIS
+  for (const { id, linha, antes } of plano.atualizar) {
+    // Só as colunas que de fato mudaram: UPDATE cheio esconde o que aconteceu e
+    // reescreve 24 campos para corrigir um. `antes` é a linha do banco.
+    const mudou = (c) => (NUMERICAS.has(c)
+      ? nmr(linha[c]) !== nmr(antes?.[c])
+      : txt(linha[c]) !== txt(antes?.[c]));
+    const cols = antes ? ATUALIZAVEIS.filter(mudou) : ATUALIZAVEIS;
+    if (!cols.length) continue;
+    const sets = cols
       .map((c) => `${c} = ${NUMERICAS.has(c) ? sqlNum(linha[c]) : sql(linha[c])}`)
       .join(', ');
     out.push(`update public.jm_lancamentos set ${sets} where id = ${id};`);
@@ -512,10 +536,21 @@ async function main() {
   if (faltando.length) console.warn(`aviso: colunas não encontradas: ${faltando.join(', ')}`);
 
   const daPlanilha = [];
+  const datasRuins = [];
   for (let i = iCabecalho + 1; i < linhasCsv.length; i++) {
     const campos = linhasCsv[i];
     if (!campos.some((c) => String(c ?? '').trim())) continue;
-    daPlanilha.push(montarLinha(campos, indice, i + 1));
+    const linha = montarLinha(campos, indice, i + 1);
+    // Célula preenchida que não virou data é erro de digitação na planilha
+    // ("29/02/2022"), não linha sem data. Some em silêncio se não for dito.
+    const cru = String(campos[indice.data] ?? '').trim();
+    if (cru && !linha.data) datasRuins.push(`linha ${i + 1}: "${cru}"`);
+    daPlanilha.push(linha);
+  }
+  if (datasRuins.length) {
+    console.log(`aviso: ${datasRuins.length} data(s) inválida(s) na planilha, gravadas como vazio:`);
+    for (const d of datasRuins.slice(0, 10)) console.log(`  ${d}`);
+    if (datasRuins.length > 10) console.log(`  ...e mais ${datasRuins.length - 10}`);
   }
 
   const doBanco = await buscarDoBanco(chave);

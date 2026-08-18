@@ -295,7 +295,54 @@ a marcação sobrevive a qualquer reimportação sozinha. O guarda `preservaCate
 saiu do script por ter deixado de ser necessário — bom sinal de que o desenho
 novo é o certo.
 
-**O que a base NÃO diz:** se as 71 linhas vencidas são calote ou parcela paga sem
-baixa na planilha. A tela afirma isso em vez de escolher um dos dois. As mais
-antigas: R$ 185.426,38 (881 dias), R$ 112.549,15 (811 dias), R$ 60.750,00
-(1.630 dias).
+**O que a base NÃO diz:** se as linhas vencidas são calote ou parcela paga sem
+baixa na planilha. A tela afirma isso em vez de escolher um dos dois.
+
+## Sincronização com as duas planilhas (18/08/2026)
+
+São **duas** planilhas, e elas respondem perguntas diferentes:
+
+| | **Jurimetria — aba Tab. Aux** | **Controle Financeiro — aba Lançamentos** |
+|---|---|---|
+| Uma linha é | uma **PARTE** | uma **PARCELA** |
+| Responde | *quanto vale* (estoque) | *quando entra* (fluxo) |
+| Traz | condenação, cota do cliente, HC à vista, HC parcelado, HS, status | data, valor, categoria, conta |
+| Tamanho (18/08) | 1.028 partes · 287 processos | 4.713 lançamentos |
+| Vai para | `jm_valores` (ainda sem as colunas de honorário) | `jm_lancamentos` |
+
+**Nunca se somam** — uma é o patrimônio, a outra é o caixa.
+
+A Tab. Aux tem a separação que faltava: no caso 10, cada parte aparece com
+condenação R$ 28.571,43 = **cota R$ 20.000,00 + honorário contratual
+R$ 8.571,43**. Importá-la é o passo seguinte (pede colunas novas em
+`jm_valores`, ainda não feito).
+
+### Três bugs do importador, pegos antes de rodar
+
+1. **Casar por número de linha estava errado.** O Raym apagou linhas da planilha
+   e tudo abaixo subiu: a `ordem_origem` 3000 no banco era "FELIPE ESTEFÂNIO
+   R$ 105,21", na planilha virou "JONAS AIRES SILVA R$ 30.864,59". Rodar assim
+   sobrescreveria milhares de registros com dados errados, em silêncio. A
+   identidade passou a ser o CONTEÚDO (ver o cabeçalho do script).
+2. **Data com um dígito.** O Sheets exporta `10/8/2023` ao lado de `30/11/2025`;
+   o parser exigia dois dígitos e zerava a data de **34 linhas**, inflando o diff
+   em 34 apagar + 34 inserir.
+3. **Data que não existe.** A planilha tem `29/02/2022`, e 2022 não é bissexto.
+   O formato passava e o Postgres recusava a carga inteira no insert. Agora o
+   script valida no calendário e avisa quais linhas têm data impossível.
+
+### Resultado da sincronização
+
+4.542 inalteradas · 61 atualizadas · 71 inseridas · 100 apagadas → **4.713**,
+exatamente o tamanho da planilha. Backup das apagadas em
+`jm_lancamentos_removidas_20260818`.
+
+Honorários a receber depois da sincronização: **R$ 560.905,04 a vencer**,
+R$ 152.818,96 vencido, R$ 18.600,00 condenação (`tem_data_pagamento = false`).
+
+**Conciliação sobrevive à reorganização.** Preservar `parte_id` linha a linha não
+funciona — o Raym reorganiza as partes, e uma parcela que era "ADERALDO PIRES
+CARVALHO" hoje é "KEILA CARVALHO SANTOS SOUSA". Mas `parte_id` é FUNÇÃO de
+(processo, pessoa): 242 combinações, zero ambíguas. O script guarda esse mapa
+antes de mexer e reaplica depois — 1.456 das 1.458 conciliações sobreviveram (as
+2 restantes eram de linhas que a planilha apagou).

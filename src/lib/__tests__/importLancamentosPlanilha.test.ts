@@ -33,10 +33,20 @@ describe('importador da planilha de lançamentos', () => {
     expect(linhas[1]).toEqual(['tem, vírgula', 'tem\nquebra']);
   });
 
-  it('converte data brasileira para ISO', () => {
+  it('converte data brasileira para ISO, com um ou dois dígitos', () => {
     expect(data('30/11/2025')).toBe('2025-11-30');
+    // O Sheets exporta "10/8/2023" ao lado de "30/11/2025". Exigir dois dígitos
+    // zerava a data de 34 linhas em silêncio.
+    expect(data('10/8/2023')).toBe('2023-08-10');
+    expect(data('1/1/2026')).toBe('2026-01-01');
     expect(data('2025-11-30')).toBe('2025-11-30');
     expect(data('')).toBeNull();
+    expect(data('sem data')).toBeNull();
+    // A planilha tem "29/02/2022" e 2022 não é bissexto: o formato passava e o
+    // Postgres recusava a carga inteira no insert.
+    expect(data('29/02/2022')).toBeNull();
+    expect(data('29/02/2024')).toBe('2024-02-29');
+    expect(data('31/04/2025')).toBeNull();
   });
 
   it('converte valor em real, inclusive negativo entre parênteses', () => {
