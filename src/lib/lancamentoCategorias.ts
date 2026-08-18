@@ -24,6 +24,8 @@
 //                          parte. Comprado, o crédito passa a ser NOSSO — é a
 //                          única categoria "indenização" cujo titular é o
 //                          escritório.
+//   Honorários Adv         honorário REPASSADO ao advogado parceiro. Sai da
+//   Parceiro               nossa mão: o titular é o parceiro, não o escritório.
 //
 // HC × HS: na planilha a coluna PESSOA carrega "HC" (honorário contratual) ou
 // "HS" (honorário sucumbencial) nas linhas de honorário — 657 HC e 104 HS na
@@ -32,8 +34,14 @@
 // "Escritório" nessas linhas).
 // =============================================================================
 
-/** De quem é o dinheiro do lançamento. */
-export type TitularLancamento = 'escritorio' | 'cliente';
+/**
+ * De quem é o dinheiro do lançamento. `parceiro` é o advogado parceiro: a
+ * planilha lança a metade dele como LINHA PRÓPRIA, de valor igual à nossa (ver
+ * o CNJ 0002701-92.2017.5.22.0003, onde cada parcela do acordo aparece duas
+ * vezes — uma com o nome do parceiro em PESSOA, outra sem). Por isso o repasse
+ * NÃO se desconta do nosso honorário: ele nunca entrou nele.
+ */
+export type TitularLancamento = 'escritorio' | 'cliente' | 'parceiro';
 
 export type EspecieLancamento =
   | 'honorario_contratual'
@@ -64,7 +72,7 @@ export const ESPECIE_LABEL: Record<EspecieLancamento, string> = {
   honorario_sucumbencial: 'sucumbencial',
   honorario: 'honorário',
   adiantamento_fidc: 'adiantado FIDC',
-  honorario_parceiro: 'adv. parceiro',
+  honorario_parceiro: 'repasse ao parceiro',
   cota_cliente: 'cota do cliente',
   credito_comprado: 'crédito comprado',
   operacao: 'operação',
@@ -130,7 +138,9 @@ export function classificarLancamento(entrada: {
   }
   // Crédito da parte comprado pelo escritório. Antes de "indenização".
   if (cat.includes('comprad')) return monta('escritorio', 'credito_comprado');
-  if (cat.includes('parceiro')) return monta('escritorio', 'honorario_parceiro');
+  // Repasse ao advogado parceiro: o dinheiro é dele. Antes do bloco de
+  // honorário porque PESSOA aqui traz "HC/HS <nome do parceiro>".
+  if (cat.includes('parceiro')) return monta('parceiro', 'honorario_parceiro');
 
   if (cat.includes('honorari')) {
     // A espécie vem da categoria (lançamento manual) ou de PESSOA (planilha).

@@ -148,6 +148,7 @@ app e a linha importada da planilha.
 | **Indenização a receber** | cliente | não | mesma lógica do "honorários a receber", com a parte como beneficiária (líquido dela) |
 | **Indenização** | cliente | sim | valor efetivamente pago ao cliente (a cota dele) |
 | **Indenização comprada** | **escritório** | sim | o escritório comprou a indenização a receber da parte — comprado, o crédito é nosso |
+| **Honorários Adv Parceiro** | **parceiro** | sim | honorário repassado ao advogado parceiro — sai da nossa mão |
 
 Três regras que caem fora da tabela e são fáceis de errar:
 
@@ -159,6 +160,20 @@ Três regras que caem fora da tabela e são fáceis de errar:
    recebível continua vivo. Fica fora do "recebido", com aviso próprio na tela.
 3. **"Indenização comprada" é a exceção do prefixo "indenização"** — é a única
    categoria com "indeniza" no nome cujo titular é o escritório.
+4. **O repasse ao parceiro NÃO abate do nosso honorário.** A planilha lança a
+   metade do parceiro como LINHA PRÓPRIA, de valor igual à nossa: no CNJ
+   0002701-92.2017.5.22.0003, cada parcela do acordo aparece duas vezes — uma
+   com o nome do parceiro em `PESSOA` ("HC ITELVINA DR LUCIANO") e outra sem
+   ("HC ITELVINA"). Descontar o repasse do nosso honorário tiraria o valor duas
+   vezes. Por isso ele tem card/nota próprios e fica fora do resultado.
+
+**Buraco conhecido (18/08/2026, não corrigido):** 2 linhas de R$ 19.466,29 no
+CNJ 0002701-92.2017.5.22.0003 são a metade do parceiro mas foram lançadas com
+categoria "Honorários" (o nome do parceiro só aparece em `PESSOA`) — a categoria
+"Honorários Adv Parceiro" passou a ser usada depois. Essas 2 linhas contam como
+nossas no extrato. Não foi aplicada heurística de "DR/DRA no PESSOA" para pegá-las:
+seria palpite sobre dado de produção. A correção certa é reclassificar as linhas
+na planilha e reimportar.
 
 **HC × HS:** a coluna `PESSOA` da planilha carrega `HC` (contratual) ou `HS`
 (sucumbencial) nas linhas de honorário — 657 HC e 104 HS em `jm_lancamentos`.

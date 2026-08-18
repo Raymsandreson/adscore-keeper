@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
-import { Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User } from 'lucide-react';
+import { Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake } from 'lucide-react';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
 import {
@@ -381,23 +381,27 @@ export function EntityFinancialsPanel({
    */
   const totaisProcesso = useMemo(() => {
     let contratual = 0, sucumbencial = 0, outrosHonorarios = 0, cliente = 0;
-    let despesas = 0, adiantado = 0, brutoParcelas = 0, semValor = 0;
+    let despesas = 0, adiantado = 0, parceiro = 0, brutoParcelas = 0, semValor = 0;
     let aReceberEscritorio = 0, aReceberCliente = 0;
     for (const l of extrato) {
       if (l.valor == null) { semValor += 1; continue; }
       if (l.previsto) {
         if (l.origem === 'parcela') continue; // parcela prevista já aparece na linha
-        if (l.titular === 'cliente') aReceberCliente += l.valor; else aReceberEscritorio += l.valor;
+        if (l.titular === 'cliente') aReceberCliente += l.valor;
+        else if (l.titular === 'escritorio') aReceberEscritorio += l.valor;
         continue;
       }
       if (l.adiantado) { adiantado += l.valor; continue; }
       if (l.origem === 'parcela') { brutoParcelas += l.valor; continue; }
+      // Repasse ao parceiro é linha própria, de valor igual à nossa metade —
+      // não desconta do nosso honorário porque nunca entrou nele.
+      if (l.titular === 'parceiro') { parceiro += l.valor; continue; }
       if (l.direcao === 'entrada') {
         if (l.titular === 'cliente') cliente += l.valor;
         else if (l.especie === 'honorario_contratual') contratual += l.valor;
         else if (l.especie === 'honorario_sucumbencial') sucumbencial += l.valor;
         else outrosHonorarios += l.valor;
-      } else if (l.direcao === 'saida' && l.titular !== 'cliente') {
+      } else if (l.direcao === 'saida' && l.titular === 'escritorio') {
         despesas += l.valor;
       }
     }
@@ -405,7 +409,7 @@ export function EntityFinancialsPanel({
     return {
       contratual, sucumbencial, outrosHonorarios, escritorio, cliente, despesas,
       resultado: escritorio - despesas,
-      aReceberEscritorio, aReceberCliente, adiantado, brutoParcelas, semValor,
+      aReceberEscritorio, aReceberCliente, adiantado, parceiro, brutoParcelas, semValor,
     };
   }, [extrato]);
 
@@ -582,6 +586,13 @@ export function EntityFinancialsPanel({
                 mas não foi o processo que pagou: ele continua em tramitação. Fora do recebido.
               </p>
             )}
+            {totaisProcesso.parceiro > 0 && (
+              <p className="text-violet-700">
+                {formatCurrency(totaisProcesso.parceiro)} repassados ao advogado parceiro. Não abate
+                do honorário acima: a planilha lança a metade dele como linha própria, então esse
+                valor nunca entrou no nosso.
+              </p>
+            )}
             {totaisProcesso.outrosHonorarios > 0 && (
               <p>
                 {formatCurrency(totaisProcesso.outrosHonorarios)} em honorário sem HC/HS na planilha —
@@ -673,6 +684,11 @@ export function EntityFinancialsPanel({
                 {linha.titular === 'cliente' && (
                   <Badge variant="outline" className="hidden sm:inline-flex text-[10px] gap-1 border-sky-300 text-sky-700">
                     <User className="h-2.5 w-2.5" />cota do cliente
+                  </Badge>
+                )}
+                {linha.titular === 'parceiro' && (
+                  <Badge variant="outline" className="hidden sm:inline-flex text-[10px] gap-1 border-violet-300 text-violet-700">
+                    <Handshake className="h-2.5 w-2.5" />repasse ao parceiro
                   </Badge>
                 )}
                 {linha.titular === null && (

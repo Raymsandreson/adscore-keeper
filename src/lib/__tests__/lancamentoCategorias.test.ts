@@ -69,9 +69,13 @@ describe('classificarLancamento', () => {
     expect(c.especie).toBe('credito_comprado');
   });
 
-  it('honorário de advogado parceiro não vira contratual nem sucumbencial', () => {
+  it('honorário de advogado parceiro é REPASSE: o titular é o parceiro', () => {
+    // Na planilha PESSOA vem "HC ITELVINA DR LUCIANO" — tem prefixo HC, mas o
+    // dinheiro é do parceiro. A categoria tem que ganhar do prefixo.
     for (const cat of ['Honorários Adv Parceiro', 'Honorários adv parceiro', 'Honorários advogado parceiro']) {
-      expect(classificarLancamento({ categoria: cat, pessoa: 'HC' }).especie).toBe('honorario_parceiro');
+      const c = classificarLancamento({ categoria: cat, pessoa: 'HC ITELVINA DR LUCIANO' });
+      expect(c.especie).toBe('honorario_parceiro');
+      expect(c.titular).toBe('parceiro');
     }
   });
 
