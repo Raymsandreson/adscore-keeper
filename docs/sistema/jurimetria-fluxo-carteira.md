@@ -580,3 +580,21 @@ para indenização; honorário não tem equivalente).
 "Honorários recebidos (caixa)" do POP trabalhista: R$ 3,30 mi → **R$ 3,49 mi**
 (130 lançamentos, 29 CNJs, último em 10/08/2026), sem mudar código — a linha
 lê `jm_lancamentos` direto.
+
+### 13.5 Conferência POP × Tab.Aux × grupos WhatsApp (18/08/2026)
+
+A Tab.Aux (import de 16/08 em `jm_processos`: 356 CNJs / 337 casos) cruzada
+com `lead_processes` e com os nomes de grupos do WhatsApp:
+
+- **147 processos SEM FICHA** no sistema (Tab.Aux e/ou lançamentos) —
+  R$ 15,4 mi recebidos e R$ 3,1 mi a receber fora do radar da carteira.
+- **15 processos com ficha em OUTRO board** (fora do POP marcos).
+- **39 casos têm grupo no WhatsApp e nem na Tab.Aux estão** (maior: 413) —
+  a Tab.Aux em si está incompleta; a régua real de casos são os grupos.
+- Justiça comum entra no POP normalmente (40 CNJs J=8 já estão lá) —
+  acidente estadual não é motivo para ficar de fora.
+
+Entregue ao Raym: `Conferencia_POP_trabalhista_20260818.xlsx` (3 abas:
+sem ficha, outro board, grupo sem Tab.Aux). Detecção de caso nos nomes de
+grupo: regex `(CASO|FAMILIA|FAMÍLIA)` + número em `conversations.contact_name`
+e `lead_whatsapp_groups.group_name`.
