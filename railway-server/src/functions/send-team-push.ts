@@ -14,6 +14,7 @@
 import type { RequestHandler } from 'express';
 import webpush from 'web-push';
 import { supabase } from '../lib/supabase';
+import { enviarExpo, type ExpoMensagem } from '../lib/expo-push';
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
@@ -141,10 +142,17 @@ export const handler: RequestHandler = async (req, res) => {
 
     const { data: subs } = await supabase
       .from('push_subscriptions')
-      .select('id, endpoint, p256dh, auth')
+      .select('id, endpoint, p256dh, auth, provider')
       .in('user_id', Array.from(recipients));
 
     if (!subs || subs.length === 0) return res.json({ success: true, sent: 0 });
+
+    // Duas famílias de assinatura na mesma tabela: navegador (VAPID) e app
+    // (token Expo). `provider` nulo é linha anterior à migration — Web Push.
+    type Sub = { id: string; endpoint: string; p256dh: string | null; auth: string | null; provider: string | null };
+    const todas = subs as Sub[];
+    const web = todas.filter((s) => (s.provider || 'webpush') === 'webpush' && s.p256dh && s.auth);
+    const expo = todas.filter((s) => s.provider === 'expo');
 
     const title = titleOverride
       || (is_urgent ? `⚠ URGENTE — ${sender_name || 'Equipe'}` : (sender_name || 'Chat da equipe'));
@@ -163,10 +171,10 @@ export const handler: RequestHandler = async (req, res) => {
     let sent = 0;
     let failed = 0;
     await Promise.all(
-      subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
+      web.map(async (s) => {
         try {
           await webpush.sendNotification(
-            { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh as string, auth: s.auth as string } },
             payload,
           );
           sent++;
@@ -180,6 +188,28 @@ export const handler: RequestHandler = async (req, res) => {
         }
       }),
     );
+
+    // Canal do app. O corpo é o mesmo do Web Push — quem muda é o transporte —,
+    // e a `url` viaja em `data` para o deep link abrir a tela certa no toque.
+    if (expo.length > 0) {
+      const mensagens: ExpoMensagem[] = expo.map((s) => ({
+        to: s.endpoint,
+        title,
+        body,
+        urgente: !!is_urgent,
+        data: { url: pushUrl || '/', tag: JSON.parse(payload).tag },
+      }));
+
+      const r = await enviarExpo(mensagens);
+      sent += r.enviados;
+      failed += r.falhas;
+
+      if (r.tokensMortos.length > 0) {
+        // App desinstalado ou token rotacionado: mesma limpeza que o 404/410 do
+        // Web Push faz. Sem isso a tabela só cresce e o `sent` mente.
+        await supabase.from('push_subscriptions').delete().in('endpoint', r.tokensMortos);
+      }
+    }
 
     return res.json({ success: true, sent, failed });
   } catch (err: unknown) {
