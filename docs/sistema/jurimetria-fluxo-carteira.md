@@ -598,3 +598,24 @@ Entregue ao Raym: `Conferencia_POP_trabalhista_20260818.xlsx` (3 abas:
 sem ficha, outro board, grupo sem Tab.Aux). Detecção de caso nos nomes de
 grupo: regex `(CASO|FAMILIA|FAMÍLIA)` + número em `conversations.contact_name`
 e `lead_whatsapp_groups.group_name`.
+
+### 13.6 As 162 fichas criadas no POP marcos (18/08/2026)
+
+Autorizado pelo Raym ("cria tudo"): as 147 sem ficha + 15 que só existiam em
+outro board ganharam ficha própria no board `Trabalhistas judicial — marcos`
+via INSERT em `lead_processes` (sem lead vinculado; `notes` explica a origem;
+`workflow_stage_id = m_ajuizamento` como ponto de partida; guarda
+anti-duplicidade por CNJ dentro do board). As fichas dos outros boards foram
+MANTIDAS — o sistema convive com o mesmo CNJ em boards de produtos diferentes.
+
+Verificado pós-criação:
+- Carteira do POP: 475 → **637 processos** (475 + 162, dedup ok).
+- Honorário recebido que o POP enxerga: R$ 3,49 mi → **R$ 8,61 mi** (87 CNJs).
+- CNJs com honorário recebido e sem ficha: **0** (zerou o buraco de cadastro).
+
+Ressalvas: (a) as fichas novas entram como PROJETADO/sem marco até a captura
+(Escavador/DataJud/jurimetria) preencher; (b) continuam SEM lead — vincular ao
+cadastrar o caso no funil; (c) `0000240-19.2025.5.11.0152` e `.0153` (caso 368)
+vieram os dois da Tab.Aux — um deles é provável typo, conferir; (d) honorário
+de INSS sem CNJ (SM/BPC, ~R$ 1,3 mi) segue fora da carteira por natureza —
+não tem processo judicial.
