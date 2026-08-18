@@ -763,3 +763,26 @@ próprio Raym sobre honorários periciais contra o Juízo da VT de Nossa
 Senhora da Glória (TRT-20/SE, out/2023) — processo do escritório, não de
 cliente; segue sem lead. As 3 fichas com polo ativo MPT (ver §13.9) ficaram
 para o Raym conferir contra os e-mails adm@/processual@.
+
+**Correções pelos prints do Raym (18/08, manhã)**:
+- Caso 386 DESFEITO nas 3 fichas: o cliente real é Francisco de Assis
+  MENDES RESENDE (motorista × Kandango Transportes/Grupo Catedral e
+  Expresso Maia) e a inicial ainda está em elaboração — a ação nem foi
+  protocolada, por isso não há CNJ. Os dois Franciscos vinculados eram
+  homônimos. Lição repetida: nome comum + grupo dedicado ≠ vínculo.
+- `0010966-17.2024.5.18.0111` → **CASO 222** (consignatória de verbas
+  rescisórias do Elenildo; MPT no polo — por isso o polo ativo enganava).
+- `0000047-10.2025.5.06.0000` → **CASO 183.1** (Conflito de Competência do
+  processo do Gedeon `0001271-63.2024.5.06.0017`, que já tinha ficha).
+- `0010384-54.2020.5.18.0241` (ação) e `0011507-53.2021.5.18.0241`
+  (cumprimento, CONCLUÍDO — parcela final repassada) → **CASO 2.2**
+  (Iracema Costa Sousa e Demerval de Sousa, Valparaíso-GO). Sem lead no
+  funil — só título/nota.
+Total: 18 fichas vinculadas/nomeadas, 3 desfeitas.
+
+**Limpeza (18/08)**: dropadas as tabelas de trabalho da rodada
+(zz_escavador_*, zz_tabaux, zz_inventario, zz_vinculos, zz_match_*,
+zz_grupos, zz_nomes_leads, zz_backfill_*) e as funções zz_escavador_tick /
+zz_backfill_tick; crons zz-* zerados. `zz_jm_lancamentos_bkp_20260818` sai
+automaticamente após completar 24h (agendado). Dados que importavam já
+estão extraídos: planilha entregue, fichas criadas, capas e marcos salvos.
