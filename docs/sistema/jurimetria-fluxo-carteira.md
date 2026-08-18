@@ -619,3 +619,28 @@ cadastrar o caso no funil; (c) `0000240-19.2025.5.11.0152` e `.0153` (caso 368)
 vieram os dois da Tab.Aux — um deles é provável typo, conferir; (d) honorário
 de INSS sem CNJ (SM/BPC, ~R$ 1,3 mi) segue fora da carteira por natureza —
 não tem processo judicial.
+
+### 13.7 Correção caso 368/382 — e a validação por dígito verificador (18/08)
+
+O Raym pegou: os CNJs `0000240-19.2025.5.11.0152` e `.0153` (caso 368, Tab.Aux)
+NÃO EXISTEM — alguém arrastou a célula no Sheets e o Google incrementou o final
+do número. Os processos reais do caso 368 (confirmados pelas notificações dos
+grupos FAMÍLIA 368 e 368.1) são `0000240-19.2025.5.11.0151` (JT, companheira e
+filha) e `0007908-17.2025.8.04.4700` (TJAM, pais e irmãos) — e JÁ TINHAM ficha
+no POP desde junho.
+
+**Guarda nova**: CNJ tem dígito verificador (ISO 7064 mod 97-10) — validado em
+SQL: `mod((seq||ano||J||TR||origem)::numeric*100 + DV, 97) = 1`. Rodada sobre
+fichas do POP + Tab.Aux + lançamentos, pegou os 2 do caso 368 **e um terceiro
+que ninguém tinha visto**: `0810452-32.2026.8.18.0046` (caso 382), DV inválido.
+Toda importação futura de CNJ deve passar por essa validação.
+
+Correções aplicadas: 3 fichas criadas em 13.6 apagadas (soft delete);
+`jm_processos` limpo (.0152/.0153 removidos, estadual 0007908 inserido no caso
+368, caso 382 flagged CNJ_INVALIDO_DV); 6 partes (P0146–P0151: mãe e irmãos)
+remapeadas do CNJ errado para a ação estadual. POP: 637 → 634 fichas ativas.
+Pendente: número certo do caso 382 (confirmar com o time).
+
+**Busca por OAB**: a edge `search-escavador` já tem `buscar_por_oab` — é o
+caminho para o inventário definitivo de processos do Raym (fecha os 39 casos
+sem CNJ e valida a Tab.Aux inteira), pendente de OK por custo de créditos.
