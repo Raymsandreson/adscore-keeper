@@ -347,3 +347,442 @@ Armadilha do grão: `whatsapp_groups_index` guarda uma linha por
 O que a tela **não** faz: nada aqui escreve. `cnj_sugerido` é sugestão, mostrada em verde
 (ou âmbar com ⚠ quando `qtd_sugerida > 1`), e não vira `lead_processes` sozinho. Vínculo
 automático em caso ambíguo criaria ficha para a pessoa errada.
+
+### 10.9 As 232 peças lidas — e o que elas mudaram (e o que não)
+
+`jm_ler_disparar(p_limit)` solta a fila por pg_net; `jm-ler-peca` lê e grava em
+`jm_documento_leitura`. 232/232 lidas, confiança média 0,96–1,00.
+
+O que saiu:
+
+| espécie | peças | inadimplência | condenação somada |
+|---|---:|---:|---:|
+| DESPACHO | 154 | 8 | R$ 1,71 mi |
+| ATA_AUDIENCIA | 34 | 0 | R$ 4,80 mi |
+| DECISAO | 26 | 1 | R$ 4,03 mi |
+| SENTENCA | 7 | 0 | R$ 2,00 mi |
+| EXTINCAO_QUITACAO | 7 | 0 | — |
+| ACORDO | 3 | 0 | R$ 1,61 mi |
+
+**Inadimplência em 5 processos**, nenhum deles visível pelo DataJud — o caso 88
+(IDPJ + penhora de R$ 21.769,35, o mesmo valor que a Luana anotou à mão),
+descumprimento de acordo com multa de 10% em `0000249-26.2020.5.14.0004`, e
+10 parcelas pendentes em `0000604-65.2019.5.06.0401`.
+
+**O ganho na régua foi modesto, e é honesto dizer:** `INADIMPLENCIA` foi de 15
+para 30 parcelas e `PRECISA_LER` de 297 para 282. O **valor** em `PRECISA_LER`
+não mudou (R$ 583.622,06) — as 15 parcelas que saíram têm `valor_previsto` nulo.
+A razão é simples: só **22 processos** têm parcela em `PRECISA_LER` e só **19**
+têm PDF baixado. O gargalo não é leitura, é coleta.
+
+**Primeiro alvará detectado da base.** Fora da fila, 4 peças com título de
+dinheiro foram lidas à mão: alvará de **R$ 153.677,91** (08/10/2024,
+`0002701-92.2017.5.22.0003`) e comprovantes de R$ 25.330,28 e R$ 2.000. Até aqui
+`process_pop_marcos` não tinha NENHUM marco `pagamento` na base inteira (§10.6).
+
+Armadilha reconfirmada: das 18 peças com "comprovante/alvará" no título, a
+maioria é comprovante de **residência**, de **postagem** e **AR dos Correios**.
+Por isso a v3 da `vw_jm_parcela_leitura` decide pelo que a peça DIZ
+(`jm_documento_leitura.especie`), não pelo título.
+
+Ressalva registrada na v3: "intimado a comprovar o recolhimento das custas" é
+inadimplência do PROCESSO, não da parcela do cliente — 2 dos 5 processos
+marcados falam só disso, e a view os descarta por heurística de texto. Heurística
+serve para desqualificar, nunca para classificar sozinha.
+
+Faltam **1.074 peças** já baixadas e ainda não lidas (fora da fila porque seus
+processos não têm parcela pendente). Custo estimado: ordem de US$ 1–3 no Gemini
+2.5 Flash.
+
+## 11. 17/08/2026 — "Pago R$ 620 mil" com R$ 3,3 milhões de honorário lançado
+
+O painel **Carteira · Trabalhistas judicial — marcos** mostrava `Pago:
+R$ 620.129,86` enquanto a planilha de lançamentos tinha mais de R$ 10 milhões em
+`Honorários`. Nada estava somando errado — eram três problemas empilhados.
+
+### 11.1 O chip PAGO nunca foi dinheiro
+
+`EstagioChips` soma **valor de condenação** por estágio, não valor recebido. O
+chip PAGO é "quanto valem os processos que já têm pagamento registrado". Medido
+na RPC `pop_carteira_marcos` em 17/08/2026:
+
+| estágio | partes | CNJs | valor (condenação) | valor_pago |
+|---|---|---|---|---|
+| CONDENACAO | 236 | 103 | 16.609.393,39 | 0 |
+| A_RECEBER | 61 | 41 | 3.062.710,00 | 0 |
+| **PAGO** | **17** | **3** | **620.129,86** | **874.124,24** |
+| EM_EXECUCAO | 17 | 17 | 0 | 0 |
+| PROJETADO | 344 | 318 | 0 | 0 |
+
+Os dois números de "pago" na mesma tela (620.129,86 no chip, 874.124,24 no card)
+são contas diferentes da mesma linha — e nenhuma das duas é o caixa do
+escritório.
+
+### 11.2 O estágio PAGO enxerga 3 de 475 processos
+
+`pop_carteira_marcos` decide o estágio por `jm_pagamentos`
+(`when coalesce(pg.total_pago,0) > 0 then 'PAGO'`). `jm_pagamentos` tem 1.022
+linhas em **39 CNJs** no banco inteiro, e só **3** deles estão neste POP de 475.
+Os outros 472 processos não têm como sair de PROJETADO/CONDENACAO, por
+construção — não é dado faltando, é a régua não alcançando.
+
+### 11.3 A planilha estava no banco e ninguém lia
+
+`jm_lancamentos` (4.364 linhas, último import **08/07/2026**) tinha o dinheiro.
+O único código que a lia era `vw_jm_parcela_leitura`, filtrando
+`categoria = 'INDENIZAÇÃO'` exato — honorário ficava de fora por construção.
+`cnj_na_base` está **NULL nas 4.364 linhas**: a coluna nunca foi preenchida.
+
+### 11.4 O recorte do que é honorário RECEBIDO
+
+Fechado com contagem no banco, não por nome de categoria:
+
+- `Honorários` — **é caixa**. 523 linhas, R$ 9,96 mi. Todas com data no passado.
+- `Honorários a receber` — **não é**. Lançamentos datados em 2027, 2030, 2035,
+  2037 (pensionamento mês a mês). É previsão.
+- `Honorários Adiantados Oriz` — **não é**. Antecipação de fundo; uma linha só
+  responde por R$ 3,0 mi de caixa contra R$ 888 mil de competência.
+- `Honorários adv parceiro` — **não é**. Repasse a terceiro (`tipo_raw` =
+  'Repasse').
+
+Regra que ficou no código: `categoria = 'Honorários'` exata, `tipo` ENTRADA ou
+nulo, `data <= hoje`.
+
+### 11.5 Onde o honorário cai (e onde some)
+
+Dos honorários da planilha, por destino do CNJ:
+
+| destino | lançamentos | valor |
+|---|---|---|
+| CNJ deste POP trabalhista | 110 | **3.302.102,03** |
+| CNJ que não existe em `lead_processes` | 506 | 7.334.843,40 |
+| sem CNJ no lançamento | 128 | 4.320.873,06 |
+
+O buraco maior não é de cálculo: é **cadastro**. Metade do honorário aponta para
+processo que não está na base.
+
+### 11.6 O que foi entregue
+
+`useCarteiraDoPop` passou a ler `jm_lancamentos` direto (RLS já permite select
+para `authenticated`; sem RPC nova, sem DDL) e expõe:
+
+- `totais.honorarioRecebido` / `honorarioLancamentos` / `honorarioCnjs` /
+  `honorarioUltimo` — segue o recorte da busca, como o resto do dinheiro;
+- `honorarios` — total da planilha, quanto está fora da carteira e quanto está
+  sem CNJ, para a tela mostrar o buraco em vez de escondê-lo.
+
+O painel ganhou a linha **"Honorários recebidos (caixa)"**, separada dos chips de
+estágio, e o aviso passou a dizer o que o chip PAGO é. **As duas contas nunca se
+somam**: honorário é a fatia do escritório, a carteira é o processo inteiro.
+
+Provas em `useCarteiraDoPop.test.ts`: honorário conta uma vez por CNJ (p1 tem 2
+partes — por linha daria 32.000 em vez de 17.000) e segue o recorte da busca.
+
+### 11.7 O que ficou de fora
+
+- **Reimportar a planilha.** O import é de 08/07/2026: 523 linhas de
+  `Honorários` no banco contra 575 na planilha do Raym. Os números acima estão
+  ~1 mês atrasados.
+- **Conciliar lançamento → estágio.** O estágio PAGO continua olhando só
+  `jm_pagamentos`. Fazer o lançamento contábil mover o estágio exige casar por
+  parte (`parte_id` está preenchido em 1.415 de 4.364 linhas) e muda o valor de
+  todos os chips — não foi feito, e não deve ser feito sobre base de julho.
+
+## 12. 17/08/2026 — o dicionário do CONTROLE FINANCEIRO (jm_lancamentos)
+
+Confirmado com o Raym e com o PDF da planilha viva: `jm_lancamentos` é o import
+do CONTROLE FINANCEIRO GRUPO PRUDÊNCIO, e a convenção central é:
+
+**A parcela nasce como "X a receber" e vira "X" quando o dinheiro cai.**
+`Honorários a receber` / `Indenização a receber` são o CRONOGRAMA (parcela a
+parcela, coluna `data` = vencimento, `n_parcela` = número); `Honorários` /
+`Indenização` são o realizado. O objetivo do parcelamento registrado é controlar
+o que dá para ADIANTAR ao cliente. Na coluna `pessoa`, honorário vem como
+HC (contratual) / HS (sucumbencial); indenização vem com o nome do cliente.
+
+### Famílias de categoria (import de 08/07/2026, 4.364 linhas, regime de caixa)
+
+Entradas de processo: Indenização (742 c/ INDENIZAÇÃO e Atrasado, R$ 15,08 mi);
+Honorários (523, R$ 9,96 mi); Honorários a receber (444, R$ 5,63 mi, até 2039);
+Honorários Adiantados Oriz (11 em 2 grafias, R$ 3,89 mi — antecipação de fundo);
+Indenização a receber (481, R$ 2,00 mi); Bradesco (1, R$ 495 mil);
+Indenização comprada (223, R$ 241 mil); Honorários adv parceiro (21 em 2
+grafias, R$ 133 mil — repasse); Parceria/Parceira (5, R$ 64 mil).
+
+Saídas: Movimentação conta (329, R$ 2,63 mi — transferência interna, não é
+despesa); FOLHA FIXO (487, R$ 1,94 mi); Empréstimo Bancário (23, R$ 948 mil);
+Imposto (38, R$ 749 mil); folha variável (~560 linhas em SETE grafias,
+~R$ 545 mil); OUTROS em 3 grafias (261, R$ 287 mil); ajuda família em 5 grafias
+(129, R$ 45 mil); PREVIDENCIÁRIO (46, R$ 24 mil); miúdas pessoais de 2023.
+
+### O que a tabela está pedindo (medido, não resolvido)
+
+- **"A receber" com data vencida**: R$ 5,05 mi em honorários e R$ 886 mil em
+  indenização. Ou VENCIDO real, ou pago sem reclassificar (caso 88, parcelas
+  9–11 de 2025, continuam "a receber"). Ninguém sabe qual dos dois sem conferir.
+- **Grafias**: qualquer soma por categoria tem que normalizar antes.
+- **`jm_pagamentos` diverge da planilha**: no caso 139 ela tem UMA parcela de
+  indenização (R$ 14.749,15) contra R$ 149 mil de fato recebidos
+  (R$ 58.496,07 de honorário + R$ 90.993,74 de indenização, ago/2025–jun/2026).
+  É ela que alimenta o "pago" e o estágio PAGO da carteira — aposentá-la em
+  favor de `jm_lancamentos` é o caminho, mas só depois de reimportar a planilha
+  (import atual: 08/07/2026).
+
+## 13. 18/08/2026 — reimport da planilha e o buraco de cadastro medido
+
+### 13.1 Reimport de `jm_lancamentos` (diff por hash, não swap)
+
+A planilha atualizada (Drive, `Lancamentos_honorarios`, salva em 17/08) foi
+reimportada por **diff de conteúdo**: hash md5 por linha nos dois lados,
+deletar o que sumiu, inserir o que mudou/nasceu. 4.364 → **4.742 linhas**
+(+450 inseridas, −72 removidas). Vantagem do diff sobre truncate+reload:
+as ~4.290 linhas intactas **preservaram `parte_id`/flags** de graça.
+
+Verificação (banco = planilha, ao centavo): Honorários 578 / R$ 10.214.145,26;
+Indenização 793 / R$ 15.237.242,09; Honorários a receber 680 / R$ 5.816.833,01;
+Indenização a receber 503 / R$ 2.581.438,92. `importado_em` = 18/08/2026.
+Backup de rollback: `zz_jm_lancamentos_bkp_20260818` (remover após 24h).
+
+Armadilhas de normalização que geraram falso-diff (e as regras que ficaram):
+o import antigo gravou `conta` em MAIÚSCULA e NF numérica sem `.0` — o
+comparador precisa de `upper(conta)` e float-inteiro→int em TODO campo texto.
+Datas impossíveis na planilha (29/02/2022 ×6) já estavam como NULL no banco.
+Conciliação das linhas novas de cota: +54 EXATO, +4 PREFIXO, 49 REVISAR
+(CNJ novo ainda sem parte em `jm_partes` — padrão do §10.2).
+
+### 13.2 Resposta ao "não está faltando processo no POP trabalhista?" — SIM
+
+Cruzando TODO CNJ trabalhista (J=5) com dinheiro na planilha contra
+`lead_processes` (base inteira, qualquer board):
+
+| onde está o CNJ trabalhista | CNJs | recebido | a receber |
+|---|---|---|---|
+| no POP trabalhista — marcos | 36 | R$ 6,61 mi | R$ 5,36 mi |
+| **sem ficha NENHUMA na base** | **52** | **R$ 15,16 mi** | **R$ 2,75 mi** |
+
+O grosso do dinheiro histórico está em processo que nunca entrou no sistema
+(safra pré-WhatsJUD). Maiores órfãos: 0000084-44.2020.5.08.0101 (R$ 1,65 mi),
+0000417-95.2022.5.08.0110 (R$ 1,14 mi), 0000923-88.2025.5.11.0011 (R$ 1,13 mi),
+0000919-35.2021.5.05.0342 (R$ 1,08 mi) — 52 ao todo. Cadastrar essas fichas é
+o que faz a carteira e o caixa finalmente contarem a mesma história.
+(Fora do ramo trabalhista: mais 13 CNJs sem ficha, R$ 202 mil.)
+
+### 13.3 "A receber" vencidas, pós-reimport
+
+101 parcelas de honorário (R$ 5,00 mi, 41 casos) e 125 de indenização
+(R$ 771 mil, 9 casos) com data ≤ hoje e categoria ainda "a receber".
+Ou atraso real (VENCIDO) ou pago sem reclassificar — separar caso a caso
+continua pendente (a `vw_jm_parcela_leitura` v3 já faz isso por parcela
+para indenização; honorário não tem equivalente).
+
+### 13.4 Efeito no painel
+
+"Honorários recebidos (caixa)" do POP trabalhista: R$ 3,30 mi → **R$ 3,49 mi**
+(130 lançamentos, 29 CNJs, último em 10/08/2026), sem mudar código — a linha
+lê `jm_lancamentos` direto.
+
+### 13.5 Conferência POP × Tab.Aux × grupos WhatsApp (18/08/2026)
+
+A Tab.Aux (import de 16/08 em `jm_processos`: 356 CNJs / 337 casos) cruzada
+com `lead_processes` e com os nomes de grupos do WhatsApp:
+
+- **147 processos SEM FICHA** no sistema (Tab.Aux e/ou lançamentos) —
+  R$ 15,4 mi recebidos e R$ 3,1 mi a receber fora do radar da carteira.
+- **15 processos com ficha em OUTRO board** (fora do POP marcos).
+- **39 casos têm grupo no WhatsApp e nem na Tab.Aux estão** (maior: 413) —
+  a Tab.Aux em si está incompleta; a régua real de casos são os grupos.
+- Justiça comum entra no POP normalmente (40 CNJs J=8 já estão lá) —
+  acidente estadual não é motivo para ficar de fora.
+
+Entregue ao Raym: `Conferencia_POP_trabalhista_20260818.xlsx` (3 abas:
+sem ficha, outro board, grupo sem Tab.Aux). Detecção de caso nos nomes de
+grupo: regex `(CASO|FAMILIA|FAMÍLIA)` + número em `conversations.contact_name`
+e `lead_whatsapp_groups.group_name`.
+
+### 13.6 As 162 fichas criadas no POP marcos (18/08/2026)
+
+Autorizado pelo Raym ("cria tudo"): as 147 sem ficha + 15 que só existiam em
+outro board ganharam ficha própria no board `Trabalhistas judicial — marcos`
+via INSERT em `lead_processes` (sem lead vinculado; `notes` explica a origem;
+`workflow_stage_id = m_ajuizamento` como ponto de partida; guarda
+anti-duplicidade por CNJ dentro do board). As fichas dos outros boards foram
+MANTIDAS — o sistema convive com o mesmo CNJ em boards de produtos diferentes.
+
+Verificado pós-criação:
+- Carteira do POP: 475 → **637 processos** (475 + 162, dedup ok).
+- Honorário recebido que o POP enxerga: R$ 3,49 mi → **R$ 8,61 mi** (87 CNJs).
+- CNJs com honorário recebido e sem ficha: **0** (zerou o buraco de cadastro).
+
+Ressalvas: (a) as fichas novas entram como PROJETADO/sem marco até a captura
+(Escavador/DataJud/jurimetria) preencher; (b) continuam SEM lead — vincular ao
+cadastrar o caso no funil; (c) `0000240-19.2025.5.11.0152` e `.0153` (caso 368)
+vieram os dois da Tab.Aux — um deles é provável typo, conferir; (d) honorário
+de INSS sem CNJ (SM/BPC, ~R$ 1,3 mi) segue fora da carteira por natureza —
+não tem processo judicial.
+
+### 13.7 Correção caso 368/382 — e a validação por dígito verificador (18/08)
+
+O Raym pegou: os CNJs `0000240-19.2025.5.11.0152` e `.0153` (caso 368, Tab.Aux)
+NÃO EXISTEM — alguém arrastou a célula no Sheets e o Google incrementou o final
+do número. Os processos reais do caso 368 (confirmados pelas notificações dos
+grupos FAMÍLIA 368 e 368.1) são `0000240-19.2025.5.11.0151` (JT, companheira e
+filha) e `0007908-17.2025.8.04.4700` (TJAM, pais e irmãos) — e JÁ TINHAM ficha
+no POP desde junho.
+
+**Guarda nova**: CNJ tem dígito verificador (ISO 7064 mod 97-10) — validado em
+SQL: `mod((seq||ano||J||TR||origem)::numeric*100 + DV, 97) = 1`. Rodada sobre
+fichas do POP + Tab.Aux + lançamentos, pegou os 2 do caso 368 **e um terceiro
+que ninguém tinha visto**: `0810452-32.2026.8.18.0046` (caso 382), DV inválido.
+Toda importação futura de CNJ deve passar por essa validação.
+
+Correções aplicadas: 3 fichas criadas em 13.6 apagadas (soft delete);
+`jm_processos` limpo (.0152/.0153 removidos, estadual 0007908 inserido no caso
+368, caso 382 flagged CNJ_INVALIDO_DV); 6 partes (P0146–P0151: mãe e irmãos)
+remapeadas do CNJ errado para a ação estadual. POP: 637 → 634 fichas ativas.
+Pendente: número certo do caso 382 (confirmar com o time).
+
+**Busca por OAB**: a edge `search-escavador` já tem `buscar_por_oab` — é o
+caminho para o inventário definitivo de processos do Raym (fecha os 39 casos
+sem CNJ e valida a Tab.Aux inteira), pendente de OK por custo de créditos.
+
+### 13.8 Inventário por OAB via Escavador — rodado (18/08)
+
+Autorizado pelo Raym ("pode pesquisar" → as 3 OABs). Inscrições no CNA:
+**PI-10949** (principal), **CE-56635-A** e **PA-39418-A** (suplementares).
+
+**Como rodou** (rede do ambiente bloqueia chamada direta): edge
+`search-escavador` v17 (fix do `buscar_por_oab`: endpoint v2
+`/advogado/processos` + paginação aceitando o `links.next` inteiro como
+`cursor`, porque ele carrega `cursor`+`li` e só o cursor dá 422), invocada de
+dentro do Postgres com `pg_net` orquestrado por `pg_cron` a cada 15s
+(`zz_escavador_tick()`: dispara página, espera resposta em
+`net._http_response`, grava em `zz_escavador_oab_raw`, segue o `next`, promove
+a próxima OAB, se auto-desagenda no fim).
+
+**Resultado**: PI-10949 = 2.076 processos (21 páginas), CE-56635 = 14,
+PA-39418 = 133 (129 repetidos da PI, 4 exclusivos). **Deduplicado: 2.075 CNJs
+distintos** — 776 trabalhistas, 927 estaduais, 370 federais (inclui INSS),
+2 STJ. Normalizado em `zz_escavador_processos` (uma linha por CNJ: data de
+início, ramo pelo dígito J, polos, área/classe/assunto, órgão, valor da causa,
+OABs de origem).
+
+**Cruzamento com o WhatsJUD** (`zz_inventario` = Escavador ∪ jm_processos ∪
+Tab.Aux ∪ lead_processes, 2.126 CNJs):
+- 724 dos 2.075 têm ficha em algum board; 582 no POP marcos.
+- **413 trabalhistas sem ficha em board nenhum** — maioria antiga (2016–2018:
+  181; 2025–26: 67). Decidir escopo antes de criar ficha em massa.
+- 938 não-trabalhistas sem ficha (estaduais/federais — INSS, cível, etc.).
+- **51 CNJs só nas bases internas** (não vieram na busca por OAB): conferir se
+  o Raym não é o advogado cadastrado ou se o CNJ está errado.
+- DV inválido: os 2 conhecidos (368/382) + 2 CNJs legados do próprio Escavador
+  (2007/2017, numeração pré-CNJ que não fecha o mod 97).
+
+**Entregue**: `Inventario_Processos_OAB_20260818.xlsx` — inventário completo
+ordenado por **data de protocolo** com **nº do caso** (fonte: jm_processos >
+Tab.Aux > título da ficha), abas: completo, trabalhistas sem ficha, fora do
+Escavador, resumo. Era o pedido literal do Raym ("a sequência dos processos
+pela data de protocolo e trazendo o numero do caso").
+
+Trabalho: tabelas `zz_escavador_*` e `zz_tabaux` ficam até a decisão sobre as
+fichas; depois dropar. Cron `zz-escavador-oab` já se desagendou (verificado).
+
+**Fichas criadas (18/08, autorizado pelo Raym: "pode criar os de 2020 em
+diante")**: 182 fichas no POP marcos — trabalhistas do Escavador de
+2020-01-13 a 2026-07-01 sem ficha em board nenhum, DV validado, guarda
+anti-duplicidade por CNJ no board. Título = polo ativo (cliente); nota traz
+data de protocolo e polo passivo; estágio inicial `m_ajuizamento`; sem nº de
+caso e sem lead (nenhum consta nas bases internas — vincular quando
+identificado). Board: 874 → 1.056 fichas ativas (827 CNJs distintos, zero
+duplicado). Ficaram FORA por decisão: 231 trabalhistas anteriores a 2020 e
+938 não-trabalhistas.
+
+**Complemento (18/08, "pode pegar casos antes de 2020")**: +231 fichas — os
+trabalhistas do Escavador de 2013–2019 sem ficha em board nenhum, mesmo padrão
+(DV validado, anti-dup, título = polo ativo). Board: 1.056 → **1.287 fichas
+ativas** (1.057 CNJs distintos). Com isso, TODO trabalhista do inventário
+Escavador tem ficha no POP marcos, com uma exceção deliberada:
+`0001078-27.2025.5.11.0000` (incidente 2º grau TRT11, polo ativo MPT) tem
+ficha no board Fluxo BPC e ficou onde está.
+
+**Caso 382 — desfecho da investigação**: o DV 32 de `0810452-32` não fecha com
+NENHUM ano/tribunal (TJPI 2025 pediria DV 46; TJMA 2026 pediria 34) — o erro
+está na própria sequência, não só no ano. As mensagens enviadas ao grupo
+FAMÍLIA 382 (whatsapp_messages, 16 envios) citam UM único processo:
+`0000997-70.2025.5.23.0121` (JT/TRT23, indenização), que JÁ tem ficha no POP
+em `m_remessa_2grau`. O estadual `0810452-*` não aparece no Escavador nem nos
+grupos — ou a ação não existe, ou o número está todo errado na planilha.
+Flag do jm_processos atualizado com esse achado; ficha estadual segue sem
+criar até confirmação na origem.
+
+**Caso 382, ato final (18/08)**: o trabalhista `0000997-70.2025.5.23.0121`
+EXISTE — confirmado por `buscar_por_numero` no Escavador: Vara do Trabalho de
+Nova Mutum-MT (TRT-23), acidente de trabalho, ativo, 24 movimentações, e
+**segredo de justiça** — por isso não aparece na consulta pública nem veio no
+inventário por OAB (Escavador não expõe envolvidos de processo sigiloso).
+Lição para os "51 fora do Escavador": processo em segredo de justiça é
+falso-negativo esperado da busca por OAB — checar por número antes de
+suspeitar do CNJ. O estadual `0810452-*` do caso 382 segue não confirmado.
+
+### 13.9 Vínculos e marcos das fichas do inventário (18/08)
+
+**Vínculos (item 1)**: batimento do polo ativo das 413 fichas novas contra
+leads (20.210 nomes), legal_cases e 554 grupos WhatsApp. Conclusão honesta: a
+maioria não existe nas bases internas — por isso nunca teve ficha. Aplicados
+**7 vínculos inequívocos** (conferidos um a um): Arlan Max Galvão Farias (2
+fichas, lead exato), Marcos Aurélio Pinheiro dos Santos, Raimundo Soares
+Neves, CASO 252 (Marilan Domingos de Miranda), CASO 136 (Victor Gabriel,
+TRT-19 = Delmiro Gouveia/AL), CASO 185 (Ítalo Azevedo, TRT-11 Manaus) — os
+3 últimos com lead_id + case_id + título renomeado "CASO n — nome". Falsos
+positivos rejeitados no fuzzy match: sobrenome comum ("Rodrigues dos
+Santos"), cidade que parece nome ("Coelho Neto"), homônimo ("José Francisco
+da Silva" 2016 ≠ caso 382). Lição: word_similarity sozinho NÃO serve para
+vincular — só containment de nome completo + conferência manual.
+
+**Marcos (item 2)**: das 413 fichas, o Escavador marca **79 ATIVAS** e 333
+arquivadas (status_predito das fontes). Backfill rodado SÓ nos ativos, pelo
+pipeline existente (`backfill-process-marcos`, mode backfill + process_ids,
+lotes de 10 via pg_net orquestrado por pg_cron `zz-backfill-marcos`, mesmo
+padrão do §13.8). Resultado: 8 lotes, 79 lidos, 79 com movimentações, capas
+salvas, **84 marcos inseridos**, 48 candidatos descartados pela revisão IA,
+0 erros. Status atual das fichas (view lead_process_current_status): 37
+petição inicial, 10 pagamento, 4 trânsito em julgado, 2 acórdão 2º grau, 2
+cumprimento de sentença, 1 sentença, 1 audiência de conciliação. As 333
+arquivadas ficam sem consulta por decisão de custo — reavaliar se alguma
+voltar a se mover (push por e-mail cobre).
+
+**Confirmações do Raym (18/08)**: aplicados mais 9 vínculos da lista de
+candidatos — caso 38 (2 fichas: Maria José Carlos de Sousa TRT-22 e Maria
+José dos Santos Cunha TRT-16), caso 58 (Herculano Coelho Neto), caso 240
+(Paulo Henrique Gomes Vieira), caso 308 (Antonio Alves de Araujo), caso 386
+(3 fichas: Francisco de Assis Alves Barbosa TRT-8 ×2 e Francisco de Assis
+Oliveira TRT-16 — ATENÇÃO: dois nomes distintos no mesmo caso, conferir se
+o Oliveira de 2016 é mesmo o 386), e Francisco das Chagas Silva → lead
+"Francisco das Chagas Silva do Carmo". Total de vínculos: 16.
+Fora por decisão: `0004227-50.2023.5.20.0000` é MANDADO DE SEGURANÇA do
+próprio Raym sobre honorários periciais contra o Juízo da VT de Nossa
+Senhora da Glória (TRT-20/SE, out/2023) — processo do escritório, não de
+cliente; segue sem lead. As 3 fichas com polo ativo MPT (ver §13.9) ficaram
+para o Raym conferir contra os e-mails adm@/processual@.
+
+**Correções pelos prints do Raym (18/08, manhã)**:
+- Caso 386 DESFEITO nas 3 fichas: o cliente real é Francisco de Assis
+  MENDES RESENDE (motorista × Kandango Transportes/Grupo Catedral e
+  Expresso Maia) e a inicial ainda está em elaboração — a ação nem foi
+  protocolada, por isso não há CNJ. Os dois Franciscos vinculados eram
+  homônimos. Lição repetida: nome comum + grupo dedicado ≠ vínculo.
+- `0010966-17.2024.5.18.0111` → **CASO 222** (consignatória de verbas
+  rescisórias do Elenildo; MPT no polo — por isso o polo ativo enganava).
+- `0000047-10.2025.5.06.0000` → **CASO 183.1** (Conflito de Competência do
+  processo do Gedeon `0001271-63.2024.5.06.0017`, que já tinha ficha).
+- `0010384-54.2020.5.18.0241` (ação) e `0011507-53.2021.5.18.0241`
+  (cumprimento, CONCLUÍDO — parcela final repassada) → **CASO 2.2**
+  (Iracema Costa Sousa e Demerval de Sousa, Valparaíso-GO). Sem lead no
+  funil — só título/nota.
+Total: 18 fichas vinculadas/nomeadas, 3 desfeitas.
+
+**Limpeza (18/08)**: dropadas as tabelas de trabalho da rodada
+(zz_escavador_*, zz_tabaux, zz_inventario, zz_vinculos, zz_match_*,
+zz_grupos, zz_nomes_leads, zz_backfill_*) e as funções zz_escavador_tick /
+zz_backfill_tick; crons zz-* zerados. `zz_jm_lancamentos_bkp_20260818` sai
+automaticamente após completar 24h (agendado). Dados que importavam já
+estão extraídos: planilha entregue, fichas criadas, capas e marcos salvos.

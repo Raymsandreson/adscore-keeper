@@ -100,8 +100,13 @@ export function ContactsListPage() {
   const [editCaseDialog, setEditCaseDialog] = useState<{ leadId: string; groupJid: string; currentNumber: string; currentName: string } | null>(null);
   const [editCaseValue, setEditCaseValue] = useState('');
   const [editCaseSaving, setEditCaseSaving] = useState(false);
-  // Vincular lead a um grupo "sem vínculo"
-  const [linkDialog, setLinkDialog] = useState<{ groupJid: string; groupName: string | null } | null>(null);
+  // Vincular lead a um grupo "sem vínculo".
+  // `cnjPendente`: quando o vínculo veio pelo botão de processo da coluna
+  // Processo, o CNJ fica guardado aqui e a ficha é cadastrada logo depois que o
+  // lead entra — todos os 131 processos que a jurimetria acha por nº de caso
+  // estão em grupo SEM lead, então "vincular processo" sem passar pelo lead
+  // antes não existe na prática.
+  const [linkDialog, setLinkDialog] = useState<{ groupJid: string; groupName: string | null; cnjPendente?: string } | null>(null);
   const [linkQuery, setLinkQuery] = useState('');
   const [linkSearching, setLinkSearching] = useState(false);
   const [linkResults, setLinkResults] = useState<Array<{ id: string; lead_name: string | null; case_number: string | null; lead_number: number | null; lead_status: string | null }>>([]);
@@ -442,6 +447,11 @@ export function ContactsListPage() {
   });
   /** group_jid → processo (ver GrupoProcesso). Vazio até a aba Grupos abrir. */
   const [grupoProcesso, setGrupoProcesso] = useState<Map<string, GrupoProcesso>>(new Map());
+  /** Confirmação de "cadastrar a ficha deste processo" — nunca automático. */
+  const [vincProcesso, setVincProcesso] = useState<{
+    groupJid: string; groupName: string | null; leadId: string; cnj: string; detalhe: string | null;
+  } | null>(null);
+  const [vinculandoProcesso, setVinculandoProcesso] = useState(false);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [groupContacts, setGroupContacts] = useState<Contact[]>([]);
   const [groupContactsLoading, setGroupContactsLoading] = useState(false);
@@ -472,6 +482,70 @@ export function ContactsListPage() {
     })();
     return () => { cancelado = true; };
   }, [activeTab, grupoProcesso.size]);
+
+  /**
+   * Cadastra a ficha em `lead_processes` a partir do processo da jurimetria.
+   * Escreve em produção e propaga para caso/partes — por isso nunca roda sozinha:
+   * quem chama é o diálogo de confirmação, uma linha por vez, e o botão fica
+   * bloqueado quando o nº do caso aponta para mais de um CNJ.
+   *
+   * Só copia o que a jurimetria realmente sabe. Classe, assunto, valor da causa e
+   * envolvidos ficam vazios de propósito: quem preenche isso é o Escavador,
+   * depois, e chutar aqui viraria dado errado com cara de dado bom.
+   */
+  const cadastrarProcessoDoGrupo = useCallback(async (leadId: string, cnj: string): Promise<boolean> => {
+    const numero = cnj.split(',')[0].trim();
+    // Corrida: entre a view ter sido carregada e o clique, alguém pode ter
+    // cadastrado. Confere no momento da escrita, não no da leitura.
+    const { data: jaTem } = await db
+      .from('lead_processes').select('id').eq('process_number', numero)
+      .is('deleted_at', null).limit(1).maybeSingle();
+    if (jaTem) { toast.error('Este processo já tem ficha cadastrada.'); return false; }
+
+    const { data: jm } = await (db as any)
+      .from('jm_processos')
+      .select('processo_cnj, caso, empresa, uf_proc, cidade_proc, data_protocolo, natureza')
+      .eq('processo_cnj', numero).maybeSingle();
+
+    const j = jm as {
+      caso?: string | null; empresa?: string | null; uf_proc?: string | null;
+      cidade_proc?: string | null; data_protocolo?: string | null; natureza?: string | null;
+    } | null;
+    const titulo = j?.empresa
+      ? `${j.caso ? `Caso ${j.caso} — ` : ''}${j.empresa}`
+      : `Processo ${numero}`;
+    // Ano vem do próprio CNJ (posições 10-13 do padrão NNNNNNN-DD.AAAA.J.TR.OOOO),
+    // que é mais confiável que a data de protocolo da planilha.
+    const ano = Number(numero.replace(/\D/g, '').slice(9, 13)) || null;
+
+    const { error } = await db.from('lead_processes').insert({
+      lead_id: leadId,
+      process_type: 'judicial',
+      process_number: numero,
+      title: titulo,
+      status: 'em_andamento',
+      polo_passivo: j?.empresa || null,
+      estado_origem_sigla: j?.uf_proc || null,
+      unidade_origem_cidade: j?.cidade_proc || null,
+      ano_inicio: ano,
+      started_at: j?.data_protocolo || null,
+      notes: 'Ficha criada pela conciliação de grupos do WhatsApp (nº do caso no nome do grupo × jurimetria).',
+    } as any);
+    if (error) { toast.error('Falha ao cadastrar o processo: ' + error.message); return false; }
+
+    toast.success(`Processo ${numero} cadastrado no lead.`);
+    // A sugestão morreu: agora o processo tem ficha e passa a ser cnj_do_lead.
+    setGrupoProcesso(prev => {
+      const next = new Map(prev);
+      for (const [jid, p] of next) {
+        if (p.cnj_sugerido === cnj) {
+          next.set(jid, { ...p, cnj_do_lead: numero, cnj_sugerido: null, so_na_jurimetria: false });
+        }
+      }
+      return next;
+    });
+    return true;
+  }, []);
 
   /**
    * Abre a ficha do processo por CNJ, por cima da lista (nunca redireciona).
@@ -2801,6 +2875,36 @@ export function ContactsListPage() {
                                 {ambiguo && <AlertTriangle className="h-3 w-3 shrink-0" />}
                                 <span className="truncate">{(p.cnj_sugerido || '').split(',')[0].trim()}</span>
                                 {ambiguo && <span className="shrink-0">+{p.qtd_sugerida - 1}</span>}
+                                {/* Ambíguo não vincula: escolher um dos dois CNJs no
+                                    chute cadastraria a ficha da pessoa errada. */}
+                                {!ambiguo && (
+                                  <Button
+                                    size="icon" variant="ghost"
+                                    className="h-5 w-5 shrink-0 opacity-70 hover:opacity-100"
+                                    title="Cadastrar a ficha deste processo no lead do grupo"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const cnj = (p.cnj_sugerido || '').trim();
+                                      if (!cnj) return;
+                                      if (group.lead_id) {
+                                        setVincProcesso({
+                                          groupJid: group.group_jid, groupName: group.group_name,
+                                          leadId: group.lead_id, cnj, detalhe: p.sugestao_detalhe,
+                                        });
+                                      } else {
+                                        // Sem lead não há onde pendurar a ficha. Manda
+                                        // para o vínculo do lead levando o CNJ na mão.
+                                        setLinkDialog({
+                                          groupJid: group.group_jid, groupName: group.group_name, cnjPendente: cnj,
+                                        });
+                                        setLinkQuery('');
+                                        setLinkResults([]);
+                                      }
+                                    }}
+                                  >
+                                    <Link2 className="h-3 w-3" />
+                                  </Button>
+                                )}
                               </span>
                             );
                           })()}
@@ -3425,6 +3529,12 @@ export function ContactsListPage() {
             <p className="text-xs text-muted-foreground">
               Grupo: <span className="font-medium text-foreground">{linkDialog?.groupName || linkDialog?.groupJid}</span>
             </p>
+            {linkDialog?.cnjPendente && (
+              <p className="rounded border border-emerald-500/40 bg-emerald-500/5 p-2 text-xs">
+                A ficha do processo <span className="font-mono">{linkDialog.cnjPendente}</span> será cadastrada
+                assim que o lead for vinculado. Sem lead não há onde pendurar o processo.
+              </p>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs">Buscar lead existente (nome, telefone, nº lead, nº caso)</Label>
               <div className="flex gap-2">
@@ -3469,6 +3579,11 @@ export function ContactsListPage() {
                             : g));
                           // Regenera o nome do grupo no WhatsApp
                           cloudFunctions.invoke('regenerate-lead-name', { body: { lead_id: l.id } }).catch(() => {});
+                          // Veio da coluna Processo: agora que existe lead, cadastra
+                          // a ficha do CNJ que a jurimetria apontou.
+                          if (linkDialog.cnjPendente) {
+                            await cadastrarProcessoDoGrupo(l.id, linkDialog.cnjPendente);
+                          }
                           setLinkDialog(null);
                           setLinkQuery('');
                           setLinkResults([]);
@@ -3513,6 +3628,54 @@ export function ContactsListPage() {
               <Plus className="h-4 w-4 mr-1" /> Criar novo lead vinculado
             </Button>
             <Button variant="ghost" onClick={() => setLinkDialog(null)} disabled={!!linking}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmação do vínculo processo→lead. Uma linha por vez, de propósito:
+          cadastrar ficha propaga para caso, partes e contatos, e desfazer isso
+          depois é trabalho manual. */}
+      <Dialog open={!!vincProcesso} onOpenChange={(o) => { if (!o && !vinculandoProcesso) setVincProcesso(null); }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Cadastrar a ficha deste processo?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1 text-xs">
+            <p className="text-muted-foreground">
+              Grupo: <span className="font-medium text-foreground">{vincProcesso?.groupName || vincProcesso?.groupJid}</span>
+            </p>
+            <div className="rounded border p-2">
+              <div className="font-mono text-sm">{vincProcesso?.cnj}</div>
+              {vincProcesso?.detalhe && (
+                <div className="mt-1 whitespace-pre-line text-muted-foreground">{vincProcesso.detalhe}</div>
+              )}
+            </div>
+            <p className="text-muted-foreground">
+              Cria a ficha em <span className="font-mono">lead_processes</span> ligada ao lead deste grupo, com
+              empresa, cidade/UF e data de protocolo da jurimetria. Classe, assunto e valor da causa ficam
+              vazios — quem preenche isso é o Escavador depois.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setVincProcesso(null)} disabled={vinculandoProcesso}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={vinculandoProcesso}
+              onClick={async () => {
+                if (!vincProcesso) return;
+                setVinculandoProcesso(true);
+                try {
+                  const ok = await cadastrarProcessoDoGrupo(vincProcesso.leadId, vincProcesso.cnj);
+                  if (ok) setVincProcesso(null);
+                } finally {
+                  setVinculandoProcesso(false);
+                }
+              }}
+            >
+              {vinculandoProcesso ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Link2 className="mr-1 h-4 w-4" />}
+              Cadastrar processo
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

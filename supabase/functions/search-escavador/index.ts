@@ -45,8 +45,22 @@ serve(async (req) => {
         }
         break;
       case 'buscar_por_oab':
+        // Endpoint v2 correto é /advogado/processos (o antigo /processos/oab/UF/N
+        // não existe na v2 e devolvia 404 — medido em 18/08/2026). Cobrança do
+        // Escavador: a consulta base cobre até 200 itens; blocos de 200 além
+        // disso têm custo complementar. limit=100 é o máximo por página.
+        //
+        // Paginação: o links.next desta rota carrega DOIS parâmetros (cursor +
+        // li, o id da consulta para a cobrança) — repassar só o cursor dá 422.
+        // Por isso `cursor` aqui aceita o links.next INTEIRO (validado contra a
+        // base da API) e o usa como URL da página.
+        if (cursor && String(cursor).startsWith(ESCAVADOR_BASE + '/advogado/processos')) {
+          url = String(cursor);
+          break;
+        }
         if (!oab_numero || !oab_estado) throw new Error('oab_numero e oab_estado são obrigatórios');
-        url = `${ESCAVADOR_BASE}/processos/oab/${encodeURIComponent(oab_estado.toUpperCase())}/${encodeURIComponent(oab_numero)}`;
+        url = `${ESCAVADOR_BASE}/advogado/processos?oab_numero=${encodeURIComponent(oab_numero)}&oab_estado=${encodeURIComponent(oab_estado.toUpperCase())}&limit=100`;
+        if (cursor) url += `&cursor=${encodeURIComponent(cursor)}`;
         break;
       case 'buscar_movimentacoes':
         if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
