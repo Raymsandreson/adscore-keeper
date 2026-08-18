@@ -722,3 +722,30 @@ inventário por OAB (Escavador não expõe envolvidos de processo sigiloso).
 Lição para os "51 fora do Escavador": processo em segredo de justiça é
 falso-negativo esperado da busca por OAB — checar por número antes de
 suspeitar do CNJ. O estadual `0810452-*` do caso 382 segue não confirmado.
+
+### 13.9 Vínculos e marcos das fichas do inventário (18/08)
+
+**Vínculos (item 1)**: batimento do polo ativo das 413 fichas novas contra
+leads (20.210 nomes), legal_cases e 554 grupos WhatsApp. Conclusão honesta: a
+maioria não existe nas bases internas — por isso nunca teve ficha. Aplicados
+**7 vínculos inequívocos** (conferidos um a um): Arlan Max Galvão Farias (2
+fichas, lead exato), Marcos Aurélio Pinheiro dos Santos, Raimundo Soares
+Neves, CASO 252 (Marilan Domingos de Miranda), CASO 136 (Victor Gabriel,
+TRT-19 = Delmiro Gouveia/AL), CASO 185 (Ítalo Azevedo, TRT-11 Manaus) — os
+3 últimos com lead_id + case_id + título renomeado "CASO n — nome". Falsos
+positivos rejeitados no fuzzy match: sobrenome comum ("Rodrigues dos
+Santos"), cidade que parece nome ("Coelho Neto"), homônimo ("José Francisco
+da Silva" 2016 ≠ caso 382). Lição: word_similarity sozinho NÃO serve para
+vincular — só containment de nome completo + conferência manual.
+
+**Marcos (item 2)**: das 413 fichas, o Escavador marca **79 ATIVAS** e 333
+arquivadas (status_predito das fontes). Backfill rodado SÓ nos ativos, pelo
+pipeline existente (`backfill-process-marcos`, mode backfill + process_ids,
+lotes de 10 via pg_net orquestrado por pg_cron `zz-backfill-marcos`, mesmo
+padrão do §13.8). Resultado: 8 lotes, 79 lidos, 79 com movimentações, capas
+salvas, **84 marcos inseridos**, 48 candidatos descartados pela revisão IA,
+0 erros. Status atual das fichas (view lead_process_current_status): 37
+petição inicial, 10 pagamento, 4 trânsito em julgado, 2 acórdão 2º grau, 2
+cumprimento de sentença, 1 sentença, 1 audiência de conciliação. As 333
+arquivadas ficam sem consulta por decisão de custo — reavaliar se alguma
+voltar a se mover (push por e-mail cobre).
