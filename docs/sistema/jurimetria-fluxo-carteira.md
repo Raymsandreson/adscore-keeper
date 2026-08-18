@@ -713,3 +713,12 @@ em `m_remessa_2grau`. O estadual `0810452-*` não aparece no Escavador nem nos
 grupos — ou a ação não existe, ou o número está todo errado na planilha.
 Flag do jm_processos atualizado com esse achado; ficha estadual segue sem
 criar até confirmação na origem.
+
+**Caso 382, ato final (18/08)**: o trabalhista `0000997-70.2025.5.23.0121`
+EXISTE — confirmado por `buscar_por_numero` no Escavador: Vara do Trabalho de
+Nova Mutum-MT (TRT-23), acidente de trabalho, ativo, 24 movimentações, e
+**segredo de justiça** — por isso não aparece na consulta pública nem veio no
+inventário por OAB (Escavador não expõe envolvidos de processo sigiloso).
+Lição para os "51 fora do Escavador": processo em segredo de justiça é
+falso-negativo esperado da busca por OAB — checar por número antes de
+suspeitar do CNJ. O estadual `0810452-*` do caso 382 segue não confirmado.
