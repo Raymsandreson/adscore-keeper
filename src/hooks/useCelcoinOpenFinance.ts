@@ -154,6 +154,21 @@ export function popCelcoinPendingConsent(): string | null {
  * simplesmente para. Foi assim que a Pluggy ficou 5 meses parada sem ninguém
  * notar. Estes helpers existem para a tela avisar ANTES.
  */
+/**
+ * A Celcoin devolve a grafia com Z (AUTHORIZED, AWAITING_AUTHORIZATION); o padrão
+ * Open Finance Brasil e o resto deste código usam S (AUTHORISED). Medido em
+ * 18/08/2026 num consentimento real. Comparar sem normalizar fazia o botão de
+ * sincronizar nunca habilitar, e o backend recusar com "está AUTHORIZED, não
+ * AUTHORISED" — que parece erro da Celcoin e não é.
+ */
+export function normalizeConsentStatus(status?: string | null): string {
+  return String(status ?? '').toUpperCase().replace(/AUTHORIZ/g, 'AUTHORIS');
+}
+
+export function isConsentAuthorised(status?: string | null): boolean {
+  return normalizeConsentStatus(status) === 'AUTHORISED';
+}
+
 export function consentDaysLeft(consent: Pick<CelcoinConsent, 'expires_at'>): number | null {
   if (!consent.expires_at) return null;
   const ms = new Date(consent.expires_at).getTime() - Date.now();
@@ -163,8 +178,8 @@ export function consentDaysLeft(consent: Pick<CelcoinConsent, 'expires_at'>): nu
 export function consentHealth(
   consent: Pick<CelcoinConsent, 'status' | 'expires_at' | 'last_sync_at'>,
 ): { level: 'ok' | 'atencao' | 'parado'; label: string } {
-  if (consent.status !== 'AUTHORISED') {
-    return { level: 'parado', label: `Consentimento ${consent.status} — não sincroniza` };
+  if (!isConsentAuthorised(consent.status)) {
+    return { level: 'parado', label: `Consentimento ${normalizeConsentStatus(consent.status)} — não sincroniza` };
   }
   const days = consentDaysLeft(consent);
   if (days !== null && days <= 0) return { level: 'parado', label: 'Consentimento expirado' };

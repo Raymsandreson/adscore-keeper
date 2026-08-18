@@ -13,6 +13,7 @@ import {
   useCelcoinOpenFinance,
   popCelcoinReturnTo,
   popCelcoinPendingConsent,
+  isConsentAuthorised,
 } from '@/hooks/useCelcoinOpenFinance';
 
 type Phase = 'checking' | 'syncing' | 'done' | 'error';
@@ -51,7 +52,7 @@ export default function OpenFinanceCallbackPage() {
         const status = await checkConsent(consentId);
         const consentStatus = status?.consent_status;
 
-        if (consentStatus !== 'AUTHORISED') {
+        if (!isConsentAuthorised(consentStatus)) {
           setPhase('error');
           setMessage(
             consentStatus === 'REJECTED'

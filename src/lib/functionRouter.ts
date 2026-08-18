@@ -70,7 +70,12 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'telao-narrar': 'railway', // narração do telão com voz de locutor (ElevenLabs + cache no storage)
   'sync-hearings-from-sheet': 'railway', // credenciais do Google Sheets (gateway Lovable) só existem no Railway
   'nearby-establishments': 'railway', // pontes por proximidade — gateway Google Maps (LOVABLE_API_KEY no Railway)
-  'celcoin-open-finance': 'railway', // Open Finance/Celcoin — conciliação financeira (substitui a Pluggy); suporte a mTLS caso a Celcoin passe a exigir
+  // Open Finance/Celcoin — conciliação financeira (substitui a Pluggy).
+  // Estava no Railway até 18/08/2026, quando MEDIMOS que a borda da Celcoin
+  // barra tráfego de fora do Brasil: o Railway sai da Califórnia e toma 403 com
+  // HTML de WAF (a requisição nem chega na aplicação). A edge do Externo sai de
+  // São Paulo e passa. Some a isso a LGPD — o tráfego carrega CPF/CNPJ e extrato.
+  'celcoin-open-finance': 'external',
   'update-profile-avatar': 'railway', // foto de perfil: a policy de UPDATE de profiles barra a sessão anônima do Externo — só service role grava
 
   // --- INSS administrativo / e-mails processuais ---
@@ -240,10 +245,19 @@ async function callRailway<T>(
   return { data, error: null };
 }
 
+// Edges do Externo que exigem identidade de usuário, não só a anon key (que é
+// pública e não identifica ninguém). Para estas, e SÓ para estas, o JWT da
+// sessão do Cloud vai em x-cloud-jwt — header separado porque o Authorization já
+// carrega a anon key exigida pelo gateway do Supabase. É uma lista e não o
+// padrão porque header novo entra no preflight de CORS: mandar para uma edge que
+// não declara x-cloud-jwt em Access-Control-Allow-Headers faria o navegador
+// bloquear a chamada inteira.
+const EXTERNAL_COM_JWT = new Set(['celcoin-open-finance']);
+
 async function callExternal<T>(
   functionName: string,
   body?: Record<string, any>,
-  _authToken?: string,
+  authToken?: string,
   requestId?: string
 ): Promise<{ data: T | null; error: Error | null }> {
   const url = `${EXTERNAL_URL}/functions/v1/${functionName}`;
@@ -258,6 +272,7 @@ async function callExternal<T>(
       'Authorization': `Bearer ${EXTERNAL_ANON_KEY}`,
       'apikey': EXTERNAL_ANON_KEY,
       'x-request-id': rid,
+      ...(authToken && EXTERNAL_COM_JWT.has(functionName) ? { 'x-cloud-jwt': authToken } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
   });

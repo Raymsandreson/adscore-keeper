@@ -1,4 +1,10 @@
-// send-whatsapp v24 (projeto externo kmedldlepwiityjsdahz)
+// send-whatsapp v25 (projeto externo kmedldlepwiityjsdahz)
+//
+// v25: `phone` gravado em whatsapp_messages sempre em dígitos (`storagePhone`),
+// mesmo quando o envio vai para o JID do grupo. Antes gravava o JID cru e a
+// mensagem sumia do menu "Grupo WA" das atividades.
+// ROLLBACK: trocar os três `phone: storagePhone(target)` de volta por
+// `phone: target` e redeployar.
 //
 // ATENÇÃO: esta é a fonte REAL do envio (o `supabase/functions/send-whatsapp`
 // do Cloud é só um proxy). Até a v23 ela não estava versionada aqui — este
@@ -50,6 +56,22 @@ function normalizePhone(r) {
   if (d.startsWith('55') && d.length >= 12) return d;
   if (d.length >= 10 && d.length <= 11) return '55' + d;
   return d;
+}
+/**
+ * v25: forma canônica do `phone` gravado em `whatsapp_messages`.
+ *
+ * O alvo do ENVIO pode ser o JID do grupo (`120…@g.us`) — a UazAPI aceita as
+ * duas formas —, mas a COLUNA tem de guardar só dígitos: é assim que o webhook
+ * grava e é por essa forma que as telas procuram a conversa. Gravar o JID cru
+ * fazia a mensagem enviada sumir do menu "Grupo WA" das atividades (que busca
+ * `phone = <dígitos>`): 1.505 linhas assim entre 09/04 e 18/08/2026, todas
+ * nossas. Link de convite e alvo vazio ficam como estão.
+ */
+function storagePhone(t) {
+  if (typeof t !== 'string' || isInviteLink(t)) return t;
+  const d = t.replace(/@.*$/, '').replace(/\D/g, '');
+  // Alvo sem dígitos suficientes não é telefone nem grupo — devolve intacto.
+  return d.length >= 8 ? d : t;
 }
 function getTarget(p, c) {
   return typeof c === 'string' && c.trim() ? c.trim() : typeof p === 'string' && p.trim() ? p.trim() : '';
@@ -425,7 +447,7 @@ Deno.serve(async (req)=>{
       const ud = await ur.json().catch(()=>({}));
       const eid = ud?.key?.id || ud?.id || null;
       const row = {
-        phone: target,
+        phone: storagePhone(target),
         message_text: body.caption || null,
         message_type: mtype,
         media_url: body.media_url,
@@ -489,7 +511,7 @@ Deno.serve(async (req)=>{
       }
       const lt = `📍 ${body.name || 'Localização'}${body.address ? '\n' + body.address : ''}`;
       const row = {
-        phone: target,
+        phone: storagePhone(target),
         message_text: lt,
         message_type: 'location',
         direction: 'outbound',
@@ -597,7 +619,7 @@ Deno.serve(async (req)=>{
     const ud = await ur.json().catch(()=>({}));
     const eid = ud?.key?.id || ud?.id || null;
     const row = {
-      phone: target,
+      phone: storagePhone(target),
       message_text: body.message,
       message_type: 'text',
       direction: 'outbound',

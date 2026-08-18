@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { supabase } from '@/integrations/supabase/client';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy, ChevronLeft, ChevronRight, CalendarDays, Columns3, Trash2 } from 'lucide-react';
+import { Star, Mic, MicOff, Loader2, ThumbsUp, AlertCircle, RefreshCw, ExternalLink, Trophy, ChevronLeft, ChevronRight, CalendarDays, Columns3, Trash2, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { format, parseISO, startOfDay, differenceInCalendarDays, startOfMonth, endOfMonth, eachDayOfInterval, addMonths, subMonths, isToday } from 'date-fns';
@@ -18,6 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { validarAvaliacao, salvarAvaliacao, type FeedbackOutcome } from '@/lib/feedbackEvaluation';
+import { contarPorAssessor, totalGeral, type FeedbackStatusKey } from '@/lib/feedbackFunnelStats';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
 export interface FeedbackRow {
@@ -76,6 +77,17 @@ const COLUMNS: { key: string; label: string; icon: string; className: string }[]
   { key: 'satisfeito',  label: 'Satisfeito',   icon: '✅', className: 'border-green-300 dark:border-green-800' },
   { key: 'incompleto',  label: 'Incompleto',   icon: '⚠️', className: 'border-amber-300 dark:border-amber-800' },
   { key: 'insatisfeito',label: 'Insatisfeito', icon: '❌', className: 'border-red-300 dark:border-red-800' },
+];
+
+// Chips do cabeçalho (mesma ordem do funil). Clicar em um deles abre a relação
+// das atividades daquele status — é o atalho de quem só quer ver as atrasadas.
+const CHIPS: { key: FeedbackStatusKey; label: string; icon: string; className: string }[] = [
+  { key: 'atrasada',     label: 'atrasadas',    icon: '⏰',  className: 'border-red-400 text-red-700 dark:text-red-400 font-semibold' },
+  { key: 'reagendada',   label: 'reagendadas',  icon: '🔁',  className: 'border-blue-300 text-blue-700 dark:text-blue-400' },
+  { key: 'a_avaliar',    label: 'a avaliar',    icon: '📥',  className: 'border-slate-300' },
+  { key: 'satisfeito',   label: '',             icon: '✅',  className: 'border-green-300 text-green-700 dark:text-green-400' },
+  { key: 'incompleto',   label: '',             icon: '⚠️',  className: 'border-amber-300 text-amber-700 dark:text-amber-400' },
+  { key: 'insatisfeito', label: '',             icon: '❌',  className: 'border-red-300 text-red-700 dark:text-red-400' },
 ];
 
 // Estilo dos chips no calendário, por categoria.
@@ -165,7 +177,10 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [loading, setLoading] = useState(false);
   // Visão (funil kanban ou calendário) + filtros de assessor e período.
   // Calendário é a visão padrão — é como o time olha a agenda de retorno.
-  const [view, setView] = useState<'funil' | 'calendario'>('calendario');
+  const [view, setView] = useState<'funil' | 'calendario' | 'assessores'>('calendario');
+  // Status em foco (chip do topo ou célula da tabela por assessor): mostra só as
+  // atividades daquele status, sem sair do painel nem trocar de tela.
+  const [focusStatus, setFocusStatus] = useState<FeedbackStatusKey | null>(null);
   const [calMonth, setCalMonth] = useState(() => new Date());
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [filterAssessor, setFilterAssessor] = useState('all');
@@ -457,22 +472,26 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   };
 
   // Data de referência (calendário e filtro de período): reagendada usa a nova data; senão o prazo.
-  const refDate = (r: { deadline?: string | null; rescheduled_to?: string | null; status?: string | null; updated_at?: string }) =>
-    (r.status === 'reagendada' && r.rescheduled_to) ? r.rescheduled_to : (r.deadline || r.updated_at || null);
+  const refDate = useCallback((r: { deadline?: string | null; rescheduled_to?: string | null; status?: string | null; updated_at?: string }) =>
+    (r.status === 'reagendada' && r.rescheduled_to) ? r.rescheduled_to : (r.deadline || r.updated_at || null), []);
 
-  const passesFilters = (name: string | null, dateStr: string | null) => {
-    if (filterAssessor !== 'all' && (name || '—') !== filterAssessor) return false;
-    if (filterFrom || filterTo) {
-      if (!dateStr) return false;
-      const d = dateStr.slice(0, 10);
-      if (filterFrom && d < filterFrom) return false;
-      if (filterTo && d > filterTo) return false;
-    }
+  const passaPeriodo = useCallback((dateStr: string | null) => {
+    if (!filterFrom && !filterTo) return true;
+    if (!dateStr) return false;
+    const d = dateStr.slice(0, 10);
+    if (filterFrom && d < filterFrom) return false;
+    if (filterTo && d > filterTo) return false;
     return true;
-  };
+  }, [filterFrom, filterTo]);
 
-  const filteredRows = rows.filter(r => passesFilters(r.assigned_to_name, refDate(r)));
-  const filteredLate = lateRows.filter(r => passesFilters(r.assigned_to_name, refDate(r)));
+  const passesFilters = useCallback((name: string | null, dateStr: string | null) => {
+    if (filterAssessor !== 'all' && (name || '—') !== filterAssessor) return false;
+    return passaPeriodo(dateStr);
+  }, [filterAssessor, passaPeriodo]);
+
+  // Listas grandes (até 300 linhas cada) — memoiza pra não refiltrar a cada tecla/tick do cronômetro.
+  const filteredRows = useMemo(() => rows.filter(r => passesFilters(r.assigned_to_name, refDate(r))), [rows, passesFilters, refDate]);
+  const filteredLate = useMemo(() => lateRows.filter(r => passesFilters(r.assigned_to_name, refDate(r))), [lateRows, passesFilters, refDate]);
 
   const assessores = Array.from(new Set([...rows, ...lateRows].map(r => r.assigned_to_name || '—'))).sort((a, b) => a.localeCompare(b));
 
@@ -503,6 +522,22 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     incompleto: columnRows('incompleto').length,
     insatisfeito: columnRows('insatisfeito').length,
   };
+
+  // Quantidade de cada status por assessor responsável — só das atividades deste
+  // painel (as que eu observo/criei). Respeita os filtros de período; o filtro de
+  // assessor fica de fora da tabela por construção (a tabela É a quebra por assessor).
+  const porAssessor = useMemo(() => contarPorAssessor(
+    lateRows.filter(r => passaPeriodo(refDate(r))),
+    rows.filter(r => passaPeriodo(refDate(r))),
+  ), [lateRows, rows, passaPeriodo, refDate]);
+  const totais = useMemo(() => totalGeral(porAssessor), [porAssessor]);
+
+  // Atividades de um status (o chip clicado / a célula da tabela).
+  const rowsDoStatus = (key: FeedbackStatusKey) =>
+    (key === 'atrasada' || key === 'reagendada') ? lateColumnRows(key) : columnRows(key);
+
+  const toggleFocus = (key: FeedbackStatusKey) =>
+    setFocusStatus(prev => (prev === key ? null : key));
 
   const linkFor = (row: FeedbackRow) =>
     row.lead_name || row.case_title || row.process_title || row.title;
@@ -735,12 +770,25 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
               <span className="text-xs font-normal text-muted-foreground">retornos das suas atividades (você observa)</span>
             </SheetTitle>
             <div className="flex items-center gap-2 text-[11px]">
-              <Badge variant="outline" className="border-red-400 text-red-700 dark:text-red-400 font-semibold">⏰ {counts.atrasada} atrasadas</Badge>
-              <Badge variant="outline" className="border-blue-300 text-blue-700 dark:text-blue-400">🔁 {counts.reagendada} reagendadas</Badge>
-              <Badge variant="outline" className="border-slate-300">📥 {counts.a_avaliar} a avaliar</Badge>
-              <Badge variant="outline" className="border-green-300 text-green-700 dark:text-green-400">✅ {counts.satisfeito}</Badge>
-              <Badge variant="outline" className="border-amber-300 text-amber-700 dark:text-amber-400">⚠️ {counts.incompleto}</Badge>
-              <Badge variant="outline" className="border-red-300 text-red-700 dark:text-red-400">❌ {counts.insatisfeito}</Badge>
+              {/* Cada chip é um atalho: clicou, o painel mostra só as atividades daquele status. */}
+              {CHIPS.map(c => {
+                const ativo = focusStatus === c.key;
+                const n = counts[c.key];
+                return (
+                  <button key={c.key} type="button" onClick={() => toggleFocus(c.key)} title={ativo ? 'Clique para voltar' : `Ver as ${n} ${c.label || COLUMNS.find(col => col.key === c.key)?.label.toLowerCase()}`}>
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        'cursor-pointer transition-all hover:brightness-95',
+                        c.className,
+                        ativo && 'ring-2 ring-primary ring-offset-1',
+                      )}
+                    >
+                      {c.icon} {n}{c.label ? ` ${c.label}` : ''}
+                    </Badge>
+                  </button>
+                );
+              })}
               <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" onClick={() => navigate('/destaques')} title="Top 5 de Avaliação (modo TV)">
                 <Trophy className="h-3.5 w-3.5 text-amber-500" /> Top 5
               </Button>
@@ -765,6 +813,14 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                 className={cn('px-2 py-1 flex items-center gap-1 border-l', view === 'calendario' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
               >
                 <CalendarDays className="h-3 w-3" /> Calendário
+              </button>
+              <button
+                type="button"
+                onClick={() => { setView('assessores'); setFocusStatus(null); }}
+                className={cn('px-2 py-1 flex items-center gap-1 border-l', view === 'assessores' ? 'bg-primary text-primary-foreground' : 'hover:bg-muted')}
+                title="Quantidade de cada status por assessor responsável"
+              >
+                <Users className="h-3 w-3" /> Por assessor
               </button>
             </div>
             <Select value={filterAssessor} onValueChange={setFilterAssessor}>
@@ -811,6 +867,105 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
             <div className="text-center py-16 text-sm text-muted-foreground">
               Nenhum feedback para você ainda. Quando você for observador de uma atividade e o responsável
               preencher o feedback, ele aparece aqui — nunca no seu calendário de tarefas.
+            </div>
+          ) : focusStatus ? (() => {
+            // Chip do topo clicado → relação das atividades daquele status.
+            const col = COLUMNS.find(c => c.key === focusStatus)!;
+            const isLate = focusStatus === 'atrasada' || focusStatus === 'reagendada';
+            const lista = rowsDoStatus(focusStatus);
+            return (
+              <div className="max-w-6xl mx-auto">
+                <div className="flex items-start justify-between gap-2 mb-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-semibold">{col.icon} {col.label} — {lista.length}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {filterAssessor === 'all' ? 'Todos os assessores' : <>Responsável: <strong>{filterAssessor}</strong></>}
+                      {(filterFrom || filterTo) ? ` · ${filterFrom || '…'} até ${filterTo || '…'}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {filterAssessor !== 'all' && (
+                      <Button variant="ghost" size="sm" className="h-7 text-[11px]" onClick={() => setFilterAssessor('all')}>
+                        Todos os assessores
+                      </Button>
+                    )}
+                    <Button variant="outline" size="sm" className="h-7 text-[11px]" onClick={() => setFocusStatus(null)}>
+                      Voltar
+                    </Button>
+                  </div>
+                </div>
+                {lista.length === 0 ? (
+                  <p className="text-[11px] text-muted-foreground text-center py-10">Nenhuma atividade neste status.</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                    {isLate
+                      ? (lista as LateRow[]).map(renderLateCard)
+                      : (lista as FeedbackRow[]).map(renderFeedbackCard)}
+                  </div>
+                )}
+              </div>
+            );
+          })() : view === 'assessores' ? (
+            // Quem está devendo o quê: quantidade de cada status por responsável.
+            <div className="max-w-5xl mx-auto">
+              <p className="text-xs font-semibold">👥 Quantidade por assessor responsável</p>
+              <p className="text-[11px] text-muted-foreground mb-2">
+                Só as atividades em que você é observador ou criador
+                {(filterFrom || filterTo) ? ' · período filtrado' : ''}. Clique num número para ver as atividades.
+              </p>
+              <div className="overflow-x-auto rounded-md border">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left font-semibold px-2 py-1.5">Assessor</th>
+                      {CHIPS.map(c => (
+                        <th key={c.key} className="px-2 py-1.5 text-center font-semibold whitespace-nowrap" title={COLUMNS.find(col => col.key === c.key)?.label}>
+                          {c.icon} <span className="hidden md:inline">{COLUMNS.find(col => col.key === c.key)?.label}</span>
+                        </th>
+                      ))}
+                      <th className="px-2 py-1.5 text-center font-semibold">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {porAssessor.map(l => (
+                      <tr key={l.assessor} className="border-t hover:bg-muted/30">
+                        <td className="px-2 py-1.5 font-medium max-w-[220px] truncate" title={l.assessor}>{l.assessor}</td>
+                        {CHIPS.map(c => (
+                          <td key={c.key} className="px-2 py-1.5 text-center tabular-nums">
+                            {l[c.key] === 0 ? (
+                              <span className="text-muted-foreground/40">—</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => { setFilterAssessor(l.assessor); setFocusStatus(c.key); }}
+                                className={cn('rounded px-1.5 py-0.5 font-semibold hover:underline', c.key === 'atrasada' && 'text-red-700 dark:text-red-400')}
+                                title={`Ver as ${l[c.key]} de ${l.assessor}`}
+                              >
+                                {l[c.key]}
+                              </button>
+                            )}
+                          </td>
+                        ))}
+                        <td className="px-2 py-1.5 text-center font-semibold tabular-nums">{l.total}</td>
+                      </tr>
+                    ))}
+                    {porAssessor.length === 0 && (
+                      <tr><td colSpan={8} className="px-2 py-6 text-center text-muted-foreground">Nenhuma atividade no período.</td></tr>
+                    )}
+                  </tbody>
+                  {porAssessor.length > 0 && (
+                    <tfoot className="border-t bg-muted/40 font-semibold">
+                      <tr>
+                        <td className="px-2 py-1.5">Total</td>
+                        {CHIPS.map(c => (
+                          <td key={c.key} className="px-2 py-1.5 text-center tabular-nums">{totais[c.key]}</td>
+                        ))}
+                        <td className="px-2 py-1.5 text-center tabular-nums">{totais.total}</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              </div>
             </div>
           ) : view === 'calendario' ? (
             <div className="max-w-6xl mx-auto">

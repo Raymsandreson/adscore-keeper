@@ -55,6 +55,7 @@ import { useCostAccounts } from "@/hooks/useCostAccounts";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CelcoinConnectDialog } from "@/components/finance/CelcoinConnectDialog";
+import { CelcoinConnectionsSheet } from "@/components/finance/CelcoinConnectionsSheet";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
 import { CardPermissionsManager } from "@/components/finance/CardPermissionsManager";
 import { TransactionsAggregatedView } from "@/components/finance/TransactionsAggregatedView";
@@ -137,6 +138,7 @@ export default function FinancePage() {
   
   const [isConnecting, setIsConnecting] = useState(false);
   const [celcoinDialogOpen, setCelcoinDialogOpen] = useState(false);
+  const [celcoinConnectionsOpen, setCelcoinConnectionsOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [manualItemId, setManualItemId] = useState("");
   const [isImportingManual, setIsImportingManual] = useState(false);
@@ -723,6 +725,18 @@ export default function FinancePage() {
               >
                 <Landmark className="h-4 w-4 mr-2" />
                 Open Finance
+              </Button>
+              {/* Ver o estado das conexões e sincronizar pela tela. Sem isto o
+                  consentimento ficava invisível depois de criado, e a sincronização
+                  só acontecia por chamada manual fora do app. */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCelcoinConnectionsOpen(true)}
+                className="h-8"
+              >
+                <Landmark className="h-4 w-4 mr-2" />
+                Conexões
               </Button>
               <Button 
                 variant="outline" 
@@ -1530,6 +1544,7 @@ export default function FinancePage() {
 
         {/* Conexão por Open Finance (Celcoin) */}
         <CelcoinConnectDialog open={celcoinDialogOpen} onOpenChange={setCelcoinDialogOpen} />
+        <CelcoinConnectionsSheet open={celcoinConnectionsOpen} onOpenChange={setCelcoinConnectionsOpen} />
       </div>
       <ConfirmDeleteDialog />
     </div>
