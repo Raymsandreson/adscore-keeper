@@ -150,6 +150,12 @@ export default function CasesPage() {
   }, [responsavelFilter]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const { caseId: routeCaseId } = useParams<{ caseId?: string }>();
+  // Deep-link do chat interno: /cases?openProcess=<id>&highlightMsg=<msg>.
+  // Processo não tem rota própria — quem clica numa menção do chat do processo
+  // cai aqui, e antes parava no chat do CASO (outro thread, sempre vazio).
+  const openProcessParam = searchParams.get('openProcess');
+  const highlightMsgParam = searchParams.get('highlightMsg');
+  const [processCaseId, setProcessCaseId] = useState<string | null>(null);
   const { nuclei } = useSpecializedNuclei();
   const navigate = useNavigate();
 
@@ -341,17 +347,38 @@ export default function CasesPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  // ?openProcess=<id> → descobre o caso-pai do processo. A partir daí o fluxo é
+  // o mesmo da rota /cases/:caseId.
+  useEffect(() => {
+    if (!openProcessParam) { setProcessCaseId(null); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await externalSupabase
+        .from('lead_processes')
+        .select('case_id, lead_id')
+        .eq('id', openProcessParam)
+        .maybeSingle();
+      if (cancelled) return;
+      const proc = data as { case_id?: string | null; lead_id?: string | null } | null;
+      if (proc?.case_id) setProcessCaseId(proc.case_id);
+      else toast.error('Processo não encontrado (pode ter sido removido).');
+    })();
+    return () => { cancelled = true; };
+  }, [openProcessParam]);
+
   // Rota /cases/:caseId → carrega e expande só esse caso (substitui a antiga
   // página de detalhe; busca global e página de atividades apontam pra cá).
+  // ?openProcess= usa o mesmo caminho, com o caso resolvido pelo processo.
+  const singleCaseId = routeCaseId || processCaseId;
   useEffect(() => {
-    if (!routeCaseId) return;
+    if (!singleCaseId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
       const { data } = await externalSupabase
         .from('legal_cases')
         .select('*, specialized_nuclei(name, prefix, color), leads(lead_name)')
-        .eq('id', routeCaseId)
+        .eq('id', singleCaseId)
         .is('deleted_at', null)
         .maybeSingle();
       if (cancelled) return;
@@ -363,19 +390,22 @@ export default function CasesPage() {
           nucleus_color: (data as any).specialized_nuclei?.color,
           lead_name: (data as any).leads?.lead_name || null,
         }]);
-        setExpandedId(routeCaseId);
+        setExpandedId(singleCaseId);
       } else {
         setCases([]);
       }
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [routeCaseId]);
+  }, [singleCaseId]);
 
   useEffect(() => {
-    if (routeCaseId) return; // rota de caso único cuida do fetch
+    if (singleCaseId) return; // rota de caso único cuida do fetch
+    // ?openProcess= ainda resolvendo: não vale carregar a lista inteira pra
+    // trocar por um caso só no instante seguinte.
+    if (openProcessParam) return;
     fetchCases();
-  }, [fetchCases, routeCaseId]);
+  }, [fetchCases, singleCaseId, openProcessParam]);
 
   return (
     <div className="min-h-screen bg-background pb-24">
@@ -462,6 +492,8 @@ export default function CasesPage() {
               legalCase={c}
               expanded={expandedId === c.id}
               onToggle={() => setExpandedId(expandedId === c.id ? null : c.id)}
+              openProcessId={openProcessParam}
+              highlightMsgId={highlightMsgParam}
               onCaseUpdated={fetchCases}
               onOpenLead={(leadId) => navigate(`/leads?openLead=${leadId}`)}
               responsaveis={responsaveis}
@@ -518,9 +550,13 @@ export default function CasesPage() {
   );
 }
 
-function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead, responsaveis }: {
+function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead, responsaveis, openProcessId, highlightMsgId }: {
   legalCase: any; expanded: boolean; onToggle: () => void; onCaseUpdated: () => void; onOpenLead: (leadId: string) => void;
   responsaveis: Map<string, AssigneeInfo>;
+  /** Deep-link do chat: ficha do processo a abrir assim que os dados chegarem. */
+  openProcessId?: string | null;
+  /** Mensagem do chat a destacar dentro dessa ficha. */
+  highlightMsgId?: string | null;
 }) {
   const [processes, setProcesses] = useState<any[]>([]);
   const [activities, setActivities] = useState<any[]>([]);
@@ -534,6 +570,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const [showAddProcess, setShowAddProcess] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<any>(null);
+  /** O deep-link abre a ficha uma vez; fechar não pode reabrir sozinho. */
+  const deepLinkAbertoRef = useRef(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [editCaseNumber, setEditCaseNumber] = useState(legalCase.case_number || '');
   const [editTitle, setEditTitle] = useState(legalCase.title || '');
@@ -716,6 +754,17 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       console.error('[CasesPage] loadDetails unexpected error', err);
     }).finally(() => setLoadingDetails(false));
   }, [expanded, legalCase.id, legalCase.lead_id]);
+
+  // Deep-link do chat interno (?openProcess=): assim que os processos do caso
+  // chegam, a ficha do processo abre sozinha com a mensagem destacada. Sem isso
+  // a menção parava no chat do CASO, que é outro thread — em geral vazio.
+  useEffect(() => {
+    if (!openProcessId || deepLinkAbertoRef.current || !processes.length) return;
+    const alvo = processes.find((p: any) => p.id === openProcessId);
+    if (!alvo) return;
+    deepLinkAbertoRef.current = true;
+    setSelectedProcess(alvo);
+  }, [openProcessId, processes]);
 
   // Cadastra de verdade um processo que só existia como texto em atividades
   const registerMentionedProcess = async (title: string) => {
@@ -1592,6 +1641,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           onUpdated={onCaseUpdated}
           mode="dialog"
           defaultTab="atividades"
+          highlightMessageId={selectedProcess.id === openProcessId ? highlightMsgId : null}
         />
       )}
 

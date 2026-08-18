@@ -89,7 +89,7 @@ function formatDuration(seconds?: number | null) {
 
 export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId, onMentionUsers, footerNote }: TeamChatPanelProps) {
   const { user } = useAuthContext();
-  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadRootId, threadSize } =
+  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadKey, threadSize, isProcessThread, processLabel } =
     useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
   const navigate = useNavigate();
@@ -188,9 +188,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   // vendo a conversa não precisa de aviso dela. A chave é a do THREAD (raiz da
   // cadeia, em atividade) — é com ela que a mensagem nova chega.
   useEffect(() => {
-    setActiveTeamChatEntity(`${entityType}:${threadRootId}`);
+    setActiveTeamChatEntity(threadKey);
     return () => setActiveTeamChatEntity(null);
-  }, [entityType, threadRootId]);
+  }, [threadKey]);
 
   // Quem cuida do caso por trás deste chat (responsável processual + acolhedor).
   const { owners } = useCaseOwners(entityType, entityId, members);
@@ -897,15 +897,23 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-        {/* Atividade que já virou etapa nova: a conversa é a mesma desde o
-            primeiro dia — quem chega agora vê o que foi combinado antes. */}
-        {threadSize > 1 && messages.length > 0 && (
+        {/* De quem é esta conversa. Na atividade o aviso é obrigatório: o que se
+            escreve aqui vai para o processo e aparece em todas as atividades
+            dele — sem dizer isso, a pessoa acha que está falando só com o
+            responsável da ficha (foi o mal-entendido do CASO 180, 10/08/2026). */}
+        {isProcessThread && entityType === 'activity' ? (
+          <div className="flex justify-center pb-1">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary text-center">
+              Conversa do processo{processLabel ? ` ${processLabel}` : ''} · aparece em todas as atividades dele
+            </span>
+          </div>
+        ) : threadSize > 1 && messages.length > 0 ? (
           <div className="flex justify-center pb-1">
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
               Conversa contínua · {threadSize} etapas desta atividade
             </span>
           </div>
-        )}
+        ) : null}
         {messages.length === 0 && loading ? (
           /* Só a lista espera — o campo de digitação já está disponível. */
           <div className="flex items-center justify-center h-32 text-muted-foreground">

@@ -7,7 +7,8 @@ import { AtSign, MessageCircle, EyeOff, AlarmClock } from 'lucide-react';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import { appNavigate } from '@/lib/appNavigation';
-import { resolveActivityChatRoots, resolveActivityChatThread, resolveOpenActivityOfChain } from '@/lib/activityChatThread';
+import { resolveActivityChatRoots, resolveOpenActivityOfChain } from '@/lib/activityChatThread';
+import { resolveActivityProcessIds, resolveChatScope } from '@/lib/entityChatScope';
 import {
   getActiveTeamChatConversation,
   getActiveTeamChatEntity,
@@ -404,19 +405,17 @@ export function TeamChatNotifications() {
       entityName?: string | null;
       content: string;
     }) => {
-      // Responder pelo popup entra no MESMO thread do chat: em atividade, a
-      // raiz da cadeia. Popup de mensagem legada (gravada no id do elo) não
-      // pode reabrir a conversa num lugar separado.
-      const alvo = entityType === 'activity'
-        ? (await resolveActivityChatThread(entityId)).rootId
-        : entityId;
+      // Responder pelo popup entra no MESMO thread do chat: no processo quando
+      // a atividade tem um, senão na raiz da cadeia. Popup de mensagem legada
+      // (gravada no id da atividade) não pode reabrir a conversa em separado.
+      const escopo = await resolveChatScope(entityType, entityId);
 
       const { error } = await externalSupabase
         .from('team_chat_messages')
         .insert({
-          entity_type: entityType,
-          entity_id: alvo,
-          entity_name: entityName || null,
+          entity_type: escopo.writeType,
+          entity_id: escopo.writeId,
+          entity_name: escopo.writeName || entityName || null,
           content,
           sender_id: user.id,
           sender_name: getCurrentUserName(),
@@ -511,6 +510,12 @@ export function TeamChatNotifications() {
         }
         case 'whatsapp':
           return `/whatsapp?openChat=${encodeURIComponent(entityId)}`;
+        case 'process':
+          // Sem este case o clique no popup era morto e silencioso: o default
+          // devolvia null e openEntityChat saía sem navegar.
+          return `/cases?openProcess=${entityId}${messageParam}`;
+        case 'case':
+          return `/cases/${entityId}`;
         default:
           return null;
       }
@@ -645,10 +650,14 @@ export function TeamChatNotifications() {
       // Linhas gravadas antes do chat virar da cadeia apontam para o id do ELO.
       // A mensagem nova chega na raiz — sem traduzir, quem acompanhava desde
       // antes deixaria de ser avisado ao virar a etapa.
-      const raizes = await resolveActivityChatRoots(
-        seguidos.filter(f => f.entity_type === 'activity').map(f => f.entity_id)
-      );
+      const idsDeAtividade = seguidos.filter(f => f.entity_type === 'activity').map(f => f.entity_id);
+      const raizes = await resolveActivityChatRoots(idsDeAtividade);
       for (const raiz of raizes.values()) chaves.add(`activity:${raiz}`);
+
+      // Desde 18/08/2026 a conversa da atividade COM processo mora no processo.
+      // Quem acompanhava pelo id da atividade continua sendo avisado.
+      const processos = await resolveActivityProcessIds(idsDeAtividade);
+      for (const processoId of processos.values()) chaves.add(`process:${processoId}`);
 
       followedThreadsRef.current = chaves;
     };

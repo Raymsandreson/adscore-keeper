@@ -273,23 +273,12 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
       case 'case':
         navigate(`/cases/${mention.entity_id}`);
         break;
-      case 'process': {
-        // Processo não tem rota própria — abre o caso-pai (mesma regra da busca global).
-        try {
-          const { data: proc } = await externalSupabase
-            .from('lead_processes')
-            .select('case_id, lead_id')
-            .eq('id', mention.entity_id)
-            .maybeSingle();
-          const p = proc as { case_id?: string | null; lead_id?: string | null } | null;
-          if (p?.case_id) navigate(`/cases/${p.case_id}`);
-          else if (p?.lead_id) navigate(`/leads?openLead=${p.lead_id}`);
-          else toast.error('Processo não encontrado.');
-        } catch (e) {
-          console.error('Erro ao resolver o processo da menção:', e);
-        }
+      case 'process':
+        // Processo não tem rota própria: a página de casos resolve o caso-pai,
+        // abre a FICHA DO PROCESSO e destaca a mensagem. Antes parava no caso e
+        // a pessoa via o chat do caso — outro thread, quase sempre vazio.
+        navigate(`/cases?openProcess=${mention.entity_id}${msgParam}`);
         break;
-      }
     }
   };
 

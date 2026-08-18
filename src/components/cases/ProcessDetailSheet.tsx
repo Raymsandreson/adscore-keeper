@@ -45,6 +45,8 @@ interface ProcessDetailSheetProps {
   onUpdated?: (updatedProcess?: any) => void;
   mode?: 'sheet' | 'dialog';
   defaultTab?: TabId;
+  /** Mensagem do chat interno a destacar — deep-link de menção do processo. */
+  highlightMessageId?: string | null;
 }
 
 function formatDateBR(val: string): string {
@@ -227,7 +229,7 @@ function classifyDocumentType(text: string): string {
   return 'outro';
 }
 
-export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab }: ProcessDetailSheetProps) {
+export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab, highlightMessageId }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
@@ -1763,6 +1765,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             entityId={process.id}
             entityName={form.process_number || form.title || 'Processo'}
             height={220}
+            highlightMessageId={highlightMessageId}
           />
         </div>
       )}
