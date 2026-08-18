@@ -91,3 +91,43 @@ ALTER TABLE public.lead_financials DROP COLUMN IF EXISTS activity_id;
 ### Não faz parte deste módulo
 
 `financial_entries` / `FinancePage` / `FinancialEntryForm` — é o financeiro **da empresa** (centro de custo, regime de competência, NF, núcleo). Nada aqui mexe nele.
+
+## Extrato do processo e a regra do PAGO (18/08/2026)
+
+Caso 10 (`0000408-22.2017.5.22.0110`, acordo homologado e pago em 14/09/2017)
+expôs três furos, todos corrigidos e verificados no banco real:
+
+1. **Parcela recebida sem valor importado não contava como PAGO.** A planilha
+   trouxe 344 de 703 parcelas recebidas (10 CNJs) com `data_recebida` e
+   `status=RECEBIDA` mas `valor_pago NULL`. A régua era `sum(valor_pago) > 0`,
+   então o cliente caía em A_RECEBER — e o front corrigia pela SELIC (×1,77)
+   um dinheiro que já tinha caído na conta. Regra nova, na RPC
+   `pop_carteira_marcos` (migração `20260818130000`, aplicada no Externo) e no
+   `useConferenciaProcesso`: **todas as parcelas recebidas = estágio PAGO,
+   mesmo sem valor digitado**. "Recebeu" e "quanto recebeu" são perguntas
+   separadas.
+
+2. **Parte PAGA não corrige.** SELIC/TCM atualizam o que está POR receber.
+   `useCarteiraDoPop` e `useConferenciaProcesso` deixam a parte PAGA no
+   nominal, e a conferência mostra "Pago em <data> — não corrige" no lugar da
+   conta do coeficiente. Parcela sem valor exibe "sem valor", nunca "R$ 0,00".
+
+3. **A aba Financeiro do processo virou o EXTRATO do processo.** O
+   `EntityFinancialsPanel` com `scope='process'` + `processNumber` mescla, numa
+   linha do tempo única: lançamentos manuais (`lead_financials`), parcelas da
+   jurimetria (`jm_pagamentos`) e o extrato importado da planilha
+   (`jm_lancamentos`, 4.742 linhas, nov/2020+). Cada linha tem titular
+   (**escritório × cliente**, derivado da categoria: indenização/cota = do
+   cliente; honorários/custas = nosso), badge previsto × realizado e origem.
+   Os cards abrem por titular; parcela recebida no bruto (cliente + honorário
+   juntos, sem separação na base) fica fora dos cards, somada à parte. As
+   linhas de `jm_*` são só leitura. Categorias novas no form manual:
+   Honorários Contratuais, Honorários Sucumbenciais, Cota do Cliente.
+
+**O que continua faltando** (decidido em 18/08/2026): a separação
+cliente × honorário das parcelas antigas (ex.: caso 10 = 20.000 cliente +
+8.571,43 honorário por parte) **não existe na base** — as colunas L/M/N da
+planilha "Tab. Aux" nunca foram importadas, e `jm_valores.hs_pct` está zerado.
+O Raym optou por NÃO fazer backfill de `valor_pago` com o bruto da decisão
+(12 parcelas únicas, R$ 440 mil): fica "sem valor" até vir importação correta
+da planilha, com a separação de titular junto.
