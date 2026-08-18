@@ -187,6 +187,15 @@ function motivo(r: Result): string {
   return raw.replace(/\d{8,}/g, (d) => `***${d.slice(-2)}`).slice(0, 300);
 }
 
+// A Celcoin devolve a grafia com Z (AUTHORIZED, AWAITING_AUTHORIZATION); o padrão
+// Open Finance Brasil e o resto do nosso código usam S (AUTHORISED). Medido em
+// 18/08/2026 com consentimento real. Sem normalizar, o portão do sync recusaria
+// para sempre com "está AUTHORIZED, não AUTHORISED" — e pareceria erro da Celcoin.
+function normalizarStatus(v: unknown): string {
+  return String(v ?? '').toUpperCase().replace(/AUTHORIZ/g, 'AUTHORIS');
+}
+const autorizado = (v: unknown) => normalizarStatus(v) === 'AUTHORISED';
+
 function credentials() {
   const clientId = Deno.env.get('CELCOIN_CLIENT_ID');
   const clientSecret = Deno.env.get('CELCOIN_CLIENT_SECRET');
@@ -561,7 +570,7 @@ Deno.serve(async (req) => {
             consent_id: consentId,
             brand_id: brandId,
             brand_name: await resolveBrandName(brandId),
-            status: r.status ?? r.data?.status ?? 'AWAITING_AUTHORISATION',
+            status: normalizarStatus(r.status ?? r.data?.status ?? 'AWAITING_AUTHORISATION'),
             permissions: used,
             expires_at: expirationDateTime,
             celcoin_env: endpoints().tier,
@@ -579,19 +588,21 @@ Deno.serve(async (req) => {
 
         const token = await getAdminToken();
         const r = await request('GET', consentUrl(consentId), { headers: { Authorization: `Bearer ${token}` } });
+        // Grava já normalizado, para o banco não guardar as duas grafias.
         const status = r.body?.status ?? r.body?.data?.status ?? null;
+        const statusNorm = status ? normalizarStatus(status) : null;
 
-        if (status) {
+        if (statusNorm) {
           await ext
             .from('celcoin_consents')
             .update({
-              status,
-              authorized_at: status === 'AUTHORISED' ? new Date().toISOString() : null,
+              status: statusNorm,
+              authorized_at: autorizado(statusNorm) ? new Date().toISOString() : null,
               updated_at: new Date().toISOString(),
             })
             .eq('consent_id', consentId);
         }
-        return json({ success: r.ok, consent_status: status, detail: r.body });
+        return json({ success: r.ok, consent_status: statusNorm, detail: r.body });
       }
 
       case 'list_resources': {
@@ -625,7 +636,7 @@ Deno.serve(async (req) => {
           .eq('consent_id', consentId)
           .maybeSingle();
 
-        if (consentRow && consentRow.status !== 'AUTHORISED') {
+        if (consentRow && !autorizado(consentRow.status)) {
           return json(
             {
               success: false,

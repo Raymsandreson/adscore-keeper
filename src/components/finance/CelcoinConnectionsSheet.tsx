@@ -26,6 +26,8 @@ import { useAuth } from '@/hooks/useAuth';
 import {
   useCelcoinOpenFinance,
   consentHealth,
+  isConsentAuthorised,
+  normalizeConsentStatus,
   type CelcoinConsent,
 } from '@/hooks/useCelcoinOpenFinance';
 
@@ -64,8 +66,8 @@ export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
     setOcupado(c.consent_id);
     try {
       const r = await checkConsent(c.consent_id);
-      const status = r?.consent_status || 'sem status';
-      if (status === 'AUTHORISED') toast.success('Autorização confirmada pelo banco.');
+      const status = normalizeConsentStatus(r?.consent_status) || 'sem status';
+      if (isConsentAuthorised(status)) toast.success('Autorização confirmada pelo banco.');
       else toast.warning(`O banco ainda responde ${status}.`);
       recarregar();
     } catch (err) {
@@ -123,7 +125,7 @@ export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
 
           {consents.map((c) => {
             const saude = consentHealth(c);
-            const autorizado = c.status === 'AUTHORISED';
+            const autorizado = isConsentAuthorised(c.status);
             const travado = ocupado === c.consent_id;
 
             return (
