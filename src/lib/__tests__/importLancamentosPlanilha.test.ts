@@ -2,7 +2,7 @@
 // exportado da aba Lançamentos em 18/08/2026 e do que já está em jm_lancamentos.
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — script .mjs sem tipos; o que importa aqui é o comportamento.
-import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha } from '../../../scripts/import-lancamentos-planilha.mjs';
+import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha, chaveForte, chaveFraca, planejar } from '../../../scripts/import-lancamentos-planilha.mjs';
 
 const CABECALHO = [
   'Responsável', 'DISTRIBUÍDO', 'data', 'CASO', 'Processo', 'PESSOA', 'Categoria',
@@ -100,4 +100,68 @@ describe('importador da planilha de lançamentos', () => {
     expect(linha.valor_caixa).toBeCloseTo(228.37);
   });
 
+  describe('identidade por conteúdo (planejar)', () => {
+    // A linha do banco traz os campos que o script lê para comparar.
+    const doBanco = (id, extra = {}) => ({
+      id, data: '2025-01-10', categoria: 'Honorários', pessoa: 'HC',
+      processo_raw: '0000491-34.2020.5.05.0101', valor_caixa: 100, n_parcela: '1',
+      observacao: null, conta: 'ESCRITÓRIO', ...extra,
+    });
+    const daPlanilha = (extra = {}) => ({
+      data: '2025-01-10', categoria: 'Honorários', pessoa: 'HC',
+      processo_raw: '0000491-34.2020.5.05.0101', valor_caixa: 100, n_parcela: '1',
+      observacao: null, conta: 'Escritório', ...extra,
+    });
+
+    it('ignora diferença de caixa e de espaço — senão nada casaria', () => {
+      // A carga antiga gravou conta em MAIÚSCULA; a planilha usa caixa mista.
+      expect(chaveForte(doBanco(1))).toBe(chaveForte(daPlanilha()));
+      expect(chaveForte(daPlanilha({ categoria: '  Honorários  ' })))
+        .toBe(chaveForte(daPlanilha()));
+    });
+
+    it('linha inalterada não vira ação nenhuma', () => {
+      const p = planejar([daPlanilha()], [doBanco(1)]);
+      expect(p.iguais).toHaveLength(1);
+      expect(p.atualizar).toHaveLength(0);
+      expect(p.inserir).toHaveLength(0);
+      expect(p.apagar).toHaveLength(0);
+    });
+
+    it('valor editado vira UPDATE no mesmo id, não apaga-e-insere', () => {
+      // É o que preserva parte_id, parte_conciliacao e tem_data_pagamento.
+      const p = planejar([daPlanilha({ valor_caixa: 250 })], [doBanco(7)]);
+      expect(p.atualizar).toEqual([expect.objectContaining({ id: 7 })]);
+      expect(p.atualizar[0].linha.valor_caixa).toBe(250);
+      expect(p.apagar).toHaveLength(0);
+      expect(p.inserir).toHaveLength(0);
+    });
+
+    it('linha que sumiu da planilha vira APAGAR, e a nova vira INSERIR', () => {
+      const p = planejar(
+        [daPlanilha({ pessoa: 'HS', valor_caixa: 40 })],
+        [doBanco(3)],
+      );
+      expect(p.apagar.map((l) => l.id)).toEqual([3]);
+      expect(p.inserir).toHaveLength(1);
+      expect(p.atualizar).toHaveLength(0);
+    });
+
+    it('parcelas idênticas não se confundem: 3 na planilha e 2 no banco = 1 inserir', () => {
+      const p = planejar(
+        [daPlanilha(), daPlanilha(), daPlanilha()],
+        [doBanco(1), doBanco(2)],
+      );
+      expect(p.iguais).toHaveLength(2);
+      expect(p.inserir).toHaveLength(1);
+      expect(p.apagar).toHaveLength(0);
+    });
+
+    it('a chave fraca ignora valor e observação, mas não a parte nem a data', () => {
+      expect(chaveFraca(daPlanilha({ valor_caixa: 999, observacao: 'outra' })))
+        .toBe(chaveFraca(daPlanilha()));
+      expect(chaveFraca(daPlanilha({ pessoa: 'HS' }))).not.toBe(chaveFraca(daPlanilha()));
+      expect(chaveFraca(daPlanilha({ data: '2025-02-10' }))).not.toBe(chaveFraca(daPlanilha()));
+    });
+  });
 });
