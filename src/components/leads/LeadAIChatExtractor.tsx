@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Loader2, Sparkles, MessageSquare, User } from 'lucide-react';
 import { toast } from 'sonner';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import type { ExtractedAccidentData } from '@/components/leads/AccidentDataExtractor';
 
@@ -72,15 +73,20 @@ export function LeadAIChatExtractor({ leadId, leadPhone, whatsappGroups, onDataE
       const phone = (leadPhone || '').replace(/\D/g, '');
       if (!phone) throw new Error('Lead não tem telefone do contato');
       const last8 = phone.slice(-8);
+      // O `%last8%` também casa JID de grupo do formato legado
+      // (`<telefone-do-criador><timestamp>`), que começa pelo telefone. O
+      // `not like '%@g.us'` deveria barrar isso, mas grupo é gravado em
+      // dígitos: o sufixo existia em 1.505 de 1.036.224 linhas de grupo e
+      // sumiu de vez na normalização de 18/08/2026. Quem separa é
+      // `isWhatsAppGroupId`, que reconhece as duas formas.
       const res = await externalSupabase
         .from('whatsapp_messages')
         .select('created_at, direction, contact_name, message_text, phone, instance_name')
         .ilike('phone', `%${last8}%`)
-        .not('phone', 'like', '%@g.us')
         .order('created_at', { ascending: false })
-        .limit(max);
+        .limit(max * 2);
       if (res.error) throw res.error;
-      data = res.data;
+      data = (res.data || []).filter(r => !isWhatsAppGroupId(r.phone)).slice(0, max);
     }
 
     const desc = data || [];

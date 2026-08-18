@@ -526,16 +526,29 @@ export async function markMessagesAsRead(
   if (error) throw error;
 }
 
+/**
+ * Carimba o lead na conversa inteira.
+ *
+ * Em grupo pega TODAS as instâncias-membro: a conversa é uma só (o filtro por
+ * instância vinha de quando ela era N), e o `lead_id` da mensagem é o que faz
+ * `resolveLeadSearchInstanceName` achar por onde falar com o lead e o áudio da
+ * atividade achar o grupo de destino. Vincular só as linhas de uma instância
+ * deixava as cópias das outras sem lead — em 45 dias, 4.135 mensagens de grupo
+ * (5,4%) tinham espelhos discordando sobre o lead.
+ */
 export async function linkMessagesToLead(
   phone: string,
   instanceName: string,
   leadId: string
 ): Promise<void> {
-  const { error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .update({ lead_id: leadId })
-    .eq('phone', phone)
-    .in('instance_name', instanceNameVariants(instanceName));
+  const { error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .update({ lead_id: leadId })
+      .eq('phone', phone),
+    phone,
+    instanceName,
+  );
   if (error) throw error;
 }
 
@@ -608,15 +621,19 @@ export async function linkConversationContactToLead(
   return contactId;
 }
 
+/** Mesmo critério de `linkMessagesToLead`: em grupo, a conversa é uma só. */
 export async function linkMessagesToContact(
   phone: string,
   instanceName: string,
   contactId: string
 ): Promise<void> {
-  const { error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .update({ contact_id: contactId })
-    .eq('phone', phone)
-    .in('instance_name', instanceNameVariants(instanceName));
+  const { error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .update({ contact_id: contactId })
+      .eq('phone', phone),
+    phone,
+    instanceName,
+  );
   if (error) throw error;
 }

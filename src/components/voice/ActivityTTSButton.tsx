@@ -12,6 +12,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 interface ActivityTTSButtonProps {
   messageText: string;
@@ -85,20 +86,30 @@ export function ActivityTTSButton({ messageText, leadId, contactId }: ActivityTT
           results.push({ label: `${lead.lead_name || 'Lead'} (${lead.lead_phone})`, phone: lead.lead_phone });
         }
 
-        // Also auto-detect groups from message history
+        // Grupos que aparecem no histórico do lead.
+        //
+        // Filtrava por `phone like '%@g.us%'`, mas o `phone` de grupo é gravado
+        // em DÍGITOS (18 no formato atual, 22-23 no legado `<telefone><timestamp>`):
+        // o sufixo existia em 1.505 de 1.036.224 linhas de grupo e sumiu de vez
+        // com a normalização de 18/08/2026 — a detecção nunca mais acharia nada.
+        // Quem decide é `isWhatsAppGroupId`, que reconhece as duas formas.
         const { data: groupMsgs } = await supabase
           .from('whatsapp_messages')
           .select('phone')
           .eq('lead_id', leadId)
-          .like('phone', '%@g.us%')
-          .limit(5);
+          .order('created_at', { ascending: false })
+          .limit(200);
 
         if (groupMsgs) {
           const seenGroups = new Set<string>(lead?.whatsapp_group_id ? [lead.whatsapp_group_id] : []);
+          let detectados = 0;
           for (const msg of groupMsgs) {
+            if (detectados >= 5) break; // mesmo teto de antes, agora contando grupos e não linhas
             const groupPhone = msg.phone;
+            if (!isWhatsAppGroupId(groupPhone)) continue;
             if (groupPhone && !seenGroups.has(groupPhone)) {
               seenGroups.add(groupPhone);
+              detectados += 1;
               results.push({
                 label: `👥 Grupo detectado (${groupPhone.split('@')[0].slice(-6)})`,
                 phone: groupPhone,

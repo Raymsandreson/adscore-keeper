@@ -36,7 +36,7 @@ const { fakeClient, chamadas, resetChamadas } = vi.hoisted(() => {
 vi.mock('../external-client', () => ({ externalSupabase: fakeClient, ensureExternalSession: async () => {} }));
 vi.mock('../group-lead-links', () => ({ attachGroupLeadIds: async (r: unknown) => r }));
 
-import { getConversationMessages, markMessagesAsRead } from '../external-rpc';
+import { getConversationMessages, markMessagesAsRead, linkMessagesToLead, linkMessagesToContact } from '../external-rpc';
 
 const GRUPO = '120363425114615351';
 const PESSOA = '554195769554';
@@ -83,6 +83,28 @@ describe('markMessagesAsRead', () => {
 
   it('em conversa 1:1, marca só a da instância', async () => {
     await markMessagesAsRead(PESSOA, 'Luiz Abraci');
+    expect(filtroDeInstancia()?.args[1]).toEqual(['Luiz Abraci', 'LUIZ ABRACI', 'luiz abraci']);
+  });
+});
+
+describe('vínculo da conversa (lead/contato)', () => {
+  it('em grupo, carimba o lead na conversa inteira', async () => {
+    await linkMessagesToLead(GRUPO, 'Luiz Abraci', 'lead-1');
+    expect(filtroDeInstancia()).toBeUndefined();
+    expect(chamadas.some(c => c.metodo === 'update' && (c.args[0] as any).lead_id === 'lead-1')).toBe(true);
+  });
+
+  it('em conversa 1:1, o vínculo continua restrito à instância', async () => {
+    await linkMessagesToLead(PESSOA, 'Luiz Abraci', 'lead-1');
+    expect(filtroDeInstancia()?.args[1]).toEqual(['Luiz Abraci', 'LUIZ ABRACI', 'luiz abraci']);
+  });
+
+  it('o contato segue o mesmo critério', async () => {
+    await linkMessagesToContact(GRUPO, 'Luiz Abraci', 'contato-1');
+    expect(filtroDeInstancia()).toBeUndefined();
+    await new Promise(r => setTimeout(r, 0));
+    resetChamadas();
+    await linkMessagesToContact(PESSOA, 'Luiz Abraci', 'contato-1');
     expect(filtroDeInstancia()?.args[1]).toEqual(['Luiz Abraci', 'LUIZ ABRACI', 'luiz abraci']);
   });
 });
