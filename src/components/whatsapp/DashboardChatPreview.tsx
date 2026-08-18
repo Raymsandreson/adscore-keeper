@@ -41,7 +41,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
-import { getOurInstancePhones } from '@/integrations/supabase/external-rpc';
+import { getOurInstancePhones, getOurInstancePhonesSync } from '@/integrations/supabase/external-rpc';
+import { withTimeout } from '@/lib/promiseTimeout';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
@@ -86,17 +87,31 @@ const MESSAGE_COLUMNS =
   'sender_pn:metadata->message->>sender_pn, sender_lid:metadata->message->>sender_lid, sender_name:metadata->message->>senderName';
 
 /**
+ * Teto de espera de uma página da conversa.
+ *
+ * Server-side a consulta é barata (medido em 18/08/2026: 2,5ms para
+ * `phone = '55...'` pelo `idx_whatsapp_messages_phone`, com 1,59M linhas na
+ * tabela). O que estourava era o cliente: sem timeout no fetch, a aba voltando
+ * do segundo plano no celular ficava pendurada minutos a fio e o spinner nunca
+ * saía. 12s é folgado para 4G ruim e curto o bastante para virar erro útil.
+ */
+const MESSAGE_FETCH_TIMEOUT_MS = 12_000;
+
+/**
  * Uma página de mensagens, da mais recente para a mais antiga.
  *
  * `whatsapp_messages` vive no Supabase EXTERNO — o Cloud devolvia sempre vazio.
  * O `phone` da tabela é só dígitos, mesmo em grupo (sem o `@g.us`).
+ *
+ * `failed` distingue "conversa vazia" de "não consegui carregar" — sem isso,
+ * falha de rede aparecia como "Nenhuma mensagem encontrada", que é mentira.
  */
 async function fetchMessagePage(
   normalizedPhone: string,
   instanceName: string | null,
   includeAllInstances: boolean,
   beforeCreatedAt: string | null,
-): Promise<{ rows: any[]; hasMore: boolean }> {
+): Promise<{ rows: any[]; hasMore: boolean; failed: boolean }> {
   let query = (externalSupabase as any)
     .from('whatsapp_messages')
     .select(MESSAGE_COLUMNS)
@@ -107,15 +122,22 @@ async function fetchMessagePage(
     query = query.in('instance_name', variants);
   }
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
-  const { data, error } = await query
-    .order('created_at', { ascending: false })
-    .limit(MESSAGE_PAGE_ROWS);
-  if (error) {
-    console.warn('[DashboardChatPreview] fetchMessagePage error:', error.message);
-    return { rows: [], hasMore: false };
+  try {
+    const { data, error } = await withTimeout(
+      query.order('created_at', { ascending: false }).limit(MESSAGE_PAGE_ROWS),
+      MESSAGE_FETCH_TIMEOUT_MS,
+      'fetchMessagePage',
+    );
+    if (error) {
+      console.warn('[DashboardChatPreview] fetchMessagePage error:', error.message);
+      return { rows: [], hasMore: false, failed: true };
+    }
+    const rows = (data as any[]) || [];
+    return { rows, hasMore: rows.length >= MESSAGE_PAGE_ROWS, failed: false };
+  } catch (e) {
+    console.warn('[DashboardChatPreview] fetchMessagePage timeout/falha:', (e as Error)?.message);
+    return { rows: [], hasMore: false, failed: true };
   }
-  const rows = (data as any[]) || [];
-  return { rows, hasMore: rows.length >= MESSAGE_PAGE_ROWS };
 }
 
 interface Message {
@@ -227,6 +249,10 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /** A última carga da conversa falhou (timeout/rede)? Vira botão de tentar de novo, não "conversa vazia". */
+  const [loadFailed, setLoadFailed] = useState(false);
+  /** Incrementado pelo botão "Tentar de novo" — reexecuta o efeito de carga. */
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
@@ -391,7 +417,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
 
   useEffect(() => {
     if (!open || !phone) return;
+    let cancelled = false;
     setLoading(true);
+    setLoadFailed(false);
     setAiSuggestion(null);
     setAgentInfo(null);
     setCallRecords([]);
@@ -402,19 +430,37 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     setLinkedCases([]);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
-      const [{ rows, hasMore }, ourPhones] = await Promise.all([
-        fetchMessagePage(normalizedPhone, instanceName, isPrivateAllView, null),
-        getOurInstancePhones(),
-      ]);
+      // A lista NÃO espera mais `getOurInstancePhones()`. Ele só refina a
+      // autoria de mensagem de GRUPO e vinha num `Promise.all` com a página:
+      // pendurado (aba voltando do segundo plano, sem timeout), segurava a
+      // conversa inteira no spinner. Agora entra pelo cache síncrono e, se
+      // estiver frio, refina depois — sem bloquear a tela.
+      const { rows, hasMore, failed } = await fetchMessagePage(
+        normalizedPhone, instanceName, isPrivateAllView, null,
+      );
+      if (cancelled) return;
       // Espelhos de grupo colapsados pela MESMA regra da aba do WhatsApp
       // (`whatsappGroupMirror`): na ordem decrescente a linha mais recente é a
       // canônica — igual ao chat — e o autor sai do conjunto todo, não de um
       // espelho só. Depois inverte para exibir em ordem cronológica.
-      const deduped = dedupeMirroredMessages(rows, { ourPhones });
-      setMessages(deduped.slice().reverse() as any);
+      const coldPhones = getOurInstancePhonesSync();
+      setMessages(dedupeMirroredMessages(rows, { ourPhones: coldPhones }).slice().reverse() as any);
       setHasMoreOlder(hasMore);
+      setLoadFailed(failed);
       setLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
+      setTimeout(() => { if (!cancelled) bottomRef.current?.scrollIntoView({ behavior: 'auto' }); }, 100);
+
+      // Refino da autoria em grupo, já com a conversa na tela. Só vale a pena
+      // se o cache estava vazio no primeiro render.
+      if (failed || rows.length === 0 || coldPhones.size > 0) return;
+      const ourPhones = await getOurInstancePhones();
+      if (cancelled || ourPhones.size === 0) return;
+      const refined = dedupeMirroredMessages(rows, { ourPhones }).slice().reverse();
+      setMessages(prev => {
+        // Preserva o que chegou por realtime enquanto o refino rodava.
+        const known = new Set(refined.map(m => m.id));
+        return [...refined, ...prev.filter(m => !known.has(m.id))];
+      });
     };
     const fetchAgent = async () => {
       const { data } = await supabase
@@ -582,7 +628,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     };
     fetchConversationStatus();
 
-  }, [open, phone]);
+    return () => { cancelled = true; };
+  }, [open, phone, reloadNonce]);
 
   // Casos jurídicos do lead — o menu precisa dizer "já criado" em vez de
   // oferecer criar de novo.
@@ -2185,6 +2232,15 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : loadFailed ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                Não consegui carregar as mensagens agora.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setReloadNonce(n => n + 1)}>
+                Tentar de novo
+              </Button>
             </div>
           ) : timelineItems.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Nenhuma mensagem encontrada</p>

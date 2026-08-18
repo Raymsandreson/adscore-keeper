@@ -1,6 +1,7 @@
 import { externalSupabase } from './external-client';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { attachGroupLeadIds } from './group-lead-links';
+import { withTimeout } from '@/lib/promiseTimeout';
 
 export interface ConversationSummary {
   phone: string;
@@ -344,22 +345,38 @@ export function getOurInstancePhonesSync(): ReadonlySet<string> {
   return ourInstancePhonesCache;
 }
 
+/**
+ * Teto de espera. Sem ele, uma requisição pendurada (aba voltando do segundo
+ * plano no celular) ficava CACHEADA na promessa desta função e travava toda
+ * abertura de conversa da sessão inteira — o spinner que nunca saía.
+ */
+const OUR_PHONES_TIMEOUT_MS = 8_000;
+
 export function getOurInstancePhones(): Promise<ReadonlySet<string>> {
   if (!ourInstancePhonesPromise) {
-    ourInstancePhonesPromise = (externalSupabase as any)
-      .from('whatsapp_instances')
-      .select('owner_phone')
+    const run = withTimeout(
+      (externalSupabase as any).from('whatsapp_instances').select('owner_phone'),
+      OUR_PHONES_TIMEOUT_MS,
+      'getOurInstancePhones',
+    )
       .then(({ data, error }: { data: Array<{ owner_phone: string | null }> | null; error: { message: string } | null }) => {
         if (error) {
           console.warn('[getOurInstancePhones] falhou:', error.message);
-          ourInstancePhonesPromise = null;
+          // Falha não fica cacheada: a próxima abertura tenta de novo.
+          if (ourInstancePhonesPromise === run) ourInstancePhonesPromise = null;
           return new Set<string>() as ReadonlySet<string>;
         }
         ourInstancePhonesCache = new Set(
           (data || []).map(i => String(i.owner_phone || '').replace(/\D/g, '')).filter(Boolean)
         );
         return ourInstancePhonesCache;
+      })
+      .catch((e: unknown) => {
+        console.warn('[getOurInstancePhones] timeout/falha:', (e as Error)?.message);
+        if (ourInstancePhonesPromise === run) ourInstancePhonesPromise = null;
+        return new Set<string>() as ReadonlySet<string>;
       });
+    ourInstancePhonesPromise = run;
   }
   return ourInstancePhonesPromise;
 }
