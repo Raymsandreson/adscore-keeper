@@ -685,3 +685,13 @@ pela data de protocolo e trazendo o numero do caso").
 
 Trabalho: tabelas `zz_escavador_*` e `zz_tabaux` ficam até a decisão sobre as
 fichas; depois dropar. Cron `zz-escavador-oab` já se desagendou (verificado).
+
+**Fichas criadas (18/08, autorizado pelo Raym: "pode criar os de 2020 em
+diante")**: 182 fichas no POP marcos — trabalhistas do Escavador de
+2020-01-13 a 2026-07-01 sem ficha em board nenhum, DV validado, guarda
+anti-duplicidade por CNJ no board. Título = polo ativo (cliente); nota traz
+data de protocolo e polo passivo; estágio inicial `m_ajuizamento`; sem nº de
+caso e sem lead (nenhum consta nas bases internas — vincular quando
+identificado). Board: 874 → 1.056 fichas ativas (827 CNJs distintos, zero
+duplicado). Ficaram FORA por decisão: 231 trabalhistas anteriores a 2020 e
+938 não-trabalhistas.
