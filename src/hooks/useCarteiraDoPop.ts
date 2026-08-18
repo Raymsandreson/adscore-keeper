@@ -457,9 +457,12 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
       const pagoDaParte = Number(l.valor_pago || 0);
       // Correção monetária: valor × coeficiente do índice do ramo, do termo
       // inicial da decisão que vale até `jcm_referencia`. Sem coeficiente, o
-      // atualizado é o próprio nominal — nunca inventar índice.
+      // atualizado é o próprio nominal — nunca inventar índice. Parte PAGA
+      // também não corrige: SELIC atualiza o que está POR receber, não o que
+      // já caiu na conta.
+      const jaPago = l.estagio_financeiro === 'PAGO';
       const coef = l.jcm_coeficiente == null ? null : Number(l.jcm_coeficiente);
-      const corrigido = coef != null && Number.isFinite(coef);
+      const corrigido = !jaPago && coef != null && Number.isFinite(coef);
       const atualizadoDaParte = valorDaParte * (corrigido ? coef : 1);
       if (l.cliente) {
         p.clientes += 1;
@@ -476,7 +479,8 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
           pago: pagoDaParte,
           estagio: l.estagio_financeiro,
         });
-        if (!corrigido && valorDaParte > 0) p.temParteSemCorrecao = true;
+        // PAGO não corrige por decisão, não por falta de índice — não é buraco.
+        if (!corrigido && !jaPago && valorDaParte > 0) p.temParteSemCorrecao = true;
       }
       p.valor += valorDaParte;
       p.valorAtualizado += atualizadoDaParte;
@@ -646,11 +650,13 @@ function calcularTotais(
     for (const l of linhas) {
       if (!processos.has(l.process_id)) processos.set(l.process_id, l);
       const v = Number(l.valor_condenacao || 0);
+      // Mesma regra da abertura por processo: parte PAGA fica no nominal.
+      const jaPago = l.estagio_financeiro === 'PAGO';
       const coef = l.jcm_coeficiente == null ? null : Number(l.jcm_coeficiente);
-      const corrigido = coef != null && Number.isFinite(coef);
+      const corrigido = !jaPago && coef != null && Number.isFinite(coef);
       valor += v;
       valorAtualizado += v * (corrigido ? coef : 1);
-      if (!corrigido && v > 0) partesSemCorrecao += 1;
+      if (!corrigido && !jaPago && v > 0) partesSemCorrecao += 1;
       // Cada índice tem a SUA safra e cadências diferentes: a SELIC vem do
       // Bacen todo dia, a TCM ainda é carregada à mão. Guardar a MAIOR data
       // faria a tela prometer uma atualização que metade da carteira não teve,

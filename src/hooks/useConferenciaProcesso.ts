@@ -107,8 +107,10 @@ export interface ClienteConferido {
   estagio: string;
   /** valor × coeficiente. Igual ao nominal quando o ramo não tem índice. */
   valorAtualizado: number;
-  /** false = sem índice/competência: o "atualizado" é o nominal repetido. */
+  /** false = sem índice/competência OU parte já PAGA: o "atualizado" é o nominal repetido. */
   corrigido: boolean;
+  /** Última data_recebida quando o estágio é PAGO — a razão de não corrigir. */
+  pagoEm: string | null;
   /** Data de início de juros e correção usada — da decisão que vale. */
   termoInicial: string | null;
   /** Veio da data da decisão porque a decisão não tinha `termo_inicial_jcm`. */
@@ -355,11 +357,24 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
     }
 
     // Pago por cliente: só o que tem data_recebida — previsto não é caixa.
+    // A planilha importou 344 parcelas recebidas SEM valor_pago (caso 10 é uma
+    // delas), então "recebeu" e "quanto recebeu" são perguntas separadas:
+    //  - pagoPorCliente   soma o que tem valor (para exibir);
+    //  - quitadoPorCliente diz se TODAS as parcelas do cliente foram recebidas
+    //    (para o estágio) — data_recebida basta, valor nulo não desclassifica.
     const pagoPorCliente = new Map<string, number>();
+    const parcelasPorCliente = new Map<string, { recebidas: number; pendentes: number; ultimaRecebida: string | null }>();
     for (const p of pagamentos) {
-      if (!p.data_recebida) continue;
       const c = p.cliente || '(sem cliente identificado)';
-      pagoPorCliente.set(c, (pagoPorCliente.get(c) || 0) + num(p.valor_pago));
+      const info = parcelasPorCliente.get(c) || { recebidas: 0, pendentes: 0, ultimaRecebida: null };
+      if (p.data_recebida) {
+        info.recebidas += 1;
+        if (!info.ultimaRecebida || p.data_recebida > info.ultimaRecebida) info.ultimaRecebida = p.data_recebida;
+        pagoPorCliente.set(c, (pagoPorCliente.get(c) || 0) + num(p.valor_pago));
+      } else {
+        info.pendentes += 1;
+      }
+      parcelasPorCliente.set(c, info);
     }
 
     return [...porCliente.entries()].map(([cliente, linhas]) => {
@@ -377,12 +392,16 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
       const termoEstimado = !decUsada?.termo_inicial_jcm && !!decUsada?.data_decisao;
       const competencia = termoInicial ? `${termoInicial.slice(0, 7)}-01` : null;
       const coef = competencia ? jcm.coeficientes[competencia] ?? null : null;
-      const corrigido = coef != null && Number.isFinite(coef);
-      const estagio = pago > 0 ? 'PAGO'
+      const parcelas = parcelasPorCliente.get(cliente) || { recebidas: 0, pendentes: 0, ultimaRecebida: null };
+      const quitado = parcelas.recebidas > 0 && parcelas.pendentes === 0;
+      const estagio = (pago > 0 || quitado) ? 'PAGO'
         : temAcordo ? 'A_RECEBER'
         : marcoAtual?.estagioSugerido ? marcoAtual.estagioSugerido
         : valor > 0 ? 'CONDENACAO'
         : 'PROJETADO';
+      // Dinheiro que já caiu na conta não corrige: SELIC/TCM atualizam o que
+      // está POR receber. Parte PAGA fica no nominal, e a tela diz o porquê.
+      const corrigido = estagio !== 'PAGO' && coef != null && Number.isFinite(coef);
       return {
         cliente,
         valor,
@@ -390,6 +409,7 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
         danoEstetico,
         valorAtualizado: valor * (corrigido ? (coef as number) : 1),
         corrigido,
+        pagoEm: estagio === 'PAGO' ? parcelas.ultimaRecebida : null,
         termoInicial,
         termoEstimado,
         coeficiente: corrigido ? coef : null,

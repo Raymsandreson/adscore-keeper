@@ -1286,7 +1286,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 processId={process.id}
                 caseId={process.case_id || form.case_id || null}
                 leadId={process.lead_id || null}
-                contextLabel="Lançamentos deste processo — inclui as despesas registradas dentro das atividades vinculadas a ele."
+                processNumber={form.process_number || process.process_number || null}
+                contextLabel="Extrato do processo — lançamentos manuais, despesas das atividades vinculadas, parcelas da jurimetria e o extrato importado da planilha, separando o que é do escritório do que é do cliente."
                 listMaxHeight="420px"
               />
             )}
