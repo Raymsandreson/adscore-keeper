@@ -6073,15 +6073,31 @@ const ActivitiesPage = () => {
                           {diasSemMov < 1 ? 'movimentado hoje' : `há ${humanizeDias(diasSemMov)} sem andamento efetivo`}
                         </button>
                       )}
-                      {/* Benefício INSS: perícia médica e perícia social ficam no
-                          cabeçalho porque é a data que decide o deslocamento do
-                          cliente — antes vivia solta no corpo do texto. */}
-                      <PericiaInssChips processId={formProcessId} processTitle={proc?.title || formProcessTitle} />
                       </>
                     );
                   })()}
                 </div>
               )}
+              {/* Perícia médica e avaliação social: a data que decide o
+                  deslocamento do cliente fica no cabeçalho, e marcar aqui cria o
+                  evento no calendário (/hearings).
+                  FORA do bloco de caso/processo de propósito: das 326 atividades
+                  vivas de perícia, 79 têm só o lead (nem caso nem processo) e ali
+                  dentro o chip nunca apareceria justamente nelas. `empty:hidden`
+                  porque o componente decide se há o que mostrar. */}
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1 empty:hidden">
+                <PericiaInssChips
+                  processId={formProcessId}
+                  processTitle={formProcessTitle}
+                  caseId={formCaseId}
+                  leadId={formLeadId}
+                  processNumber={(formProcessId ? caseProcesses.find(p => p.id === formProcessId) : linkedProcess)?.process_number || null}
+                  activityId={selectedActivity?.id || null}
+                  assignedTo={formAssignedTo}
+                  activityTitle={formTitle}
+                  activityTypeLabel={dbActivityTypes.find(t => t.key === formType)?.label || null}
+                />
+              </div>
               {/* Lead preview info */}
               {formLeadId && leadPreview && (
                 <div className="flex items-center gap-3 mt-1.5 text-[11px] text-muted-foreground flex-wrap">

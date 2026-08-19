@@ -1,21 +1,39 @@
 // =============================================================================
-// Perícias do Benefício INSS (médica + social) — regras puras.
+// Perícia como EVENTO DE AGENDA — regras puras.
 //
-// As duas datas moram em `lead_processes.pericia_medica_at` / `pericia_social_at`
-// (migration 20260813120000). Aqui ficam só as decisões que não dependem de I/O:
-// quando os campos aparecem, e a conversão entre o `timestamptz` do banco e o
-// `datetime-local` do formulário.
+// A data marcada no cabeçalho da atividade vira uma linha em `hearings`, a
+// mesma tabela onde a audiência mora (migration 20260819110000). Antes ela ia
+// para `lead_processes.pericia_medica_at`, que em 19/08/2026 tinha 1 linha no
+// banco inteiro: o chip só aparecia em processo intitulado "Benefício INSS" e
+// 35% das atividades de perícia não têm processo nenhum vinculado.
 //
-// Conversão explícita porque o input HTML não carrega fuso: gravar a string
-// "2026-08-14T09:20" crua faria o Postgres interpretá-la no fuso do SERVIDOR
-// (UTC) e a perícia das 9h20 apareceria às 6h20 pra quem marcou.
+// FUSO: `hearings` guarda `hearing_date` (date) + `hearing_time` (time SEM
+// fuso) + `timezone_label` textual — hora local, como a convocação diz. Por
+// isso aqui não há conversão UTC nenhuma: a string "2026-09-24T08:00" do
+// `datetime-local` vira ('2026-09-24', '08:00') e volta igual. O caminho antigo
+// precisava converter porque gravava em timestamptz, e era onde a hora escorregava.
 // =============================================================================
 
-export type PericiaCampo = 'pericia_medica_at' | 'pericia_social_at';
+/** Os dois eventos que o cabeçalho da atividade marca. */
+export type PericiaTipo = 'medica' | 'social';
 
-export const PERICIA_LABEL: Record<PericiaCampo, string> = {
-  pericia_medica_at: 'Perícia médica',
-  pericia_social_at: 'Perícia social',
+export const PERICIA_TIPOS: PericiaTipo[] = ['medica', 'social'];
+
+/**
+ * `hearing_type` gravado no banco. O sufixo "(INSS)" separa a perícia
+ * administrativa da judicial que vem da planilha ("Perícia Médica", 71 linhas
+ * em 19/08/2026) — as duas são perícia e convivem na mesma aba do calendário,
+ * mas quem trabalha precisa saber se o cliente vai ao INSS ou ao fórum.
+ */
+export const PERICIA_HEARING_TYPE: Record<PericiaTipo, string> = {
+  medica: 'Perícia Médica (INSS)',
+  social: 'Avaliação Social (INSS)',
+};
+
+/** Rótulo curto do chip. */
+export const PERICIA_LABEL: Record<PericiaTipo, string> = {
+  medica: 'Perícia médica',
+  social: 'Avaliação social',
 };
 
 function normalize(value?: string | null): string {
@@ -39,30 +57,51 @@ export function isBeneficioInssProcess(title?: string | null): boolean {
   return normalize(title) === 'beneficio inss';
 }
 
-/** `timestamptz` do banco → valor de `<input type="datetime-local">` (hora local). */
-export function periciaInputValue(iso?: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+/**
+ * A ATIVIDADE fala de perícia? Segundo caminho para o chip aparecer.
+ *
+ * Sem isto o chip fica invisível justamente onde a equipe mais precisa: das 326
+ * atividades vivas de perícia em 19/08/2026, 115 (35%) não têm processo
+ * vinculado e outras tantas apontam para processo judicial, então a regra do
+ * "Benefício INSS" não as alcançava.
+ *
+ * `\bpericias?\b` e não `includes('peric')`: "Peticionar cobrando a juntada do
+ * LAUDO PERICIAL" e "manifestar sobre laudo pericial" são trabalho SOBRE a
+ * perícia já realizada, não convocação — ganhar um chip de "marcar data" ali só
+ * suja o cabeçalho. "Avaliação social" entra porque é o nome que o BPC usa.
+ */
+export function ehAtividadeDePericia(title?: string | null, activityTypeLabel?: string | null): boolean {
+  const alvo = `${normalize(title)} ${normalize(activityTypeLabel)}`;
+  return /\bpericias?\b/.test(alvo) || alvo.includes('avaliacao social');
 }
 
-/** Valor do `<input type="datetime-local">` (hora local) → `timestamptz` pro banco. */
-export function periciaIsoFromInput(value?: string | null): string | null {
-  if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+/** ('2026-09-24', '08:00:00') → '2026-09-24T08:00' para o `datetime-local`. */
+export function periciaInputValue(data?: string | null, hora?: string | null): string {
+  if (!data) return '';
+  const d = data.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return '';
+  const h = (hora || '').slice(0, 5);
+  return `${d}T${/^\d{2}:\d{2}$/.test(h) ? h : '09:00'}`;
 }
 
-/** Rótulo curto do chip: "14/08/2026 09:20". */
-export function formatPericia(iso?: string | null): string {
-  if (!iso) return '';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
-  return d.toLocaleString('pt-BR', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  }).replace(',', '');
+/**
+ * '2026-09-24T08:00' → { data, hora } para gravar em `hearings`.
+ * Devolve null quando a string não é uma data-hora completa — o chamador não
+ * deve gravar meia data.
+ */
+export function periciaPartesDoInput(value?: string | null): { data: string; hora: string } | null {
+  const m = (value || '').match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})/);
+  return m ? { data: m[1], hora: m[2] } : null;
+}
+
+/** Rótulo do chip: "24/09/2026 08:00". Sem hora, só a data. */
+export function formatPericia(data?: string | null, hora?: string | null): string {
+  if (!data) return '';
+  const m = data.slice(0, 10).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const dia = `${m[3]}/${m[2]}/${m[1]}`;
+  const h = (hora || '').slice(0, 5);
+  return /^\d{2}:\d{2}$/.test(h) ? `${dia} ${h}` : dia;
 }
 
 export type PericiaTom = 'vazio' | 'futura' | 'hoje' | 'passada';
@@ -71,14 +110,16 @@ export type PericiaTom = 'vazio' | 'futura' | 'hoje' | 'passada';
  * Em que pé está a perícia, pra colorir o chip. `agora` é injetável pra teste.
  * "hoje" é o dia civil da perícia — quem abre a atividade nesse dia precisa ver
  * na hora que o cliente tem perícia marcada.
+ *
+ * Comparação de DATA por string, não por Date: `hearing_date` é uma data civil
+ * ("o dia da convocação"), e virar Date só reintroduziria o fuso que a coluna
+ * foi feita para não ter.
  */
-export function periciaTom(iso?: string | null, agora: Date = new Date()): PericiaTom {
-  if (!iso) return 'vazio';
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return 'vazio';
-  const mesmoDia = d.getFullYear() === agora.getFullYear()
-    && d.getMonth() === agora.getMonth()
-    && d.getDate() === agora.getDate();
-  if (mesmoDia) return 'hoje';
-  return d.getTime() > agora.getTime() ? 'futura' : 'passada';
+export function periciaTom(data?: string | null, agora: Date = new Date()): PericiaTom {
+  const d = (data || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return 'vazio';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const hoje = `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}`;
+  if (d === hoje) return 'hoje';
+  return d > hoje ? 'futura' : 'passada';
 }

@@ -54,7 +54,9 @@ Processos judiciais ativos parados há ≥30 dias (fonte Escavador), por faixa e
 **Fluxo recomendado**: começar por "90+ dias", identificar responsáveis com concentração de atraso, exportar CSV para cobrança.
 
 ### Aba Perícias
-Planilha transversal de datas (perícia médica/social etc.) lida dos campos personalizados do tipo "Data" dos processos, ordenada por data.
+Planilha transversal de datas lida dos campos personalizados do tipo "Data" dos processos, ordenada por data.
+
+> **Está vazia** (verificado em 19/08/2026): `process_custom_fields` e `process_custom_field_values` não têm nenhuma linha, e nenhum dos 3 campos de data existentes em `lead_custom_fields` é de perícia. A agenda de perícias de verdade é `/hearings` (lente Perícias).
 
 - "Só futuras" — datas de hoje em diante.
 - "Atualizar" — recarrega.
@@ -130,10 +132,13 @@ Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparand
 
 **Item de checklist que repete uma resposta é espelho.** É comum o POP cadastrar a mesma coisa duas vezes: as respostas do passo ("Requerimento Deferido" / "Requerimento Indeferido") e, no checklist de verificação do mesmo passo, itens com esses nomes. Esses itens **não são clicáveis** e ficam fora do "marcar todos": quem os marca (e desmarca) é a resposta escolhida — senão haveria dois lugares para dizer a mesma coisa e só um deles moveria a fase e o status. Itens que existem só no checklist (ex.: "Carta de Concessão/Indeferimento") seguem marcáveis. O casamento é por rótulo normalizado, sem acento/caixa/espaço sobrando (`src/lib/popAnswerMirror.ts`), porque o POP não guarda vínculo entre resposta e item — renomear um dos dois desfaz o espelho. Não há aprovação de gestora envolvida: quem edita o POP grava direto (inclusive por autosave), e a revisão registrada em `workflow_revisions` é histórico, não fila de aprovação.
 
-## Audiências — `/hearings`
+## Audiências e Perícias — `/hearings`
 
-**Propósito**: agenda de audiências com visualizações Semana/Mês/Dia/Lista e sincronização com planilha externa. Cada audiência tem tipo, categoria, data/hora, fuso, status, local, responsável e observações.
+**Propósito**: agenda de eventos do escritório — audiência **e** perícia — com visualizações Semana/Mês/Dia/Lista e sincronização com planilha externa. Cada evento tem tipo, categoria, data/hora, fuso, status, local, responsável e observações.
 
+- **Lente Audiências | Perícias | Todos** (19/08/2026), com contador de cada uma. Muda o universo da tela, não é mais um filtro: perícia e audiência são trabalhos diferentes. Abre em Audiências; `/hearings?evento=pericia` entra direto na agenda de perícias. A classificação é a mesma da aba Eventos (`categoriaDaAudiencia`): radical "peric" **ou** "avaliação social".
+- **De onde vêm as perícias**: da planilha (perícia judicial — `hearing_type` "Perícia Médica"/"Perícia Judicial", `origem='planilha'`) e do **chip no cabeçalho da atividade** (perícia administrativa do INSS — "Perícia Médica (INSS)" / "Avaliação Social (INSS)", `origem='atividade'`). Ver `atividades.md`. O sync da planilha não sobrescreve o que nasceu na atividade.
+- Criar a partir da lente Perícias já nasce perícia previdenciária (o formulário abriria em "UNA Virtual"/cível).
 - Busca "Buscar por processo, caso, observações...".
 - Filtros: Tipo, Categoria, Status.
 - "Sincronizar planilha" — importa novas/atualizadas da planilha sem remover as que só existem no sistema.

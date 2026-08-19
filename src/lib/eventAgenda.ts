@@ -47,14 +47,21 @@ function normalizar(texto?: string | null): string {
  * Em que aba uma linha de `hearings` cai.
  *
  * Perícia é reconhecida pelo radical ("Perícia Médica", "Pericia", "Perícia
- * Judicial" — as três grafias existem no banco). Sem tipo, ou tipo "Outro", vai
- * para Outros. Todo o resto é audiência: Instrução, Inicial, UNA, Conciliação,
- * Encerramento de Instrução, Homologação, Julgamento.
+ * Judicial" — as três grafias existem no banco), o que já cobre os tipos que a
+ * atividade passou a gravar em 19/08/2026 ("Perícia Médica (INSS)").
+ *
+ * "Avaliação Social" precisa de regra própria: é a perícia social do BPC, não
+ * tem o radical, e sem esta linha cairia em Outros — a aba onde ninguém procura
+ * uma convocação de cliente.
+ *
+ * Sem tipo, ou tipo "Outro", vai para Outros. Todo o resto é audiência:
+ * Instrução, Inicial, UNA, Conciliação, Encerramento de Instrução, Homologação,
+ * Julgamento.
  */
 export function categoriaDaAudiencia(hearingType?: string | null): CategoriaEvento {
   const t = normalizar(hearingType);
   if (!t) return 'outros';
-  if (t.includes('peric')) return 'pericia';
+  if (t.includes('peric') || t.includes('avaliacao social')) return 'pericia';
   if (t === 'outro' || t === 'outros') return 'outros';
   return 'audiencia';
 }

@@ -24,6 +24,11 @@ export interface Hearing {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** Vínculos e procedência (migration 20260819110000). */
+  process_id: string | null;
+  activity_id: string | null;
+  /** 'planilha' (sync diário) | 'atividade' (chip de perícia) | 'manual' (esta tela). */
+  origem: string | null;
 }
 
 export type HearingInput = Omit<Hearing, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'created_by'>;
@@ -52,9 +57,12 @@ export function useHearings() {
     mutationFn: async (input: Partial<HearingInput>) => {
       const { data: userData } = await authClient.auth.getUser();
       const created_by = userData?.user?.id ?? null;
+      // `origem` carimbada aqui: sem ela a linha criada nesta tela ficaria sem
+      // procedência e o sync da planilha a trataria como sua (migration
+      // 20260819110000). O chip de perícia grava 'atividade' por conta própria.
       const { data, error } = await (db as any)
         .from('hearings')
-        .insert({ ...input, created_by })
+        .insert({ origem: 'manual', ...input, created_by })
         .select('*')
         .single();
       if (error) throw error;

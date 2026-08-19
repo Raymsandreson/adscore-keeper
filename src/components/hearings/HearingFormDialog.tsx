@@ -16,13 +16,16 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   hearing?: Hearing | null;
   defaultDate?: string;
+  /** Tipo/categoria com que o formulário nasce — a agenda de perícias passa os dela. */
+  defaultType?: string;
+  defaultCategory?: HearingCategory;
 }
 
-const empty = (defaultDate?: string) => ({
+const empty = (defaultDate?: string, defaultType?: string, defaultCategory?: HearingCategory) => ({
   process_number: '',
   case_ref: '',
-  hearing_type: 'UNA Virtual',
-  category: 'civel' as HearingCategory,
+  hearing_type: defaultType || 'UNA Virtual',
+  category: (defaultCategory || 'civel') as HearingCategory,
   hearing_date: defaultDate || new Date().toISOString().slice(0, 10),
   hearing_time: '09:00',
   timezone_label: 'Padrão Brasília',
@@ -32,9 +35,9 @@ const empty = (defaultDate?: string) => ({
   assigned_user_id: null as string | null,
 });
 
-export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: Props) {
+export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate, defaultType, defaultCategory }: Props) {
   const { create, update, remove } = useHearings();
-  const [form, setForm] = useState(empty(defaultDate));
+  const [form, setForm] = useState(empty(defaultDate, defaultType, defaultCategory));
   const [activityOpen, setActivityOpen] = useState(false);
 
   useEffect(() => {
@@ -53,9 +56,9 @@ export function HearingFormDialog({ open, onOpenChange, hearing, defaultDate }: 
         assigned_user_id: hearing.assigned_user_id || null,
       });
     } else {
-      setForm(empty(defaultDate));
+      setForm(empty(defaultDate, defaultType, defaultCategory));
     }
-  }, [hearing, defaultDate, open]);
+  }, [hearing, defaultDate, defaultType, defaultCategory, open]);
 
   const set = (k: keyof typeof form, v: any) => setForm((p) => ({ ...p, [k]: v }));
 
