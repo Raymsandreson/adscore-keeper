@@ -58,29 +58,6 @@ interface TeamChatPanelProps {
 
 const MEDIA_BUCKET = 'team-chat-media';
 
-/** Bip curto (Web Audio) para avisar chegada de mensagem urgente. */
-function playUrgentBeep() {
-  try {
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.value = 0.12;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.18);
-    osc.onended = () => ctx.close();
-  } catch {
-    /* silêncio se o navegador bloquear áudio */
-  }
-}
-
 function formatDuration(seconds?: number | null) {
   const s = Math.max(0, Math.floor(seconds || 0));
   const m = Math.floor(s / 60);
@@ -131,8 +108,6 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingDurationRef = useRef(0);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
-  const beepedRef = useRef<Set<string>>(new Set());
-  const firstLoadRef = useRef(true);
 
   // Auto-scroll to bottom or highlighted message
   useEffect(() => {
@@ -142,23 +117,6 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, highlightMessageId]);
-
-  // Bip ao receber mensagem urgente de outro membro (ignora o carregamento inicial).
-  useEffect(() => {
-    if (loading) return;
-    if (firstLoadRef.current) {
-      messages.forEach(m => beepedRef.current.add(m.id));
-      firstLoadRef.current = false;
-      return;
-    }
-    for (const m of messages) {
-      if (beepedRef.current.has(m.id)) continue;
-      beepedRef.current.add(m.id);
-      if (m.is_urgent && m.sender_id !== user?.id && !m.deleted_at) {
-        playUrgentBeep();
-      }
-    }
-  }, [messages, loading, user?.id]);
 
   /** Cola no rascunho a mensagem que veio de fora (ex.: bolha do WhatsApp). */
   const appendQuote = useCallback((quote: string) => {

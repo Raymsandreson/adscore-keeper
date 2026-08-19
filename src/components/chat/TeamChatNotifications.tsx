@@ -127,29 +127,6 @@ function dismissConversationToast(conversationId: string) {
   toast.dismiss(conversationToastId(conversationId));
 }
 
-function playUrgentSound() {
-  try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    [0, 0.25, 0.5].forEach((offset) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.001, ctx.currentTime + offset);
-      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + offset + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.18);
-      osc.start(ctx.currentTime + offset);
-      osc.stop(ctx.currentTime + offset + 0.2);
-    });
-    setTimeout(() => void ctx.close(), 1200);
-  } catch {
-    // Navegador pode bloquear áudio antes de interação do usuário
-  }
-}
-
 function showNotificationToast({
   id,
   icon,
@@ -271,8 +248,6 @@ function showConversationToast({
     onClosed: () => clearConversationToastState(conversationId),
     onManualDismiss,
   });
-
-  if (urgent) playUrgentSound();
 }
 
 export function TeamChatNotifications() {
