@@ -1,5 +1,11 @@
 -- Push nativo do app mobile (Fase 2 do escopo do WhatsJud Mobile).
 --
+-- Roda no cluster EXTERNO. `push_subscriptions` nasceu lá
+-- (migrations-external/20260716140000_push_subscriptions.sql) e no Cloud a
+-- tabela não existe — daí este arquivo morar em migrations-external. Guardado
+-- na pasta errada, um `db push` no Cloud quebraria em "relation does not
+-- exist", e o Externo, que é quem precisa, continuaria sem a coluna.
+--
 -- Até aqui `push_subscriptions` guardava só assinatura de Web Push VAPID, cujo
 -- formato é { endpoint, p256dh, auth }. O Expo Push usa um token único
 -- ("ExponentPushToken[...]") e não tem par de chaves — daí as três mudanças
