@@ -24,7 +24,7 @@ import {
   type TitularLancamento, type EspecieLancamento,
 } from '@/lib/lancamentoCategorias';
 import {
-  montarParteValor, resumirValorProcesso, honorarioDaParte, cotaLiquidaDaParte,
+  montarParteValor, resumirValorProcesso, honorarioDaParte, cotaClienteDaParte,
   parteSemValor, type ParteValor,
 } from '@/lib/valorProcesso';
 
@@ -576,11 +576,11 @@ export function EntityFinancialsPanel({
             </div>
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground">Do cliente</p>
-              {/* LÍQUIDO: o contratual parcelado sai de dentro da cota dele. */}
-              <p className="text-sm font-bold text-sky-700">{formatCurrency(valorProcesso.cotaLiquida)}</p>
+              {/* A planilha já entrega líquida: o 30% saiu do vencido E do vincendo. */}
+              <p className="text-sm font-bold text-sky-700">{formatCurrency(valorProcesso.cotaCliente)}</p>
               {valorProcesso.hcParcelado > 0 && (
                 <p className="text-[10px] text-muted-foreground leading-tight">
-                  bruto {formatCurrency(valorProcesso.cotaBruta)}
+                  {formatCurrency(valorProcesso.cotaVencida)} já venceu
                 </p>
               )}
             </div>
@@ -612,8 +612,10 @@ export function EntityFinancialsPanel({
 
           {valorProcesso.hcParcelado > 0 && (
             <p className="text-[10px] text-muted-foreground leading-snug">
-              {formatCurrency(valorProcesso.hcParcelado)} do contratual é parcelado: sai da cota do
-              cliente, não da condenação. Continua sendo nosso — só entra depois, conforme ele paga.
+              Pensionamento: {formatCurrency(valorProcesso.escritorioApurado)} do nosso já está
+              apurado sobre as parcelas vencidas, e {formatCurrency(valorProcesso.hcParcelado)} vão
+              sendo apurados conforme as vincendas vencerem. A coluna "condenação" da planilha deixa
+              esse pedaço de fora — com ele, o processo bruto é {formatCurrency(valorProcesso.bruto)}.
             </p>
           )}
 
@@ -658,7 +660,7 @@ export function EntityFinancialsPanel({
                       <div className="text-right flex-shrink-0">
                         <p className="text-xs font-semibold">{formatCurrency(p.condenacao ?? 0)}</p>
                         <p className="text-[10px] text-muted-foreground">
-                          <span className="text-sky-700">{formatCurrency(cotaLiquidaDaParte(p))}</span> cliente ·{' '}
+                          <span className="text-sky-700">{formatCurrency(cotaClienteDaParte(p))}</span> cliente ·{' '}
                           <span className="text-green-700">{formatCurrency(honorarioDaParte(p))}</span> nosso
                         </p>
                       </div>
