@@ -1,5 +1,4 @@
 import { format, parseISO } from 'date-fns';
-import { AlertTriangle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import type { Hearing } from '@/hooks/useHearings';
@@ -59,8 +58,15 @@ export function HearingListView({ hearings, onSelect }: Props) {
                     {STATUS_LABELS[h.status]}
                   </Badge>
                 </TableCell>
-                <TableCell>
-                  {h.notes && h.notes.trim() ? <AlertTriangle className="h-4 w-4 text-warning" /> : null}
+                {/* A observação em si, não um ⚠: o sync grava a linha crua da
+                    planilha aqui, então o alerta acendia em 562 dos 564 eventos
+                    e não distinguia nada. Truncada, com o texto inteiro no title. */}
+                <TableCell className="max-w-[22rem]">
+                  {h.notes && h.notes.trim() ? (
+                    <span className="block truncate text-xs text-muted-foreground" title={h.notes}>
+                      {h.notes}
+                    </span>
+                  ) : null}
                 </TableCell>
               </TableRow>
             );
