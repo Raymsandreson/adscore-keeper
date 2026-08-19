@@ -6,9 +6,9 @@ Documentação funcional das telas do módulo processual. Rótulos entre aspas s
 
 ## Processos — `/processes`
 
-**Propósito**: central de processos judiciais e administrativos. Reúne processos judiciais vinculados a casos, processos administrativos do INSS (alimentados por e-mails do Gmail), e-mails processuais (PJe/PUSH), relatório de processos parados e planilha de datas de perícias.
+**Propósito**: central de processos judiciais e administrativos. Reúne processos judiciais vinculados a casos, processos administrativos do INSS (alimentados por e-mails do Gmail), e-mails processuais (PJe/PUSH) e relatório de processos parados. Datas de perícia **não** ficam aqui: a agenda é `/hearings` (lente Perícias).
 
-**Abas**: "Judiciais", "INSS Administrativo", "Processual" (e-mails), "Sem movimento", "Perícias".
+**Abas**: "Judiciais", "INSS Administrativo", "Régua INSS", "Processual" (e-mails), "Sem movimento".
 
 ### Aba Judiciais
 - Busca "Buscar por número, título, parte, tribunal..." — filtra a lista (número, título, polo ativo/passivo, tribunal, classe).
@@ -53,14 +53,10 @@ Processos judiciais ativos parados há ≥30 dias (fonte Escavador), por faixa e
 
 **Fluxo recomendado**: começar por "90+ dias", identificar responsáveis com concentração de atraso, exportar CSV para cobrança.
 
-### Aba Perícias
-Planilha transversal de datas lida dos campos personalizados do tipo "Data" dos processos, ordenada por data.
+### Aba Perícias — **não existe mais**
+Era uma planilha transversal de datas lida dos campos personalizados do tipo "Data" dos processos ("Só futuras", busca por cliente/campo). Foi removida do código; em 19/08/2026 só sobrevivia como promessa no guia de funcionalidades, que passou a apontar o lugar certo.
 
-> **Está vazia** (verificado em 19/08/2026): `process_custom_fields` e `process_custom_field_values` não têm nenhuma linha, e nenhum dos 3 campos de data existentes em `lead_custom_fields` é de perícia. A agenda de perícias de verdade é `/hearings` (lente Perícias).
-
-- "Só futuras" — datas de hoje em diante.
-- "Atualizar" — recarrega.
-- Busca "Buscar por cliente, campo, processo...".
+Não valia a pena ressuscitar: `process_custom_fields` e `process_custom_field_values` estão **vazias** (zero linhas), e nenhum dos 3 campos de data que existem em `lead_custom_fields` é de perícia — a aba mostraria uma tabela em branco. **A agenda de perícias é `/hearings`, lente Perícias.**
 
 ---
 
