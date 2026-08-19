@@ -60,6 +60,8 @@ export interface ParteValor {
   hs: number | null;
   status: string | null;
   fase: string | null;
+  /** Termo inicial dos juros e da correção. É daqui que a atualização corre. */
+  termoInicial: string | null;
 }
 
 export interface ResumoValorProcesso {
@@ -132,6 +134,7 @@ export function montarParteValor(row: Record<string, unknown>): ParteValor {
     hs: num(row.hs),
     status: texto(row.status_pagamento),
     fase: texto(row.fase_atual),
+    termoInicial: texto(row.termo_inicial_jcm),
   };
 }
 

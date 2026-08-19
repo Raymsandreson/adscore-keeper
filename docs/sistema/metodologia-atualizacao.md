@@ -115,21 +115,60 @@ referência **não incide** — competência igual à referência vale exatament
 as anteriores — dá para responder "quanto a carteira valia corrigida até jul/2026"
 depois de agosto chegar. Toda tela mostra a data de referência ao lado do valor.
 
-### 3.3 O buraco conhecido
+### 3.3 A régua implementada (19/08/2026)
 
-`[A DECIDIR]` O índice implementado é **SELIC simples somada**, que corresponde ao
-regime **ADC 58 pós-ajuizamento** (dez/2020 → ago/2024). O sistema **não** aplica
-hoje a regra da Lei 14.905 (IPCA + SELIC−IPCA com piso zero) a partir de
-30/08/2024, nem o IPCA-E da fase pré-judicial. Para crédito com competência
-anterior a dez/2020 ou posterior a ago/2024, o coeficiente atual é uma
-aproximação, não a tabela do CSJT.
+`[NO CÓDIGO]` Dois índices novos em `jm_indices`, gerados por
+`jm_regua_por_ramo()`: **`REGUA_TRABALHISTA`** e **`REGUA_COMUM`**, 380
+competências cada (1995-01 → 2026-08), na mesma mecânica de safra.
 
-**Consequência prática:** onde a SELIC ficou abaixo do IPCA, o piso zero dos juros
-faz a conta real render menos que a soma simples; onde ficou acima, mais. Não dá
-para dizer o sinal do erro sem calcular. **Isto precisa de decisão antes de virar
-número para gestora.**
+O fator é montado **mês a mês, com a regra vigente em cada mês** — não uma regra
+escolhida pela data do crédito. Um crédito de 2022 corre sob ADC 58 até ago/2024
+e sob a Lei 14.905 daí em diante; escolher uma régua só erraria os dois trechos.
 
----
+```
+TRABALHISTA   mês <= 2024-08  ->  SELIC simples somada (ADC 58)
+              mês >= 2024-09  ->  correção IPCA (produto) + juros max(0, SELIC−IPCA)
+COMUM         mês <= 2024-08  ->  correção IPCA (produto) + juros 1% a.m. simples
+              mês >= 2024-09  ->  idêntico ao trabalhista
+
+fator = Π(1 + correção do mês) × (1 + Σ juros do mês)
+```
+
+Corrige-se o principal e só então os juros incidem sobre o corrigido.
+
+**De onde vêm as taxas mensais.** Não há série crua gravada, mas ela se recupera
+exatamente dos coeficientes acumulados que o tick já mantém, porque um é soma e o
+outro é produto: `SELIC(m) = coef_SELIC(m) − coef_SELIC(m+1)` e
+`IPCA(m) = coef_TCM(m)/coef_TCM(m+1) − 1`. Conferido contra os valores que a
+migration `20260816000000` registrou como verificados no Bacen — SELIC jul/2026
+1,22% e IPCA jul/2026 0,06%: a derivação devolve exatamente os dois.
+
+### 3.4 Quanto isso muda
+
+`[NO CÓDIGO]` Carteira não-paga, com data-base, na safra 08/2026:
+
+| Ramo | Partes | Nominal | Régua antiga | Régua correta | Diferença |
+|---|---|---|---|---|---|
+| Trabalhista | 345 | 117,36 mi | 152,81 mi | **155,84 mi** | +3,03 mi |
+| Comum | 163 | 33,96 mi | 49,48 mi | **58,17 mi** | +8,69 mi |
+
+**+R$ 11,7 milhões** de subavaliação, dos quais **R$ 5,6 milhões são honorário do
+escritório**. A distorção maior está na justiça comum, que vinha sendo corrigida
+pela tabela trabalhista por omissão — não por decisão.
+
+Exemplo: processo `0000072-69.2023.5.13.0009` (TRT13, termo inicial 25/04/2024,
+coeficiente 1,3175) — nominal R$ 821.599,58 → **R$ 1.082.448,38 hoje**, sendo
+R$ 819.252,87 do cliente e R$ 389.548,60 nosso.
+
+### 3.5 O que ainda falta
+
+`[A DECIDIR]` **Corte mensal em ago/2024.** A lei entrou em 30/08/2024, dois dias
+antes do fim do mês. O corte aqui é em setembro — mesma simplificação das tabelas
+práticas mensais. O pro-rata desses dois dias não está aplicado.
+
+`[A DECIDIR]` **Regime anterior a dez/2020 na JT.** Antes da ADC 58 valia a TR.
+A régua trabalhista aplica SELIC simples nesse trecho, o que **superestima**
+créditos antigos. Afeta poucas partes (a mais antiga é de 2015), mas afeta.
 
 ## 4. Justiça Estadual — régua diferente
 
@@ -149,7 +188,8 @@ correção e SELIC−IPCA (piso zero) para juros, **abolindo as tabelas prática
 tribunais estaduais** para o período novo. Antes disso valia a tabela prática do
 TJ com juros de 1% a.m.
 
-`[NO CÓDIGO]` `TCM_ESTADUAL` é **manual** — o Bacen não publica a tabela de
+`[NO CÓDIGO]` A régua comum está implementada em `REGUA_COMUM` (ver 3.3).
+`TCM_ESTADUAL` continua **manual** — o Bacen não publica a tabela de
 correção estadual. A safra dela envelhece sem avisar, e é por isso que a tela
 mostra a data de referência ao lado de todo valor corrigido.
 
@@ -192,19 +232,21 @@ competência. Implementar isso é trabalho de schema, não de tela.
 
 Em ordem de impacto sobre o número final:
 
-1. **Implementar a régua da Lei 14.905 a partir de 30/08/2024** (IPCA + SELIC−IPCA
-   com piso zero). Sem isso, todo crédito recente está com coeficiente aproximado.
-2. **Separar a régua estadual da trabalhista.** 70 processos usam hoje a régua
-   errada por omissão.
-3. **Guardar a data-base por verba** (arbitramento × vencimento × ajuizamento).
-   Hoje há uma data só por linha.
-4. **Registrar o percentual do contrato por parte.** Os 30% foram *inferidos* da
+1. ~~Implementar a régua da Lei 14.905~~ — **feito** (3.3).
+2. ~~Separar a régua estadual da trabalhista~~ — **feito** (3.3).
+3. ~~Guardar a data-base por verba~~ — **parcial**: `termo_inicial_jcm` está no
+   banco em 799 partes (666 com valor). Faltam **22 partes com valor e sem
+   termo** — a planilha não trouxe. Elas entram só pelo nominal, e a tela diz
+   isso em vez de fingir que corrigiu.
+4. **Data-base por VERBA, não por parte.** Em dano moral a correção corre do
+   arbitramento e os juros do evento (Súmulas 362 e 54 do STJ) — datas
+   diferentes, e hoje há uma só por parte. Enquanto isso não existir, o dano
+   moral da justiça comum corre desde o termo único da planilha. `[A DECIDIR]`
+5. **Registrar o percentual do contrato por parte.** Os 30% foram *inferidos* da
    aritmética, não lidos de um campo. Contrato diferente quebra a conta em
    silêncio.
-5. **Marcar onde houve constituição de capital** — muda se há honorário sobre a
+6. **Marcar onde houve constituição de capital** — muda se há honorário sobre a
    fatia vincenda.
-
----
 
 ## Fontes
 

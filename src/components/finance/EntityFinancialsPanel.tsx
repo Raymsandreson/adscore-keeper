@@ -27,6 +27,9 @@ import {
   montarParteValor, resumirValorProcesso, honorarioDaParte, cotaClienteDaParte,
   parteSemValor, type ParteValor,
 } from '@/lib/valorProcesso';
+import {
+  reguaDoProcesso, competenciaDe, atualizarValor, REGUA_LABEL, PORQUE_LABEL,
+} from '@/lib/atualizacaoMonetaria';
 
 export interface EntityFinancialEntry {
   id: string;
@@ -194,6 +197,9 @@ export function EntityFinancialsPanel({
   // é estoque, não caixa, e misturar os dois conta o mesmo dinheiro duas vezes.
   const [partesValor, setPartesValor] = useState<ParteValor[]>([]);
   const [verPartes, setVerPartes] = useState(false);
+  // competência -> coeficiente, já da régua deste processo e da safra vigente.
+  const [coeficientes, setCoeficientes] = useState<Map<string, number>>(new Map());
+  const [safra, setSafra] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<EntityFinancialEntry | null>(null);
@@ -247,11 +253,52 @@ export function EntityFinancialsPanel({
 
   useEffect(() => { fetchEntries(); }, [fetchEntries]);
 
+  /**
+   * Coeficientes da régua DESTE processo. Qual régua vale sai do CNJ (dígito J):
+   * trabalhista e comum divergem em tudo que é anterior a set/2024. Busca só as
+   * competências que as partes realmente usam — a série tem 380 meses e carregar
+   * tudo para usar 3 é desperdício em toda abertura de ficha.
+   */
+  const carregarCoeficientes = useCallback(async (lista: ParteValor[]) => {
+    const regua = reguaDoProcesso(processNumber);
+    const comps = [...new Set(lista.map(p => competenciaDe(p.termoInicial)).filter(Boolean))] as string[];
+    if (!regua || !comps.length) { setCoeficientes(new Map()); setSafra(null); return; }
+    const externo = db as unknown as {
+      from: (t: string) => { select: (c: string) => {
+        eq: (col: string, v: string) => { in: (col: string, vals: string[]) => {
+          order: (col: string, o: { ascending: boolean }) => Promise<{ data: Record<string, unknown>[] | null; error: { message?: string } | null }>;
+        } };
+      } };
+    };
+    const { data, error } = await externo.from('jm_indices')
+      .select('competencia, coeficiente, referencia')
+      .eq('indice', regua)
+      .in('competencia', comps)
+      .order('referencia', { ascending: false });
+    if (error) {
+      console.error('[EntityFinancialsPanel] coeficientes:', error.message);
+      setCoeficientes(new Map()); setSafra(null);
+      return;
+    }
+    // Ordenado por referência decrescente: o primeiro de cada competência é a
+    // safra mais nova. Safra velha corrige menos e ninguém percebe — por isso a
+    // data da safra vai para a tela junto do valor.
+    const mapa = new Map<string, number>();
+    let ref: string | null = null;
+    for (const linha of data || []) {
+      const comp = String(linha.competencia);
+      if (!mapa.has(comp)) mapa.set(comp, Number(linha.coeficiente));
+      if (!ref) ref = String(linha.referencia);
+    }
+    setCoeficientes(mapa);
+    setSafra(ref);
+  }, [processNumber]);
+
   /** Extrato da jurimetria — só na aba do processo, e só leitura. */
   const fetchJm = useCallback(async () => {
-    if (scope !== 'process' || !processNumber) { setJmLinhas([]); setPartesValor([]); return; }
+    if (scope !== 'process' || !processNumber) { setJmLinhas([]); setPartesValor([]); setCoeficientes(new Map()); return; }
     const variantes = cnjVariantes(processNumber);
-    if (!variantes.length) { setJmLinhas([]); setPartesValor([]); return; }
+    if (!variantes.length) { setJmLinhas([]); setPartesValor([]); setCoeficientes(new Map()); return; }
     await ensureExternalSession().catch(() => {});
     // As tabelas jm_* vivem no Externo e não existem no schema tipado do client
     // — mesmo desvio do useConferenciaProcesso.
@@ -270,7 +317,7 @@ export function EntityFinancialsPanel({
       // Tab. Aux: a separação cota do cliente × honorário existe por PARTE, em
       // todo processo — inclusive nos que ainda não têm um único lançamento.
       externo.from('jm_partes')
-        .select('parte_id, cliente, condenacao_cjcm, cota_parte_cjcm, cota_parte_vista_cjcm, hc_vista, hc_parcelado, hs, status_pagamento, fase_atual')
+        .select('parte_id, cliente, condenacao_cjcm, cota_parte_cjcm, cota_parte_vista_cjcm, hc_vista, hc_parcelado, hs, status_pagamento, fase_atual, termo_inicial_jcm')
         .in('processo_cnj', variantes),
     ]);
     // Uma consulta falhar não derruba as outras: o painel manual continua de pé,
@@ -279,7 +326,9 @@ export function EntityFinancialsPanel({
       console.error('[EntityFinancialsPanel] valor do processo:', partes.error.message);
       setPartesValor([]);
     } else {
-      setPartesValor((partes.data || []).map(montarParteValor));
+      const lista = (partes.data || []).map(montarParteValor);
+      setPartesValor(lista);
+      void carregarCoeficientes(lista);
     }
     if (pag.error || lanc.error) {
       console.error('[EntityFinancialsPanel] extrato jm:', pag.error?.message || lanc.error?.message);
@@ -346,7 +395,7 @@ export function EntityFinancialsPanel({
       });
     }
     setJmLinhas(linhas);
-  }, [scope, processNumber]);
+  }, [scope, processNumber, carregarCoeficientes]);
 
   useEffect(() => { void fetchJm(); }, [fetchJm]);
 
@@ -452,8 +501,47 @@ export function EntityFinancialsPanel({
    */
   const valorProcesso = useMemo(() => resumirValorProcesso(partesValor), [partesValor]);
 
+  /**
+   * O mesmo estoque, corrigido pela régua do ramo. Parte a parte, porque cada
+   * uma tem seu termo inicial — somar primeiro e corrigir depois usaria uma
+   * competência só e erraria todo processo com partes de datas diferentes.
+   *
+   * Parte PAGA fica no nominal: correção atualiza o que falta receber.
+   */
+  const atualizado = useMemo(() => {
+    let condenacao = 0, cliente = 0, escritorio = 0;
+    let corrigidas = 0, pagas = 0;
+    const pendencias = new Map<string, number>();
+    for (const p of valorProcesso.partes) {
+      if (parteSemValor(p)) continue;
+      const pago = p.status === 'PAGO';
+      const r = atualizarValor({
+        valor: p.condenacao, cnj: processNumber, dataBase: p.termoInicial, pago, coeficientes,
+      });
+      if (r.atualizado == null) {
+        pendencias.set(r.porque, (pendencias.get(r.porque) ?? 0) + 1);
+        continue;
+      }
+      const k = r.coeficiente ?? 1;
+      condenacao += r.atualizado;
+      cliente += cotaClienteDaParte(p) * k;
+      escritorio += honorarioDaParte(p) * k;
+      if (pago) pagas += 1; else corrigidas += 1;
+    }
+    return {
+      condenacao: Math.round(condenacao * 100) / 100,
+      cliente: Math.round(cliente * 100) / 100,
+      escritorio: Math.round(escritorio * 100) / 100,
+      corrigidas, pagas,
+      pendencias: [...pendencias.entries()],
+      regua: reguaDoProcesso(processNumber),
+    };
+  }, [valorProcesso.partes, coeficientes, processNumber]);
+
   const ehExtrato = scope === 'process' && !!processNumber;
   const temValorProcesso = ehExtrato && valorProcesso.comValor > 0;
+  /** Só diz "hoje" quando de fato houve o que corrigir — senão é nominal puro. */
+  const temAtualizacao = temValorProcesso && atualizado.corrigidas + atualizado.pagas > 0;
 
   const resetForm = () => {
     setForm({
@@ -571,13 +659,24 @@ export function EntityFinancialsPanel({
 
           <div className="grid grid-cols-3 gap-2">
             <div className="text-center">
-              <p className="text-[10px] text-muted-foreground">Condenação</p>
-              <p className="text-sm font-bold text-indigo-900">{formatCurrency(valorProcesso.condenacao)}</p>
+              <p className="text-[10px] text-muted-foreground">
+                Condenação{temAtualizacao ? ' hoje' : ''}
+              </p>
+              <p className="text-sm font-bold text-indigo-900">
+                {formatCurrency(temAtualizacao ? atualizado.condenacao : valorProcesso.condenacao)}
+              </p>
+              {temAtualizacao && (
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  {formatCurrency(valorProcesso.condenacao)} nominal
+                </p>
+              )}
             </div>
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground">Do cliente</p>
               {/* A planilha já entrega líquida: o 30% saiu do vencido E do vincendo. */}
-              <p className="text-sm font-bold text-sky-700">{formatCurrency(valorProcesso.cotaCliente)}</p>
+              <p className="text-sm font-bold text-sky-700">
+                {formatCurrency(temAtualizacao ? atualizado.cliente : valorProcesso.cotaCliente)}
+              </p>
               {valorProcesso.hcParcelado > 0 && (
                 <p className="text-[10px] text-muted-foreground leading-tight">
                   {formatCurrency(valorProcesso.cotaVencida)} já venceu
@@ -586,7 +685,9 @@ export function EntityFinancialsPanel({
             </div>
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground">Do escritório</p>
-              <p className="text-sm font-bold text-green-700">{formatCurrency(valorProcesso.escritorio)}</p>
+              <p className="text-sm font-bold text-green-700">
+                {formatCurrency(temAtualizacao ? atualizado.escritorio : valorProcesso.escritorio)}
+              </p>
               {/* Contratual e sucumbencial são recebíveis distintos: um vem do
                   contrato com o cliente, o outro da condenação da parte contrária. */}
               <p className="text-[10px] text-muted-foreground leading-tight">
@@ -603,6 +704,22 @@ export function EntityFinancialsPanel({
                 </Badge>
               ))}
             </div>
+          )}
+
+          {temAtualizacao && (
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              Corrigido pela régua da <strong>{REGUA_LABEL[atualizado.regua!]}</strong>
+              {safra && ` até ${safra.slice(5, 7)}/${safra.slice(0, 4)}`} — IPCA mais juros
+              da taxa legal (SELIC − IPCA, piso zero) desde 30/08/2024, e o regime da ADC 58 antes
+              disso. {atualizado.pagas > 0 && `${atualizado.pagas} parte(s) já paga(s) ficam no nominal.`}
+            </p>
+          )}
+
+          {atualizado.pendencias.length > 0 && (
+            <p className="text-[10px] text-amber-700 leading-snug">
+              {atualizado.pendencias.map(([k, n]) => `${n} parte(s) ${PORQUE_LABEL[k as keyof typeof PORQUE_LABEL]}`).join(' · ')}
+              {' '}— entram só pelo nominal.
+            </p>
           )}
 
           <p className="text-[10px] text-muted-foreground leading-snug">
