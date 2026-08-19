@@ -92,15 +92,6 @@ describe('classificarLancamento', () => {
     expect(classificarLancamento({ categoria: 'Cota do Cliente' }).titular).toBe('cliente');
     expect(classificarLancamento({ categoria: 'Pagamento Cliente' }).titular).toBe('cliente');
   });
-
-  it('honorário de condenação não é "a receber"', () => {
-    // 29 linhas (R$ 4,42 mi) carregavam a data da DECISÃO dentro de
-    // "Honorários a receber" e por isso apareciam vencidas há anos.
-    const c = classificarLancamento({ categoria: 'Honorários condenação', pessoa: 'HC' });
-    expect(c.titular).toBe('escritorio');
-    expect(c.especie).toBe('honorario_condenacao');
-    expect(c.previsto).toBe(false);
-  });
 });
 
 describe('estagioDoLancamento', () => {
@@ -116,9 +107,22 @@ describe('estagioDoLancamento', () => {
       .toBe('VENCIDO');
   });
 
-  it('condenação nunca vence — a data dela é a da decisão', () => {
-    expect(estagioDoLancamento({ categoria: 'Honorários condenação', data: '2021-05-31', hoje }))
-      .toBe('CONDENACAO');
+  it('sem cronograma é CONDENAÇÃO e nunca vence, por mais velha que a data seja', () => {
+    // 31 linhas assim: a data é a da DECISÃO ("Condenação em 2º grau"), e lê-la
+    // como vencimento marcava R$ 4,72 mi como atrasado há anos.
+    expect(estagioDoLancamento({
+      categoria: 'Honorários a receber', data: '2021-05-31', temDataPagamento: false, hoje,
+    })).toBe('CONDENACAO');
+  });
+
+  it('a mesma categoria com cronograma segue a régua da data', () => {
+    // O que separa condenação de vencido é a coluna, não a categoria.
+    expect(estagioDoLancamento({
+      categoria: 'Honorários a receber', data: '2021-05-31', temDataPagamento: true, hoje,
+    })).toBe('VENCIDO');
+    // Ausente vale como true — é o padrão da coluna no banco.
+    expect(estagioDoLancamento({ categoria: 'Honorários a receber', data: '2021-05-31', hoje }))
+      .toBe('VENCIDO');
   });
 
   it('sem data não inventa atraso', () => {

@@ -445,15 +445,14 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
         for (let inicio = 0; ; inicio += 1000) {
           const { data: prev } = await (db as any)
             .from('jm_lancamentos')
-            .select('processo_cnj, valor_caixa, valor_competencia, data, categoria, pessoa')
-            .in('categoria', [
-              'Honorários a receber', 'Honorários condenação',
-            ])
+            .select('processo_cnj, valor_caixa, valor_competencia, data, categoria, pessoa, tem_data_pagamento')
+            .eq('categoria', 'Honorários a receber')
             .range(inicio, inicio + 999);
           const lote = (prev || []) as {
             processo_cnj: string | null; valor_caixa: number | null;
             valor_competencia: number | null; data: string | null;
             categoria: string | null; pessoa: string | null;
+            tem_data_pagamento: boolean | null;
           }[];
           for (const l of lote) {
             const cnj = String(l.processo_cnj || '').replace(/\D/g, '');
@@ -463,8 +462,11 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
             const v = l.valor_caixa ?? l.valor_competencia;
             if (v == null) continue;
             const valor = Number(v);
+            // `tem_data_pagamento = false` marca a linha cuja data é a da
+            // DECISÃO: é CONDENAÇÃO, não vence nunca.
             const estagio = estagioDoLancamento({
-              categoria: l.categoria, pessoa: l.pessoa, data: l.data, hoje,
+              categoria: l.categoria, pessoa: l.pessoa, data: l.data,
+              temDataPagamento: l.tem_data_pagamento, hoje,
             });
             const a = aReceber[cnj] || vazio();
             if (estagio === 'CONDENACAO') a.condenacao += valor;

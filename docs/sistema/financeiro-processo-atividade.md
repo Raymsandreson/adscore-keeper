@@ -267,17 +267,190 @@ Depois de separar (migração `20260818210000`, aplicada):
 
 Fonte da verdade do estágio: `estagioDoLancamento()` em
 `src/lib/lancamentoCategorias.ts` — deriva CONDENACAO / A_RECEBER / VENCIDO /
-REALIZADO de categoria + data, com `hoje` por parâmetro para o teste não depender
-do relógio. A carteira do POP mostra os três em chips próprios
-(`PopCarteiraSheet`), alimentados por `useCarteiraDoPop`, que respeita o filtro da
-tela como o resto dos totais.
+REALIZADO de categoria + data + `tem_data_pagamento`, com `hoje` por parâmetro
+para o teste não depender do relógio. A carteira do POP mostra os três em chips
+próprios (`PopCarteiraSheet`), alimentados por `useCarteiraDoPop`, que respeita o
+filtro da tela como o resto dos totais.
 
-**O que a base NÃO diz:** se as 71 linhas vencidas são calote ou parcela paga sem
-baixa na planilha. A tela afirma isso em vez de escolher um dos dois. As mais
-antigas: R$ 185.426,38 (881 dias), R$ 112.549,15 (811 dias), R$ 60.750,00
-(1.630 dias).
+### Onde o "não tem data de pagamento" mora — e a tentativa errada antes dele
 
-**Pendência conhecida:** a categoria "Honorários condenação" **não existe na
-planilha** — foi criada só no banco. O importador tem guarda
-(`preservaCategoria`) para não desfazer numa reimportação, e avisa quantas linhas
-segurou, mas o certo é criar a categoria na planilha também.
+Primeira tentativa (migração `20260818210000`, **revertida no mesmo dia**): criar
+a categoria `Honorários condenação` para essas 31 linhas. O Raym não comprou, e
+com razão — no vocabulário do escritório **CATEGORIA diz que tipo de dinheiro é**
+(honorário, indenização, custas) e **ESTÁGIO diz onde o dinheiro está** (a
+receber, vencido, condenação). "Condenação" é estágio; pô-lo na categoria
+misturou as duas gavetas. O sintoma de que estava errado apareceu sozinho: como
+a categoria vem da planilha, a reclassificação só sobrevivia com um guarda no
+importador para não ser desfeita a cada reimportação.
+
+O fato que faltava nunca foi a categoria — era **o significado da data**. Em
+quase toda linha `data` é o vencimento; nestas 31 é o dia da decisão. Virou a
+coluna `jm_lancamentos.tem_data_pagamento` (migração `20260818230000`):
+
+- `true` (padrão) — a `data` da linha é o vencimento;
+- `false` — não há cronograma; a `data` é a da decisão. A régua lê CONDENAÇÃO.
+
+A coluna **não existe na planilha de propósito**: assim o importador não a toca e
+a marcação sobrevive a qualquer reimportação sozinha. O guarda `preservaCategoria`
+saiu do script por ter deixado de ser necessário — bom sinal de que o desenho
+novo é o certo.
+
+**O que a base NÃO diz:** se as linhas vencidas são calote ou parcela paga sem
+baixa na planilha. A tela afirma isso em vez de escolher um dos dois.
+
+## Sincronização com as duas planilhas (18/08/2026)
+
+São **duas** planilhas, e elas respondem perguntas diferentes:
+
+| | **Jurimetria — aba Tab. Aux** | **Controle Financeiro — aba Lançamentos** |
+|---|---|---|
+| Uma linha é | uma **PARTE** | uma **PARCELA** |
+| Responde | *quanto vale* (estoque) | *quando entra* (fluxo) |
+| Traz | condenação, cota do cliente, HC à vista, HC parcelado, HS, status | data, valor, categoria, conta |
+| Tamanho (18/08) | 1.028 partes · 287 processos | 4.713 lançamentos |
+| Vai para | `jm_valores` (ainda sem as colunas de honorário) | `jm_lancamentos` |
+
+**Nunca se somam** — uma é o patrimônio, a outra é o caixa.
+
+A Tab. Aux tem a separação que faltava: no caso 10, cada parte aparece com
+condenação R$ 28.571,43 = **cota R$ 20.000,00 + honorário contratual
+R$ 8.571,43**. Importá-la é o passo seguinte (pede colunas novas em
+`jm_valores`, ainda não feito).
+
+### Três bugs do importador, pegos antes de rodar
+
+1. **Casar por número de linha estava errado.** O Raym apagou linhas da planilha
+   e tudo abaixo subiu: a `ordem_origem` 3000 no banco era "FELIPE ESTEFÂNIO
+   R$ 105,21", na planilha virou "JONAS AIRES SILVA R$ 30.864,59". Rodar assim
+   sobrescreveria milhares de registros com dados errados, em silêncio. A
+   identidade passou a ser o CONTEÚDO (ver o cabeçalho do script).
+2. **Data com um dígito.** O Sheets exporta `10/8/2023` ao lado de `30/11/2025`;
+   o parser exigia dois dígitos e zerava a data de **34 linhas**, inflando o diff
+   em 34 apagar + 34 inserir.
+3. **Data que não existe.** A planilha tem `29/02/2022`, e 2022 não é bissexto.
+   O formato passava e o Postgres recusava a carga inteira no insert. Agora o
+   script valida no calendário e avisa quais linhas têm data impossível.
+
+### Resultado da sincronização
+
+4.542 inalteradas · 61 atualizadas · 71 inseridas · 100 apagadas → **4.713**,
+exatamente o tamanho da planilha. Backup das apagadas em
+`jm_lancamentos_removidas_20260818`.
+
+Honorários a receber depois da sincronização: **R$ 560.905,04 a vencer**,
+R$ 152.818,96 vencido, R$ 18.600,00 condenação (`tem_data_pagamento = false`).
+
+**Conciliação sobrevive à reorganização.** Preservar `parte_id` linha a linha não
+funciona — o Raym reorganiza as partes, e uma parcela que era "ADERALDO PIRES
+CARVALHO" hoje é "KEILA CARVALHO SANTOS SOUSA". Mas `parte_id` é FUNÇÃO de
+(processo, pessoa): 242 combinações, zero ambíguas. O script guarda esse mapa
+antes de mexer e reaplica depois — 1.456 das 1.458 conciliações sobreviveram (as
+2 restantes eram de linhas que a planilha apagou).
+
+---
+
+## Importação da Tab. Aux (18/08/2026)
+
+Fechou o buraco que a tabela acima anunciava: a separação **cota × honorário**
+agora existe por parte, em todo processo, e não só onde há lançamento.
+
+Onde ficou: colunas novas em **`jm_partes`** (não em `jm_valores` — a granularidade
+da Tab. Aux é a PARTE, e é `jm_partes` que tem essa chave):
+
+| Coluna | O que é |
+| --- | --- |
+| `condenacao_cjcm` | total da condenação corrigida (CJCM) |
+| `cota_parte_cjcm` | quanto disso é do CLIENTE |
+| `cota_parte_vista_cjcm` | a parte do cliente paga à vista |
+| `hc_vista` / `hc_parcelado` | honorário CONTRATUAL do escritório |
+| `hs` | honorário SUCUMBENCIAL do escritório |
+| `status_pagamento` | PROJETADO / A RECEBER / PAGO / PERDIDO |
+| `fase_atual` | fase processual como está na planilha |
+| `valores_importados_em` | carimbo da última importação |
+
+Migration `20260818230500_jm_partes_valores_tab_aux.sql`, importador
+`scripts/import-tab-aux.mjs`, testes em `src/lib/__tests__/importTabAux.test.ts`.
+
+### Como o importador casa a parte
+
+Por **(processo, cliente)**: CNJ reduzido a dígitos (a planilha e o banco pontuam
+diferente) e nome normalizado sem acento, sem espaço duplo, em maiúscula. Parte que
+não existe no banco **não é inventada** — sai na lista `semParte`. Parte que aparece
+duas vezes com valores DIFERENTES sai em `ambiguas` e o script não escolhe por conta
+própria.
+
+O `VALUES` castea todo número para `numeric` e todo texto para `text`: sem isso o
+Postgres infere `text` quando a primeira tupla traz `null` e a atribuição estoura.
+
+### Resultado
+
+997 partes atualizadas · 688 com valor de condenação (as demais 309 vêm da planilha
+só com status/fase, sem valor). Totais no banco:
+
+| | |
+| --- | --- |
+| Condenação | R$ 175.338.282,55 |
+| Cota do cliente | R$ 63.992.976,45 |
+| Honorário contratual | R$ 41.030.455,24 |
+| Honorário sucumbencial | R$ 46.289.483,02 |
+
+Prova no caso que originou tudo: as 7 partes com condenação R$ 28.571,43 somam
+R$ 200.000,01 de condenação — **R$ 140.000,00 do cliente e R$ 60.000,01 do
+escritório** (8.571,43 cada). A tela mostrava os 200k como se fossem do cliente.
+
+### O que ficou de fora, de propósito
+
+- **30 partes da Tab. Aux não têm linha correspondente em `jm_partes`** — nome ou
+  processo que não existe no banco. Não foram criadas.
+- **2 partes ambíguas** (mesma parte, dois conjuntos de valores na planilha).
+- **9 partes não fecham em nenhuma leitura das colunas** (P0544-P0548, P0702, P0703,
+  P0781, P0782 — em duas delas a cota vem MAIOR que a própria condenação). Vale
+  conferir na origem.
+
+> **Correção (18/08, mesma noite).** Registrei aqui antes que
+> `condenação = cota + HC + HS` não fechava em 311 de 827 linhas "por fórmulas com
+> datas de correção diferentes". Estava errado — era leitura errada das colunas, não
+> defeito da planilha. A identidade certa está em `src/lib/valorProcesso.ts` e fecha
+> em **679 das 688** partes com valor.
+
+---
+
+## "Quanto vale o processo" na ficha (18/08/2026)
+
+Bloco novo no topo do painel financeiro do processo (`EntityFinancialsPanel`,
+só quando `scope='process'` e há CNJ), alimentado por `jm_partes`. Mostra
+condenação, quanto é do cliente e quanto é do escritório — aberto em contratual e
+sucumbencial — mais os status das partes e a lista parte a parte.
+
+**Fica separado do extrato de propósito.** Estoque e fluxo respondem perguntas
+diferentes e o mesmo honorário aparece nos dois: aqui como direito, lá como parcela
+quando entra. O bloco tem estado próprio (`partesValor`), não passa por
+`totaisProcesso`, e a tela diz na cara "não some com o extrato abaixo".
+
+Cobertura: **186 processos** ganham o bloco — e em **114 deles não existe um único
+lançamento**, ou seja, a ficha era financeiramente vazia. Outros 168 processos têm
+partes na Tab. Aux só com status/fase, sem valor: nesses o bloco não aparece.
+
+### A identidade das colunas (medida, não suposta)
+
+```
+condenação = cota da parte + honorário contratual À VISTA + sucumbencial
+```
+
+Fecha em **679 das 688** partes com valor (98,7%). Duas armadilhas, as duas
+verificadas no dado antes de virar código:
+
+1. **`hc_parcelado` não é fatia a mais da condenação — está DENTRO da cota.** É o
+   honorário que o cliente paga em prestações com o dinheiro que recebeu, enquanto o
+   "à vista" é retido antes do repasse. Somá-lo ao lado da cota inflava o total em 55
+   partes. Daí `cotaLiquida = cota − hc_parcelado`, e o parcelado continua contando
+   como nosso. Confere por baixo: `cotaLiquida + escritório = condenação`.
+2. **Em 251 partes "TOTAL PARTE CJCM" vem zerada** e o valor do cliente está só em
+   "TOTAL À VISTA PARTE CJCM" — são as linhas ainda PROJETADAS. A cota cai para a
+   coluna à vista e o resumo conta quantas (`cotaProjetada`), para a tela dizer que
+   ali é projeção, não acordo fechado.
+
+Sem a armadilha 2 o cliente sumia da conta em 251 partes; sem a 1, o processo era
+contado a mais. Com as duas, os processos que fecham foram de 72 para 177 de 186.
+
+Lógica pura em `src/lib/valorProcesso.ts` com 12 testes — o componente só desenha.

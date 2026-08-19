@@ -26,13 +26,13 @@
 //                          escritório.
 //   Honorários Adv         honorário REPASSADO ao advogado parceiro. Sai da
 //   Parceiro               nossa mão: o titular é o parceiro, não o escritório.
-//   Honorários condenação  juiz FIXOU o valor e ainda não há data de pagamento.
-//                          Criada em 18/08/2026 para tirar 29 linhas (R$ 4,42 mi)
-//                          de dentro de "a receber": elas carregavam a data da
-//                          DECISÃO, não de vencimento, e por isso apareciam
-//                          vencidas há anos. Pela régua da carteira isso é
-//                          CONDENAÇÃO — valor certo, data incerta — e nunca
-//                          entra na mesma coluna do A RECEBER (inflava ~10x).
+
+// A DATA NEM SEMPRE É VENCIMENTO: 31 linhas de "Honorários a receber"
+// (R$ 4,72 mi, 15 processos) carregam a data da DECISÃO — o juiz fixou o valor e
+// não há cronograma de pagamento. Isso NÃO é a categoria dizendo outra coisa; é
+// um fato sobre a data, e mora na coluna `tem_data_pagamento` do banco (false
+// nessas linhas). A régua lê como CONDENAÇÃO: valor certo, data incerta, nunca
+// vencido. Sem isso, o "a receber" inflava ~10x e tudo parecia atrasado há anos.
 //
 // HC × HS: na planilha a coluna PESSOA carrega "HC" (honorário contratual) ou
 // "HS" (honorário sucumbencial) nas linhas de honorário — 657 HC e 104 HS na
@@ -66,7 +66,6 @@ export type EspecieLancamento =
   | 'honorario'
   | 'adiantamento_fidc'
   | 'honorario_parceiro'
-  | 'honorario_condenacao'
   | 'cota_cliente'
   | 'credito_comprado'
   | 'operacao';
@@ -91,7 +90,6 @@ export const ESPECIE_LABEL: Record<EspecieLancamento, string> = {
   honorario: 'honorário',
   adiantamento_fidc: 'adiantado FIDC',
   honorario_parceiro: 'repasse ao parceiro',
-  honorario_condenacao: 'condenação',
   cota_cliente: 'cota do cliente',
   credito_comprado: 'crédito comprado',
   operacao: 'operação',
@@ -109,7 +107,6 @@ const normalizar = (v: string | null | undefined) =>
 export const CATEGORIAS_LANCAMENTO = [
   'Honorários Contratuais',
   'Honorários Sucumbenciais',
-  'Honorários condenação',
   'Honorários Adiantados (FIDC)',
   'Cota do Cliente',
   'Custas Processuais',
@@ -162,12 +159,6 @@ export function classificarLancamento(entrada: {
   // honorário porque PESSOA aqui traz "HC/HS <nome do parceiro>".
   if (cat.includes('parceiro')) return monta('parceiro', 'honorario_parceiro');
 
-  // Condenação: honorário fixado sem data de pagamento. NÃO é "a receber" —
-  // a data que a linha carrega é a da decisão.
-  if (cat.includes('honorari') && cat.includes('condena')) {
-    return monta('escritorio', 'honorario_condenacao', { previsto: false });
-  }
-
   if (cat.includes('honorari')) {
     // A espécie vem da categoria (lançamento manual) ou de PESSOA (planilha).
     if (cat.includes('contratu') || pessoa.startsWith('hc')) {
@@ -199,11 +190,19 @@ export function estagioDoLancamento(entrada: {
   categoria?: string | null;
   pessoa?: string | null;
   data?: string | null;
+  /**
+   * `jm_lancamentos.tem_data_pagamento`. false = a `data` é a da DECISÃO e não
+   * há cronograma; a linha é CONDENAÇÃO e nunca vence. Ausente vale como true,
+   * que é o padrão da coluna.
+   */
+  temDataPagamento?: boolean | null;
   hoje?: string;
 }): EstagioLancamento {
   const cls = classificarLancamento(entrada);
-  if (cls.especie === 'honorario_condenacao') return 'CONDENACAO';
   if (!cls.previsto) return 'REALIZADO';
+  // Valor fixado sem cronograma: a data que a linha carrega é a da decisão, e
+  // lê-la como vencimento marcaria como atrasado o que nunca teve prazo.
+  if (entrada.temDataPagamento === false) return 'CONDENACAO';
   const hoje = entrada.hoje ?? new Date().toISOString().slice(0, 10);
   // Sem data não dá para dizer que venceu — fica como a receber, e a tela
   // mostra "sem data" em vez de inventar atraso.

@@ -23,6 +23,10 @@ import {
   classificarLancamento, CATEGORIAS_LANCAMENTO, ESPECIE_LABEL,
   type TitularLancamento, type EspecieLancamento,
 } from '@/lib/lancamentoCategorias';
+import {
+  montarParteValor, resumirValorProcesso, honorarioDaParte, cotaLiquidaDaParte,
+  parteSemValor, type ParteValor,
+} from '@/lib/valorProcesso';
 
 export interface EntityFinancialEntry {
   id: string;
@@ -158,6 +162,8 @@ interface LinhaExtrato {
   previsto: boolean;
   /** Antecipação do FIDC: entrou caixa, mas o processo continua tramitando. */
   adiantado: boolean;
+  /** Valor fixado sem data de pagamento (a data da linha é a da decisão). */
+  semCronograma?: boolean;
   /** null = a importação não trouxe o valor (mostrar "sem valor", nunca R$ 0). */
   valor: number | null;
   origem: 'manual' | 'planilha' | 'parcela';
@@ -184,6 +190,10 @@ export function EntityFinancialsPanel({
 }: EntityFinancialsPanelProps) {
   const [entries, setEntries] = useState<EntityFinancialEntry[]>([]);
   const [jmLinhas, setJmLinhas] = useState<LinhaExtrato[]>([]);
+  // Valor do processo (jm_partes) vive em estado PRÓPRIO, separado do extrato:
+  // é estoque, não caixa, e misturar os dois conta o mesmo dinheiro duas vezes.
+  const [partesValor, setPartesValor] = useState<ParteValor[]>([]);
+  const [verPartes, setVerPartes] = useState(false);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<EntityFinancialEntry | null>(null);
@@ -239,9 +249,9 @@ export function EntityFinancialsPanel({
 
   /** Extrato da jurimetria — só na aba do processo, e só leitura. */
   const fetchJm = useCallback(async () => {
-    if (scope !== 'process' || !processNumber) { setJmLinhas([]); return; }
+    if (scope !== 'process' || !processNumber) { setJmLinhas([]); setPartesValor([]); return; }
     const variantes = cnjVariantes(processNumber);
-    if (!variantes.length) { setJmLinhas([]); return; }
+    if (!variantes.length) { setJmLinhas([]); setPartesValor([]); return; }
     await ensureExternalSession().catch(() => {});
     // As tabelas jm_* vivem no Externo e não existem no schema tipado do client
     // — mesmo desvio do useConferenciaProcesso.
@@ -250,15 +260,27 @@ export function EntityFinancialsPanel({
     const externo = db as unknown as {
       from: (t: string) => { select: (c: string) => { in: (col: string, vals: string[]) => Consulta } };
     };
-    const [pag, lanc] = await Promise.all([
+    const [pag, lanc, partes] = await Promise.all([
       externo.from('jm_pagamentos')
         .select('id, cliente, n_parcela, data_prevista, data_recebida, valor_pago, valor_previsto, forma')
         .in('processo_cnj', variantes),
       externo.from('jm_lancamentos')
-        .select('id, data, pessoa, categoria, subcategoria, tipo, valor_caixa, valor_competencia, beneficiario, observacao')
+        .select('id, data, pessoa, categoria, subcategoria, tipo, valor_caixa, valor_competencia, beneficiario, observacao, tem_data_pagamento')
+        .in('processo_cnj', variantes),
+      // Tab. Aux: a separação cota do cliente × honorário existe por PARTE, em
+      // todo processo — inclusive nos que ainda não têm um único lançamento.
+      externo.from('jm_partes')
+        .select('parte_id, cliente, condenacao_cjcm, cota_parte_cjcm, cota_parte_vista_cjcm, hc_vista, hc_parcelado, hs, status_pagamento, fase_atual')
         .in('processo_cnj', variantes),
     ]);
-    // Falha aqui não derruba o painel manual — extrato importado fica de fora.
+    // Uma consulta falhar não derruba as outras: o painel manual continua de pé,
+    // e o bloco que ficou sem dado simplesmente não aparece.
+    if (partes.error) {
+      console.error('[EntityFinancialsPanel] valor do processo:', partes.error.message);
+      setPartesValor([]);
+    } else {
+      setPartesValor((partes.data || []).map(montarParteValor));
+    }
     if (pag.error || lanc.error) {
       console.error('[EntityFinancialsPanel] extrato jm:', pag.error?.message || lanc.error?.message);
       setJmLinhas([]);
@@ -294,6 +316,9 @@ export function EntityFinancialsPanel({
       // Titular, espécie e "é caixa?" saem do vocabulário — nunca de palpite
       // sobre o texto da categoria aqui dentro.
       const cls = classificarLancamento({ categoria: cat, pessoa });
+      // Linha cuja data é a da decisão (sem cronograma) é CONDENAÇÃO: tem valor,
+      // não tem prazo, e não pode ser lida como atrasada.
+      const semCronograma = l.tem_data_pagamento === false;
       // PESSOA carrega HC/HS nas linhas de honorário: aí a espécie já diz isso e
       // repetir "HC" no detalhe é ruído. Quando é nome, é de quem decorre o valor.
       const pessoaEhRotulo = !!pessoa && /^h[cs]\b/i.test(pessoa);
@@ -314,6 +339,7 @@ export function EntityFinancialsPanel({
           : l.tipo === 'REPASSE' ? 'repasse'
           : null,
         previsto: cls.previsto,
+        semCronograma,
         adiantado: cls.adiantado,
         valor: valor == null ? null : Number(valor),
         origem: 'planilha',
@@ -419,7 +445,15 @@ export function EntityFinancialsPanel({
     };
   }, [extrato]);
 
+  /**
+   * Quanto o processo VALE, por parte (Tab. Aux). Não é caixa e não entra em
+   * `totaisProcesso` — a condenação é o estoque, o extrato é o fluxo. Um mesmo
+   * honorário aparece nos dois: aqui como direito, lá como parcela recebida.
+   */
+  const valorProcesso = useMemo(() => resumirValorProcesso(partesValor), [partesValor]);
+
   const ehExtrato = scope === 'process' && !!processNumber;
+  const temValorProcesso = ehExtrato && valorProcesso.comValor > 0;
 
   const resetForm = () => {
     setForm({
@@ -519,6 +553,122 @@ export function EntityFinancialsPanel({
     <div className="space-y-4">
       {contextLabel && (
         <p className="text-[11px] text-muted-foreground leading-snug">{contextLabel}</p>
+      )}
+
+      {/* QUANTO VALE — vem antes do extrato de propósito: é a pergunta que se faz
+          primeiro sobre um processo, e a única que responde de quem é o dinheiro
+          mesmo onde ainda não houve um único lançamento. Bloco fechado em si,
+          com aviso explícito de que não se soma ao caixa abaixo. */}
+      {temValorProcesso && (
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50/40 p-3 space-y-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <p className="text-xs font-semibold text-indigo-900">Quanto vale o processo</p>
+            <span className="text-[10px] text-muted-foreground">
+              {valorProcesso.comValor} parte{valorProcesso.comValor > 1 ? 's' : ''}
+              {valorProcesso.semValor > 0 && ` · ${valorProcesso.semValor} sem valor`}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <div className="text-center">
+              <p className="text-[10px] text-muted-foreground">Condenação</p>
+              <p className="text-sm font-bold text-indigo-900">{formatCurrency(valorProcesso.condenacao)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] text-muted-foreground">Do cliente</p>
+              {/* LÍQUIDO: o contratual parcelado sai de dentro da cota dele. */}
+              <p className="text-sm font-bold text-sky-700">{formatCurrency(valorProcesso.cotaLiquida)}</p>
+              {valorProcesso.hcParcelado > 0 && (
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  bruto {formatCurrency(valorProcesso.cotaBruta)}
+                </p>
+              )}
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] text-muted-foreground">Do escritório</p>
+              <p className="text-sm font-bold text-green-700">{formatCurrency(valorProcesso.escritorio)}</p>
+              {/* Contratual e sucumbencial são recebíveis distintos: um vem do
+                  contrato com o cliente, o outro da condenação da parte contrária. */}
+              <p className="text-[10px] text-muted-foreground leading-tight">
+                {formatCurrency(valorProcesso.hc)} contratual · {formatCurrency(valorProcesso.hs)} sucumbencial
+              </p>
+            </div>
+          </div>
+
+          {valorProcesso.status.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {valorProcesso.status.map(s => (
+                <Badge key={s.status} variant="outline" className="text-[10px] border-indigo-300 text-indigo-800">
+                  {s.status} · {s.partes}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            Valor do processo, não caixa — <strong>não some com o extrato abaixo</strong>. O mesmo
+            honorário aparece nos dois lugares: aqui como direito, lá como parcela quando entra.
+          </p>
+
+          {valorProcesso.hcParcelado > 0 && (
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              {formatCurrency(valorProcesso.hcParcelado)} do contratual é parcelado: sai da cota do
+              cliente, não da condenação. Continua sendo nosso — só entra depois, conforme ele paga.
+            </p>
+          )}
+
+          {valorProcesso.cotaProjetada > 0 && (
+            <p className="text-[10px] text-muted-foreground leading-snug">
+              {valorProcesso.cotaProjetada} parte(s) sem acordo fechado: a cota vem da projeção à
+              vista da planilha, não de valor acertado.
+            </p>
+          )}
+
+          {/* Número que não fecha e não avisa é pior que número ausente. */}
+          {Math.abs(valorProcesso.diferenca) >= 0.01 && (
+            <p className="text-[10px] text-amber-700 leading-snug">
+              A soma cliente + escritório não fecha com a condenação: sobra{' '}
+              {formatCurrency(valorProcesso.diferenca)}. Acontece em 9 das 688 partes importadas —
+              confira as colunas na planilha antes de usar esse total.
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setVerPartes(v => !v)}
+            className="text-[11px] text-indigo-700 underline underline-offset-2"
+          >
+            {verPartes ? 'ocultar as partes' : `ver as ${valorProcesso.partes.length} partes`}
+          </button>
+
+          {verPartes && (
+            <ScrollArea style={{ maxHeight: '200px' }}>
+              <div className="space-y-1 pr-2">
+                {valorProcesso.partes.map(p => (
+                  <div key={p.parteId} className="flex items-center justify-between gap-2 rounded border bg-background px-2 py-1">
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium truncate">{p.cliente || p.parteId}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {[p.status, p.fase].filter(Boolean).join(' · ') || 'sem status'}
+                      </p>
+                    </div>
+                    {parteSemValor(p) ? (
+                      <span className="text-[10px] text-muted-foreground flex-shrink-0">sem valor</span>
+                    ) : (
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs font-semibold">{formatCurrency(p.condenacao ?? 0)}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          <span className="text-sky-700">{formatCurrency(cotaLiquidaDaParte(p))}</span> cliente ·{' '}
+                          <span className="text-green-700">{formatCurrency(honorarioDaParte(p))}</span> nosso
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          )}
+        </div>
       )}
 
       {/* Summary Cards. Na aba do processo os totais abrem por TITULAR —
@@ -703,7 +853,9 @@ export function EntityFinancialsPanel({
                   <Badge variant="outline" className="hidden sm:inline-flex text-[10px]">bruto da parte</Badge>
                 )}
                 {linha.previsto && (
-                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">a receber</Badge>
+                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                    {linha.semCronograma ? 'condenação · sem data' : 'a receber'}
+                  </Badge>
                 )}
                 {linha.adiantado && (
                   <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-800">antecipado</Badge>

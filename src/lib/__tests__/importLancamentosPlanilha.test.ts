@@ -2,7 +2,7 @@
 // exportado da aba Lançamentos em 18/08/2026 e do que já está em jm_lancamentos.
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — script .mjs sem tipos; o que importa aqui é o comportamento.
-import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha, preservaCategoria } from '../../../scripts/import-lancamentos-planilha.mjs';
+import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha, chaveForte, chaveFraca, planejar } from '../../../scripts/import-lancamentos-planilha.mjs';
 
 const CABECALHO = [
   'Responsável', 'DISTRIBUÍDO', 'data', 'CASO', 'Processo', 'PESSOA', 'Categoria',
@@ -33,10 +33,20 @@ describe('importador da planilha de lançamentos', () => {
     expect(linhas[1]).toEqual(['tem, vírgula', 'tem\nquebra']);
   });
 
-  it('converte data brasileira para ISO', () => {
+  it('converte data brasileira para ISO, com um ou dois dígitos', () => {
     expect(data('30/11/2025')).toBe('2025-11-30');
+    // O Sheets exporta "10/8/2023" ao lado de "30/11/2025". Exigir dois dígitos
+    // zerava a data de 34 linhas em silêncio.
+    expect(data('10/8/2023')).toBe('2023-08-10');
+    expect(data('1/1/2026')).toBe('2026-01-01');
     expect(data('2025-11-30')).toBe('2025-11-30');
     expect(data('')).toBeNull();
+    expect(data('sem data')).toBeNull();
+    // A planilha tem "29/02/2022" e 2022 não é bissexto: o formato passava e o
+    // Postgres recusava a carga inteira no insert.
+    expect(data('29/02/2022')).toBeNull();
+    expect(data('29/02/2024')).toBe('2024-02-29');
+    expect(data('31/04/2025')).toBeNull();
   });
 
   it('converte valor em real, inclusive negativo entre parênteses', () => {
@@ -100,17 +110,68 @@ describe('importador da planilha de lançamentos', () => {
     expect(linha.valor_caixa).toBeCloseTo(228.37);
   });
 
-  describe('reclassificação que só existe no banco', () => {
-    it('mantém "Honorários condenação" quando a planilha ainda diz "a receber"', () => {
-      // As 29 linhas foram reclassificadas direto no banco; reimportar sem o
-      // guarda desfaria isso em silêncio.
-      expect(preservaCategoria('Honorários condenação', 'Honorários a receber')).toBe(true);
+  describe('identidade por conteúdo (planejar)', () => {
+    // A linha do banco traz os campos que o script lê para comparar.
+    const doBanco = (id, extra = {}) => ({
+      id, data: '2025-01-10', categoria: 'Honorários', pessoa: 'HC',
+      processo_raw: '0000491-34.2020.5.05.0101', valor_caixa: 100, n_parcela: '1',
+      observacao: null, conta: 'ESCRITÓRIO', ...extra,
+    });
+    const daPlanilha = (extra = {}) => ({
+      data: '2025-01-10', categoria: 'Honorários', pessoa: 'HC',
+      processo_raw: '0000491-34.2020.5.05.0101', valor_caixa: 100, n_parcela: '1',
+      observacao: null, conta: 'Escritório', ...extra,
     });
 
-    it('não segura nada quando a planilha muda de verdade', () => {
-      expect(preservaCategoria('Honorários condenação', 'Honorários')).toBe(false);
-      expect(preservaCategoria('Honorários a receber', 'Honorários a receber')).toBe(false);
-      expect(preservaCategoria(null, 'Honorários a receber')).toBe(false);
+    it('ignora diferença de caixa e de espaço — senão nada casaria', () => {
+      // A carga antiga gravou conta em MAIÚSCULA; a planilha usa caixa mista.
+      expect(chaveForte(doBanco(1))).toBe(chaveForte(daPlanilha()));
+      expect(chaveForte(daPlanilha({ categoria: '  Honorários  ' })))
+        .toBe(chaveForte(daPlanilha()));
+    });
+
+    it('linha inalterada não vira ação nenhuma', () => {
+      const p = planejar([daPlanilha()], [doBanco(1)]);
+      expect(p.iguais).toHaveLength(1);
+      expect(p.atualizar).toHaveLength(0);
+      expect(p.inserir).toHaveLength(0);
+      expect(p.apagar).toHaveLength(0);
+    });
+
+    it('valor editado vira UPDATE no mesmo id, não apaga-e-insere', () => {
+      // É o que preserva parte_id, parte_conciliacao e tem_data_pagamento.
+      const p = planejar([daPlanilha({ valor_caixa: 250 })], [doBanco(7)]);
+      expect(p.atualizar).toEqual([expect.objectContaining({ id: 7 })]);
+      expect(p.atualizar[0].linha.valor_caixa).toBe(250);
+      expect(p.apagar).toHaveLength(0);
+      expect(p.inserir).toHaveLength(0);
+    });
+
+    it('linha que sumiu da planilha vira APAGAR, e a nova vira INSERIR', () => {
+      const p = planejar(
+        [daPlanilha({ pessoa: 'HS', valor_caixa: 40 })],
+        [doBanco(3)],
+      );
+      expect(p.apagar.map((l) => l.id)).toEqual([3]);
+      expect(p.inserir).toHaveLength(1);
+      expect(p.atualizar).toHaveLength(0);
+    });
+
+    it('parcelas idênticas não se confundem: 3 na planilha e 2 no banco = 1 inserir', () => {
+      const p = planejar(
+        [daPlanilha(), daPlanilha(), daPlanilha()],
+        [doBanco(1), doBanco(2)],
+      );
+      expect(p.iguais).toHaveLength(2);
+      expect(p.inserir).toHaveLength(1);
+      expect(p.apagar).toHaveLength(0);
+    });
+
+    it('a chave fraca ignora valor e observação, mas não a parte nem a data', () => {
+      expect(chaveFraca(daPlanilha({ valor_caixa: 999, observacao: 'outra' })))
+        .toBe(chaveFraca(daPlanilha()));
+      expect(chaveFraca(daPlanilha({ pessoa: 'HS' }))).not.toBe(chaveFraca(daPlanilha()));
+      expect(chaveFraca(daPlanilha({ data: '2025-02-10' }))).not.toBe(chaveFraca(daPlanilha()));
     });
   });
 });
