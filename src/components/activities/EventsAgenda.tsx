@@ -140,7 +140,7 @@ export interface FiltrosDaPagina {
  * véspera; a véspera continua sendo como a tela abre, porque é o pedido
  * original. Nos dois modos o que se escolhe é a data do EVENTO.
  */
-export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExcluirLote, onPassarPara }: {
+export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExcluirLote, onPassarPara, compacto }: {
   /** Abre a ficha da atividade em painel, por cima da tela (nunca redireciona). */
   onAbrirAtividade?: (atividadeId: string) => void;
   /** Filtros herdados da barra da página. */
@@ -149,6 +149,15 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
   /** Ações em lote sobre as atividades marcadas. */
   onExcluirLote?: (ids: string[]) => void;
   onPassarPara?: (ids: string[]) => void;
+  /**
+   * Coluna estreita: a agenda divide a tela com a ficha aberta.
+   *
+   * Com a ficha aberta a página reserva 36rem para esta visão, e uma tabela de
+   * sete colunas mais o painel de dicas não cabe nisso — o número do processo
+   * quebrava letra a letra e Data/Atividade/Prioridade saíam da área visível.
+   * Aqui a mesma informação vira uma linha por evento, sem tabela e sem dicas.
+   */
+  compacto?: boolean;
 }) {
   const [modo, setModo] = useState<ModoData>('vespera');
   const [vespera, setVespera] = useState<string>(hojeIso);
@@ -486,6 +495,28 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
                   </p>
                 )}
               </div>
+            ) : compacto ? (
+              <ul className="divide-y">
+                {visiveis.map((evento, i) => {
+                  const novoDia = janela.length > 1 && (i === 0 || visiveis[i - 1].dataEvento !== evento.dataEvento);
+                  return (
+                    <Fragment key={evento.chave}>
+                      {novoDia && (
+                        <li className="bg-muted/40 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {diaCurto(evento.dataEvento)}
+                        </li>
+                      )}
+                      <CartaoEvento
+                        evento={evento}
+                        onAbrirAtividade={onAbrirAtividade}
+                        selecionavel={podeSelecionar}
+                        marcado={marcados.has(evento.chave)}
+                        onMarcar={() => alternarMarcado(evento.chave)}
+                      />
+                    </Fragment>
+                  );
+                })}
+              </ul>
             ) : (
               <table className="w-full text-xs border-collapse">
                 <thead className="sticky top-0 bg-card z-10">
@@ -570,7 +601,7 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
             <span>
               {visiveis.length} evento{visiveis.length !== 1 ? 's' : ''} encontrado{visiveis.length !== 1 ? 's' : ''}
             </span>
-            <span className="hidden sm:flex items-center gap-3 ml-auto">
+            <span className={cn('items-center gap-3 ml-auto', compacto ? 'hidden' : 'hidden sm:flex')}>
               {CATEGORIAS.map(c => {
                 const Icone = ICONE[c];
                 return (
@@ -585,7 +616,7 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
         </div>
 
         {/* Dicas — fica ao lado, nunca por cima da tabela */}
-        <aside className="hidden lg:flex w-56 shrink-0 border-l bg-muted/20 flex-col">
+        <aside className={cn('w-56 shrink-0 border-l bg-muted/20 flex-col', compacto ? 'hidden' : 'hidden lg:flex')}>
           <div className="px-3 py-2 border-b flex items-center gap-1.5">
             <Lightbulb className="h-3.5 w-3.5 text-amber-500" />
             <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Dicas</span>
@@ -645,7 +676,7 @@ function LinhaEvento({ evento, onAbrirAtividade, selecionavel, marcado, onMarcar
               </Badge>
             )}
             {evento.processo
-              ? <span className="block font-mono text-[10px] leading-tight break-all text-muted-foreground">{evento.processo}</span>
+              ? <span className="block font-mono text-[10px] leading-tight truncate max-w-[16rem] text-muted-foreground" title={evento.processo}>{evento.processo}</span>
               : !evento.casoBadge && (
                 // Nem processo, nem caso, nem cliente: existe assim no banco.
                 // Dizer isso é melhor que um travessão, que parece falha de tela.
@@ -717,5 +748,85 @@ function LinhaEvento({ evento, onAbrirAtividade, selecionavel, marcado, onMarcar
           : <span className="text-muted-foreground">—</span>}
       </td>
     </tr>
+  );
+}
+
+/**
+ * O mesmo evento em uma linha, para quando a agenda divide a tela com a ficha.
+ *
+ * A ordem do que aparece segue a pergunta que a pessoa faz na véspera: de qual
+ * caso é, o que é e quando, e só então qual atividade dá conta disso.
+ */
+function CartaoEvento({ evento, onAbrirAtividade, selecionavel, marcado, onMarcar }: {
+  evento: EventoAgenda;
+  onAbrirAtividade?: (atividadeId: string) => void;
+  selecionavel?: boolean;
+  marcado?: boolean;
+  onMarcar?: () => void;
+}) {
+  const Icone = ICONE[evento.categoria];
+  const clicavel = !!(evento.atividadeId && onAbrirAtividade);
+  const prioridade = evento.prioridade ? PRIORIDADE_LABEL[evento.prioridade] || evento.prioridade.toUpperCase() : null;
+  const identificacao = evento.cliente || evento.processo;
+
+  return (
+    <li
+      className={cn('flex gap-2 px-3 py-2 transition-colors', clicavel && 'cursor-pointer hover:bg-muted/50', marcado && 'bg-primary/5')}
+      onClick={clicavel ? () => onAbrirAtividade!(evento.atividadeId!) : undefined}
+      title={clicavel ? 'Abrir a atividade' : undefined}
+    >
+      {selecionavel && (
+        <span className="pt-0.5" onClick={e => e.stopPropagation()}>
+          {evento.atividadeId
+            ? <Checkbox checked={!!marcado} onCheckedChange={() => onMarcar?.()} aria-label="Marcar atividade" />
+            : <span className="block w-4" />}
+        </span>
+      )}
+      <span className={cn('mt-1 h-3 w-1 rounded-full shrink-0', TARJA[evento.categoria])} />
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex items-start gap-1.5">
+          {evento.casoBadge && (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 font-semibold shrink-0">
+              {evento.casoBadge}
+            </Badge>
+          )}
+          <Icone className={cn('h-3.5 w-3.5 shrink-0 mt-0.5', COR[evento.categoria])} />
+          <span className="text-xs leading-tight min-w-0 flex-1">{evento.evento}</span>
+          <span className="text-[11px] tabular-nums shrink-0 text-muted-foreground">
+            {format(parseISO(evento.dataEvento), 'dd/MM')}
+            {evento.horaEvento && <strong className="text-foreground"> {evento.horaEvento}</strong>}
+          </span>
+        </div>
+
+        <p className="text-[11px] text-muted-foreground truncate" title={evento.clienteBruto || evento.processo || undefined}>
+          {identificacao || <span className="italic">sem vínculo</span>}
+        </p>
+
+        <div className="flex items-start gap-1.5">
+          <span className="text-[11px] min-w-0 flex-1 truncate">
+            {evento.atividade || <span className="text-muted-foreground">sem atividade</span>}
+            {evento.responsaveisNomes.length > 0 && (
+              <span className="text-muted-foreground"> · {evento.responsaveisNomes[0]}
+                {evento.responsaveisNomes.length > 1 ? ` +${evento.responsaveisNomes.length - 1}` : ''}</span>
+            )}
+          </span>
+          {evento.situacao && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 shrink-0 border-destructive/40 text-destructive uppercase">
+              {evento.situacao}
+            </Badge>
+          )}
+          {!evento.atividade && evento.semResponsavel && (
+            <Badge variant="outline" className="text-[9px] px-1 py-0 h-4 gap-0.5 shrink-0 border-amber-500/40 text-amber-600 dark:text-amber-400">
+              <UserX className="h-2.5 w-2.5" /> sem dono
+            </Badge>
+          )}
+          {prioridade && (
+            <Badge variant="outline" className={cn('text-[9px] px-1.5 py-0 h-4 font-bold shrink-0', PRIORIDADE_ESTILO[evento.prioridade || ''] || '')}>
+              {prioridade}
+            </Badge>
+          )}
+        </div>
+      </div>
+    </li>
   );
 }

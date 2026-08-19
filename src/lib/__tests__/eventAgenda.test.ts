@@ -52,6 +52,7 @@ const atividade = (over: Partial<AtividadeLite> = {}): AtividadeLite => ({
   assigned_to: 'u-maria',
   assigned_to_ids: null,
   assigned_to_names: null,
+  created_at: null,
   ...over,
 });
 
@@ -388,6 +389,31 @@ describe('montarEventosDaJanela — janela de vários dias', () => {
 // problema relatado era "muitos não têm processo nem cliente, fica difícil saber
 // de qual se refere".
 // =============================================================================
+
+describe('atividadeMaisProxima — desempate', () => {
+  it('empate fica com a mais antiga, e não com a ordem que o banco devolveu', () => {
+    // Duas atividades no mesmo dia é o normal num processo com audiência
+    // marcada. Sem desempate explícito a coluna Atividade trocava entre
+    // carregamentos, porque a busca não tem ORDER BY.
+    const antiga = atividade({ id: 'a-nova-id', created_at: '2026-08-01T10:00:00Z', deadline: '2026-08-20' });
+    const nova = atividade({ id: 'a-antiga-id', created_at: '2026-08-15T10:00:00Z', deadline: '2026-08-20' });
+    expect(atividadeMaisProxima([antiga, nova], '2026-08-20')?.id).toBe('a-nova-id');
+    expect(atividadeMaisProxima([nova, antiga], '2026-08-20')?.id).toBe('a-nova-id');
+  });
+
+  it('sem created_at, o id mantém a escolha estável nas duas ordens', () => {
+    const x = atividade({ id: 'aaa', created_at: null, deadline: '2026-08-20' });
+    const y = atividade({ id: 'bbb', created_at: null, deadline: '2026-08-20' });
+    expect(atividadeMaisProxima([x, y], '2026-08-20')?.id).toBe('aaa');
+    expect(atividadeMaisProxima([y, x], '2026-08-20')?.id).toBe('aaa');
+  });
+
+  it('distância ainda manda: a mais perto ganha da mais antiga', () => {
+    const antigaLonge = atividade({ id: 'longe', created_at: '2026-01-01T00:00:00Z', deadline: '2026-09-30' });
+    const novaPerto = atividade({ id: 'perto', created_at: '2026-08-18T00:00:00Z', deadline: '2026-08-20' });
+    expect(atividadeMaisProxima([antigaLonge, novaPerto], '2026-08-20')?.id).toBe('perto');
+  });
+});
 
 describe('nomeDoCliente', () => {
   it('tira selo, código do caso e separador do nome do grupo', () => {

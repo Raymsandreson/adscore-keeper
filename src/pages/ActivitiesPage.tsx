@@ -5069,6 +5069,7 @@ const ActivitiesPage = () => {
               onLimparFiltros={() => { setFilterAssignee([]); setFilterLead([]); setFilterCase([]); setSearchText(''); }}
               onExcluirLote={(ids) => handleBulkDelete(ids)}
               onPassarPara={passarParaDeEventos}
+              compacto={isEditing}
             />
           </div>
         )}

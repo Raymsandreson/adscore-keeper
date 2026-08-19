@@ -201,6 +201,8 @@ export interface AtividadeLite {
   /** Co-responsáveis: a atividade pode ser de mais de uma pessoa. */
   assigned_to_ids: string[] | null;
   assigned_to_names: string[] | null;
+  /** Desempate estável quando duas atividades ficam à mesma distância. */
+  created_at: string | null;
 }
 
 /** O que a tela resolve por fora: número do processo → processo/cliente. */
@@ -397,6 +399,12 @@ export function diasDoIntervalo(de: string, ate: string, maxDias = 92): string[]
  * as pendentes do mesmo processo, fica a de prazo mais perto da data do evento;
  * empate resolve pela mais antiga, para a escolha ser estável entre renders.
  * Sem pendente no processo, a coluna Atividade fica vazia em vez de mentir.
+ *
+ * O DESEMPATE É EXPLÍCITO desde 19/08/2026. Até então ficava a primeira do array
+ * com a menor distância — e o array vem do PostgREST **sem ORDER BY**, cuja
+ * ordem não é garantida. Com duas atividades no mesmo dia (o normal num processo
+ * com audiência marcada) a coluna Atividade podia apontar para uma num
+ * carregamento e para outra no seguinte, sem nada ter mudado no banco.
  */
 export function atividadeMaisProxima(
   candidatas: AtividadeLite[],
@@ -405,12 +413,21 @@ export function atividadeMaisProxima(
   const vivas = candidatas.filter(a => a.status !== 'concluida');
   if (vivas.length === 0) return null;
   const alvo = Date.parse(`${dataEvento}T00:00:00Z`);
-  let melhor: AtividadeLite | null = null;
-  let melhorDist = Number.POSITIVE_INFINITY;
-  for (const a of vivas) {
+  const distancia = (a: AtividadeLite) => {
     const dl = (a.deadline || '').slice(0, 10);
-    const dist = dl ? Math.abs(Date.parse(`${dl}T00:00:00Z`) - alvo) : Number.MAX_SAFE_INTEGER;
-    if (dist < melhorDist) { melhorDist = dist; melhor = a; }
+    return dl ? Math.abs(Date.parse(`${dl}T00:00:00Z`) - alvo) : Number.MAX_SAFE_INTEGER;
+  };
+  let melhor: AtividadeLite | null = null;
+  for (const a of vivas) {
+    if (!melhor) { melhor = a; continue; }
+    const d = distancia(a), dMelhor = distancia(melhor);
+    if (d < dMelhor) { melhor = a; continue; }
+    if (d > dMelhor) continue;
+    // Empate: a mais antiga. `created_at` pode faltar (coluna nova no tipo), daí
+    // o id como último critério — qualquer um serve, desde que seja o mesmo
+    // sempre.
+    const chave = (x: AtividadeLite) => `${x.created_at || '9999'}|${x.id}`;
+    if (chave(a) < chave(melhor)) melhor = a;
   }
   return melhor;
 }

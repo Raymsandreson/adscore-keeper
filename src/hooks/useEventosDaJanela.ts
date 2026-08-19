@@ -13,7 +13,7 @@ import {
 const COLS_ATIVIDADE =
   'id, title, activity_type, deadline, priority, status, lead_id, lead_name, ' +
   'process_id, process_title, case_id, case_title, ' +
-  'assigned_to, assigned_to_name, assigned_to_ids, assigned_to_names';
+  'assigned_to, assigned_to_name, assigned_to_ids, assigned_to_names, created_at';
 
 const COLS_AUDIENCIA =
   'id, hearing_date, hearing_time, hearing_type, status, process_number, lead_id, ' +
