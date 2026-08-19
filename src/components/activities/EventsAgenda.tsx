@@ -4,7 +4,7 @@ import { ptBR } from 'date-fns/locale';
 import {
   CalendarDays, ChevronLeft, ChevronRight, Gavel, Stethoscope, Timer,
   CircleDot, Lightbulb, Loader2, LayoutList, Filter, UserX, CheckSquare,
-  Trash2, ArrowRightLeft,
+  Trash2, ArrowRightLeft, ChevronDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -242,6 +242,13 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
     ...CATEGORIAS.map(c => ({ id: c as Aba, rotulo: CATEGORIA_LABEL[c], total: contagem[c] })),
   ];
 
+  /** Anda com o intervalo inteiro, preservando o número de dias escolhido. */
+  const deslocarPeriodo = (direcao: 1 | -1) => {
+    const passo = Math.max(janela.length, 1) * direcao;
+    setDe(d => somarDias(d, passo));
+    setAte(a => somarDias(a, passo));
+  };
+
   const aplicarAtalho = (dias: number) => {
     setModo('periodo');
     setDe(somarDias(hojeIso(), 1));
@@ -290,13 +297,19 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
           <div className="flex items-center gap-1 ml-auto flex-wrap justify-end">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="h-7 text-xs gap-1">
+                {/* O chevron é o que diz que isto abre alguma coisa: como só
+                    "Véspera" com um ícone de calendário, o menu de período
+                    passou despercebido e a tela pareceu não ter intervalo. */}
+                <Button variant="outline" size="sm" className="h-7 text-xs gap-1" title="Escolher o que a agenda mostra">
                   <CalendarDays className="h-3.5 w-3.5" />
-                  {modo === 'vespera' ? 'Véspera' : 'Período'}
+                  {modo === 'vespera'
+                    ? 'Véspera'
+                    : `${format(parseISO(janela[0] || de), 'dd/MM')} → ${format(parseISO(janela[janela.length - 1] || ate), 'dd/MM')}`}
+                  <ChevronDown className="h-3 w-3 opacity-60" />
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Quando</DropdownMenuLabel>
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">O que a agenda mostra</DropdownMenuLabel>
                 <DropdownMenuItem onClick={() => { setModo('vespera'); setVespera(hojeIso()); }}>
                   Véspera — o que acontece amanhã
                 </DropdownMenuItem>
@@ -307,7 +320,7 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuItem onClick={() => setModo('periodo')}>
-                  Período personalizado…
+                  Intervalo de datas (do dia X ao dia Y)…
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -336,11 +349,21 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
               </>
             ) : (
               <>
+                {/* As setas andam com a janela inteira, mantendo o tamanho:
+                    de um intervalo de 4 dias, pula para os 4 dias seguintes. */}
+                <Button variant="outline" size="icon" className="h-7 w-7"
+                  onClick={() => deslocarPeriodo(-1)} title="Intervalo anterior">
+                  <ChevronLeft className="h-3.5 w-3.5" />
+                </Button>
                 <Input type="date" value={de} onChange={e => e.target.value && setDe(e.target.value)}
                   className="h-7 w-[8.5rem] text-xs" title="Primeiro dia do período" />
                 <span className="text-[10px] text-muted-foreground">até</span>
                 <Input type="date" value={ate} onChange={e => e.target.value && setAte(e.target.value)}
                   className="h-7 w-[8.5rem] text-xs" title="Último dia do período" />
+                <Button variant="outline" size="icon" className="h-7 w-7"
+                  onClick={() => deslocarPeriodo(1)} title="Próximo intervalo">
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
               </>
             )}
           </div>
