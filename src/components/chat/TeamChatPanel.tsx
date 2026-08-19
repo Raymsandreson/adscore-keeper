@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense, Fragment } from 'react';
+import { playUrgentBeep } from '@/lib/sounds';
+import { isSoundEnabled } from '@/lib/soundSettings';
 import { useTeamChat, useTeamMembers, TeamMember, TeamMessage } from '@/hooks/useTeamChat';
 import { ChatMessageActions } from './ChatMessageActions';
 import { ForwardMessagePicker } from './ForwardMessagePicker';
@@ -108,6 +110,8 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingDurationRef = useRef(0);
   const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const beepedRef = useRef<Set<string>>(new Set());
+  const firstLoadRef = useRef(true);
 
   // Auto-scroll to bottom or highlighted message
   useEffect(() => {
@@ -117,6 +121,25 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, highlightMessageId]);
+
+  // Bip ao receber mensagem urgente de outro membro (ignora o carregamento
+  // inicial). Só toca com "Mensagem urgente" ligado em Configurações →
+  // Notificações → Sons do sistema; de fábrica é mudo.
+  useEffect(() => {
+    if (loading) return;
+    if (firstLoadRef.current) {
+      messages.forEach(m => beepedRef.current.add(m.id));
+      firstLoadRef.current = false;
+      return;
+    }
+    for (const m of messages) {
+      if (beepedRef.current.has(m.id)) continue;
+      beepedRef.current.add(m.id);
+      if (m.is_urgent && m.sender_id !== user?.id && !m.deleted_at && isSoundEnabled('chatUrgent')) {
+        playUrgentBeep();
+      }
+    }
+  }, [messages, loading, user?.id]);
 
   /** Cola no rascunho a mensagem que veio de fora (ex.: bolha do WhatsApp). */
   const appendQuote = useCallback((quote: string) => {

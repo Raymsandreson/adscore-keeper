@@ -4,6 +4,8 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { AtSign, MessageCircle, EyeOff, AlarmClock } from 'lucide-react';
+import { playUrgentChime } from '@/lib/sounds';
+import { isSoundEnabled } from '@/lib/soundSettings';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import { appNavigate } from '@/lib/appNavigation';
@@ -248,6 +250,9 @@ function showConversationToast({
     onClosed: () => clearConversationToastState(conversationId),
     onManualDismiss,
   });
+
+  // Mudo de fábrica: liga em Configurações → Notificações → Sons do sistema.
+  if (urgent && isSoundEnabled('chatUrgent')) playUrgentChime();
 }
 
 export function TeamChatNotifications() {
