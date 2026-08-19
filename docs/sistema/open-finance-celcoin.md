@@ -75,10 +75,57 @@ buraco entre 05h e 08h. Ninguém movimenta conta de madrugada e para de manhã.
 Mesmas tabelas (`bank_transactions`, `credit_card_transactions`), separadas pela
 coluna `provider`. A UNIQUE é `(provider, pluggy_transaction_id)` e a tela de
 conciliação **não filtra por provider** — se as janelas se sobrepusessem, a mesma
-despesa apareceria duas vezes. Quem evita isso é o `syncFloor`: começa no dia
-seguinte ao último lançamento já gravado.
+despesa apareceria duas vezes. Quem evita isso é o `syncFloor` — ver abaixo.
 
 Rollback do sync: `DELETE FROM bank_transactions WHERE provider = 'celcoin'`.
+
+## syncFloor combina duas perguntas, não uma
+
+O piso da janela responde **duas** perguntas diferentes, e confundi-las gera
+duplicata num sentido e buraco no outro:
+
+| pergunta | filtro | o que faz |
+|---|---|---|
+| até onde a **Celcoin** já foi? | `provider = 'celcoin'` | volta `DIAS_DE_REPROCESSO` (3) por cima |
+| até onde a **Pluggy** foi? | sem filtro | piso intransponível: a tela não filtra por provider |
+
+O reprocesso de 3 dias não é folga: **o dia corrente não fecha**. A versão
+original começava no dia seguinte ao último lançamento gravado, o que é correto
+num backfill único e destrói dado num sync recorrente — a rodada das 06h grava a
+madrugada, a próxima começa amanhã, e tudo o que o banco lançar hoje das 06h em
+diante nunca é buscado.
+
+Não é hipótese. Em 19/08/2026, a primeira rodada com o piso novo trouxe um Pix de
+R$ 250,00 **do dia 18/08 às 18:43** — o backfill de 18/08 tinha rodado às 16:12 e
+não podia tê-lo visto. Com o piso antigo aquela linha estava perdida para sempre,
+calada. Bancos também lançam retroativo; 3 dias é a margem.
+
+Reprocessar é de graça em termos de dado: a UNIQUE `(provider, pluggy_transaction_id)`
+faz o upsert sobrescrever a mesma linha. Medido na mesma rodada: 10 linhas tocadas
+na janela, **0 duplicatas**, +1 linha nova.
+
+## O sync recorrente mora no Railway, não em pg_cron
+
+`runCelcoinSync` em `railway-server/src/index.ts` chama a ação `sync_all` da edge
+às **06h, 12h e 19h** de Brasília (`CELCOIN_SYNC_HOURS_BRT`), com trava por
+data+hora e `setInterval` de 10 min — intervalo de 24h não sobrevive a restart do
+Railway, cada deploy adiaria o disparo (mesma razão do `sync-hearings`).
+
+**Por que não pg_cron**, que é o padrão da casa para agendamento: a edge exige
+`service_role` no `Authorization` (ela cria consentimento e lê extrato com a
+credencial da firma). Em 19/08/2026 os **13** jobs de `cron.job` que mandam Bearer
+carregam **todos a anon key** — nenhum tem service_role. Copiar o Bearer de um job
+existente, que é o padrão documentado em `20260812020000_...`, daria **401 calado
+todo dia**. A alternativa seria gravar a service_role em texto puro dentro de
+`cron.job.command`, e daí dentro da migration no repo. No Railway a chave já
+existe em `EXTERNAL_SUPABASE_SERVICE_ROLE_KEY` e nenhum segredo novo circula.
+O bloqueio geográfico da Celcoin não atrapalha: quem fala com a Celcoin é a edge,
+de São Paulo; o Railway só fala com o Supabase.
+
+`sync_all` percorre **todo consentimento AUTHORISED** em vez de receber um
+`consent_id`: agendamento com id fixo quebra calado no dia da renovação. Uma
+conexão que falha não derruba as outras, e `falhas > 0` sai como `console.error`
+com o nome do banco — grep `[cron:celcoin-sync]` no log do Railway.
 
 ## Grafia do status: AUTHORISED vs AUTHORIZED
 
@@ -127,4 +174,4 @@ argumento.
 | Santander | pendente — é conta **pessoal** (`PERSONAL_BANK`), consentimento PF sem CNPJ |
 | Cartão de crédito | `list_accounts` devolve o CDPRO e `resources` mostra 1 CREDIT_CARD_ACCOUNT AVAILABLE, mas o sync trouxe **0** transações. **Não verificado** se é ausência real de fatura na janela ou defeito. |
 | Pluggy | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
-| **Sync recorrente** | **NÃO EXISTE.** Os únicos gatilhos são `OpenFinanceCallbackPage.tsx:76` (após autorizar) e o botão em `CelcoinConnectionsSheet.tsx:84`. Sem cron, sem job. Foi assim que a Pluggy morreu calada por 5 meses — o rótulo de status não serve de medidor, serve a data do último lançamento. |
+| **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. Falta **alerta de obsolescência** — nada avisa quando o último lançamento envelhece; o rótulo de status não serve de medidor, serve a data do último lançamento. Foi assim que a Pluggy morreu calada por 5 meses. |
