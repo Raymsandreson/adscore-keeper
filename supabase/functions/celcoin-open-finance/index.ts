@@ -485,6 +485,36 @@ function signedAmount(tx: any): number {
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
+// Tira um consentimento de circulação. DOIS desfechos possíveis, e chamar os
+// dois de "revogado" seria mentira no banco:
+//
+//   REVOKED    a Celcoin aceitou o DELETE (ou respondeu 404: já não existe lá).
+//   ABANDONED  a Celcoin RECUSOU. Medido em 19/08/2026 nos 6 órfãos de 18/08:
+//              DELETE em consentimento AWAITING_AUTHORISATION devolve
+//              `422 Unprocessable Entity`, sem código de erro no corpo. Não há
+//              o que revogar num consentimento que nunca concedeu nada -- e ele
+//              também não caduca: os 6 seguiam AWAITING 21h depois, com
+//              expirationDateTime em 2027. Ficam lá, inertes, até essa data.
+//              O gateway do Quitepay, na mesma stack, também não os revoga:
+//              filtra por AUTHORISED na leitura e ignora o resto.
+//
+// Em ambos os casos a linha local sai da tela, que é o dano real -- sete
+// cartões chamados "Banco Inter PJ" e nenhuma forma de saber qual funciona.
+// Não apagamos a linha: o rastro de que o consentimento existe (e ainda existe,
+// no caso ABANDONED) é justamente o que não pode sumir.
+async function descartar(consentId: string): Promise<{ status: number; desfecho: 'REVOKED' | 'ABANDONED'; body: unknown }> {
+  const token = await getAdminToken();
+  const r = await request('DELETE', consentUrl(consentId), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const desfecho = r.ok || r.status === 404 ? 'REVOKED' : 'ABANDONED';
+  await ext
+    .from('celcoin_consents')
+    .update({ status: desfecho, updated_at: new Date().toISOString() })
+    .eq('consent_id', consentId);
+  return { status: r.status, desfecho, body: r.body };
+}
+
 // Consentimento que ainda não foi autorizado no banco: erro do CHAMADOR (409),
 // não falha nossa. Distinguir importa no sync_all, que segue para os outros.
 class NaoAutorizado extends Error {}
@@ -744,6 +774,31 @@ Deno.serve(async (req) => {
         const isPJ = cnpj.length === 14;
         console.log(`[celcoin] create_consent brand=${brandId} cpf=${maskDoc(cpf)}${isPJ ? ` cnpj=${maskDoc(cnpj)}` : ''}`);
 
+        // Cada tentativa de link gera um consentimento novo na Celcoin, e o
+        // `request_uri` do PAR dura poucos minutos -- foi assim que 18/08/2026
+        // acumulou SEIS órfãos do mesmo banco em cinco horas. O link antigo
+        // deixa de valer no instante em que este é gerado, então derrubar os
+        // AWAITING anteriores DESTE banco e DESTE usuário é o comportamento
+        // correto, não uma limpeza oportunista. Nunca toca em AUTHORISED.
+        // Best-effort: falhar aqui não pode impedir a conexão nova.
+        if (body.revogar_anteriores !== false) {
+          try {
+            const { data: antigos } = await ext
+              .from('celcoin_consents')
+              .select('consent_id, status')
+              .eq('user_id', userId)
+              .eq('brand_id', brandId);
+            for (const a of antigos || []) {
+              const st = normalizarStatus(a.status);
+              if (st === 'AUTHORISED' || st === 'REVOKED' || st === 'ABANDONED' || !a.consent_id) continue;
+              const rr = await descartar(String(a.consent_id));
+              console.log(`[celcoin] create_consent: anterior ${String(a.consent_id).slice(0, 8)}… -> ${rr.desfecho} (HTTP ${rr.status})`);
+            }
+          } catch (e) {
+            console.warn('[celcoin] falha ao revogar consentimentos anteriores:', e instanceof Error ? e.message : e);
+          }
+        }
+
         const token = await getAdminToken();
         const expirationDateTime = expirationFromMonths(body.expiration_months);
         let result: Result | null = null;
@@ -898,6 +953,36 @@ Deno.serve(async (req) => {
         return json({ success: falhas === 0, consentimentos: alvos.length, falhas, bank_transactions: bank, credit_card_transactions: card, resultados });
       }
 
+      // Revogar é IRREVERSÍVEL na Celcoin. A trava do AUTHORISED existe porque a
+      // tela mostra os consentimentos todos com o mesmo nome de banco, e o
+      // clique errado mataria a conexão que sustenta a conciliação.
+      case 'revoke_consent': {
+        const consentId = String(body.consent_id || '').trim();
+        if (!consentId) return json({ success: false, error: 'consent_id é obrigatório' }, 400);
+
+        const { data: row } = await ext
+          .from('celcoin_consents')
+          .select('status, brand_name')
+          .eq('consent_id', consentId)
+          .maybeSingle();
+
+        if (row && autorizado(row.status) && body.force !== true) {
+          return json(
+            {
+              success: false,
+              error: 'Este consentimento está AUTHORISED e sustenta a sincronização. Revogar exige force:true.',
+            },
+            409,
+          );
+        }
+
+        const r = await descartar(consentId);
+        console.log(`[celcoin] revoke_consent ${consentId.slice(0, 8)}… -> ${r.desfecho} (HTTP ${r.status})`);
+        // Sempre 200: o descarte local aconteceu nos dois desfechos. Quem chama
+        // precisa do `desfecho` para dizer a verdade na tela, não de um erro.
+        return json({ success: true, desfecho: r.desfecho, status: r.status });
+      }
+
       case 'list_connections': {
         const userId = String(body.user_id || '').trim();
         let q = ext.from('celcoin_consents').select('*').order('created_at', { ascending: false });
@@ -921,7 +1006,8 @@ Deno.serve(async (req) => {
               'list_resources',
               'list_accounts',
               'sync_transactions',
-            'sync_all',
+              'sync_all',
+              'revoke_consent',
               'list_connections',
             ],
           },

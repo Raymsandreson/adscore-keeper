@@ -113,6 +113,18 @@ export function useCelcoinOpenFinance() {
     return callCelcoin('consent_status', { consent_id: consentId });
   }, []);
 
+  /**
+   * Tira o consentimento de circulação. Devolve `desfecho`: `REVOKED` se a
+   * Celcoin aceitou revogar, `ABANDONED` se recusou (é o caso de todo
+   * consentimento que nunca foi autorizado). IRREVERSÍVEL, e o backend recusa
+   * com 409 quando o consentimento está AUTHORISED — nesta tela todos os
+   * cartões mostram o mesmo nome de banco, e o clique errado mataria a conexão
+   * que sustenta a conciliação.
+   */
+  const discardConsent = useCallback(async (consentId: string) => {
+    return callCelcoin('revoke_consent', { consent_id: consentId });
+  }, []);
+
   const syncTransactions = useCallback(
     async (params: { userId: string; consentId: string; from?: string; to?: string }) => {
       setLoading(true);
@@ -134,7 +146,7 @@ export function useCelcoinOpenFinance() {
     [],
   );
 
-  return { brands, consents, loading, error, fetchBrands, fetchConsents, connect, checkConsent, syncTransactions };
+  return { brands, consents, loading, error, fetchBrands, fetchConsents, connect, checkConsent, discardConsent, syncTransactions };
 }
 
 export function popCelcoinReturnTo(): string {
@@ -169,6 +181,22 @@ export function isConsentAuthorised(status?: string | null): boolean {
   return normalizeConsentStatus(status) === 'AUTHORISED';
 }
 
+/**
+ * Consentimento tirado de circulação, nos dois desfechos possíveis:
+ * `REVOKED` (a Celcoin aceitou o DELETE) e `ABANDONED` (ela recusou com 422 —
+ * consentimento nunca autorizado não se revoga, e segue existindo lá, inerte,
+ * até a data de expiração). A tela trata os dois igual; o texto do cartão é que
+ * diz qual foi.
+ */
+export function isConsentDiscarded(status?: string | null): boolean {
+  const s = normalizeConsentStatus(status);
+  return s === 'REVOKED' || s === 'ABANDONED';
+}
+
+export function isConsentAbandoned(status?: string | null): boolean {
+  return normalizeConsentStatus(status) === 'ABANDONED';
+}
+
 export function consentDaysLeft(consent: Pick<CelcoinConsent, 'expires_at'>): number | null {
   if (!consent.expires_at) return null;
   const ms = new Date(consent.expires_at).getTime() - Date.now();
@@ -178,8 +206,16 @@ export function consentDaysLeft(consent: Pick<CelcoinConsent, 'expires_at'>): nu
 export function consentHealth(
   consent: Pick<CelcoinConsent, 'status' | 'expires_at' | 'last_sync_at'>,
 ): { level: 'ok' | 'atencao' | 'parado'; label: string } {
+  // Rótulo em português para os estados que a tela mostra de fato. O fallback
+  // com a grafia crua fica para status que a Celcoin invente e nós ainda não
+  // conheçamos — melhor mostrar o código do que engolir.
+  const st = normalizeConsentStatus(consent.status);
+  if (st === 'REVOKED') return { level: 'parado', label: 'Revogado' };
+  if (st === 'ABANDONED') return { level: 'parado', label: 'Descartado' };
+  if (st.startsWith('AWAITING')) return { level: 'parado', label: 'Aguardando autorização no banco' };
+  if (st === 'REJECTED') return { level: 'parado', label: 'Recusado pelo banco' };
   if (!isConsentAuthorised(consent.status)) {
-    return { level: 'parado', label: `Consentimento ${normalizeConsentStatus(consent.status)} — não sincroniza` };
+    return { level: 'parado', label: `Consentimento ${st} — não sincroniza` };
   }
   const days = consentDaysLeft(consent);
   if (days !== null && days <= 0) return { level: 'parado', label: 'Consentimento expirado' };
