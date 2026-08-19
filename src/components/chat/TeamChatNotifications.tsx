@@ -8,7 +8,7 @@ import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import { appNavigate } from '@/lib/appNavigation';
 import { resolveActivityChatRoots, resolveOpenActivityOfChain } from '@/lib/activityChatThread';
-import { resolveActivityProcessIds, resolveChatScope } from '@/lib/entityChatScope';
+import { resolveThreadKeys, resolveChatScope } from '@/lib/entityChatScope';
 import {
   getActiveTeamChatConversation,
   getActiveTeamChatEntity,
@@ -515,7 +515,7 @@ export function TeamChatNotifications() {
           // devolvia null e openEntityChat saía sem navegar.
           return `/cases?openProcess=${entityId}${messageParam}`;
         case 'case':
-          return `/cases/${entityId}`;
+          return `/cases/${entityId}${messageParam ? `?${messageParam.slice(1)}` : ''}`;
         default:
           return null;
       }
@@ -654,10 +654,14 @@ export function TeamChatNotifications() {
       const raizes = await resolveActivityChatRoots(idsDeAtividade);
       for (const raiz of raizes.values()) chaves.add(`activity:${raiz}`);
 
-      // Desde 18/08/2026 a conversa da atividade COM processo mora no processo.
-      // Quem acompanhava pelo id da atividade continua sendo avisado.
-      const processos = await resolveActivityProcessIds(idsDeAtividade);
-      for (const processoId of processos.values()) chaves.add(`process:${processoId}`);
+      // Desde 19/08/2026 a conversa da atividade/processo que tem caso mora no
+      // CASO. Quem acompanhava pelo id da atividade (ou do processo, no escopo
+      // anterior, de 18/08) continua sendo avisado.
+      const donos = await resolveThreadKeys({
+        activityIds: idsDeAtividade,
+        processIds: seguidos.filter(f => f.entity_type === 'process').map(f => f.entity_id),
+      });
+      for (const chave of donos) chaves.add(chave);
 
       followedThreadsRef.current = chaves;
     };

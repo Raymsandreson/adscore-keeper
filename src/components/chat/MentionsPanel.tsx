@@ -271,7 +271,9 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         navigate(`/whatsapp?openChat=${encodeURIComponent(mention.entity_id)}`);
         break;
       case 'case':
-        navigate(`/cases/${mention.entity_id}`);
+        // Onde a conversa mora desde 19/08/2026 — o dock do caso abre junto com
+        // a ficha e a mensagem citada fica destacada.
+        navigate(`/cases/${mention.entity_id}?highlightMsg=${mention.message_id}`);
         break;
       case 'process':
         // Processo não tem rota própria: a página de casos resolve o caso-pai,
