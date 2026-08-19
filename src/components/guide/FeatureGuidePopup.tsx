@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useContentLeftEdge } from '@/hooks/useContentLeftEdge';
 import { createPortal } from "react-dom";
 import { useLocation } from "react-router-dom";
 import { HelpCircle, Lightbulb, X, ChevronLeft, ChevronRight } from "lucide-react";
@@ -122,6 +123,7 @@ export function FeatureGuidePopup() {
   const { user } = useAuthContext();
   const guide = user ? findGuideForPath(pathname) : undefined;
   const [open, setOpen] = useState(false);
+  const leftEdge = useContentLeftEdge(!open);
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<DOMRect | null>(null);
   // true quando o destaque caiu num botão "revelador" (o recurso fica dentro dele)
@@ -410,7 +412,10 @@ export function FeatureGuidePopup() {
           }}
           title={`Tour: ${guide.title}`}
           aria-label="Abrir tour de funcionalidades desta tela"
-          className="fixed bottom-16 left-4 z-50 h-9 w-9 rounded-full border bg-background/95 shadow-lg backdrop-blur flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/50 transition-colors"
+          // `left` medido: colado em `left-4` o botão pousava em cima dos itens do
+          // menu lateral (cobria "Configurações"). (skill: ui-sem-sobreposicao)
+          style={{ left: leftEdge }}
+          className="fixed bottom-16 z-50 h-9 w-9 rounded-full border bg-background/95 shadow-lg backdrop-blur flex items-center justify-center text-muted-foreground hover:text-primary hover:border-primary/50 transition-[left,colors]"
         >
           <HelpCircle className="h-5 w-5" />
         </button>
