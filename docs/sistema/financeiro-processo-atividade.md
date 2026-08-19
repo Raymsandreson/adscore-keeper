@@ -433,24 +433,50 @@ partes na Tab. Aux só com status/fase, sem valor: nesses o bloco não aparece.
 
 ### A identidade das colunas (medida, não suposta)
 
+O caso é **pensionamento**: a condenação não é um bolo único, é pensão mensal. As
+parcelas que já venceram viram pagamento à vista; as vincendas seguem correndo.
+Conforme o tempo passa, vincenda vira vencida e migra para o lado à vista — e o
+honorário sobre ela migra junto. **As colunas são um retrato de uma data, não um
+valor fixo.**
+
 ```
-condenação = cota da parte + honorário contratual À VISTA + sucumbencial
+VENCIDO  (à vista)   bruto = cota_parte_vista_cjcm + hc_vista
+VINCENDO (a correr)  bruto = (cota_parte_cjcm − cota_parte_vista_cjcm) / 0,7
 ```
 
-Fecha em **679 das 688** partes com valor (98,7%). Duas armadilhas, as duas
-verificadas no dado antes de virar código:
+O honorário contratual é **30% do bruto de cada fatia** — 30,00% exatos em 54 das
+55 partes com vincendo (fatia à vista) e em 53 das 55 (fatia vincenda). Logo
+`cota_parte_cjcm` **já vem líquida** nas duas fatias.
 
-1. **`hc_parcelado` não é fatia a mais da condenação — está DENTRO da cota.** É o
-   honorário que o cliente paga em prestações com o dinheiro que recebeu, enquanto o
-   "à vista" é retido antes do repasse. Somá-lo ao lado da cota inflava o total em 55
-   partes. Daí `cotaLiquida = cota − hc_parcelado`, e o parcelado continua contando
-   como nosso. Confere por baixo: `cotaLiquida + escritório = condenação`.
-2. **Em 251 partes "TOTAL PARTE CJCM" vem zerada** e o valor do cliente está só em
-   "TOTAL À VISTA PARTE CJCM" — são as linhas ainda PROJETADAS. A cota cai para a
-   coluna à vista e o resumo conta quantas (`cotaProjetada`), para a tela dizer que
-   ali é projeção, não acordo fechado.
+E a coluna "condenação" **não é o bruto do processo**:
 
-Sem a armadilha 2 o cliente sumia da conta em 251 partes; sem a 1, o processo era
-contado a mais. Com as duas, os processos que fecham foram de 72 para 177 de 186.
+```
+condenacao_cjcm = cota líquida total + hc_vista + hs      (679 de 688 partes)
+```
 
-Lógica pura em `src/lib/valorProcesso.ts` com 12 testes — o componente só desenha.
+`hc_parcelado` fica **de fora** — é o honorário a apurar conforme as parcelas
+vencerem. O bruto real é `condenação + hc_parcelado`.
+
+Exemplo real, processo **0000072-69.2023.5.13.0009** (TRT13, 5 partes):
+
+| Parte | Condenação | Cota (líquida) | Já venceu | HC vencido | HC a vencer | HS |
+|---|---|---|---|---|---|---|
+| P0043 | 346.134,35 | 290.622,07 | 110.279,95 | 47.262,84 | 77.289,48 | 8.249,44 |
+| P0042 | 209.227,23 | 153.714,95 | 110.279,95 | 47.262,84 | 18.615,00 | 8.249,44 |
+| P0040 | 133.119,00 | 88.746,00 | 88.746,00 | 38.034,00 | 0 | 6.339,00 |
+| P0044 | 133.119,00 | 88.746,00 | 88.746,00 | 38.034,00 | 0 | 6.339,00 |
+
+P0043 e P0042 têm o **mesmo vencido** e vincendos diferentes — é a mesma pensão
+com prazos distintos (vitalícia × até certa idade). P0040 e P0044 não têm vincendo.
+
+Em 251 partes "TOTAL PARTE CJCM" vem zerada e o valor está só em "TOTAL À VISTA
+PARTE CJCM": são linhas ainda PROJETADAS. Nessas a cota cai para a coluna à vista
+e o resumo conta quantas (`cotaProjetada`), para a tela dizer que ali é projeção.
+
+Lógica pura em `src/lib/valorProcesso.ts` com 15 testes — o componente só desenha.
+
+> **Correção aplicada.** A primeira versão deste bloco leu "à vista × parcelado"
+> como forma de pagamento do honorário e calculava `cota − hc_parcelado`, tirando
+> do cliente um valor que a planilha já havia descontado (R$ 77.289,48 na P0043,
+> em 55 partes). O mecanismo é pensionamento, e a cota já vem líquida. Corrigido
+> em `cotaClienteDaParte`.
