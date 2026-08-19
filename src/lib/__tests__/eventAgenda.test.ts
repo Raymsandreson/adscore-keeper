@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  aplicarFiltrosDeEvento,
   atividadeMaisProxima,
   categoriaDaAudiencia,
   ehAtividadeDePrazo,
@@ -10,8 +11,13 @@ import {
   montarEventosDaJanela,
   janelaDaVespera,
   ehFimDeSemana,
+  diasDoIntervalo,
+  nomeDoCliente,
+  responsaveisDe,
+  sequenciaDoEvento,
   type AtividadeLite,
   type AudienciaLite,
+  type EventoAgenda,
 } from '../eventAgenda';
 
 const audiencia = (over: Partial<AudienciaLite> = {}): AudienciaLite => ({
@@ -23,6 +29,9 @@ const audiencia = (over: Partial<AudienciaLite> = {}): AudienciaLite => ({
   process_number: '0000242-25.2026.5.09.0663',
   lead_id: null,
   location: null,
+  case_ref: null,
+  category: null,
+  assigned_user_id: null,
   ...over,
 });
 
@@ -38,6 +47,12 @@ const atividade = (over: Partial<AtividadeLite> = {}): AtividadeLite => ({
   process_id: 'proc-1',
   process_title: '1001234-56',
   assigned_to_name: 'Maria',
+  case_id: null,
+  case_title: null,
+  assigned_to: 'u-maria',
+  assigned_to_ids: null,
+  assigned_to_names: null,
+  created_at: null,
   ...over,
 });
 
@@ -364,5 +379,208 @@ describe('montarEventosDaJanela — janela de vários dias', () => {
       atividades: [atividade({ activity_type: 'prazo', deadline: '2026-08-22' })],
     });
     expect(linhas).toHaveLength(0);
+  });
+});
+
+// =============================================================================
+// Identificação da linha e filtros — ago/2026.
+//
+// Todos os textos abaixo são de linhas reais do Externo em 19-20/08/2026: o
+// problema relatado era "muitos não têm processo nem cliente, fica difícil saber
+// de qual se refere".
+// =============================================================================
+
+describe('atividadeMaisProxima — desempate', () => {
+  it('empate fica com a mais antiga, e não com a ordem que o banco devolveu', () => {
+    // Duas atividades no mesmo dia é o normal num processo com audiência
+    // marcada. Sem desempate explícito a coluna Atividade trocava entre
+    // carregamentos, porque a busca não tem ORDER BY.
+    const antiga = atividade({ id: 'a-nova-id', created_at: '2026-08-01T10:00:00Z', deadline: '2026-08-20' });
+    const nova = atividade({ id: 'a-antiga-id', created_at: '2026-08-15T10:00:00Z', deadline: '2026-08-20' });
+    expect(atividadeMaisProxima([antiga, nova], '2026-08-20')?.id).toBe('a-nova-id');
+    expect(atividadeMaisProxima([nova, antiga], '2026-08-20')?.id).toBe('a-nova-id');
+  });
+
+  it('sem created_at, o id mantém a escolha estável nas duas ordens', () => {
+    const x = atividade({ id: 'aaa', created_at: null, deadline: '2026-08-20' });
+    const y = atividade({ id: 'bbb', created_at: null, deadline: '2026-08-20' });
+    expect(atividadeMaisProxima([x, y], '2026-08-20')?.id).toBe('aaa');
+    expect(atividadeMaisProxima([y, x], '2026-08-20')?.id).toBe('aaa');
+  });
+
+  it('distância ainda manda: a mais perto ganha da mais antiga', () => {
+    const antigaLonge = atividade({ id: 'longe', created_at: '2026-01-01T00:00:00Z', deadline: '2026-09-30' });
+    const novaPerto = atividade({ id: 'perto', created_at: '2026-08-18T00:00:00Z', deadline: '2026-08-20' });
+    expect(atividadeMaisProxima([antigaLonge, novaPerto], '2026-08-20')?.id).toBe('perto');
+  });
+});
+
+describe('nomeDoCliente', () => {
+  it('tira selo, código do caso e separador do nome do grupo', () => {
+    expect(nomeDoCliente('✅PREV 704 | ADRIANA CARVALHO')).toBe('ADRIANA CARVALHO');
+    expect(nomeDoCliente('✅ Caso 341 Walter x Construtora')).toBe('Walter x Construtora');
+    expect(nomeDoCliente('FAMÍLIA 249 - Maicon')).toBe('Maicon');
+    expect(nomeDoCliente('CASO 146 SÓ CRISTIAN')).toBe('SÓ CRISTIAN');
+  });
+
+  it('para no primeiro pipe: o resto do título do grupo não é o cliente', () => {
+    expect(nomeDoCliente('✅ CASO 395 | (ANA82)/abr.26 | São José dos Pinhais/PR'))
+      .toBe('(ANA82)/abr.26');
+  });
+
+  it('devolve o texto original quando o corte não deixa nome', () => {
+    // Grupo que é só o código: cortar tudo deixaria a coluna vazia, que é
+    // justamente o defeito que esta função existe para corrigir.
+    expect(nomeDoCliente('PREV 2043')).toBe('PREV 2043');
+    expect(nomeDoCliente('✅PREV 1015 | ')).toBe('✅PREV 1015 |');
+  });
+
+  it('vazio continua vazio', () => {
+    expect(nomeDoCliente(null)).toBeNull();
+    expect(nomeDoCliente('   ')).toBeNull();
+  });
+});
+
+describe('sequenciaDoEvento', () => {
+  it('prefere a fonte que tem prefixo de funil', () => {
+    // "FAMÍLIA 249" sozinho viraria "nº 249"; o case_title diz que é CASO 249.
+    const seq = sequenciaDoEvento('CASO 249 - FAMÍLIA 249 - Maicon', 'FAMÍLIA 249 - Maicon');
+    expect(seq?.familia).toBe('CASO');
+    expect(seq?.numero).toBe(249);
+  });
+
+  it('cai para a próxima fonte quando a primeira não tem sequência', () => {
+    const seq = sequenciaDoEvento(null, '✅PREV 704 | ADRIANA');
+    expect(seq?.familia).toBe('PREV');
+    expect(seq?.numero).toBe(704);
+  });
+
+  it('ignora número CNJ — não é sequência de caso', () => {
+    expect(sequenciaDoEvento('0010115-70.2026.5.03.0031')).toBeNull();
+  });
+
+  it('guarda o número sem prefixo, mas só se ninguém disser a família', () => {
+    expect(sequenciaDoEvento('249')?.familia).toBe('NUM');
+    expect(sequenciaDoEvento('249', 'PREV 249')?.familia).toBe('PREV');
+  });
+});
+
+describe('responsaveisDe', () => {
+  it('junta titular e co-responsáveis de todas as atividades do processo', () => {
+    const r = responsaveisDe([
+      atividade({ id: 'a1', assigned_to: 'u1', assigned_to_name: 'Gisele' }),
+      atividade({ id: 'a2', assigned_to: 'u2', assigned_to_name: 'João Pedro',
+        assigned_to_ids: ['u3'], assigned_to_names: ['Ana'] }),
+    ], null);
+    expect(r.ids.sort()).toEqual(['u1', 'u2', 'u3']);
+    expect(r.nomes.sort()).toEqual(['Ana', 'Gisele', 'João Pedro']);
+  });
+
+  it('sem atividade nenhuma, o dono é só quem a audiência aponta (quando aponta)', () => {
+    expect(responsaveisDe([], 'u9').ids).toEqual(['u9']);
+    expect(responsaveisDe([], null).ids).toEqual([]);
+  });
+});
+
+describe('diasDoIntervalo', () => {
+  it('inclui as duas pontas', () => {
+    expect(diasDoIntervalo('2026-08-19', '2026-08-22'))
+      .toEqual(['2026-08-19', '2026-08-20', '2026-08-21', '2026-08-22']);
+  });
+
+  it('aceita as pontas trocadas', () => {
+    expect(diasDoIntervalo('2026-08-22', '2026-08-19').length).toBe(4);
+  });
+
+  it('atravessa a virada do mês', () => {
+    expect(diasDoIntervalo('2026-08-30', '2026-09-02'))
+      .toEqual(['2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02']);
+  });
+
+  it('tem teto: data digitada errada não vira varredura de anos', () => {
+    expect(diasDoIntervalo('2026-01-01', '2030-01-01').length).toBe(92);
+  });
+});
+
+const evento = (over: Partial<EventoAgenda> = {}): EventoAgenda => ({
+  chave: 'audiencia:h1',
+  categoria: 'audiencia',
+  origem: 'audiencia',
+  processo: '0000242-25.2026.5.09.0663',
+  cliente: 'Walter',
+  clienteBruto: '✅ Caso 341 Walter',
+  casoBadge: 'CASO 341',
+  familia: 'CASO',
+  area: 'trabalhista',
+  responsaveisIds: ['u1'],
+  responsaveisNomes: ['Gisele'],
+  semResponsavel: false,
+  caseId: 'case-1',
+  leadId: 'lead-1',
+  evento: 'Instrução',
+  dataEvento: '2026-08-20',
+  horaEvento: '08:45',
+  situacao: null,
+  local: null,
+  atividadeId: 'a1',
+  atividade: 'Preparar minuta',
+  prioridade: 'alta',
+  responsavel: 'Gisele',
+  ...over,
+});
+
+describe('aplicarFiltrosDeEvento', () => {
+  it('assessor filtra por qualquer responsável do processo, não só o principal', () => {
+    const lista = [
+      evento({ chave: 'e1', responsaveisIds: ['u1', 'u2'] }),
+      evento({ chave: 'e2', responsaveisIds: ['u3'] }),
+    ];
+    expect(aplicarFiltrosDeEvento(lista, { assessores: ['u2'] }).map(e => e.chave)).toEqual(['e1']);
+  });
+
+  it('EVENTO SEM DONO continua visível mesmo com filtro de assessor', () => {
+    // Regra deliberada: `hearings.assigned_user_id` estava em 6 de 74 futuras
+    // (19/08/2026). Esconder o órfão faria a audiência de amanhã desaparecer da
+    // tela de todo mundo, que é o oposto do que a agenda serve.
+    const lista = [
+      evento({ chave: 'meu', responsaveisIds: ['u1'] }),
+      evento({ chave: 'orfao', responsaveisIds: [], semResponsavel: true }),
+      evento({ chave: 'de-outro', responsaveisIds: ['u9'] }),
+    ];
+    expect(aplicarFiltrosDeEvento(lista, { assessores: ['u1'] }).map(e => e.chave))
+      .toEqual(['meu', 'orfao']);
+  });
+
+  it('Caso/Prev filtra pela família da sequência', () => {
+    const lista = [
+      evento({ chave: 'prev', familia: 'PREV' }),
+      evento({ chave: 'caso', familia: 'CASO' }),
+      evento({ chave: 'sem', familia: null }),
+    ];
+    expect(aplicarFiltrosDeEvento(lista, { familias: ['PREV'] }).map(e => e.chave)).toEqual(['prev']);
+  });
+
+  it('área não varre prazo: atividade não tem área para comparar', () => {
+    const lista = [
+      evento({ chave: 'aud', area: 'trabalhista' }),
+      evento({ chave: 'aud2', area: 'previdenciario' }),
+      evento({ chave: 'prazo', categoria: 'prazo', origem: 'atividade', area: null }),
+    ];
+    expect(aplicarFiltrosDeEvento(lista, { areas: ['trabalhista'] }).map(e => e.chave))
+      .toEqual(['aud', 'prazo']);
+  });
+
+  it('busca alcança badge, cliente e atividade, sem acento atrapalhar', () => {
+    const lista = [
+      evento({ chave: 'e1', casoBadge: 'PREV 704', cliente: 'ADRIANA' }),
+      evento({ chave: 'e2', casoBadge: 'CASO 341', cliente: 'Walter', atividade: 'Perícia médica' }),
+    ];
+    expect(aplicarFiltrosDeEvento(lista, { busca: 'prev 704' }).map(e => e.chave)).toEqual(['e1']);
+    expect(aplicarFiltrosDeEvento(lista, { busca: 'pericia' }).map(e => e.chave)).toEqual(['e2']);
+  });
+
+  it('sem filtro, devolve tudo', () => {
+    const lista = [evento({ chave: 'e1' }), evento({ chave: 'e2' })];
+    expect(aplicarFiltrosDeEvento(lista, {})).toHaveLength(2);
   });
 });

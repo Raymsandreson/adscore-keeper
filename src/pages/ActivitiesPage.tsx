@@ -2770,6 +2770,8 @@ const ActivitiesPage = () => {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkReassignOpen, setBulkReassignOpen] = useState(false);
+  /** Atividades marcadas na aba Eventos — buscadas por id, ver `passarParaDeEventos`. */
+  const [eventosReassignPool, setEventosReassignPool] = useState<LeadActivity[] | null>(null);
   const lastClickedIdRef = useRef<string | null>(null);
 
   const renderedActivities = useMemo(
@@ -2824,8 +2826,11 @@ const ActivitiesPage = () => {
   // lote — logAudit por atividade custaria 3 requisições ao Cloud cada uma.
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
-  const handleBulkDelete = useCallback(() => {
-    const ids = selectedActivities.map(a => a.id);
+  // `idsExplicitos` existe por causa da aba Eventos: as linhas de lá saem de
+  // `hearings` e de uma busca própria, então a atividade marcada pode não estar
+  // em `displayedActivities`. Sem isso o lote sairia parcial e em silêncio.
+  const handleBulkDelete = useCallback((idsExplicitos?: string[]) => {
+    const ids = idsExplicitos?.length ? idsExplicitos : selectedActivities.map(a => a.id);
     if (!ids.length) return;
     const uma = ids.length === 1;
     confirmDelete(
@@ -2915,6 +2920,48 @@ const ActivitiesPage = () => {
   }, [activities]);
 
   /**
+   * "Passar para..." a partir da aba Eventos.
+   *
+   * `BulkReassignSheet` precisa das atividades inteiras (ele calcula carga do
+   * destino, ausências e datas), e a agenda só carrega o essencial de cada
+   * linha. Por isso o objeto completo é buscado por id na hora — o mesmo que
+   * `abrirAtividadePorId` faz para abrir a ficha.
+   */
+  const passarParaDeEventos = useCallback(async (ids: string[]) => {
+    if (!ids.length) return;
+    const { data, error } = await externalSupabase
+      .from('lead_activities')
+      .select('*')
+      .in('id', ids)
+      .is('deleted_at', null);
+    if (error) {
+      toast.error('Não deu para carregar as atividades marcadas');
+      return;
+    }
+    const encontradas = (data || []) as unknown as LeadActivity[];
+    if (encontradas.length === 0) {
+      toast.error('As atividades marcadas não estão mais disponíveis');
+      return;
+    }
+    if (encontradas.length < ids.length) {
+      toast.warning(`${ids.length - encontradas.length} atividade(s) já não existem e ficaram de fora`);
+    }
+    setEventosReassignPool(encontradas);
+    setBulkReassignOpen(true);
+  }, []);
+
+  /** Os filtros da página que a agenda de eventos sabe aplicar. */
+  const filtrosDaAgenda = useMemo(() => ({
+    assessores: filterAssignee,
+    assessoresNomes: filterAssignee
+      .map(id => teamMembers.find(m => m.user_id === id)?.full_name)
+      .filter(Boolean) as string[],
+    leadIds: filterLead,
+    caseIds: filterCase,
+    busca: searchText,
+  }), [filterAssignee, teamMembers, filterLead, filterCase, searchText]);
+
+  /**
    * Cabeçalho do modo seleção. Renderizado nas DUAS visões: na Lista, sobre os
    * cards; nos Blocos, dentro do painel do bloco aberto.
    *
@@ -2997,7 +3044,7 @@ const ActivitiesPage = () => {
         variant="outline"
         size="sm"
         className="h-8 text-xs gap-1.5 shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-        onClick={handleBulkDelete}
+        onClick={() => handleBulkDelete()}
         disabled={bulkDeleting}
       >
         {bulkDeleting
@@ -4121,6 +4168,9 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
+        {/* Escondidos na aba Eventos: filtro que aparece e não filtra foi
+            a queixa desta tela. Aqui só fica o que a agenda sabe aplicar. */}
+        {viewMode !== 'eventos' && (<>
         {/* Criado por — lead_activities.created_by (quem cadastrou, não quem executa) */}
         <Popover open={openFilterKey === 'createdBy'} onOpenChange={o => setOpenFilterKey(o ? 'createdBy' : null)}>
           <PopoverTrigger asChild>
@@ -4340,6 +4390,7 @@ const ActivitiesPage = () => {
             </Command>
           </PopoverContent>
         </Popover>
+        </>)}
 
         {/* Lead */}
         <Popover open={openFilterKey === 'lead'} onOpenChange={o => setOpenFilterKey(o ? 'lead' : null)}>
@@ -4380,6 +4431,9 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
+        {/* Escondidos na aba Eventos: filtro que aparece e não filtra foi
+            a queixa desta tela. Aqui só fica o que a agenda sabe aplicar. */}
+        {viewMode !== 'eventos' && (<>
         {/* Contato */}
         <Popover open={openFilterKey === 'contact'} onOpenChange={o => setOpenFilterKey(o ? 'contact' : null)}>
           <PopoverTrigger asChild>
@@ -4419,6 +4473,7 @@ const ActivitiesPage = () => {
             </Command>
           </PopoverContent>
         </Popover>
+        </>)}
 
         {/* Caso */}
         <Popover open={openFilterKey === 'case'} onOpenChange={o => setOpenFilterKey(o ? 'case' : null)}>
@@ -4477,6 +4532,9 @@ const ActivitiesPage = () => {
           </PopoverContent>
         </Popover>
 
+        {/* Escondidos na aba Eventos: filtro que aparece e não filtra foi
+            a queixa desta tela. Aqui só fica o que a agenda sabe aplicar. */}
+        {viewMode !== 'eventos' && (<>
         <Button
           variant={filterHasDocs ? "default" : "outline"}
           size="sm"
@@ -4501,6 +4559,7 @@ const ActivitiesPage = () => {
             <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px] tabular-nums">{execTodayMap.size}</Badge>
           )}
         </Button>
+        </>)}
 
         {/* Busca por texto dentro das atividades já filtradas */}
         <div className="relative shrink-0">
@@ -5004,7 +5063,14 @@ const ActivitiesPage = () => {
             "flex flex-col overflow-hidden min-h-0",
             isEditing ? "hidden md:flex shrink-0 border-r w-[36rem]" : "flex-1",
           )}>
-            <EventsAgenda onAbrirAtividade={abrirAtividadePorId} />
+            <EventsAgenda
+              onAbrirAtividade={abrirAtividadePorId}
+              filtros={filtrosDaAgenda}
+              onLimparFiltros={() => { setFilterAssignee([]); setFilterLead([]); setFilterCase([]); setSearchText(''); }}
+              onExcluirLote={(ids) => handleBulkDelete(ids)}
+              onPassarPara={passarParaDeEventos}
+              compacto={isEditing}
+            />
           </div>
         )}
 
@@ -6894,11 +6960,12 @@ const ActivitiesPage = () => {
       />
       <BulkReassignSheet
         open={bulkReassignOpen}
-        onOpenChange={setBulkReassignOpen}
-        activities={selectedActivities}
+        onOpenChange={(aberto) => { setBulkReassignOpen(aberto); if (!aberto) setEventosReassignPool(null); }}
+        activities={eventosReassignPool ?? selectedActivities}
         teamMembers={teamMembers}
         onApplied={() => {
           exitSelection();
+          setEventosReassignPool(null);
           fetchActivities(getFilterParams());
         }}
       />

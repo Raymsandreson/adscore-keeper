@@ -217,7 +217,7 @@ export function AppSidebar() {
   return (
     <>
       <Sidebar collapsible="icon">
-        <SidebarHeader className="p-2 flex flex-col gap-2">
+        <SidebarHeader className="p-3 group-data-[collapsible=icon]:p-2 flex flex-col gap-2">
           <div className={cn('flex items-center gap-1', collapsed ? 'flex-col' : 'justify-between')}>
             <SidebarTrigger className={cn('flex items-center justify-center', collapsed ? 'w-full' : 'flex-1')} />
             <ProcessUpdatesBell compact />
@@ -243,7 +243,7 @@ export function AppSidebar() {
           )}
         </SidebarHeader>
 
-        <SidebarContent>
+        <SidebarContent className="px-1 group-data-[collapsible=icon]:px-0">
           {/* Quick Links */}
           <SidebarGroup>
             <SidebarGroupLabel>Principal</SidebarGroupLabel>
@@ -339,7 +339,7 @@ export function AppSidebar() {
           ))}
         </SidebarContent>
 
-        <SidebarFooter className="p-2">
+        <SidebarFooter className="p-3 group-data-[collapsible=icon]:p-2">
           <SidebarMenu>
             {/* Mentions */}
             <SidebarMenuItem>

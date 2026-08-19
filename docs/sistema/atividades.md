@@ -9,7 +9,7 @@ Documentação funcional das telas de atividades, cronômetro/banco de horas e t
 **Propósito**: central de trabalho diário do assessor — cria, gerencia, cronometra e conclui atividades vinculadas a Lead/Caso/Processo/Contato (ou internas de equipe), com preenchimento por voz/áudio/IA e integração ao WhatsApp.
 
 ### Cabeçalho
-- "Blocos" / "Lista" — alterna a visualização (blocos agrupados ou lista de cartões).
+- "Blocos" / "Lista" / "Eventos" — alterna a visualização (blocos agrupados, lista de cartões, ou a agenda de audiências/perícias/prazos do dia seguinte).
 - "Telão" (troféu) — abre o ranking ao vivo `/tv/atividades`.
 - "💬 Feedbacks" — feedbacks das atividades que você observa.
 - Ícone de tribunal — "Varas e Tribunais — contatos".
@@ -41,6 +41,29 @@ Botão **"Selecionar"** acima da lista liga o modo de seleção: cada cartão ga
 - **Autoria e aviso**: o lote carimba `updated_by` (sem isso viraria "atualizada por —") e grava audit log `reatribuicao_atividades` com os ids. O destinatário recebe **um** aviso agrupado (`activity_notifications`, tipo `assigned_bulk`, sem `activity_id`), não um popup por atividade; lote de uma atividade usa o `assigned` normal, com botão de abrir.
 - **Excluir em lote**: mesmo caminho do "Excluir" da ficha — soft delete (`deleted_at` + `updated_by`) e descarte dos `activity_time_entries` das atividades, para o banco de horas não contar trabalho de registro que sumiu da lista. Não filtra por status: exclui exatamente o que foi marcado, inclusive concluída. Confirmação obrigatória com o número no título e no botão. Diferença em relação ao individual: o audit vai em **uma** linha `exclusao_atividades` com `ids` + `snapshots` do lote (logAudit por atividade custaria 3 requisições ao Cloud cada), então restaurar um item do lote é ler o snapshot desse registro; lote de uma atividade grava no formato individual (`lead_activity`). Se a atividade aberta no painel direito estiver no lote, o painel fecha.
 - Para esvaziar a fila de alguém **desativado**, o caminho continua sendo Equipe → "Redistribuir atividades de inativos" (`RedistributeActivitiesDialog`), que divide entre várias pessoas com teto por dia e move também a responsabilidade processual dos leads.
+
+### Eventos — audiências, perícias e prazos do dia seguinte (`EventsAgenda.tsx`)
+
+Terceira visão da tela, entregue em 17/08/2026. Pedido do escritório: *"uma atividade que tem perícia pro dia 12.08 aparece na aba de perícias do dia 11.08, para a pessoa saber as prioridades"*. Por isso o seletor mostra **a véspera** e o cabeçalho da tabela repete a data real do evento.
+
+**Abas e de onde cada uma lê** (regras puras e testadas em `src/lib/eventAgenda.ts`):
+- **Audiências** e **Perícias** saem da MESMA tabela `hearings`, separadas por `hearing_type` (perícia é reconhecida pelo radical "peric" e por "avaliação social", que é a perícia social do BPC).
+- **Prazos** = atividade do **tipo "Prazo"**, nas duas famílias de chave (a seed `prazo` e as `custom_*` com o mesmo rótulo). Não é "toda atividade com deadline amanhã": em 20/08/2026 seriam 337 linhas contra 8 — uma tela de prioridade com 337 linhas não é uma tela de prioridade.
+- Atividade de tipo Audiência/Perícia **não** vira linha de evento: o `HearingActivityDialog` cria atividade a partir da audiência (o mesmo evento apareceria duas vezes) e o `deadline` dessas atividades é quando **preparar**, não quando o evento acontece — "Audiência Instrução 06/08/2026" tem deadline 28/08.
+
+**Véspera e período.** O padrão é véspera: mostra D+1. Na sexta a janela vai até a **segunda**, inclusive sábado e domingo — a segunda também precisa de véspera, e prazo cai em fim de semana (audiência não). Feriado não é considerado: não existe tabela de feriado forense aqui. O botão de data (o que mostra "Véspera", com o chevron) é um **menu**: além da véspera, oferece **Próximos 7/15/30 dias** e **"Intervalo de datas (do dia X ao dia Y)…"**, que abre dois campos de data — `diasDoIntervalo`, teto de 92 dias, pontas trocadas são aceitas. Em período com mais de um dia a tabela ganha cabeçalho por dia, o botão passa a exibir o intervalo escolhido ("12/08 → 15/08") e as setas andam com a janela inteira preservando o tamanho (de um intervalo de 4 dias para os 4 seguintes). Medido em 19/08/2026: 12→15/08 devolve 10 eventos (3/2/3/2 por dia).
+
+**Identificação da linha** (ago/2026, resolvendo *"muitos não têm processo nem cliente"*): a coluna mostra o código do caso como badge (**"PREV 704"**, **"CASO 341"**) e o número do processo embaixo. A sequência é procurada em cascata — `hearings.case_ref` → `case_title` → `lead_name` → título —, o que classifica **89%** das atividades contra 67% se só o caso fosse consultado. A coluna Cliente passa pelo `nomeDoCliente`, que tira selo, código e separador do nome do grupo ("✅PREV 704 | ADRIANA" → "ADRIANA"), com o texto original no `title`; quando o corte não deixa nome, o bruto continua. Linha sem processo, caso e cliente mostra **"sem vínculo"** — é assim que ela existe no banco.
+
+**Filtros.** Até 19/08/2026 a barra de filtros da página aparecia nesta aba **sem filtrar nada**. Agora:
+- Valem aqui: **Assessor**, **Lead**, **Caso** e a **busca**; os demais (tipo, situação, POP, contato, criado por, com documentação, cronômetro ativo) **somem** na aba, em vez de ficarem inertes.
+- Dois filtros próprios: **Caso/Prev** (família da sequência, via `casoSequencia.ts`) e **Área** (`hearings.category` — trabalhista, previdenciário, cível), que só aparece quando a janela tem mais de uma.
+- **Assessor casa com qualquer responsável do processo**, titular ou co-responsável de qualquer atividade viva — não só a atividade que aparece na coluna. As 3 audiências de 20/08/2026 tinham 4, 1 e 2 atividades vivas com donos diferentes; casar pela "mais próxima" faria a audiência sumir para o outro dono.
+- **Evento sem responsável continua visível** mesmo com filtro de assessor ligado, marcado com "sem dono". `hearings.assigned_user_id` estava preenchido em 6 de 74 futuras: esconder o órfão tiraria da tela de toda a equipe justamente o evento que ninguém pode perder. O subtítulo diz quantos são.
+
+**Seleção em lote**: as linhas com atividade ganham caixa de marcação e as mesmas duas ações da lista (Excluir / Passar para…). Como a agenda alcança atividade que **não** está no lote carregado pelos filtros da página, o lote daqui trabalha por id — `handleBulkDelete` aceita ids explícitos e o "Passar para…" busca os objetos completos antes de abrir o painel; sem isso o lote sairia parcial e em silêncio.
+
+**Desempenho**: o filtro de prazo acontece no servidor (`in` nas chaves de tipo) e toda busca é paginada de 1000 em 1000 — o PostgREST corta em 1000 sem avisar, e um período de 30 dias sem esse cuidado mostraria "nenhum evento" em dias que têm.
 
 ### Ficha da atividade
 - Título editável inline; badge com o tempo total dedicado (soma das sessões de cronômetro) e, quando há previsão, no formato `⏱️ 12:40 / 30min` — com o excedente em vermelho quando passa.
@@ -171,6 +194,7 @@ Arquivos: `CourtContactsSheet.tsx`, `CourtContactsForProcess.tsx`, `src/lib/cnj.
 - Menu de Pausa: pausas rápidas com previsão (café/lanche/descanso), "Entrando em reunião" (um clique, igual ao almoço), "Saída para almoço", "Intervalo (justificar)", "Compensação de banco de horas", "Encerrar expediente (saída)".
 - Prompts automáticos: "Ainda está nessa atividade?", "Você saiu da atividade", "Você está ocioso / vai se ausentar?", "Sua pausa passou do previsto" (+5/+10 min, virar intervalo, "Voltei ao trabalho"), 🚨 "Chamado da gestão".
 - "Qual atividade você está fazendo agora?" — troca a atividade em execução.
+- **Nenhum prompt apita por padrão** (19/08/2026). Os avisos sonoros viraram opção por dispositivo em **Configurações → Notificações → "Sons do sistema"** (`SoundSettings.tsx`), todos desmarcados de fábrica: ocioso, "ainda está fazendo?", pausa estourada, previsão estourada, mensagem urgente do chat interno e chamado da gestão. Cada linha tem botão **Testar**. A preferência mora no `localStorage` (`sound-settings`) e é lida direto no instante do disparo (`isSoundEnabled()` em `src/lib/soundSettings.ts`), então desligar numa aba vale na outra sem recarregar; os três geradores de áudio ficam em `src/lib/sounds.ts`. Motivo da mudança: o apito de 5 min disparava com a pessoa trabalhando (lendo processo no PJe), e aviso que toca no caminho normal vira ruído.
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
 
