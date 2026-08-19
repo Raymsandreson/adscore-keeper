@@ -187,14 +187,17 @@ export const featureGuides: FeatureGuideDef[] = [
     id: "processes",
     paths: ["/processes"],
     title: "Processos",
-    intro: "Central de processos judiciais e administrativos, com e-mails do PJe/INSS e planilha de perícias.",
+    intro: "Central de processos judiciais e administrativos, com e-mails do PJe/INSS.",
     items: [
       { label: "Aba Judiciais", anchor: "Judiciais", description: "busca por número/parte/tribunal; clique no card abre os detalhes; lixeira exclui" },
       { label: "Aba INSS Administrativo", anchor: "INSS Administrativo", description: "requerimentos vindos do Gmail; botão 'Órfãos' mostra os sem caso; menu 'Vincular' faz match automático por nome/CPF" },
       { label: "Vincular (card órfão)", anchor: ["Vincular", "INSS Administrativo"], description: "sugestões automáticas por requerimento/CPF/nome; '(criar caso)' gera o caso na hora" },
       { label: "Aba Processual", anchor: "Processual", description: "e-mails PJe/PUSH com badge automático 'Prazo'; switch 'Apenas PUSH'" },
       { label: "Aba Sem movimento", anchor: "Sem movimento", description: "processos parados ≥30 dias por faixa e responsável, com 'Exportar CSV'" },
-      { label: "Aba Perícias", anchor: "Perícias", description: "todas as datas de perícia em ordem; 'Só futuras' mostra as próximas" },
+      // A aba "Perícias" saiu desta tela; o guia anunciava uma aba que não existe
+      // mais e lia campos personalizados de processo (tabela vazia em 19/08/2026).
+      // A agenda de perícias de verdade é /hearings, lente Perícias.
+      { label: "Perícias: agora em Audiências e Perícias", description: "as datas de perícia vivem no calendário, em Audiências e Perícias (menu Processual) — a lente \"Perícias\" mostra médica, social e judicial" },
       { label: "Sincronizar agora / Sincronizar", anchor: ["Sincronizar", "INSS Administrativo"], description: "puxa os e-mails recentes do INSS/PJe manualmente" },
     ],
     tip: "Rotina diária: aba INSS → \"Órfãos\" → vincular com as sugestões automáticas; aba Processual com \"Apenas PUSH\" ligado pra caçar os badges \"Prazo\"; semanalmente, \"Sem movimento\" na faixa 90+ dias.",
@@ -202,16 +205,18 @@ export const featureGuides: FeatureGuideDef[] = [
   {
     id: "hearings",
     paths: ["/hearings"],
-    title: "Audiências",
-    intro: "Agenda de audiências com visões Semana/Mês/Dia/Lista e sincronização com a planilha.",
+    title: "Audiências e Perícias",
+    intro: "Agenda de audiências E perícias, com visões Semana/Mês/Dia/Lista e sincronização com a planilha.",
     items: [
+      { label: "Audiências | Perícias | Todos", anchor: "Perícias", description: "escolhe o que a tela mostra, com o total de cada um; perícia e audiência são trabalhos diferentes" },
+      { label: "Perícia do INSS", anchor: "Perícias", description: "a marcada no chip do cabeçalho da atividade cai aqui automaticamente; a judicial vem da planilha" },
       { label: "Nova audiência", description: "abre o formulário; clicar numa célula de dia já cria com a data preenchida" },
       { label: "Sincronizar planilha", description: "importa novas/atualizadas da planilha sem apagar as que só existem aqui" },
       { label: "Filtros", anchor: "Todos os tipos", description: "Tipo, Categoria, Status + busca por processo/caso/observações" },
       { label: "Criar atividade", anchor: ["Criar atividade", "Nova audiência"], description: "dentro da audiência, gera a atividade de preparação vinculada" },
       { label: "‹ › e Hoje", anchor: "Hoje", description: "navegação de período" },
     ],
-    tip: "Visão Semana → clique no dia → preencha processo/hora/responsável → salve e já clique em \"Criar atividade\" pra gerar a tarefa de preparação.",
+    tip: "Visão Semana → clique no dia → preencha processo/hora/responsável → salve e já clique em \"Criar atividade\" pra gerar a tarefa de preparação. Para perícia do INSS, o caminho curto é marcar a data no chip da própria atividade — ela aparece aqui sozinha.",
   },
   {
     id: "visitas",

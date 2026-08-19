@@ -258,10 +258,12 @@ function cacheSet(key: string, msgs: TeamMessage[]) {
 export function useTeamChat(entityType: string, entityId: string, entityName?: string) {
   const { user } = useAuthContext();
 
-  // Atividade COM processo: o chat é do PROCESSO e é o mesmo em todas as
-  // atividades dele. Atividade sem processo mantém a cadeia (lê os elos,
-  // escreve na raiz). As outras fichas são o próprio thread.
-  const precisaResolver = entityType === 'activity' || entityType === 'process';
+  // Atividade/processo que pertence a um caso: o chat é do CASO e é o mesmo em
+  // todas as atividades e processos dele. Processo órfão fica no processo;
+  // atividade sem caso e sem processo mantém a cadeia (lê os elos, escreve na
+  // raiz). As outras fichas são o próprio thread.
+  const precisaResolver =
+    entityType === 'activity' || entityType === 'process' || entityType === 'case';
   const [scope, setScope] = useState<ChatScope | null>(() =>
     precisaResolver ? peekChatScope(entityType, entityId) : soloScope(entityType, entityId)
   );
@@ -281,12 +283,12 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     return () => { alive = false; };
   }, [precisaResolver, entityType, entityId]);
 
-  /** Onde as mensagens novas são gravadas — processo, raiz da cadeia ou a ficha. */
+  /** Onde as mensagens novas são gravadas — caso, processo, raiz ou a ficha. */
   const writeType = scope?.writeType || entityType;
   const writeId = scope?.writeId || entityId;
-  /** Nome carimbado na escrita: o do processo quando a conversa é dele. */
+  /** Nome carimbado na escrita: o do caso quando a conversa é dele. */
   const writeName = scope?.writeName || entityName || null;
-  /** De onde o histórico é lido — pode atravessar tipos (processo + atividades). */
+  /** De onde o histórico é lido — atravessa tipos (caso + processos + atividades). */
   const readScopes = useMemo(
     () => scope?.read || [{ type: entityType, ids: [entityId] }],
     [scope, entityType, entityId]
@@ -295,8 +297,8 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
   /** Todos os ids lidos, sem separar por tipo — quem acompanha o thread. */
   const readIdsFlat = useMemo(() => readScopes.flatMap(r => r.ids), [readScopes]);
 
-  // O cache é do thread, não da ficha: a atividade e o processo dela caem na
-  // mesma chave e mostram exatamente a mesma conversa.
+  // O cache é do thread, não da ficha: a atividade, o processo dela e o caso
+  // caem na mesma chave e mostram exatamente a mesma conversa.
   const cacheKey = `${writeType}:${writeId}`;
   const [messages, setMessagesState] = useState<TeamMessage[]>(() => cacheGet(cacheKey) || []);
   const [loading, setLoading] = useState(() => !cacheGet(cacheKey));
@@ -577,16 +579,16 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     sendMessage,
     updateMessage,
     alertMessageAgain,
-    /** Chave do thread (processo, ou raiz da cadeia) — quem abriu na tela. */
+    /** Chave do thread (caso, processo ou raiz da cadeia) — quem abriu na tela. */
     threadRootId: writeId,
     /** Chave completa usada no cache e no "esta conversa já está aberta". */
     threadKey: cacheKey,
     /** Quantas fichas a conversa atravessa: 1 = ficha comum, sem continuidade. */
     threadSize: readIdsFlat.length,
-    /** true = a conversa é do processo e vale para todas as atividades dele. */
-    isProcessThread: writeType === 'process',
-    /** Nº (ou título) do processo dono da conversa. */
-    processLabel: scope?.processLabel || null,
+    /** Quem é o dono da conversa: 'case' | 'process' | 'chain' | 'solo'. */
+    threadKind: scope?.kind || 'solo',
+    /** Rótulo do dono ("CASO 180", nº do processo) — alimenta o aviso na tela. */
+    threadLabel: scope?.label || null,
   };
 }
 

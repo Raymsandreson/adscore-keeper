@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   normalizeConsentStatus,
   isConsentAuthorised,
+  isConsentDiscarded,
   consentHealth,
 } from '@/hooks/useCelcoinOpenFinance';
 
@@ -45,8 +46,37 @@ describe('status de consentimento — grafia Z vs S', () => {
       last_sync_at: null,
     });
     expect(h.level).toBe('parado');
-    // A mensagem mostra a grafia normalizada, não a bruta da Celcoin.
-    expect(h.label).toContain('AWAITING_AUTHORISATION');
+    // Desde 19/08/2026 o rótulo é em português — enum cru numa tela de
+    // financeiro não diz nada a quem lê. O que a grafia Z não pode fazer é
+    // escapar pro rótulo.
+    expect(h.label).toBe('Aguardando autorização no banco');
+    expect(h.label).not.toContain('AUTHORIZ');
+  });
+
+  it('status desconhecido cai no rótulo cru, mas já normalizado', () => {
+    // Este é o caso que a asserção antiga protegia: se a Celcoin inventar um
+    // estado que não conhecemos, mostramos o código (melhor que engolir) — e
+    // ainda assim com S, nunca com Z.
+    const h = consentHealth({
+      status: 'PENDING_AUTHORIZATION_XYZ',
+      expires_at: null,
+      last_sync_at: null,
+    });
+    expect(h.level).toBe('parado');
+    expect(h.label).toContain('PENDING_AUTHORISATION_XYZ');
+  });
+
+  it('descartado tem rótulo próprio nos dois desfechos', () => {
+    // REVOKED = a Celcoin aceitou o DELETE. ABANDONED = ela recusou com 422
+    // (consentimento nunca autorizado não se revoga) e o consentimento segue
+    // existindo lá. Os dois somem da lista principal; o rótulo difere porque o
+    // fato difere.
+    expect(consentHealth({ status: 'REVOKED', expires_at: null, last_sync_at: null }).label).toBe('Revogado');
+    expect(consentHealth({ status: 'ABANDONED', expires_at: null, last_sync_at: null }).label).toBe('Descartado');
+    expect(isConsentDiscarded('REVOKED')).toBe(true);
+    expect(isConsentDiscarded('ABANDONED')).toBe(true);
+    expect(isConsentDiscarded('AWAITING_AUTHORIZATION')).toBe(false);
+    expect(isConsentDiscarded('AUTHORISED')).toBe(false);
   });
 
   it('consentHealth aceita AUTHORIZED (com Z) como ativo', () => {

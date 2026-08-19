@@ -49,6 +49,18 @@ describe('categoriaDaAudiencia', () => {
     expect(categoriaDaAudiencia('Perícia Judicial')).toBe('pericia');
   });
 
+  it('avaliação social é perícia, não "outros"', () => {
+    // A perícia social do BPC não tem o radical "peric". Sem regra própria ela
+    // cairia na aba Outros — onde ninguém procura convocação de cliente.
+    expect(categoriaDaAudiencia('Avaliação Social (INSS)')).toBe('pericia');
+    expect(categoriaDaAudiencia('avaliacao social')).toBe('pericia');
+  });
+
+  it('os tipos que a atividade grava caem na aba de perícia', () => {
+    // Gravados pelo chip do cabeçalho da atividade (migration 20260819110000).
+    expect(categoriaDaAudiencia('Perícia Médica (INSS)')).toBe('pericia');
+  });
+
   it('todo o resto do catálogo real é audiência', () => {
     for (const t of ['Instrução', 'Inicial', 'UNA', 'Conciliação', 'Encerramento de Instrução', 'Homologação', 'Julgamento']) {
       expect(categoriaDaAudiencia(t)).toBe('audiencia');

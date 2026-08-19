@@ -89,7 +89,7 @@ function formatDuration(seconds?: number | null) {
 
 export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId, onMentionUsers, footerNote }: TeamChatPanelProps) {
   const { user } = useAuthContext();
-  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadKey, threadSize, isProcessThread, processLabel } =
+  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadKey, threadSize, threadKind, threadLabel } =
     useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
   const navigate = useNavigate();
@@ -897,17 +897,24 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-        {/* De quem é esta conversa. Na atividade o aviso é obrigatório: o que se
-            escreve aqui vai para o processo e aparece em todas as atividades
-            dele — sem dizer isso, a pessoa acha que está falando só com o
-            responsável da ficha (foi o mal-entendido do CASO 180, 10/08/2026). */}
-        {isProcessThread && entityType === 'activity' ? (
+        {/* De quem é esta conversa. Fora do dock do próprio dono o aviso é
+            obrigatório: o que se escreve aqui vai para o caso e aparece em
+            todas as atividades e processos dele — sem dizer isso, a pessoa acha
+            que está falando só com o responsável da ficha (foi o mal-entendido
+            do CASO 180, 10/08/2026). */}
+        {threadKind === 'case' && entityType !== 'case' ? (
           <div className="flex justify-center pb-1">
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary text-center">
-              Conversa do processo{processLabel ? ` ${processLabel}` : ''} · aparece em todas as atividades dele
+              Conversa do caso{threadLabel ? ` ${threadLabel}` : ''} · aparece em todas as atividades e processos dele
             </span>
           </div>
-        ) : threadSize > 1 && messages.length > 0 ? (
+        ) : threadKind === 'process' && entityType !== 'process' ? (
+          <div className="flex justify-center pb-1">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary text-center">
+              Conversa do processo{threadLabel ? ` ${threadLabel}` : ''} · aparece em todas as atividades dele
+            </span>
+          </div>
+        ) : threadKind === 'chain' && threadSize > 1 && messages.length > 0 ? (
           <div className="flex justify-center pb-1">
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
               Conversa contínua · {threadSize} etapas desta atividade

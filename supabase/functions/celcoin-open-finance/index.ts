@@ -430,27 +430,48 @@ const toTimeOnly = (v: unknown): string | null => emBrasilia(v)?.time ?? null;
 // lançamentos seguem NESTAS mesmas tabelas, e a tela de conciliação não filtra
 // por provider. Como a UNIQUE é (provider, pluggy_transaction_id), a mesma
 // despesa vinda da Celcoin entraria como linha nova e o financeiro veria tudo em
-// dobro. Daí retomar do dia seguinte ao último lançamento já gravado.
+// dobro. Daí o piso, que combina duas perguntas -- ver syncFloor abaixo.
 const hojeBrasilia = (): string =>
   new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 
-async function syncFloor(table: 'bank_transactions' | 'credit_card_transactions', userId: string): Promise<string> {
-  const { data } = await ext
-    .from(table)
-    .select('transaction_date')
-    .eq('user_id', userId)
-    .order('transaction_date', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+// Quantos dias reprocessar por cima do que já temos. Existe porque o dia corrente
+// não fecha: uma rodada das 06h grava os lançamentos da madrugada, e retomar do
+// dia seguinte perderia TODO o resto do dia, calado. Reprocessar é de graça em
+// termos de dado -- a UNIQUE (provider, pluggy_transaction_id) faz o upsert
+// sobrescrever a mesma linha -- e custa só algumas leituras a mais na Celcoin.
+const DIAS_DE_REPROCESSO = 3;
 
-  const last = toDateOnly(data?.transaction_date);
-  const d = new Date();
-  if (last) {
-    d.setTime(Date.parse(`${last}T00:00:00Z`));
-    d.setUTCDate(d.getUTCDate() + 1);
-  } else {
-    d.setUTCMonth(d.getUTCMonth() - 12); // sem histórico: 12 meses, teto usual das transmissoras
+async function syncFloor(table: 'bank_transactions' | 'credit_card_transactions', userId: string): Promise<string> {
+  // Duas perguntas diferentes, e confundi-las é o que gera duplicata OU buraco:
+  //   'celcoin'  -> até onde EU já fui? Volto DIAS_DE_REPROCESSO por cima.
+  //   sem filtro -> até onde a Pluggy foi? É piso intransponível na primeira
+  //                 rodada: reimportar o que ela já trouxe apareceria em dobro
+  //                 na tela, que não filtra por provider.
+  const [meu, qualquer] = await Promise.all([
+    ext.from(table).select('transaction_date').eq('user_id', userId).eq('provider', 'celcoin')
+      .order('transaction_date', { ascending: false }).limit(1).maybeSingle(),
+    ext.from(table).select('transaction_date').eq('user_id', userId)
+      .order('transaction_date', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  const recuar = (iso: string, dias: number): string => {
+    const d = new Date(`${iso}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + dias);
+    return d.toISOString().slice(0, 10);
+  };
+
+  const meuUltimo = toDateOnly(meu.data?.transaction_date);
+  const outroUltimo = toDateOnly(qualquer.data?.transaction_date);
+
+  if (meuUltimo) {
+    const piso = recuar(meuUltimo, -DIAS_DE_REPROCESSO);
+    // Nunca antes do dia seguinte ao que outro provider já cobriu.
+    const limite = outroUltimo && outroUltimo > meuUltimo ? recuar(outroUltimo, 1) : null;
+    return limite && limite > piso ? limite : piso;
   }
+  if (outroUltimo) return recuar(outroUltimo, 1); // primeira rodada: retomo onde a Pluggy parou
+  const d = new Date();
+  d.setUTCMonth(d.getUTCMonth() - 12); // sem histórico nenhum: 12 meses, teto usual das transmissoras
   return d.toISOString().slice(0, 10);
 }
 
@@ -463,6 +484,203 @@ function signedAmount(tx: any): number {
 
 const json = (b: unknown, status = 200) =>
   new Response(JSON.stringify(b), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+
+// Tira um consentimento de circulação. DOIS desfechos possíveis, e chamar os
+// dois de "revogado" seria mentira no banco:
+//
+//   REVOKED    a Celcoin aceitou o DELETE (ou respondeu 404: já não existe lá).
+//   ABANDONED  a Celcoin RECUSOU. Medido em 19/08/2026 nos 6 órfãos de 18/08:
+//              DELETE em consentimento AWAITING_AUTHORISATION devolve
+//              `422 Unprocessable Entity`, sem código de erro no corpo. Não há
+//              o que revogar num consentimento que nunca concedeu nada -- e ele
+//              também não caduca: os 6 seguiam AWAITING 21h depois, com
+//              expirationDateTime em 2027. Ficam lá, inertes, até essa data.
+//              O gateway do Quitepay, na mesma stack, também não os revoga:
+//              filtra por AUTHORISED na leitura e ignora o resto.
+//
+// Em ambos os casos a linha local sai da tela, que é o dano real -- sete
+// cartões chamados "Banco Inter PJ" e nenhuma forma de saber qual funciona.
+// Não apagamos a linha: o rastro de que o consentimento existe (e ainda existe,
+// no caso ABANDONED) é justamente o que não pode sumir.
+async function descartar(consentId: string): Promise<{ status: number; desfecho: 'REVOKED' | 'ABANDONED'; body: unknown }> {
+  const token = await getAdminToken();
+  const r = await request('DELETE', consentUrl(consentId), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const desfecho = r.ok || r.status === 404 ? 'REVOKED' : 'ABANDONED';
+  await ext
+    .from('celcoin_consents')
+    .update({ status: desfecho, updated_at: new Date().toISOString() })
+    .eq('consent_id', consentId);
+  return { status: r.status, desfecho, body: r.body };
+}
+
+// Consentimento que ainda não foi autorizado no banco: erro do CHAMADOR (409),
+// não falha nossa. Distinguir importa no sync_all, que segue para os outros.
+class NaoAutorizado extends Error {}
+
+type ResumoSync = {
+  bank_transactions: number;
+  credit_card_transactions: number;
+  janela: { bank_from: string; card_from: string; to: string | null };
+};
+
+// Extrato de conta + transações de fatura, gravados com provider='celcoin'.
+// Mesmas tabelas da Pluggy: a coluna provider é o que deixa as duas conviverem.
+async function sincronizar(
+  consentId: string,
+  userId: string,
+  janela?: { from?: string; to?: string },
+): Promise<ResumoSync> {
+  const { data: consentRow } = await ext
+    .from('celcoin_consents')
+    .select('permissions, status')
+    .eq('consent_id', consentId)
+    .maybeSingle();
+
+  if (consentRow && !autorizado(consentRow.status)) {
+    throw new NaoAutorizado(`Consentimento está ${consentRow.status}, não AUTHORISED — a Celcoin não emite rpt_token nesse estado.`);
+  }
+  const permissions: string[] | null = Array.isArray(consentRow?.permissions)
+    ? (consentRow!.permissions as string[])
+    : null;
+
+  // O Inter recusa a janela pela metade: 422 OPFDA010 "DATA INICIAL OU DATA
+  // FINAL NÃO INFORMADAS" quando só fromBookingDate viaja. As duas pontas são
+  // obrigatórias, então sem `to` no body o teto é hoje em Brasília — data UTC
+  // adiantaria um dia depois das 21h e viraria data futura pro detentor.
+  const to = janela?.to ? String(janela.to) : hojeBrasilia();
+  const bankFrom = janela?.from ? String(janela.from) : await syncFloor('bank_transactions', userId);
+  const cardFrom = janela?.from ? String(janela.from) : await syncFloor('credit_card_transactions', userId);
+  let bankCount = 0;
+  let cardCount = 0;
+
+  for (const acc of await fetchPaged(consentId, 'accounts/v2/accounts', {}, permissions)) {
+    const accountId = acc?.accountId;
+    if (!accountId) continue;
+
+    const txs = await fetchPaged(
+      consentId,
+      `accounts/v2/accounts/${encodeURIComponent(accountId)}/transactions`,
+      { fromBookingDate: bankFrom, toBookingDate: to },
+      permissions,
+    );
+
+    const rows = txs
+      .filter((t: any) => t?.transactionId)
+      .map((t: any) => ({
+        user_id: userId,
+        provider: 'celcoin',
+        pluggy_account_id: accountId, // coluna herdada = id da conta na origem
+        pluggy_transaction_id: t.transactionId,
+        pluggy_item_id: consentId, // agrupador da conexão = consentimento
+        description: t.transactionName || t.typeAdditionalInfo || null,
+        amount: signedAmount(t),
+        currency_code: t.transactionAmount?.currency || 'BRL',
+        transaction_date: toDateOnly(t.transactionDateTime) || toDateOnly(t.bookingDate),
+        transaction_time: toTimeOnly(t.transactionDateTime),
+        transaction_type: t.type || null,
+        // Open Finance não devolve categoria: categorizar passa a ser nosso.
+        category: null,
+        payment_data: {
+          completedAuthorisedPaymentType: t.completedAuthorisedPaymentType ?? null,
+          creditDebitType: t.creditDebitType ?? null,
+          partiePersonType: t.partiePersonType ?? null,
+          codeISPB: t.codeISPB ?? null,
+        },
+        merchant_name: t.partieName || null,
+        merchant_cnpj: t.partieCnpjCpf || null,
+      }))
+      .filter((r) => r.transaction_date && r.transaction_date >= bankFrom);
+
+    if (rows.length) {
+      const { error } = await ext
+        .from('bank_transactions')
+        .upsert(rows, { onConflict: 'provider,pluggy_transaction_id' });
+      if (error) throw new Error(`upsert bank_transactions: ${error.message}`);
+      bankCount += rows.length;
+    }
+  }
+
+  // Cartão é hierárquico: conta -> fatura -> transações.
+  for (const card of await fetchPaged(consentId, 'credit-cards-accounts/v2/accounts', {}, permissions)) {
+    const cardId = card?.creditCardAccountId;
+    if (!cardId) continue;
+
+    const bills = await fetchPaged(
+      consentId,
+      `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills`,
+      // Data de VENCIMENTO da fatura, não da compra: uma fatura de abril
+      // carrega compras de março. O recorte por data de compra é o filtro
+      // lá embaixo; este só evita puxar fatura à toa.
+      { fromDueDate: cardFrom, toDueDate: to },
+      permissions,
+    );
+
+    for (const bill of bills) {
+      const billId = bill?.billId;
+      if (!billId) continue;
+
+      const txs = await fetchPaged(
+        consentId,
+        `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
+        {},
+        permissions,
+      );
+
+      const rows = txs
+        .filter((t: any) => t?.transactionId)
+        .map((t: any) => ({
+          user_id: userId,
+          provider: 'celcoin',
+          pluggy_account_id: cardId,
+          pluggy_transaction_id: t.transactionId,
+          pluggy_item_id: consentId,
+          description: t.transactionName || null,
+          amount: Math.abs(Number(t.billetedAmount?.amount ?? t.amount?.amount ?? t.brazilianAmount?.amount ?? 0)),
+          currency_code: t.amount?.currency || 'BRL',
+          transaction_date: toDateOnly(t.transactionDateTime) || toDateOnly(t.billPostDate),
+          transaction_time: toTimeOnly(t.transactionDateTime),
+          category: null,
+          payment_data: {
+            billId,
+            transactionType: t.transactionType ?? null,
+            paymentType: t.paymentType ?? null,
+            feeType: t.feeType ?? null,
+            payeeMCC: t.payeeMCC ?? null, // única matéria-prima p/ categorizar cartão
+          },
+          merchant_name: t.transactionName || null,
+          installment_number: t.instalmentNumber ?? null,
+          total_installments: t.totalInstalments ?? null,
+        }))
+        .filter((r) => r.transaction_date && r.transaction_date >= cardFrom);
+
+      if (rows.length) {
+        const { error } = await ext
+          .from('credit_card_transactions')
+          .upsert(rows, { onConflict: 'provider,pluggy_transaction_id' });
+        if (error) throw new Error(`upsert credit_card_transactions: ${error.message}`);
+        cardCount += rows.length;
+      }
+    }
+  }
+
+  await ext
+    .from('celcoin_consents')
+    .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('consent_id', consentId);
+
+  console.log(
+    `[celcoin] sync consent=${consentId}: ${bankCount} bancárias (desde ${bankFrom}), ${cardCount} de cartão (desde ${cardFrom})`,
+  );
+  return {
+    bank_transactions: bankCount,
+    credit_card_transactions: cardCount,
+    // Explícito porque a janela é calculada, não informada: sem isto um sync
+    // que traz 0 linhas é indistinguível de conta sem movimento.
+    janela: { bank_from: bankFrom, card_from: cardFrom, to: to ?? null },
+  };
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -555,6 +773,31 @@ Deno.serve(async (req) => {
 
         const isPJ = cnpj.length === 14;
         console.log(`[celcoin] create_consent brand=${brandId} cpf=${maskDoc(cpf)}${isPJ ? ` cnpj=${maskDoc(cnpj)}` : ''}`);
+
+        // Cada tentativa de link gera um consentimento novo na Celcoin, e o
+        // `request_uri` do PAR dura poucos minutos -- foi assim que 18/08/2026
+        // acumulou SEIS órfãos do mesmo banco em cinco horas. O link antigo
+        // deixa de valer no instante em que este é gerado, então derrubar os
+        // AWAITING anteriores DESTE banco e DESTE usuário é o comportamento
+        // correto, não uma limpeza oportunista. Nunca toca em AUTHORISED.
+        // Best-effort: falhar aqui não pode impedir a conexão nova.
+        if (body.revogar_anteriores !== false) {
+          try {
+            const { data: antigos } = await ext
+              .from('celcoin_consents')
+              .select('consent_id, status')
+              .eq('user_id', userId)
+              .eq('brand_id', brandId);
+            for (const a of antigos || []) {
+              const st = normalizarStatus(a.status);
+              if (st === 'AUTHORISED' || st === 'REVOKED' || st === 'ABANDONED' || !a.consent_id) continue;
+              const rr = await descartar(String(a.consent_id));
+              console.log(`[celcoin] create_consent: anterior ${String(a.consent_id).slice(0, 8)}… -> ${rr.desfecho} (HTTP ${rr.status})`);
+            }
+          } catch (e) {
+            console.warn('[celcoin] falha ao revogar consentimentos anteriores:', e instanceof Error ? e.message : e);
+          }
+        }
 
         const token = await getAdminToken();
         const expirationDateTime = expirationFromMonths(body.expiration_months);
@@ -656,170 +899,88 @@ Deno.serve(async (req) => {
         });
       }
 
-      // Extrato de conta + transações de fatura, gravados com provider='celcoin'.
-      // Mesmas tabelas da Pluggy: a coluna provider é o que deixa as duas conviverem.
       case 'sync_transactions': {
         const consentId = String(body.consent_id || '').trim();
         const userId = String(body.user_id || '').trim();
         if (!consentId || !userId) {
           return json({ success: false, error: 'consent_id e user_id são obrigatórios' }, 400);
         }
+        try {
+          return json({ success: true, ...(await sincronizar(consentId, userId, { from: body.from, to: body.to })) });
+        } catch (e) {
+          if (e instanceof NaoAutorizado) return json({ success: false, error: e.message }, 409);
+          throw e;
+        }
+      }
 
-        const { data: consentRow } = await ext
+      // Percorre TODOS os consentimentos autorizados. É o que o cron chama: um
+      // agendamento não tem como saber quais consentimentos existem, e mandar
+      // consent_id fixo no cron quebraria calado no dia em que ele fosse
+      // renovado. Uma conexão que falha NÃO derruba as outras -- foi assim que
+      // a Pluggy morreu calada por 5 meses, e um lote que aborta no primeiro
+      // erro repete a história.
+      case 'sync_all': {
+        const consentesRes = await ext
           .from('celcoin_consents')
-          .select('permissions, status')
+          .select('consent_id, user_id, status, brand_name')
+          .order('created_at', { ascending: false });
+        if (consentesRes.error) throw new Error(consentesRes.error.message);
+
+        const alvos = (consentesRes.data || []).filter((c) => autorizado(c.status) && c.consent_id && c.user_id);
+        const resultados: any[] = [];
+        let bank = 0;
+        let card = 0;
+
+        for (const c of alvos) {
+          try {
+            const r = await sincronizar(String(c.consent_id), String(c.user_id), { from: body.from, to: body.to });
+            bank += r.bank_transactions;
+            card += r.credit_card_transactions;
+            resultados.push({ consent_id: c.consent_id, brand_name: c.brand_name, ok: true, ...r });
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            console.error(`[celcoin] sync_all: consent=${c.consent_id} falhou: ${msg}`);
+            resultados.push({ consent_id: c.consent_id, brand_name: c.brand_name, ok: false, erro: msg.slice(0, 300) });
+          }
+        }
+
+        const falhas = resultados.filter((r) => !r.ok).length;
+        console.log(
+          `[celcoin] sync_all: ${alvos.length} consentimento(s), ${falhas} falha(s), ${bank} bancárias, ${card} de cartão`,
+        );
+        // success reflete o LOTE. Se alguma conexão falhou, quem monitora tem que
+        // ver isso sem abrir o corpo da resposta.
+        return json({ success: falhas === 0, consentimentos: alvos.length, falhas, bank_transactions: bank, credit_card_transactions: card, resultados });
+      }
+
+      // Revogar é IRREVERSÍVEL na Celcoin. A trava do AUTHORISED existe porque a
+      // tela mostra os consentimentos todos com o mesmo nome de banco, e o
+      // clique errado mataria a conexão que sustenta a conciliação.
+      case 'revoke_consent': {
+        const consentId = String(body.consent_id || '').trim();
+        if (!consentId) return json({ success: false, error: 'consent_id é obrigatório' }, 400);
+
+        const { data: row } = await ext
+          .from('celcoin_consents')
+          .select('status, brand_name')
           .eq('consent_id', consentId)
           .maybeSingle();
 
-        if (consentRow && !autorizado(consentRow.status)) {
+        if (row && autorizado(row.status) && body.force !== true) {
           return json(
             {
               success: false,
-              error: `Consentimento está ${consentRow.status}, não AUTHORISED — a Celcoin não emite rpt_token nesse estado.`,
+              error: 'Este consentimento está AUTHORISED e sustenta a sincronização. Revogar exige force:true.',
             },
             409,
           );
         }
-        const permissions: string[] | null = Array.isArray(consentRow?.permissions)
-          ? (consentRow!.permissions as string[])
-          : null;
 
-        // O Inter recusa a janela pela metade: 422 OPFDA010 "DATA INICIAL OU DATA
-        // FINAL NÃO INFORMADAS" quando só fromBookingDate viaja. As duas pontas são
-        // obrigatórias, então sem `to` no body o teto é hoje em Brasília — data UTC
-        // adiantaria um dia depois das 21h e viraria data futura pro detentor.
-        const to = body.to ? String(body.to) : hojeBrasilia();
-        const bankFrom = body.from ? String(body.from) : await syncFloor('bank_transactions', userId);
-        const cardFrom = body.from ? String(body.from) : await syncFloor('credit_card_transactions', userId);
-        let bankCount = 0;
-        let cardCount = 0;
-
-        for (const acc of await fetchPaged(consentId, 'accounts/v2/accounts', {}, permissions)) {
-          const accountId = acc?.accountId;
-          if (!accountId) continue;
-
-          const txs = await fetchPaged(
-            consentId,
-            `accounts/v2/accounts/${encodeURIComponent(accountId)}/transactions`,
-            { fromBookingDate: bankFrom, toBookingDate: to },
-            permissions,
-          );
-
-          const rows = txs
-            .filter((t: any) => t?.transactionId)
-            .map((t: any) => ({
-              user_id: userId,
-              provider: 'celcoin',
-              pluggy_account_id: accountId, // coluna herdada = id da conta na origem
-              pluggy_transaction_id: t.transactionId,
-              pluggy_item_id: consentId, // agrupador da conexão = consentimento
-              description: t.transactionName || t.typeAdditionalInfo || null,
-              amount: signedAmount(t),
-              currency_code: t.transactionAmount?.currency || 'BRL',
-              transaction_date: toDateOnly(t.transactionDateTime) || toDateOnly(t.bookingDate),
-              transaction_time: toTimeOnly(t.transactionDateTime),
-              transaction_type: t.type || null,
-              // Open Finance não devolve categoria: categorizar passa a ser nosso.
-              category: null,
-              payment_data: {
-                completedAuthorisedPaymentType: t.completedAuthorisedPaymentType ?? null,
-                creditDebitType: t.creditDebitType ?? null,
-                partiePersonType: t.partiePersonType ?? null,
-                codeISPB: t.codeISPB ?? null,
-              },
-              merchant_name: t.partieName || null,
-              merchant_cnpj: t.partieCnpjCpf || null,
-            }))
-            .filter((r) => r.transaction_date && r.transaction_date >= bankFrom);
-
-          if (rows.length) {
-            const { error } = await ext
-              .from('bank_transactions')
-              .upsert(rows, { onConflict: 'provider,pluggy_transaction_id' });
-            if (error) throw new Error(`upsert bank_transactions: ${error.message}`);
-            bankCount += rows.length;
-          }
-        }
-
-        // Cartão é hierárquico: conta -> fatura -> transações.
-        for (const card of await fetchPaged(consentId, 'credit-cards-accounts/v2/accounts', {}, permissions)) {
-          const cardId = card?.creditCardAccountId;
-          if (!cardId) continue;
-
-          const bills = await fetchPaged(
-            consentId,
-            `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills`,
-            // Data de VENCIMENTO da fatura, não da compra: uma fatura de abril
-            // carrega compras de março. O recorte por data de compra é o filtro
-            // lá embaixo; este só evita puxar fatura à toa.
-            { fromDueDate: cardFrom, toDueDate: to },
-            permissions,
-          );
-
-          for (const bill of bills) {
-            const billId = bill?.billId;
-            if (!billId) continue;
-
-            const txs = await fetchPaged(
-              consentId,
-              `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
-              {},
-              permissions,
-            );
-
-            const rows = txs
-              .filter((t: any) => t?.transactionId)
-              .map((t: any) => ({
-                user_id: userId,
-                provider: 'celcoin',
-                pluggy_account_id: cardId,
-                pluggy_transaction_id: t.transactionId,
-                pluggy_item_id: consentId,
-                description: t.transactionName || null,
-                amount: Math.abs(Number(t.billetedAmount?.amount ?? t.amount?.amount ?? t.brazilianAmount?.amount ?? 0)),
-                currency_code: t.amount?.currency || 'BRL',
-                transaction_date: toDateOnly(t.transactionDateTime) || toDateOnly(t.billPostDate),
-                transaction_time: toTimeOnly(t.transactionDateTime),
-                category: null,
-                payment_data: {
-                  billId,
-                  transactionType: t.transactionType ?? null,
-                  paymentType: t.paymentType ?? null,
-                  feeType: t.feeType ?? null,
-                  payeeMCC: t.payeeMCC ?? null, // única matéria-prima p/ categorizar cartão
-                },
-                merchant_name: t.transactionName || null,
-                installment_number: t.instalmentNumber ?? null,
-                total_installments: t.totalInstalments ?? null,
-              }))
-              .filter((r) => r.transaction_date && r.transaction_date >= cardFrom);
-
-            if (rows.length) {
-              const { error } = await ext
-                .from('credit_card_transactions')
-                .upsert(rows, { onConflict: 'provider,pluggy_transaction_id' });
-              if (error) throw new Error(`upsert credit_card_transactions: ${error.message}`);
-              cardCount += rows.length;
-            }
-          }
-        }
-
-        await ext
-          .from('celcoin_consents')
-          .update({ last_sync_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq('consent_id', consentId);
-
-        console.log(
-          `[celcoin] sync consent=${consentId}: ${bankCount} bancárias (desde ${bankFrom}), ${cardCount} de cartão (desde ${cardFrom})`,
-        );
-        return json({
-          success: true,
-          bank_transactions: bankCount,
-          credit_card_transactions: cardCount,
-          // Explícito porque a janela é calculada, não informada: sem isto um sync
-          // que traz 0 linhas é indistinguível de conta sem movimento.
-          janela: { bank_from: bankFrom, card_from: cardFrom, to: to ?? null },
-        });
+        const r = await descartar(consentId);
+        console.log(`[celcoin] revoke_consent ${consentId.slice(0, 8)}… -> ${r.desfecho} (HTTP ${r.status})`);
+        // Sempre 200: o descarte local aconteceu nos dois desfechos. Quem chama
+        // precisa do `desfecho` para dizer a verdade na tela, não de um erro.
+        return json({ success: true, desfecho: r.desfecho, status: r.status });
       }
 
       case 'list_connections': {
@@ -845,6 +1006,8 @@ Deno.serve(async (req) => {
               'list_resources',
               'list_accounts',
               'sync_transactions',
+              'sync_all',
+              'revoke_consent',
               'list_connections',
             ],
           },

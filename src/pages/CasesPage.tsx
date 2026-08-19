@@ -1452,13 +1452,17 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                 </TabsContent>
               </Tabs>
 
-              {/* Chat interno da equipe do caso — visível junto do conteúdo, fora das abas. */}
+              {/* Chat interno da equipe do caso — visível junto do conteúdo, fora
+                  das abas. É a conversa do caso inteiro: as atividades e os
+                  processos dele mostram exatamente estas mensagens.
+                  ?highlightMsg= sem ?openProcess= é menção do caso: abre aqui. */}
               <EntityTeamChatDock
                 entityType="case"
                 entityId={legalCase.id}
                 entityName={legalCase.case_number || legalCase.title || 'Caso'}
                 className="mt-3"
                 height={260}
+                highlightMessageId={openProcessId ? null : highlightMsgId}
               />
 
               <AddProcessDialog

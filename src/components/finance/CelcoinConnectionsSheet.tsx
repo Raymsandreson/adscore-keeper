@@ -14,11 +14,11 @@
 // noutro navegador, dias depois, e sincronizar quando der.
 //
 // Abre em Sheet e não navega para lugar nenhum (princípio de interface).
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, RefreshCw, ShieldCheck, Landmark, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, ShieldCheck, Landmark, AlertTriangle, Trash2, ChevronDown } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -27,6 +27,8 @@ import {
   useCelcoinOpenFinance,
   consentHealth,
   isConsentAuthorised,
+  isConsentDiscarded,
+  isConsentAbandoned,
   normalizeConsentStatus,
   type CelcoinConsent,
 } from '@/hooks/useCelcoinOpenFinance';
@@ -49,10 +51,18 @@ function quando(iso: string | null): string {
 
 export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
   const { user } = useAuth();
-  const { consents, loading, fetchConsents, checkConsent, syncTransactions } = useCelcoinOpenFinance();
+  const { consents, loading, fetchConsents, checkConsent, discardConsent, syncTransactions } = useCelcoinOpenFinance();
   // Trava por consentimento, não global: sincronizar uma conta não pode
   // desabilitar o botão das outras.
   const [ocupado, setOcupado] = useState<string | null>(null);
+  const [verDescartados, setVerDescartados] = useState(false);
+
+  // Um consentimento não autorizado NÃO caduca sozinho — medido em 19/08/2026:
+  // seis órfãos do mesmo banco continuavam AWAITING 21h depois, com expiração
+  // marcada para 2027. Sem separar, a tela vira uma pilha de cartões idênticos
+  // chamados "Banco Inter PJ" e o que funciona some no meio.
+  const ativos = useMemo(() => consents.filter((c) => !isConsentDiscarded(c.status)), [consents]);
+  const descartados = useMemo(() => consents.filter((c) => isConsentDiscarded(c.status)), [consents]);
 
   const recarregar = useCallback(() => {
     if (user?.id) fetchConsents(user.id);
@@ -77,6 +87,30 @@ export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
     }
   };
 
+  const descartar = async (c: CelcoinConsent) => {
+    const nome = c.custom_name || c.brand_name || c.brand_id;
+    if (
+      !window.confirm(
+        `Descartar este consentimento de ${nome}?\n\nEle sai desta tela e não volta. Se a Celcoin permitir, é revogado de vez; se não permitir — o que acontece com consentimento que nunca foi autorizado — ele continua existindo lá, inerte, até a data de expiração.`,
+      )
+    )
+      return;
+    setOcupado(c.consent_id);
+    try {
+      const r = await discardConsent(c.consent_id);
+      toast.success(
+        r?.desfecho === 'REVOKED'
+          ? 'Consentimento revogado na Celcoin.'
+          : 'Consentimento descartado. A Celcoin não revoga consentimento não autorizado, então ele segue lá até expirar — mas sai daqui.',
+      );
+      recarregar();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Falha ao descartar.');
+    } finally {
+      setOcupado(null);
+    }
+  };
+
   const sincronizar = async (c: CelcoinConsent) => {
     if (!user?.id) return;
     setOcupado(c.consent_id);
@@ -94,6 +128,69 @@ export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
     } finally {
       setOcupado(null);
     }
+  };
+
+  const cartao = (c: CelcoinConsent) => {
+    const saude = consentHealth(c);
+    const autorizado = isConsentAuthorised(c.status);
+    const descartado = isConsentDiscarded(c.status);
+    const travado = ocupado === c.consent_id;
+
+    return (
+      <div key={c.consent_id} className="rounded-lg border p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate font-medium">{c.custom_name || c.brand_name || c.brand_id}</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Última sincronização: {quando(c.last_sync_at)}
+            </p>
+            <p className="text-xs text-muted-foreground">Expira em: {quando(c.expires_at)}</p>
+            {/* Dois consentimentos do mesmo banco são indistinguíveis pelo nome.
+                O prefixo do id é a única coisa na tela que os separa. */}
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground/70">{c.consent_id.slice(0, 10)}…</p>
+            {isConsentAbandoned(c.status) && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Descartado aqui. Segue existindo na Celcoin, sem acesso a nada, até {quando(c.expires_at)}.
+              </p>
+            )}
+          </div>
+          <Badge variant="secondary" className={NIVEL_ESTILO[saude.level]}>
+            {saude.level === 'ok' ? (
+              <ShieldCheck className="mr-1 h-3 w-3" />
+            ) : (
+              <AlertTriangle className="mr-1 h-3 w-3" />
+            )}
+            {saude.label}
+          </Badge>
+        </div>
+
+        {!descartado && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => verificar(c)} disabled={travado}>
+              {travado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+              Verificar autorização
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => sincronizar(c)}
+              disabled={travado || !autorizado}
+              title={autorizado ? undefined : 'A Celcoin só libera leitura com o consentimento AUTHORISED.'}
+            >
+              {travado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+              Sincronizar agora
+            </Button>
+            {/* Só nos não autorizados: o backend recusa revogar um AUTHORISED sem
+                force, e oferecer o botão que vai falhar é pior que não oferecer. */}
+            {!autorizado && (
+              <Button size="sm" variant="ghost" onClick={() => descartar(c)} disabled={travado} className="text-muted-foreground">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Descartar
+              </Button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -123,49 +220,21 @@ export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
             </p>
           )}
 
-          {consents.map((c) => {
-            const saude = consentHealth(c);
-            const autorizado = isConsentAuthorised(c.status);
-            const travado = ocupado === c.consent_id;
+          {ativos.map((c) => cartao(c))}
 
-            return (
-              <div key={c.consent_id} className="rounded-lg border p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{c.custom_name || c.brand_name || c.brand_id}</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Última sincronização: {quando(c.last_sync_at)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Expira em: {quando(c.expires_at)}</p>
-                  </div>
-                  <Badge variant="secondary" className={NIVEL_ESTILO[saude.level]}>
-                    {saude.level === 'ok' ? (
-                      <ShieldCheck className="mr-1 h-3 w-3" />
-                    ) : (
-                      <AlertTriangle className="mr-1 h-3 w-3" />
-                    )}
-                    {saude.label}
-                  </Badge>
-                </div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => verificar(c)} disabled={travado}>
-                    {travado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
-                    Verificar autorização
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => sincronizar(c)}
-                    disabled={travado || !autorizado}
-                    title={autorizado ? undefined : 'A Celcoin só libera leitura com o consentimento AUTHORISED.'}
-                  >
-                    {travado ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    Sincronizar agora
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
+          {descartados.length > 0 && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setVerDescartados((v) => !v)}
+                className="flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              >
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${verDescartados ? '' : '-rotate-90'}`} />
+                {descartados.length} consentimento(s) descartado(s)
+              </button>
+              {verDescartados && <div className="mt-3 space-y-3 opacity-60">{descartados.map((c) => cartao(c))}</div>}
+            </div>
+          )}
         </div>
       </SheetContent>
     </Sheet>
