@@ -2,7 +2,9 @@
 // `jm_lancamentos` (conferidas no Externo em 18/08/2026), com as variações de
 // caixa e acento que a planilha produziu ("oriz"/"Oriz", "INDENIZAÇÃO").
 import { describe, it, expect } from 'vitest';
-import { classificarLancamento, estagioDoLancamento } from '@/lib/lancamentoCategorias';
+import {
+  classificarLancamento, estagioDoLancamento, categoriaCanonica, naturezaDoLancamento,
+} from '@/lib/lancamentoCategorias';
 
 describe('classificarLancamento', () => {
   it('honorário a receber é recebível do escritório, não caixa', () => {
@@ -164,5 +166,93 @@ describe('estagioDoLancamento', () => {
     const contratado = classificarLancamento({ categoria: 'Honorários Adiantados (FIDC)', previsto: true });
     expect(contratado.adiantado).toBe(true);
     expect(contratado.previsto).toBe(true);
+  });
+});
+
+// ── Organização da tabela de lançamentos (19/08/2026) ────────────────────────
+// Os casos abaixo são categorias REAIS da planilha, com a grafia que elas têm
+// no banco. Nada aqui é hipotético.
+describe('categoria canônica', () => {
+  it('as cinco grafias de folha variável viram uma só', () => {
+    for (const v of ['FOLHA DE PAGAMENTO Variável', 'FOLHA DE PAGAMENTO variavel',
+                     'FOLHA DE PAGAMENTO VARIÁVEL', 'FOLHA DE PAGAMENTO VARIAVEL',
+                     'FOLHA DE PAGAMENTO VIARIAVEL', 'VARIAVEL', 'PESOAL VARIAVEL']) {
+      expect(categoriaCanonica(v)).toBe('FOLHA DE PAGAMENTO VARIAVEL');
+    }
+    expect(categoriaCanonica('FOLHA DE PAGAMENTO FIXO')).toBe('FOLHA DE PAGAMENTO FIXO');
+  });
+
+  it('"Idenização" é erro de digitação, não categoria nova', () => {
+    expect(categoriaCanonica('Idenização')).toBe('INDENIZACAO');
+    expect(categoriaCanonica('INDENIZAÇÃO')).toBe('INDENIZACAO');
+    expect(categoriaCanonica('Indenização')).toBe('INDENIZACAO');
+  });
+
+  it('a receber não se mistura com recebido', () => {
+    // São estágios diferentes do MESMO lançamento — colapsar os dois apagaria a
+    // diferença entre "vai entrar" e "entrou".
+    expect(categoriaCanonica('Indenização a receber')).toBe('INDENIZACAO A RECEBER');
+    expect(categoriaCanonica('Honorários a receber')).toBe('HONORARIOS A RECEBER');
+    expect(categoriaCanonica('Honorários')).toBe('HONORARIOS');
+  });
+
+  it('as três grafias do honorário de parceiro viram uma', () => {
+    for (const v of ['Honorários Adv Parceiro', 'Honorários adv parceiro',
+                     'Honorários advogado parceiro']) {
+      expect(categoriaCanonica(v)).toBe('HONORARIOS ADV PARCEIRO');
+    }
+  });
+
+  it('"Parceria" NÃO é colapsada em honorário de parceiro', () => {
+    // Pode ser rateio de sociedade em vez de repasse de honorário. São 5 linhas
+    // e o dado não decide sozinho — juntar por parecer seria adivinhar.
+    expect(categoriaCanonica('Parceria')).toBe('PARCERIA');
+    expect(categoriaCanonica('Parceira')).toBe('PARCEIRA');
+  });
+
+  it('adiantamento do FIDC não vira "honorários"', () => {
+    expect(categoriaCanonica('Honorários Adiantados oriz')).toBe('HONORARIOS ADIANTADOS FIDC');
+    expect(categoriaCanonica('Honorários Adiantados Oriz')).toBe('HONORARIOS ADIANTADOS FIDC');
+  });
+
+  it('categoria vazia é dito, não escondido', () => {
+    expect(categoriaCanonica(null)).toBe('SEM CATEGORIA');
+    expect(categoriaCanonica('  ')).toBe('SEM CATEGORIA');
+  });
+});
+
+describe('natureza do lançamento', () => {
+  it('linha com processo é sempre de processo, qualquer que seja a categoria', () => {
+    // Uma custa lançada num processo é do processo mesmo que a categoria diga
+    // "Outros" — o vínculo vence o texto.
+    expect(naturezaDoLancamento({ categoria: 'Outros', temProcesso: true })).toBe('processo');
+    expect(naturezaDoLancamento({ categoria: 'Movimentação conta', temProcesso: true })).toBe('processo');
+  });
+
+  it('sem processo, a categoria decide', () => {
+    expect(naturezaDoLancamento({ categoria: 'Indenização' })).toBe('processo');
+    expect(naturezaDoLancamento({ categoria: 'Honorários a receber' })).toBe('processo');
+    expect(naturezaDoLancamento({ categoria: 'Custas Processuais' })).toBe('processo');
+  });
+
+  it('separa a vida pessoal do custo de operar', () => {
+    for (const v of ['Supermercado', 'Restaurante', 'Farra', 'Noivado', 'Uber',
+                     'Roupa', 'Viagem', 'AJUDA FAMILIA', 'IPVA HILLUX 2026',
+                     'saúde(plano de saúde, consultas, remédios e etc)']) {
+      expect(naturezaDoLancamento({ categoria: v })).toBe('pessoal');
+    }
+  });
+
+  it('folha, aluguel e imposto são o escritório funcionando', () => {
+    for (const v of ['FOLHA DE PAGAMENTO FIXO', 'Aluguel', 'Imposto', 'Contador',
+                     'AWS- Amazon Web services', 'Movimentação conta', 'Empréstimo Bancário']) {
+      expect(naturezaDoLancamento({ categoria: v })).toBe('escritorio');
+    }
+  });
+
+  it('categoria desconhecida cai no escritório, não em processo', () => {
+    // Errar para o lado do escritório é seguro: infla custo, não infla carteira.
+    expect(naturezaDoLancamento({ categoria: 'Bred' })).toBe('escritorio');
+    expect(naturezaDoLancamento({ categoria: null })).toBe('escritorio');
   });
 });
