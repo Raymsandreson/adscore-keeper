@@ -302,6 +302,62 @@ export function extrairAdvogadosPoloAtivo(
 }
 
 // -----------------------------------------------------------------------------
+// Leitura da resposta da API
+// -----------------------------------------------------------------------------
+
+/**
+ * A v2 devolve a coleção ora em `items`, ora em `data`, ora como array cru.
+ * Normaliza para array — qualquer outra coisa vira lista vazia, nunca throw.
+ */
+export function itensDeResposta<T = unknown>(data: unknown): T[] {
+  if (Array.isArray(data)) return data as T[];
+  if (data && typeof data === 'object') {
+    const d = data as Record<string, unknown>;
+    if (Array.isArray(d.items)) return d.items as T[];
+    if (Array.isArray(d.data)) return d.data as T[];
+  }
+  return [];
+}
+
+/**
+ * Devolve o `links.next` da resposta APENAS se ele apontar para a própria API.
+ *
+ * Por que a checagem existe: o link de paginação vem de dentro do corpo da
+ * resposta, e o loop de paginação faz fetch nele com o Authorization header
+ * junto. Seguir URL arbitrária vinda de resposta é SSRF — e, pior aqui,
+ * vazaria o token do Escavador para o host que a resposta mandasse.
+ *
+ * Precisa casar o PREFIXO DE ORIGEM, não `startsWith` de string solta:
+ * "https://api.escavador.com.evil.test/..." começa com a base se a comparação
+ * for ingênua. Compara-se origin + início do path.
+ */
+export function proximaPaginaSegura(
+  data: unknown,
+  baseEsperada: string,
+): string | null {
+  const links = (data as { links?: { next?: unknown } } | null | undefined)?.links;
+  const next = links?.next;
+  if (!next || typeof next !== 'string') return null;
+
+  let urlNext: URL;
+  let urlBase: URL;
+  try {
+    urlNext = new URL(next);
+    urlBase = new URL(baseEsperada);
+  } catch {
+    return null;
+  }
+
+  if (urlNext.origin !== urlBase.origin) return null;
+  if (urlNext.protocol !== 'https:') return null;
+  // O path da próxima página tem que continuar dentro da base (ex.:
+  // /api/v2/advogado/processos), não pular para outra rota da mesma casa.
+  if (!urlNext.pathname.startsWith(urlBase.pathname)) return null;
+
+  return urlNext.toString();
+}
+
+// -----------------------------------------------------------------------------
 // Filtro final
 // -----------------------------------------------------------------------------
 

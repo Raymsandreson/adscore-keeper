@@ -7,6 +7,8 @@ import {
   valorCausaDoProcesso,
   extrairAdvogadosPoloAtivo,
   filtrarCandidatos,
+  itensDeResposta,
+  proximaPaginaSegura,
 } from '../../../supabase/functions/_shared/prospeccaoAcidenteTrabalho';
 
 describe('normalizar', () => {
@@ -189,6 +191,72 @@ describe('extrairAdvogadosPoloAtivo', () => {
   it('lista vazia/null não quebra', () => {
     expect(extrairAdvogadosPoloAtivo(null)).toEqual([]);
     expect(extrairAdvogadosPoloAtivo([])).toEqual([]);
+  });
+});
+
+describe('itensDeResposta', () => {
+  it('aceita os tres formatos que a v2 mistura', () => {
+    expect(itensDeResposta({ items: [1, 2] })).toEqual([1, 2]);
+    expect(itensDeResposta({ data: [3] })).toEqual([3]);
+    expect(itensDeResposta([4, 5])).toEqual([4, 5]);
+  });
+
+  it('lixo vira lista vazia, nunca throw', () => {
+    expect(itensDeResposta(null)).toEqual([]);
+    expect(itensDeResposta(undefined)).toEqual([]);
+    expect(itensDeResposta({})).toEqual([]);
+    expect(itensDeResposta('texto')).toEqual([]);
+    expect(itensDeResposta({ items: 'nao e array' })).toEqual([]);
+  });
+});
+
+describe('proximaPaginaSegura', () => {
+  const BASE = 'https://api.escavador.com/api/v2';
+
+  it('aceita link legitimo da propria API', () => {
+    const next = `${BASE}/advogado/processos?cursor=abc&li=99`;
+    expect(proximaPaginaSegura({ links: { next } }, BASE)).toBe(next);
+  });
+
+  // O ataque que esta funcao existe pra barrar: o link de paginacao vem DENTRO
+  // da resposta, e o loop faz fetch nele mandando o Authorization junto. Seguir
+  // host arbitrario vazaria o token do Escavador.
+  it('recusa host parecido que so PREFIXA a base', () => {
+    expect(
+      proximaPaginaSegura(
+        { links: { next: 'https://api.escavador.com.evil.test/api/v2/x' } },
+        BASE,
+      ),
+    ).toBeNull();
+  });
+
+  it('recusa host totalmente outro', () => {
+    expect(
+      proximaPaginaSegura({ links: { next: 'https://evil.test/api/v2/x' } }, BASE),
+    ).toBeNull();
+  });
+
+  it('recusa downgrade para http', () => {
+    expect(
+      proximaPaginaSegura({ links: { next: 'http://api.escavador.com/api/v2/x' } }, BASE),
+    ).toBeNull();
+  });
+
+  it('recusa pulo para outra rota fora da base', () => {
+    expect(
+      proximaPaginaSegura({ links: { next: 'https://api.escavador.com/api/v1/busca' } }, BASE),
+    ).toBeNull();
+  });
+
+  it('ausencia de next encerra a paginacao', () => {
+    expect(proximaPaginaSegura({}, BASE)).toBeNull();
+    expect(proximaPaginaSegura({ links: {} }, BASE)).toBeNull();
+    expect(proximaPaginaSegura({ links: { next: null } }, BASE)).toBeNull();
+    expect(proximaPaginaSegura(null, BASE)).toBeNull();
+  });
+
+  it('url malformada nao quebra o loop', () => {
+    expect(proximaPaginaSegura({ links: { next: 'nao-e-url' } }, BASE)).toBeNull();
   });
 });
 
