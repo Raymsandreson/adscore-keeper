@@ -122,6 +122,45 @@ mais preciso que por texto, e é o que o DataJud provavelmente exige.
 
 ## 5. O que já existe e está verde
 
+### Peças
+
+| Arquivo | O que faz |
+|---|---|
+| `_shared/prospeccaoAcidenteTrabalho.ts` | Lógica pura: filtro de assunto, parse de valor, advogados do polo ativo, leitura da resposta da API |
+| `src/lib/__tests__/prospeccaoAcidenteTrabalho.test.ts` | 39 testes cobrindo o acima |
+| `migrations-external/20260820120000_...sql` | Tabelas `prospect_*` no Supabase **Externo** |
+| `functions/prospectar-acidente-trabalho/index.ts` | Varredura: `varrer_oab`, `varrer_cnpj`, `resolver_advogados` |
+| `scripts/sondar-datajud.mjs` | Mede o schema do DataJud (ver §3) |
+
+### Schema (Externo)
+
+`prospect_processos` (o recorte) → `prospect_processo_advogado` (N:N) →
+`prospect_advogados` (contato + estado de LGPD) → `prospect_disparos` (log).
+
+Travas verificadas contra um Postgres 16 real: `simulado` repete à vontade mas
+`enviado` é único por advogado+canal (dry-run não queima a vaga, reenvio real é
+barrado **no banco**, não só no código); OAB duplicada barrada; valor ≤ 0 e
+origem fora da lista barradas; `updated_at` avança sozinho; opt-out por token
+funciona sem login e zera a contagem de elegíveis.
+
+### Proteções de custo na varredura
+
+`dry_run` é o **padrão** — só grava quando vier explicitamente `false`.
+`max_consultas` tem teto rígido de 10 páginas; `resolver_advogados`, de 50 CNJs
+por invocação. A resposta separa `truncado_pelo_teto`, para que "parou no teto"
+nunca seja lido como "varreu tudo". Exige admin, porque gasta cota paga.
+
+### SSRF no `links.next`
+
+O link de paginação vem **dentro** da resposta e o loop faz `fetch` nele
+levando o `Authorization` junto — seguir host arbitrário vazaria o token do
+Escavador. `proximaPaginaSegura()` compara *origin + prefixo de path*, não
+`startsWith` de string solta: `https://api.escavador.com.evil.test/...` passa
+por um `startsWith` ingênuo. Coberto por teste, junto com downgrade para http e
+pulo para outra rota da mesma casa.
+
+### Detalhe do módulo puro
+
 `supabase/functions/_shared/prospeccaoAcidenteTrabalho.ts` — módulo puro, sem
 I/O, testado por `src/lib/__tests__/prospeccaoAcidenteTrabalho.test.ts`:
 
