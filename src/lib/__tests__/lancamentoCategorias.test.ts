@@ -4,6 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   classificarLancamento, estagioDoLancamento, categoriaCanonica, naturezaDoLancamento,
+  mesclarCategorias,
 } from '@/lib/lancamentoCategorias';
 
 describe('classificarLancamento', () => {
@@ -157,6 +158,24 @@ describe('estagioDoLancamento', () => {
   it('previsto explícito também vale contra o texto da planilha', () => {
     expect(classificarLancamento({ categoria: 'Honorários a receber', previsto: false }).previsto).toBe(false);
     expect(classificarLancamento({ categoria: 'Cota do Cliente', previsto: true }).previsto).toBe(true);
+  });
+
+  it('categoria usada uma vez entra na lista, sem duplicar grafia', () => {
+    const lista = mesclarCategorias(
+      ['Honorários Contratuais', 'Honorários Sucumbenciais', 'Perícia', 'Outros'],
+      ['PERICIA', 'Honorários Periciais', null, '', '  ', 'honorarios periciais'],
+    );
+    // Contratual e sucumbencial são DUAS: `categoriaCanonica` juntaria as duas em
+    // "HONORARIOS" e uma sumiria da lista sem aviso.
+    expect(lista).toContain('Honorários Contratuais');
+    expect(lista).toContain('Honorários Sucumbenciais');
+    // As curadas continuam na frente e na grafia delas.
+    expect(lista.slice(0, 4)).toEqual(['Honorários Contratuais', 'Honorários Sucumbenciais', 'Perícia', 'Outros']);
+    // "PERICIA" é a mesma "Perícia": não entra de novo.
+    expect(lista.filter(c => c.toUpperCase().startsWith('PER'))).toEqual(['Perícia']);
+    // A nova entra uma vez só, na primeira grafia vista.
+    expect(lista.filter(c => c.toLowerCase().includes('pericia'))).toEqual(['Honorários Periciais']);
+    expect(lista).toHaveLength(5);
   });
 
   it('adiantamento do FIDC segue caixa por padrão, e cede ao previsto explícito', () => {

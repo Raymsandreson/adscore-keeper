@@ -812,3 +812,57 @@ hoje ou passado = já entrou) e passa a respeitar a escolha depois do primeiro
 clique — exceto data futura, que continua forçando previsto, porque ninguém
 recebeu amanhã. E quando a combinação for previsto + data passada, o formulário
 avisa em vermelho **antes** de salvar que aquilo vai nascer vencido.
+
+---
+
+## Comprovante e IA no lançamento (20/08/2026)
+
+### Anexar é o caminho curto
+
+O comprovante fica no bucket `invoices` (Storage do Cloud, o mesmo da nota
+fiscal do financeiro da empresa); `lead_financials.receipt_url` guarda só a URL.
+Ele abre no `MediaLightbox`, nunca em aba nova — regra de interface do projeto.
+
+Anexou uma **imagem**, a IA lê e preenche valor, data, tipo, descrição e
+categoria de uma vez. PDF sobe igual, mas não é lido: `image_url` do Gemini
+espera imagem, e a tela diz isso em vez de fingir que tentou.
+
+Se o upload falhar, o **lançamento é salvo assim mesmo**, com aviso. Perder o
+registro do dinheiro porque o Storage recusou o arquivo seria trocar um problema
+pequeno por um grande.
+
+### `sugerir-lancamento`
+
+Uma edge function para os dois usos, porque a pergunta é a mesma ("que lançamento
+é este?") e dois prompts separados divergiriam com o tempo:
+
+| entrada | devolve |
+|---|---|
+| `{ descricao }` | a categoria sugerida |
+| `{ comprovante }` | valor, data, tipo, descrição e categoria |
+
+Modelo: `google/gemini-2.5-flash` via `_shared/gemini.ts`, que já converte
+`image_url` com data URL em `inlineData`.
+
+**A regra do prompt é nunca inventar.** Comprovante borrado devolve campo nulo e
+explica em `observacao`. Valor errado num extrato financeiro é pior que campo
+vazio: o vazio a pessoa preenche, o errado ela não percebe. A resposta é
+**sugestão** — tudo editável, e quem salva é o humano.
+
+O servidor ainda **sanea**: `categoria` só passa se estiver na lista enviada.
+Modelo que devolve grafia diferente não vira categoria nova sem querer — foi
+assim que a planilha antiga acumulou 81 categorias para 68 conceitos.
+
+### Categoria nova sem tabela nova
+
+`mesclarCategorias` monta a lista do seletor: as curadas primeiro, depois toda
+categoria já usada nos lançamentos daquele lugar, depois a que a IA propôs e a
+pessoa aceitou. **Usar uma vez é criar** — não existe tela de administrar
+categoria, e não precisa existir.
+
+O dedupe é por caixa e acento, **não** por `categoriaCanonica`. Essa é uma
+armadilha real e foi pega antes de subir: `categoriaCanonica` foi feita para a
+PLANILHA, onde contratual × sucumbencial vem da coluna PESSOA (HC/HS) e não da
+categoria — ela colapsa "Honorários Contratuais" e "Honorários Sucumbenciais" na
+mesma chave `HONORARIOS`. Deduplicar por ela apagaria uma das duas do seletor,
+em silêncio. Há teste cravando isso.

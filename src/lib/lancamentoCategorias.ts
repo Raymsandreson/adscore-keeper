@@ -140,6 +140,38 @@ export const CATEGORIAS_LANCAMENTO = [
 ] as const;
 
 /**
+ * A lista que o formulário oferece: as categorias CURADAS primeiro, e depois as
+ * que já foram usadas de fato nos lançamentos. É assim que uma categoria nascida
+ * de sugestão da IA passa a existir para todo mundo — usar uma vez é criar —
+ * sem tabela nova e sem ninguém administrar lista.
+ *
+ * Dedupe por caixa e acento — "Perícia" e "PERICIA" são a mesma coisa, e foi por
+ * não fazer isso que a planilha antiga chegou a 81 categorias para 68 conceitos.
+ * Quando as duas grafias existem, ganha a CURADA.
+ *
+ * NÃO usa `categoriaCanonica` de propósito, e isso é uma armadilha real: aquela
+ * função foi feita para a PLANILHA, onde contratual × sucumbencial vem da coluna
+ * PESSOA (HC/HS) e não da categoria — por isso ela colapsa "Honorários
+ * Contratuais" e "Honorários Sucumbenciais" na mesma chave `HONORARIOS`. Aqui
+ * são duas categorias distintas do formulário: deduplicar por ela apagaria uma
+ * das duas da lista, silenciosamente.
+ */
+export function mesclarCategorias(
+  curadas: readonly string[],
+  usadas: readonly (string | null | undefined)[],
+): string[] {
+  const porChave = new Map<string, string>();
+  for (const c of curadas) porChave.set(normalizar(c), c);
+  for (const u of usadas) {
+    const nome = (u ?? '').trim();
+    if (!nome) continue;
+    const chave = normalizar(nome);
+    if (chave && !porChave.has(chave)) porChave.set(chave, nome);
+  }
+  return [...porChave.values()];
+}
+
+/**
  * Classifica uma linha de lançamento. Serve tanto para `jm_lancamentos` (onde
  * `pessoa` traz HC/HS) quanto para o lançamento manual do app (onde a própria
  * categoria já diz contratual/sucumbencial e `pessoa` não existe).

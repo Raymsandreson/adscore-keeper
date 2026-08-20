@@ -18,12 +18,15 @@ import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake,
-  CalendarClock, CheckCircle2, Repeat,
+  CalendarClock, CheckCircle2, Repeat, Paperclip, Sparkles, Loader2, X,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
+// Imagem e PDF NUNCA abrem página nova (regra de interface do projeto):
+// o comprovante abre no lightbox, por cima da ficha.
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import {
-  classificarLancamento, CATEGORIAS_LANCAMENTO, ESPECIE_LABEL,
+  classificarLancamento, CATEGORIAS_LANCAMENTO, ESPECIE_LABEL, mesclarCategorias,
   type TitularLancamento, type EspecieLancamento,
 } from '@/lib/lancamentoCategorias';
 import {
@@ -40,6 +43,31 @@ import {
 
 /** Chave em `system_settings` (Cloud) com o deságio padrão, em % ao mês. */
 const CHAVE_DESAGIO = 'desagio_mes_padrao';
+
+/** Bucket do Storage (Cloud) onde o comprovante fica — o mesmo da nota fiscal. */
+const BUCKET_COMPROVANTE = 'invoices';
+
+/**
+ * Acima disto a imagem não vai para a IA. Não é limite de banco: é que
+ * comprovante de celular passa fácil de 5 MB e a chamada estoura antes de
+ * responder. Melhor dizer "reduza" que deixar girando até dar erro feio.
+ */
+const LIMITE_COMPROVANTE_MB = 4;
+
+/** O que a edge function `sugerir-lancamento` devolve. Tudo pode ser null. */
+interface SugestaoIa {
+  valor: number | null;
+  data: string | null;
+  tipo: 'entrada' | 'saida' | null;
+  descricao: string | null;
+  categoria: string | null;
+  /** Nome proposto quando NENHUMA categoria existente serve. */
+  categoriaNova: string | null;
+  pagador: string | null;
+  beneficiario: string | null;
+  confianca: 'alta' | 'media' | 'baixa';
+  observacao: string | null;
+}
 
 export interface EntityFinancialEntry {
   id: string;
@@ -62,6 +90,8 @@ export interface EntityFinancialEntry {
   contact_id: string | null;
   parte_id: string | null;
   parte_nome: string | null;
+  /** Comprovante no bucket `invoices`. null = lançamento sem prova. */
+  receipt_url: string | null;
   /**
    * Quando entrou/saiu DE FATO. null = ainda é recebível — "a receber" enquanto
    * o vencimento não chega, VENCIDO depois dele. Data que passa não é prova de
@@ -250,6 +280,8 @@ export function EntityFinancialsPanel({
     entry_date: format(new Date(), 'yyyy-MM-dd'),
     /** 'parte:<parte_id>' ou 'contato:<contact_id>'. Vazio = não informado. */
     parte: '',
+    /** URL do comprovante já gravado (edição) ou recém-enviado. */
+    receipt_url: '',
     /** true depois que a pessoa clica no par Já entrou/Previsto — ver o onChange da data. */
     settledTocado: false,
     /** false = ainda não entrou; a linha nasce como recebível. */
@@ -276,6 +308,15 @@ export function EntityFinancialsPanel({
 
   /** Contatos do lead — quem responde "de quem veio o dinheiro" fora do processo. */
   const [contatos, setContatos] = useState<{ id: string; nome: string }[]>([]);
+
+  // Comprovante em mãos, antes de salvar: o arquivo (para subir) e a data URL
+  // (para a IA ler e para a prévia). Um sem o outro não serve.
+  const [comprovante, setComprovante] = useState<{ arquivo: File; dataUrl: string } | null>(null);
+  const [pensando, setPensando] = useState<'comprovante' | 'categoria' | null>(null);
+  const [sugestao, setSugestao] = useState<SugestaoIa | null>(null);
+  /** Categoria que a IA propôs criar e a pessoa aceitou. Vira opção na lista. */
+  const [categoriaCriada, setCategoriaCriada] = useState<string | null>(null);
+  const [verComprovante, setVerComprovante] = useState<string | null>(null);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -710,6 +751,7 @@ export function EntityFinancialsPanel({
       category: '',
       entry_date: hoje,
       parte: '',
+      receipt_url: '',
       settled: true,
       settledTocado: false,
       settled_date: '',
@@ -720,6 +762,9 @@ export function EntityFinancialsPanel({
       payment_method: '',
       notes: '',
     });
+    setComprovante(null);
+    setSugestao(null);
+    setCategoriaCriada(null);
   };
 
   /**
@@ -777,6 +822,17 @@ export function EntityFinancialsPanel({
     return out;
   }, [partesValor, contatos]);
 
+  /**
+   * A lista do seletor: as curadas + toda categoria já usada aqui + a que a IA
+   * propôs e a pessoa aceitou. **Usar uma vez é criar** — não existe tela de
+   * administrar categoria, e não precisa existir. `form.category` entra junto
+   * para o Select nunca aparecer vazio ao editar linha de categoria antiga.
+   */
+  const categoriasDisponiveis = useMemo(
+    () => mesclarCategorias(CATEGORIES, [...entries.map(e => e.category), categoriaCriada, form.category]),
+    [entries, categoriaCriada, form.category],
+  );
+
   /** Decompõe 'parte:<id>' / 'contato:<id>' nas três colunas do banco. */
   const vinculoDaParte = (chave: string) => {
     const sep = chave.indexOf(':');
@@ -789,6 +845,91 @@ export function EntityFinancialsPanel({
       parte_id: tipo === 'parte' ? id : null,
       parte_nome: nome,
     };
+  };
+
+  const lerArquivo = (f: File) => new Promise<string>((ok, erro) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result));
+    r.onerror = () => erro(new Error('não deu para ler o arquivo'));
+    r.readAsDataURL(f);
+  });
+
+  /**
+   * Preenche o formulário com o que a IA leu.
+   *
+   * Vindo de COMPROVANTE ela sobrescreve: o documento é a fonte, e é para isso
+   * que a pessoa anexou. Vindo só da descrição, ela apenas completa o que está
+   * vazio — ninguém quer ver o valor que digitou sumir por causa de um palpite.
+   * Campo que a IA não leu volta null e não encosta em nada.
+   */
+  const aplicarSugestao = (s: SugestaoIa, doComprovante: boolean) => {
+    setForm(p => ({
+      ...p,
+      amount: s.valor != null && (doComprovante || !p.amount) ? String(s.valor) : p.amount,
+      entry_date: s.data && doComprovante ? s.data : p.entry_date,
+      entry_type: s.tipo && doComprovante ? s.tipo : p.entry_type,
+      description: s.descricao && (doComprovante || !p.description) ? s.descricao : p.description,
+      category: s.categoria || p.category,
+      // Comprovante é prova de que o dinheiro andou: nasce baixado, na data dele.
+      settled: doComprovante && !!s.data ? s.data <= hoje : p.settled,
+      settledTocado: doComprovante ? true : p.settledTocado,
+    }));
+  };
+
+  const chamarIa = async (origem: 'comprovante' | 'categoria', dataUrl?: string) => {
+    setPensando(origem);
+    setSugestao(null);
+    try {
+      const { data, error } = await authClient.functions.invoke('sugerir-lancamento', {
+        body: {
+          descricao: form.description || null,
+          comprovante: dataUrl || null,
+          categorias: categoriasDisponiveis,
+          contexto: processNumber || contextLabel || null,
+        },
+      });
+      if (error) throw error;
+      const s = data as SugestaoIa & { error?: string };
+      if (s?.error) throw new Error(s.error);
+      aplicarSugestao(s, origem === 'comprovante');
+      setSugestao(s);
+    } catch (e) {
+      toast.error('A IA não conseguiu: ' + (e instanceof Error ? e.message : 'erro'));
+    } finally {
+      setPensando(null);
+    }
+  };
+
+  const anexarComprovante = async (arquivo: File | null) => {
+    if (!arquivo) { setComprovante(null); return; }
+    if (arquivo.size > LIMITE_COMPROVANTE_MB * 1024 * 1024) {
+      toast.error('Comprovante acima de ' + LIMITE_COMPROVANTE_MB + ' MB — reduza antes de anexar');
+      return;
+    }
+    try {
+      const dataUrl = await lerArquivo(arquivo);
+      setComprovante({ arquivo, dataUrl });
+      // PDF a IA não lê por aqui: o Gemini recebe a imagem inline. O arquivo sobe
+      // do mesmo jeito — só não vem preenchido sozinho, e a tela diz isso.
+      if (arquivo.type.startsWith('image/')) await chamarIa('comprovante', dataUrl);
+      else toast.info('PDF anexado. A leitura automática só funciona com imagem — preencha à mão.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao ler o arquivo');
+    }
+  };
+
+  /** Sobe o comprovante e devolve a URL. Falhar aqui NÃO pode custar o lançamento. */
+  const subirComprovante = async (): Promise<string | null> => {
+    if (!comprovante) return form.receipt_url || null;
+    const ext = comprovante.arquivo.name.split('.').pop() || 'jpg';
+    const caminho = 'lancamentos/' + crypto.randomUUID() + '.' + ext;
+    const { error } = await authClient.storage.from(BUCKET_COMPROVANTE)
+      .upload(caminho, comprovante.arquivo, { upsert: true });
+    if (error) {
+      toast.warning('O comprovante não subiu (' + error.message + '). O lançamento vai ser salvo assim mesmo.');
+      return form.receipt_url || null;
+    }
+    return authClient.storage.from(BUCKET_COMPROVANTE).getPublicUrl(caminho).data.publicUrl;
   };
 
   const handleSave = async () => {
@@ -829,6 +970,7 @@ export function EntityFinancialsPanel({
       // lead e processo), valem os ids das props.
       const vinculos = {
         ...vinculoDaParte(form.parte),
+        receipt_url: await subirComprovante(),
         lead_id: (hasTargets ? target?.leadId : leadId) || null,
         case_id: (hasTargets ? target?.caseId : caseId) || null,
         process_id: (hasTargets ? target?.processId : processId) || null,
@@ -946,12 +1088,15 @@ export function EntityFinancialsPanel({
   const openEdit = (entry: EntityFinancialEntry) => {
     setEditingEntry(entry);
     setTargetKey(targetKeyOf(entry));
+    setComprovante(null);
+    setSugestao(null);
     setForm({
       entry_type: entry.entry_type,
       amount: String(entry.amount),
       description: entry.description || '',
       category: entry.category || '',
       entry_date: entry.entry_date,
+      receipt_url: entry.receipt_url || '',
       parte: entry.parte_id ? 'parte:' + entry.parte_id
         : entry.contact_id ? 'contato:' + entry.contact_id
         : '',
@@ -1428,6 +1573,15 @@ export function EntityFinancialsPanel({
                     ? 'sem valor'
                     : `${linha.direcao === 'entrada' ? '+' : linha.direcao === 'saida' ? '-' : ''}${formatCurrency(linha.valor)}`}
                 </span>
+                {linha.entry?.receipt_url && (
+                  <Button
+                    variant="ghost" size="icon" className="h-6 w-6"
+                    title="Ver comprovante"
+                    onClick={() => setVerComprovante(linha.entry?.receipt_url || null)}
+                  >
+                    <Paperclip className="h-3 w-3" />
+                  </Button>
+                )}
                 {linha.entry && (
                   <>
                     {/* Baixar é o MESMO lançamento mudando de estado — nunca um
@@ -1457,6 +1611,8 @@ export function EntityFinancialsPanel({
         </div>
       </ScrollArea>
 
+      <MediaLightbox url={verComprovante} title="Comprovante" onClose={() => setVerComprovante(null)} />
+
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-md max-h-[90vh]">
@@ -1482,6 +1638,59 @@ export function EntityFinancialsPanel({
                 Registrando em: <span className="font-medium text-foreground">{targets[0].label}</span>
               </p>
             ))}
+
+            {/* COMPROVANTE PRIMEIRO, porque é o caminho curto: anexou, a IA lê a
+                imagem e preenche valor, data, tipo, descrição e categoria de uma
+                vez. O que ela não conseguir ler fica em BRANCO — nunca chutado.
+                Tudo continua editável: quem salva é a pessoa. */}
+            <div className="rounded border p-2 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs flex items-center gap-1">
+                  <Paperclip className="h-3.5 w-3.5" /> Comprovante
+                </Label>
+                {(comprovante || form.receipt_url) && (
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 text-[11px]"
+                    onClick={() => { setComprovante(null); setForm(p => ({ ...p, receipt_url: '' })); }}
+                  >
+                    <X className="h-3 w-3 mr-1" /> tirar
+                  </Button>
+                )}
+              </div>
+
+              {comprovante ? (
+                <div className="flex items-center gap-2">
+                  {comprovante.arquivo.type.startsWith('image/') && (
+                    <img src={comprovante.dataUrl} alt="comprovante" className="h-14 w-14 rounded border object-cover" />
+                  )}
+                  <div className="min-w-0 text-[11px]">
+                    <p className="truncate font-medium">{comprovante.arquivo.name}</p>
+                    <p className="text-muted-foreground">{(comprovante.arquivo.size / 1024).toFixed(0)} KB · sobe ao salvar</p>
+                  </div>
+                </div>
+              ) : form.receipt_url ? (
+                <button
+                  type="button"
+                  onClick={() => setVerComprovante(form.receipt_url)}
+                  className="text-[11px] text-primary underline underline-offset-2"
+                >
+                  ver o comprovante anexado
+                </button>
+              ) : (
+                <Input
+                  type="file"
+                  accept="image/*,.pdf"
+                  className="text-xs"
+                  onChange={e => void anexarComprovante(e.target.files?.[0] || null)}
+                />
+              )}
+
+              {pensando === 'comprovante' && (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> lendo o comprovante...
+                </p>
+              )}
+            </div>
 
             <div className="flex gap-2">
               <Button
@@ -1592,7 +1801,7 @@ export function EntityFinancialsPanel({
               <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {categoriasDisponiveis.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -1624,9 +1833,61 @@ export function EntityFinancialsPanel({
             )}
 
             <div>
-              <Label className="text-xs">Descrição *</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Descrição *</Label>
+                {/* Escreveu o que foi, a IA diz em que categoria isso cai — e,
+                    quando nenhuma das existentes serve, propõe uma nova. */}
+                <Button
+                  type="button" variant="ghost" size="sm" className="h-6 text-[11px]"
+                  disabled={!form.description.trim() || pensando !== null}
+                  onClick={() => void chamarIa('categoria')}
+                >
+                  {pensando === 'categoria'
+                    ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    : <Sparkles className="h-3 w-3 mr-1" />}
+                  sugerir categoria
+                </Button>
+              </div>
               <Input placeholder="Ex: pago 3ª parcela do acordo" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
             </div>
+
+            {/* O que a IA leu, dito na cara. Confiança baixa e campo que ela não
+                conseguiu ler são informação — não detalhe para esconder. */}
+            {sugestao && (
+              <div className="rounded border border-violet-200 bg-violet-50/50 p-2 space-y-1 text-[11px]">
+                <p className="font-medium text-violet-900 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> A IA preencheu o que conseguiu ler
+                  <span className="font-normal text-muted-foreground">· confiança {sugestao.confianca}</span>
+                </p>
+                {sugestao.observacao && <p className="text-muted-foreground">{sugestao.observacao}</p>}
+                {(sugestao.pagador || sugestao.beneficiario) && (
+                  <p className="text-muted-foreground">
+                    {sugestao.pagador ? 'de ' + sugestao.pagador : ''}
+                    {sugestao.pagador && sugestao.beneficiario ? ' · ' : ''}
+                    {sugestao.beneficiario ? 'para ' + sugestao.beneficiario : ''}
+                    {' — confira se bate com a parte escolhida acima.'}
+                  </p>
+                )}
+                {sugestao.categoriaNova && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-muted-foreground">
+                      Nenhuma categoria existente serve. Propõe: <strong>{sugestao.categoriaNova}</strong>
+                    </span>
+                    <Button
+                      type="button" size="sm" variant="outline" className="h-6 flex-shrink-0 text-[11px]"
+                      onClick={() => {
+                        const nova = sugestao.categoriaNova as string;
+                        setCategoriaCriada(nova);
+                        setForm(p => ({ ...p, category: nova }));
+                      }}
+                    >
+                      criar e usar
+                    </Button>
+                  </div>
+                )}
+                <p className="text-muted-foreground">Confira antes de salvar — sugestão não é lançamento.</p>
+              </div>
+            )}
             <div>
               <Label className="text-xs">Observações</Label>
               <Textarea rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
