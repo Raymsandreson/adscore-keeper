@@ -16,7 +16,10 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
-import { Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake } from 'lucide-react';
+import {
+  Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake,
+  CalendarClock, CheckCircle2, Repeat,
+} from 'lucide-react';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
 import {
@@ -30,6 +33,13 @@ import {
 import {
   reguaDoProcesso, competenciaDe, atualizarValor, REGUA_LABEL, PORQUE_LABEL,
 } from '@/lib/atualizacaoMonetaria';
+import {
+  gerarParcelas, antecipar, totalAntecipacao, PERIODICIDADE_LABEL,
+  type Parcela, type Periodicidade, type ModoParcelamento,
+} from '@/lib/antecipacao';
+
+/** Chave em `system_settings` (Cloud) com o deságio padrão, em % ao mês. */
+const CHAVE_DESAGIO = 'desagio_mes_padrao';
 
 export interface EntityFinancialEntry {
   id: string;
@@ -41,7 +51,18 @@ export interface EntityFinancialEntry {
   amount: number;
   description: string | null;
   category: string | null;
+  /** VENCIMENTO: quando o dinheiro está previsto para entrar ou sair. */
   entry_date: string;
+  /**
+   * Quando entrou/saiu DE FATO. null = ainda é recebível — "a receber" enquanto
+   * o vencimento não chega, VENCIDO depois dele. Data que passa não é prova de
+   * pagamento: a linha só vira caixa quando alguém baixa.
+   */
+  settled_at: string | null;
+  /** Parcelas do mesmo plano compartilham o grupo. null = lançamento avulso. */
+  parcela_grupo: string | null;
+  parcela_n: number | null;
+  parcela_de: number | null;
   payment_method: string | null;
   notes: string | null;
   created_at: string;
@@ -167,6 +188,12 @@ interface LinhaExtrato {
   adiantado: boolean;
   /** Valor fixado sem data de pagamento (a data da linha é a da decisão). */
   semCronograma?: boolean;
+  /** Previsto cujo vencimento já passou e ninguém baixou. Segue fora do caixa. */
+  vencido?: boolean;
+  /** Vencimento da linha ainda em aberto — é o prazo que a antecipação desconta. */
+  vencimento?: string | null;
+  /** "3/12" quando a linha faz parte de um plano de parcelamento. */
+  parcela?: { n: number; de: number } | null;
   /** null = a importação não trouxe o valor (mostrar "sem valor", nunca R$ 0). */
   valor: number | null;
   origem: 'manual' | 'planilha' | 'parcela';
@@ -210,10 +237,29 @@ export function EntityFinancialsPanel({
     amount: '',
     description: '',
     category: '',
+    /** Vencimento. */
     entry_date: format(new Date(), 'yyyy-MM-dd'),
+    /** false = ainda não entrou; a linha nasce como recebível. */
+    settled: true,
+    /** Só na edição: quando pagaram, se for diferente do vencimento. */
+    settled_date: '',
+    parcelar: false,
+    parcelas: '2',
+    periodicidade: 'mensal' as Periodicidade,
+    modo: 'dividir' as ModoParcelamento,
     payment_method: '',
     notes: '',
   });
+
+  // Deságio da antecipação, em % ao mês. Mora em `system_settings` (Cloud) para
+  // valer para a equipe toda — taxa que só existe neste navegador vira proposta
+  // diferente para cada pessoa que abre a tela.
+  const [taxaMes, setTaxaMes] = useState('');
+  const [taxaSalva, setTaxaSalva] = useState('');
+  const [salvandoTaxa, setSalvandoTaxa] = useState(false);
+
+  /** Hoje congelado no render: `extrato` e antecipação precisam do MESMO dia. */
+  const hoje = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -353,6 +399,11 @@ export function EntityFinancialsPanel({
         direcao: 'entrada',
         previsto: !recebida,
         adiantado: false,
+        // Parcela prevista tem data e valor: dá para antecipar. O que ela NÃO tem
+        // é abertura cliente × honorário — por isso `titular` fica null e a
+        // antecipação a mostra como bruto da parte, sem dizer de quem é.
+        vencimento: recebida ? null : texto(p.data_prevista),
+        vencido: !recebida && !!p.data_prevista && String(p.data_prevista) < hoje,
         valor: valor == null ? null : Number(valor),
         origem: 'parcela',
       });
@@ -395,9 +446,26 @@ export function EntityFinancialsPanel({
       });
     }
     setJmLinhas(linhas);
-  }, [scope, processNumber, carregarCoeficientes]);
+  }, [scope, processNumber, carregarCoeficientes, hoje]);
 
   useEffect(() => { void fetchJm(); }, [fetchJm]);
+
+  // Deságio padrão da equipe. Falha em silêncio de propósito: sem taxa a tela
+  // apenas deixa de mostrar o valor presente, e nada mais depende dela.
+  useEffect(() => {
+    let vivo = true;
+    void (async () => {
+      const { data } = await authClient
+        .from('system_settings')
+        .select('value')
+        .eq('key', CHAVE_DESAGIO)
+        .maybeSingle();
+      if (!vivo || !data?.value) return;
+      setTaxaMes(data.value);
+      setTaxaSalva(data.value);
+    })();
+    return () => { vivo = false; };
+  }, []);
 
   /** Só entram destinos que de fato têm vínculo — atividade sem processo não oferece "Processo". */
   const targets = useMemo(
@@ -416,19 +484,38 @@ export function EntityFinancialsPanel({
     return match ? match.key : (targets[0]?.key || '');
   }, [targets]);
 
+  /**
+   * Cards das abas de lead/caso/atividade. Só conta o que entrou ou saiu DE
+   * FATO (`settled_at` preenchido) — dinheiro combinado não é dinheiro em caixa,
+   * e a regra vale aqui igual à do extrato do processo. O previsto aparece na
+   * linha abaixo dos cards, separado.
+   */
   const totals = useMemo(() => {
-    const receitas = entries.filter(e => e.entry_type === 'entrada').reduce((s, e) => s + Number(e.amount), 0);
-    const despesas = entries.filter(e => e.entry_type === 'saida').reduce((s, e) => s + Number(e.amount), 0);
-    return { receitas, despesas, lucro: receitas - despesas };
+    const pagos = entries.filter(e => !!e.settled_at);
+    const abertos = entries.filter(e => !e.settled_at);
+    const soma = (lista: EntityFinancialEntry[], tipo: 'entrada' | 'saida') =>
+      lista.filter(e => e.entry_type === tipo).reduce((s, e) => s + Number(e.amount), 0);
+    const receitas = soma(pagos, 'entrada');
+    const despesas = soma(pagos, 'saida');
+    return {
+      receitas, despesas, lucro: receitas - despesas,
+      aReceber: soma(abertos, 'entrada'),
+      aPagar: soma(abertos, 'saida'),
+    };
   }, [entries]);
 
   /** Extrato completo do processo: manuais + jurimetria, mais novo primeiro. */
   const extrato = useMemo<LinhaExtrato[]>(() => {
     const manuais: LinhaExtrato[] = entries.map(e => {
-      const cls = classificarLancamento({ categoria: e.category });
+      // Quem diz se já é caixa é `settled_at` — NÃO o texto da categoria. Nenhuma
+      // categoria do formulário tem "a receber" no nome, então antes disto um
+      // honorário com vencimento futuro entrava como dinheiro no bolso.
+      const previsto = !e.settled_at;
+      const cls = classificarLancamento({ categoria: e.category, previsto });
       return {
         key: `mn-${e.id}`,
-        data: e.entry_date,
+        // Baixado mostra o dia em que entrou; em aberto, o vencimento.
+        data: e.settled_at || e.entry_date,
         descricao: e.description || e.category || 'Sem descrição',
         detalhe: scope !== 'activity' && e.activity_id ? 'via atividade' : null,
         categoria: e.category,
@@ -437,6 +524,9 @@ export function EntityFinancialsPanel({
         direcao: e.entry_type === 'entrada' ? 'entrada' as const : 'saida' as const,
         previsto: cls.previsto,
         adiantado: cls.adiantado,
+        vencido: previsto && e.entry_date < hoje,
+        vencimento: previsto ? e.entry_date : null,
+        parcela: e.parcela_n && e.parcela_de ? { n: e.parcela_n, de: e.parcela_de } : null,
         valor: Number(e.amount),
         origem: 'manual' as const,
         entry: e,
@@ -444,7 +534,7 @@ export function EntityFinancialsPanel({
     });
     return [...manuais, ...jmLinhas]
       .sort((a, b) => (b.data || '').localeCompare(a.data || ''));
-  }, [entries, jmLinhas, scope]);
+  }, [entries, jmLinhas, scope, hoje]);
 
   /**
    * Totais do extrato, nas réguas que a pergunta "cadê o dinheiro deste
@@ -452,7 +542,9 @@ export function EntityFinancialsPanel({
    *  - contratual/sucumbencial: honorário do escritório JÁ recebido;
    *  - cliente: a cota da parte já paga a ela;
    *  - despesas: saídas do escritório (repasse ao cliente NÃO é despesa);
-   *  - aReceber*: o que está previsto para data futura — nunca somado ao caixa;
+   *  - aReceber*: o que está previsto e ainda não entrou — nunca somado ao caixa;
+   *  - aPagar: saída lançada e ainda não paga. Não é "a receber": contar
+   *    despesa em aberto como direito nosso inverte o sinal do dinheiro;
    *  - adiantado: antecipação do FIDC (Oriz). É caixa, mas NÃO é o processo
    *    pagando — o processo continua tramitando, então fica fora do recebido;
    *  - brutoParcelas: parcela de jm_pagamentos sem abertura cliente×honorário.
@@ -462,12 +554,26 @@ export function EntityFinancialsPanel({
     let contratual = 0, sucumbencial = 0, outrosHonorarios = 0, cliente = 0;
     let despesas = 0, adiantado = 0, parceiro = 0, brutoParcelas = 0, semValor = 0;
     let aReceberEscritorio = 0, aReceberCliente = 0;
+    let vencidoEscritorio = 0, vencidoCliente = 0, aPagar = 0, aPagarVencido = 0;
     for (const l of extrato) {
       if (l.valor == null) { semValor += 1; continue; }
       if (l.previsto) {
         if (l.origem === 'parcela') continue; // parcela prevista já aparece na linha
+        // Saída em aberto é A PAGAR. Cair no "a receber" faria a conta de luz do
+        // processo parecer dinheiro entrando.
+        if (l.direcao === 'saida') {
+          aPagar += l.valor;
+          if (l.vencido) aPagarVencido += l.valor;
+          continue;
+        }
         if (l.titular === 'cliente') aReceberCliente += l.valor;
         else if (l.titular === 'escritorio') aReceberEscritorio += l.valor;
+        // Vencido continua DENTRO do a receber — é o mesmo direito, só atrasado.
+        // Sai destacado para não desaparecer no meio do total.
+        if (l.vencido) {
+          if (l.titular === 'cliente') vencidoCliente += l.valor;
+          else if (l.titular === 'escritorio') vencidoEscritorio += l.valor;
+        }
         continue;
       }
       if (l.adiantado) { adiantado += l.valor; continue; }
@@ -490,9 +596,38 @@ export function EntityFinancialsPanel({
     return {
       contratual, sucumbencial, outrosHonorarios, escritorio, cliente, despesas,
       resultado: escritorio - despesas,
-      aReceberEscritorio, aReceberCliente, adiantado, parceiro, brutoParcelas, semValor,
+      aReceberEscritorio, aReceberCliente, vencidoEscritorio, vencidoCliente,
+      aPagar, aPagarVencido, adiantado, parceiro, brutoParcelas, semValor,
     };
   }, [extrato]);
+
+  /**
+   * O que ainda está em aberto e PODE ser antecipado, já com a conta do valor
+   * presente feita. Ficam de fora: saída (não se antecipa o que se deve),
+   * linha sem valor importado e condenação sem cronograma — deságio compra
+   * TEMPO, e sem vencimento não há prazo a comprar.
+   */
+  const recebiveis = useMemo(() => {
+    const taxa = Number(String(taxaMes).replace(',', '.')) || 0;
+    return extrato
+      .filter(l => l.previsto && l.direcao !== 'saida' && l.valor != null && !!l.vencimento && !l.semCronograma)
+      .map(l => ({
+        linha: l,
+        conta: antecipar({ valorFuturo: l.valor as number, vencimento: l.vencimento as string, taxaMes: taxa, hoje }),
+      }))
+      .sort((a, b) => (a.linha.vencimento || '').localeCompare(b.linha.vencimento || ''));
+  }, [extrato, taxaMes, hoje]);
+
+  /**
+   * Separado por TITULAR porque a oferta é diferente em cada caso: o honorário
+   * o escritório vende ao fundo, a cota o cliente adianta conosco, e a parcela
+   * bruta ainda não sabe quanto é de cada um.
+   */
+  const antecipacaoTotais = useMemo(() => ({
+    escritorio: totalAntecipacao(recebiveis.filter(r => r.linha.titular === 'escritorio').map(r => r.conta)),
+    cliente: totalAntecipacao(recebiveis.filter(r => r.linha.titular === 'cliente').map(r => r.conta)),
+    bruto: totalAntecipacao(recebiveis.filter(r => r.linha.titular === null).map(r => r.conta)),
+  }), [recebiveis]);
 
   /**
    * Quanto o processo VALE, por parte (Tab. Aux). Não é caixa e não entra em
@@ -540,11 +675,54 @@ export function EntityFinancialsPanel({
       amount: '',
       description: '',
       category: '',
-      entry_date: format(new Date(), 'yyyy-MM-dd'),
+      entry_date: hoje,
+      settled: true,
+      settled_date: '',
+      parcelar: false,
+      parcelas: '2',
+      periodicidade: 'mensal',
+      modo: 'dividir',
       payment_method: '',
       notes: '',
     });
   };
+
+  /**
+   * As parcelas que o plano atual geraria, para CONFERIR antes de salvar. Valor
+   * pequeno demais para dividir aparece como erro aqui, e não como um punhado de
+   * linhas de R$ 0,00 depois de gravado.
+   */
+  const previaParcelas = useMemo<{ parcelas: Parcela[] | null; erro: string | null }>(() => {
+    if (!form.parcelar) return { parcelas: null, erro: null };
+    const valor = parseFloat(form.amount);
+    const n = Number(form.parcelas);
+    if (!Number.isFinite(valor) || valor <= 0) return { parcelas: null, erro: null };
+    if (!Number.isInteger(n) || n < 2) return { parcelas: null, erro: 'Parcelas: use um número inteiro de 2 a 360' };
+    if (n > 360) return { parcelas: null, erro: 'No máximo 360 parcelas' };
+    try {
+      return {
+        parcelas: gerarParcelas({
+          valor, parcelas: n, periodicidade: form.periodicidade,
+          primeiraData: form.entry_date, modo: form.modo,
+        }),
+        erro: null,
+      };
+    } catch (e) {
+      return { parcelas: null, erro: e instanceof Error ? e.message : 'Não deu para montar as parcelas' };
+    }
+  }, [form.parcelar, form.amount, form.parcelas, form.periodicidade, form.entry_date, form.modo]);
+
+  /** Prévia enxuta: as três primeiras, a última e a soma — o que se confere de olho. */
+  const previaResumo = useMemo(() => {
+    const ps = previaParcelas.parcelas;
+    if (!ps) return null;
+    return {
+      inicio: ps.slice(0, 3),
+      ultima: ps.length > 3 ? ps[ps.length - 1] : null,
+      ocultas: Math.max(0, ps.length - 4),
+      total: ps.reduce((s, p) => s + p.valor, 0),
+    };
+  }, [previaParcelas]);
 
   const handleSave = async () => {
     if (!form.amount || parseFloat(form.amount) <= 0) {
@@ -555,43 +733,86 @@ export function EntityFinancialsPanel({
       toast.error('Escolha onde registrar');
       return;
     }
+    // Dinheiro não entra antes da hora. O botão já se protege quando a data muda;
+    // esta trava pega o caminho da edição, onde as duas datas são digitáveis.
+    const dataBaixa = form.settled_date || form.entry_date;
+    if (form.settled && dataBaixa > hoje) {
+      toast.error('Pagamento em data futura não existe — marque como previsto');
+      return;
+    }
+    if (form.parcelar && previaParcelas.erro) {
+      toast.error(previaParcelas.erro);
+      return;
+    }
 
     setSaving(true);
     try {
       // Com destino escolhido, gravam-se os vínculos DELE — uma despesa atribuída
       // ao lead não deve aparecer no financeiro do processo. Sem destino (abas de
       // lead e processo), valem os ids das props.
-      const payload = {
+      const vinculos = {
         lead_id: (hasTargets ? target?.leadId : leadId) || null,
         case_id: (hasTargets ? target?.caseId : caseId) || null,
         process_id: (hasTargets ? target?.processId : processId) || null,
         activity_id: activityId || null,
         entry_type: form.entry_type,
-        amount: parseFloat(form.amount),
         description: form.description || null,
         category: form.category || null,
-        entry_date: form.entry_date,
         payment_method: form.payment_method || null,
         notes: form.notes || null,
       };
 
       await ensureExternalSession().catch(() => {});
+      let mensagem = editingEntry ? 'Registro atualizado' : 'Registro adicionado';
 
       if (editingEntry) {
-        const { error } = await db.from('lead_financials' as any).update(payload).eq('id', editingEntry.id);
+        const { error } = await db.from('lead_financials' as any).update({
+          ...vinculos,
+          amount: parseFloat(form.amount),
+          entry_date: form.entry_date,
+          settled_at: form.settled ? dataBaixa : null,
+        }).eq('id', editingEntry.id);
         if (error) throw error;
       } else {
         // O usuário autentica no Cloud; `created_by` referencia o auth do Externo.
         const { data: { user } } = await authClient.auth.getUser();
         const createdBy = await remapToExternal(user?.id).catch(() => null);
-        const { error } = await db.from('lead_financials' as any).insert({ ...payload, created_by: createdBy });
+        // Um acordo em 12x nasce como 12 linhas amarradas pelo mesmo grupo: cada
+        // parcela vence e é baixada por si, e uma atrasar não contamina as outras.
+        const plano = form.parcelar ? previaParcelas.parcelas : null;
+        const grupo = plano ? crypto.randomUUID() : null;
+        const linhas = plano
+          ? plano.map(p => ({
+              ...vinculos,
+              created_by: createdBy,
+              amount: p.valor,
+              entry_date: p.data,
+              // Só a parcela cuja data já chegou pode nascer baixada; as futuras
+              // ninguém pagou ainda, por definição.
+              settled_at: form.settled && p.data <= hoje ? p.data : null,
+              parcela_grupo: grupo,
+              parcela_n: p.n,
+              parcela_de: p.de,
+            }))
+          : [{
+              ...vinculos,
+              created_by: createdBy,
+              amount: parseFloat(form.amount),
+              entry_date: form.entry_date,
+              settled_at: form.settled ? dataBaixa : null,
+              parcela_grupo: null,
+              parcela_n: null,
+              parcela_de: null,
+            }];
+        const { error } = await db.from('lead_financials' as any).insert(linhas);
         if (error) throw error;
+        if (plano) mensagem = plano.length + ' parcelas criadas';
       }
 
       // Lançamento gravado → conta o tempo no cronômetro (guarda-chuva do dia).
       void trackFinanceEntry();
 
-      toast.success(editingEntry ? 'Registro atualizado' : 'Registro adicionado');
+      toast.success(mensagem);
       setDialogOpen(false);
       setEditingEntry(null);
       resetForm();
@@ -601,6 +822,39 @@ export function EntityFinancialsPanel({
     } finally {
       setSaving(false);
     }
+  };
+
+  /**
+   * Baixa o recebível: o MESMO lançamento muda de estado, nunca nasce outro.
+   * Lançar um "recebido" novo ao lado do "a receber" contaria o dinheiro duas
+   * vezes — é a regra do vocabulário (src/lib/lancamentoCategorias.ts).
+   */
+  const baixar = async (entry: EntityFinancialEntry) => {
+    await ensureExternalSession().catch(() => {});
+    const { error } = await db.from('lead_financials' as any)
+      .update({ settled_at: hoje })
+      .eq('id', entry.id);
+    if (error) { toast.error('Erro ao baixar: ' + error.message); return; }
+    toast.success(entry.entry_type === 'entrada' ? 'Recebimento registrado' : 'Pagamento registrado');
+    fetchEntries();
+  };
+
+  /** Deságio padrão da equipe. Fica no Cloud (`system_settings`), não no navegador. */
+  const salvarTaxa = async () => {
+    const n = Number(String(taxaMes).replace(',', '.'));
+    if (!Number.isFinite(n) || n < 0) { toast.error('Taxa inválida'); return; }
+    setSalvandoTaxa(true);
+    const { error } = await authClient.from('system_settings').upsert({
+      key: CHAVE_DESAGIO,
+      value: String(n),
+      description: 'Deságio padrão da antecipação de recebível, em % ao mês.',
+      updated_at: new Date().toISOString(),
+    });
+    setSalvandoTaxa(false);
+    if (error) { toast.error('Não salvou o padrão: ' + error.message); return; }
+    setTaxaMes(String(n));
+    setTaxaSalva(String(n));
+    toast.success('Deságio padrão salvo para a equipe');
   };
 
   const handleDelete = async (id: string) => {
@@ -620,6 +874,14 @@ export function EntityFinancialsPanel({
       description: entry.description || '',
       category: entry.category || '',
       entry_date: entry.entry_date,
+      settled: !!entry.settled_at,
+      settled_date: entry.settled_at || '',
+      // Replanejar o parcelamento de um lançamento que já existe criaria linhas
+      // soltas do grupo original — para isso, apaga-se o plano e refaz.
+      parcelar: false,
+      parcelas: '2',
+      periodicidade: 'mensal',
+      modo: 'dividir',
       payment_method: entry.payment_method || '',
       notes: entry.notes || '',
     });
@@ -831,6 +1093,12 @@ export function EntityFinancialsPanel({
                 <p className="text-sm font-bold text-amber-600">
                   {formatCurrency(totaisProcesso.aReceberEscritorio + totaisProcesso.aReceberCliente)}
                 </p>
+                {/* De quem é o recebível decide quem pode antecipar: honorário o
+                    escritório vende ao fundo, cota o cliente adianta conosco. */}
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  {formatCurrency(totaisProcesso.aReceberEscritorio)} escritório ·{' '}
+                  {formatCurrency(totaisProcesso.aReceberCliente)} cliente
+                </p>
               </CardContent>
             </Card>
             <Card className={totaisProcesso.resultado >= 0 ? 'border-blue-200 bg-blue-50/50' : 'border-amber-200 bg-amber-50/50'}>
@@ -849,6 +1117,22 @@ export function EntityFinancialsPanel({
                 {formatCurrency(totaisProcesso.aReceberEscritorio)} do escritório e{' '}
                 {formatCurrency(totaisProcesso.aReceberCliente)} do cliente. Quando a parcela é paga,
                 a linha muda de "a receber" para recebida — é o mesmo lançamento, não um novo.
+              </p>
+            )}
+            {(totaisProcesso.vencidoEscritorio + totaisProcesso.vencidoCliente) > 0 && (
+              <p className="text-red-700">
+                {formatCurrency(totaisProcesso.vencidoEscritorio + totaisProcesso.vencidoCliente)} já
+                venceram e ninguém baixou. Continuam como direito, fora do caixa — data que passa não
+                é prova de pagamento. Baixe pelo ✓ na linha quando o dinheiro entrar.
+              </p>
+            )}
+            {totaisProcesso.aPagar > 0 && (
+              <p className="text-red-700">
+                {formatCurrency(totaisProcesso.aPagar)} em saída lançada e ainda não paga
+                {totaisProcesso.aPagarVencido > 0
+                  ? ' (' + formatCurrency(totaisProcesso.aPagarVencido) + ' já vencida)'
+                  : ''}
+                {' '}— não abate o resultado enquanto não sair da conta.
               </p>
             )}
             {totaisProcesso.adiantado > 0 && (
@@ -880,6 +1164,98 @@ export function EntityFinancialsPanel({
               <p>{totaisProcesso.semValor} lançamento(s) sem valor importado não somam em nada.</p>
             )}
           </div>
+
+          {/* ANTECIPAR — transforma "R$ X em 6 meses" em "R$ Y hoje". Serve aos
+              dois lados da mesma parcela: o honorário que o escritório pode
+              vender ao fundo e a cota que o cliente pode adiantar conosco. */}
+          {recebiveis.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50/40 p-3 space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-xs font-semibold text-amber-900 flex items-center gap-1">
+                  <CalendarClock className="h-3.5 w-3.5" /> Antecipar o que está a receber
+                </p>
+                <span className="text-[10px] text-muted-foreground">{recebiveis.length} em aberto</span>
+              </div>
+
+              <div className="flex items-end gap-2">
+                <div className="w-28">
+                  <Label className="text-[10px]">Deságio (% ao mês)</Label>
+                  <Input
+                    type="number" step="0.01" min="0" placeholder="ex: 3"
+                    value={taxaMes}
+                    onChange={e => setTaxaMes(e.target.value)}
+                    className="h-8"
+                  />
+                </div>
+                <Button
+                  size="sm" variant="outline" className="h-8"
+                  disabled={salvandoTaxa || !taxaMes || taxaMes === taxaSalva}
+                  onClick={salvarTaxa}
+                >
+                  {salvandoTaxa ? 'Salvando...' : 'Salvar como padrão'}
+                </Button>
+              </div>
+
+              {!Number(String(taxaMes).replace(',', '.')) ? (
+                <p className="text-[11px] text-muted-foreground">
+                  Informe o deságio para ver quanto cada recebível vale hoje.
+                </p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ['Do cliente', antecipacaoTotais.cliente, 'text-sky-700'],
+                      ['Do escritório', antecipacaoTotais.escritorio, 'text-green-700'],
+                      ['Bruto da parte', antecipacaoTotais.bruto, 'text-foreground'],
+                    ] as const).filter(([, t]) => t.valorFuturo > 0).map(([rotulo, t, cor]) => (
+                      <div key={rotulo} className="rounded border bg-background/60 p-2 text-center">
+                        <p className="text-[10px] text-muted-foreground">{rotulo}</p>
+                        <p className={'text-sm font-bold ' + cor}>{formatCurrency(t.valorPresente)}</p>
+                        <p className="text-[10px] text-muted-foreground leading-tight">
+                          hoje, de {formatCurrency(t.valorFuturo)}
+                        </p>
+                        <p className="text-[10px] text-red-600 leading-tight">
+                          −{formatCurrency(t.desconto)} de deságio
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <ScrollArea style={{ maxHeight: '170px' }}>
+                    <div className="space-y-1 pr-2">
+                      {recebiveis.map(({ linha, conta }) => (
+                        <div key={linha.key} className="flex items-center justify-between gap-2 rounded border bg-background/60 px-2 py-1 text-[11px]">
+                          <div className="min-w-0">
+                            <p className="truncate font-medium">
+                              {linha.descricao}
+                              {linha.parcela ? ' (' + linha.parcela.n + '/' + linha.parcela.de + ')' : ''}
+                            </p>
+                            <p className="text-muted-foreground truncate">
+                              {conta.dias === 0 ? 'já venceu' : 'vence em ' + conta.dias + ' dia(s)'}
+                              {' · '}
+                              {linha.titular === 'cliente' ? 'do cliente'
+                                : linha.titular === 'escritorio' ? 'do escritório'
+                                : 'bruto da parte'}
+                            </p>
+                          </div>
+                          <div className="text-right flex-shrink-0">
+                            <p className="font-bold">{formatCurrency(conta.valorPresente)}</p>
+                            <p className="text-muted-foreground">de {formatCurrency(conta.valorFuturo)}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Valor presente a juros COMPOSTOS: face ÷ (1 + deságio)^(dias ÷ 30). É simulação —
+                    antecipar de verdade vira lançamento próprio, no dia em que acontecer. O que já
+                    venceu não desconta nada: deságio paga o tempo que falta, não o atraso.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
         </>
       ) : (
         <div className="grid grid-cols-3 gap-2">
@@ -905,6 +1281,18 @@ export function EntityFinancialsPanel({
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* O que ainda não é caixa não entra nos cards acima, mas some da tela se
+          ninguém disser onde foi parar. */}
+      {!ehExtrato && (totals.aReceber > 0 || totals.aPagar > 0) && (
+        <p className="text-[11px] text-muted-foreground leading-snug">
+          Fora dos cards, porque ainda não é caixa:{' '}
+          {totals.aReceber > 0 ? formatCurrency(totals.aReceber) + ' a receber' : ''}
+          {totals.aReceber > 0 && totals.aPagar > 0 ? ' e ' : ''}
+          {totals.aPagar > 0 ? formatCurrency(totals.aPagar) + ' a pagar' : ''}
+          . Baixe pelo ✓ na linha quando o dinheiro entrar ou sair.
+        </p>
       )}
 
       {/* Add Button */}
@@ -937,7 +1325,9 @@ export function EntityFinancialsPanel({
                 <div className="min-w-0">
                   <p className="font-medium truncate">{linha.descricao}</p>
                   <p className="text-xs text-muted-foreground truncate">
-                    {linha.data || 'sem data'}
+                    {linha.previsto && linha.vencimento
+                      ? (linha.vencido ? 'venceu em ' : 'vence ') + linha.vencimento
+                      : (linha.data || 'sem data')}
                     {linha.origem === 'manual' && linha.categoria && ` • ${linha.categoria}`}
                     {linha.detalhe && ` • ${linha.detalhe}`}
                     {linha.origem === 'planilha' && ' • planilha'}
@@ -967,9 +1357,19 @@ export function EntityFinancialsPanel({
                 {linha.titular === null && (
                   <Badge variant="outline" className="hidden sm:inline-flex text-[10px]">bruto da parte</Badge>
                 )}
+                {linha.parcela && (
+                  <Badge variant="outline" className="text-[10px]">
+                    {linha.parcela.n}/{linha.parcela.de}
+                  </Badge>
+                )}
                 {linha.previsto && (
-                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
-                    {linha.semCronograma ? 'condenação · sem data' : 'a receber'}
+                  <Badge
+                    variant="outline"
+                    className={'text-[10px] ' + (linha.vencido ? 'border-red-300 text-red-700' : 'border-amber-300 text-amber-700')}
+                  >
+                    {linha.semCronograma ? 'condenação · sem data'
+                      : linha.vencido ? 'vencido'
+                      : linha.direcao === 'saida' ? 'a pagar' : 'a receber'}
                   </Badge>
                 )}
                 {linha.adiantado && (
@@ -982,6 +1382,19 @@ export function EntityFinancialsPanel({
                 </span>
                 {linha.entry && (
                   <>
+                    {/* Baixar é o MESMO lançamento mudando de estado — nunca um
+                        lançamento novo ao lado do previsto. */}
+                    {linha.previsto && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-green-600"
+                        title={linha.direcao === 'saida' ? 'Marcar como pago hoje' : 'Marcar como recebido hoje'}
+                        onClick={() => baixar(linha.entry!)}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(linha.entry!)}>
                       <Edit2 className="h-3 w-3" />
                     </Button>
@@ -998,10 +1411,11 @@ export function EntityFinancialsPanel({
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-md max-h-[90vh]">
           <DialogHeader>
             <DialogTitle>{editingEntry ? 'Editar Lançamento' : 'Novo Lançamento'}</DialogTitle>
           </DialogHeader>
+          <ScrollArea className="max-h-[65vh] pr-3">
           <div className="space-y-3">
             {/* Onde o lançamento fica pendurado. Com um vínculo só, não faz sentido
                 perguntar — mostra qual é e segue. */}
@@ -1041,10 +1455,71 @@ export function EntityFinancialsPanel({
               <Label className="text-xs">Valor *</Label>
               <Input type="number" step="0.01" placeholder="0,00" value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
             </div>
+            {/* JÁ ENTROU × PREVISTO — a pergunta que separa caixa de recebível.
+                Sem ela, honorário com vencimento futuro entrava como dinheiro no
+                bolso e inflava o resultado do processo no mesmo instante. */}
             <div>
-              <Label className="text-xs">Data</Label>
-              <Input type="date" value={form.entry_date} onChange={e => setForm(p => ({ ...p, entry_date: e.target.value }))} />
+              <Label className="text-xs">O dinheiro já entrou?</Label>
+              <div className="flex gap-2 mt-1">
+                <Button
+                  type="button"
+                  variant={form.settled ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  disabled={form.entry_date > hoje}
+                  title={form.entry_date > hoje ? 'A data escolhida ainda não chegou' : undefined}
+                  onClick={() => setForm(p => ({ ...p, settled: true }))}
+                >
+                  {form.entry_type === 'entrada' ? 'Já recebi' : 'Já paguei'}
+                </Button>
+                <Button
+                  type="button"
+                  variant={form.settled ? 'outline' : 'default'}
+                  size="sm"
+                  className={'flex-1 ' + (form.settled ? '' : 'bg-amber-600 hover:bg-amber-700')}
+                  onClick={() => setForm(p => ({ ...p, settled: false }))}
+                >
+                  <CalendarClock className="h-3.5 w-3.5 mr-1" />
+                  {form.entry_type === 'entrada' ? 'A receber' : 'A pagar'}
+                </Button>
+              </div>
             </div>
+
+            <div>
+              <Label className="text-xs">
+                {!form.settled || editingEntry
+                  ? 'Vencimento'
+                  : (form.entry_type === 'entrada' ? 'Data do recebimento' : 'Data do pagamento')}
+              </Label>
+              <Input
+                type="date"
+                value={form.entry_date}
+                onChange={e => {
+                  const d = e.target.value;
+                  // Data no futuro só pode ser previsão: ninguém recebeu amanhã.
+                  setForm(p => ({ ...p, entry_date: d, settled: d > hoje ? false : p.settled }));
+                }}
+              />
+              {form.entry_date > hoje && (
+                <p className="text-[10px] text-amber-700 mt-1 leading-snug">
+                  Data futura: entra como {form.entry_type === 'entrada' ? 'a receber' : 'a pagar'} e
+                  fica fora do caixa até alguém baixar.
+                </p>
+              )}
+            </div>
+
+            {/* Na edição as duas datas são independentes: venceu no dia 10, o
+                cliente pagou no 17 — as duas informações importam. */}
+            {editingEntry && form.settled && (
+              <div>
+                <Label className="text-xs">Entrou de fato em</Label>
+                <Input
+                  type="date"
+                  value={form.settled_date || form.entry_date}
+                  onChange={e => setForm(p => ({ ...p, settled_date: e.target.value }))}
+                />
+              </div>
+            )}
             <div>
               <Label className="text-xs">Categoria</Label>
               <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
@@ -1062,7 +1537,94 @@ export function EntityFinancialsPanel({
               <Label className="text-xs">Observações</Label>
               <Textarea rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />
             </div>
+
+            {/* PARCELAR — um acordo em 12x é UM combinado com DOZE vencimentos.
+                Lançar doze vezes à mão é onde nasce erro de data e de centavo.
+                Só no lançamento novo: replanejar um que já existe deixaria linhas
+                soltas do grupo original. */}
+            {!editingEntry && (
+              <div className="rounded border p-2 space-y-2">
+                <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={form.parcelar}
+                    onChange={e => setForm(p => ({ ...p, parcelar: e.target.checked }))}
+                  />
+                  <Repeat className="h-3.5 w-3.5" /> Parcelar / repetir
+                </label>
+                {form.parcelar && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-[10px]">Quantas</Label>
+                        <Input
+                          type="number" min="2" max="360" className="h-8"
+                          value={form.parcelas}
+                          onChange={e => setForm(p => ({ ...p, parcelas: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px]">A cada</Label>
+                        <Select value={form.periodicidade} onValueChange={v => setForm(p => ({ ...p, periodicidade: v as Periodicidade }))}>
+                          <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {(Object.keys(PERIODICIDADE_LABEL) as Periodicidade[]).map(k => (
+                              <SelectItem key={k} value={k}>{PERIODICIDADE_LABEL[k]}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    {/* Confundir os dois erra o valor por um fator igual ao número
+                        de parcelas — daí ser escolha explícita, sem padrão esperto. */}
+                    <div>
+                      <Label className="text-[10px]">O valor informado acima é...</Label>
+                      <Select value={form.modo} onValueChange={v => setForm(p => ({ ...p, modo: v as ModoParcelamento }))}>
+                        <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="dividir">O TOTAL, a dividir entre as parcelas</SelectItem>
+                          <SelectItem value="repetir">O valor DE CADA parcela</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {previaParcelas.erro && (
+                      <p className="text-[11px] text-red-600">{previaParcelas.erro}</p>
+                    )}
+                    {previaResumo && (
+                      <div className="rounded bg-muted/50 p-2 text-[11px] space-y-0.5">
+                        {previaResumo.inicio.map(p => (
+                          <div key={p.n} className="flex justify-between">
+                            <span className="text-muted-foreground">{p.n}/{p.de} · {p.data}</span>
+                            <span className="font-medium">{formatCurrency(p.valor)}</span>
+                          </div>
+                        ))}
+                        {previaResumo.ocultas > 0 && (
+                          <p className="text-muted-foreground">... mais {previaResumo.ocultas} parcela(s)</p>
+                        )}
+                        {previaResumo.ultima && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              {previaResumo.ultima.n}/{previaResumo.ultima.de} · {previaResumo.ultima.data}
+                            </span>
+                            <span className="font-medium">{formatCurrency(previaResumo.ultima.valor)}</span>
+                          </div>
+                        )}
+                        {/* A sobra de centavo vai na última: R$ 100 em 3x são
+                            33,33 + 33,33 + 33,34, e a soma fecha com o combinado. */}
+                        <div className="flex justify-between border-t pt-1 mt-1 font-semibold">
+                          <span>Soma das parcelas</span>
+                          <span>{formatCurrency(previaResumo.total)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
+          </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : (editingEntry ? 'Atualizar' : 'Salvar')}</Button>

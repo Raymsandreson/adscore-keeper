@@ -521,3 +521,110 @@ parcelado bruto = VALOR VINCENDO 194.469,24
 soma das fatias = 392.559,96      →  70% = 274.791,97 = TOTAL PARTE CJCM    ✓
 TOTAL DA CONDENAÇÃO CJCM na planilha = 365.123,42  (≠ 392.559,96)
 ```
+
+---
+
+## O lançamento manual vira recebível: previsto, parcelado e antecipável (20/08/2026)
+
+### O bug: data futura entrava como caixa
+
+Honorário contratual de R$ 2,00 lançado na aba Financeiro do processo com data
+**25/08/2026** aparecia na hora dentro do card "Honorário contratual" e do
+"Resultado do escritório". Dinheiro que ninguém pagou, somado ao caixa.
+
+A causa estava na régua: `classificarLancamento` decidia "é a receber?" pelo
+TEXTO da categoria (`categoria` contendo "a receber"), regra que veio da planilha
+`jm_lancamentos`, onde as categorias realmente se chamam "Honorários a receber".
+Nenhuma das 12 categorias do formulário manual tem essas palavras — logo, todo
+lançamento manual nascia como caixa realizado, qualquer que fosse a data.
+
+### A regra nova
+
+| coluna | significado |
+|---|---|
+| `entry_date` | **vencimento** — quando o dinheiro está previsto para entrar/sair |
+| `settled_at` | quando entrou/saiu **de fato**. NULL = ainda é recebível |
+
+Com isso o estágio sai do mesmo vocabulário de sempre (`estagioDoLancamento`):
+
+- `settled_at` preenchido → **REALIZADO**, é caixa;
+- NULL e vencimento no futuro → **A RECEBER**;
+- NULL e vencimento passado → **VENCIDO**.
+
+**Vencido não vira caixa sozinho.** Passou a data e ninguém baixou, a linha
+continua fora do caixa, com badge vermelho. Data que passa não é prova de
+pagamento — foi decisão explícita do Raym em 20/08/2026.
+
+Baixar é o **mesmo lançamento mudando de estado** (botão ✓ na linha grava
+`settled_at = hoje`), nunca um lançamento novo ao lado do previsto. Somar os dois
+contaria o dinheiro duas vezes — é a mesma regra que já valia para a planilha.
+
+`classificarLancamento` passou a aceitar `previsto` explícito, que vence a
+heurística da categoria. A planilha continua exatamente como estava: quem não
+manda o flag cai no teste de texto de sempre.
+
+### Saída em aberto é A PAGAR, não a receber
+
+Despesa lançada e ainda não paga tem `settled_at` NULL igual ao honorário — mas
+cair no "a receber" faria a conta de luz do processo parecer dinheiro entrando.
+`totaisProcesso` separa: `aPagar` / `aPagarVencido`, fora do resultado enquanto
+não sair da conta.
+
+### Parcelamento
+
+Um acordo em 12x é UM combinado com DOZE vencimentos. O formulário pergunta o
+plano (quantas, a cada quanto, e se o valor digitado é o TOTAL ou o de CADA
+parcela) e grava N linhas amarradas por `parcela_grupo`, com `parcela_n`/
+`parcela_de`. Cada parcela vence e é baixada por si: uma atrasar não contamina as
+outras.
+
+Detalhes que a prévia do formulário mostra antes de salvar (`src/lib/antecipacao.ts`):
+
+- **sobra de centavo na última**: R$ 100 em 3x são 33,33 + 33,33 + 33,34 — a soma
+  fecha com o combinado, que é o que o cliente confere;
+- **mensal respeita fim de mês**: 31/01 + 1 mês = 28/02, não 03/03;
+- **quinzenal = a cada 15 dias**, como no boleto, não "duas vezes por mês";
+- valor pequeno demais para dividir vira **erro**, não um punhado de linhas de
+  R$ 0,00.
+
+### Antecipação e deságio
+
+O bloco "Antecipar o que está a receber" responde: *quanto vale hoje o que só
+entra depois?*
+
+```
+valor presente = valor de face ÷ (1 + deságio)^(dias ÷ 30)
+```
+
+Juros **compostos**, como o mercado precifica recebível: 3% a.m. em 6 meses não é
+18%, é 19,4%. Simples subestimaria o desconto e a proposta sairia mais generosa
+do que o pretendido.
+
+A tela separa por **titular**, porque a oferta é diferente em cada caso:
+
+- **do cliente** — a cota que ele pode adiantar conosco;
+- **do escritório** — o honorário que pode ser vendido ao fundo (Oriz/FIDC);
+- **bruto da parte** — parcela de `jm_pagamentos`, que ainda não tem abertura
+  cliente × honorário na base.
+
+O que **já venceu não desconta nada**: deságio paga o tempo que falta, não o
+atraso. Cobrar aí seria multa disfarçada de deságio, e isso é outra conta.
+
+É **simulação**. Antecipar de verdade vira lançamento próprio no dia em que
+acontecer — a linha antecipada não deixa de existir por ter sido simulada.
+
+A taxa padrão mora em `system_settings` (Cloud), chave `desagio_mes_padrao`, para
+valer para a equipe toda: taxa que só existe num navegador vira proposta
+diferente para cada pessoa que abre a tela.
+
+### Migration
+
+`supabase/migrations-external/20260820120000_lead_financials_a_receber_e_parcelamento.sql`
+— roda no **Externo**. Aplicada em 20/08/2026. Backfill: as 10 linhas com data
+passada receberam `settled_at = entry_date` (a tela não mudou para elas); a de
+25/08/2026 ficou NULL, que é o conserto do bug.
+
+### Testes
+
+`src/lib/__tests__/antecipacao.test.ts` (9 casos, números conferidos à mão) e os
+casos novos em `lancamentoCategorias.test.ts` para o `previsto` explícito.
