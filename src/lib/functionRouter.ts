@@ -101,6 +101,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'facebook-capi': 'external', // CAPI Purchase/Lead — migrada do Cloud (Lovable) p/ controle total de deploy+secrets; fallback → Cloud
   'create-whatsapp-group': 'external', // v12 com tokens de nome (lead_name_upper etc.); cópia do Cloud está desatualizada e criava grupo sem template
   'find-contact-groups': 'external', // instance_name deixou de ser obrigatório na busca por nome; lê instâncias/cache no Externo (onde de fato moram). Fallback → Cloud mantém a versão antiga.
+  'sugerir-lancamento': 'external', // lê comprovante/ditado e propõe o lançamento; só existe no Externo
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

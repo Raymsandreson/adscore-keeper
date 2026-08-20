@@ -866,3 +866,67 @@ PLANILHA, onde contratual × sucumbencial vem da coluna PESSOA (HC/HS) e não da
 categoria — ela colapsa "Honorários Contratuais" e "Honorários Sucumbenciais" na
 mesma chave `HONORARIOS`. Deduplicar por ela apagaria uma das duas do seletor,
 em silêncio. Há teste cravando isso.
+
+---
+
+## Colar, arrastar, PDF e ditado (20/08/2026)
+
+### Onde a função vive
+
+`sugerir-lancamento` está no **Externo** (`kmedldlepwiityjsdahz`), como todas as
+outras — conferido listando as functions do projeto: `lead-drive`,
+`goal-ai-suggestions`, `classify-document` e mais 100 estão lá.
+
+A chamada passa **obrigatoriamente** pelo `src/lib/functionRouter.ts`, com a
+rota registrada como `'external'`. A primeira versão chamava
+`authClient.functions.invoke` direto, o que bate no projeto **Cloud** e falha
+calada. Regra: nenhuma edge function é chamada por `.functions.invoke` de um
+client; sempre `cloudFunctions.invoke` do roteador.
+
+### Comprovante: colar, arrastar ou escolher
+
+`onPaste` e `onDrop` ficam no **diálogo inteiro**, não só no campo. Comprovante
+quase sempre chega como print na área de transferência, e exigir mira certa é
+atrito à toa. Ctrl+V, arrastar para qualquer canto, ou o seletor de arquivo —
+os três caem no mesmo caminho.
+
+### PDF também é lido
+
+Não precisou de nada além de tirar a trava: o Gemini aceita `application/pdf`
+como `inlineData` igual a imagem, e o conversor lê o mime do próprio data URL.
+A versão anterior recusava PDF por suposição, não por limite.
+
+### Ditar o lançamento
+
+Mesmo caminho da atividade por voz, sem transcritor novo: grava com
+`MediaRecorder`, sobe o áudio, e `transcribe-team-audio` (ElevenLabs Scribe com
+Gemini de reserva, no Railway) devolve o texto. Só então a IA lê esse texto como
+**ditado** — modo em que valor e data VÊM da fala, com data relativa resolvida
+contra o `hoje` que a tela manda (o servidor pode estar em outro fuso).
+
+Se o nome falado casa com **exatamente uma** parte ou contato da lista, a parte
+já vem selecionada. Dois candidatos não escolhem nenhum.
+
+Medido em 20/08/2026 contra a função no ar: *"paguei duzentos e cinquenta reais
+de perícia médica do José na sexta passada"* → R$ 250, 2026-08-14, saída,
+Perícia, beneficiário José.
+
+### Três defeitos achados testando de verdade
+
+1. **JSON truncado.** `maxOutputTokens: 700` estourava porque o 2.5-flash gasta
+   orçamento **pensando** — o pensamento sai do mesmo bolso da resposta. Agora
+   `thinkingConfig: { thinkingBudget: 0 }` (não há o que raciocinar aqui),
+   `responseMimeType: 'application/json'` (sem cerca ```json) e 2048 de teto.
+2. **Categoria descartada.** O modelo às vezes põe a categoria certa em
+   `categoria_nova`. Antes o servidor anulava e a linha chegava sem categoria e
+   sem proposta — nada para aceitar nem para corrigir. Agora os dois campos são
+   testados contra a lista, e o que não casa vira **proposta**, nunca lixo.
+3. **"Outros" como atalho.** Com "Outros" na lista o modelo nunca propunha nada
+   novo. A regra passou a dizer que "Outros" é último recurso, e gasto com nome
+   próprio e recorrente (aluguel, software, cartório) deve virar categoria nova.
+
+E um falso alarme que vale registrar: por duas rodadas pareceu que categoria com
+acento nunca casava. Era o **teste**, não a função — `curl -d '...'` inline neste
+ambiente corrompe bytes não-ASCII antes de sair. Com `--data-binary @arquivo`,
+todos os sete casos passam. Antes de culpar o código, confira o que o teste
+está de fato enviando.
