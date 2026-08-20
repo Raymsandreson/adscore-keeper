@@ -54,6 +54,15 @@ export interface EntityFinancialEntry {
   /** VENCIMENTO: quando o dinheiro está previsto para entrar ou sair. */
   entry_date: string;
   /**
+   * De QUEM veio (ou para quem foi) o dinheiro. `contact_id` é a pessoa no CRM e
+   * vale em qualquer objeto; `parte_id` é a parte do processo em `jm_partes`, que
+   * é onde a planilha calculou a cota e o honorário dela. `parte_nome` é o
+   * retrato do nome, para o extrato sobreviver a uma reimportação da planilha.
+   */
+  contact_id: string | null;
+  parte_id: string | null;
+  parte_nome: string | null;
+  /**
    * Quando entrou/saiu DE FATO. null = ainda é recebível — "a receber" enquanto
    * o vencimento não chega, VENCIDO depois dele. Data que passa não é prova de
    * pagamento: a linha só vira caixa quando alguém baixa.
@@ -239,6 +248,10 @@ export function EntityFinancialsPanel({
     category: '',
     /** Vencimento. */
     entry_date: format(new Date(), 'yyyy-MM-dd'),
+    /** 'parte:<parte_id>' ou 'contato:<contact_id>'. Vazio = não informado. */
+    parte: '',
+    /** true depois que a pessoa clica no par Já entrou/Previsto — ver o onChange da data. */
+    settledTocado: false,
     /** false = ainda não entrou; a linha nasce como recebível. */
     settled: true,
     /** Só na edição: quando pagaram, se for diferente do vencimento. */
@@ -260,6 +273,9 @@ export function EntityFinancialsPanel({
 
   /** Hoje congelado no render: `extrato` e antecipação precisam do MESMO dia. */
   const hoje = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+
+  /** Contatos do lead — quem responde "de quem veio o dinheiro" fora do processo. */
+  const [contatos, setContatos] = useState<{ id: string; nome: string }[]>([]);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -450,6 +466,33 @@ export function EntityFinancialsPanel({
 
   useEffect(() => { void fetchJm(); }, [fetchJm]);
 
+  // Contatos do lead, de DUAS origens: a ponte `contact_leads` e o vínculo
+  // legado `contacts.lead_id`. Ler só uma deixaria contato de fora — é o mesmo
+  // par que `useAutoImportGroupDocs` consulta para achar os grupos do lead.
+  useEffect(() => {
+    if (!leadId) { setContatos([]); return; }
+    let vivo = true;
+    void (async () => {
+      await ensureExternalSession().catch(() => {});
+      const externo = db as unknown as { from: (t: string) => any };
+      const [ponte, legado] = await Promise.all([
+        externo.from('contact_leads').select('contacts:contact_id(id, full_name)').eq('lead_id', leadId),
+        externo.from('contacts').select('id, full_name').eq('lead_id', leadId),
+      ]);
+      if (!vivo) return;
+      const mapa = new Map<string, string>();
+      for (const linha of ponte.data || []) {
+        const c = (linha as { contacts?: { id?: string; full_name?: string } }).contacts;
+        if (c?.id) mapa.set(c.id, c.full_name || 'sem nome');
+      }
+      for (const c of (legado.data || []) as { id?: string; full_name?: string }[]) {
+        if (c?.id) mapa.set(c.id, c.full_name || 'sem nome');
+      }
+      setContatos([...mapa].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome)));
+    })();
+    return () => { vivo = false; };
+  }, [leadId]);
+
   // Deságio padrão da equipe. Falha em silêncio de propósito: sem taxa a tela
   // apenas deixa de mostrar o valor presente, e nada mais depende dela.
   useEffect(() => {
@@ -484,26 +527,6 @@ export function EntityFinancialsPanel({
     return match ? match.key : (targets[0]?.key || '');
   }, [targets]);
 
-  /**
-   * Cards das abas de lead/caso/atividade. Só conta o que entrou ou saiu DE
-   * FATO (`settled_at` preenchido) — dinheiro combinado não é dinheiro em caixa,
-   * e a regra vale aqui igual à do extrato do processo. O previsto aparece na
-   * linha abaixo dos cards, separado.
-   */
-  const totals = useMemo(() => {
-    const pagos = entries.filter(e => !!e.settled_at);
-    const abertos = entries.filter(e => !e.settled_at);
-    const soma = (lista: EntityFinancialEntry[], tipo: 'entrada' | 'saida') =>
-      lista.filter(e => e.entry_type === tipo).reduce((s, e) => s + Number(e.amount), 0);
-    const receitas = soma(pagos, 'entrada');
-    const despesas = soma(pagos, 'saida');
-    return {
-      receitas, despesas, lucro: receitas - despesas,
-      aReceber: soma(abertos, 'entrada'),
-      aPagar: soma(abertos, 'saida'),
-    };
-  }, [entries]);
-
   /** Extrato completo do processo: manuais + jurimetria, mais novo primeiro. */
   const extrato = useMemo<LinhaExtrato[]>(() => {
     const manuais: LinhaExtrato[] = entries.map(e => {
@@ -517,7 +540,12 @@ export function EntityFinancialsPanel({
         // Baixado mostra o dia em que entrou; em aberto, o vencimento.
         data: e.settled_at || e.entry_date,
         descricao: e.description || e.category || 'Sem descrição',
-        detalhe: scope !== 'activity' && e.activity_id ? 'via atividade' : null,
+        // De quem veio o dinheiro vem antes de tudo na linha: é a pergunta que
+        // o extrato não respondia.
+        detalhe: [
+          e.parte_nome,
+          scope !== 'activity' && e.activity_id ? 'via atividade' : null,
+        ].filter(Boolean).join(' · ') || null,
         categoria: e.category,
         titular: cls.titular,
         especie: cls.especie,
@@ -666,8 +694,13 @@ export function EntityFinancialsPanel({
     return { pagas, regua: reguaDoProcesso(processNumber) };
   }, [valorProcesso.partes, processNumber]);
 
-  const ehExtrato = scope === 'process' && !!processNumber;
-  const temValorProcesso = ehExtrato && valorProcesso.comValor > 0;
+  /**
+   * Só o PROCESSO tem CNJ, e só com ele existem os blocos da jurimetria
+   * (quanto vale o processo, parcelas de jm_pagamentos, extrato da planilha).
+   * Os CARDS, esses, são os mesmos em todo objeto — ver o comentário deles.
+   */
+  const temJm = scope === 'process' && !!processNumber;
+  const temValorProcesso = temJm && valorProcesso.comValor > 0;
 
   const resetForm = () => {
     setForm({
@@ -676,7 +709,9 @@ export function EntityFinancialsPanel({
       description: '',
       category: '',
       entry_date: hoje,
+      parte: '',
       settled: true,
+      settledTocado: false,
       settled_date: '',
       parcelar: false,
       parcelas: '2',
@@ -724,6 +759,38 @@ export function EntityFinancialsPanel({
     };
   }, [previaParcelas]);
 
+  /**
+   * De quem veio (ou para quem foi) o dinheiro. No processo as PARTES vêm
+   * primeiro, porque é nelas que a planilha calculou cota e honorário — amarrar
+   * o recebimento à parte é o que responde "esses R$ 1.125,30 são da cota de
+   * quem?". Fora do processo, e depois delas, vão os contatos do lead.
+   */
+  const opcoesParte = useMemo(() => {
+    const out: { valor: string; nome: string; grupo: string }[] = [];
+    for (const p of partesValor) {
+      if (!p.parteId) continue;
+      out.push({ valor: 'parte:' + p.parteId, nome: p.cliente || 'parte sem nome', grupo: 'Partes do processo' });
+    }
+    for (const c of contatos) {
+      out.push({ valor: 'contato:' + c.id, nome: c.nome, grupo: 'Contatos do lead' });
+    }
+    return out;
+  }, [partesValor, contatos]);
+
+  /** Decompõe 'parte:<id>' / 'contato:<id>' nas três colunas do banco. */
+  const vinculoDaParte = (chave: string) => {
+    const sep = chave.indexOf(':');
+    if (sep < 0) return { contact_id: null, parte_id: null, parte_nome: null };
+    const tipo = chave.slice(0, sep);
+    const id = chave.slice(sep + 1);
+    const nome = opcoesParte.find(o => o.valor === chave)?.nome || null;
+    return {
+      contact_id: tipo === 'contato' ? id : null,
+      parte_id: tipo === 'parte' ? id : null,
+      parte_nome: nome,
+    };
+  };
+
   const handleSave = async () => {
     if (!form.amount || parseFloat(form.amount) <= 0) {
       toast.error('Informe o valor');
@@ -731,6 +798,16 @@ export function EntityFinancialsPanel({
     }
     if (hasTargets && !target) {
       toast.error('Escolha onde registrar');
+      return;
+    }
+    // Sem categoria o sistema não sabe DE QUEM é o dinheiro: cai em "operação do
+    // escritório" e um recebimento de cota do cliente vira resultado nosso.
+    if (!form.category) {
+      toast.error('Escolha a categoria — é ela que diz de quem é o dinheiro');
+      return;
+    }
+    if (!form.description.trim()) {
+      toast.error('Escreva a descrição — sem ela a linha vira "Sem descrição" no extrato');
       return;
     }
     // Dinheiro não entra antes da hora. O botão já se protege quando a data muda;
@@ -751,6 +828,7 @@ export function EntityFinancialsPanel({
       // ao lead não deve aparecer no financeiro do processo. Sem destino (abas de
       // lead e processo), valem os ids das props.
       const vinculos = {
+        ...vinculoDaParte(form.parte),
         lead_id: (hasTargets ? target?.leadId : leadId) || null,
         case_id: (hasTargets ? target?.caseId : caseId) || null,
         process_id: (hasTargets ? target?.processId : processId) || null,
@@ -874,7 +952,12 @@ export function EntityFinancialsPanel({
       description: entry.description || '',
       category: entry.category || '',
       entry_date: entry.entry_date,
+      parte: entry.parte_id ? 'parte:' + entry.parte_id
+        : entry.contact_id ? 'contato:' + entry.contact_id
+        : '',
       settled: !!entry.settled_at,
+      // Na edição o estado já é uma escolha feita: a data não pode revogá-la.
+      settledTocado: true,
       settled_date: entry.settled_at || '',
       // Replanejar o parcelamento de um lançamento que já existe criaria linhas
       // soltas do grupo original — para isso, apaga-se o plano e refaz.
@@ -1048,10 +1131,12 @@ export function EntityFinancialsPanel({
         </div>
       )}
 
-      {/* Summary Cards. Na aba do processo os totais abrem por TITULAR —
-          quanto é do escritório e quanto é do cliente — porque somar tudo numa
-          "receita" só mistura dinheiro nosso com dinheiro que é dever de repasse. */}
-      {ehExtrato ? (
+      {/* Summary Cards. Os MESMOS em lead, caso, processo e atividade: um só
+          jeito de ler dinheiro no sistema inteiro. Abrem por TITULAR — quanto é
+          do escritório e quanto é do cliente — porque somar tudo numa "receita"
+          só mistura dinheiro nosso com dinheiro que é dever de repasse. Antes,
+          fora do processo, a tela mostrava Receitas/Despesas/Resultado e a mesma
+          pergunta tinha duas respostas dependendo de onde você abrisse. */}
         <>
           {/* Honorário do escritório aberto em contratual × sucumbencial: são
               recebíveis distintos e a planilha já separa (HC/HS na coluna
@@ -1257,43 +1342,6 @@ export function EntityFinancialsPanel({
             </div>
           )}
         </>
-      ) : (
-        <div className="grid grid-cols-3 gap-2">
-          <Card className="border-green-200 bg-green-50/50">
-            <CardContent className="p-3 text-center">
-              <TrendingUp className="h-4 w-4 text-green-600 mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Receitas</p>
-              <p className="text-sm font-bold text-green-600">{formatCurrency(totals.receitas)}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-red-200 bg-red-50/50">
-            <CardContent className="p-3 text-center">
-              <TrendingDown className="h-4 w-4 text-red-600 mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Despesas</p>
-              <p className="text-sm font-bold text-red-600">{formatCurrency(totals.despesas)}</p>
-            </CardContent>
-          </Card>
-          <Card className={totals.lucro >= 0 ? 'border-blue-200 bg-blue-50/50' : 'border-amber-200 bg-amber-50/50'}>
-            <CardContent className="p-3 text-center">
-              <DollarSign className="h-4 w-4 text-primary mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Resultado</p>
-              <p className={`text-sm font-bold ${totals.lucro >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>{formatCurrency(totals.lucro)}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* O que ainda não é caixa não entra nos cards acima, mas some da tela se
-          ninguém disser onde foi parar. */}
-      {!ehExtrato && (totals.aReceber > 0 || totals.aPagar > 0) && (
-        <p className="text-[11px] text-muted-foreground leading-snug">
-          Fora dos cards, porque ainda não é caixa:{' '}
-          {totals.aReceber > 0 ? formatCurrency(totals.aReceber) + ' a receber' : ''}
-          {totals.aReceber > 0 && totals.aPagar > 0 ? ' e ' : ''}
-          {totals.aPagar > 0 ? formatCurrency(totals.aPagar) + ' a pagar' : ''}
-          . Baixe pelo ✓ na linha quando o dinheiro entrar ou sair.
-        </p>
-      )}
 
       {/* Add Button */}
       <Button
@@ -1468,7 +1516,7 @@ export function EntityFinancialsPanel({
                   className="flex-1"
                   disabled={form.entry_date > hoje}
                   title={form.entry_date > hoje ? 'A data escolhida ainda não chegou' : undefined}
-                  onClick={() => setForm(p => ({ ...p, settled: true }))}
+                  onClick={() => setForm(p => ({ ...p, settled: true, settledTocado: true }))}
                 >
                   {form.entry_type === 'entrada' ? 'Já recebi' : 'Já paguei'}
                 </Button>
@@ -1477,7 +1525,7 @@ export function EntityFinancialsPanel({
                   variant={form.settled ? 'outline' : 'default'}
                   size="sm"
                   className={'flex-1 ' + (form.settled ? '' : 'bg-amber-600 hover:bg-amber-700')}
-                  onClick={() => setForm(p => ({ ...p, settled: false }))}
+                  onClick={() => setForm(p => ({ ...p, settled: false, settledTocado: true }))}
                 >
                   <CalendarClock className="h-3.5 w-3.5 mr-1" />
                   {form.entry_type === 'entrada' ? 'A receber' : 'A pagar'}
@@ -1496,14 +1544,30 @@ export function EntityFinancialsPanel({
                 value={form.entry_date}
                 onChange={e => {
                   const d = e.target.value;
-                  // Data no futuro só pode ser previsão: ninguém recebeu amanhã.
-                  setForm(p => ({ ...p, entry_date: d, settled: d > hoje ? false : p.settled }));
+                  // Enquanto ninguém encostou no par acima, o estado SEGUE a data:
+                  // futuro = previsto, passado ou hoje = já entrou. Antes ele só
+                  // ia num sentido — pôr data futura marcava "a receber", e voltar
+                  // a data para o passado deixava a marca grudada. A linha nascia
+                  // VENCIDA sem ninguém entender por quê. Data futura continua
+                  // forçando previsto mesmo com escolha manual: ninguém recebeu amanhã.
+                  setForm(p => ({
+                    ...p,
+                    entry_date: d,
+                    settled: p.settledTocado ? (d > hoje ? false : p.settled) : d <= hoje,
+                  }));
                 }}
               />
               {form.entry_date > hoje && (
                 <p className="text-[10px] text-amber-700 mt-1 leading-snug">
                   Data futura: entra como {form.entry_type === 'entrada' ? 'a receber' : 'a pagar'} e
                   fica fora do caixa até alguém baixar.
+                </p>
+              )}
+              {!form.settled && form.entry_date < hoje && (
+                <p className="text-[10px] text-red-600 mt-1 leading-snug">
+                  Vai nascer <strong>VENCIDO</strong>: a data já passou e está marcado como
+                  {form.entry_type === 'entrada' ? ' não recebido' : ' não pago'}. Se o dinheiro já
+                  entrou, troque no par acima.
                 </p>
               )}
             </div>
@@ -1520,8 +1584,11 @@ export function EntityFinancialsPanel({
                 />
               </div>
             )}
+            {/* Obrigatória: é a categoria que diz se aquele dinheiro é honorário
+                nosso ou cota do cliente. Em branco, tudo virava "operação do
+                escritório" e recebimento do cliente entrava no nosso resultado. */}
             <div>
-              <Label className="text-xs">Categoria</Label>
+              <Label className="text-xs">Categoria *</Label>
               <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
@@ -1529,9 +1596,36 @@ export function EntityFinancialsPanel({
                 </SelectContent>
               </Select>
             </div>
+
+            {/* DE QUEM VEIO O DINHEIRO. Num caso com cinco herdeiros, "cota do
+                cliente" não diz de qual deles — a parte diz. */}
+            {opcoesParte.length > 0 && (
+              <div>
+                <Label className="text-xs">
+                  {form.entry_type === 'entrada' ? 'De quem veio o dinheiro' : 'Para quem foi o dinheiro'}
+                </Label>
+                <Select value={form.parte} onValueChange={v => setForm(p => ({ ...p, parte: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Parte ou contato..." /></SelectTrigger>
+                  <SelectContent>
+                    {opcoesParte.map(o => (
+                      <SelectItem key={o.valor} value={o.valor}>
+                        {o.nome} <span className="text-muted-foreground text-[10px]">· {o.grupo}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.parte.startsWith('parte:') && (
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    Amarrado à parte do processo: dá para conferir esse valor contra a cota e o
+                    honorário que a planilha calculou para ela.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
-              <Label className="text-xs">Descrição</Label>
-              <Input placeholder="Descrição do lançamento" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+              <Label className="text-xs">Descrição *</Label>
+              <Input placeholder="Ex: pago 3ª parcela do acordo" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
             </div>
             <div>
               <Label className="text-xs">Observações</Label>

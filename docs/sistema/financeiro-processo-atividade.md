@@ -688,3 +688,64 @@ passada receberam `settled_at = entry_date` (a tela não mudou para elas); a de
 
 `src/lib/__tests__/antecipacao.test.ts` (9 casos, números conferidos à mão) e os
 casos novos em `lancamentoCategorias.test.ts` para o `previsto` explícito.
+
+---
+
+## Um financeiro só, e de quem veio o dinheiro (20/08/2026)
+
+### O mesmo painel em todo objeto
+
+A aba do processo mostrava seis cards abertos por titular; lead, caso e
+atividade mostravam três (Receitas / Despesas / Resultado). A mesma pergunta
+tinha duas respostas dependendo de onde você abrisse.
+
+A abertura por titular estava presa a `scope === 'process' && processNumber`.
+Agora ela vale em **todos** os objetos, e a condição (renomeada para `temJm`)
+guarda só o que de fato depende do CNJ: "quanto vale o processo", as parcelas de
+`jm_pagamentos` e o extrato de `jm_lancamentos`. O bloco de três cards deixou de
+existir.
+
+### De quem veio o dinheiro
+
+O extrato já dizia a **espécie** (contratual, sucumbencial, cota) e o **titular**
+(escritório, cliente, parceiro). Faltava a **pessoa**: num caso com cinco
+herdeiros, "entrou R$ 1.125,30 de cota do cliente" não diz de qual deles.
+
+Três colunas novas em `lead_financials`:
+
+| coluna | o que é |
+|---|---|
+| `contact_id` | a pessoa em `contacts`. Vale em qualquer objeto. FK `ON DELETE SET NULL` |
+| `parte_id` | a parte do processo em `jm_partes` — onde moram a cota e o honorário calculados dela |
+| `parte_nome` | retrato do nome no momento do lançamento |
+
+`parte_id` **não** tem FK de propósito: `jm_partes` é reimportada da planilha, e
+uma FK faria a reimportação falhar ou zerar os vínculos em silêncio. `parte_nome`
+é o seguro: mesmo que a linha da planilha mude, o extrato continua sabendo de
+quem era o dinheiro.
+
+O seletor oferece as **partes do processo** primeiro (quando há CNJ) e depois os
+**contatos do lead**, lidos das duas origens — a ponte `contact_leads` e o
+vínculo legado `contacts.lead_id`, o mesmo par que `useAutoImportGroupDocs`
+consulta. Nenhum backfill nas 14 linhas antigas: adivinhar de quem era o dinheiro
+é exatamente o erro que essas colunas existem para evitar.
+
+### Categoria e descrição obrigatórias
+
+Três lançamentos criados em 20/08 saíram com `category` e `description` nulos.
+Sem categoria, `classificarLancamento` cai em "operação do escritório" — um
+recebimento de cota do cliente entraria no **nosso** resultado. Sem descrição, a
+linha vira "Sem descrição" no extrato. As duas passaram a ser obrigatórias.
+
+### A armadilha do "vencido"
+
+Os mesmos três lançamentos nasceram **vencidos** e o motivo não estava na tela.
+Causa: o par "Já entrou / A receber" só se movia num sentido. Data futura marcava
+"a receber" automaticamente; voltar a data para o passado **não** desmarcava, e a
+linha nascia vencida sem ninguém entender por quê.
+
+Agora o par **segue a data** enquanto ninguém encostar nele (futuro = previsto,
+hoje ou passado = já entrou) e passa a respeitar a escolha depois do primeiro
+clique — exceto data futura, que continua forçando previsto, porque ninguém
+recebeu amanhã. E quando a combinação for previsto + data passada, o formulário
+avisa em vermelho **antes** de salvar que aquilo vai nascer vencido.
