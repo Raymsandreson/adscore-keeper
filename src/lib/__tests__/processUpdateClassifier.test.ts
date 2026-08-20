@@ -39,6 +39,26 @@ describe('classifyUpdate — conclusão não é decisão', () => {
   });
 });
 
+describe('classifyUpdate — categoria que já veio pronta', () => {
+  /**
+   * O push do INSS manda o status em campo próprio ("...alterado para
+   * Exigência"). A cascata por palavra-chave leria "requerimento ... INSS" e
+   * chutaria 'movimentacao'; com a categoria forçada não há chute.
+   */
+  it('categoria_forcada vence a cascata de palavras', () => {
+    const u = classifyUpdate({
+      conteudo: 'Status do requerimento 2082987386 alterado para Exigência (INSS)',
+      data: '2026-08-19',
+      categoria_forcada: 'prazo',
+    } as unknown as Mov);
+    expect(u.categoria).toBe('prazo');
+  });
+
+  it('sem ela, nada muda para quem vem de tribunal', () => {
+    expect(classifyUpdate(mov('Expedida intimação ao autor')).categoria).toBe('prazo');
+  });
+});
+
 describe('classifyUpdates — janela e dedupe', () => {
   it('corta o que é anterior a `desde` e dedupa o repetido', () => {
     const out = classifyUpdates(
