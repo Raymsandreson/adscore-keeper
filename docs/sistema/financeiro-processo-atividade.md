@@ -752,3 +752,117 @@ diferentes.
 `Parceria` e `Parceira` (5 linhas) **não** foram colapsadas em
 `HONORARIOS ADV PARCEIRO`. Podem ser rateio de sociedade em vez de repasse de
 honorário, e o dado não decide sozinho — juntar por parecer seria adivinhar.
+---
+
+## Um financeiro só, e de quem veio o dinheiro (20/08/2026)
+
+### O mesmo painel em todo objeto
+
+A aba do processo mostrava seis cards abertos por titular; lead, caso e
+atividade mostravam três (Receitas / Despesas / Resultado). A mesma pergunta
+tinha duas respostas dependendo de onde você abrisse.
+
+A abertura por titular estava presa a `scope === 'process' && processNumber`.
+Agora ela vale em **todos** os objetos, e a condição (renomeada para `temJm`)
+guarda só o que de fato depende do CNJ: "quanto vale o processo", as parcelas de
+`jm_pagamentos` e o extrato de `jm_lancamentos`. O bloco de três cards deixou de
+existir.
+
+### De quem veio o dinheiro
+
+O extrato já dizia a **espécie** (contratual, sucumbencial, cota) e o **titular**
+(escritório, cliente, parceiro). Faltava a **pessoa**: num caso com cinco
+herdeiros, "entrou R$ 1.125,30 de cota do cliente" não diz de qual deles.
+
+Três colunas novas em `lead_financials`:
+
+| coluna | o que é |
+|---|---|
+| `contact_id` | a pessoa em `contacts`. Vale em qualquer objeto. FK `ON DELETE SET NULL` |
+| `parte_id` | a parte do processo em `jm_partes` — onde moram a cota e o honorário calculados dela |
+| `parte_nome` | retrato do nome no momento do lançamento |
+
+`parte_id` **não** tem FK de propósito: `jm_partes` é reimportada da planilha, e
+uma FK faria a reimportação falhar ou zerar os vínculos em silêncio. `parte_nome`
+é o seguro: mesmo que a linha da planilha mude, o extrato continua sabendo de
+quem era o dinheiro.
+
+O seletor oferece as **partes do processo** primeiro (quando há CNJ) e depois os
+**contatos do lead**, lidos das duas origens — a ponte `contact_leads` e o
+vínculo legado `contacts.lead_id`, o mesmo par que `useAutoImportGroupDocs`
+consulta. Nenhum backfill nas 14 linhas antigas: adivinhar de quem era o dinheiro
+é exatamente o erro que essas colunas existem para evitar.
+
+### Categoria e descrição obrigatórias
+
+Três lançamentos criados em 20/08 saíram com `category` e `description` nulos.
+Sem categoria, `classificarLancamento` cai em "operação do escritório" — um
+recebimento de cota do cliente entraria no **nosso** resultado. Sem descrição, a
+linha vira "Sem descrição" no extrato. As duas passaram a ser obrigatórias.
+
+### A armadilha do "vencido"
+
+Os mesmos três lançamentos nasceram **vencidos** e o motivo não estava na tela.
+Causa: o par "Já entrou / A receber" só se movia num sentido. Data futura marcava
+"a receber" automaticamente; voltar a data para o passado **não** desmarcava, e a
+linha nascia vencida sem ninguém entender por quê.
+
+Agora o par **segue a data** enquanto ninguém encostar nele (futuro = previsto,
+hoje ou passado = já entrou) e passa a respeitar a escolha depois do primeiro
+clique — exceto data futura, que continua forçando previsto, porque ninguém
+recebeu amanhã. E quando a combinação for previsto + data passada, o formulário
+avisa em vermelho **antes** de salvar que aquilo vai nascer vencido.
+
+---
+
+## Comprovante e IA no lançamento (20/08/2026)
+
+### Anexar é o caminho curto
+
+O comprovante fica no bucket `invoices` (Storage do Cloud, o mesmo da nota
+fiscal do financeiro da empresa); `lead_financials.receipt_url` guarda só a URL.
+Ele abre no `MediaLightbox`, nunca em aba nova — regra de interface do projeto.
+
+Anexou uma **imagem**, a IA lê e preenche valor, data, tipo, descrição e
+categoria de uma vez. PDF sobe igual, mas não é lido: `image_url` do Gemini
+espera imagem, e a tela diz isso em vez de fingir que tentou.
+
+Se o upload falhar, o **lançamento é salvo assim mesmo**, com aviso. Perder o
+registro do dinheiro porque o Storage recusou o arquivo seria trocar um problema
+pequeno por um grande.
+
+### `sugerir-lancamento`
+
+Uma edge function para os dois usos, porque a pergunta é a mesma ("que lançamento
+é este?") e dois prompts separados divergiriam com o tempo:
+
+| entrada | devolve |
+|---|---|
+| `{ descricao }` | a categoria sugerida |
+| `{ comprovante }` | valor, data, tipo, descrição e categoria |
+
+Modelo: `google/gemini-2.5-flash` via `_shared/gemini.ts`, que já converte
+`image_url` com data URL em `inlineData`.
+
+**A regra do prompt é nunca inventar.** Comprovante borrado devolve campo nulo e
+explica em `observacao`. Valor errado num extrato financeiro é pior que campo
+vazio: o vazio a pessoa preenche, o errado ela não percebe. A resposta é
+**sugestão** — tudo editável, e quem salva é o humano.
+
+O servidor ainda **sanea**: `categoria` só passa se estiver na lista enviada.
+Modelo que devolve grafia diferente não vira categoria nova sem querer — foi
+assim que a planilha antiga acumulou 81 categorias para 68 conceitos.
+
+### Categoria nova sem tabela nova
+
+`mesclarCategorias` monta a lista do seletor: as curadas primeiro, depois toda
+categoria já usada nos lançamentos daquele lugar, depois a que a IA propôs e a
+pessoa aceitou. **Usar uma vez é criar** — não existe tela de administrar
+categoria, e não precisa existir.
+
+O dedupe é por caixa e acento, **não** por `categoriaCanonica`. Essa é uma
+armadilha real e foi pega antes de subir: `categoriaCanonica` foi feita para a
+PLANILHA, onde contratual × sucumbencial vem da coluna PESSOA (HC/HS) e não da
+categoria — ela colapsa "Honorários Contratuais" e "Honorários Sucumbenciais" na
+mesma chave `HONORARIOS`. Deduplicar por ela apagaria uma das duas do seletor,
+em silêncio. Há teste cravando isso.

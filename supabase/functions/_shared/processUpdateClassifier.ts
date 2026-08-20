@@ -96,7 +96,15 @@ function semTrechoDeConclusao(t: string): string {
     .join(' · ');
 }
 
-/** Classifica UMA movimentação. Ordem importa: mérito > audiência > perícia > prazo > despacho. */
+/**
+ * Classifica UMA movimentação. Ordem importa: mérito > audiência > perícia >
+ * prazo > despacho.
+ *
+ * `categoria_forcada` pula a cascata inteira: é para a fonte que já manda o
+ * status em campo próprio, como o push do INSS ("...foi alterado para
+ * Exigência"). Adivinhar por palavra o que já veio escrito é como se anunciou
+ * "Decisão de mérito" em cima de "Conclusos para proferir sentença".
+ */
 export function classifyUpdate(mov: EscavadorMovimentacao): UpdateClassificado {
   const cls = mov.classificacao_predita;
   const full = [mov.tipo, mov.titulo, mov.conteudo, mov.descricao, cls?.nome, cls?.descricao]
@@ -105,8 +113,10 @@ export function classifyUpdate(mov: EscavadorMovimentacao): UpdateClassificado {
   const t = normalize(full);
 
   let categoria: UpdateCategoria = 'movimentacao';
+  const forcada = mov.categoria_forcada as UpdateCategoria | undefined;
   const semConclusao = semTrechoDeConclusao(t);
-  if (hasAny(semConclusao, MERITO_KW) || MERITO_RE.test(semConclusao)) categoria = 'decisao_merito';
+  if (forcada) categoria = forcada;
+  else if (hasAny(semConclusao, MERITO_KW) || MERITO_RE.test(semConclusao)) categoria = 'decisao_merito';
   else if (hasAny(t, AUDIENCIA_KW)) categoria = 'audiencia';
   else if (hasAny(t, PERICIA_KW)) categoria = 'pericia';
   else if (hasAny(t, PRAZO_KW)) categoria = 'prazo';

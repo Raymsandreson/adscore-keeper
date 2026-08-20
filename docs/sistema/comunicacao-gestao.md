@@ -485,7 +485,7 @@ Um card por gerente (quem é gestor de time em `team_managers` ou de setor em `o
 - Dashboard: Hoje, Esta Semana, Taxa de Contato, Duração Média; alerta de retornos agendados.
 - "Registrar" — nova ligação (tipo, resultado, lead, contato, duração, próximo passo).
 - Filtros: busca, Período, Resultado, Tipo, Instância, Membro, Avaliação.
-- Abas "Lista", "Timeline por Lead" e "Triagem Callface"; detalhe com áudio, "Resumo da IA", avaliação por estrelas e agendamento de retorno.
+- Abas "Lista", "Timeline por Lead", "Fila de discagem" e "Triagem Callface"; detalhe com áudio, "Resumo da IA", avaliação por estrelas e agendamento de retorno.
 
 **Fluxo recomendado**: "Registrar" após cada ligação → no detalhe, ouvir o áudio/ler o resumo IA → avaliar e agendar o retorno.
 
@@ -518,6 +518,36 @@ via `callface-register` (endpoint de homologação `api.dev.callface.io`), com
   `CALLFACE_WEBHOOK_TOKEN` na query (`?k=`) ou no header `x-callface-token`,
   ligado por `CALLFACE_WEBHOOK_ENFORCE=1`. Só passa a barrar depois que a
   `webhook_url` for re-registrada na Callface já com o token.
+
+### Aba "Fila de discagem"
+
+Monta a lista que alimenta o **discador da Callface**. Existe porque a API pública
+deles **não expõe endpoint para originar chamada** — conferido na página
+`/developers` em 20/08/2026: só há `POST /integrate-app/register` e o webhook de
+retorno. Então o CRM entrega a lista e a discagem acontece do lado deles.
+
+Filtros: quadro, origem, chegaram nos últimos 7/15/30/90 dias, e "esconder quem
+já recebeu ligação" (cruza por `lead_id` e por telefone, porque 80% das ligações
+chegam sem `lead_id`). Um telefone por linha — o mesmo número em dois leads
+viraria ligação repetida.
+
+Saídas: **Exportar planilha** (CSV com `;` e BOM, que Excel pt-BR e Google Sheets
+abrem direto) e **Copiar números**. O CSV leva `lead_id` de propósito: se um dia a
+Callface devolver um identificador nosso no webhook, a ligação volta colada no lead.
+
+**O tamanho real da fila** (medido em 20/08/2026, e o motivo dos filtros serem por
+telefone e não por "lead novo"): dos 2.700 leads que chegaram em 30 dias, **94% não
+têm telefone nenhum** — 84% do volume é `google_alerts`, que é notícia raspada, não
+pessoa. Sobram ~136 discáveis em 30 dias (~7/dia útil), concentrados em BPC-Autismo
+e Auxílio Acidente, quase todos de origem `whatsapp`. Outros 21 leads têm telefone
+apenas no contato vinculado e **ficam de fora** — contato vinculado pode ser
+parente, não o próprio lead.
+
+A via de maior volume era a planilha: `sheet-lead-ingest` (Railway, chamado por
+Google Apps Script no `onFormSubmit`) trouxe 3.365 leads **todos com telefone** —
+703 em maio, 2.641 em junho, 181 em julho e **zero em agosto**. Só dois quadros têm
+`kanban_boards.sheet_webhook_token` configurado: "Acidente de Trabalho" e
+"BPC - Autismo". Religar essa via é o que faz a fila voltar a ter volume de discador.
 
 ### Aba "Triagem Callface"
 

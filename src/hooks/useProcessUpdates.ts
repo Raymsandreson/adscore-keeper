@@ -48,6 +48,23 @@ export interface ProcessUpdate {
    * enquanto a fila não passou pela linha — o card cai no texto cru.
    */
   resumo_ia: string | null;
+  /**
+   * Vínculos do processo, buscados depois da lista (leads e legal_cases) e
+   * grudados na linha. Não vêm de process_updates: a tabela guarda só os ids.
+   *
+   * `vinculos` null = ainda carregando (a lista pinta antes da busca terminar);
+   * objeto = resolvido, e aí `grupo_id` null quer dizer "sem grupo de WhatsApp",
+   * que é o que o filtro de vínculo separa.
+   */
+  vinculos: UpdateVinculos | null;
+}
+
+/** Lead e caso por trás da movimentação — quem avisar e sob que número. */
+export interface UpdateVinculos {
+  lead_nome: string | null;
+  grupo_id: string | null;
+  caso_numero: string | null;
+  caso_titulo: string | null;
 }
 
 /** Etiqueta "Notificado" — o cliente já foi avisado desta movimentação. */
@@ -254,11 +271,58 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
         // Degrau sem a coluna devolve linha sem o campo — `undefined` no card
         // seria "carregando", e o que vale dizer é "ainda não resumido".
         resumo_ia: r.resumo_ia ?? null,
+        vinculos: null,
       }));
       setUpdates(rows);
 
       if (rows.length) {
         const ids = rows.map((r) => r.id);
+        // Lead e caso do processo. Ficam fora da primeira pintura de propósito:
+        // são duas tabelas a mais, e o feed não pode esperar por elas para
+        // aparecer. Enquanto não chegam, `vinculos` é null e a linha não some
+        // do filtro — "sem grupo" só depois de ter olhado.
+        void (async () => {
+          try {
+            const leadIds = [...new Set(rows.map((r) => r.lead_id).filter(Boolean))] as string[];
+            const caseIds = [...new Set(rows.map((r) => r.case_id).filter(Boolean))] as string[];
+            const [leads, casos] = await Promise.all([
+              leadIds.length ? emLotes(leadIds, async (chunk) => {
+                const { data, error: e } = await client
+                  .from('leads').select('id, lead_name, whatsapp_group_id').in('id', chunk);
+                if (e) throw e;
+                return (data || []) as Array<{ id: string; lead_name: string | null; whatsapp_group_id: string | null }>;
+              }) : Promise.resolve([]),
+              caseIds.length ? emLotes(caseIds, async (chunk) => {
+                const { data, error: e } = await client
+                  .from('legal_cases').select('id, case_number, title').in('id', chunk);
+                if (e) throw e;
+                return (data || []) as Array<{ id: string; case_number: string | null; title: string | null }>;
+              }) : Promise.resolve([]),
+            ]);
+            const porLead = new Map(leads.map((l) => [l.id, l]));
+            const porCaso = new Map(casos.map((c) => [c.id, c]));
+            setUpdates((atuais) => atuais.map((u) => {
+              const l = u.lead_id ? porLead.get(u.lead_id) : undefined;
+              const c = u.case_id ? porCaso.get(u.case_id) : undefined;
+              return {
+                ...u,
+                vinculos: {
+                  lead_nome: l?.lead_name ?? null,
+                  grupo_id: l?.whatsapp_group_id ?? null,
+                  caso_numero: c?.case_number ?? null,
+                  caso_titulo: c?.title ?? null,
+                },
+              };
+            }));
+          } catch (vinculoErr) {
+            // Sem vínculo o feed continua inteiro — só o filtro de grupo e a
+            // linha do caso ficam de fora.
+            console.warn(
+              '[useProcessUpdates] vínculos (lead/caso) indisponíveis:',
+              vinculoErr instanceof Error ? vinculoErr.message : vinculoErr,
+            );
+          }
+        })();
         if (uid) {
           const reads = await emLotes(ids, async (chunk) => {
             const { data } = await client
@@ -390,6 +454,8 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
             // Chegou agora: o resumo é escrito minutos depois, pelo cron do
             // Railway. Até lá o card mostra o texto cru — nunca "undefined".
             resumo_ia: bruto.resumo_ia ?? null,
+            // Lead e caso vêm de outras tabelas; a próxima busca os resolve.
+            vinculos: null,
           };
           // Reordena em vez de empilhar no topo: com a lista ordenada por
           // data_movimentacao, uma linha recém-inserida de movimentação antiga

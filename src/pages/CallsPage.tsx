@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
 import { CallfaceTriageTab } from '@/components/calls/CallfaceTriageTab';
+import { DialQueueTab } from '@/components/calls/DialQueueTab';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -677,6 +678,7 @@ export default function CallsPage() {
         <TabsList>
           <TabsTrigger value="list">Lista</TabsTrigger>
           <TabsTrigger value="timeline">Timeline por Lead</TabsTrigger>
+          <TabsTrigger value="fila">Fila de discagem</TabsTrigger>
           <TabsTrigger value="triagem">Triagem Callface</TabsTrigger>
         </TabsList>
 
@@ -774,7 +776,14 @@ export default function CallsPage() {
           )}
         </TabsContent>
 
-        {/* Ligações da Callface que não encostaram em nenhum lead. Nada vira lead
+        {/* Antes da ligação: leads que chegaram e ainda não foram discados.
+            Exporta a planilha que alimenta o discador da Callface — a API pública
+            deles não tem endpoint para originar chamada. */}
+        <TabsContent value="fila" className="mt-3">
+          <DialQueueTab />
+        </TabsContent>
+
+        {/* Depois da ligação: as que não encostaram em nenhum lead. Nada vira lead
             automaticamente — a classificação é feita aqui, à mão. */}
         <TabsContent value="triagem" className="mt-3">
           <CallfaceTriageTab />
