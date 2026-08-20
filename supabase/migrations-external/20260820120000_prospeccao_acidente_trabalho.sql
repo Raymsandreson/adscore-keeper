@@ -1,6 +1,12 @@
 -- =============================================================================
 -- Prospecção de acidente de trabalho — persistência de candidatos e contatos.
 --
+-- VAI NO SUPABASE EXTERNO (kmedldlepwiityjsdahz), não no Cloud. Regra do
+-- projeto, cobrada pelo guard scripts/validate-edge-db-routing.mjs: Cloud é
+-- auth/metadata só; dado de negócio e função nova vão para o Externo. É também
+-- onde vive ESCAVADOR_API_TOKEN, então a edge function que popula estas
+-- tabelas roda no mesmo projeto e não precisa atravessar dois bancos.
+--
 -- Guarda o resultado do filtro de `_shared/prospeccaoAcidenteTrabalho.ts`
 -- (processo de acidente de trabalho com valor da causa acima do piso), o
 -- advogado do polo ativo, o contato dele quando houver, e o log de disparo.
