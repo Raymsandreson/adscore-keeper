@@ -77,6 +77,17 @@ export interface CarteiraPopLinha {
   jcm_coeficiente: number | null;
   /** Até quando a tabela de índices corrige — a tela mostra essa data. */
   jcm_referencia: string | null;
+  /**
+   * De onde saiu o valor. `decisao` = jm_valores, NOMINAL, a função corrige.
+   * `tab_aux` = jm_partes, valor CJCM já corrigido pela planilha — aí o
+   * coeficiente vem 1 e `jcm_referencia` vem null, porque a data até a qual a
+   * planilha corrigiu não está registrada em lugar nenhum.
+   */
+  valor_origem: 'decisao' | 'tab_aux' | null;
+  /** Cota do cliente na parte. Só a Tab. Aux abre isso; pela decisão vem null. */
+  cota_cliente: number | null;
+  /** Honorário do escritório na parte (contratual + sucumbencial). Idem. */
+  honorario_parte: number | null;
 }
 
 /** Honorário do escritório que ENTROU no caixa, por CNJ. Vem da planilha

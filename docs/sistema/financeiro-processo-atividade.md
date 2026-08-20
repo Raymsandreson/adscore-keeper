@@ -521,3 +521,63 @@ parcelado bruto = VALOR VINCENDO 194.469,24
 soma das fatias = 392.559,96      →  70% = 274.791,97 = TOTAL PARTE CJCM    ✓
 TOTAL DA CONDENAÇÃO CJCM na planilha = 365.123,42  (≠ 392.559,96)
 ```
+
+
+---
+
+## Carteira lendo a Tab. Aux, e a tela de conferência (19/08/2026)
+
+### A carteira passou a enxergar `jm_partes`
+
+A RPC `pop_carteira_marcos` lia o valor só de `jm_valores` (dano moral + estético
+da última decisão), que cobre 123 CNJs. `jm_partes` cobre 186. Eram **73
+processos que estavam na carteira, apareciam na lista e valiam zero** — não por
+falta de valor, mas porque a função lia a tabela que não os tinha.
+
+**A armadilha, e por que não foi um join simples:**
+
+| Fonte | O valor é | A função |
+|---|---|---|
+| `jm_valores` | NOMINAL | corrige pelo índice do ramo |
+| `jm_partes.condenacao_cjcm` | **CJCM — já corrigido** | coeficiente 1 |
+
+Corrigir o CJCM de novo infla o número. Já aconteceu nesta base (extrato do
+processo, mesmo dia, revertido). Agora a origem viaja no retorno em
+`valor_origem` (`decisao` \| `tab_aux`), e o coeficiente vale 1 quando o valor já
+vem corrigido. `jcm_referencia` vem null nesse caso — a data até a qual a
+planilha corrigiu não está registrada em lugar nenhum, e afirmar uma data que não
+se sabe é pior que não afirmar.
+
+**Quem cobre o CNJ cobre inteiro.** A decisão tem prioridade quando tem valor;
+onde ela vem zerada e a Tab. Aux cobre, a Tab. Aux assume o CNJ todo e as linhas
+zeradas da decisão saem. Sem essa regra, 3 CNJs apareciam com as duas origens e
+duplicavam as linhas de parte — nos três a decisão valia zero e a Tab. Aux tinha
+o valor real (um deles R$ 450.000).
+
+Resultado no quadro trabalhista, medido depois de aplicar:
+
+| | Antes | Depois |
+|---|---|---|
+| Processos com valor | 144 | **215** (141 decisão + 74 Tab. Aux) |
+| Carteira na tela | R$ 40.487.396,90 | **R$ 100.636.869,93** |
+| Linhas com abertura cliente × honorário | 0 | **262** |
+
+CNJs com origem duplicada: **0**. Migrations `20260819180000` e a correção do
+mesmo dia; reversão é reaplicar `20260818130000`, que tem a definição anterior
+inteira.
+
+### Tela: Jurimetria — tabela da carteira
+
+Rota `/processual/jurimetria`, menu "Tabela da carteira". É a aba Tab. Aux dentro
+do sistema: busca livre, filtros de status/fase/UF/com-sem-valor, totais que
+respondem ao filtro, e **download CSV**.
+
+- `src/lib/tabelaJurimetria.ts` — filtro, totais, opções e CSV. 15 testes.
+- `src/hooks/useTabelaJurimetria.ts` — carrega tudo paginado (1.222 linhas) e
+  filtra no cliente, para mexer no filtro ser instantâneo.
+- `src/pages/JurimetriaTabelaPage.tsx` — só desenha.
+
+Detalhes que custam quando faltam: a busca normaliza acento (metade dos nomes da
+planilha está sem), vários termos se somam em vez de alargar ("braye pago" acha o
+Braye que está pago), e o CSV sai com BOM + `;` + decimal com vírgula, que é o
+que o Excel em português abre sem perguntar nada.
