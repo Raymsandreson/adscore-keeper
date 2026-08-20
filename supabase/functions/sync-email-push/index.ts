@@ -155,6 +155,9 @@ serve(async (req) => {
       const movs: MovimentacaoEmail[] = parseEmailPush({
         assunto,
         corpo: email.body_text,
+        // Teto das datas do bloco de eventos: audiência designada para daqui a
+        // três meses não pode virar a data da notícia.
+        dataEmail,
       });
 
       if (movs.length === 0) {
