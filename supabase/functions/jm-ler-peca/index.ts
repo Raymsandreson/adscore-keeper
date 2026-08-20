@@ -30,7 +30,7 @@ const corsHeaders = {
 const MODEL = 'gemini-2.5-flash';
 const BUCKET = 'jm-autos';
 
-const PROMPT_VERSAO = "v2-verbas-2026-08-20";
+const PROMPT_VERSAO = "v3-json-plano-2026-08-20";
 
 const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve DUAS coisas:
 (A) o que ela diz sobre DINHEIRO QUE ANDOU e sobre o ESTADO da execução;
@@ -38,7 +38,12 @@ const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasil
 
 Devolva SOMENTE um JSON, sem markdown.
 
-═══ BLOCO A — caixa e estado ═══
+O JSON é PLANO: todas as chaves abaixo ficam no PRIMEIRO nível do objeto.
+Os títulos com ═ são seções DESTA INSTRUÇÃO e NÃO devem virar chaves do JSON.
+NÃO agrupe a resposta em {"A":...}, {"bloco_a":...} nem nada parecido.
+O objeto começa assim: {"especie": ..., "valor": ..., "partes": [...], ...}
+
+═══ A — caixa e estado ═══
 - "especie": COMPROVANTE_PAGAMENTO | ALVARA | MANIFESTACAO_INADIMPLENCIA | EXTINCAO_QUITACAO | CERTIDAO_TRANSITO | DECISAO | DESPACHO | ATA_AUDIENCIA | SENTENCA | SENTENCA_LIQUIDACAO | ACORDO | PETICAO_INICIAL | LAUDO_PERICIAL | CALCULO | OUTRO
   * SENTENCA_LIQUIDACAO: sentença/decisão que APURA os valores devidos. É a peça mais rica em verbas.
   * EXTINCAO_QUITACAO: extinção por acordo cumprido. Prova de que o dinheiro entrou.
@@ -55,13 +60,13 @@ Devolva SOMENTE um JSON, sem markdown.
 - "confianca": 0 a 1.
 - "resumo": 1-2 frases do que a peça decide ou noticia.
 
-═══ BLOCO B — partes e verbas ═══
+═══ B — partes e verbas ═══
 - "partes": lista. UMA ENTRADA POR PARTE AUTORA/RECLAMANTE nomeada na peça, com os valores DELA.
   Lista VAZIA se a peça não fixa valor por parte. Cada entrada:
   * "nome": nome da parte autora, como está na peça.
   * "parentesco" em relação à vítima, TAXATIVO e em caixa alta:
-    VÍTIMA | CÔNJUGE | FILHO | PAIS | IRMÃO | PADRASTO | ENTEADO | NETO | AVÓS | TIOS | null
-    (se a parte autora é a própria vítima, use VÍTIMA)
+    VÍTIMA | CÔNJUGE | FILHO | MAE | PAI | IRMÃO | PADRASTO | ENTEADO | NETO | AVOS | TIOS | null
+    (se a parte autora é a própria vítima, use VÍTIMA; para genitores use MAE ou PAI, nunca PAIS)
   * "nascimento": "AAAA-MM-DD" ou null.
   * "meses_pensionamento": número de meses de pensão fixados PARA ESTA PARTE, ou null.
   * "verbas": lista das verbas DESTA PARTE. Cada uma:
@@ -74,8 +79,10 @@ Devolva SOMENTE um JSON, sem markdown.
     - "periodicidade": MENSAL quando for pensão/valor recorrente; UNICA nos demais.
   * DANO_MATERIAL_BASE é a BASE DE CÁLCULO mensal do pensionamento, não o total.
     Se a peça der o total e a base, traga a base em DANO_MATERIAL_BASE e o total em PENSAO_MENSAL.
+  * Use OUTRA só quando a verba realmente não couber na lista. Se a peça traz o crédito já
+    consolidado por pessoa, sem dizer de que verba veio, use OUTRA com descricao explicando.
 
-═══ BLOCO C — o processo, quando a peça informar ═══
+═══ C — o processo, quando a peça informar ═══
 - "processo": objeto (campos ausentes = null):
   * "decisao_tipo", TAXATIVO em caixa alta: SEM DECISÃO | ACORDO ANTES DA SENTENÇA | SENTENÇA |
     ACORDO COM SENTENÇA | EMBARGOS 1º GRAU | 2º EMBARGOS 1º GRAU | ACÓRDÃO 2º GRAU |
@@ -93,13 +100,16 @@ Devolva SOMENTE um JSON, sem markdown.
   * "vitima_salario": número ou null.
   * "vitima_idade": número ou null.
 
-═══ BLOCO D — cronograma, quando a peça o estabelecer ═══
+═══ D — cronograma, quando a peça o estabelecer ═══
 - "cronograma": lista de parcelas que a peça FIXA (acordo parcelado, pensão, plano de pagamento).
   Vazia se a peça não estabelece cronograma. Cada item:
   * "n_parcela": número.
   * "data_prevista": "AAAA-MM-DD" ou null.
   * "valor": número ou null.
   * "beneficiario": nome da parte, ou null se for global.
+  * Se a peça diz "N parcelas de R$ X, vencendo todo dia D a partir de <mês>", GERE as N
+    entradas com as datas calculadas. Se diz o total e o número de parcelas sem as datas,
+    gere as N entradas com data_prevista null.
 
 ═══ REGRAS DURAS ═══
 1. NÃO INVENTE. Se a peça não traz o dado, use null / lista vazia. Preferir null a chutar é o comportamento CORRETO e esperado.
@@ -112,6 +122,25 @@ Devolva SOMENTE um JSON, sem markdown.
 8. Mero expediente, publicação, conclusão e remessa não movem dinheiro nem fixam verba: especie OUTRO, valor null, partes [], cronograma [].
 9. Valor global sem abertura por parte: preencha valor_condenacao e deixe "partes" vazia. Não divida por igual entre as partes por conta própria.
 10. As listas marcadas TAXATIVO só aceitam os valores listados, em caixa alta, sem abreviação. Se nada servir, use null.`;
+
+/**
+ * O modelo às vezes agrupa a resposta por seção — {"A": {...}, "B": {...}} ou
+ * {"bloco_a": {...}} — porque os títulos do prompt parecem estrutura. Quando
+ * isso acontece, `lido.especie` não existe, o código grava o default OUTRO com
+ * confiança null e a leitura BOA vira lixo silencioso: 8 de 21 peças do caso 88
+ * se perderam assim, incluindo o IDPJ que provava a inadimplência.
+ *
+ * Instrução no prompt reduz, não elimina. Aqui a defesa é estrutural: se
+ * `especie` não está no topo, mescla um nível de objetos e tenta de novo.
+ */
+function achatar(j: Record<string, unknown>): Record<string, unknown> {
+  if (!j || typeof j !== 'object' || 'especie' in j) return j;
+  const plano: Record<string, unknown> = {};
+  for (const v of Object.values(j)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(plano, v);
+  }
+  return 'especie' in plano ? plano : j;
+}
 
 interface Documento {
   id: number;
@@ -224,7 +253,7 @@ Deno.serve(async (req: Request) => {
       }
       const resposta = await r.json();
       const bruto = resposta?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      lido = JSON.parse(String(bruto));
+      lido = achatar(JSON.parse(String(bruto)));
     } catch (e) {
       return json({ success: false, documento_id, error: `leitura: ${String((e as Error)?.message).slice(0, 300)}` });
     }
