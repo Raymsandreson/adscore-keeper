@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 // `lead_financials` é tabela de NEGÓCIO: vive no Supabase Externo, com FK para
 // leads/legal_cases/lead_processes/lead_activities de lá. A aba do lead usava o
 // client Cloud — errado, e por isso silenciosamente vazia. Aqui vai pelo `db`
@@ -18,10 +18,14 @@ import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake,
-  CalendarClock, CheckCircle2, Repeat, Paperclip, Sparkles, Loader2, X,
+  CalendarClock, CheckCircle2, Repeat, Paperclip, Sparkles, Loader2, X, Mic, Square,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
+// TODA edge function passa pelo roteador — é ele que sabe se a função vive no
+// Externo, no Cloud ou no Railway. Chamar `.functions.invoke` direto de um
+// client bate no projeto errado e falha calada.
+import { cloudFunctions } from '@/lib/functionRouter';
 // Imagem e PDF NUNCA abrem página nova (regra de interface do projeto):
 // o comprovante abre no lightbox, por cima da ficha.
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
@@ -44,8 +48,19 @@ import {
 /** Chave em `system_settings` (Cloud) com o deságio padrão, em % ao mês. */
 const CHAVE_DESAGIO = 'desagio_mes_padrao';
 
-/** Bucket do Storage (Cloud) onde o comprovante fica — o mesmo da nota fiscal. */
+/** Bucket do Storage onde comprovante e áudio do ditado ficam — o da nota fiscal. */
 const BUCKET_COMPROVANTE = 'invoices';
+
+/** Sem acento e em minúscula, para casar o nome falado com o nome da parte. */
+const normalizarNome = (v: string) =>
+  v.normalize('NFD')
+    .split('')
+    .filter(c => c.charCodeAt(0) < 0x300 || c.charCodeAt(0) > 0x36f)
+    .join('')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .join(' ');
 
 /**
  * Acima disto a imagem não vai para a IA. Não é limite de banco: é que
@@ -312,7 +327,11 @@ export function EntityFinancialsPanel({
   // Comprovante em mãos, antes de salvar: o arquivo (para subir) e a data URL
   // (para a IA ler e para a prévia). Um sem o outro não serve.
   const [comprovante, setComprovante] = useState<{ arquivo: File; dataUrl: string } | null>(null);
-  const [pensando, setPensando] = useState<'comprovante' | 'categoria' | null>(null);
+  const [pensando, setPensando] = useState<'comprovante' | 'categoria' | 'audio' | null>(null);
+  const [gravando, setGravando] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
+  const pedacosRef = useRef<Blob[]>([]);
   const [sugestao, setSugestao] = useState<SugestaoIa | null>(null);
   /** Categoria que a IA propôs criar e a pessoa aceitou. Vira opção na lista. */
   const [categoriaCriada, setCategoriaCriada] = useState<string | null>(null);
@@ -862,37 +881,62 @@ export function EntityFinancialsPanel({
    * vazio — ninguém quer ver o valor que digitou sumir por causa de um palpite.
    * Campo que a IA não leu volta null e não encosta em nada.
    */
-  const aplicarSugestao = (s: SugestaoIa, doComprovante: boolean) => {
+  const aplicarSugestao = (s: SugestaoIa, ehFonte: boolean) => {
     setForm(p => ({
       ...p,
-      amount: s.valor != null && (doComprovante || !p.amount) ? String(s.valor) : p.amount,
-      entry_date: s.data && doComprovante ? s.data : p.entry_date,
-      entry_type: s.tipo && doComprovante ? s.tipo : p.entry_type,
-      description: s.descricao && (doComprovante || !p.description) ? s.descricao : p.description,
+      amount: s.valor != null && (ehFonte || !p.amount) ? String(s.valor) : p.amount,
+      entry_date: s.data && ehFonte ? s.data : p.entry_date,
+      entry_type: s.tipo && ehFonte ? s.tipo : p.entry_type,
+      description: s.descricao && (ehFonte || !p.description) ? s.descricao : p.description,
       category: s.categoria || p.category,
       // Comprovante é prova de que o dinheiro andou: nasce baixado, na data dele.
-      settled: doComprovante && !!s.data ? s.data <= hoje : p.settled,
-      settledTocado: doComprovante ? true : p.settledTocado,
+      settled: ehFonte && !!s.data ? s.data <= hoje : p.settled,
+      settledTocado: ehFonte ? true : p.settledTocado,
     }));
+
+    // Nome lido no comprovante ou dito no áudio: se casar com EXATAMENTE uma
+    // parte/contato da lista, já deixa escolhido. Dois candidatos não escolhe
+    // nenhum — chutar de quem é o dinheiro é pior que deixar em branco.
+    const nomeLido = s.tipo === 'saida' ? (s.beneficiario || s.pagador) : (s.pagador || s.beneficiario);
+    if (ehFonte && nomeLido) {
+      const alvo = normalizarNome(nomeLido);
+      const casam = opcoesParte.filter(o => {
+        const n = normalizarNome(o.nome);
+        return !!n && !!alvo && (n.includes(alvo) || alvo.includes(n));
+      });
+      if (casam.length === 1) setForm(p => ({ ...p, parte: casam[0].valor }));
+    }
   };
 
-  const chamarIa = async (origem: 'comprovante' | 'categoria', dataUrl?: string) => {
+  const chamarIa = async (
+    origem: 'comprovante' | 'categoria' | 'audio',
+    extra?: { comprovante?: string; ditado?: string },
+  ) => {
     setPensando(origem);
     setSugestao(null);
     try {
-      const { data, error } = await authClient.functions.invoke('sugerir-lancamento', {
-        body: {
-          descricao: form.description || null,
-          comprovante: dataUrl || null,
-          categorias: categoriasDisponiveis,
-          contexto: processNumber || contextLabel || null,
+      const { data, error } = await cloudFunctions.invoke<SugestaoIa & { error?: string }>(
+        'sugerir-lancamento',
+        {
+          body: {
+            descricao: form.description || null,
+            comprovante: extra?.comprovante || null,
+            ditado: extra?.ditado || null,
+            categorias: categoriasDisponiveis,
+            contexto: processNumber || contextLabel || null,
+            // O servidor pode estar em outro fuso: quem sabe que dia é hoje
+            // para resolver "ontem" do ditado é a tela.
+            hoje,
+          },
         },
-      });
+      );
       if (error) throw error;
-      const s = data as SugestaoIa & { error?: string };
-      if (s?.error) throw new Error(s.error);
-      aplicarSugestao(s, origem === 'comprovante');
-      setSugestao(s);
+      if (!data) throw new Error('sem resposta');
+      if (data.error) throw new Error(data.error);
+      // Comprovante e ditado são FONTE: sobrescrevem. Sugerir categoria pelo
+      // texto só completa o que está vazio.
+      aplicarSugestao(data, origem !== 'categoria');
+      setSugestao(data);
     } catch (e) {
       toast.error('A IA não conseguiu: ' + (e instanceof Error ? e.message : 'erro'));
     } finally {
@@ -909,12 +953,63 @@ export function EntityFinancialsPanel({
     try {
       const dataUrl = await lerArquivo(arquivo);
       setComprovante({ arquivo, dataUrl });
-      // PDF a IA não lê por aqui: o Gemini recebe a imagem inline. O arquivo sobe
-      // do mesmo jeito — só não vem preenchido sozinho, e a tela diz isso.
-      if (arquivo.type.startsWith('image/')) await chamarIa('comprovante', dataUrl);
-      else toast.info('PDF anexado. A leitura automática só funciona com imagem — preencha à mão.');
+      // Imagem E PDF: o conversor do _shared/gemini.ts lê o mime do data URL e
+      // manda como inlineData, e o Gemini aceita application/pdf igual.
+      await chamarIa('comprovante', { comprovante: dataUrl });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao ler o arquivo');
+    }
+  };
+
+  /**
+   * Ditar o lançamento, igual ao que a atividade já faz por voz.
+   *
+   * O caminho é o MESMO que o chat da equipe usa e que já funciona: sobe o
+   * áudio, pede a `transcribe-team-audio` (ElevenLabs Scribe, com Gemini de
+   * reserva) o texto, e só então a IA lê esse texto como DITADO. Escrever um
+   * segundo transcritor aqui seria manter duas coisas que fazem a mesma.
+   */
+  const gravarDitado = async () => {
+    if (gravando) { gravadorRef.current?.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      pedacosRef.current = [];
+      rec.ondataavailable = e => { if (e.data.size) pedacosRef.current.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        setGravando(false);
+        const blob = new Blob(pedacosRef.current, { type: mime });
+        if (blob.size < 1000) { toast.error('Gravação muito curta.'); return; }
+        void transcreverDitado(blob, mime);
+      };
+      gravadorRef.current = rec;
+      rec.start();
+      setGravando(true);
+    } catch {
+      toast.error('Não consegui acessar o microfone');
+    }
+  };
+
+  const transcreverDitado = async (blob: Blob, mime: string) => {
+    setPensando('audio');
+    try {
+      const caminho = 'lancamentos/audio/' + crypto.randomUUID() + '.webm';
+      const { error: upErr } = await authClient.storage.from(BUCKET_COMPROVANTE).upload(caminho, blob);
+      if (upErr) throw new Error('o áudio não subiu (' + upErr.message + ')');
+      const url = authClient.storage.from(BUCKET_COMPROVANTE).getPublicUrl(caminho).data.publicUrl;
+      const { data } = await cloudFunctions.invoke<{ success?: boolean; transcription?: string }>(
+        'transcribe-team-audio',
+        { body: { audio_url: url, audio_mime: mime.split(';')[0] } },
+      );
+      const texto = data?.transcription?.trim();
+      if (!texto) throw new Error('não entendi o áudio');
+      await chamarIa('audio', { ditado: texto });
+    } catch (e) {
+      toast.error('Ditado: ' + (e instanceof Error ? e.message : 'erro'));
+      setPensando(null);
     }
   };
 
@@ -1615,7 +1710,24 @@ export function EntityFinancialsPanel({
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md max-h-[90vh]">
+        <DialogContent
+          className="max-w-md max-h-[90vh]"
+          // Colar (Ctrl+V) e arrastar valem em QUALQUER canto do diálogo, não só
+          // em cima do campo: comprovante quase sempre chega como print na área
+          // de transferência, e obrigar a mira certa é atrito à toa.
+          onPaste={e => {
+            const arq = Array.from(e.clipboardData?.files || [])[0];
+            if (arq) { e.preventDefault(); void anexarComprovante(arq); }
+          }}
+          onDragOver={e => { e.preventDefault(); setArrastando(true); }}
+          onDragLeave={() => setArrastando(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setArrastando(false);
+            const arq = Array.from(e.dataTransfer?.files || [])[0];
+            if (arq) void anexarComprovante(arq);
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{editingEntry ? 'Editar Lançamento' : 'Novo Lançamento'}</DialogTitle>
           </DialogHeader>
@@ -1643,7 +1755,7 @@ export function EntityFinancialsPanel({
                 imagem e preenche valor, data, tipo, descrição e categoria de uma
                 vez. O que ela não conseguir ler fica em BRANCO — nunca chutado.
                 Tudo continua editável: quem salva é a pessoa. */}
-            <div className="rounded border p-2 space-y-2">
+            <div className={'rounded border p-2 space-y-2 ' + (arrastando ? 'border-primary bg-primary/5' : '')}>
               <div className="flex items-center justify-between gap-2">
                 <Label className="text-xs flex items-center gap-1">
                   <Paperclip className="h-3.5 w-3.5" /> Comprovante
@@ -1677,12 +1789,18 @@ export function EntityFinancialsPanel({
                   ver o comprovante anexado
                 </button>
               ) : (
-                <Input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="text-xs"
-                  onChange={e => void anexarComprovante(e.target.files?.[0] || null)}
-                />
+                <>
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="text-xs"
+                    onChange={e => void anexarComprovante(e.target.files?.[0] || null)}
+                  />
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Ou <strong>arraste o arquivo aqui</strong>, ou <strong>cole com Ctrl+V</strong>.
+                    Imagem e PDF são lidos pela IA.
+                  </p>
+                </>
               )}
 
               {pensando === 'comprovante' && (
@@ -1690,6 +1808,25 @@ export function EntityFinancialsPanel({
                   <Loader2 className="h-3 w-3 animate-spin" /> lendo o comprovante...
                 </p>
               )}
+
+              {/* DITAR — mesmo caminho da atividade por voz: transcreve e a IA
+                  lê o texto como ditado, tirando valor, data e de quem é. */}
+              <Button
+                type="button"
+                variant={gravando ? 'destructive' : 'outline'}
+                size="sm"
+                className="w-full"
+                disabled={pensando !== null && !gravando}
+                onClick={() => void gravarDitado()}
+              >
+                {gravando ? (
+                  <><Square className="h-3.5 w-3.5 mr-1" /> parar e transcrever</>
+                ) : pensando === 'audio' ? (
+                  <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> transcrevendo...</>
+                ) : (
+                  <><Mic className="h-3.5 w-3.5 mr-1" /> ditar o lançamento</>
+                )}
+              </Button>
             </div>
 
             <div className="flex gap-2">
