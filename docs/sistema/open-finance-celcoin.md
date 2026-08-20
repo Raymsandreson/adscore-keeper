@@ -137,7 +137,7 @@ alerta de "sem sincronizar há N dias" que existia no `consentHealth` era um
 alarme sem badalo: não podia tocar. É o formato exato da falha da Pluggy — as 3
 conexões dizem `status: UPDATED` até hoje, sem um lançamento desde 18/03/2026.
 
-Desde **20/08/2026** `list_connections` devolve `last_transaction_date` por
+Desde a **v14 (20/08/2026)** `list_connections` devolve `last_transaction_date` por
 conexão (maior `transaction_date` entre as duas tabelas, filtrando
 `provider='celcoin'` e `pluggy_item_id=<consent>`), e o `consentHealth` decide
 por ele. O cálculo é na edge porque `bank_transactions` e
@@ -293,10 +293,10 @@ argumento.
 | Inter PJ / Prudencio Capital | **AUTHORISED** até 2027-08-18. 298 lançamentos de 19/03 a 18/08, **conferidos contra o extrato em PDF: diferença zero** em data e valor, os 6 meses fechando individualmente. |
 | Inter PJ / R.P.Advogados | pendente — falta o CNPJ |
 | Santander | pendente — é conta **pessoal** (`PERSONAL_BANK`), consentimento PF sem CNPJ |
-| Cartão de crédito | A conta existe (`40b9d9e8…`) e `/bills` responde 200 — com **lista vazia**. Instrumentado em 19/08: não é o nome do campo `billId`, é a lista mesmo. Corroborado pela Pluggy, que em 14 meses nunca viu fatura nas 2 conexões do Inter (os 5.524 lançamentos de cartão são **todos** do Santander). Resta desempatar "não há fatura" de "a janela `fromDueDate/toDueDate` não vale neste transmissor": o retry sem janela está escrito e **aguarda deploy**. |
+| Cartão de crédito | A conta existe (`40b9d9e8…`) e `/bills` responde 200 — com **lista vazia**. Instrumentado em 19/08: não é o nome do campo `billId`, é a lista mesmo. Corroborado pela Pluggy, que em 14 meses nunca viu fatura nas 2 conexões do Inter (os 5.524 lançamentos de cartão são **todos** do Santander). **Desempatado em 20/08/2026** (v14): o `/bills` foi chamado duas vezes, com janela (729b) e sem (597b), e as duas voltaram vazias — `0 faturas, com e sem janela`. A janela não está engolindo resultado; o Inter não tem fatura mesmo. Fica a ressalva de que isso **não prova** que `fromDueDate/toDueDate` sejam os nomes certos num transmissor que TENHA fatura — as duas hipóteses dão vazio aqui. O retry cobre esse caso quando aparecer: se vier 0 com janela e N sem, ele usa as N e o log diz que o par de parâmetros não vale. |
 | Consentimentos órfãos | **Resolvidos em 19/08/2026.** Os 6 `AWAITING` viraram `ABANDONED` (a Celcoin recusou revogar, 422) e saíram da tela. Seguem existindo na Celcoin, sem acesso a nada, até 18/08/2027. |
 | Pluggy | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
 | Piso da janela | **Por conexão desde 19/08/2026** (v13). Antes era por usuário, e um consentimento novo do Santander nasceria com piso 15/08 — de 19/03 a 14/08 nunca seria buscado, calado. Simulado contra dado real: Inter segue em 15/08 (sem regressão), Santander nasceria em 19/03, exatamente onde a Pluggy parou. |
-| Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) **aguarda o mesmo deploy**. Falta ainda o aviso fora do painel de conexões — hoje é preciso abrir a aba para ver. |
+| Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) subiu na v14 e foi conferido: o Inter devolve `2026-08-20`, as demais conexões `null`. Falta o aviso **fora** do painel de conexões — hoje é preciso abrir a aba para ver, e o alerta que exige ser procurado não é alerta. |
 | Conciliação em tela | **Quebrada, e não era conhecido.** As telas leem o Cloud, a Celcoin grava no Externo. Ver seção própria. |
 | **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. O alerta de obsolescência saiu da lista em 20/08 — ver seção própria. |
