@@ -6158,6 +6158,7 @@ const ActivitiesPage = () => {
                   caseId={formCaseId}
                   leadId={formLeadId}
                   processNumber={(formProcessId ? caseProcesses.find(p => p.id === formProcessId) : linkedProcess)?.process_number || null}
+                  caseRef={formCaseTitle || formLeadName || null}
                   activityId={selectedActivity?.id || null}
                   assignedTo={formAssignedTo}
                   activityTitle={formTitle}

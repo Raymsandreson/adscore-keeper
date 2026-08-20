@@ -89,3 +89,82 @@ describe('status de consentimento — grafia Z vs S', () => {
     expect(h.level).toBe('ok');
   });
 });
+
+/**
+ * Obsolescência: o sync roda e não traz nada.
+ *
+ * Este bloco existe por causa de um modo de falha JÁ OBSERVADO, não hipotético.
+ * A Pluggy parou de trazer lançamento em 18/03/2026 e as 3 conexões seguem
+ * dizendo `status: UPDATED` até hoje — cinco meses de silêncio que ninguém viu,
+ * porque o rótulo que a tela mostrava media a rodada, não o dado.
+ *
+ * O `last_sync_at` da Celcoin tem exatamente o mesmo defeito: a edge o carimba
+ * no fim de todo sync bem-sucedido, INCLUSIVE quando o resultado é zero linha.
+ * Com o cron do Railway rodando 3x/dia ele nunca envelhece, e o alerta de "sem
+ * sincronizar há N dias" que existia aqui era um alarme sem badalo.
+ */
+describe('obsolescência — medir dado que chegou, não rodada que aconteceu', () => {
+  // Datas de calendário em Brasília, que é o fuso que o vitest.config fixa e o
+  // mesmo em que a coluna DATE `transaction_date` é gravada.
+  const diasAtras = (n: number) => {
+    const d = new Date();
+    d.setUTCDate(d.getUTCDate() - n);
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(d);
+  };
+  const daquiUmAno = new Date(Date.now() + 300 * 86_400_000).toISOString();
+  const consentimento = (last_transaction_date: string | null, last_sync_at = new Date().toISOString()) => ({
+    status: 'AUTHORISED',
+    expires_at: daquiUmAno,
+    last_sync_at,
+    last_transaction_date,
+  });
+
+  it('acusa quando o sync roda em dia mas o dado parou — o caso da Pluggy', () => {
+    const h = consentHealth(consentimento(diasAtras(7)));
+    expect(h.level).toBe('atencao');
+    expect(h.label).toBe('Sem lançamento novo há 7 dias');
+  });
+
+  it('escala para parado quando o silêncio passa de 10 dias', () => {
+    expect(consentHealth(consentimento(diasAtras(12))).level).toBe('parado');
+  });
+
+  it('NÃO alarma no maior silêncio real medido (3 dias, 08/07 -> 12/07)', () => {
+    // O limiar precisa caber no comportamento observado da conta: 113 dias com
+    // movimento em 5 meses, 8 buracos de fim de semana (2 dias) e um de 3.
+    // Alarmar em 3 seria alarme de rotina, e alarme de rotina vira ruído
+    // ignorado — que é como o silêncio de verdade passa.
+    expect(consentHealth(consentimento(diasAtras(0))).level).toBe('ok');
+    expect(consentHealth(consentimento(diasAtras(2))).level).toBe('ok');
+    expect(consentHealth(consentimento(diasAtras(3))).level).toBe('ok');
+    // Carnaval é o pior caso que a janela medida não contém: sexta -> quarta
+    // sem lançamento dá 4 dias. Ainda assim não pode tocar.
+    expect(consentHealth(consentimento(diasAtras(4))).level).toBe('ok');
+  });
+
+  it('separa "o sync parou" de "a conta não teve movimento"', () => {
+    // Causas diferentes, consertos diferentes: um é o cron do Railway caído,
+    // o outro é a conexão respondendo 200 vazio. O rótulo tem que dizer qual.
+    const h = consentHealth(consentimento(diasAtras(0), new Date(Date.now() - 3 * 86_400_000).toISOString()));
+    expect(h.level).toBe('parado');
+    expect(h.label).toBe('O sync não roda há 3 dias');
+  });
+
+  it('sem last_transaction_date não inventa alarme', () => {
+    // Enquanto a edge que preenche o campo não subir, o front recebe undefined.
+    // Silêncio é a resposta certa: alarme falso aqui queima o alarme verdadeiro.
+    expect(consentHealth(consentimento(null)).level).toBe('ok');
+    expect(consentHealth({ status: 'AUTHORISED', expires_at: daquiUmAno, last_sync_at: new Date().toISOString() }).level).toBe('ok');
+  });
+
+  it('expiração vence obsolescência — é a causa, não o sintoma', () => {
+    const h = consentHealth({
+      status: 'AUTHORISED',
+      expires_at: new Date(Date.now() + 10 * 86_400_000).toISOString(),
+      last_sync_at: new Date().toISOString(),
+      last_transaction_date: diasAtras(30),
+    });
+    expect(h.level).toBe('atencao');
+    expect(h.label).toContain('Expira em');
+  });
+});

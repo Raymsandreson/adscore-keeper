@@ -9,6 +9,12 @@
 // A regra 2 existe porque 115 das 326 atividades vivas de perícia não têm
 // processo vinculado: sem ela, um terço do serviço não tinha onde marcar data.
 //
+// O QUE JÁ ESTÁ NO CALENDÁRIO APARECE AQUI. O chip também enxerga a perícia
+// vinda da planilha de audiências (casada pelo número do processo). Ela é
+// mostrada, não editada: a planilha é a dona daquela linha, e remarcar por aqui
+// faria o sync reinserir a data antiga. Quem precisar de outra data (a perícia
+// do INSS quando já existe uma judicial) marca por cima, e aí nasce linha nova.
+//
 // ONDE GRAVA: `hearings`, ancorada em processo → caso → lead
 // (`usePericiaDaAtividade`). Antes gravava em `lead_processes.pericia_*_at`,
 // que ficou com 1 linha em dois meses. O chip salva na hora, sem depender do
@@ -46,6 +52,8 @@ interface Props {
   caseId?: string | null;
   leadId?: string | null;
   processNumber?: string | null;
+  /** Identificação do cartão no calendário ("CASO 394", nome do cliente). */
+  caseRef?: string | null;
   /** Rastro de onde a data foi marcada. */
   activityId?: string | null;
   assignedTo?: string | null;
@@ -63,12 +71,12 @@ const TOM_CLASS: Record<string, string> = {
 };
 
 export default function PericiaInssChips({
-  processId, processTitle, caseId, leadId, processNumber,
+  processId, processTitle, caseId, leadId, processNumber, caseRef,
   activityId, assignedTo, activityTitle, activityTypeLabel, className = '',
 }: Props) {
   const [title, setTitle] = useState<string | null>(processTitle || null);
   const { pericias, carregou, temAncora, salvar, remover } = usePericiaDaAtividade({
-    processId, caseId, leadId, processNumber, activityId, assignedTo,
+    processId, caseId, leadId, processNumber, caseRef, activityId, assignedTo,
   });
 
   // Título vivo do processo: o snapshot da atividade pode estar velho, e é ele
@@ -113,6 +121,14 @@ export default function PericiaInssChips({
   );
 }
 
+/** De onde veio uma data que o chip mostra mas não edita. */
+function vindaDeFora(m: PericiaMarcada): string {
+  const tipo = m.tipoNoBanco ? `${m.tipoNoBanco}` : 'perícia';
+  return m.origem === 'planilha'
+    ? `${tipo} vinda da planilha de audiências`
+    : `${tipo} marcada no calendário`;
+}
+
 function PericiaChip({
   tipo, marcada, onSalvar, onRemover, className = '',
 }: {
@@ -127,8 +143,9 @@ function PericiaChip({
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
-    if (open) setRascunho(periciaInputValue(marcada?.data, marcada?.hora));
-  }, [open, marcada?.data, marcada?.hora]);
+    if (!open) return;
+    setRascunho(marcada?.doChip ? periciaInputValue(marcada.data, marcada.hora) : '');
+  }, [open, marcada?.doChip, marcada?.data, marcada?.hora]);
 
   const Icon = tipo === 'medica' ? Stethoscope : HeartHandshake;
   const label = PERICIA_LABEL[tipo];
@@ -166,7 +183,9 @@ function PericiaChip({
             className,
           )}
           title={marcada
-            ? `${label}: ${texto} — clique para remarcar ou remover`
+            ? (marcada.doChip
+              ? `${label}: ${texto} — clique para remarcar ou remover`
+              : `${label}: ${texto} — ${vindaDeFora(marcada)}`)
             : `${label} ainda não marcada — clique para informar a data e a hora`}
         >
           <Icon className="h-3 w-3" />
@@ -175,6 +194,14 @@ function PericiaChip({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-2 space-y-2">
         <div className="text-xs font-medium">{label}</div>
+        {marcada && !marcada.doChip && (
+          <p className="text-[10px] leading-snug rounded bg-muted p-1.5 text-muted-foreground">
+            Já está no calendário: <strong>{marcada.tipoNoBanco || 'perícia'}</strong> em {texto}
+            {marcada.origem === 'planilha' ? ', vinda da planilha de audiências' : ''}. Essa data se
+            altera lá, não aqui. Marcar abaixo cria uma <strong>segunda</strong> data — use quando a
+            perícia do INSS for outra.
+          </p>
+        )}
         <Input
           type="datetime-local"
           value={rascunho}
@@ -193,9 +220,11 @@ function PericiaChip({
             disabled={salvando || !rascunho}
             onClick={confirmar}
           >
-            {salvando ? <Loader2 className="h-3 w-3 animate-spin" /> : marcada ? 'Remarcar' : 'Salvar'}
+            {salvando
+              ? <Loader2 className="h-3 w-3 animate-spin" />
+              : marcada ? (marcada.doChip ? 'Remarcar' : 'Marcar outra data') : 'Salvar'}
           </Button>
-          {marcada && (
+          {marcada?.doChip && (
             <Button
               variant="ghost"
               size="sm"

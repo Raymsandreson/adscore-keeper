@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { db } from '@/integrations/supabase';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
+import { buscarTudo } from '@/lib/postgrestPaginacao';
 import {
   ehAtividadeDePrazo,
   montarEventosDaJanela,
@@ -18,31 +19,6 @@ const COLS_ATIVIDADE =
 const COLS_AUDIENCIA =
   'id, hearing_date, hearing_time, hearing_type, status, process_number, lead_id, ' +
   'location, case_ref, category, assigned_user_id';
-
-/** Teto de linhas por request do PostgREST — o que passa disso vem paginado. */
-const PAGINA = 1000;
-
-/**
- * Lê tudo, não as primeiras 1000.
- *
- * O PostgREST corta em 1000 linhas e não avisa: a resposta chega com sucesso e
- * a lista simplesmente termina. Com a agenda de um dia isso nunca aparecia (11
- * linhas), mas o seletor de período chega a 92 dias e o corte silencioso viraria
- * "não tem evento" para dias que têm.
- */
-async function buscarTudo<T>(
-  montarQuery: (de: number, ate: number) => PromiseLike<{ data: T[] | null; error: unknown }>,
-): Promise<T[]> {
-  const out: T[] = [];
-  for (let pagina = 0; ; pagina++) {
-    const de = pagina * PAGINA;
-    const { data, error } = await montarQuery(de, de + PAGINA - 1);
-    if (error) throw error;
-    const lote = data || [];
-    out.push(...lote);
-    if (lote.length < PAGINA) return out;
-  }
-}
 
 /** Divide uma lista de ids em blocos, para o `.in()` não virar URL gigante. */
 function emBlocos<T>(itens: T[], tamanho = 100): T[][] {
@@ -96,6 +72,7 @@ export function useEventosDaJanela(dias: string[]) {
       atividades: AtividadeLite[];
       processoPorNumero: Map<string, ProcessoResolvido>;
       atividadesPorProcesso: Map<string, AtividadeLite[]>;
+      nomePorLead: Map<string, string | null>;
     }> => {
       const [audiencias, atividades] = await Promise.all([
         buscarTudo<AudienciaLite>((de, ate) =>
@@ -123,6 +100,7 @@ export function useEventosDaJanela(dias: string[]) {
       const numeros = [...new Set(audiencias.map(a => a.process_number?.trim()).filter(Boolean))] as string[];
       const processoPorNumero = new Map<string, ProcessoResolvido>();
       const atividadesPorProcesso = new Map<string, AtividadeLite[]>();
+      const nomePorLead = new Map<string, string | null>();
 
       if (numeros.length > 0) {
         const linhas: { id: string; process_number: string | null; lead_id: string | null }[] = [];
@@ -137,7 +115,6 @@ export function useEventosDaJanela(dias: string[]) {
         }
 
         const leadIds = [...new Set(linhas.map(p => p.lead_id).filter(Boolean))] as string[];
-        const nomePorLead = new Map<string, string | null>();
         for (const bloco of emBlocos(leadIds)) {
           const { data, error } = await (db as any)
             .from('leads')
@@ -180,7 +157,26 @@ export function useEventosDaJanela(dias: string[]) {
         }
       }
 
-      return { audiencias, atividades, processoPorNumero, atividadesPorProcesso };
+      // O CLIENTE TAMBÉM VEM DE `hearings.lead_id`.
+      // A resolução acima é por número do processo, que cobre a planilha (548 de
+      // 566 linhas têm número em 20/08/2026). Mas a perícia marcada no chip da
+      // atividade pode nascer sem processo nenhum: das 93 atividades vivas de
+      // perícia, 30 têm só o caso ou só o cliente. Sem este segundo passo, o
+      // evento entraria na agenda como "sem cliente" tendo o lead na mão.
+      const leadsSoltos = [...new Set(
+        audiencias.map(a => a.lead_id).filter((id): id is string => !!id && !nomePorLead.has(id)),
+      )];
+      for (const bloco of emBlocos(leadsSoltos)) {
+        const { data, error } = await (db as any)
+          .from('leads')
+          .select('id, lead_name')
+          .in('id', bloco);
+        if (error) throw error;
+        ((data || []) as { id: string; lead_name: string | null }[])
+          .forEach(l => nomePorLead.set(l.id, l.lead_name));
+      }
+
+      return { audiencias, atividades, processoPorNumero, atividadesPorProcesso, nomePorLead };
     },
   });
 
@@ -194,6 +190,7 @@ export function useEventosDaJanela(dias: string[]) {
         rotuloDoTipo,
         processoPorNumero: query.data.processoPorNumero,
         atividadesPorProcesso: query.data.atividadesPorProcesso,
+        nomePorLead: query.data.nomePorLead,
       })
     : [];
 

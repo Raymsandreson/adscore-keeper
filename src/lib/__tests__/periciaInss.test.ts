@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isBeneficioInssProcess,
   ehAtividadeDePericia,
+  tipoDaPericia,
   periciaInputValue,
   periciaPartesDoInput,
   formatPericia,
@@ -71,6 +72,31 @@ describe('ehAtividadeDePericia', () => {
   it('o tipo da atividade também aciona, não só o título', () => {
     expect(ehAtividadeDePericia('Tarefa do dia', 'Perícia Médica')).toBe(true);
     expect(ehAtividadeDePericia('Tarefa do dia', 'INSTRUÇÃO DE PERICIA')).toBe(true);
+  });
+});
+
+describe('tipoDaPericia', () => {
+  it('reconhece os hearing_type que existem no banco (20/08/2026)', () => {
+    // `hearing_type` é texto livre: a planilha grava "Perícia Médica" (71),
+    // "Pericia" (3, sem acento) e "Perícia Judicial"; o chip grava os "(INSS)".
+    // Comparar por igualdade só enxergava os do chip.
+    expect(tipoDaPericia('Perícia Médica')).toBe('medica');
+    expect(tipoDaPericia('Pericia')).toBe('medica');
+    expect(tipoDaPericia('Perícia Judicial')).toBe('medica');
+    expect(tipoDaPericia('Perícia Médica (INSS)')).toBe('medica');
+    expect(tipoDaPericia('Avaliação Social (INSS)')).toBe('social');
+  });
+
+  it('audiência não vira perícia', () => {
+    for (const t of ['Instrução', 'Inicial', 'UNA', 'Conciliação', 'Encerramento de Instrução', 'Julgamento', 'Homologação']) {
+      expect(tipoDaPericia(t), t).toBeNull();
+    }
+    expect(tipoDaPericia(null)).toBeNull();
+    expect(tipoDaPericia('')).toBeNull();
+  });
+
+  it('laudo pericial não é convocação de perícia', () => {
+    expect(tipoDaPericia('Laudo pericial')).toBeNull();
   });
 });
 

@@ -1703,6 +1703,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               caseId={formCaseId}
               leadId={formLeadId}
               processNumber={(linkedProcess as any)?.process_number || null}
+              caseRef={formCaseTitle || formLeadName || null}
               activityId={activityId}
               assignedTo={formAssignedTo}
               activityTitle={formTitle}

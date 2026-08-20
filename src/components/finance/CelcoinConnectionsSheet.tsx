@@ -49,6 +49,20 @@ function quando(iso: string | null): string {
   return format(new Date(iso), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR });
 }
 
+/**
+ * Para coluna DATE ('2026-08-20'), que não tem hora nenhuma. Formatar com
+ * `new Date(iso)` erraria o dia: a string sem fuso é lida como meia-noite UTC,
+ * e em Brasília (UTC-3) isso é 21h do dia ANTERIOR — o extrato mostraria 19/08
+ * para um lançamento de 20/08, e ainda inventaria um horário que o banco nunca
+ * informou. Montando a data por componente ela nasce local, sem conversão.
+ */
+function quandoDia(data: string | null | undefined): string {
+  if (!data) return 'nunca';
+  const [ano, mes, dia] = String(data).slice(0, 10).split('-').map(Number);
+  if (!ano || !mes || !dia) return 'nunca';
+  return format(new Date(ano, mes - 1, dia), 'dd/MM/yyyy', { locale: ptBR });
+}
+
 export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
   const { user } = useAuth();
   const { consents, loading, fetchConsents, checkConsent, discardConsent, syncTransactions } = useCelcoinOpenFinance();
@@ -141,9 +155,19 @@ export function CelcoinConnectionsSheet({ open, onOpenChange }: Props) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="truncate font-medium">{c.custom_name || c.brand_name || c.brand_id}</p>
+            {/* Duas datas, e a de baixo é a que importa. "Última sincronização"
+                sobe toda vez que a rodada termina sem erro, mesmo trazendo zero
+                linha — sozinha ela diz que o robô passou, não que veio dinheiro.
+                Foi lendo só isso que a Pluggy passou 5 meses parada dizendo
+                `status: UPDATED`. */}
             <p className="mt-0.5 text-xs text-muted-foreground">
               Última sincronização: {quando(c.last_sync_at)}
             </p>
+            {c.last_sync_at && (
+              <p className="text-xs text-muted-foreground">
+                Último lançamento: {c.last_transaction_date ? quandoDia(c.last_transaction_date) : 'nenhum'}
+              </p>
+            )}
             <p className="text-xs text-muted-foreground">Expira em: {quando(c.expires_at)}</p>
             {/* Dois consentimentos do mesmo banco são indistinguíveis pelo nome.
                 O prefixo do id é a única coisa na tela que os separa. */}

@@ -75,6 +75,28 @@ export function ehAtividadeDePericia(title?: string | null, activityTypeLabel?: 
   return /\bpericias?\b/.test(alvo) || alvo.includes('avaliacao social');
 }
 
+/**
+ * Que perícia é esta linha de `hearings`? null = não é perícia.
+ *
+ * Existe porque `hearing_type` NÃO é um enum: a planilha grava "Perícia Médica"
+ * (71 linhas), "Pericia" (3, sem acento) e "Perícia Judicial", enquanto o chip
+ * grava os nomes canônicos com "(INSS)". Comparar por igualdade só enxergaria os
+ * do chip — e foi por isso que o chip dizia "marcar" em processo que já tinha
+ * perícia no calendário (9 deles em 20/08/2026).
+ *
+ * Perícia judicial cai em `medica` de propósito: para quem abre a atividade, o
+ * que importa é que o cliente JÁ TEM data de perícia marcada. O tipo real segue
+ * visível no chip, que mostra de onde a data veio.
+ */
+export function tipoDaPericia(hearingType?: string | null): PericiaTipo | null {
+  const t = normalize(hearingType);
+  if (!t) return null;
+  if (t.includes('avaliacao social')) return 'social';
+  // Mesma fronteira de `ehAtividadeDePericia`: "laudo pericial" não é perícia.
+  if (/\bpericias?\b/.test(t)) return 'medica';
+  return null;
+}
+
 /** ('2026-09-24', '08:00:00') → '2026-09-24T08:00' para o `datetime-local`. */
 export function periciaInputValue(data?: string | null, hora?: string | null): string {
   if (!data) return '';

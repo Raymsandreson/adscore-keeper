@@ -441,16 +441,46 @@ const hojeBrasilia = (): string =>
 // sobrescrever a mesma linha -- e custa só algumas leituras a mais na Celcoin.
 const DIAS_DE_REPROCESSO = 3;
 
-async function syncFloor(table: 'bank_transactions' | 'credit_card_transactions', userId: string): Promise<string> {
+// Todos os consent_id do mesmo banco e do mesmo usuário, inclusive os já
+// descartados. Reautorizar o banco emite um consent_id novo, e o extrato que o
+// anterior trouxe continua sendo desta conexão -- sem isso a reautorização
+// reimportaria o histórico inteiro, e o transmissor não promete transactionId
+// estável entre consentimentos.
+async function conexoesIrmas(consentId: string, userId: string, brandId: unknown): Promise<string[]> {
+  if (!brandId) return [consentId];
+  const { data } = await ext
+    .from('celcoin_consents')
+    .select('consent_id')
+    .eq('user_id', userId)
+    .eq('brand_id', brandId);
+  const ids = (data || []).map((r: any) => String(r.consent_id)).filter(Boolean);
+  return ids.includes(consentId) ? ids : [...ids, consentId];
+}
+
+async function syncFloor(
+  table: 'bank_transactions' | 'credit_card_transactions',
+  userId: string,
+  conexoes: string[],
+): Promise<string> {
   // Duas perguntas diferentes, e confundi-las é o que gera duplicata OU buraco:
-  //   'celcoin'  -> até onde EU já fui? Volto DIAS_DE_REPROCESSO por cima.
-  //   sem filtro -> até onde a Pluggy foi? É piso intransponível na primeira
-  //                 rodada: reimportar o que ela já trouxe apareceria em dobro
-  //                 na tela, que não filtra por provider.
+  //   celcoin + conexoes -> até onde ESTA conexão já foi? Volto
+  //                 DIAS_DE_REPROCESSO por cima. Escopar por conexão não é
+  //                 refinamento: MEDIDO em 19/08/2026, o consentimento do Inter
+  //                 já tinha gravado até 18/08, e por usuário um consentimento
+  //                 novo do Santander nasceria com piso 15/08 -- de 19/03 a
+  //                 14/08 nunca seria buscado, calado.
+  //   outro provider -> até onde a Pluggy foi? É piso intransponível na
+  //                 primeira rodada: reimportar o que ela já trouxe apareceria
+  //                 em dobro na tela, que não filtra por provider. Fica no
+  //                 usuário inteiro porque não há como casar item da Pluggy com
+  //                 consentimento da Celcoin. Num banco que a Pluggy nunca viu
+  //                 isso encurta o histórico -- é o caso de mandar `from`.
   const [meu, qualquer] = await Promise.all([
     ext.from(table).select('transaction_date').eq('user_id', userId).eq('provider', 'celcoin')
+      .in('pluggy_item_id', conexoes)
       .order('transaction_date', { ascending: false }).limit(1).maybeSingle(),
     ext.from(table).select('transaction_date').eq('user_id', userId)
+      .or('provider.is.null,provider.neq.celcoin')
       .order('transaction_date', { ascending: false }).limit(1).maybeSingle(),
   ]);
 
@@ -469,7 +499,7 @@ async function syncFloor(table: 'bank_transactions' | 'credit_card_transactions'
     const limite = outroUltimo && outroUltimo > meuUltimo ? recuar(outroUltimo, 1) : null;
     return limite && limite > piso ? limite : piso;
   }
-  if (outroUltimo) return recuar(outroUltimo, 1); // primeira rodada: retomo onde a Pluggy parou
+  if (outroUltimo) return recuar(outroUltimo, 1); // 1a rodada DESTA conexão: retomo onde a Pluggy parou
   const d = new Date();
   d.setUTCMonth(d.getUTCMonth() - 12); // sem histórico nenhum: 12 meses, teto usual das transmissoras
   return d.toISOString().slice(0, 10);
@@ -534,7 +564,7 @@ async function sincronizar(
 ): Promise<ResumoSync> {
   const { data: consentRow } = await ext
     .from('celcoin_consents')
-    .select('permissions, status')
+    .select('permissions, status, brand_id')
     .eq('consent_id', consentId)
     .maybeSingle();
 
@@ -550,8 +580,9 @@ async function sincronizar(
   // obrigatórias, então sem `to` no body o teto é hoje em Brasília — data UTC
   // adiantaria um dia depois das 21h e viraria data futura pro detentor.
   const to = janela?.to ? String(janela.to) : hojeBrasilia();
-  const bankFrom = janela?.from ? String(janela.from) : await syncFloor('bank_transactions', userId);
-  const cardFrom = janela?.from ? String(janela.from) : await syncFloor('credit_card_transactions', userId);
+  const conexoes = await conexoesIrmas(consentId, userId, consentRow?.brand_id);
+  const bankFrom = janela?.from ? String(janela.from) : await syncFloor('bank_transactions', userId, conexoes);
+  const cardFrom = janela?.from ? String(janela.from) : await syncFloor('credit_card_transactions', userId, conexoes);
   let bankCount = 0;
   let cardCount = 0;
 
@@ -607,26 +638,59 @@ async function sincronizar(
     const cardId = card?.creditCardAccountId;
     if (!cardId) continue;
 
-    const bills = await fetchPaged(
-      consentId,
-      `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills`,
-      // Data de VENCIMENTO da fatura, não da compra: uma fatura de abril
-      // carrega compras de março. O recorte por data de compra é o filtro
-      // lá embaixo; este só evita puxar fatura à toa.
-      { fromDueDate: cardFrom, toDueDate: to },
-      permissions,
-    );
+    const billsPath = `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills`;
+
+    // Data de VENCIMENTO da fatura, não da compra: uma fatura de abril carrega
+    // compras de março. O recorte por data de compra é o filtro lá embaixo;
+    // este só evita puxar fatura à toa.
+    let bills = await fetchPaged(consentId, billsPath, { fromDueDate: cardFrom, toDueDate: to }, permissions);
+
+    // Lista vazia COM janela é ambígua, e a ambiguidade é cara: ou o cartão não
+    // tem fatura nenhuma, ou este par de parâmetros não é o que o transmissor
+    // espera e ele responde vazio em vez de ignorar. MEDIDO em 19/08/2026 no
+    // Inter: 0 faturas -- e ali a lista vazia é verdade, porque a Pluggy também
+    // nunca viu cartão nas duas conexões do Inter em 14 meses (5.524 lançamentos
+    // de cartão, todos do Santander). Só que descobrir a outra hipótese no banco
+    // que TEM cartão sairia caro, então repito sem janela antes de desistir: o
+    // filtro por data de compra continua valendo lá embaixo, o resultado é o
+    // mesmo, custa algumas leituras.
+    if (!bills.length) {
+      const semJanela = await fetchPaged(consentId, billsPath, {}, permissions);
+      if (semJanela.length) {
+        console.warn(
+          `[celcoin] cartão ${String(cardId).slice(0, 6)}…: 0 faturas com janela ${cardFrom}..${to}, ` +
+            `${semJanela.length} sem janela — fromDueDate/toDueDate não vale neste transmissor`,
+        );
+        bills = semJanela;
+      } else {
+        console.warn(`[celcoin] cartão ${String(cardId).slice(0, 6)}…: 0 faturas, com e sem janela`);
+      }
+    }
 
     for (const bill of bills) {
-      const billId = bill?.billId;
-      if (!billId) continue;
+      const billId = bill?.billId ?? bill?.id ?? bill?.billIdentification;
+      if (!billId) {
+        console.warn(`[celcoin] fatura sem id; campos recebidos: ${Object.keys(bill || {}).join(',')}`);
+        continue;
+      }
 
-      const txs = await fetchPaged(
-        consentId,
-        `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(billId)}/transactions`,
-        {},
-        permissions,
-      );
+      const txPath =
+        `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills/${encodeURIComponent(String(billId))}/transactions`;
+
+      // A janela desta chamada NÃO está medida: o Inter exige as duas pontas em
+      // /accounts/../transactions (422 OPFDA010) e nada garante que o par se
+      // chame igual aqui. Mando o nome do padrão OFB e, se for recusado, repito
+      // sem janela -- o recorte por data de compra é o filtro logo abaixo, então
+      // sem janela o resultado continua correto, só custa mais leitura.
+      let txs: any[];
+      try {
+        txs = await fetchPaged(consentId, txPath, { fromTransactionDate: cardFrom, toTransactionDate: to }, permissions);
+      } catch (e) {
+        console.warn(
+          `[celcoin] fatura ${String(billId).slice(0, 6)}…: janela recusada (${e instanceof Error ? e.message : e}); repetindo sem janela`,
+        );
+        txs = await fetchPaged(consentId, txPath, {}, permissions);
+      }
 
       const rows = txs
         .filter((t: any) => t?.transactionId)
@@ -989,7 +1053,49 @@ Deno.serve(async (req) => {
         if (userId) q = q.eq('user_id', userId);
         const { data, error } = await q;
         if (error) throw new Error(error.message);
-        return json({ success: true, consents: data || [] });
+
+        // Data do último lançamento POR CONEXÃO. É o único medidor que percebe
+        // a conexão que responde 200 e não traz nada -- `last_sync_at` sobe no
+        // fim de todo sync sem erro, inclusive trazendo zero linha, então com o
+        // cron rodando 3x/dia ele nunca envelhece. Foi assim que a Pluggy ficou
+        // 5 meses parada com as 3 conexões dizendo `status: UPDATED`.
+        //
+        // Calculado aqui e não no front porque `bank_transactions` e
+        // `credit_card_transactions` são das poucas tabelas do Externo com RLS
+        // de verdade (`user_id = auth.uid()`), e a sessão que o front mantém lá
+        // é anônima: ler de lá devolveria vazio, não erro -- que é a forma mais
+        // cara de errar. Só as conexões que já sincronizaram entram na conta;
+        // as descartadas e as que nunca autorizaram não têm o que medir.
+        const consents = data || [];
+        const medir = consents.filter((c: any) => c.last_sync_at);
+        const ultimos = new Map<string, string>();
+        await Promise.all(
+          medir.map(async (c: any) => {
+            const [banco, cartao] = await Promise.all(
+              (['bank_transactions', 'credit_card_transactions'] as const).map((t) =>
+                ext
+                  .from(t)
+                  .select('transaction_date')
+                  .eq('provider', 'celcoin')
+                  .eq('pluggy_item_id', c.consent_id)
+                  .order('transaction_date', { ascending: false })
+                  .limit(1)
+                  .maybeSingle(),
+              ),
+            );
+            // Datas em YYYY-MM-DD comparam direito como string.
+            const datas = [banco?.data?.transaction_date, cartao?.data?.transaction_date].filter(Boolean) as string[];
+            if (datas.length) ultimos.set(c.consent_id, datas.sort().at(-1)!);
+          }),
+        );
+
+        return json({
+          success: true,
+          consents: consents.map((c: any) => ({
+            ...c,
+            last_transaction_date: ultimos.get(c.consent_id) ?? null,
+          })),
+        });
       }
 
       default:

@@ -27,6 +27,13 @@ export interface CelcoinConsent {
   expires_at: string | null;
   last_sync_at: string | null;
   created_at: string;
+  /**
+   * Data do lançamento mais recente que ESTA conexão trouxe. Vem calculada pela
+   * edge (`list_connections`) porque as tabelas de transação são as únicas do
+   * Externo com RLS de verdade (`user_id = auth.uid()`), e a sessão que o front
+   * mantém lá é anônima — ler daqui devolveria vazio, não erro.
+   */
+  last_transaction_date?: string | null;
 }
 
 // Onde a pessoa estava antes de ir para o banco. O callback usa isto para
@@ -203,8 +210,51 @@ export function consentDaysLeft(consent: Pick<CelcoinConsent, 'expires_at'>): nu
   return Math.floor(ms / 86_400_000);
 }
 
+/**
+ * Data de hoje em Brasília, no formato do banco (YYYY-MM-DD). `en-CA` é o
+ * atalho padrão para ISO curto. Não dá para usar `new Date()` cru: a coluna
+ * `transaction_date` é DATE, e `new Date('2026-08-20')` vira meia-noite UTC —
+ * às 21h de Brasília isso já é "amanhã" e a conta de dias sai errada por um.
+ */
+function hojeBrasilia(): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+}
+
+/**
+ * Dias corridos entre uma data e hoje, contando em dias de calendário. Aceita
+ * DATE ('2026-08-20') e timestamp ISO — do timestamp interessa só a data.
+ * Ancorar os dois lados em Date.UTC evita que horário de verão ou fuso do
+ * navegador movam a diferença em um dia.
+ */
+function diasDesde(quando: string | null | undefined): number | null {
+  if (!quando) return null;
+  const dia = String(quando).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null;
+  const [ay, am, ad] = dia.split('-').map(Number);
+  const [hy, hm, hd] = hojeBrasilia().split('-').map(Number);
+  return Math.round((Date.UTC(hy, hm - 1, hd) - Date.UTC(ay, am - 1, ad)) / 86_400_000);
+}
+
+// MEDIDO em 20/08/2026 sobre os 5 meses que a Celcoin já trouxe do Inter PJ
+// (300 lançamentos, 113 dias com movimento entre 19/03 e 20/08): o maior
+// silêncio real foi de 3 dias (08/07 -> 12/07); há 8 buracos de 2 dias, todos
+// fim de semana, e NENHUM de 4 ou mais. Alertar a partir de 5 dias, portanto,
+// não teria dado um único falso positivo em todo o histórico disponível — e
+// ainda cobre o pior caso que a janela medida não contém: Carnaval, que
+// encadeia sábado, domingo e as duas segundas/terças, dando 4 dias sem
+// lançamento entre a sexta e a quarta.
+const DIAS_SEM_DADO_ALERTA = 5;
+const DIAS_SEM_DADO_PARADO = 10;
+
+// O cron do Railway chama `sync_all` 3x ao dia (06h/12h/19h BRT). Mais de 2
+// dias sem carimbo significa que o processo em si parou — coisa diferente de
+// não haver movimento na conta.
+const DIAS_SEM_SYNC_ALERTA = 2;
+
 export function consentHealth(
-  consent: Pick<CelcoinConsent, 'status' | 'expires_at' | 'last_sync_at'>,
+  consent: Pick<CelcoinConsent, 'status' | 'expires_at' | 'last_sync_at'> & {
+    last_transaction_date?: string | null;
+  },
 ): { level: 'ok' | 'atencao' | 'parado'; label: string } {
   // Rótulo em português para os estados que a tela mostra de fato. O fallback
   // com a grafia crua fica para status que a Celcoin invente e nós ainda não
@@ -221,9 +271,30 @@ export function consentHealth(
   if (days !== null && days <= 0) return { level: 'parado', label: 'Consentimento expirado' };
   if (days !== null && days <= 30) return { level: 'atencao', label: `Expira em ${days} dia(s)` };
 
-  if (consent.last_sync_at) {
-    const daysSinceSync = Math.floor((Date.now() - new Date(consent.last_sync_at).getTime()) / 86_400_000);
-    if (daysSinceSync >= 7) return { level: 'atencao', label: `Sem sincronizar há ${daysSinceSync} dias` };
+  // A partir daqui são DOIS medidores, e confundi-los é o que deixou a Pluggy
+  // morrer calada por 5 meses:
+  //
+  //   last_sync_at         -> a RODADA aconteceu. Sobe sempre que o sync termina
+  //                           sem erro, INCLUSIVE trazendo zero linha (a edge
+  //                           carimba a data no fim, incondicionalmente).
+  //   last_transaction_date-> chegou DADO. É o único que percebe a conexão que
+  //                           responde 200 e não traz nada.
+  //
+  // Enquanto o cron do Railway roda 3x/dia, o primeiro NUNCA envelhece — o
+  // limiar de 7 dias que existia aqui era um alarme que não podia tocar. É
+  // exatamente o formato da falha da Pluggy: `status: UPDATED` até hoje, sem
+  // um lançamento desde 18/03/2026.
+  const semSync = diasDesde(consent.last_sync_at ?? null);
+  if (semSync !== null && semSync >= DIAS_SEM_SYNC_ALERTA) {
+    return { level: 'parado', label: `O sync não roda há ${semSync} dias` };
+  }
+
+  const semDado = diasDesde(consent.last_transaction_date ?? null);
+  if (semDado !== null && semDado >= DIAS_SEM_DADO_PARADO) {
+    return { level: 'parado', label: `Sem lançamento novo há ${semDado} dias` };
+  }
+  if (semDado !== null && semDado >= DIAS_SEM_DADO_ALERTA) {
+    return { level: 'atencao', label: `Sem lançamento novo há ${semDado} dias` };
   }
   return { level: 'ok', label: 'Ativo' };
 }
