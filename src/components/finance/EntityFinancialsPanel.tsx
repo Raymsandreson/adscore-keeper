@@ -502,46 +502,37 @@ export function EntityFinancialsPanel({
   const valorProcesso = useMemo(() => resumirValorProcesso(partesValor), [partesValor]);
 
   /**
-   * O mesmo estoque, corrigido pela régua do ramo. Parte a parte, porque cada
-   * uma tem seu termo inicial — somar primeiro e corrigir depois usaria uma
-   * competência só e erraria todo processo com partes de datas diferentes.
+   * ATENÇÃO — os valores da Tab. Aux são **CJCM**: "com juros e correção
+   * monetária". Já vêm atualizados pela planilha. Multiplicá-los pelo
+   * coeficiente da régua é corrigir duas vezes.
    *
-   * Parte PAGA fica no nominal: correção atualiza o que falta receber.
+   * Foi exatamente o erro que estava aqui: a tela mostrava a condenação da
+   * Ivonete a R$ 1.082.448,38 quando o valor já corrigido é R$ 821.599,58 —
+   * R$ 260 mil inventados por dupla correção.
+   *
+   * A prova de que já vêm corrigidos: na Leocadia
+   * (0016074-62.2016.5.16.0014), o dano moral nominal é R$ 50.000 e o CJCM é
+   * R$ 72.960 — coeficiente 1,4592 embutido, com termo inicial em 20/09/2022.
+   * Na régua trabalhista isso equivale a correção até meados de 2026.
+   *
+   * O que a régua (`atualizacaoMonetaria.ts`) serve, então:
+   *  - atualizar a partir do NOMINAL, que vive nas outras colunas da planilha
+   *    (dano moral, dano estético, base de cálculo × tempo de pensionamento) e
+   *    na aba Lançamentos — nenhuma delas importada ainda;
+   *  - completar do mês do CJCM até hoje, quando essa data estiver gravada.
+   * Enquanto nenhuma das duas existir no banco, a tela mostra o CJCM como ele é
+   * e DIZ que a data-base da correção não está registrada.
    */
-  const atualizado = useMemo(() => {
-    let condenacao = 0, cliente = 0, escritorio = 0;
-    let corrigidas = 0, pagas = 0;
-    const pendencias = new Map<string, number>();
+  const jaCorrigido = useMemo(() => {
+    let pagas = 0;
     for (const p of valorProcesso.partes) {
-      if (parteSemValor(p)) continue;
-      const pago = p.status === 'PAGO';
-      const r = atualizarValor({
-        valor: p.condenacao, cnj: processNumber, dataBase: p.termoInicial, pago, coeficientes,
-      });
-      if (r.atualizado == null) {
-        pendencias.set(r.porque, (pendencias.get(r.porque) ?? 0) + 1);
-        continue;
-      }
-      const k = r.coeficiente ?? 1;
-      condenacao += r.atualizado;
-      cliente += cotaClienteDaParte(p) * k;
-      escritorio += honorarioDaParte(p) * k;
-      if (pago) pagas += 1; else corrigidas += 1;
+      if (!parteSemValor(p) && p.status === 'PAGO') pagas += 1;
     }
-    return {
-      condenacao: Math.round(condenacao * 100) / 100,
-      cliente: Math.round(cliente * 100) / 100,
-      escritorio: Math.round(escritorio * 100) / 100,
-      corrigidas, pagas,
-      pendencias: [...pendencias.entries()],
-      regua: reguaDoProcesso(processNumber),
-    };
-  }, [valorProcesso.partes, coeficientes, processNumber]);
+    return { pagas, regua: reguaDoProcesso(processNumber) };
+  }, [valorProcesso.partes, processNumber]);
 
   const ehExtrato = scope === 'process' && !!processNumber;
   const temValorProcesso = ehExtrato && valorProcesso.comValor > 0;
-  /** Só diz "hoje" quando de fato houve o que corrigir — senão é nominal puro. */
-  const temAtualizacao = temValorProcesso && atualizado.corrigidas + atualizado.pagas > 0;
 
   const resetForm = () => {
     setForm({
@@ -659,24 +650,13 @@ export function EntityFinancialsPanel({
 
           <div className="grid grid-cols-3 gap-2">
             <div className="text-center">
-              <p className="text-[10px] text-muted-foreground">
-                Condenação{temAtualizacao ? ' hoje' : ''}
-              </p>
-              <p className="text-sm font-bold text-indigo-900">
-                {formatCurrency(temAtualizacao ? atualizado.condenacao : valorProcesso.condenacao)}
-              </p>
-              {temAtualizacao && (
-                <p className="text-[10px] text-muted-foreground leading-tight">
-                  {formatCurrency(valorProcesso.condenacao)} nominal
-                </p>
-              )}
+              <p className="text-[10px] text-muted-foreground">Condenação corrigida</p>
+              <p className="text-sm font-bold text-indigo-900">{formatCurrency(valorProcesso.condenacao)}</p>
             </div>
             <div className="text-center">
-              <p className="text-[10px] text-muted-foreground">Do cliente</p>
+              <p className="text-[10px] text-muted-foreground">Do cliente (líquido)</p>
               {/* A planilha já entrega líquida: o 30% saiu do vencido E do vincendo. */}
-              <p className="text-sm font-bold text-sky-700">
-                {formatCurrency(temAtualizacao ? atualizado.cliente : valorProcesso.cotaCliente)}
-              </p>
+              <p className="text-sm font-bold text-sky-700">{formatCurrency(valorProcesso.cotaCliente)}</p>
               {valorProcesso.hcParcelado > 0 && (
                 <p className="text-[10px] text-muted-foreground leading-tight">
                   {formatCurrency(valorProcesso.cotaVencida)} já venceu
@@ -684,10 +664,8 @@ export function EntityFinancialsPanel({
               )}
             </div>
             <div className="text-center">
-              <p className="text-[10px] text-muted-foreground">Do escritório</p>
-              <p className="text-sm font-bold text-green-700">
-                {formatCurrency(temAtualizacao ? atualizado.escritorio : valorProcesso.escritorio)}
-              </p>
+              <p className="text-[10px] text-muted-foreground">Do escritório (30% + suc.)</p>
+              <p className="text-sm font-bold text-green-700">{formatCurrency(valorProcesso.escritorio)}</p>
               {/* Contratual e sucumbencial são recebíveis distintos: um vem do
                   contrato com o cliente, o outro da condenação da parte contrária. */}
               <p className="text-[10px] text-muted-foreground leading-tight">
@@ -695,6 +673,32 @@ export function EntityFinancialsPanel({
               </p>
             </div>
           </div>
+
+          {/* À vista × parcelado: a divisão que o pensionamento cria, com a soma
+              explícita. É a conta que o Raym faz na planilha, nos mesmos termos. */}
+          {valorProcesso.brutoParcelado > 0 && (
+            <div className="rounded border border-indigo-200 bg-background/60 px-2 py-1.5 text-[11px]">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">À vista <span className="text-[10px]">(já venceu)</span></span>
+                <span className="font-medium">{formatCurrency(valorProcesso.brutoVista)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Parcelado <span className="text-[10px]">(ainda vai vencer)</span></span>
+                <span className="font-medium">{formatCurrency(valorProcesso.brutoParcelado)}</span>
+              </div>
+              <div className="mt-1 flex items-center justify-between gap-2 border-t pt-1">
+                <span className="font-medium">Soma das duas fatias</span>
+                <span className="font-bold text-indigo-900">{formatCurrency(valorProcesso.bruto)}</span>
+              </div>
+              {Math.abs(valorProcesso.bruto - valorProcesso.condenacao) >= 0.01 && (
+                <p className="mt-1 text-[10px] text-amber-700 leading-snug">
+                  A coluna "TOTAL DA CONDENAÇÃO CJCM" da planilha traz{' '}
+                  {formatCurrency(valorProcesso.condenacao)} — ela soma o sucumbencial e deixa o
+                  honorário do parcelado de fora, então não é a soma das duas fatias.
+                </p>
+              )}
+            </div>
+          )}
 
           {valorProcesso.status.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -706,21 +710,13 @@ export function EntityFinancialsPanel({
             </div>
           )}
 
-          {temAtualizacao && (
-            <p className="text-[10px] text-muted-foreground leading-snug">
-              Corrigido pela régua da <strong>{REGUA_LABEL[atualizado.regua!]}</strong>
-              {safra && ` até ${safra.slice(5, 7)}/${safra.slice(0, 4)}`} — IPCA mais juros
-              da taxa legal (SELIC − IPCA, piso zero) desde 30/08/2024, e o regime da ADC 58 antes
-              disso. {atualizado.pagas > 0 && `${atualizado.pagas} parte(s) já paga(s) ficam no nominal.`}
-            </p>
-          )}
-
-          {atualizado.pendencias.length > 0 && (
-            <p className="text-[10px] text-amber-700 leading-snug">
-              {atualizado.pendencias.map(([k, n]) => `${n} parte(s) ${PORQUE_LABEL[k as keyof typeof PORQUE_LABEL]}`).join(' · ')}
-              {' '}— entram só pelo nominal.
-            </p>
-          )}
+          <p className="text-[10px] text-muted-foreground leading-snug">
+            <strong>CJCM</strong> = com juros e correção monetária: estes valores já vêm corrigidos
+            da planilha, não são nominais. A data até a qual foram corrigidos ainda não está no
+            banco — quando estiver, dá para completar daqui até hoje pela régua da{' '}
+            {jaCorrigido.regua ? REGUA_LABEL[jaCorrigido.regua] : 'justiça do processo'}.
+            {jaCorrigido.pagas > 0 && ` ${jaCorrigido.pagas} parte(s) já paga(s) não corrigem mais.`}
+          </p>
 
           <p className="text-[10px] text-muted-foreground leading-snug">
             Valor do processo, não caixa — <strong>não some com o extrato abaixo</strong>. O mesmo
@@ -729,10 +725,10 @@ export function EntityFinancialsPanel({
 
           {valorProcesso.hcParcelado > 0 && (
             <p className="text-[10px] text-muted-foreground leading-snug">
-              Pensionamento: {formatCurrency(valorProcesso.escritorioApurado)} do nosso já está
-              apurado sobre as parcelas vencidas, e {formatCurrency(valorProcesso.hcParcelado)} vão
-              sendo apurados conforme as vincendas vencerem. A coluna "condenação" da planilha deixa
-              esse pedaço de fora — com ele, o processo bruto é {formatCurrency(valorProcesso.bruto)}.
+              Pensionamento: {formatCurrency(valorProcesso.hcVista)} do contratual já foi apurado
+              sobre o que venceu, e {formatCurrency(valorProcesso.hcParcelado)} vão sendo apurados
+              conforme as parcelas vencerem — cada parcela que vence migra do parcelado para o à
+              vista, e o honorário dela vai junto.
             </p>
           )}
 

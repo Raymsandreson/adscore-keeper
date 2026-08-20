@@ -11,6 +11,33 @@ uma régua escrita, cada tela responde uma coisa e ninguém sabe qual está cert
 
 ---
 
+## 0. CJCM — os valores da Tab. Aux JÁ VÊM CORRIGIDOS
+
+`[NO CÓDIGO]` **"CJCM" quer dizer "com juros e correção monetária".** Toda coluna
+com essa sigla já foi atualizada pela planilha. **Não são nominais e não se
+multiplicam por coeficiente** — isso corrige duas vezes.
+
+Prova: na Leocadia (`0016074-62.2016.5.16.0014`) o dano moral nominal é
+R$ 50.000,00 e o "DANO MORAL E ESTÉTICO CJCM" é R$ 72.960,00 — coeficiente 1,4592
+já embutido, com termo inicial em 20/09/2022. Na régua trabalhista isso equivale
+a correção até meados de 2026.
+
+> **Erro cometido e corrigido em 19/08/2026.** A primeira versão da régua
+> multiplicava `condenacao_cjcm` pelo coeficiente. A tela chegou a mostrar a
+> condenação de um processo a R$ 1.082.448,38 quando o valor correto era
+> R$ 821.599,58 — R$ 260 mil inventados. Revertido: a tela mostra o CJCM como ele
+> é e diz que a data-base da correção não está gravada.
+
+**Onde estão os nominais** (nenhum importado ainda): na própria Tab. Aux, nas
+colunas `DANO MORAL`, `DANO ESTÉTICO` e `BASE DE CÁLCULO(DANO MATERIAL)` ×
+`TEMPO DE PENSIONAMENTO`; e na aba **Lançamentos**, por parcela.
+
+`[A DECIDIR]` **A data até a qual o CJCM foi corrigido não está em lugar nenhum
+do banco.** Sem ela não dá para completar a correção do mês da planilha até hoje,
+nem saber se um número está velho. É o dado que falta para a régua servir.
+
+---
+
 ## 1. De que é feita a carteira
 
 `[NO CÓDIGO]` Medido em `jm_partes` (19/08/2026), por segmento do CNJ:

@@ -480,3 +480,44 @@ Lógica pura em `src/lib/valorProcesso.ts` com 15 testes — o componente só de
 > do cliente um valor que a planilha já havia descontado (R$ 77.289,48 na P0043,
 > em 55 partes). O mecanismo é pensionamento, e a cota já vem líquida. Corrigido
 > em `cotaClienteDaParte`.
+
+
+---
+
+## Correção: CJCM e a estrutura à vista × parcelado (19/08/2026)
+
+**`CJCM` = com juros e correção monetária.** As colunas da Tab. Aux com essa
+sigla já vêm atualizadas. A régua por ramo chegou a ser aplicada sobre elas e
+produziu dupla correção — revertido no mesmo dia (ver
+`docs/sistema/metodologia-atualizacao.md`, seção 0).
+
+**A estrutura, nos termos do Raym:** a condenação da parte é a **soma do à vista
+com o parcelado**. Cada fatia é `cota / 0,7`, e sobre cada uma o contrato leva
+30%:
+
+| Fatia | O que é | Bruto | Do cliente | Nosso |
+|---|---|---|---|---|
+| **À vista** | o que já venceu, pago de uma vez | `cota_parte_vista_cjcm / 0,7` | 70% | 30% (`hc_vista`) |
+| **Parcelado** | o que ainda vai vencer, mês a mês | `(cota_parte_cjcm − cota_parte_vista_cjcm) / 0,7` | 70% | 30% (`hc_parcelado`) |
+
+O honorário contratual total é 30% de `cota_parte_cjcm / 0,7` em **414 das 426**
+partes com cota — a identidade limpa.
+
+**Onde a planilha diverge do que a coluna promete.** Pelo conceito,
+`TOTAL DA CONDENAÇÃO CJCM` deveria ser à vista + parcelado. Só bate em **77 de
+426**. O que ela realmente traz é `cota + hc_vista + hs` (**417 de 426**) —
+soma o sucumbencial e deixa o honorário do parcelado de fora. Por isso o resumo
+carrega os dois em campos separados (`bruto` e `condenacao`) e a tela mostra a
+diferença em vez de escolher um. **Vale conferir a fórmula na planilha.**
+
+Exemplo (Leocadia, P0772), conferido campo a campo:
+
+```
+à vista bruto   = VALOR VENCIDO JCM 125.130,72 + DANO MORAL E ESTÉTICO CJCM 72.960,00 = 198.090,72
+                  30% = 59.427,22 = HONORÁRIOS CONTRATUAIS À VISTA          ✓
+                  70% = 138.663,50 = TOTAL À VISTA PARTE CJCM               ✓
+parcelado bruto = VALOR VINCENDO 194.469,24
+                  30% = 58.340,77 = HONORÁRIOS CONTRATUAIS PARCELADO        ✓
+soma das fatias = 392.559,96      →  70% = 274.791,97 = TOTAL PARTE CJCM    ✓
+TOTAL DA CONDENAÇÃO CJCM na planilha = 365.123,42  (≠ 392.559,96)
+```

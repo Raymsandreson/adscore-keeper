@@ -3,8 +3,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   montarParteValor, honorarioDaParte, cotaBrutaDaParte, cotaClienteDaParte,
-  vincendoBrutoDaParte, cotaEhProjecao, parteSemValor, resumirValorProcesso,
-  type ParteValor,
+  vincendoBrutoDaParte, vistaBrutaDaParte, cotaEhProjecao, parteSemValor,
+  resumirValorProcesso, type ParteValor,
 } from '../valorProcesso';
 
 /** Caso 10 (P0302): acordo fechado e pago, sem parcelamento de honorário. */
@@ -84,26 +84,43 @@ describe('valor do processo', () => {
     expect((p.hcParcelado as number) / vincendoBrutoDaParte(p)).toBeCloseTo(0.30, 4);
   });
 
-  it('a coluna "condenação" deixa o honorário das vincendas de fora', () => {
-    // Por isso ela sozinha subestima o processo: o bruto é condenação + parcelado.
+  it('a condenação é a soma das duas fatias: à vista + parcelado', () => {
+    // A conta que o Raym faz na planilha. Cada fatia é cota/0,7, e sobre cada
+    // uma o contrato leva 30%.
+    const p = pensionada();
+    expect(vistaBrutaDaParte(p)).toBeCloseTo(157542.79, 1);   // já venceu
+    expect(vincendoBrutoDaParte(p)).toBeCloseTo(257631.6, 1); // ainda vai vencer
+    const r = resumirValorProcesso([p]);
+    expect(r.brutoVista).toBeCloseTo(157542.79, 1);
+    expect(r.brutoParcelado).toBeCloseTo(257631.6, 1);
+    expect(r.bruto).toBeCloseTo(415174.39, 1);
+    // 30% de cada fatia é o honorário contratual daquela fatia.
+    expect(r.brutoVista * 0.3).toBeCloseTo(p.hcVista as number, 1);
+    expect(r.brutoParcelado * 0.3).toBeCloseTo(p.hcParcelado as number, 1);
+  });
+
+  it('a coluna "TOTAL DA CONDENAÇÃO CJCM" NÃO é essa soma — e os dois convivem', () => {
+    // A planilha soma o sucumbencial e deixa o honorário do parcelado de fora.
+    // Bate em 417 de 426 partes; a soma das fatias bate em só 77. São coisas
+    // diferentes, então o resumo carrega as duas em campos separados.
     const r = resumirValorProcesso([pensionada()]);
     expect(r.condenacao).toBeCloseTo(346134.35);
-    expect(r.escritorioApurado).toBeCloseTo(55512.28);   // hc vencido + hs
-    expect(r.hcParcelado).toBeCloseTo(77289.48);         // ainda vai ser apurado
-    expect(r.bruto).toBeCloseTo(423423.83);
-    // Fecha por baixo: cliente + o nosso já apurado = a condenação registrada.
+    expect(r.bruto).not.toBeCloseTo(r.condenacao, 0);
     expect(r.cotaCliente + r.escritorioApurado).toBeCloseTo(346134.35);
   });
 
-  it('sem vincendo, apurado e total do escritório coincidem', () => {
+  it('sem parcelado, tudo é à vista e o apurado é o total do escritório', () => {
     // P0040/P0044 do mesmo processo: pensão encerrada, nada mais a vencer.
     const r = resumirValorProcesso([pensionada({
       parteId: 'P0040', condenacao: 133119, cota: 88746, cotaVista: 88746,
       hcVista: 38034, hcParcelado: 0, hs: 6339,
     })]);
-    expect(vincendoBrutoDaParte(r.partes[0])).toBe(0);
+    expect(r.brutoParcelado).toBe(0);
+    expect(r.brutoVista).toBeCloseTo(126780, 1);   // 88.746 / 0,7
+    expect(r.bruto).toBe(r.brutoVista);
     expect(r.escritorio).toBe(r.escritorioApurado);
-    expect(r.bruto).toBe(r.condenacao);
+    // A condenação da planilha ainda difere: ela inclui o sucumbencial.
+    expect(r.condenacao - r.bruto).toBeCloseTo(6339, 1);
     expect(r.diferenca).toBe(0);
   });
 
@@ -172,7 +189,7 @@ describe('valor do processo', () => {
     const r = resumirValorProcesso([]);
     expect(r).toMatchObject({
       condenacao: 0, cotaCliente: 0, cotaVencida: 0, escritorio: 0,
-      escritorioApurado: 0, bruto: 0, diferenca: 0,
+      escritorioApurado: 0, bruto: 0, brutoVista: 0, brutoParcelado: 0, diferenca: 0,
       comValor: 0, semValor: 0, cotaProjetada: 0,
     });
     expect(r.status).toEqual([]);

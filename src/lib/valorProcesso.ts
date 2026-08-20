@@ -11,36 +11,50 @@
  * Somar os dois conta o mesmo dinheiro duas vezes. Por isso este módulo é
  * separado do extrato e devolve o resumo já fechado, sem tocar em lançamento.
  *
- * ── Como as colunas da planilha se encaixam
+ * ── CJCM: os valores JÁ VÊM CORRIGIDOS
  *
- *    O caso é PENSIONAMENTO: a condenação não é um bolo único, é uma pensão
- *    mensal. As parcelas que já venceram viram pagamento à vista; as vincendas
- *    seguem correndo. Conforme o tempo passa, vincenda vira vencida e migra para
- *    o lado "à vista" — e o honorário sobre ela migra junto. Por isso as colunas
- *    da planilha são um RETRATO de uma data, não um valor fixo.
+ *    "CJCM" = **com juros e correção monetária**. Toda coluna com essa sigla na
+ *    Tab. Aux já foi atualizada pela planilha; NÃO são nominais e não se
+ *    multiplicam por coeficiente nenhum — isso seria corrigir duas vezes.
+ *    Prova: na Leocadia (0016074-62.2016.5.16.0014) o dano moral nominal é
+ *    R$ 50.000 e o "DANO MORAL E ESTÉTICO CJCM" é R$ 72.960 — 1,4592 de
+ *    correção já embutida, com termo inicial em 20/09/2022.
  *
- *      VENCIDO (à vista)      bruto = cota_parte_vista_cjcm + hc_vista
- *      VINCENDO (a correr)    bruto = (cota_parte_cjcm − cota_parte_vista_cjcm) / 0,7
+ *    Os valores NOMINAIS ficam em outras colunas da planilha (dano moral, dano
+ *    estético, base de cálculo × tempo de pensionamento) e na aba Lançamentos.
+ *    Nenhuma delas importada ainda.
  *
- *    O honorário contratual é 30% do BRUTO de cada fatia — conferido no dado:
- *    30,00% exatos em 54 das 55 partes com vincendo (à vista) e em 53 das 55
- *    (vincendo). Ou seja `cota_parte_cjcm` já vem LÍQUIDA, com o honorário
- *    descontado nas duas fatias. Descontar `hc_parcelado` dela de novo tira do
- *    cliente um dinheiro que já não estava lá.
+ * ── A estrutura: à vista + parcelado
  *
- *    E a coluna "condenação" NÃO é o valor bruto do processo:
+ *    O caso é PENSIONAMENTO. A condenação da parte se divide em duas fatias:
  *
- *      condenacao_cjcm = cota líquida total + hc_vista + hs
+ *      À VISTA    o que já venceu, pago de uma vez
+ *                 = valor vencido + dano moral e estético
+ *      PARCELADO  o que ainda vai vencer, pago mês a mês
  *
- *    Fecha exato nas 5 partes do processo 0000072-69.2023.5.13.0009 e em 679 das
- *    688 partes com valor. Repare no que falta: `hc_parcelado` fica FORA. É o
- *    honorário que ainda vai ser apurado conforme as parcelas vencerem — daí o
- *    bruto de verdade ser `condenação + hc_parcelado`.
+ *    Conforme o tempo passa, parcela vincenda vira vencida e migra para o lado à
+ *    vista — junto com o honorário sobre ela. As colunas são um RETRATO de uma
+ *    data, não um valor fixo.
  *
- *    Uma segunda leitura, independente dessa: em 251 partes "TOTAL PARTE CJCM"
- *    vem zerada e o valor do cliente está só em "TOTAL À VISTA PARTE CJCM" — são
- *    linhas ainda PROJETADAS. Nessas a cota vem da coluna à vista, e o resumo
- *    marca quantas foram (`cotaProjetada`) para a tela dizer que ali é projeção.
+ *    Sobre cada fatia o contrato leva 30%, e a parte fica com 70%:
+ *
+ *      bruto da fatia = cota da fatia / 0,7        honorário = 30% do bruto
+ *
+ *    Conferido: o honorário contratual total é 30% de `cota_parte_cjcm / 0,7`
+ *    em 414 das 426 partes com cota. Ou seja `cota_parte_cjcm` já vem LÍQUIDA.
+ *
+ * ── Onde a planilha diverge do que a coluna promete
+ *
+ *    Pelo conceito, `TOTAL DA CONDENAÇÃO` deveria ser à vista + parcelado, isto
+ *    é `cota_parte_cjcm / 0,7`. Não é: isso só bate em 77 das 426 partes. O que
+ *    a coluna realmente traz é
+ *
+ *      condenacao_cjcm = cota líquida + honorário contratual do VENCIDO + sucumbencial
+ *
+ *    (417 de 426), deixando o honorário do vincendo de fora e somando o
+ *    sucumbencial. Por isso `bruto` e `condenacao` aqui são campos SEPARADOS: um
+ *    é a soma das duas fatias, o outro é o que a planilha chama de condenação.
+ *    A divergência está reportada e não se resolve inventando fórmula.
  */
 
 export interface ParteValor {
@@ -48,13 +62,13 @@ export interface ParteValor {
   cliente: string | null;
   /** Total da condenação corrigida (CJCM). null = a planilha não trouxe valor. */
   condenacao: number | null;
-  /** "TOTAL PARTE CJCM" — cota do cliente já LÍQUIDA, vencido + vincendo. */
+  /** "TOTAL PARTE CJCM" — do cliente, já líquido de honorário, à vista + parcelado. */
   cota: number | null;
-  /** "TOTAL À VISTA PARTE CJCM" — a fatia da cota que já venceu. */
+  /** "TOTAL À VISTA PARTE CJCM" — do cliente, só a fatia à vista (já venceu). */
   cotaVista: number | null;
-  /** Honorário contratual (30%) sobre o que JÁ venceu. */
+  /** "HONORÁRIOS CONTRATUAIS À VISTA" — 30% da fatia que já venceu. */
   hcVista: number | null;
-  /** Honorário contratual (30%) sobre o que ainda vai vencer. Fora da condenação. */
+  /** "HONORÁRIOS CONTRATUAIS PARCELADO" — 30% da fatia que ainda vai vencer. */
   hcParcelado: number | null;
   /** Honorário SUCUMBENCIAL — pago pela parte contrária, nunca sai da cota. */
   hs: number | null;
@@ -86,11 +100,15 @@ export interface ResumoValorProcesso {
   /** hc à vista + hs: o nosso que já está fechado na condenação de hoje. */
   escritorioApurado: number;
   /**
-   * Valor BRUTO do processo: condenação + hc_parcelado. A coluna "condenação" da
-   * planilha deixa o honorário das vincendas de fora, então ela sozinha
-   * subestima o processo.
+   * À VISTA + PARCELADO, em valor bruto (antes do honorário contratual). É a
+   * soma que responde "de quanto é a condenação desta parte" — e NÃO é o que a
+   * coluna `TOTAL DA CONDENAÇÃO CJCM` traz (ver cabeçalho).
    */
   bruto: number;
+  /** A fatia à vista, bruta: o que já venceu, cliente + honorário. */
+  brutoVista: number;
+  /** A fatia parcelada, bruta: o que ainda vai vencer, cliente + honorário. */
+  brutoParcelado: number;
   /** Partes cuja cota veio da coluna "à vista" porque o total estava zerado. */
   cotaProjetada: number;
   /**
@@ -170,6 +188,12 @@ export function vincendoBrutoDaParte(p: ParteValor): number {
   return vincendoLiquido > 0 ? arred(vincendoLiquido / 0.7) : 0;
 }
 
+/** A fatia À VISTA em valor bruto: o que já venceu, cliente + honorário. */
+export function vistaBrutaDaParte(p: ParteValor): number {
+  const vista = Math.min(p.cotaVista ?? 0, cotaBrutaDaParte(p));
+  return vista > 0 ? arred(vista / 0.7) : 0;
+}
+
 /** true = a parte veio da planilha só com status/fase, sem valor nenhum. */
 export function parteSemValor(p: ParteValor): boolean {
   return p.condenacao == null && honorarioDaParte(p) === 0 && cotaBrutaDaParte(p) === 0;
@@ -177,7 +201,7 @@ export function parteSemValor(p: ParteValor): boolean {
 
 export function resumirValorProcesso(partes: ParteValor[]): ResumoValorProcesso {
   let condenacao = 0, cotaBruta = 0, cotaVencida = 0, hcVista = 0, hcParcelado = 0, hs = 0;
-  let comValor = 0, semValor = 0, cotaProjetada = 0;
+  let comValor = 0, semValor = 0, cotaProjetada = 0, brutoVista = 0, brutoParcelado = 0;
   const porStatus = new Map<string, number>();
   for (const p of partes) {
     if (parteSemValor(p)) semValor += 1; else comValor += 1;
@@ -185,6 +209,8 @@ export function resumirValorProcesso(partes: ParteValor[]): ResumoValorProcesso 
     condenacao += p.condenacao ?? 0;
     cotaBruta += cotaBrutaDaParte(p);
     cotaVencida += p.cotaVista ?? 0;
+    brutoVista += vistaBrutaDaParte(p);
+    brutoParcelado += vincendoBrutoDaParte(p);
     hcVista += p.hcVista ?? 0;
     hcParcelado += p.hcParcelado ?? 0;
     hs += p.hs ?? 0;
@@ -201,7 +227,8 @@ export function resumirValorProcesso(partes: ParteValor[]): ResumoValorProcesso 
     hc, hcVista, hcParcelado, hs,
     escritorio: arred(hc + hs),
     escritorioApurado: arred(hcVista + hs),
-    bruto: arred(condenacao + hcParcelado),
+    bruto: arred(brutoVista + brutoParcelado),
+    brutoVista: arred(brutoVista), brutoParcelado: arred(brutoParcelado),
     cotaProjetada,
     diferenca: arred(condenacao - cotaBruta - hcVista - hs),
     status: [...porStatus.entries()]
