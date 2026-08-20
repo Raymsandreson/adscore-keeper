@@ -17,6 +17,7 @@ const base: ProcessUpdate = {
   created_at: '2026-08-10T12:00:00Z',
   eventos: null,
   resumo_ia: null,
+  vinculos: null,
 };
 
 const mov = (over: Partial<ProcessUpdate>): ProcessUpdate => ({ ...base, ...over });
