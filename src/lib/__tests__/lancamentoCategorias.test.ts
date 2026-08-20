@@ -139,4 +139,30 @@ describe('estagioDoLancamento', () => {
     expect(estagioDoLancamento({ categoria: 'Indenização a receber', data: '2025-01-01', hoje }))
       .toBe('VENCIDO');
   });
+
+  // O lançamento manual não tem "a receber" em categoria nenhuma: quem diz se o
+  // dinheiro entrou é `lead_financials.settled_at`. Sem isto, honorário com
+  // vencimento futuro entrava como caixa no mesmo instante.
+  it('o previsto explícito do lançamento manual manda na categoria', () => {
+    expect(estagioDoLancamento({ categoria: 'Honorários Contratuais', previsto: true, data: '2026-08-25', hoje }))
+      .toBe('A_RECEBER');
+    expect(estagioDoLancamento({ categoria: 'Honorários Contratuais', previsto: true, data: '2026-08-10', hoje }))
+      .toBe('VENCIDO');
+    expect(estagioDoLancamento({ categoria: 'Honorários Contratuais', previsto: false, data: '2026-08-25', hoje }))
+      .toBe('REALIZADO');
+  });
+
+  it('previsto explícito também vale contra o texto da planilha', () => {
+    expect(classificarLancamento({ categoria: 'Honorários a receber', previsto: false }).previsto).toBe(false);
+    expect(classificarLancamento({ categoria: 'Cota do Cliente', previsto: true }).previsto).toBe(true);
+  });
+
+  it('adiantamento do FIDC segue caixa por padrão, e cede ao previsto explícito', () => {
+    const semFlag = classificarLancamento({ categoria: 'Honorários Adiantados (FIDC)' });
+    expect(semFlag.adiantado).toBe(true);
+    expect(semFlag.previsto).toBe(false);
+    const contratado = classificarLancamento({ categoria: 'Honorários Adiantados (FIDC)', previsto: true });
+    expect(contratado.adiantado).toBe(true);
+    expect(contratado.previsto).toBe(true);
+  });
 });

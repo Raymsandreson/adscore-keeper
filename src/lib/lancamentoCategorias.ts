@@ -131,10 +131,19 @@ export const CATEGORIAS_LANCAMENTO = [
 export function classificarLancamento(entrada: {
   categoria?: string | null;
   pessoa?: string | null;
+  /**
+   * Lançamento manual: o estado real vem de `lead_financials.settled_at`
+   * (NULL = o dinheiro ainda não entrou), NÃO do texto da categoria. Nenhuma
+   * das categorias do formulário tem "a receber" no nome, então sem isto um
+   * honorário lançado com vencimento futuro virava caixa no mesmo instante.
+   * Ausente = a linha veio da planilha, e lá a categoria decide como sempre.
+   */
+  previsto?: boolean | null;
 }): ClassificacaoLancamento {
   const cat = normalizar(entrada.categoria);
   const pessoa = normalizar(entrada.pessoa);
-  const previsto = cat.includes('a receber');
+  const previstoExplicito = entrada.previsto ?? null;
+  const previsto = previstoExplicito ?? cat.includes('a receber');
 
   const monta = (
     titular: TitularLancamento,
@@ -151,7 +160,12 @@ export function classificarLancamento(entrada: {
 
   // Antecipação do FIDC: caixa que não veio do processo. Antes de "honorário".
   if (cat.includes('adiantad')) {
-    return monta('escritorio', 'adiantamento_fidc', { adiantado: true, previsto: false });
+    // Antecipação do fundo é caixa por definição — só um previsto EXPLÍCITO
+    // (parcela contratada com a Oriz e ainda não liberada) contraria isso.
+    return monta('escritorio', 'adiantamento_fidc', {
+      adiantado: true,
+      previsto: previstoExplicito ?? false,
+    });
   }
   // Crédito da parte comprado pelo escritório. Antes de "indenização".
   if (cat.includes('comprad')) return monta('escritorio', 'credito_comprado');
@@ -189,6 +203,8 @@ export function classificarLancamento(entrada: {
 export function estagioDoLancamento(entrada: {
   categoria?: string | null;
   pessoa?: string | null;
+  /** Ver `classificarLancamento`: o lançamento manual manda o estado real. */
+  previsto?: boolean | null;
   data?: string | null;
   /**
    * `jm_lancamentos.tem_data_pagamento`. false = a `data` é a da DECISÃO e não

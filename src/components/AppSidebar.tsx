@@ -6,7 +6,7 @@ import {
   Zap, Search, ClipboardList, Phone, Scale, Briefcase, AtSign, RefreshCw, FileText,
   LogOut, MessagesSquare, Settings, ChevronRight, User, Chrome, Archive, MapPin,
   MessageSquare as MessageSquareIcon, ExternalLink, Accessibility, Newspaper, Ear, Clock,
-  FileBarChart, Wallet,
+  FileBarChart, Wallet, Table2,
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useMyAvatar } from "@/hooks/useMyAvatar";
@@ -160,6 +160,7 @@ export function AppSidebar() {
         { id: "nuclei", label: "Núcleos", icon: <Scale className="h-3.5 w-3.5" />, path: "/nuclei", color: "text-orange-500" },
         { id: "hearings", label: "Audiências e Perícias", icon: <Gavel className="h-3.5 w-3.5" />, path: "/hearings", color: "text-rose-500" },
         { id: "carteira-fase", label: "Jurimetria", icon: <Wallet className="h-3.5 w-3.5" />, path: "/processual/carteira", color: "text-teal-500" },
+        { id: "jurimetria-tabela", label: "Tabela da carteira", icon: <Table2 className="h-3.5 w-3.5" />, path: "/processual/jurimetria", color: "text-teal-600" },
         // A revisão dos acordos lidos nas atas mora DENTRO do POP (seção "Marcos
         // do POP", em WorkflowBuilder) — marco é do POP, como fase e passo. A
         // rota /processual/revisao-acordos segue viva para ver todos de uma vez,

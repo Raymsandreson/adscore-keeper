@@ -480,3 +480,211 @@ Lógica pura em `src/lib/valorProcesso.ts` com 15 testes — o componente só de
 > do cliente um valor que a planilha já havia descontado (R$ 77.289,48 na P0043,
 > em 55 partes). O mecanismo é pensionamento, e a cota já vem líquida. Corrigido
 > em `cotaClienteDaParte`.
+
+
+---
+
+## Correção: CJCM e a estrutura à vista × parcelado (19/08/2026)
+
+**`CJCM` = com juros e correção monetária.** As colunas da Tab. Aux com essa
+sigla já vêm atualizadas. A régua por ramo chegou a ser aplicada sobre elas e
+produziu dupla correção — revertido no mesmo dia (ver
+`docs/sistema/metodologia-atualizacao.md`, seção 0).
+
+**A estrutura, nos termos do Raym:** a condenação da parte é a **soma do à vista
+com o parcelado**. Cada fatia é `cota / 0,7`, e sobre cada uma o contrato leva
+30%:
+
+| Fatia | O que é | Bruto | Do cliente | Nosso |
+|---|---|---|---|---|
+| **À vista** | o que já venceu, pago de uma vez | `cota_parte_vista_cjcm / 0,7` | 70% | 30% (`hc_vista`) |
+| **Parcelado** | o que ainda vai vencer, mês a mês | `(cota_parte_cjcm − cota_parte_vista_cjcm) / 0,7` | 70% | 30% (`hc_parcelado`) |
+
+O honorário contratual total é 30% de `cota_parte_cjcm / 0,7` em **414 das 426**
+partes com cota — a identidade limpa.
+
+**Onde a planilha diverge do que a coluna promete.** Pelo conceito,
+`TOTAL DA CONDENAÇÃO CJCM` deveria ser à vista + parcelado. Só bate em **77 de
+426**. O que ela realmente traz é `cota + hc_vista + hs` (**417 de 426**) —
+soma o sucumbencial e deixa o honorário do parcelado de fora. Por isso o resumo
+carrega os dois em campos separados (`bruto` e `condenacao`) e a tela mostra a
+diferença em vez de escolher um. **Vale conferir a fórmula na planilha.**
+
+Exemplo (Leocadia, P0772), conferido campo a campo:
+
+```
+à vista bruto   = VALOR VENCIDO JCM 125.130,72 + DANO MORAL E ESTÉTICO CJCM 72.960,00 = 198.090,72
+                  30% = 59.427,22 = HONORÁRIOS CONTRATUAIS À VISTA          ✓
+                  70% = 138.663,50 = TOTAL À VISTA PARTE CJCM               ✓
+parcelado bruto = VALOR VINCENDO 194.469,24
+                  30% = 58.340,77 = HONORÁRIOS CONTRATUAIS PARCELADO        ✓
+soma das fatias = 392.559,96      →  70% = 274.791,97 = TOTAL PARTE CJCM    ✓
+TOTAL DA CONDENAÇÃO CJCM na planilha = 365.123,42  (≠ 392.559,96)
+```
+
+
+---
+
+## Carteira lendo a Tab. Aux, e a tela de conferência (19/08/2026)
+
+### A carteira passou a enxergar `jm_partes`
+
+A RPC `pop_carteira_marcos` lia o valor só de `jm_valores` (dano moral + estético
+da última decisão), que cobre 123 CNJs. `jm_partes` cobre 186. Eram **73
+processos que estavam na carteira, apareciam na lista e valiam zero** — não por
+falta de valor, mas porque a função lia a tabela que não os tinha.
+
+**A armadilha, e por que não foi um join simples:**
+
+| Fonte | O valor é | A função |
+|---|---|---|
+| `jm_valores` | NOMINAL | corrige pelo índice do ramo |
+| `jm_partes.condenacao_cjcm` | **CJCM — já corrigido** | coeficiente 1 |
+
+Corrigir o CJCM de novo infla o número. Já aconteceu nesta base (extrato do
+processo, mesmo dia, revertido). Agora a origem viaja no retorno em
+`valor_origem` (`decisao` \| `tab_aux`), e o coeficiente vale 1 quando o valor já
+vem corrigido. `jcm_referencia` vem null nesse caso — a data até a qual a
+planilha corrigiu não está registrada em lugar nenhum, e afirmar uma data que não
+se sabe é pior que não afirmar.
+
+**Quem cobre o CNJ cobre inteiro.** A decisão tem prioridade quando tem valor;
+onde ela vem zerada e a Tab. Aux cobre, a Tab. Aux assume o CNJ todo e as linhas
+zeradas da decisão saem. Sem essa regra, 3 CNJs apareciam com as duas origens e
+duplicavam as linhas de parte — nos três a decisão valia zero e a Tab. Aux tinha
+o valor real (um deles R$ 450.000).
+
+Resultado no quadro trabalhista, medido depois de aplicar:
+
+| | Antes | Depois |
+|---|---|---|
+| Processos com valor | 144 | **215** (141 decisão + 74 Tab. Aux) |
+| Carteira na tela | R$ 40.487.396,90 | **R$ 100.636.869,93** |
+| Linhas com abertura cliente × honorário | 0 | **262** |
+
+CNJs com origem duplicada: **0**. Migrations `20260819180000` e a correção do
+mesmo dia; reversão é reaplicar `20260818130000`, que tem a definição anterior
+inteira.
+
+### Tela: Jurimetria — tabela da carteira
+
+Rota `/processual/jurimetria`, menu "Tabela da carteira". É a aba Tab. Aux dentro
+do sistema: busca livre, filtros de status/fase/UF/com-sem-valor, totais que
+respondem ao filtro, e **download CSV**.
+
+- `src/lib/tabelaJurimetria.ts` — filtro, totais, opções e CSV. 15 testes.
+- `src/hooks/useTabelaJurimetria.ts` — carrega tudo paginado (1.222 linhas) e
+  filtra no cliente, para mexer no filtro ser instantâneo.
+- `src/pages/JurimetriaTabelaPage.tsx` — só desenha.
+
+Detalhes que custam quando faltam: a busca normaliza acento (metade dos nomes da
+planilha está sem), vários termos se somam em vez de alargar ("braye pago" acha o
+Braye que está pago), e o CSV sai com BOM + `;` + decimal com vírgula, que é o
+que o Excel em português abre sem perguntar nada.
+
+---
+
+## O lançamento manual vira recebível: previsto, parcelado e antecipável (20/08/2026)
+
+### O bug: data futura entrava como caixa
+
+Honorário contratual de R$ 2,00 lançado na aba Financeiro do processo com data
+**25/08/2026** aparecia na hora dentro do card "Honorário contratual" e do
+"Resultado do escritório". Dinheiro que ninguém pagou, somado ao caixa.
+
+A causa estava na régua: `classificarLancamento` decidia "é a receber?" pelo
+TEXTO da categoria (`categoria` contendo "a receber"), regra que veio da planilha
+`jm_lancamentos`, onde as categorias realmente se chamam "Honorários a receber".
+Nenhuma das 12 categorias do formulário manual tem essas palavras — logo, todo
+lançamento manual nascia como caixa realizado, qualquer que fosse a data.
+
+### A regra nova
+
+| coluna | significado |
+|---|---|
+| `entry_date` | **vencimento** — quando o dinheiro está previsto para entrar/sair |
+| `settled_at` | quando entrou/saiu **de fato**. NULL = ainda é recebível |
+
+Com isso o estágio sai do mesmo vocabulário de sempre (`estagioDoLancamento`):
+
+- `settled_at` preenchido → **REALIZADO**, é caixa;
+- NULL e vencimento no futuro → **A RECEBER**;
+- NULL e vencimento passado → **VENCIDO**.
+
+**Vencido não vira caixa sozinho.** Passou a data e ninguém baixou, a linha
+continua fora do caixa, com badge vermelho. Data que passa não é prova de
+pagamento — foi decisão explícita do Raym em 20/08/2026.
+
+Baixar é o **mesmo lançamento mudando de estado** (botão ✓ na linha grava
+`settled_at = hoje`), nunca um lançamento novo ao lado do previsto. Somar os dois
+contaria o dinheiro duas vezes — é a mesma regra que já valia para a planilha.
+
+`classificarLancamento` passou a aceitar `previsto` explícito, que vence a
+heurística da categoria. A planilha continua exatamente como estava: quem não
+manda o flag cai no teste de texto de sempre.
+
+### Saída em aberto é A PAGAR, não a receber
+
+Despesa lançada e ainda não paga tem `settled_at` NULL igual ao honorário — mas
+cair no "a receber" faria a conta de luz do processo parecer dinheiro entrando.
+`totaisProcesso` separa: `aPagar` / `aPagarVencido`, fora do resultado enquanto
+não sair da conta.
+
+### Parcelamento
+
+Um acordo em 12x é UM combinado com DOZE vencimentos. O formulário pergunta o
+plano (quantas, a cada quanto, e se o valor digitado é o TOTAL ou o de CADA
+parcela) e grava N linhas amarradas por `parcela_grupo`, com `parcela_n`/
+`parcela_de`. Cada parcela vence e é baixada por si: uma atrasar não contamina as
+outras.
+
+Detalhes que a prévia do formulário mostra antes de salvar (`src/lib/antecipacao.ts`):
+
+- **sobra de centavo na última**: R$ 100 em 3x são 33,33 + 33,33 + 33,34 — a soma
+  fecha com o combinado, que é o que o cliente confere;
+- **mensal respeita fim de mês**: 31/01 + 1 mês = 28/02, não 03/03;
+- **quinzenal = a cada 15 dias**, como no boleto, não "duas vezes por mês";
+- valor pequeno demais para dividir vira **erro**, não um punhado de linhas de
+  R$ 0,00.
+
+### Antecipação e deságio
+
+O bloco "Antecipar o que está a receber" responde: *quanto vale hoje o que só
+entra depois?*
+
+```
+valor presente = valor de face ÷ (1 + deságio)^(dias ÷ 30)
+```
+
+Juros **compostos**, como o mercado precifica recebível: 3% a.m. em 6 meses não é
+18%, é 19,4%. Simples subestimaria o desconto e a proposta sairia mais generosa
+do que o pretendido.
+
+A tela separa por **titular**, porque a oferta é diferente em cada caso:
+
+- **do cliente** — a cota que ele pode adiantar conosco;
+- **do escritório** — o honorário que pode ser vendido ao fundo (Oriz/FIDC);
+- **bruto da parte** — parcela de `jm_pagamentos`, que ainda não tem abertura
+  cliente × honorário na base.
+
+O que **já venceu não desconta nada**: deságio paga o tempo que falta, não o
+atraso. Cobrar aí seria multa disfarçada de deságio, e isso é outra conta.
+
+É **simulação**. Antecipar de verdade vira lançamento próprio no dia em que
+acontecer — a linha antecipada não deixa de existir por ter sido simulada.
+
+A taxa padrão mora em `system_settings` (Cloud), chave `desagio_mes_padrao`, para
+valer para a equipe toda: taxa que só existe num navegador vira proposta
+diferente para cada pessoa que abre a tela.
+
+### Migration
+
+`supabase/migrations-external/20260820120000_lead_financials_a_receber_e_parcelamento.sql`
+— roda no **Externo**. Aplicada em 20/08/2026. Backfill: as 10 linhas com data
+passada receberam `settled_at = entry_date` (a tela não mudou para elas); a de
+25/08/2026 ficou NULL, que é o conserto do bug.
+
+### Testes
+
+`src/lib/__tests__/antecipacao.test.ts` (9 casos, números conferidos à mão) e os
+casos novos em `lancamentoCategorias.test.ts` para o `previsto` explícito.
