@@ -473,8 +473,11 @@ export function montarEventosDaJanela(params: {
   processoPorNumero: Map<string, ProcessoResolvido>;
   /** process_id → atividades vivas daquele processo (para a coluna Atividade). */
   atividadesPorProcesso: Map<string, AtividadeLite[]>;
+  /** lead_id → nome, para a audiência/perícia que traz o cliente e não o processo. */
+  nomePorLead?: Map<string, string | null>;
 }): EventoAgenda[] {
   const { dias, audiencias, atividades, rotuloDoTipo, processoPorNumero, atividadesPorProcesso } = params;
+  const nomePorLead = params.nomePorLead || new Map<string, string | null>();
   const naJanela = new Set(dias);
   const linhas: EventoAgenda[] = [];
 
@@ -490,7 +493,11 @@ export function montarEventosDaJanela(params: {
     // dia seguinte tinham 4, 1 e 2 atividades vivas com donos diferentes; casar
     // só pela "mais próxima" faria a audiência sumir para o outro dono.
     const resp = responsaveisDe(doProcesso, h.assigned_user_id);
-    const seq = sequenciaDoEvento(h.case_ref, proc?.lead_name, ligada?.case_title);
+    // Cliente: pelo processo primeiro (é assim que a planilha resolve), pelo
+    // `lead_id` da própria linha depois — a perícia marcada no chip da atividade
+    // pode ter só o cliente, sem processo nem número.
+    const nomeDoLead = proc?.lead_name || (h.lead_id ? nomePorLead.get(h.lead_id) ?? null : null);
+    const seq = sequenciaDoEvento(h.case_ref, nomeDoLead, ligada?.case_title);
     linhas.push({
       chave: `audiencia:${h.id}`,
       categoria: categoriaDaAudiencia(h.hearing_type),
@@ -498,8 +505,8 @@ export function montarEventosDaJanela(params: {
       processo: h.process_number || proc?.process_number || null,
       // Sem lead resolvido a coluna fica vazia de propósito: repetir aqui o
       // `case_ref` que já é o badge só encheria a linha de "CASO 347 | CASO 347".
-      cliente: nomeDoCliente(proc?.lead_name),
-      clienteBruto: proc?.lead_name || null,
+      cliente: nomeDoCliente(nomeDoLead),
+      clienteBruto: nomeDoLead || null,
       casoBadge: badgeDoCaso(seq) || (h.case_ref ? h.case_ref.trim() : null),
       familia: seq?.familia ?? null,
       area: h.category || null,

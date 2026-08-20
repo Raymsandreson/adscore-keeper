@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { db, authClient } from '@/integrations/supabase';
+import { buscarTudo } from '@/lib/postgrestPaginacao';
 import { toast } from 'sonner';
 
 export type HearingStatus = 'ativa' | 'adiada' | 'cancelada' | 'concluida';
@@ -42,14 +43,22 @@ export function useHearings() {
     queryKey: KEY,
     staleTime: 30_000,
     queryFn: async (): Promise<Hearing[]> => {
-      const { data, error } = await (db as any)
-        .from('hearings')
-        .select('*')
-        .is('deleted_at', null)
-        .order('hearing_date', { ascending: true })
-        .order('hearing_time', { ascending: true });
-      if (error) throw error;
-      return (data || []) as Hearing[];
+      // PAGINADO de propósito: esta tela carrega a tabela inteira, sem janela de
+      // data (o calendário navega por mês e a visão Lista mostra tudo), e o
+      // PostgREST corta em 1000 linhas sem erro nenhum — a lista só termina mais
+      // cedo. Em 20/08/2026 são 566 linhas vivas, criadas a 37-90 por mês: o
+      // corte chegaria calado em alguns meses, e chegaria como "a audiência
+      // sumiu do calendário". O `order('id')` no fim é o desempate que mantém a
+      // paginação estável quando data e hora se repetem.
+      return await buscarTudo<Hearing>((de, ate) =>
+        (db as any)
+          .from('hearings')
+          .select('*')
+          .is('deleted_at', null)
+          .order('hearing_date', { ascending: true })
+          .order('hearing_time', { ascending: true })
+          .order('id', { ascending: true })
+          .range(de, ate));
     },
   });
 

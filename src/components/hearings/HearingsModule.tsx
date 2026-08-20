@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { addMonths, format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useHearings, type Hearing, type HearingCategory, type HearingStatus } from '@/hooks/useHearings';
 import { categoriaDaAudiencia } from '@/lib/eventAgenda';
 import { cn } from '@/lib/utils';
-import { CATEGORY_LABELS, STATUS_LABELS, HEARING_TYPES } from './hearingStyles';
+import { CATEGORY_LABELS, STATUS_LABELS } from './hearingStyles';
 import { HearingWeekView } from './HearingWeekView';
 import { HearingMonthView } from './HearingMonthView';
 import { HearingDayView } from './HearingDayView';
@@ -84,17 +84,43 @@ export default function HearingsModule() {
     return { audiencia, pericia, todos: hearings.length };
   }, [hearings]);
 
+  // Mesma regra da aba Eventos (`categoriaDaAudiencia`): perícia pelo radical +
+  // "avaliação social". Tudo que não é perícia é audiência, inclusive as linhas
+  // sem tipo — elas continuam visíveis em algum lugar.
+  const noEscopoDaLente = useMemo(() => {
+    if (lente === 'todos') return hearings;
+    const querPericia = lente === 'pericia';
+    return hearings.filter(h => (categoriaDaAudiencia(h.hearing_type) === 'pericia') === querPericia);
+  }, [hearings, lente]);
+
+  // As opções do filtro saem do DADO, não do catálogo do formulário.
+  // Medido em 20/08/2026, com a lista fixa `HEARING_TYPES`: "Inicial" (122),
+  // "UNA" (112), "Pericia" (3), "Homologação" (2), "Julgamento" e "Encerramento"
+  // não eram opção — 241 dos 566 eventos ficavam fora do alcance do filtro. E
+  // três opções do catálogo ("UNA Virtual", "UNA Presencial", "Inicial Virtual")
+  // não existiam em linha nenhuma: escolher qualquer uma esvaziava o calendário
+  // sem motivo. O catálogo continua valendo onde faz sentido — no formulário,
+  // que precisa oferecer o nome certo pra linha nova.
+  const tiposPresentes = useMemo(() => {
+    const conta = new Map<string, number>();
+    for (const h of noEscopoDaLente) {
+      const t = (h.hearing_type || '').trim();
+      if (t) conta.set(t, (conta.get(t) || 0) + 1);
+    }
+    return [...conta.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'));
+  }, [noEscopoDaLente]);
+
+  // Trocar de lente pode tirar do ar o tipo escolhido ("Instrução" não existe em
+  // perícia). Sem isto o filtro seguiria valendo, invisível, e a tela apareceria
+  // vazia como se não houvesse evento.
+  useEffect(() => {
+    if (typeFilter !== 'all' && !tiposPresentes.some(([t]) => t === typeFilter)) setTypeFilter('all');
+  }, [tiposPresentes, typeFilter]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return hearings.filter((h) => {
-      if (lente !== 'todos') {
-        // Mesma regra da aba Eventos (`categoriaDaAudiencia`): perícia pelo
-        // radical + "avaliação social". Tudo que não é perícia é audiência,
-        // inclusive as linhas sem tipo — elas continuam visíveis em algum lugar.
-        const ehPericia = categoriaDaAudiencia(h.hearing_type) === 'pericia';
-        if (lente === 'pericia' ? !ehPericia : ehPericia) return false;
-      }
-      if (typeFilter !== 'all' && h.hearing_type !== typeFilter) return false;
+    return noEscopoDaLente.filter((h) => {
+      if (typeFilter !== 'all' && (h.hearing_type || '').trim() !== typeFilter) return false;
       if (statusFilter !== 'all' && h.status !== statusFilter) return false;
       if (categoryFilter !== 'all' && h.category !== categoryFilter) return false;
       if (q) {
@@ -104,7 +130,7 @@ export default function HearingsModule() {
       }
       return true;
     });
-  }, [hearings, lente, search, typeFilter, statusFilter, categoryFilter]);
+  }, [noEscopoDaLente, search, typeFilter, statusFilter, categoryFilter]);
 
   const openCreate = (dateISO?: string) => {
     setEditing(null);
@@ -166,7 +192,9 @@ export default function HearingsModule() {
             <SelectTrigger className="w-[170px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os tipos</SelectItem>
-              {HEARING_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              {tiposPresentes.map(([t, n]) => (
+                <SelectItem key={t} value={t}>{t} ({n})</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>

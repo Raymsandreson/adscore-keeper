@@ -136,7 +136,8 @@ Os selos (`popChange`, `popNewLabel`) são calculados a cada abertura, comparand
 - **De onde vêm as perícias**: da planilha (perícia judicial — `hearing_type` "Perícia Médica"/"Perícia Judicial", `origem='planilha'`) e do **chip no cabeçalho da atividade** (perícia administrativa do INSS — "Perícia Médica (INSS)" / "Avaliação Social (INSS)", `origem='atividade'`). Ver `atividades.md`. O sync da planilha não sobrescreve o que nasceu na atividade.
 - Criar a partir da lente Perícias já nasce perícia previdenciária (o formulário abriria em "UNA Virtual"/cível).
 - Busca "Buscar por processo, caso, observações...".
-- Filtros: Tipo, Categoria, Status.
+- Filtros: Tipo, Categoria, Status. **O filtro Tipo lista o que existe no banco, com a contagem ao lado** (20/08/2026) — e não o catálogo do formulário. Com o catálogo fixo, "Inicial" (122), "UNA" (112), "Pericia" (3), "Homologação", "Julgamento" e "Encerramento" não eram opção: 241 dos 566 eventos ficavam fora do alcance do filtro, e três opções que não existem em linha nenhuma ("UNA Virtual", "UNA Presencial", "Inicial Virtual") esvaziavam o calendário. As opções acompanham a lente, e trocar de lente zera um Tipo que não existe mais ali.
+- A tela carrega a tabela **paginada** (`buscarTudo`, `lib/postgrestPaginacao.ts`): sem janela de data, o teto de 1000 linhas do PostgREST cortaria a lista sem erro nenhum — 566 vivas em 20/08/2026, criadas a 37-90 por mês.
 - "Sincronizar planilha" — importa novas/atualizadas da planilha sem remover as que só existem no sistema.
 - "Nova audiência" — abre o formulário em branco; clicar numa célula de dia cria com data pré-preenchida.
 - Setas ‹ › e "Hoje" — navegação de período.

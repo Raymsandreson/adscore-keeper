@@ -202,6 +202,36 @@ describe('montarEventosDaJanela', () => {
     expect(linha.atividade).toBe('Preparar documentos');
   });
 
+  it('perícia sem processo resolve o cliente pelo lead_id da própria linha', () => {
+    // É o caso da perícia marcada no chip da atividade: 30 das 93 atividades
+    // vivas de perícia (20/08/2026) têm só o caso ou só o cliente, então a
+    // linha nasce sem número de processo — e antes disto entrava "sem cliente".
+    const [linha] = montarEventosDaJanela({
+      ...base,
+      audiencias: [audiencia({
+        id: 'h-pericia',
+        hearing_type: 'Perícia Médica (INSS)',
+        process_number: null,
+        lead_id: 'lead-9',
+      })],
+      atividades: [],
+      nomePorLead: new Map([['lead-9', 'Antônia Pereira']]),
+    });
+    expect(linha.categoria).toBe('pericia');
+    expect(linha.cliente).toBe('Antônia Pereira');
+    expect(linha.leadId).toBe('lead-9');
+  });
+
+  it('processo resolvido continua ganhando do lead_id da linha', () => {
+    const [linha] = montarEventosDaJanela({
+      ...base,
+      audiencias: [audiencia({ lead_id: 'lead-9' })],
+      atividades: [],
+      nomePorLead: new Map([['lead-9', 'Outro Nome']]),
+    });
+    expect(linha.cliente).toBe('João da Silva');
+  });
+
   it('audiência de processo desconhecido não inventa cliente', () => {
     const [linha] = montarEventosDaJanela({
       ...base,
