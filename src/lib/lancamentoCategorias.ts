@@ -51,6 +51,26 @@
 export type TitularLancamento = 'escritorio' | 'cliente' | 'parceiro';
 
 /**
+ * De que CAIXA a linha é — pergunta diferente de "de quem é o dinheiro".
+ *
+ * A planilha de lançamentos mistura três coisas numa tabela só: o dinheiro que
+ * entra e sai por causa de PROCESSO, o custo de manter o ESCRITÓRIO, e a vida
+ * PESSOAL do sócio. Medido em 19/08/2026: 81 categorias distintas, que colapsam
+ * em 68 só normalizando caixa e acento, e apenas 8 delas movem dinheiro de
+ * processo — mas essas 8 respondem por 2.769 das 4.713 linhas.
+ *
+ * Sem essa separação, "quanto o escritório ganhou" soma supermercado e farra, e
+ * a carteira não tem como saber o que comparar com a leitura dos autos.
+ */
+export type NaturezaLancamento = 'processo' | 'escritorio' | 'pessoal';
+
+export const NATUREZA_LABEL: Record<NaturezaLancamento, string> = {
+  processo: 'Processo',
+  escritorio: 'Escritório',
+  pessoal: 'Pessoal',
+};
+
+/**
  * Onde o dinheiro está, na régua da carteira (skill whatsjud-fluxo-vocabulario).
  * Derivado da categoria + data; nunca digitado.
  *   CONDENACAO  valor certo, data incerta (a data da linha é a da decisão)
@@ -128,6 +148,72 @@ export const CATEGORIAS_LANCAMENTO = [
  * com adiantado; "Indenização comprada" casa com indenização e com comprada. O
  * caso mais específico vem primeiro nos dois.
  */
+/**
+ * Colapsa as variações de escrita da mesma categoria. A planilha tem
+ * "FOLHA DE PAGAMENTO Variável", "variavel", "VARIÁVEL", "VARIAVEL" e
+ * "VIARIAVEL" como cinco categorias diferentes; "Indenização", "INDENIZAÇÃO" e
+ * "Idenização" como três. Agrupar por texto cru parte a contagem em pedaços.
+ */
+export function categoriaCanonica(categoria?: string | null): string {
+  const c = normalizar(categoria);
+  if (!c) return 'SEM CATEGORIA';
+  // Erros de digitação vistos no dado real, corrigidos antes de casar.
+  const limpo = c
+    .replace(/\bidenizacao\b/g, 'indenizacao')
+    .replace(/\bviariavel\b/g, 'variavel')
+    .replace(/\bpesoal\b/g, 'pessoal')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (limpo.includes('folha de pagamento') || limpo === 'variavel' || limpo === 'pessoal variavel') {
+    return limpo.includes('fixo') ? 'FOLHA DE PAGAMENTO FIXO' : 'FOLHA DE PAGAMENTO VARIAVEL';
+  }
+  if (limpo.includes('ajuda familia')) {
+    return limpo.includes('a pagar') ? 'AJUDA FAMILIA A PAGAR' : 'AJUDA FAMILIA';
+  }
+  if (limpo.includes('adiantad')) return 'HONORARIOS ADIANTADOS FIDC';
+  // Exige "honorário" junto: "Parceria" e "Parceira" (5 linhas) podem ser
+  // rateio de sociedade, não repasse de honorário. Sem confirmação do Raym,
+  // ficam como categoria própria em vez de entrar no bolo errado.
+  if (limpo.includes('parceir') && limpo.includes('honorari')) return 'HONORARIOS ADV PARCEIRO';
+  if (limpo.includes('comprad')) return 'INDENIZACAO COMPRADA';
+  if (limpo.includes('indenizacao')) {
+    return limpo.includes('a receber') ? 'INDENIZACAO A RECEBER' : 'INDENIZACAO';
+  }
+  if (limpo.includes('honorari')) {
+    return limpo.includes('a receber') ? 'HONORARIOS A RECEBER' : 'HONORARIOS';
+  }
+  if (limpo.includes('emprestimo')) return 'EMPRESTIMO BANCARIO';
+  return limpo.toUpperCase();
+}
+
+/** Categorias que sempre nascem de um processo, qualquer que seja o CNJ. */
+const DE_PROCESSO = [
+  'indenizacao', 'honorari', 'custas', 'pericia', 'acordo', 'alvara', 'sucumb',
+];
+/** Vida pessoal do sócio — nada disso é custo de operar o escritório. */
+const PESSOAL = [
+  'supermercado', 'restaurante', 'lanche', 'bebida', 'farra', 'noivado', 'viagem',
+  'uber', 'roupa', 'cuidados pessoais', 'saude', 'educacao', 'livro', 'doacao',
+  'ajuda familia', 'visita familia', 'manutencao casa', 'manutencao do carro',
+  'combustivel', 'ipva', 'licenciamento', 'hillux', 'utv', 'previdenciario',
+];
+
+/**
+ * De que caixa a linha é. Com CNJ preenchido a resposta é sempre `processo` —
+ * a linha só existe porque um processo a gerou. Sem CNJ, decide pela categoria.
+ */
+export function naturezaDoLancamento(entrada: {
+  categoria?: string | null;
+  /** `jm_lancamentos.processo_cnj` preenchido, ou o vínculo do lançamento manual. */
+  temProcesso?: boolean | null;
+}): NaturezaLancamento {
+  const c = normalizar(entrada.categoria);
+  if (entrada.temProcesso) return 'processo';
+  if (DE_PROCESSO.some(t => c.includes(t))) return 'processo';
+  if (PESSOAL.some(t => c.includes(t))) return 'pessoal';
+  return 'escritorio';
+}
+
 export function classificarLancamento(entrada: {
   categoria?: string | null;
   pessoa?: string | null;

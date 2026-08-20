@@ -688,3 +688,67 @@ passada receberam `settled_at = entry_date` (a tela não mudou para elas); a de
 
 `src/lib/__tests__/antecipacao.test.ts` (9 casos, números conferidos à mão) e os
 casos novos em `lancamentoCategorias.test.ts` para o `previsto` explícito.
+
+
+---
+
+## Organizando a tabela de lançamentos (20/08/2026)
+
+Primeiro passo do pedido "o sistema não pode depender de digitar decisão à mão":
+antes de a leitura dos autos alimentar alguma coisa, o destino precisa ter forma.
+
+### O estado que a planilha produziu
+
+**81 categorias distintas** em `jm_lancamentos`, que colapsam em 68 só
+normalizando caixa e acento. O mesmo conceito escrito de cinco jeitos
+(`FOLHA DE PAGAMENTO Variável` / `variavel` / `VARIÁVEL` / `VARIAVEL` /
+`VIARIAVEL`), e `Idenização` — erro de digitação — virou categoria própria.
+
+Pior: a tabela mistura **três caixas** numa só. "Quanto o escritório ganhou"
+somava supermercado, IPVA e farra.
+
+### A régua
+
+Duas perguntas separadas, porque são mesmo separadas:
+
+- **`categoria_canonica`** — colapsa as grafias. 81 → 13 categorias no caixa de processo.
+- **`natureza`** — de que caixa a linha é: `processo` \| `escritorio` \| `pessoal`.
+  **O vínculo vence o texto**: custa lançada num processo é do processo mesmo que
+  a categoria diga "Outros". Categoria desconhecida cai em `escritorio` — errar
+  para cá infla custo, nunca infla carteira.
+
+| Natureza | Linhas | Valor |
+|---|---|---|
+| processo | 3.090 | R$ 33.697.996,46 |
+| escritorio | 1.400 | R$ 7.510.417,23 |
+| pessoal | 223 | R$ 89.152,03 |
+
+**Natureza não é direção.** Os R$ 33,7 mi de processo abrem em:
+
+| | Linhas | Valor |
+|---|---|---|
+| REPASSE (dinheiro do cliente passando) | 1.316 | R$ 18.149.469,07 |
+| ENTRADA (nosso) | 1.483 | R$ 15.436.704,56 |
+| SAIDA (despesa do processo) | 246 | R$ 104.303,50 |
+
+As 284 linhas de "FOLHA DE PAGAMENTO VARIAVEL" com CNJ são **comissão de
+funcionário sobre processo** (subcategoria "COMISSÃO", R$ 92.843,36) — custo
+rastreável ao processo, e por isso ficam como `processo` + `SAIDA`.
+
+### Onde vive
+
+- `src/lib/lancamentoCategorias.ts` — `categoriaCanonica()` e
+  `naturezaDoLancamento()`, com 33 testes sobre as grafias reais.
+- `vw_jm_lancamentos_classificado` — a mesma régua em SQL
+  (migration `20260820140000`). **É view, não coluna**: a régua ainda vai mudar
+  conforme a leitura automática amadurecer, e view se corrige com
+  `create or replace`. Nenhum dado foi alterado.
+
+Mudou de um lado, muda do outro — senão a tela e o SQL contam histórias
+diferentes.
+
+### Deixado em aberto, de propósito
+
+`Parceria` e `Parceira` (5 linhas) **não** foram colapsadas em
+`HONORARIOS ADV PARCEIRO`. Podem ser rateio de sociedade em vez de repasse de
+honorário, e o dado não decide sozinho — juntar por parecer seria adivinhar.

@@ -283,17 +283,25 @@ export function resumirEventos(eventos: EventoPush[]): { titulo: string; resumo:
 }
 
 /** O e-mail inteiro vira UMA movimentação por processo, com os eventos junto. */
-function parseEventosInline(corpo: string, assunto: string): MovimentacaoEmail[] {
+function parseEventosInline(corpo: string, assunto: string, dataEmail?: string | null): MovimentacaoEmail[] {
   const cnj = (corpo.match(CNJ_RE) || assunto.match(CNJ_RE) || [])[0];
   if (!cnj) return [];
   const eventos = extrairEventosInline(corpo);
   if (eventos.length === 0) return [];
 
   const { titulo, resumo } = resumirEventos(eventos);
-  // Data da linha do feed = a do evento mais recente. O feed é ordenado por
-  // data_movimentacao, então usar a mais antiga do lote afundaria o card.
-  const datas = eventos.map((e) => e.data).filter(Boolean) as string[];
-  const data = datas.length ? datas.sort()[datas.length - 1] : null;
+  // Data da linha do feed = a do evento mais recente QUE JÁ ACONTECEU. O feed é
+  // ordenado por data_movimentacao, então a mais antiga do lote afundaria o
+  // card — mas a mais recente também mente quando o e-mail avisa de audiência
+  // designada: em 0000375-74.2026.5.08.0120 o bloco tinha dois eventos de
+  // 12/06/2026 e a sala da audiência de 16/09/2026, e o card foi para o topo
+  // carimbado com 16/09 — data que ainda não chegou, e que fazia a notícia de
+  // junho aparecer em "Hoje". O teto é o dia do e-mail: o tribunal não avisa
+  // antes de acontecer.
+  const teto = (dataEmail || '').slice(0, 10);
+  const datas = (eventos.map((e) => e.data).filter(Boolean) as string[]).sort();
+  const ocorridas = teto ? datas.filter((d) => d <= teto) : datas;
+  const data = ocorridas.length ? ocorridas[ocorridas.length - 1] : (teto || datas[datas.length - 1] || null);
 
   return [{ cnj, cnjDigitos: soDigitos(cnj), data, texto: resumo, fonte: 'pje', eventos, titulo }];
 }
@@ -303,7 +311,9 @@ function parseEventosInline(corpo: string, assunto: string): MovimentacaoEmail[]
  * quando não é push de tribunal — e-mail de marketing, alerta de login do CNJ
  * e afins caem aqui e são ignorados.
  */
-export function parseEmailPush(input: { assunto?: string | null; corpo?: string | null }): MovimentacaoEmail[] {
+export function parseEmailPush(
+  input: { assunto?: string | null; corpo?: string | null; dataEmail?: string | null },
+): MovimentacaoEmail[] {
   const corpo = input.corpo || '';
   const assunto = input.assunto || '';
   if (!CNJ_RE.test(corpo) && !CNJ_RE.test(assunto)) return [];
@@ -316,7 +326,7 @@ export function parseEmailPush(input: { assunto?: string | null; corpo?: string 
   // A tabela tem precedência: quando ela existe, cada movimento já vem separado
   // e com data própria. O bloco em linha corrida é o outro layout do mesmo PJe
   // (na caixa real os dois nunca aparecem no mesmo e-mail — 0 de 4.203).
-  if (movs.length === 0) movs = parseEventosInline(corpo, assunto);
+  if (movs.length === 0) movs = parseEventosInline(corpo, assunto, input.dataEmail);
 
   // Push sem nenhuma linha reconhecida (tribunal mudou o layout): salva o
   // assunto para o processo aparecer no sino em vez de sumir calado.
