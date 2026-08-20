@@ -88,8 +88,26 @@ function faixaDoPeriodo(p: Periodo): { de: string | null; ate: string | null } {
   return { de: diaLocal(d), ate: null };
 }
 
+/**
+ * Dia pelo qual a linha é filtrada.
+ *
+ * `data_movimentacao` pode estar no futuro — audiência designada, prazo marcado
+ * — e aí a linha entrava em "Hoje", "7 dias" e "30 dias" ao mesmo tempo, já que
+ * esses períodos só têm piso. Foi assim que uma conclusão de 12/06/2026
+ * carimbada com a audiência de 16/09 apareceu como notícia do dia.
+ *
+ * Nada pode ser mais novo que o momento em que chegou: acima da captura, o dia
+ * que vale é o da captura.
+ */
+function diaDaLinha(u: ProcessUpdate): string {
+  const captura = u.created_at.slice(0, 10);
+  const mov = (u.data_movimentacao || '').slice(0, 10);
+  if (!mov) return captura;
+  return mov > captura ? captura : mov;
+}
+
 function dentroDaFaixa(u: ProcessUpdate, faixa: { de: string | null; ate: string | null }): boolean {
-  const dia = (u.data_movimentacao || u.created_at).slice(0, 10);
+  const dia = diaDaLinha(u);
   if (faixa.de && dia < faixa.de) return false;
   if (faixa.ate && dia > faixa.ate) return false;
   return true;

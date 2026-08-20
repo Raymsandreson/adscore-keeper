@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
+import { CallfaceTriageTab } from '@/components/calls/CallfaceTriageTab';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -671,11 +672,12 @@ export default function CallsPage() {
         </div>
       )}
 
-      {/* Tabs: List / Timeline */}
+      {/* Tabs: List / Timeline / Triagem */}
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
           <TabsTrigger value="list">Lista</TabsTrigger>
           <TabsTrigger value="timeline">Timeline por Lead</TabsTrigger>
+          <TabsTrigger value="triagem">Triagem Callface</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list" className="mt-3">
@@ -770,6 +772,12 @@ export default function CallsPage() {
               </Card>
             ))
           )}
+        </TabsContent>
+
+        {/* Ligações da Callface que não encostaram em nenhum lead. Nada vira lead
+            automaticamente — a classificação é feita aqui, à mão. */}
+        <TabsContent value="triagem" className="mt-3">
+          <CallfaceTriageTab />
         </TabsContent>
       </Tabs>
 

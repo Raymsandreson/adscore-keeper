@@ -485,6 +485,50 @@ Um card por gerente (quem é gestor de time em `team_managers` ou de setor em `o
 - Dashboard: Hoje, Esta Semana, Taxa de Contato, Duração Média; alerta de retornos agendados.
 - "Registrar" — nova ligação (tipo, resultado, lead, contato, duração, próximo passo).
 - Filtros: busca, Período, Resultado, Tipo, Instância, Membro, Avaliação.
-- Abas "Lista" e "Timeline por Lead"; detalhe com áudio, "Resumo da IA", avaliação por estrelas e agendamento de retorno.
+- Abas "Lista", "Timeline por Lead" e "Triagem Callface"; detalhe com áudio, "Resumo da IA", avaliação por estrelas e agendamento de retorno.
 
 **Fluxo recomendado**: "Registrar" após cada ligação → no detalhe, ouvir o áudio/ler o resumo IA → avaliar e agendar o retorno.
+
+### Integração Callface (Public Integration API)
+
+A Callface é um app registrado no programa de integrações deles: ao encerrar uma
+chamada, ela chama nosso webhook com os insights da ligação. O app foi registrado
+via `callface-register` (endpoint de homologação `api.dev.callface.io`), com
+`needed_credentials: ["user_id"]`.
+
+- **Webhook**: `callface-webhook`, no **Supabase Externo**. A cópia em
+  `supabase/functions/callface-webhook/` é só um proxy retrocompatível do Cloud;
+  o handler de verdade está versionado em
+  `supabase/functions/_external/callface-webhook/index.ts` e é deployado com
+  `--project-ref kmedldlepwiityjsdahz --no-verify-jwt`.
+- **Destino do dado**: `call_records` no Externo, com `tags = ['callface','telefone']`.
+  O webhook espelha a linha no Cloud (é de lá que as abas "Lista" e o histórico do
+  contato leem), traduzindo o uuid pelo `auth_uuid_mapping` — e zerando
+  `lead_id`/`contact_id` na cópia, porque são ids do Externo e no Cloud violam a
+  FK `call_records_lead_id_fkey` ou apontam para outro lead.
+- **Quem ligou**: cascata `credentials.user_id` → `profiles.email` →
+  `profiles.full_name` (primeiro%último nome, com `_` no lugar do acento porque
+  `ilike` do PostgREST é cego a acento). Sem match, a linha nasce com a sentinela
+  `00000000-…` e a tag `sem-atribuicao`. **Não existe fallback para admin** — ele
+  jogava 100% das ligações no nome do primeiro admin da tabela `user_roles`.
+- **Nome de conta compartilhada** ("Atendimento Previdenciário", "Processual") é
+  nome de *instância*, não de pessoa: a instância tem 38-41 usuários com acesso,
+  então não dá para atribuir e vai para a sentinela de propósito.
+- **Gate de origem**: a Callface não assina o payload; a trava é o token
+  `CALLFACE_WEBHOOK_TOKEN` na query (`?k=`) ou no header `x-callface-token`,
+  ligado por `CALLFACE_WEBHOOK_ENFORCE=1`. Só passa a barrar depois que a
+  `webhook_url` for re-registrada na Callface já com o token.
+
+### Aba "Triagem Callface"
+
+Ligação que não encostou em nenhum lead nem contato recebe a tag `triagem`
+(em agosto/2026, 37 de 46 — são números de prospecção fria que não existem na base).
+
+**Nada vira lead ou contato automaticamente.** A fila mostra telefone, quem ligou,
+duração, gravação e o resumo da IA, e a atendente escolhe uma das três saídas:
+vincular a um lead existente (busca por nome/telefone), criar lead a partir da
+ligação (o resumo vai para as observações do lead), ou descartar com motivo —
+que tira da fila sem apagar nada (tag `descartado`).
+
+A aba lê e escreve no **Externo** (`useCallfaceTriage`); as tags são sincronizadas
+também no Cloud para a aba "Lista" não divergir, mas o `lead_id` fica só no Externo.
