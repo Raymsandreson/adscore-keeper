@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 // `lead_financials` é tabela de NEGÓCIO: vive no Supabase Externo, com FK para
 // leads/legal_cases/lead_processes/lead_activities de lá. A aba do lead usava o
 // client Cloud — errado, e por isso silenciosamente vazia. Aqui vai pelo `db`
@@ -18,12 +18,19 @@ import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 import { toast } from 'sonner';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake,
-  CalendarClock, CheckCircle2, Repeat,
+  CalendarClock, CheckCircle2, Repeat, Paperclip, Sparkles, Loader2, X, Mic, Square,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
+// TODA edge function passa pelo roteador — é ele que sabe se a função vive no
+// Externo, no Cloud ou no Railway. Chamar `.functions.invoke` direto de um
+// client bate no projeto errado e falha calada.
+import { cloudFunctions } from '@/lib/functionRouter';
+// Imagem e PDF NUNCA abrem página nova (regra de interface do projeto):
+// o comprovante abre no lightbox, por cima da ficha.
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import {
-  classificarLancamento, CATEGORIAS_LANCAMENTO, ESPECIE_LABEL,
+  classificarLancamento, CATEGORIAS_LANCAMENTO, ESPECIE_LABEL, mesclarCategorias,
   type TitularLancamento, type EspecieLancamento,
 } from '@/lib/lancamentoCategorias';
 import {
@@ -41,6 +48,42 @@ import {
 /** Chave em `system_settings` (Cloud) com o deságio padrão, em % ao mês. */
 const CHAVE_DESAGIO = 'desagio_mes_padrao';
 
+/** Bucket do Storage onde comprovante e áudio do ditado ficam — o da nota fiscal. */
+const BUCKET_COMPROVANTE = 'invoices';
+
+/** Sem acento e em minúscula, para casar o nome falado com o nome da parte. */
+const normalizarNome = (v: string) =>
+  v.normalize('NFD')
+    .split('')
+    .filter(c => c.charCodeAt(0) < 0x300 || c.charCodeAt(0) > 0x36f)
+    .join('')
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .join(' ');
+
+/**
+ * Acima disto a imagem não vai para a IA. Não é limite de banco: é que
+ * comprovante de celular passa fácil de 5 MB e a chamada estoura antes de
+ * responder. Melhor dizer "reduza" que deixar girando até dar erro feio.
+ */
+const LIMITE_COMPROVANTE_MB = 4;
+
+/** O que a edge function `sugerir-lancamento` devolve. Tudo pode ser null. */
+interface SugestaoIa {
+  valor: number | null;
+  data: string | null;
+  tipo: 'entrada' | 'saida' | null;
+  descricao: string | null;
+  categoria: string | null;
+  /** Nome proposto quando NENHUMA categoria existente serve. */
+  categoriaNova: string | null;
+  pagador: string | null;
+  beneficiario: string | null;
+  confianca: 'alta' | 'media' | 'baixa';
+  observacao: string | null;
+}
+
 export interface EntityFinancialEntry {
   id: string;
   lead_id: string | null;
@@ -53,6 +96,17 @@ export interface EntityFinancialEntry {
   category: string | null;
   /** VENCIMENTO: quando o dinheiro está previsto para entrar ou sair. */
   entry_date: string;
+  /**
+   * De QUEM veio (ou para quem foi) o dinheiro. `contact_id` é a pessoa no CRM e
+   * vale em qualquer objeto; `parte_id` é a parte do processo em `jm_partes`, que
+   * é onde a planilha calculou a cota e o honorário dela. `parte_nome` é o
+   * retrato do nome, para o extrato sobreviver a uma reimportação da planilha.
+   */
+  contact_id: string | null;
+  parte_id: string | null;
+  parte_nome: string | null;
+  /** Comprovante no bucket `invoices`. null = lançamento sem prova. */
+  receipt_url: string | null;
   /**
    * Quando entrou/saiu DE FATO. null = ainda é recebível — "a receber" enquanto
    * o vencimento não chega, VENCIDO depois dele. Data que passa não é prova de
@@ -239,6 +293,12 @@ export function EntityFinancialsPanel({
     category: '',
     /** Vencimento. */
     entry_date: format(new Date(), 'yyyy-MM-dd'),
+    /** 'parte:<parte_id>' ou 'contato:<contact_id>'. Vazio = não informado. */
+    parte: '',
+    /** URL do comprovante já gravado (edição) ou recém-enviado. */
+    receipt_url: '',
+    /** true depois que a pessoa clica no par Já entrou/Previsto — ver o onChange da data. */
+    settledTocado: false,
     /** false = ainda não entrou; a linha nasce como recebível. */
     settled: true,
     /** Só na edição: quando pagaram, se for diferente do vencimento. */
@@ -260,6 +320,22 @@ export function EntityFinancialsPanel({
 
   /** Hoje congelado no render: `extrato` e antecipação precisam do MESMO dia. */
   const hoje = useMemo(() => format(new Date(), 'yyyy-MM-dd'), []);
+
+  /** Contatos do lead — quem responde "de quem veio o dinheiro" fora do processo. */
+  const [contatos, setContatos] = useState<{ id: string; nome: string }[]>([]);
+
+  // Comprovante em mãos, antes de salvar: o arquivo (para subir) e a data URL
+  // (para a IA ler e para a prévia). Um sem o outro não serve.
+  const [comprovante, setComprovante] = useState<{ arquivo: File; dataUrl: string } | null>(null);
+  const [pensando, setPensando] = useState<'comprovante' | 'categoria' | 'audio' | null>(null);
+  const [gravando, setGravando] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
+  const gravadorRef = useRef<MediaRecorder | null>(null);
+  const pedacosRef = useRef<Blob[]>([]);
+  const [sugestao, setSugestao] = useState<SugestaoIa | null>(null);
+  /** Categoria que a IA propôs criar e a pessoa aceitou. Vira opção na lista. */
+  const [categoriaCriada, setCategoriaCriada] = useState<string | null>(null);
+  const [verComprovante, setVerComprovante] = useState<string | null>(null);
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -450,6 +526,33 @@ export function EntityFinancialsPanel({
 
   useEffect(() => { void fetchJm(); }, [fetchJm]);
 
+  // Contatos do lead, de DUAS origens: a ponte `contact_leads` e o vínculo
+  // legado `contacts.lead_id`. Ler só uma deixaria contato de fora — é o mesmo
+  // par que `useAutoImportGroupDocs` consulta para achar os grupos do lead.
+  useEffect(() => {
+    if (!leadId) { setContatos([]); return; }
+    let vivo = true;
+    void (async () => {
+      await ensureExternalSession().catch(() => {});
+      const externo = db as unknown as { from: (t: string) => any };
+      const [ponte, legado] = await Promise.all([
+        externo.from('contact_leads').select('contacts:contact_id(id, full_name)').eq('lead_id', leadId),
+        externo.from('contacts').select('id, full_name').eq('lead_id', leadId),
+      ]);
+      if (!vivo) return;
+      const mapa = new Map<string, string>();
+      for (const linha of ponte.data || []) {
+        const c = (linha as { contacts?: { id?: string; full_name?: string } }).contacts;
+        if (c?.id) mapa.set(c.id, c.full_name || 'sem nome');
+      }
+      for (const c of (legado.data || []) as { id?: string; full_name?: string }[]) {
+        if (c?.id) mapa.set(c.id, c.full_name || 'sem nome');
+      }
+      setContatos([...mapa].map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome)));
+    })();
+    return () => { vivo = false; };
+  }, [leadId]);
+
   // Deságio padrão da equipe. Falha em silêncio de propósito: sem taxa a tela
   // apenas deixa de mostrar o valor presente, e nada mais depende dela.
   useEffect(() => {
@@ -484,26 +587,6 @@ export function EntityFinancialsPanel({
     return match ? match.key : (targets[0]?.key || '');
   }, [targets]);
 
-  /**
-   * Cards das abas de lead/caso/atividade. Só conta o que entrou ou saiu DE
-   * FATO (`settled_at` preenchido) — dinheiro combinado não é dinheiro em caixa,
-   * e a regra vale aqui igual à do extrato do processo. O previsto aparece na
-   * linha abaixo dos cards, separado.
-   */
-  const totals = useMemo(() => {
-    const pagos = entries.filter(e => !!e.settled_at);
-    const abertos = entries.filter(e => !e.settled_at);
-    const soma = (lista: EntityFinancialEntry[], tipo: 'entrada' | 'saida') =>
-      lista.filter(e => e.entry_type === tipo).reduce((s, e) => s + Number(e.amount), 0);
-    const receitas = soma(pagos, 'entrada');
-    const despesas = soma(pagos, 'saida');
-    return {
-      receitas, despesas, lucro: receitas - despesas,
-      aReceber: soma(abertos, 'entrada'),
-      aPagar: soma(abertos, 'saida'),
-    };
-  }, [entries]);
-
   /** Extrato completo do processo: manuais + jurimetria, mais novo primeiro. */
   const extrato = useMemo<LinhaExtrato[]>(() => {
     const manuais: LinhaExtrato[] = entries.map(e => {
@@ -517,7 +600,12 @@ export function EntityFinancialsPanel({
         // Baixado mostra o dia em que entrou; em aberto, o vencimento.
         data: e.settled_at || e.entry_date,
         descricao: e.description || e.category || 'Sem descrição',
-        detalhe: scope !== 'activity' && e.activity_id ? 'via atividade' : null,
+        // De quem veio o dinheiro vem antes de tudo na linha: é a pergunta que
+        // o extrato não respondia.
+        detalhe: [
+          e.parte_nome,
+          scope !== 'activity' && e.activity_id ? 'via atividade' : null,
+        ].filter(Boolean).join(' · ') || null,
         categoria: e.category,
         titular: cls.titular,
         especie: cls.especie,
@@ -666,8 +754,13 @@ export function EntityFinancialsPanel({
     return { pagas, regua: reguaDoProcesso(processNumber) };
   }, [valorProcesso.partes, processNumber]);
 
-  const ehExtrato = scope === 'process' && !!processNumber;
-  const temValorProcesso = ehExtrato && valorProcesso.comValor > 0;
+  /**
+   * Só o PROCESSO tem CNJ, e só com ele existem os blocos da jurimetria
+   * (quanto vale o processo, parcelas de jm_pagamentos, extrato da planilha).
+   * Os CARDS, esses, são os mesmos em todo objeto — ver o comentário deles.
+   */
+  const temJm = scope === 'process' && !!processNumber;
+  const temValorProcesso = temJm && valorProcesso.comValor > 0;
 
   const resetForm = () => {
     setForm({
@@ -676,7 +769,10 @@ export function EntityFinancialsPanel({
       description: '',
       category: '',
       entry_date: hoje,
+      parte: '',
+      receipt_url: '',
       settled: true,
+      settledTocado: false,
       settled_date: '',
       parcelar: false,
       parcelas: '2',
@@ -685,6 +781,9 @@ export function EntityFinancialsPanel({
       payment_method: '',
       notes: '',
     });
+    setComprovante(null);
+    setSugestao(null);
+    setCategoriaCriada(null);
   };
 
   /**
@@ -724,6 +823,210 @@ export function EntityFinancialsPanel({
     };
   }, [previaParcelas]);
 
+  /**
+   * De quem veio (ou para quem foi) o dinheiro. No processo as PARTES vêm
+   * primeiro, porque é nelas que a planilha calculou cota e honorário — amarrar
+   * o recebimento à parte é o que responde "esses R$ 1.125,30 são da cota de
+   * quem?". Fora do processo, e depois delas, vão os contatos do lead.
+   */
+  const opcoesParte = useMemo(() => {
+    const out: { valor: string; nome: string; grupo: string }[] = [];
+    for (const p of partesValor) {
+      if (!p.parteId) continue;
+      out.push({ valor: 'parte:' + p.parteId, nome: p.cliente || 'parte sem nome', grupo: 'Partes do processo' });
+    }
+    for (const c of contatos) {
+      out.push({ valor: 'contato:' + c.id, nome: c.nome, grupo: 'Contatos do lead' });
+    }
+    return out;
+  }, [partesValor, contatos]);
+
+  /**
+   * A lista do seletor: as curadas + toda categoria já usada aqui + a que a IA
+   * propôs e a pessoa aceitou. **Usar uma vez é criar** — não existe tela de
+   * administrar categoria, e não precisa existir. `form.category` entra junto
+   * para o Select nunca aparecer vazio ao editar linha de categoria antiga.
+   */
+  const categoriasDisponiveis = useMemo(
+    () => mesclarCategorias(CATEGORIES, [...entries.map(e => e.category), categoriaCriada, form.category]),
+    [entries, categoriaCriada, form.category],
+  );
+
+  /** Decompõe 'parte:<id>' / 'contato:<id>' nas três colunas do banco. */
+  const vinculoDaParte = (chave: string) => {
+    const sep = chave.indexOf(':');
+    if (sep < 0) return { contact_id: null, parte_id: null, parte_nome: null };
+    const tipo = chave.slice(0, sep);
+    const id = chave.slice(sep + 1);
+    const nome = opcoesParte.find(o => o.valor === chave)?.nome || null;
+    return {
+      contact_id: tipo === 'contato' ? id : null,
+      parte_id: tipo === 'parte' ? id : null,
+      parte_nome: nome,
+    };
+  };
+
+  const lerArquivo = (f: File) => new Promise<string>((ok, erro) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result));
+    r.onerror = () => erro(new Error('não deu para ler o arquivo'));
+    r.readAsDataURL(f);
+  });
+
+  /**
+   * Preenche o formulário com o que a IA leu.
+   *
+   * Vindo de COMPROVANTE ela sobrescreve: o documento é a fonte, e é para isso
+   * que a pessoa anexou. Vindo só da descrição, ela apenas completa o que está
+   * vazio — ninguém quer ver o valor que digitou sumir por causa de um palpite.
+   * Campo que a IA não leu volta null e não encosta em nada.
+   */
+  const aplicarSugestao = (s: SugestaoIa, ehFonte: boolean) => {
+    setForm(p => ({
+      ...p,
+      amount: s.valor != null && (ehFonte || !p.amount) ? String(s.valor) : p.amount,
+      entry_date: s.data && ehFonte ? s.data : p.entry_date,
+      entry_type: s.tipo && ehFonte ? s.tipo : p.entry_type,
+      description: s.descricao && (ehFonte || !p.description) ? s.descricao : p.description,
+      category: s.categoria || p.category,
+      // Comprovante é prova de que o dinheiro andou: nasce baixado, na data dele.
+      settled: ehFonte && !!s.data ? s.data <= hoje : p.settled,
+      settledTocado: ehFonte ? true : p.settledTocado,
+    }));
+
+    // Nome lido no comprovante ou dito no áudio: se casar com EXATAMENTE uma
+    // parte/contato da lista, já deixa escolhido. Dois candidatos não escolhe
+    // nenhum — chutar de quem é o dinheiro é pior que deixar em branco.
+    const nomeLido = s.tipo === 'saida' ? (s.beneficiario || s.pagador) : (s.pagador || s.beneficiario);
+    if (ehFonte && nomeLido) {
+      const alvo = normalizarNome(nomeLido);
+      const casam = opcoesParte.filter(o => {
+        const n = normalizarNome(o.nome);
+        return !!n && !!alvo && (n.includes(alvo) || alvo.includes(n));
+      });
+      if (casam.length === 1) setForm(p => ({ ...p, parte: casam[0].valor }));
+    }
+  };
+
+  const chamarIa = async (
+    origem: 'comprovante' | 'categoria' | 'audio',
+    extra?: { comprovante?: string; ditado?: string },
+  ) => {
+    setPensando(origem);
+    setSugestao(null);
+    try {
+      const { data, error } = await cloudFunctions.invoke<SugestaoIa & { error?: string }>(
+        'sugerir-lancamento',
+        {
+          body: {
+            descricao: form.description || null,
+            comprovante: extra?.comprovante || null,
+            ditado: extra?.ditado || null,
+            categorias: categoriasDisponiveis,
+            contexto: processNumber || contextLabel || null,
+            // O servidor pode estar em outro fuso: quem sabe que dia é hoje
+            // para resolver "ontem" do ditado é a tela.
+            hoje,
+          },
+        },
+      );
+      if (error) throw error;
+      if (!data) throw new Error('sem resposta');
+      if (data.error) throw new Error(data.error);
+      // Comprovante e ditado são FONTE: sobrescrevem. Sugerir categoria pelo
+      // texto só completa o que está vazio.
+      aplicarSugestao(data, origem !== 'categoria');
+      setSugestao(data);
+    } catch (e) {
+      toast.error('A IA não conseguiu: ' + (e instanceof Error ? e.message : 'erro'));
+    } finally {
+      setPensando(null);
+    }
+  };
+
+  const anexarComprovante = async (arquivo: File | null) => {
+    if (!arquivo) { setComprovante(null); return; }
+    if (arquivo.size > LIMITE_COMPROVANTE_MB * 1024 * 1024) {
+      toast.error('Comprovante acima de ' + LIMITE_COMPROVANTE_MB + ' MB — reduza antes de anexar');
+      return;
+    }
+    try {
+      const dataUrl = await lerArquivo(arquivo);
+      setComprovante({ arquivo, dataUrl });
+      // Imagem E PDF: o conversor do _shared/gemini.ts lê o mime do data URL e
+      // manda como inlineData, e o Gemini aceita application/pdf igual.
+      await chamarIa('comprovante', { comprovante: dataUrl });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao ler o arquivo');
+    }
+  };
+
+  /**
+   * Ditar o lançamento, igual ao que a atividade já faz por voz.
+   *
+   * O caminho é o MESMO que o chat da equipe usa e que já funciona: sobe o
+   * áudio, pede a `transcribe-team-audio` (ElevenLabs Scribe, com Gemini de
+   * reserva) o texto, e só então a IA lê esse texto como DITADO. Escrever um
+   * segundo transcritor aqui seria manter duas coisas que fazem a mesma.
+   */
+  const gravarDitado = async () => {
+    if (gravando) { gravadorRef.current?.stop(); return; }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      pedacosRef.current = [];
+      rec.ondataavailable = e => { if (e.data.size) pedacosRef.current.push(e.data); };
+      rec.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        setGravando(false);
+        const blob = new Blob(pedacosRef.current, { type: mime });
+        if (blob.size < 1000) { toast.error('Gravação muito curta.'); return; }
+        void transcreverDitado(blob, mime);
+      };
+      gravadorRef.current = rec;
+      rec.start();
+      setGravando(true);
+    } catch {
+      toast.error('Não consegui acessar o microfone');
+    }
+  };
+
+  const transcreverDitado = async (blob: Blob, mime: string) => {
+    setPensando('audio');
+    try {
+      const caminho = 'lancamentos/audio/' + crypto.randomUUID() + '.webm';
+      const { error: upErr } = await authClient.storage.from(BUCKET_COMPROVANTE).upload(caminho, blob);
+      if (upErr) throw new Error('o áudio não subiu (' + upErr.message + ')');
+      const url = authClient.storage.from(BUCKET_COMPROVANTE).getPublicUrl(caminho).data.publicUrl;
+      const { data } = await cloudFunctions.invoke<{ success?: boolean; transcription?: string }>(
+        'transcribe-team-audio',
+        { body: { audio_url: url, audio_mime: mime.split(';')[0] } },
+      );
+      const texto = data?.transcription?.trim();
+      if (!texto) throw new Error('não entendi o áudio');
+      await chamarIa('audio', { ditado: texto });
+    } catch (e) {
+      toast.error('Ditado: ' + (e instanceof Error ? e.message : 'erro'));
+      setPensando(null);
+    }
+  };
+
+  /** Sobe o comprovante e devolve a URL. Falhar aqui NÃO pode custar o lançamento. */
+  const subirComprovante = async (): Promise<string | null> => {
+    if (!comprovante) return form.receipt_url || null;
+    const ext = comprovante.arquivo.name.split('.').pop() || 'jpg';
+    const caminho = 'lancamentos/' + crypto.randomUUID() + '.' + ext;
+    const { error } = await authClient.storage.from(BUCKET_COMPROVANTE)
+      .upload(caminho, comprovante.arquivo, { upsert: true });
+    if (error) {
+      toast.warning('O comprovante não subiu (' + error.message + '). O lançamento vai ser salvo assim mesmo.');
+      return form.receipt_url || null;
+    }
+    return authClient.storage.from(BUCKET_COMPROVANTE).getPublicUrl(caminho).data.publicUrl;
+  };
+
   const handleSave = async () => {
     if (!form.amount || parseFloat(form.amount) <= 0) {
       toast.error('Informe o valor');
@@ -731,6 +1034,16 @@ export function EntityFinancialsPanel({
     }
     if (hasTargets && !target) {
       toast.error('Escolha onde registrar');
+      return;
+    }
+    // Sem categoria o sistema não sabe DE QUEM é o dinheiro: cai em "operação do
+    // escritório" e um recebimento de cota do cliente vira resultado nosso.
+    if (!form.category) {
+      toast.error('Escolha a categoria — é ela que diz de quem é o dinheiro');
+      return;
+    }
+    if (!form.description.trim()) {
+      toast.error('Escreva a descrição — sem ela a linha vira "Sem descrição" no extrato');
       return;
     }
     // Dinheiro não entra antes da hora. O botão já se protege quando a data muda;
@@ -751,6 +1064,8 @@ export function EntityFinancialsPanel({
       // ao lead não deve aparecer no financeiro do processo. Sem destino (abas de
       // lead e processo), valem os ids das props.
       const vinculos = {
+        ...vinculoDaParte(form.parte),
+        receipt_url: await subirComprovante(),
         lead_id: (hasTargets ? target?.leadId : leadId) || null,
         case_id: (hasTargets ? target?.caseId : caseId) || null,
         process_id: (hasTargets ? target?.processId : processId) || null,
@@ -868,13 +1183,21 @@ export function EntityFinancialsPanel({
   const openEdit = (entry: EntityFinancialEntry) => {
     setEditingEntry(entry);
     setTargetKey(targetKeyOf(entry));
+    setComprovante(null);
+    setSugestao(null);
     setForm({
       entry_type: entry.entry_type,
       amount: String(entry.amount),
       description: entry.description || '',
       category: entry.category || '',
       entry_date: entry.entry_date,
+      receipt_url: entry.receipt_url || '',
+      parte: entry.parte_id ? 'parte:' + entry.parte_id
+        : entry.contact_id ? 'contato:' + entry.contact_id
+        : '',
       settled: !!entry.settled_at,
+      // Na edição o estado já é uma escolha feita: a data não pode revogá-la.
+      settledTocado: true,
       settled_date: entry.settled_at || '',
       // Replanejar o parcelamento de um lançamento que já existe criaria linhas
       // soltas do grupo original — para isso, apaga-se o plano e refaz.
@@ -1048,10 +1371,12 @@ export function EntityFinancialsPanel({
         </div>
       )}
 
-      {/* Summary Cards. Na aba do processo os totais abrem por TITULAR —
-          quanto é do escritório e quanto é do cliente — porque somar tudo numa
-          "receita" só mistura dinheiro nosso com dinheiro que é dever de repasse. */}
-      {ehExtrato ? (
+      {/* Summary Cards. Os MESMOS em lead, caso, processo e atividade: um só
+          jeito de ler dinheiro no sistema inteiro. Abrem por TITULAR — quanto é
+          do escritório e quanto é do cliente — porque somar tudo numa "receita"
+          só mistura dinheiro nosso com dinheiro que é dever de repasse. Antes,
+          fora do processo, a tela mostrava Receitas/Despesas/Resultado e a mesma
+          pergunta tinha duas respostas dependendo de onde você abrisse. */}
         <>
           {/* Honorário do escritório aberto em contratual × sucumbencial: são
               recebíveis distintos e a planilha já separa (HC/HS na coluna
@@ -1257,43 +1582,6 @@ export function EntityFinancialsPanel({
             </div>
           )}
         </>
-      ) : (
-        <div className="grid grid-cols-3 gap-2">
-          <Card className="border-green-200 bg-green-50/50">
-            <CardContent className="p-3 text-center">
-              <TrendingUp className="h-4 w-4 text-green-600 mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Receitas</p>
-              <p className="text-sm font-bold text-green-600">{formatCurrency(totals.receitas)}</p>
-            </CardContent>
-          </Card>
-          <Card className="border-red-200 bg-red-50/50">
-            <CardContent className="p-3 text-center">
-              <TrendingDown className="h-4 w-4 text-red-600 mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Despesas</p>
-              <p className="text-sm font-bold text-red-600">{formatCurrency(totals.despesas)}</p>
-            </CardContent>
-          </Card>
-          <Card className={totals.lucro >= 0 ? 'border-blue-200 bg-blue-50/50' : 'border-amber-200 bg-amber-50/50'}>
-            <CardContent className="p-3 text-center">
-              <DollarSign className="h-4 w-4 text-primary mx-auto mb-1" />
-              <p className="text-xs text-muted-foreground">Resultado</p>
-              <p className={`text-sm font-bold ${totals.lucro >= 0 ? 'text-blue-600' : 'text-amber-600'}`}>{formatCurrency(totals.lucro)}</p>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* O que ainda não é caixa não entra nos cards acima, mas some da tela se
-          ninguém disser onde foi parar. */}
-      {!ehExtrato && (totals.aReceber > 0 || totals.aPagar > 0) && (
-        <p className="text-[11px] text-muted-foreground leading-snug">
-          Fora dos cards, porque ainda não é caixa:{' '}
-          {totals.aReceber > 0 ? formatCurrency(totals.aReceber) + ' a receber' : ''}
-          {totals.aReceber > 0 && totals.aPagar > 0 ? ' e ' : ''}
-          {totals.aPagar > 0 ? formatCurrency(totals.aPagar) + ' a pagar' : ''}
-          . Baixe pelo ✓ na linha quando o dinheiro entrar ou sair.
-        </p>
-      )}
 
       {/* Add Button */}
       <Button
@@ -1380,6 +1668,15 @@ export function EntityFinancialsPanel({
                     ? 'sem valor'
                     : `${linha.direcao === 'entrada' ? '+' : linha.direcao === 'saida' ? '-' : ''}${formatCurrency(linha.valor)}`}
                 </span>
+                {linha.entry?.receipt_url && (
+                  <Button
+                    variant="ghost" size="icon" className="h-6 w-6"
+                    title="Ver comprovante"
+                    onClick={() => setVerComprovante(linha.entry?.receipt_url || null)}
+                  >
+                    <Paperclip className="h-3 w-3" />
+                  </Button>
+                )}
                 {linha.entry && (
                   <>
                     {/* Baixar é o MESMO lançamento mudando de estado — nunca um
@@ -1409,9 +1706,28 @@ export function EntityFinancialsPanel({
         </div>
       </ScrollArea>
 
+      <MediaLightbox url={verComprovante} title="Comprovante" onClose={() => setVerComprovante(null)} />
+
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md max-h-[90vh]">
+        <DialogContent
+          className="max-w-md max-h-[90vh]"
+          // Colar (Ctrl+V) e arrastar valem em QUALQUER canto do diálogo, não só
+          // em cima do campo: comprovante quase sempre chega como print na área
+          // de transferência, e obrigar a mira certa é atrito à toa.
+          onPaste={e => {
+            const arq = Array.from(e.clipboardData?.files || [])[0];
+            if (arq) { e.preventDefault(); void anexarComprovante(arq); }
+          }}
+          onDragOver={e => { e.preventDefault(); setArrastando(true); }}
+          onDragLeave={() => setArrastando(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setArrastando(false);
+            const arq = Array.from(e.dataTransfer?.files || [])[0];
+            if (arq) void anexarComprovante(arq);
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{editingEntry ? 'Editar Lançamento' : 'Novo Lançamento'}</DialogTitle>
           </DialogHeader>
@@ -1434,6 +1750,84 @@ export function EntityFinancialsPanel({
                 Registrando em: <span className="font-medium text-foreground">{targets[0].label}</span>
               </p>
             ))}
+
+            {/* COMPROVANTE PRIMEIRO, porque é o caminho curto: anexou, a IA lê a
+                imagem e preenche valor, data, tipo, descrição e categoria de uma
+                vez. O que ela não conseguir ler fica em BRANCO — nunca chutado.
+                Tudo continua editável: quem salva é a pessoa. */}
+            <div className={'rounded border p-2 space-y-2 ' + (arrastando ? 'border-primary bg-primary/5' : '')}>
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs flex items-center gap-1">
+                  <Paperclip className="h-3.5 w-3.5" /> Comprovante
+                </Label>
+                {(comprovante || form.receipt_url) && (
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 text-[11px]"
+                    onClick={() => { setComprovante(null); setForm(p => ({ ...p, receipt_url: '' })); }}
+                  >
+                    <X className="h-3 w-3 mr-1" /> tirar
+                  </Button>
+                )}
+              </div>
+
+              {comprovante ? (
+                <div className="flex items-center gap-2">
+                  {comprovante.arquivo.type.startsWith('image/') && (
+                    <img src={comprovante.dataUrl} alt="comprovante" className="h-14 w-14 rounded border object-cover" />
+                  )}
+                  <div className="min-w-0 text-[11px]">
+                    <p className="truncate font-medium">{comprovante.arquivo.name}</p>
+                    <p className="text-muted-foreground">{(comprovante.arquivo.size / 1024).toFixed(0)} KB · sobe ao salvar</p>
+                  </div>
+                </div>
+              ) : form.receipt_url ? (
+                <button
+                  type="button"
+                  onClick={() => setVerComprovante(form.receipt_url)}
+                  className="text-[11px] text-primary underline underline-offset-2"
+                >
+                  ver o comprovante anexado
+                </button>
+              ) : (
+                <>
+                  <Input
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="text-xs"
+                    onChange={e => void anexarComprovante(e.target.files?.[0] || null)}
+                  />
+                  <p className="text-[10px] text-muted-foreground leading-snug">
+                    Ou <strong>arraste o arquivo aqui</strong>, ou <strong>cole com Ctrl+V</strong>.
+                    Imagem e PDF são lidos pela IA.
+                  </p>
+                </>
+              )}
+
+              {pensando === 'comprovante' && (
+                <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> lendo o comprovante...
+                </p>
+              )}
+
+              {/* DITAR — mesmo caminho da atividade por voz: transcreve e a IA
+                  lê o texto como ditado, tirando valor, data e de quem é. */}
+              <Button
+                type="button"
+                variant={gravando ? 'destructive' : 'outline'}
+                size="sm"
+                className="w-full"
+                disabled={pensando !== null && !gravando}
+                onClick={() => void gravarDitado()}
+              >
+                {gravando ? (
+                  <><Square className="h-3.5 w-3.5 mr-1" /> parar e transcrever</>
+                ) : pensando === 'audio' ? (
+                  <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> transcrevendo...</>
+                ) : (
+                  <><Mic className="h-3.5 w-3.5 mr-1" /> ditar o lançamento</>
+                )}
+              </Button>
+            </div>
 
             <div className="flex gap-2">
               <Button
@@ -1468,7 +1862,7 @@ export function EntityFinancialsPanel({
                   className="flex-1"
                   disabled={form.entry_date > hoje}
                   title={form.entry_date > hoje ? 'A data escolhida ainda não chegou' : undefined}
-                  onClick={() => setForm(p => ({ ...p, settled: true }))}
+                  onClick={() => setForm(p => ({ ...p, settled: true, settledTocado: true }))}
                 >
                   {form.entry_type === 'entrada' ? 'Já recebi' : 'Já paguei'}
                 </Button>
@@ -1477,7 +1871,7 @@ export function EntityFinancialsPanel({
                   variant={form.settled ? 'outline' : 'default'}
                   size="sm"
                   className={'flex-1 ' + (form.settled ? '' : 'bg-amber-600 hover:bg-amber-700')}
-                  onClick={() => setForm(p => ({ ...p, settled: false }))}
+                  onClick={() => setForm(p => ({ ...p, settled: false, settledTocado: true }))}
                 >
                   <CalendarClock className="h-3.5 w-3.5 mr-1" />
                   {form.entry_type === 'entrada' ? 'A receber' : 'A pagar'}
@@ -1496,14 +1890,30 @@ export function EntityFinancialsPanel({
                 value={form.entry_date}
                 onChange={e => {
                   const d = e.target.value;
-                  // Data no futuro só pode ser previsão: ninguém recebeu amanhã.
-                  setForm(p => ({ ...p, entry_date: d, settled: d > hoje ? false : p.settled }));
+                  // Enquanto ninguém encostou no par acima, o estado SEGUE a data:
+                  // futuro = previsto, passado ou hoje = já entrou. Antes ele só
+                  // ia num sentido — pôr data futura marcava "a receber", e voltar
+                  // a data para o passado deixava a marca grudada. A linha nascia
+                  // VENCIDA sem ninguém entender por quê. Data futura continua
+                  // forçando previsto mesmo com escolha manual: ninguém recebeu amanhã.
+                  setForm(p => ({
+                    ...p,
+                    entry_date: d,
+                    settled: p.settledTocado ? (d > hoje ? false : p.settled) : d <= hoje,
+                  }));
                 }}
               />
               {form.entry_date > hoje && (
                 <p className="text-[10px] text-amber-700 mt-1 leading-snug">
                   Data futura: entra como {form.entry_type === 'entrada' ? 'a receber' : 'a pagar'} e
                   fica fora do caixa até alguém baixar.
+                </p>
+              )}
+              {!form.settled && form.entry_date < hoje && (
+                <p className="text-[10px] text-red-600 mt-1 leading-snug">
+                  Vai nascer <strong>VENCIDO</strong>: a data já passou e está marcado como
+                  {form.entry_type === 'entrada' ? ' não recebido' : ' não pago'}. Se o dinheiro já
+                  entrou, troque no par acima.
                 </p>
               )}
             </div>
@@ -1520,19 +1930,101 @@ export function EntityFinancialsPanel({
                 />
               </div>
             )}
+            {/* Obrigatória: é a categoria que diz se aquele dinheiro é honorário
+                nosso ou cota do cliente. Em branco, tudo virava "operação do
+                escritório" e recebimento do cliente entrava no nosso resultado. */}
             <div>
-              <Label className="text-xs">Categoria</Label>
+              <Label className="text-xs">Categoria *</Label>
               <Select value={form.category} onValueChange={v => setForm(p => ({ ...p, category: v }))}>
                 <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
                 <SelectContent>
-                  {CATEGORIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                  {categoriasDisponiveis.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
+
+            {/* DE QUEM VEIO O DINHEIRO. Num caso com cinco herdeiros, "cota do
+                cliente" não diz de qual deles — a parte diz. */}
+            {opcoesParte.length > 0 && (
+              <div>
+                <Label className="text-xs">
+                  {form.entry_type === 'entrada' ? 'De quem veio o dinheiro' : 'Para quem foi o dinheiro'}
+                </Label>
+                <Select value={form.parte} onValueChange={v => setForm(p => ({ ...p, parte: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Parte ou contato..." /></SelectTrigger>
+                  <SelectContent>
+                    {opcoesParte.map(o => (
+                      <SelectItem key={o.valor} value={o.valor}>
+                        {o.nome} <span className="text-muted-foreground text-[10px]">· {o.grupo}</span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.parte.startsWith('parte:') && (
+                  <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                    Amarrado à parte do processo: dá para conferir esse valor contra a cota e o
+                    honorário que a planilha calculou para ela.
+                  </p>
+                )}
+              </div>
+            )}
+
             <div>
-              <Label className="text-xs">Descrição</Label>
-              <Input placeholder="Descrição do lançamento" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">Descrição *</Label>
+                {/* Escreveu o que foi, a IA diz em que categoria isso cai — e,
+                    quando nenhuma das existentes serve, propõe uma nova. */}
+                <Button
+                  type="button" variant="ghost" size="sm" className="h-6 text-[11px]"
+                  disabled={!form.description.trim() || pensando !== null}
+                  onClick={() => void chamarIa('categoria')}
+                >
+                  {pensando === 'categoria'
+                    ? <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                    : <Sparkles className="h-3 w-3 mr-1" />}
+                  sugerir categoria
+                </Button>
+              </div>
+              <Input placeholder="Ex: pago 3ª parcela do acordo" value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
             </div>
+
+            {/* O que a IA leu, dito na cara. Confiança baixa e campo que ela não
+                conseguiu ler são informação — não detalhe para esconder. */}
+            {sugestao && (
+              <div className="rounded border border-violet-200 bg-violet-50/50 p-2 space-y-1 text-[11px]">
+                <p className="font-medium text-violet-900 flex items-center gap-1">
+                  <Sparkles className="h-3 w-3" /> A IA preencheu o que conseguiu ler
+                  <span className="font-normal text-muted-foreground">· confiança {sugestao.confianca}</span>
+                </p>
+                {sugestao.observacao && <p className="text-muted-foreground">{sugestao.observacao}</p>}
+                {(sugestao.pagador || sugestao.beneficiario) && (
+                  <p className="text-muted-foreground">
+                    {sugestao.pagador ? 'de ' + sugestao.pagador : ''}
+                    {sugestao.pagador && sugestao.beneficiario ? ' · ' : ''}
+                    {sugestao.beneficiario ? 'para ' + sugestao.beneficiario : ''}
+                    {' — confira se bate com a parte escolhida acima.'}
+                  </p>
+                )}
+                {sugestao.categoriaNova && (
+                  <div className="flex items-center gap-2 pt-1">
+                    <span className="text-muted-foreground">
+                      Nenhuma categoria existente serve. Propõe: <strong>{sugestao.categoriaNova}</strong>
+                    </span>
+                    <Button
+                      type="button" size="sm" variant="outline" className="h-6 flex-shrink-0 text-[11px]"
+                      onClick={() => {
+                        const nova = sugestao.categoriaNova as string;
+                        setCategoriaCriada(nova);
+                        setForm(p => ({ ...p, category: nova }));
+                      }}
+                    >
+                      criar e usar
+                    </Button>
+                  </div>
+                )}
+                <p className="text-muted-foreground">Confira antes de salvar — sugestão não é lançamento.</p>
+              </div>
+            )}
             <div>
               <Label className="text-xs">Observações</Label>
               <Textarea rows={2} value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} />

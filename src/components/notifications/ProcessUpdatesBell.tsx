@@ -47,6 +47,25 @@ const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
   'todas', 'decisao_merito', 'audiencia', 'pericia', 'prazo', 'despacho', 'movimentacao',
 ];
 
+/**
+ * Filtro de vínculo. `com_grupo` é o que dá para notificar em lote; `sem_grupo`
+ * é a fila do trabalho manual — lead sem grupo de WhatsApp, ou movimentação que
+ * nem lead tem. Linha cujos vínculos ainda estão carregando não entra em
+ * nenhum dos dois: dizer "sem grupo" antes de ter olhado seria chute.
+ */
+type VinculoFiltro = 'todos' | 'com_grupo' | 'sem_grupo';
+const VINCULOS: Array<{ value: VinculoFiltro; label: string }> = [
+  { value: 'todos', label: 'Todos' },
+  { value: 'com_grupo', label: 'Com grupo' },
+  { value: 'sem_grupo', label: 'Sem grupo' },
+];
+
+function casaVinculo(u: ProcessUpdate, f: VinculoFiltro): boolean {
+  if (f === 'todos') return true;
+  if (!u.vinculos) return false;
+  return f === 'com_grupo' ? !!u.vinculos.grupo_id : !u.vinculos.grupo_id;
+}
+
 type Periodo = 'hoje' | 'ontem' | '7d' | '30d' | 'tudo';
 const PERIODOS: Array<{ value: Periodo; label: string }> = [
   { value: 'hoje', label: 'Hoje' },
@@ -250,6 +269,20 @@ function UpdateRow({
               {update.numero_cnj && update.processo_titulo && (
                 <p className="text-[10px] text-muted-foreground font-mono truncate">{update.numero_cnj}</p>
               )}
+              {/* De quem é e sob que número, na própria linha do feed. Antes só
+                  o título do processo aparecia, e descobrir o cliente exigia
+                  abrir o lead — com o feed em 1.200 linhas isso é o que decide
+                  se dá para varrer a lista sem sair dela. */}
+              {update.vinculos && (
+                <p className="text-[10px] text-muted-foreground truncate">
+                  {update.vinculos.caso_numero && (
+                    <span className="font-mono">{update.vinculos.caso_numero}</span>
+                  )}
+                  {update.vinculos.caso_numero && update.vinculos.lead_nome ? ' · ' : ''}
+                  {update.vinculos.lead_nome || (update.lead_id ? null : 'sem lead vinculado')}
+                  {update.vinculos.lead_nome && !update.vinculos.grupo_id ? ' · sem grupo' : ''}
+                </p>
+              )}
             </>
           )}
           {/* O que aconteceu vem em destaque; de onde veio o aviso, quando é só
@@ -386,6 +419,12 @@ export function ProcessUpdatesBell({
     () => (localStorage.getItem(ESFERA_STORAGE_KEY) as Esfera | 'todas') || 'todas',
   );
   const [soNaoNotificadas, setSoNaoNotificadas] = useState(false);
+  /**
+   * Tem grupo de WhatsApp ou não. Separa a fila que dá para avisar em lote da
+   * que precisa de trabalho manual antes — hoje as duas ficam misturadas e só
+   * se descobre qual é qual depois de montar o lote.
+   */
+  const [vinculoFiltro, setVinculoFiltro] = useState<VinculoFiltro>('todos');
   // Num processo só, "30 dias" esconderia justamente a resposta que se foi
   // buscar ali ("tem alguma?") quando a última movimentação é de um mês atrás.
   const [periodo, setPeriodo] = useState<Periodo>(escopado ? 'tudo' : '30d');
@@ -483,7 +522,18 @@ export function ProcessUpdatesBell({
     // ligado abriria o atalho de um processo do INSS e veria lista vazia.
     if (!escopado && esferaFiltro !== 'todas') list = list.filter((u) => (u.esfera || 'outros') === esferaFiltro);
     if (soNaoNotificadas) list = list.filter((u) => !notificadas.has(u.id));
+    if (vinculoFiltro !== 'todos') list = list.filter((u) => casaVinculo(u, vinculoFiltro));
     return list;
+  }, [updates, filtro, escopado, esferaFiltro, soNaoNotificadas, notificadas, vinculoFiltro]);
+
+  /** Quantas linhas cada opção de vínculo tem, com os outros filtros já aplicados. */
+  const countByVinculo = useMemo(() => {
+    let list = filtro === 'todas' ? updates : updates.filter((u) => u.categoria === filtro);
+    if (!escopado && esferaFiltro !== 'todas') list = list.filter((u) => (u.esfera || 'outros') === esferaFiltro);
+    if (soNaoNotificadas) list = list.filter((u) => !notificadas.has(u.id));
+    const acc = {} as Record<VinculoFiltro, number>;
+    for (const v of VINCULOS) acc[v.value] = list.filter((u) => casaVinculo(u, v.value)).length;
+    return acc;
   }, [updates, filtro, escopado, esferaFiltro, soNaoNotificadas, notificadas]);
 
   // Uma vez por lista, não uma vez por item: `new Date()` dentro do filter seria
@@ -504,7 +554,7 @@ export function ProcessUpdatesBell({
   // travada. O que pagina é a renderização — a contagem do chip continua sendo
   // a do período, senão o número volta a mentir.
   const [visiveis, setVisiveis] = useState(PAGINA);
-  useEffect(() => { setVisiveis(PAGINA); }, [filtro, esferaFiltro, soNaoNotificadas, periodo]);
+  useEffect(() => { setVisiveis(PAGINA); }, [filtro, esferaFiltro, soNaoNotificadas, periodo, vinculoFiltro]);
   const paginadas = useMemo(() => filtered.slice(0, visiveis), [filtered, visiveis]);
 
   const countByPeriodo = useMemo(() => {
@@ -1455,6 +1505,31 @@ export function ProcessUpdatesBell({
           {/* No escopado a linha de Ramo (onde este filtro mora) não existe, e
               "o cliente já foi avisado disto?" é justamente a pergunta de quem
               abriu o atalho pela ficha. */}
+          {/* Vínculo fica na mesma linha do período: são as duas perguntas de
+              triagem ("de quando?" e "dá para avisar?") antes de abrir card. No
+              escopado é um processo só — o grupo dele é sempre o mesmo. */}
+          {!escopado && (
+            <>
+              <span className="text-[10px] text-muted-foreground pl-2 pr-1 shrink-0">Grupo:</span>
+              {VINCULOS.map((v) => (
+                <button
+                  key={v.value}
+                  onClick={() => setVinculoFiltro(v.value)}
+                  title={
+                    v.value === 'com_grupo' ? 'Só quem tem grupo de WhatsApp vinculado — dá para notificar'
+                      : v.value === 'sem_grupo' ? 'Lead sem grupo, ou movimentação sem lead vinculado'
+                      : undefined
+                  }
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-full border whitespace-nowrap transition-colors',
+                    vinculoFiltro === v.value ? 'bg-primary text-primary-foreground border-primary' : 'bg-background hover:bg-accent',
+                  )}
+                >
+                  {v.label} <span className="opacity-70">({countByVinculo[v.value] || 0})</span>
+                </button>
+              ))}
+            </>
+          )}
           {escopado && (
             <button
               onClick={() => setSoNaoNotificadas((v) => !v)}

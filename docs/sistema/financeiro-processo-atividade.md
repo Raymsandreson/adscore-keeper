@@ -752,3 +752,181 @@ diferentes.
 `Parceria` e `Parceira` (5 linhas) **não** foram colapsadas em
 `HONORARIOS ADV PARCEIRO`. Podem ser rateio de sociedade em vez de repasse de
 honorário, e o dado não decide sozinho — juntar por parecer seria adivinhar.
+---
+
+## Um financeiro só, e de quem veio o dinheiro (20/08/2026)
+
+### O mesmo painel em todo objeto
+
+A aba do processo mostrava seis cards abertos por titular; lead, caso e
+atividade mostravam três (Receitas / Despesas / Resultado). A mesma pergunta
+tinha duas respostas dependendo de onde você abrisse.
+
+A abertura por titular estava presa a `scope === 'process' && processNumber`.
+Agora ela vale em **todos** os objetos, e a condição (renomeada para `temJm`)
+guarda só o que de fato depende do CNJ: "quanto vale o processo", as parcelas de
+`jm_pagamentos` e o extrato de `jm_lancamentos`. O bloco de três cards deixou de
+existir.
+
+### De quem veio o dinheiro
+
+O extrato já dizia a **espécie** (contratual, sucumbencial, cota) e o **titular**
+(escritório, cliente, parceiro). Faltava a **pessoa**: num caso com cinco
+herdeiros, "entrou R$ 1.125,30 de cota do cliente" não diz de qual deles.
+
+Três colunas novas em `lead_financials`:
+
+| coluna | o que é |
+|---|---|
+| `contact_id` | a pessoa em `contacts`. Vale em qualquer objeto. FK `ON DELETE SET NULL` |
+| `parte_id` | a parte do processo em `jm_partes` — onde moram a cota e o honorário calculados dela |
+| `parte_nome` | retrato do nome no momento do lançamento |
+
+`parte_id` **não** tem FK de propósito: `jm_partes` é reimportada da planilha, e
+uma FK faria a reimportação falhar ou zerar os vínculos em silêncio. `parte_nome`
+é o seguro: mesmo que a linha da planilha mude, o extrato continua sabendo de
+quem era o dinheiro.
+
+O seletor oferece as **partes do processo** primeiro (quando há CNJ) e depois os
+**contatos do lead**, lidos das duas origens — a ponte `contact_leads` e o
+vínculo legado `contacts.lead_id`, o mesmo par que `useAutoImportGroupDocs`
+consulta. Nenhum backfill nas 14 linhas antigas: adivinhar de quem era o dinheiro
+é exatamente o erro que essas colunas existem para evitar.
+
+### Categoria e descrição obrigatórias
+
+Três lançamentos criados em 20/08 saíram com `category` e `description` nulos.
+Sem categoria, `classificarLancamento` cai em "operação do escritório" — um
+recebimento de cota do cliente entraria no **nosso** resultado. Sem descrição, a
+linha vira "Sem descrição" no extrato. As duas passaram a ser obrigatórias.
+
+### A armadilha do "vencido"
+
+Os mesmos três lançamentos nasceram **vencidos** e o motivo não estava na tela.
+Causa: o par "Já entrou / A receber" só se movia num sentido. Data futura marcava
+"a receber" automaticamente; voltar a data para o passado **não** desmarcava, e a
+linha nascia vencida sem ninguém entender por quê.
+
+Agora o par **segue a data** enquanto ninguém encostar nele (futuro = previsto,
+hoje ou passado = já entrou) e passa a respeitar a escolha depois do primeiro
+clique — exceto data futura, que continua forçando previsto, porque ninguém
+recebeu amanhã. E quando a combinação for previsto + data passada, o formulário
+avisa em vermelho **antes** de salvar que aquilo vai nascer vencido.
+
+---
+
+## Comprovante e IA no lançamento (20/08/2026)
+
+### Anexar é o caminho curto
+
+O comprovante fica no bucket `invoices` (Storage do Cloud, o mesmo da nota
+fiscal do financeiro da empresa); `lead_financials.receipt_url` guarda só a URL.
+Ele abre no `MediaLightbox`, nunca em aba nova — regra de interface do projeto.
+
+Anexou uma **imagem**, a IA lê e preenche valor, data, tipo, descrição e
+categoria de uma vez. PDF sobe igual, mas não é lido: `image_url` do Gemini
+espera imagem, e a tela diz isso em vez de fingir que tentou.
+
+Se o upload falhar, o **lançamento é salvo assim mesmo**, com aviso. Perder o
+registro do dinheiro porque o Storage recusou o arquivo seria trocar um problema
+pequeno por um grande.
+
+### `sugerir-lancamento`
+
+Uma edge function para os dois usos, porque a pergunta é a mesma ("que lançamento
+é este?") e dois prompts separados divergiriam com o tempo:
+
+| entrada | devolve |
+|---|---|
+| `{ descricao }` | a categoria sugerida |
+| `{ comprovante }` | valor, data, tipo, descrição e categoria |
+
+Modelo: `google/gemini-2.5-flash` via `_shared/gemini.ts`, que já converte
+`image_url` com data URL em `inlineData`.
+
+**A regra do prompt é nunca inventar.** Comprovante borrado devolve campo nulo e
+explica em `observacao`. Valor errado num extrato financeiro é pior que campo
+vazio: o vazio a pessoa preenche, o errado ela não percebe. A resposta é
+**sugestão** — tudo editável, e quem salva é o humano.
+
+O servidor ainda **sanea**: `categoria` só passa se estiver na lista enviada.
+Modelo que devolve grafia diferente não vira categoria nova sem querer — foi
+assim que a planilha antiga acumulou 81 categorias para 68 conceitos.
+
+### Categoria nova sem tabela nova
+
+`mesclarCategorias` monta a lista do seletor: as curadas primeiro, depois toda
+categoria já usada nos lançamentos daquele lugar, depois a que a IA propôs e a
+pessoa aceitou. **Usar uma vez é criar** — não existe tela de administrar
+categoria, e não precisa existir.
+
+O dedupe é por caixa e acento, **não** por `categoriaCanonica`. Essa é uma
+armadilha real e foi pega antes de subir: `categoriaCanonica` foi feita para a
+PLANILHA, onde contratual × sucumbencial vem da coluna PESSOA (HC/HS) e não da
+categoria — ela colapsa "Honorários Contratuais" e "Honorários Sucumbenciais" na
+mesma chave `HONORARIOS`. Deduplicar por ela apagaria uma das duas do seletor,
+em silêncio. Há teste cravando isso.
+
+---
+
+## Colar, arrastar, PDF e ditado (20/08/2026)
+
+### Onde a função vive
+
+`sugerir-lancamento` está no **Externo** (`kmedldlepwiityjsdahz`), como todas as
+outras — conferido listando as functions do projeto: `lead-drive`,
+`goal-ai-suggestions`, `classify-document` e mais 100 estão lá.
+
+A chamada passa **obrigatoriamente** pelo `src/lib/functionRouter.ts`, com a
+rota registrada como `'external'`. A primeira versão chamava
+`authClient.functions.invoke` direto, o que bate no projeto **Cloud** e falha
+calada. Regra: nenhuma edge function é chamada por `.functions.invoke` de um
+client; sempre `cloudFunctions.invoke` do roteador.
+
+### Comprovante: colar, arrastar ou escolher
+
+`onPaste` e `onDrop` ficam no **diálogo inteiro**, não só no campo. Comprovante
+quase sempre chega como print na área de transferência, e exigir mira certa é
+atrito à toa. Ctrl+V, arrastar para qualquer canto, ou o seletor de arquivo —
+os três caem no mesmo caminho.
+
+### PDF também é lido
+
+Não precisou de nada além de tirar a trava: o Gemini aceita `application/pdf`
+como `inlineData` igual a imagem, e o conversor lê o mime do próprio data URL.
+A versão anterior recusava PDF por suposição, não por limite.
+
+### Ditar o lançamento
+
+Mesmo caminho da atividade por voz, sem transcritor novo: grava com
+`MediaRecorder`, sobe o áudio, e `transcribe-team-audio` (ElevenLabs Scribe com
+Gemini de reserva, no Railway) devolve o texto. Só então a IA lê esse texto como
+**ditado** — modo em que valor e data VÊM da fala, com data relativa resolvida
+contra o `hoje` que a tela manda (o servidor pode estar em outro fuso).
+
+Se o nome falado casa com **exatamente uma** parte ou contato da lista, a parte
+já vem selecionada. Dois candidatos não escolhem nenhum.
+
+Medido em 20/08/2026 contra a função no ar: *"paguei duzentos e cinquenta reais
+de perícia médica do José na sexta passada"* → R$ 250, 2026-08-14, saída,
+Perícia, beneficiário José.
+
+### Três defeitos achados testando de verdade
+
+1. **JSON truncado.** `maxOutputTokens: 700` estourava porque o 2.5-flash gasta
+   orçamento **pensando** — o pensamento sai do mesmo bolso da resposta. Agora
+   `thinkingConfig: { thinkingBudget: 0 }` (não há o que raciocinar aqui),
+   `responseMimeType: 'application/json'` (sem cerca ```json) e 2048 de teto.
+2. **Categoria descartada.** O modelo às vezes põe a categoria certa em
+   `categoria_nova`. Antes o servidor anulava e a linha chegava sem categoria e
+   sem proposta — nada para aceitar nem para corrigir. Agora os dois campos são
+   testados contra a lista, e o que não casa vira **proposta**, nunca lixo.
+3. **"Outros" como atalho.** Com "Outros" na lista o modelo nunca propunha nada
+   novo. A regra passou a dizer que "Outros" é último recurso, e gasto com nome
+   próprio e recorrente (aluguel, software, cartório) deve virar categoria nova.
+
+E um falso alarme que vale registrar: por duas rodadas pareceu que categoria com
+acento nunca casava. Era o **teste**, não a função — `curl -d '...'` inline neste
+ambiente corrompe bytes não-ASCII antes de sair. Com `--data-binary @arquivo`,
+todos os sete casos passam. Antes de culpar o código, confira o que o teste
+está de fato enviando.
