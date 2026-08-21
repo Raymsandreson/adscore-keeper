@@ -46,6 +46,17 @@ Documentação funcional de WhatsApp, chat da equipe, campanhas, relatórios IA,
 - Mídia: baixar e "Salvar na pasta do lead no Google Drive" (com classificação por IA).
 - Criação de caso pelo WhatsApp: "Preencher com IA a partir da conversa" → "Criar Caso" (cria lead fechado + contato + caso + processos detectados + atividades).
 
+### Grupo é uma conversa só — os espelhos por instância (18/08/2026)
+
+Em grupo, **cada instância-membro grava a sua própria cópia de cada mensagem** em `whatsapp_messages` (~2,6 linhas por mensagem real). Três consequências foram corrigidas em 18/08/2026:
+
+- **O lado da bolha não vem mais do `direction` de um espelho qualquer.** A instância que enviou grava `outbound`; as outras gravam a MESMA mensagem como `inbound`. Como o menu "Grupo WA" das atividades dedupava em ordem crescente (ficava o espelho mais antigo, quase sempre `inbound`) e a aba do WhatsApp em decrescente, a mesma mensagem aparecia de lados opostos: 20% das mensagens de grupo tinham `direction` conflitante entre espelhos (no grupo do PREV 1428, 19 de 24). `dedupeMirroredMessages` (`src/lib/whatsappGroupMirror.ts`) decide por todos os espelhos: é nossa se **algum** é `outbound` **ou** se o autor no `metadata` é o número de uma instância (`whatsapp_instances.owner_phone`, via `getOurInstancePhones`) — este segundo sinal responde por 34% das nossas mensagens, as escritas pelo celular, que não geram espelho `outbound` nenhum.
+- **A aba do WhatsApp deixou de mostrar só o pedaço de uma instância.** Cada instância entrou no grupo num momento diferente: em 1.544 pares (grupo, instância) medidos em 11–18/08, 15% enxergavam menos da metade das mensagens e 6% menos de um quinto. `getConversationKey` ignora a instância quando o alvo é grupo (uma conversa na lista, no cache e no realtime) e as leituras de conversa não filtram instância em grupo (`external-rpc.ts`). O badge de não lidas passa a usar a maior contagem entre as instâncias, não a soma, e `markMessagesAsRead` marca em todas.
+  - O `limit` das páginas é de **linhas**, não de mensagens: em grupo, 300 linhas rendem ~115 mensagens. Triplicar a página levaria a abertura de um grupo pesado de 1,5MB para 4,2MB de egress (FAMILIA 374, 13.114 linhas); quem rola até o topo puxa a próxima página sozinho. O caminho para baratear é parar de trazer o `metadata` inteiro, que é 80% do payload.
+- **O menu "Grupo WA" abre pelo fim da conversa.** Buscava 3.000 linhas em ordem **crescente** — as mais antigas —, então grupo movimentado parava meses atrás sem avisar (a FAMILIA 374 exibia só até 19/05/2026). Agora são 800 linhas da mais recente para a mais antiga, com "Carregar mensagens anteriores", e traz as projeções `metadata->message->>sender_pn/sender_lid/senderName` para exibir quem falou (o jsonb inteiro custaria 7,5x o payload).
+
+**Mensagem enviada para o JID sumia do menu** (corrigido na edge `send-whatsapp` v25, deployada no Externo em 18/08/2026): o alvo do envio pode ser `120…@g.us`, mas a coluna `phone` tem de guardar só dígitos — é assim que o webhook grava e é por essa forma que o menu procura a conversa. Eram 1.505 linhas entre 09/04 e 18/08, todas outbound nossas (~300/mês), vindas de `sendActivityGroupNotification` e `sendVoiceToWa`. `storagePhone` separa o alvo do envio da forma gravada; backfill de 1.548 linhas aplicado (inclui 43 com `@s.whatsapp.net`, de abril).
+
 ### Chat interno da equipe dentro da conversa (botão "Equipe")
 - Botão **"Equipe"** no topo da conversa abre/fecha o chat interno sobre aquele cliente — coluna própria no desktop, painel deslizante em tela estreita. O cliente não vê nada do que é escrito ali. O estado (aberto/fechado) fica salvo por navegador; ao fechar, um aviso lembra que a reabertura é nesse mesmo botão.
 - `@` no campo lista os membros e traz **"@todos"** no topo (avisa a equipe inteira). Escrever `@todos`, `@equipe` ou `@todas` na mão tem o mesmo efeito.
@@ -474,6 +485,141 @@ Um card por gerente (quem é gestor de time em `team_managers` ou de setor em `o
 - Dashboard: Hoje, Esta Semana, Taxa de Contato, Duração Média; alerta de retornos agendados.
 - "Registrar" — nova ligação (tipo, resultado, lead, contato, duração, próximo passo).
 - Filtros: busca, Período, Resultado, Tipo, Instância, Membro, Avaliação.
-- Abas "Lista" e "Timeline por Lead"; detalhe com áudio, "Resumo da IA", avaliação por estrelas e agendamento de retorno.
+- Abas "Lista", "Timeline por Lead", "Fila de discagem" e "Triagem Callface"; detalhe com áudio, "Resumo da IA", avaliação por estrelas e agendamento de retorno.
 
 **Fluxo recomendado**: "Registrar" após cada ligação → no detalhe, ouvir o áudio/ler o resumo IA → avaliar e agendar o retorno.
+
+### Integração Callface (Public Integration API)
+
+A Callface é um app registrado no programa de integrações deles: ao encerrar uma
+chamada, ela chama nosso webhook com os insights da ligação. O app foi registrado
+via `callface-register` (endpoint de homologação `api.dev.callface.io`), com
+`needed_credentials: ["user_id"]`.
+
+- **Webhook**: `callface-webhook`, no **Supabase Externo**. A cópia em
+  `supabase/functions/callface-webhook/` é só um proxy retrocompatível do Cloud;
+  o handler de verdade está versionado em
+  `supabase/functions/_external/callface-webhook/index.ts` e é deployado com
+  `--project-ref kmedldlepwiityjsdahz --no-verify-jwt`.
+- **Destino do dado**: `call_records` no Externo, com `tags = ['callface','telefone']`.
+  O webhook espelha a linha no Cloud (é de lá que as abas "Lista" e o histórico do
+  contato leem), traduzindo o uuid pelo `auth_uuid_mapping` — e zerando
+  `lead_id`/`contact_id` na cópia, porque são ids do Externo e no Cloud violam a
+  FK `call_records_lead_id_fkey` ou apontam para outro lead.
+- **Quem ligou**: cascata `credentials.user_id` → `profiles.email` →
+  `profiles.full_name` (primeiro%último nome, com `_` no lugar do acento porque
+  `ilike` do PostgREST é cego a acento). Sem match, a linha nasce com a sentinela
+  `00000000-…` e a tag `sem-atribuicao`. **Não existe fallback para admin** — ele
+  jogava 100% das ligações no nome do primeiro admin da tabela `user_roles`.
+- **Nome de conta compartilhada** ("Atendimento Previdenciário", "Processual") é
+  nome de *instância*, não de pessoa: a instância tem 38-41 usuários com acesso,
+  então não dá para atribuir e vai para a sentinela de propósito.
+- **Gate de origem**: a Callface não assina o payload; a trava é o token
+  `CALLFACE_WEBHOOK_TOKEN` na query (`?k=`) ou no header `x-callface-token`,
+  ligado por `CALLFACE_WEBHOOK_ENFORCE=1`. Só passa a barrar depois que a
+  `webhook_url` for re-registrada na Callface já com o token.
+
+### Aba "Fila de discagem"
+
+Monta a lista que alimenta o **discador da Callface**. Existe porque a API pública
+deles **não expõe endpoint para originar chamada** — conferido na página
+`/developers` em 20/08/2026: só há `POST /integrate-app/register` e o webhook de
+retorno. Então o CRM entrega a lista e a discagem acontece do lado deles.
+
+Filtros: quadro, origem, chegaram nos últimos 7/15/30/90 dias, e "esconder quem
+já recebeu ligação" (cruza por `lead_id` e por telefone, porque 80% das ligações
+chegam sem `lead_id`). Um telefone por linha — o mesmo número em dois leads
+viraria ligação repetida.
+
+Saídas: **Exportar planilha** (CSV com `;` e BOM, que Excel pt-BR e Google Sheets
+abrem direto) e **Copiar números**. O CSV leva `lead_id` de propósito: se um dia a
+Callface devolver um identificador nosso no webhook, a ligação volta colada no lead.
+
+**O tamanho real da fila** (medido em 20/08/2026, e o motivo dos filtros serem por
+telefone e não por "lead novo"): dos 2.700 leads que chegaram em 30 dias, **94% não
+têm telefone nenhum** — 84% do volume é `google_alerts`, que é notícia raspada, não
+pessoa. Sobram ~136 discáveis em 30 dias (~7/dia útil), concentrados em BPC-Autismo
+e Auxílio Acidente, quase todos de origem `whatsapp`. Outros 21 leads têm telefone
+apenas no contato vinculado e **ficam de fora** — contato vinculado pode ser
+parente, não o próprio lead.
+
+A via de maior volume era a planilha: `sheet-lead-ingest` (Railway, chamado por
+Google Apps Script no `onFormSubmit`) trouxe 3.365 leads **todos com telefone** —
+703 em maio, 2.641 em junho, 181 em julho e **zero em agosto**. Só dois quadros têm
+`kanban_boards.sheet_webhook_token` configurado: "Acidente de Trabalho" e
+"BPC - Autismo". Religar essa via é o que faz a fila voltar a ter volume de discador.
+
+Cada linha tem um botão **Ligar**, e o telefone da linha também é link. Os dois são
+`<a href="tel:+55...">`: entregam o número já montado ao discador do aparelho —
+celular pareado, softphone instalado, ramal — sem a página navegar nem abrir aba.
+
+### Discagem: `src/lib/dial.ts`
+
+O único lugar do app que transforma telefone de lead em ligação. Existe para ser
+**ponto de troca**: se a Callface expuser endpoint de originar chamada, ou se o
+Twilio ganhar número brasileiro, muda-se `abrirDiscador` e mais nada.
+
+| função | serve para |
+|---|---|
+| `normalizarTelefone` | 55 + DDD + assinante, mesma regra do `sheet-lead-ingest` |
+| `telefoneDiscavel` | 12 ou 13 dígitos — fora disso o discador só queima tentativa |
+| `comNonoDigito` | completa celular antigo de 8 dígitos (mesma regra da edge `twilio-voice-twiml`) |
+| `paraE164` / `hrefTel` | `+5586981812709` / `tel:+5586981812709` |
+| `exibirTelefone` | `(86) 98181-2709` |
+| `abrirDiscador` | disca fora de um clique em link (ação de toast): cria âncora e clica |
+
+Consumidores: a fila de discagem, o alerta de lead novo e o botão CallFace do chat
+do WhatsApp — que antes montava `tel:` em formato local e agora usa E.164 como o
+resto. Coberto por `src/lib/__tests__/dial.test.ts`.
+
+### Alerta de lead novo para ligar
+
+`NewDialableLeadAlerts`, montado no `SidebarLayout` (rotas autenticadas, dentro do
+Router). Escuta `INSERT` em `leads` no **Supabase Externo** por Realtime — é lá que
+a tabela mora e é lá que ela está na publicação `supabase_realtime`. Quando entra
+lead com telefone discável, mostra toast com nome, telefone formatado, origem e um
+botão **Ligar** com o número já pronto.
+
+Regras que valem a pena saber:
+
+- **Não disca sozinho, de propósito.** Medido em 21/08/2026: 3 a 5 leads discáveis
+  por dia útil, e **27,5%** dos discáveis dos últimos 60 dias chegaram fora do
+  horário comercial. Robô discando nesse cenário entrega chamada sem ninguém na
+  linha. O que encurta o tempo até a primeira ligação é a pessoa ver em segundos e
+  clicar uma vez.
+- **Quem cadastrou não é avisado.** Compara `created_by` contra o uuid do Cloud e o
+  do Externo (via `auth_uuid_mapping`), porque a coluna guarda ora um, ora outro.
+  Filtrar por `created_by IS NULL` seria erro: **87% dos leads discáveis dos últimos
+  30 dias foram criados por pessoa** (origens `referral` e `whatsapp`), não por robô.
+- **Não vira enxurrada.** Junta o que chega em 2 s num aviso só e respeita piso de
+  15 s entre avisos. Se a ingestão por planilha voltar ao volume de junho
+  (~200/dia), o aviso vira "N leads novos para ligar" com ação "Ver fila", que abre
+  `/calls?tab=fila`.
+- **Som é opt-in**, como todo som da casa: Configurações → Notificações → Sons do
+  sistema → "Lead novo para ligar". Nasce desligado.
+
+**Limite conhecido:** ligação feita por `tel:` sai pelo aparelho da pessoa, então a
+Callface não registra e o filtro "esconder quem já recebeu ligação" não enxerga.
+Ele só cruza `call_records`, que é alimentado pelo webhook da Callface.
+
+**Twilio existe e não está pronto.** As edges `twilio-token` e `twilio-voice-twiml`
+estão deployadas no Cloud e o componente `TwilioSoftphone` está escrito, mas o
+`TWILIO_CALLER_ID` configurado é **+1 978 (Massachusetts)**. Ligar para celular
+brasileiro exibindo número americano derruba a taxa de atendimento e cobra como
+internacional. Usar essa via exige comprar número brasileiro no Twilio (bundle
+regulatório com CNPJ). Os outros quatro segredos `TWILIO_*` não foram verificados —
+o Cloud tem sign-in anônimo desabilitado.
+
+### Aba "Triagem Callface"
+
+Ligação que não encostou em nenhum lead nem contato recebe a tag `triagem`
+(em agosto/2026, 37 de 46 — são números de prospecção fria que não existem na base).
+
+**Nada vira lead ou contato automaticamente.** A fila mostra telefone, quem ligou,
+duração, gravação e o resumo da IA, e a atendente escolhe uma das três saídas:
+vincular a um lead existente (busca por nome/telefone), criar lead a partir da
+ligação (o resumo vai para as observações do lead), ou descartar com motivo —
+que tira da fila sem apagar nada (tag `descartado`).
+
+A aba lê e escreve no **Externo** (`useCallfaceTriage`); as tags são sincronizadas
+também no Cloud para a aba "Lista" não divergir, mas o `lead_id` fica só no Externo.

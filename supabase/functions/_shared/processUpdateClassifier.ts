@@ -45,6 +45,13 @@ const MERITO_KW = [
   'acordao', 'transito em julgado', 'transitou em julgado',
   'julgamento de merito', 'resolucao de merito', 'homologo o acordo', 'homologacao de acordo',
 ];
+/**
+ * O dispositivo escrito na voz do tribunal, não na do juiz: "julgados
+ * improcedentes os pedidos" é como a sentença aparece no push e no resumo, e a
+ * lista acima — toda em "julgo" — não pegava nenhuma dessas formas.
+ * "improcedente" sozinho não serve: a contestação também pede improcedência.
+ */
+const MERITO_RE = /julgad[oa]s?\s+(?:parcialmente\s+)?(?:im)?procedent/;
 const AUDIENCIA_KW = ['audiencia'];
 const PERICIA_KW = ['pericia', 'perito', 'laudo pericial'];
 const PRAZO_KW = ['prazo de', 'no prazo', 'intimad', 'intimacao'];
@@ -63,7 +70,41 @@ function hasAny(text: string, kws: string[]): boolean {
   return kws.some((k) => text.includes(k));
 }
 
-/** Classifica UMA movimentação. Ordem importa: mérito > audiência > perícia > prazo > despacho. */
+/**
+ * Julgamento que já aconteceu — o que sobrevive mesmo dentro de uma conclusão.
+ * "Conclusos ... julgo improcedente" é decisão; "conclusos ... para proferir
+ * sentença" não é.
+ */
+const MERITO_INEQUIVOCO =
+  /julgo |julgad|improcedent|acordao|transit(o|ou) em julgado|homolog\w* o acordo|sentenca publicada|proferida a? ?sentenca/;
+
+/**
+ * "Conclusos os autos para julgamento — Proferir sentença a FULANO" é o
+ * processo SUBINDO para o juiz, não o julgamento: a frase carrega a palavra
+ * "sentença" e por isso caía em MERITO_KW. Em 0000375-74.2026.5.08.0120 o feed
+ * anunciou "Decisão de mérito" em cima de uma conclusão de 12/06/2026, quando a
+ * sentença de verdade só saiu em 27/07 (e em 11/08 já havia Recurso Ordinário).
+ *
+ * Aqui o trecho de conclusão sai do texto ANTES do teste de mérito — só do
+ * teste de mérito. Ele continua em `t` para as outras categorias, inclusive
+ * 'conclusos' em DESPACHO_KW, que é onde uma conclusão sozinha tem que cair.
+ */
+function semTrechoDeConclusao(t: string): string {
+  return t
+    .split('·')
+    .filter((parte) => !/\bconclus/.test(parte) || MERITO_INEQUIVOCO.test(parte))
+    .join(' · ');
+}
+
+/**
+ * Classifica UMA movimentação. Ordem importa: mérito > audiência > perícia >
+ * prazo > despacho.
+ *
+ * `categoria_forcada` pula a cascata inteira: é para a fonte que já manda o
+ * status em campo próprio, como o push do INSS ("...foi alterado para
+ * Exigência"). Adivinhar por palavra o que já veio escrito é como se anunciou
+ * "Decisão de mérito" em cima de "Conclusos para proferir sentença".
+ */
 export function classifyUpdate(mov: EscavadorMovimentacao): UpdateClassificado {
   const cls = mov.classificacao_predita;
   const full = [mov.tipo, mov.titulo, mov.conteudo, mov.descricao, cls?.nome, cls?.descricao]
@@ -72,7 +113,10 @@ export function classifyUpdate(mov: EscavadorMovimentacao): UpdateClassificado {
   const t = normalize(full);
 
   let categoria: UpdateCategoria = 'movimentacao';
-  if (hasAny(t, MERITO_KW)) categoria = 'decisao_merito';
+  const forcada = mov.categoria_forcada as UpdateCategoria | undefined;
+  const semConclusao = semTrechoDeConclusao(t);
+  if (forcada) categoria = forcada;
+  else if (hasAny(semConclusao, MERITO_KW) || MERITO_RE.test(semConclusao)) categoria = 'decisao_merito';
   else if (hasAny(t, AUDIENCIA_KW)) categoria = 'audiencia';
   else if (hasAny(t, PERICIA_KW)) categoria = 'pericia';
   else if (hasAny(t, PRAZO_KW)) categoria = 'prazo';

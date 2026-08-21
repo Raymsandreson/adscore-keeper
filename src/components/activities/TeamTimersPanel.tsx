@@ -311,8 +311,25 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
         };
         const latest = u?.latest;
         if (!latest || latest.status !== 'running') return base;
+
+        /**
+         * Pausa registrada pelo app mobile. Ela não tem batimento: o app carimba
+         * início e fim e não reescreve nada no meio, de propósito — reescrever a
+         * cada 30s é a contagem contínua que o escopo do mobile recusa.
+         *
+         * Sem esta exceção, `ended_at` nulo num break_type 'running' era lido
+         * como sinal perdido e a pessoa aparecia 'off': quem estava almoçando
+         * pelo celular sumia do "Intervalo", e o alerta de pausa estourada nunca
+         * disparava. Aqui `ended_at` nulo significa "ainda não terminou", que é
+         * o oposto de "não dá mais sinal".
+         *
+         * O recorte do dia continua sendo o do carregamento (work_date de hoje),
+         * então uma pausa esquecida não atravessa a madrugada.
+         */
+        const pausaDoApp = Boolean(latest.break_type) && !latest.ended_at;
+
         const beat = latest.ended_at ? new Date(latest.ended_at).getTime() : 0;
-        if (now - beat > HEARTBEAT_MS) return base;
+        if (!pausaDoApp && now - beat > HEARTBEAT_MS) return base;
         if (latest.activity_id) {
           return {
             ...base, state: 'working',
@@ -327,7 +344,12 @@ export function TeamTimersPanel({ onOpenActivity }: { onOpenActivity?: (activity
             ...base, state: 'break',
             breakType: latest.break_type, breakNote: latest.break_note,
             breakEtaMin: latest.estimated_minutes,
-            currentSecs: latest.idle_seconds || 0,
+            // Na pausa do app o `idle_seconds` só é gravado no encerramento, então
+            // até lá o tempo decorrido vem do início. Sem isto o painel mostraria
+            // 00:00 durante toda a pausa e o breakOverdue nunca acusaria atraso.
+            currentSecs: pausaDoApp
+              ? Math.max(0, Math.round((now - new Date(latest.started_at).getTime()) / 1000))
+              : latest.idle_seconds || 0,
           };
         }
         return { ...base, state: 'idle', currentSecs: latest.idle_seconds || 0 };

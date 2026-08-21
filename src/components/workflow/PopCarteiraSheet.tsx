@@ -91,6 +91,12 @@ const mesAno = (iso: string) => {
   return `${meses[Number(m[2]) - 1]}/${m[1]}`;
 };
 
+/** Vencimento pede dia, não só mês: "venceu em 03/2024" esconde quanto atrasou. */
+const dataBR = (iso: string) => {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
+};
+
 function EstagioChips({ porEstagio, compact }: { porEstagio: Record<string, number>; compact?: boolean }) {
   const presentes = ESTAGIO_ORDEM.filter(e => (porEstagio[e] || 0) > 0);
   if (!presentes.length) return null;
@@ -459,6 +465,54 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                 </div>
               )}
             </div>
+
+            {/* O que AINDA VAI entrar de honorário. Três réguas que não se
+                somam: a vencer é o descontável; vencido é risco de crédito OU
+                baixa não feita na planilha; condenação tem valor mas não tem
+                data. Junto, o "a receber" deste POP inflava ~10x. */}
+            {(totais.honorarioAVencer > 0 || totais.honorarioVencido > 0 || totais.honorarioCondenacao > 0) && (
+              <div className="rounded-lg border p-2.5">
+                <div className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Honorários que ainda vão entrar
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <span className="rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-700 dark:text-emerald-400">
+                    A vencer: <span className="font-medium">{brl(totais.honorarioAVencer)}</span>
+                  </span>
+                  {totais.honorarioVencido > 0 && (
+                    <span className="rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[11px] text-destructive">
+                      Vencido: <span className="font-medium">{brl(totais.honorarioVencido)}</span>
+                      {totais.honorarioLinhasVencidas > 0 && (
+                        <span className="opacity-80">
+                          {' '}· {totais.honorarioLinhasVencidas} parcela{totais.honorarioLinhasVencidas === 1 ? '' : 's'}
+                          {' '}em {totais.honorarioCnjsVencidos} processo{totais.honorarioCnjsVencidos === 1 ? '' : 's'}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  {totais.honorarioCondenacao > 0 && (
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-700 dark:text-amber-400">
+                      Condenação (sem data): <span className="font-medium">{brl(totais.honorarioCondenacao)}</span>
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
+                  Só <span className="font-medium text-foreground">a vencer</span> tem valor e data no
+                  prazo — é o que a gestora antecipa. <span className="font-medium text-foreground">Condenação</span>
+                  {' '}tem valor fixado mas nenhuma data de pagamento, então não entra na mesma conta.
+                  {totais.honorarioVencido > 0 && (
+                    <>
+                      {' '}O <span className="font-medium text-foreground">vencido</span> pode ser calote
+                      ou parcela que foi paga e não teve a baixa lançada na planilha — pela base não dá
+                      para saber qual dos dois
+                      {totais.honorarioVencidoMaisAntigo && (
+                        <>, e o mais antigo venceu em {dataBR(totais.honorarioVencidoMaisAntigo)}</>
+                      )}.
+                    </>
+                  )}
+                </p>
+              </div>
+            )}
 
             <p className="text-[11px] leading-snug text-muted-foreground">
               Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa

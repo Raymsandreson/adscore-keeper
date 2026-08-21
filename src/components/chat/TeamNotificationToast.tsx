@@ -113,9 +113,11 @@ export function TeamNotificationToast({
   const handleOpen = async () => {
     openedRef.current = true;
     await onOpen();
-    // NÃO descarta o popup: a conversa abre por cima (drawer de cima pra
-    // baixo) e o aviso continua na tela até o X, o swipe, a resposta ou o
-    // tempo — assim nenhuma notificação se perde no clique.
+    // Descarta ESTE popup. Ele já cumpriu o papel — a conversa está abrindo —
+    // e mantê-lo na tela cobria o topo do chat e ainda empurrava o drawer pra
+    // baixo (useTopToastStackHeight), encolhendo a conversa. Os outros avisos
+    // da pilha continuam de pé: nada se perde, só sai o que foi atendido.
+    toast.dismiss(toastId);
   };
 
   const handleReply = async () => {

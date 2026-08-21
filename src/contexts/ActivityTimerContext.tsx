@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { playAlarmSound } from '@/lib/sounds';
+import { isSoundEnabled } from '@/lib/soundSettings';
 import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
@@ -45,9 +47,9 @@ const GAP_TITLE = 'Ocioso (entre atividades)';
 const USAGE_FLUSH_MS = 30 * 1000;
 /**
  * Cobrança de vínculo para quem está NAVEGANDO (não ocioso): a cada 15 min de
- * uso do sistema abre o seletor "qual atividade você está fazendo?" — sem
- * alarme sonoro. O apito fica reservado ao ocioso de verdade (5 min), que
- * continua como era.
+ * uso do sistema abre o seletor "qual atividade você está fazendo?".
+ * Nenhum aviso do cronômetro apita por padrão: o som de cada um é opcional,
+ * ligado em Configurações → Notificações → Sons do sistema (soundSettings.ts).
  */
 const NAV_NUDGE_SEC = 15 * 60;
 // Coordenação entre abas: só UMA aba comanda o cronômetro por vez.
@@ -229,28 +231,6 @@ async function resolveUser(): Promise<{ userId: string; userName: string } | nul
     } catch { /* ignora */ }
   }
   return { userId: extUserId, userName: name || user.email || 'Membro' };
-}
-
-/** Alarme sonoro alto e incômodo (bipes alternados) — usado nos alertas de ociosidade. */
-export function playAlarmSound() {
-  try {
-    const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!Ctor) return;
-    const ctx = new Ctor();
-    ctx.resume().catch(() => {});
-    const beep = (t: number, freq: number) => {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.type = 'square';
-      o.frequency.value = freq;
-      g.gain.setValueAtTime(0.5, ctx.currentTime + t);
-      g.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + t + 0.28);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.3);
-    };
-    [0, 0.35, 0.7, 1.05, 1.4, 1.75].forEach((t, i) => beep(t, i % 2 ? 660 : 990));
-    setTimeout(() => { ctx.close().catch(() => {}); }, 2600);
-  } catch { /* sem suporte de áudio */ }
 }
 
 function notifyDesktop(title: string, body: string) {
@@ -648,14 +628,14 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       const next: TimerEntry = { ...e };
 
       if (e.kind === 'break') {
-        // Pausa: conta o tempo SEM apito DURANTE a previsão de retorno.
-        // Só avisa (uma vez) quando estoura o previsto.
+        // Pausa: conta o tempo e só avisa (uma vez, sem som) quando estoura
+        // o previsto.
         next.idleSeconds += deltaSec;
         const etaSec = next.estimateMinutes ? next.estimateMinutes * 60 : 0;
         if (etaSec > 0 && next.idleSeconds >= etaSec && !breakOverNotifiedRef.current) {
           breakOverNotifiedRef.current = true;
           setBreakOverdue(true);
-          playAlarmSound();
+          if (isSoundEnabled('timerBreakOverdue')) playAlarmSound();
           notifyDesktop('⏰ Sua pausa acabou', `A ${next.activityTitle.toLowerCase()} passou da previsão de ${next.estimateMinutes} min. Voltou ao trabalho?`);
         }
         sync(next);
@@ -695,14 +675,14 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
           if (next.idleSeconds - lastGapNudgeRef.current >= 300) {
             lastGapNudgeRef.current = next.idleSeconds;
             if (interacting) {
-              // Fallback (sem a tabela de uso): comportamento anterior — cobra o
-              // vínculo, sem apito, já que a pessoa está mexendo no sistema.
+              // Fallback (sem a tabela de uso): comportamento anterior — cobra
+              // o vínculo, já que a pessoa está mexendo no sistema.
               setSwitchPrompt(true);
               notifyDesktop('⏱️ Sem atividade vinculada', 'Esse tempo NÃO está contando como produtivo. Vincule a atividade que você está fazendo ou crie uma por voz.');
             } else {
-              // Ocioso de verdade: mantém o apito a cada 5 min.
+              // Ocioso de verdade: cobra a cada 5 min.
               setAwayPrompt(true);
-              playAlarmSound();
+              if (isSoundEnabled('timerIdle')) playAlarmSound();
               notifyDesktop('⏰ Você está ocioso', `Ocioso há ${Math.round(next.idleSeconds / 60)} min. Vai se ausentar? Registre uma pausa ou retome uma atividade.`);
             }
           }
@@ -763,15 +743,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
 
       // Gatilho de urgência da previsão (compara com o tempo ATIVO). Vem ANTES
       // do check de 5 min: no tick do estouro ele arma a confirmação e evita
-      // alarme/notificação em dobro no mesmo segundo.
+      // notificação em dobro no mesmo segundo.
       if (estSec > 0) {
         if (next.activeSeconds >= estSec) {
           if (!overNotifiedRef.current) {
             overNotifiedRef.current = true;
             nearNotifiedRef.current = true;
-            // Alarme aqui também: quem está em outra aba (PJe) não vê toast nem
-            // dialog — sem o som, o estouro virava ocioso em silêncio.
-            playAlarmSound();
+            if (isSoundEnabled('timerEstimateOverdue')) playAlarmSound();
             notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min. Ainda está nessa atividade?`);
             // Fim do tempo previsto → pergunta se continua ou se já era.
             // Daqui em diante o ocioso é reatribuível: "sim, continuei" no
@@ -794,7 +772,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (!awaitingConfirmRef.current && idleFor >= IDLE_THRESHOLD_MS && !withinEstimate) {
         awaitingConfirmRef.current = true;
         setIdlePrompt(true);
-        playAlarmSound();
+        if (isSoundEnabled('timerStillWorking')) playAlarmSound();
         notifyDesktop('Cronômetro de atividade', `Ainda está fazendo "${e.activityTitle}"? Confirme para continuar contando.`);
       }
 
@@ -821,7 +799,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
           const cmd = (payload.new.command as TimerCommand | null) || null;
           const who = payload.new.from_name || 'Gestão';
           setManagerAlert({ from: payload.new.from_name, message: payload.new.message, command: cmd });
-          playAlarmSound();
+          if (isSoundEnabled('managerAlert')) playAlarmSound();
           if (cmd === 'pause') {
             notifyDesktop('⏸️ Cronômetro pausado pela gestão', `${who} pausou seu cronômetro: você está OCIOSO. Retome uma atividade ou registre uma pausa.`);
             // A execução é local (o dono do cronômetro é o cliente do membro):

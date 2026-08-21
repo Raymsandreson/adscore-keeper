@@ -1,7 +1,6 @@
-import { AlertTriangle, Clock, MapPin } from 'lucide-react';
+import { Clock, MapPin } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Hearing } from '@/hooks/useHearings';
 import { categoryClasses, fmtTime, statusBadgeClass, STATUS_LABELS } from './hearingStyles';
 
@@ -11,11 +10,18 @@ interface Props {
   compact?: boolean;
 }
 
+/**
+ * SEM indicador de observação (19/08/2026): havia um ⚠ quando `notes` tinha
+ * conteúdo, e ele acendia em 562 dos 564 eventos — o sync da planilha grava a
+ * LINHA CRUA dela em `notes` ("1005485-… - PREV 20 - PERICIA JUDICIAL - 07:30h"),
+ * que é o eco do que as colunas já mostram. Alerta que dispara no caminho normal
+ * não avisa nada, só suja o cartão. A observação continua inteira ao abrir o
+ * evento, no campo "Observações" do formulário.
+ */
 export function HearingCard({ hearing, onClick, compact }: Props) {
   const c = categoryClasses(hearing.category);
   const dimmed = hearing.status === 'cancelada' || hearing.status === 'adiada';
   const struck = hearing.status === 'cancelada';
-  const hasAlert = !!(hearing.notes && hearing.notes.trim().length > 0);
 
   return (
     <button
@@ -60,18 +66,6 @@ export function HearingCard({ hearing, onClick, compact }: Props) {
           )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          {hasAlert && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <AlertTriangle className="h-3.5 w-3.5 text-warning" />
-                </TooltipTrigger>
-                <TooltipContent side="left" className="max-w-xs whitespace-pre-wrap">
-                  {hearing.notes}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
           {hearing.status !== 'ativa' && (
             <Badge variant="outline" className={cn('text-[9px] px-1 py-0 h-4', statusBadgeClass(hearing.status))}>
               {STATUS_LABELS[hearing.status]}

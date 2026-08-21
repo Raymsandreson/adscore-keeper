@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { db, authClient } from '@/integrations/supabase';
+import { buscarTudo } from '@/lib/postgrestPaginacao';
 import { toast } from 'sonner';
 
 export type HearingStatus = 'ativa' | 'adiada' | 'cancelada' | 'concluida';
@@ -24,6 +25,11 @@ export interface Hearing {
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
+  /** Vínculos e procedência (migration 20260819110000). */
+  process_id: string | null;
+  activity_id: string | null;
+  /** 'planilha' (sync diário) | 'atividade' (chip de perícia) | 'manual' (esta tela). */
+  origem: string | null;
 }
 
 export type HearingInput = Omit<Hearing, 'id' | 'created_at' | 'updated_at' | 'deleted_at' | 'created_by'>;
@@ -37,14 +43,22 @@ export function useHearings() {
     queryKey: KEY,
     staleTime: 30_000,
     queryFn: async (): Promise<Hearing[]> => {
-      const { data, error } = await (db as any)
-        .from('hearings')
-        .select('*')
-        .is('deleted_at', null)
-        .order('hearing_date', { ascending: true })
-        .order('hearing_time', { ascending: true });
-      if (error) throw error;
-      return (data || []) as Hearing[];
+      // PAGINADO de propósito: esta tela carrega a tabela inteira, sem janela de
+      // data (o calendário navega por mês e a visão Lista mostra tudo), e o
+      // PostgREST corta em 1000 linhas sem erro nenhum — a lista só termina mais
+      // cedo. Em 20/08/2026 são 566 linhas vivas, criadas a 37-90 por mês: o
+      // corte chegaria calado em alguns meses, e chegaria como "a audiência
+      // sumiu do calendário". O `order('id')` no fim é o desempate que mantém a
+      // paginação estável quando data e hora se repetem.
+      return await buscarTudo<Hearing>((de, ate) =>
+        (db as any)
+          .from('hearings')
+          .select('*')
+          .is('deleted_at', null)
+          .order('hearing_date', { ascending: true })
+          .order('hearing_time', { ascending: true })
+          .order('id', { ascending: true })
+          .range(de, ate));
     },
   });
 
@@ -52,9 +66,12 @@ export function useHearings() {
     mutationFn: async (input: Partial<HearingInput>) => {
       const { data: userData } = await authClient.auth.getUser();
       const created_by = userData?.user?.id ?? null;
+      // `origem` carimbada aqui: sem ela a linha criada nesta tela ficaria sem
+      // procedência e o sync da planilha a trataria como sua (migration
+      // 20260819110000). O chip de perícia grava 'atividade' por conta própria.
       const { data, error } = await (db as any)
         .from('hearings')
-        .insert({ ...input, created_by })
+        .insert({ origem: 'manual', ...input, created_by })
         .select('*')
         .single();
       if (error) throw error;

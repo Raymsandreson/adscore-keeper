@@ -30,34 +30,117 @@ const corsHeaders = {
 const MODEL = 'gemini-2.5-flash';
 const BUCKET = 'jm-autos';
 
-const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve o que ela diz sobre DINHEIRO e sobre o ESTADO da execução.
+const PROMPT_VERSAO = "v3-json-plano-2026-08-20";
 
-Devolva SOMENTE um JSON com estas chaves:
-- "especie": uma de COMPROVANTE_PAGAMENTO | ALVARA | MANIFESTACAO_INADIMPLENCIA | EXTINCAO_QUITACAO | CERTIDAO_TRANSITO | DECISAO | DESPACHO | ATA_AUDIENCIA | SENTENCA | ACORDO | PETICAO_INICIAL | OUTRO
-  * EXTINCAO_QUITACAO: extinção da execução por acordo cumprido / obrigação satisfeita. É prova de que o dinheiro entrou.
-  * CERTIDAO_TRANSITO: certidão de trânsito em julgado.
-- "valor": número (use ponto decimal, sem R$ nem separador de milhar) ou null. SÓ dinheiro que ENTROU ou saiu: pago, liberado, depositado, bloqueado. Condenação NÃO entra aqui — tem campo próprio.
-- "valor_condenacao": valor que a peça FIXA a pagar (indenização, dano moral, dano estético, pensão), ou null. É o que o processo passa a valer, não o que foi pago.
-- "valor_custas": custas processuais fixadas, ou null.
-- "valor_honorario_sucumbencial": honorário de sucumbência fixado, ou null.
-- "beneficiario_valor": nome da parte a quem o valor fixado pertence, quando a peça nomear. null se for global ou não identificável.
-- "data_evento": "AAAA-MM-DD" do fato (pagamento, liberação, bloqueio) ou null.
-- "n_parcela": número da parcela a que o valor se refere, ou null.
+const SYSTEM_PROMPT = `Você lê UMA peça de processo trabalhista/cível brasileiro e devolve DUAS coisas:
+(A) o que ela diz sobre DINHEIRO QUE ANDOU e sobre o ESTADO da execução;
+(B) o que ela FIXA de valor, aberto POR PARTE e POR VERBA.
+
+Devolva SOMENTE um JSON, sem markdown.
+
+O JSON é PLANO: todas as chaves abaixo ficam no PRIMEIRO nível do objeto.
+Os títulos com ═ são seções DESTA INSTRUÇÃO e NÃO devem virar chaves do JSON.
+NÃO agrupe a resposta em {"A":...}, {"bloco_a":...} nem nada parecido.
+O objeto começa assim: {"especie": ..., "valor": ..., "partes": [...], ...}
+
+═══ A — caixa e estado ═══
+- "especie": COMPROVANTE_PAGAMENTO | ALVARA | MANIFESTACAO_INADIMPLENCIA | EXTINCAO_QUITACAO | CERTIDAO_TRANSITO | DECISAO | DESPACHO | ATA_AUDIENCIA | SENTENCA | SENTENCA_LIQUIDACAO | ACORDO | PETICAO_INICIAL | LAUDO_PERICIAL | CALCULO | OUTRO
+  * SENTENCA_LIQUIDACAO: sentença/decisão que APURA os valores devidos. É a peça mais rica em verbas.
+  * EXTINCAO_QUITACAO: extinção por acordo cumprido. Prova de que o dinheiro entrou.
+- "valor": número (ponto decimal, sem R$) ou null. SÓ dinheiro que ENTROU ou SAIU: pago, liberado, depositado, bloqueado. Condenação NÃO entra aqui.
+- "valor_condenacao": total que a peça FIXA a pagar, ou null. É o que o processo passa a valer.
+- "valor_custas", "valor_honorario_sucumbencial": fixados, ou null.
+- "beneficiario_valor": nome da parte a quem o valor pertence, se nomeada. null se global.
+- "data_evento": "AAAA-MM-DD" do fato, ou null.
+- "n_parcela": número da parcela, ou null.
 - "destino_valor": COTA_CLIENTE | HONORARIO | AMBOS | INDEFINIDO.
-- "inadimplencia": true SOMENTE se a peça mostra que o devedor deixou de pagar (petição do exequente noticiando descumprimento, instauração de IDPJ, desconsideração da personalidade jurídica, pedido de penhora por falta de pagamento). false caso contrário.
-- "sem_bens": true se houver pesquisa/penhora negativa, "não foram encontrados bens", insolvência. false caso contrário.
-- "recuperacao_judicial": true se mencionar recuperação judicial, falência ou habilitação de crédito do devedor.
-- "confianca": 0 a 1, quão seguro você está da leitura.
-- "resumo": 1-2 frases objetivas do que a peça decide ou noticia.
+- "inadimplencia": true SOMENTE se mostra que o devedor deixou de pagar (petição noticiando descumprimento, IDPJ, desconsideração da personalidade jurídica, penhora por falta de pagamento).
+- "sem_bens": true se pesquisa/penhora negativa, "não foram encontrados bens", insolvência.
+- "recuperacao_judicial": true se mencionar recuperação judicial, falência ou habilitação de crédito.
+- "confianca": 0 a 1.
+- "resumo": 1-2 frases do que a peça decide ou noticia.
 
-REGRAS DURAS:
-1. NÃO INVENTE. Se a peça não traz o dado, use null/false. Preferir null a chutar é o comportamento correto.
-2. "Homologação de acordo em execução" NÃO é inadimplência — é o oposto. "Extinção da execução" também não.
-3. Mero expediente, publicação, conclusão e remessa não movem dinheiro: especie OUTRO, valor null.
-4. Distinga PROMESSA de PAGAMENTO: acordo dizendo "pagará em 11 parcelas" não é comprovante. Comprovante é o que declara que JÁ foi pago/liberado.
-5. Distinga FIXAR de PAGAR: acórdão que majora dano moral para R$ 300.000 preenche valor_condenacao, e valor fica null. Sentença que declara a obrigação satisfeita é EXTINCAO_QUITACAO.
-6. Em litisconsórcio, se a peça fixa valor para uma parte nomeada, preencha beneficiario_valor com o nome dela.
-7. Responda apenas o JSON, sem markdown.`;
+═══ B — partes e verbas ═══
+- "partes": lista. UMA ENTRADA POR PARTE AUTORA/RECLAMANTE nomeada na peça, com os valores DELA.
+  Lista VAZIA se a peça não fixa valor por parte. Cada entrada:
+  * "nome": nome da parte autora, como está na peça.
+  * "parentesco" em relação à vítima, TAXATIVO e em caixa alta:
+    VÍTIMA | CÔNJUGE | FILHO | MAE | PAI | IRMÃO | PADRASTO | ENTEADO | NETO | AVOS | TIOS | null
+    (se a parte autora é a própria vítima, use VÍTIMA; para genitores use MAE ou PAI, nunca PAIS)
+  * "nascimento": "AAAA-MM-DD" ou null.
+  * "meses_pensionamento": número de meses de pensão fixados PARA ESTA PARTE, ou null.
+  * "verbas": lista das verbas DESTA PARTE. Cada uma:
+    - "tipo", TAXATIVO: DANO_MORAL | DANO_ESTETICO | DANO_MATERIAL_BASE | PENSAO_MENSAL |
+      HORAS_EXTRAS | ADICIONAL_INSALUBRIDADE | ADICIONAL_PERICULOSIDADE | ADICIONAL_NOTURNO |
+      FGTS | VERBAS_RESCISORIAS | 13_SALARIO | FERIAS | AVISO_PREVIO | MULTA_477 | MULTA_467 |
+      RETROATIVO | LUCROS_CESSANTES | DESPESAS_MEDICAS | OUTRA
+    - "descricao": obrigatório quando tipo=OUTRA; o nome da verba como a peça chama. null nos demais.
+    - "valor": número ou null.
+    - "periodicidade": MENSAL quando for pensão/valor recorrente; UNICA nos demais.
+  * DANO_MATERIAL_BASE é a BASE DE CÁLCULO mensal do pensionamento, não o total.
+    Se a peça der o total e a base, traga a base em DANO_MATERIAL_BASE e o total em PENSAO_MENSAL.
+  * Use OUTRA só quando a verba realmente não couber na lista. Se a peça traz o crédito já
+    consolidado por pessoa, sem dizer de que verba veio, use OUTRA com descricao explicando.
+
+═══ C — o processo, quando a peça informar ═══
+- "processo": objeto (campos ausentes = null):
+  * "decisao_tipo", TAXATIVO em caixa alta: SEM DECISÃO | ACORDO ANTES DA SENTENÇA | SENTENÇA |
+    ACORDO COM SENTENÇA | EMBARGOS 1º GRAU | 2º EMBARGOS 1º GRAU | ACÓRDÃO 2º GRAU |
+    EMBARGOS 2º GRAU | ACORDO COM ACÓRDÃO 2º GRAU | DECISÃO TST | ACÓRDÃO TST |
+    ACORDO COM ACÓRDÃO TST | DECISÃO STJ | ACÓRDÃO STJ | DECISÃO STF | ACÓRDÃO STF
+  * "forma_pagamento", TAXATIVO: PARCELA ÚNICA | PARCELAMENTO | FÓRMULA DO VALOR PRESENTE | ACORDO | null
+  * "hs_pct": só o número do percentual de honorário sucumbencial (ex: 15), ou null.
+  * "desagio_pct": número, ou null.
+  * "termo_inicial_jcm": "AAAA-MM-DD" — início de juros e correção, ou null.
+  * "data_acidente": "AAAA-MM-DD" ou null.
+  * "data_decisao": "AAAA-MM-DD" da decisão, ou null.
+  * "orgao_julgador", "relator_juiz", "empresa_re": texto ou null.
+  * "causa_acidente": descrição objetiva, ou null.
+  * "vitima_profissao": texto ou null.
+  * "vitima_salario": número ou null.
+  * "vitima_idade": número ou null.
+
+═══ D — cronograma, quando a peça o estabelecer ═══
+- "cronograma": lista de parcelas que a peça FIXA (acordo parcelado, pensão, plano de pagamento).
+  Vazia se a peça não estabelece cronograma. Cada item:
+  * "n_parcela": número.
+  * "data_prevista": "AAAA-MM-DD" ou null.
+  * "valor": número ou null.
+  * "beneficiario": nome da parte, ou null se for global.
+  * Se a peça diz "N parcelas de R$ X, vencendo todo dia D a partir de <mês>", GERE as N
+    entradas com as datas calculadas. Se diz o total e o número de parcelas sem as datas,
+    gere as N entradas com data_prevista null.
+
+═══ REGRAS DURAS ═══
+1. NÃO INVENTE. Se a peça não traz o dado, use null / lista vazia. Preferir null a chutar é o comportamento CORRETO e esperado.
+2. FIDELIDADE AO DOCUMENTO ANEXADO. Use apenas o que está NESTA peça. Não complete com conhecimento de outras peças do processo nem com o que é "comum" nesse tipo de caso.
+3. SÓ A PARTE DISPOSITIVA. Quando for decisão judicial, extraia o que o JUIZ DECIDIU — o dispositivo, que fica ao final. NÃO extraia os pedidos das partes, nem valores citados no relatório, nem teses da fundamentação. Em petição inicial, aí sim valem os pedidos. Em acordo, vale o que foi acordado.
+4. CUIDADO COM QUEM É A PARTE. Não troque autor por réu, nem parte por advogado, nem parte por perito. Na dúvida sobre a quem pertence um valor, deixe beneficiario_valor null em vez de atribuir errado.
+5. Distinga PROMESSA de PAGAMENTO: acordo dizendo "pagará em 11 parcelas" preenche "cronograma", não "valor". Comprovante é o que declara que JÁ foi pago.
+6. Distinga FIXAR de PAGAR: acórdão que majora dano moral para R$ 300.000 preenche valor_condenacao e as verbas; "valor" fica null.
+7. "Homologação de acordo em execução" NÃO é inadimplência — é o oposto. "Extinção da execução" também não.
+8. Mero expediente, publicação, conclusão e remessa não movem dinheiro nem fixam verba: especie OUTRO, valor null, partes [], cronograma [].
+9. Valor global sem abertura por parte: preencha valor_condenacao e deixe "partes" vazia. Não divida por igual entre as partes por conta própria.
+10. As listas marcadas TAXATIVO só aceitam os valores listados, em caixa alta, sem abreviação. Se nada servir, use null.`;
+
+/**
+ * O modelo às vezes agrupa a resposta por seção — {"A": {...}, "B": {...}} ou
+ * {"bloco_a": {...}} — porque os títulos do prompt parecem estrutura. Quando
+ * isso acontece, `lido.especie` não existe, o código grava o default OUTRO com
+ * confiança null e a leitura BOA vira lixo silencioso: 8 de 21 peças do caso 88
+ * se perderam assim, incluindo o IDPJ que provava a inadimplência.
+ *
+ * Instrução no prompt reduz, não elimina. Aqui a defesa é estrutural: se
+ * `especie` não está no topo, mescla um nível de objetos e tenta de novo.
+ */
+function achatar(j: Record<string, unknown>): Record<string, unknown> {
+  if (!j || typeof j !== 'object' || 'especie' in j) return j;
+  const plano: Record<string, unknown> = {};
+  for (const v of Object.values(j)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(plano, v);
+  }
+  return 'especie' in plano ? plano : j;
+}
 
 interface Documento {
   id: number;
@@ -152,7 +235,15 @@ Deno.serve(async (req: Request) => {
               ],
             }],
             // temperatura 0: extração de dado de peça não é lugar de criatividade
-            generationConfig: { responseMimeType: 'application/json', temperature: 0 },
+            // maxOutputTokens explícito: o JSON do prompt v2 traz partes, verbas e
+            // cronograma e ficou bem maior que o do v1. Sem teto alto o Gemini
+            // corta no meio e o JSON.parse estoura — falha que aparece como
+            // "leitura:" genérico e custa a chamada do mesmo jeito.
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0,
+              maxOutputTokens: 8192,
+            },
           }),
         },
       );
@@ -162,7 +253,7 @@ Deno.serve(async (req: Request) => {
       }
       const resposta = await r.json();
       const bruto = resposta?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-      lido = JSON.parse(String(bruto));
+      lido = achatar(JSON.parse(String(bruto)));
     } catch (e) {
       return json({ success: false, documento_id, error: `leitura: ${String((e as Error)?.message).slice(0, 300)}` });
     }
@@ -185,6 +276,12 @@ Deno.serve(async (req: Request) => {
       recuperacao_judicial: lido.recuperacao_judicial === true,
       confianca: num(lido.confianca),
       resumo: (lido.resumo as string) ?? null,
+      // Blocos novos: valor por parte e por verba, dados do processo e o
+      // cronograma que a peça FIXA (promessa, não pagamento).
+      partes: Array.isArray(lido.partes) ? lido.partes : [],
+      processo: (lido.processo && typeof lido.processo === 'object') ? lido.processo : null,
+      cronograma: Array.isArray(lido.cronograma) ? lido.cronograma : [],
+      prompt_versao: PROMPT_VERSAO,
       // Guarda o JSON cru: se o prompt mudar, dá para reprocessar sem pagar de novo.
       texto_extraido: JSON.stringify(lido),
       modelo: MODEL,
@@ -199,6 +296,10 @@ Deno.serve(async (req: Request) => {
       success: true, documento_id, especie: registro.especie,
       valor: registro.valor, valor_condenacao: registro.valor_condenacao,
       inadimplencia: registro.inadimplencia,
+      partes: (registro.partes as unknown[]).length,
+      verbas: (registro.partes as { verbas?: unknown[] }[])
+        .reduce((n, p) => n + (p?.verbas?.length ?? 0), 0),
+      cronograma: (registro.cronograma as unknown[]).length,
     });
   } catch (e) {
     return json({ success: false, error: String((e as Error)?.message || e).slice(0, 300) });

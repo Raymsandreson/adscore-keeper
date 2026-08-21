@@ -31,6 +31,10 @@
 //      EPROC e e-SAJ);
 //   3. casa o CNJ com lead_processes e grava no feed do sino (process_updates)
 //      — de graça e na hora, sem depender de nenhuma API paga;
+//   3b. e-mail SEM CNJ ainda passa pelo inssAdministrativoParser: o push do
+//      INSS fala de requerimento, e o casamento é pelo protocolo. Sem isso os
+//      1.118 e-mails do noreply@inss.gov.br morriam em processual_emails —
+//      460 deles casam com processo cadastrado (medido em 20/08/2026);
 //   4. reabre no Escavador só os processos com push RECENTE, para vir o
 //      detalhe/documentos.
 //
@@ -49,6 +53,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { parseEmailPush, soDigitos, type MovimentacaoEmail } from "../_shared/emailPushParser.ts";
 import { classifyUpdates } from "../_shared/processUpdateClassifier.ts";
+import { parseEmailAdministrativo } from "../_shared/inssAdministrativoParser.ts";
 import { classificarEsfera } from "../_shared/esferaJustica.ts";
 
 const corsHeaders = {
@@ -94,6 +99,8 @@ interface Resultado {
   movimentacoes: number;
   feed_inserido: number;
   processos_casados: number;
+  /** Quantas linhas vieram do push do INSS (requerimento, não CNJ). */
+  administrativos: number;
   cnjs_sem_cadastro: string[];
   reabertos_escavador: number;
   pendentes_restantes: number | null;
@@ -105,7 +112,7 @@ serve(async (req) => {
 
   const out: Resultado = {
     emails_lidos: 0, emails_com_processo: 0, movimentacoes: 0,
-    feed_inserido: 0, processos_casados: 0, cnjs_sem_cadastro: [],
+    feed_inserido: 0, processos_casados: 0, administrativos: 0, cnjs_sem_cadastro: [],
     reabertos_escavador: 0, pendentes_restantes: null, erros: [],
   };
 
@@ -127,9 +134,14 @@ serve(async (req) => {
     if (errProc) throw errProc;
 
     const porCnj = new Map<string, ProcessoRow>();
+    // Índice do ADMINISTRATIVO: protocolo/requerimento do INSS, que é número
+    // curto e não tem CNJ. Não há colisão com o índice acima — CNJ tem 20
+    // dígitos, protocolo tem de 6 a 11.
+    const porProtocolo = new Map<string, ProcessoRow>();
     for (const p of (processos || []) as unknown as ProcessoRow[]) {
       const d = soDigitos(p.process_number || '');
       if (d.length >= 15) porCnj.set(d, p);
+      else if (d.length >= 6 && d.length <= 11) porProtocolo.set(d, p);
     }
 
     // A view já faz o anti-join com email_push_processados e ordena do mais
@@ -155,15 +167,85 @@ serve(async (req) => {
       const movs: MovimentacaoEmail[] = parseEmailPush({
         assunto,
         corpo: email.body_text,
+        // Teto das datas do bloco de eventos: audiência designada para daqui a
+        // três meses não pode virar a data da notícia.
+        dataEmail,
       });
 
       if (movs.length === 0) {
+        // Sem CNJ ainda pode ser o push do INSS, que fala de requerimento
+        // administrativo. Só é tentado aqui porque tribunal e INSS nunca vêm no
+        // mesmo e-mail — e porque assim o caminho do judicial não muda em nada.
+        const admin = parseEmailAdministrativo({ assunto, corpo: email.body_text, dataEmail });
+        let casadosAdmin = 0;
+        for (const a of admin) {
+          const proc = porProtocolo.get(a.protocolo);
+          if (!proc) { semCadastro.add(a.protocolo); continue; }
+          casadosAdmin++;
+          out.processos_casados++;
+          out.administrativos++;
+
+          const classificadas = classifyUpdates(
+            [{
+              conteudo: a.texto,
+              titulo: a.titulo,
+              data: a.data || dataEmail,
+              // O INSS manda o status em campo próprio; não há o que adivinhar.
+              categoria_forcada: a.categoria,
+            }] as unknown as Parameters<typeof classifyUpdates>[0],
+            { numeroCnj: proc.process_number || a.protocolo },
+          );
+          if (classificadas.length === 0) continue;
+
+          const esfera = classificarEsfera({
+            numeroCnj: proc.process_number,
+            processType: proc.process_type,
+            area: proc.area,
+            assuntos: proc.assuntos,
+            classe: proc.classe,
+            caseType: proc.leads?.case_type ?? null,
+            titulo: proc.title,
+            poloAtivo: proc.polo_ativo,
+            poloPassivo: proc.polo_passivo,
+          });
+
+          const linhas = classificadas.map((u) => ({
+            process_id: proc.id,
+            lead_id: proc.lead_id,
+            case_id: proc.case_id,
+            numero_cnj: proc.process_number,
+            processo_titulo: proc.title || proc.leads?.lead_name || proc.process_number,
+            esfera,
+            origem: 'email_push',
+            categoria: u.categoria,
+            // O título do INSS diz o que mudou ("Requerimento 812040787 —
+            // Concluída"); o rótulo genérico da categoria não diria nada.
+            titulo: a.titulo,
+            descricao: u.descricao,
+            data_movimentacao: u.data_movimentacao,
+            conteudo_hash: u.conteudo_hash,
+            eventos: null,
+          }));
+
+          if (!dryRun) {
+            const { error } = await ext
+              .from('process_updates')
+              .upsert(linhas, { onConflict: 'process_id,conteudo_hash', ignoreDuplicates: true });
+            if (error) out.erros.push(`feed adm ${a.protocolo}: ${error.message}`);
+            else out.feed_inserido += linhas.length;
+          } else {
+            out.feed_inserido += linhas.length;
+          }
+        }
+        if (admin.length > 0) out.movimentacoes += admin.length;
+
         // Marca mesmo assim: sem isso o e-mail sem CNJ volta a ser lido em toda
-        // rodada e nunca sai da fila.
+        // rodada e nunca sai da fila. Vale também para o administrativo que não
+        // casou — o requerimento não está cadastrado, e reler não muda isso.
         if (!dryRun) {
           await ext.from('email_push_processados').upsert({
             message_id: email.gmail_message_id, assunto, remetente,
-            movimentacoes: 0, casados: 0,
+            movimentacoes: admin.length, casados: casadosAdmin,
           }, { onConflict: 'message_id' });
         }
         continue;

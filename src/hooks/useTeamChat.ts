@@ -5,10 +5,11 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import {
-  type ActivityChatThread,
-  peekActivityChatThread,
-  resolveActivityChatThread,
-} from '@/lib/activityChatThread';
+  type ChatScope,
+  peekChatScope,
+  resolveChatScope,
+  soloScope,
+} from '@/lib/entityChatScope';
 
 export interface TeamMessage {
   id: string;
@@ -119,6 +120,9 @@ export function entityChatUrl(entityType: string, entityId: string): string {
     : entityType === 'contact' ? `/leads?openContact=${entityId}`
     : entityType === 'whatsapp' ? `/whatsapp?openChat=${encodeURIComponent(entityId)}`
     : entityType === 'case' ? `/cases/${entityId}`
+    // Processo não tem rota própria: a página de casos resolve o caso-pai e
+    // abre a ficha do processo — que é onde a conversa dele mora.
+    : entityType === 'process' ? `/cases?openProcess=${entityId}`
     : '/';
 }
 
@@ -254,37 +258,48 @@ function cacheSet(key: string, msgs: TeamMessage[]) {
 export function useTeamChat(entityType: string, entityId: string, entityName?: string) {
   const { user } = useAuthContext();
 
-  // Em atividade o chat é da CADEIA inteira: lê a união dos elos e escreve
-  // sempre na raiz, para a conversa não recomeçar do zero a cada
-  // "Concluir + próxima". Nas outras fichas o thread é a própria entidade.
-  const isActivity = entityType === 'activity';
-  const [thread, setThread] = useState<ActivityChatThread | null>(() =>
-    isActivity ? peekActivityChatThread(entityId) : { rootId: entityId, ids: [entityId] }
+  // Atividade/processo que pertence a um caso: o chat é do CASO e é o mesmo em
+  // todas as atividades e processos dele. Processo órfão fica no processo;
+  // atividade sem caso e sem processo mantém a cadeia (lê os elos, escreve na
+  // raiz). As outras fichas são o próprio thread.
+  const precisaResolver =
+    entityType === 'activity' || entityType === 'process' || entityType === 'case';
+  const [scope, setScope] = useState<ChatScope | null>(() =>
+    precisaResolver ? peekChatScope(entityType, entityId) : soloScope(entityType, entityId)
   );
 
   useEffect(() => {
-    if (!isActivity) {
-      setThread({ rootId: entityId, ids: [entityId] });
+    if (!precisaResolver) {
+      setScope(soloScope(entityType, entityId));
       return;
     }
-    const cached = peekActivityChatThread(entityId);
-    setThread(cached);
+    const cached = peekChatScope(entityType, entityId);
+    setScope(cached);
     if (cached) return;
     let alive = true;
     // Enquanto não resolve, ninguém carrega mensagem: uma ida ao banco a mais
     // é mais barata que mostrar "nenhuma mensagem" e trocar o conteúdo depois.
-    void resolveActivityChatThread(entityId).then(t => { if (alive) setThread(t); });
+    void resolveChatScope(entityType, entityId).then(s => { if (alive) setScope(s); });
     return () => { alive = false; };
-  }, [isActivity, entityId]);
+  }, [precisaResolver, entityType, entityId]);
 
-  /** Onde as mensagens novas são gravadas — raiz da cadeia, ou a própria ficha. */
-  const writeId = thread?.rootId || entityId;
-  /** De onde o histórico é lido — todos os elos da cadeia. */
-  const readIds = useMemo(() => thread?.ids || [entityId], [thread, entityId]);
-  const readKey = readIds.join(',');
+  /** Onde as mensagens novas são gravadas — caso, processo, raiz ou a ficha. */
+  const writeType = scope?.writeType || entityType;
+  const writeId = scope?.writeId || entityId;
+  /** Nome carimbado na escrita: o do caso quando a conversa é dele. */
+  const writeName = scope?.writeName || entityName || null;
+  /** De onde o histórico é lido — atravessa tipos (caso + processos + atividades). */
+  const readScopes = useMemo(
+    () => scope?.read || [{ type: entityType, ids: [entityId] }],
+    [scope, entityType, entityId]
+  );
+  const readKey = readScopes.map(r => `${r.type}:${r.ids.join('|')}`).join(';');
+  /** Todos os ids lidos, sem separar por tipo — quem acompanha o thread. */
+  const readIdsFlat = useMemo(() => readScopes.flatMap(r => r.ids), [readScopes]);
 
-  // O cache é do thread, não da ficha: abrir qualquer elo mostra a mesma conversa.
-  const cacheKey = `${entityType}:${writeId}`;
+  // O cache é do thread, não da ficha: a atividade, o processo dela e o caso
+  // caem na mesma chave e mostram exatamente a mesma conversa.
+  const cacheKey = `${writeType}:${writeId}`;
   const [messages, setMessagesState] = useState<TeamMessage[]>(() => cacheGet(cacheKey) || []);
   const [loading, setLoading] = useState(() => !cacheGet(cacheKey));
 
@@ -296,6 +311,19 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       return next;
     });
   }, [cacheKey]);
+
+  /**
+   * Quem já falou nesta conversa. O servidor do push procura participantes por
+   * UM entity_type só; como o thread do processo mistura mensagens gravadas em
+   * `process` e em `activity`, quem participou pela outra ponta ficaria de fora.
+   * Ref (e não dep) para não recriar o sendMessage a cada mensagem que chega.
+   */
+  const participantesRef = useRef<string[]>([]);
+  useEffect(() => {
+    participantesRef.current = Array.from(
+      new Set(messages.map(m => m.sender_id).filter((id): id is string => !!id))
+    );
+  }, [messages]);
 
   // Troca de entidade: mostra o que já está em cache imediatamente.
   useEffect(() => {
@@ -309,13 +337,18 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     // Sem cache é carregamento de verdade; com cache, revalida em silêncio.
     if (!cacheGet(cacheKey)) setLoading(true);
     await ensureExternalSession();
-    const { data } = await externalSupabase
-      .from('team_chat_messages')
-      .select('*')
-      .eq('entity_type', entityType)
-      // Todos os elos da cadeia: o que foi dito na etapa anterior continua à
-      // vista na etapa seguinte, sem mover mensagem de lugar.
-      .in('entity_id', readIds)
+    // Um tipo só (lead, WhatsApp, atividade sem processo) resolve com igualdade.
+    // Processo + atividades exige o OR: o entity_type muda em cada perna, e é
+    // assim que o legado gravado por atividade continua à vista sem sair do lugar.
+    const base = externalSupabase.from('team_chat_messages').select('*');
+    const filtrada = readScopes.length === 1
+      ? base.eq('entity_type', readScopes[0].type).in('entity_id', readScopes[0].ids)
+      : base.or(
+          readScopes
+            .map(r => `and(entity_type.eq.${r.type},entity_id.in.(${r.ids.join(',')}))`)
+            .join(',')
+        );
+    const { data } = await filtrada
       .is('deleted_at', null)
       // Últimas 200, não as 200 primeiras: asc + limit congela a conversa
       // ao passar do teto (mesmo defeito do chat geral, 12/08/2026).
@@ -331,31 +364,34 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     // readKey (e não readIds) na dependência: array novo a cada render refaria
     // a carga em loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [entityType, readKey, cacheKey]);
+  }, [readKey, cacheKey]);
 
   useEffect(() => {
-    // Atividade sem a cadeia resolvida ainda não sabe o que ler.
-    if (!thread) return;
+    // Escopo não resolvido ainda não sabe o que ler.
+    if (!scope) return;
     loadMessages();
 
-    const channel = externalSupabase
-      .channel(`team-chat-${entityType}-${writeId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'team_chat_messages',
-        filter: `entity_type=eq.${entityType}`,
-      }, (payload) => {
-        const newMsg = payload.new as TeamMessage;
-        // Aba antiga ainda pode gravar no id do elo — por isso o conjunto todo.
-        if (readIds.includes(newMsg.entity_id)) {
-          setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
-        }
-      })
-      .subscribe();
+    // Um canal por tipo lido: o filtro do Realtime aceita uma condição só.
+    const canais = readScopes.map(({ type, ids }) =>
+      externalSupabase
+        .channel(`team-chat-${writeType}-${writeId}-${type}`)
+        .on('postgres_changes', {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'team_chat_messages',
+          filter: `entity_type=eq.${type}`,
+        }, (payload) => {
+          const newMsg = payload.new as TeamMessage;
+          // Aba antiga ainda pode gravar no id da atividade — por isso o conjunto todo.
+          if (ids.includes(newMsg.entity_id)) {
+            setMessages(prev => prev.some(m => m.id === newMsg.id) ? prev : [...prev, newMsg]);
+          }
+        })
+        .subscribe()
+    );
 
-    return () => { externalSupabase.removeChannel(channel); };
-  }, [entityType, writeId, thread, readIds, loadMessages, setMessages]);
+    return () => { canais.forEach(c => externalSupabase.removeChannel(c)); };
+  }, [writeType, writeId, scope, readScopes, loadMessages, setMessages]);
 
   const sendMessage = useCallback(async (content: string, mentionedUserIds: string[], extra?: TeamMessageExtra) => {
     if (!user) return;
@@ -373,11 +409,11 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     const { data: msg, error } = await externalSupabase
       .from('team_chat_messages')
       .insert({
-        entity_type: entityType,
-        // Raiz da cadeia: é o que mantém a conversa inteira num lugar só quando
-        // a atividade vira etapa nova.
+        // Processo (quando a atividade tem um) ou raiz da cadeia: é o que mantém
+        // a conversa inteira num lugar só em vez de partir a cada ficha nova.
+        entity_type: writeType,
         entity_id: writeId,
-        entity_name: entityName || null,
+        entity_name: writeName,
         content,
         sender_id: user.id,
         sender_name: senderName,
@@ -409,10 +445,10 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       const mentions = mentionedUserIds.map(uid => ({
         message_id: msg.id,
         mentioned_user_id: uid,
-        entity_type: entityType,
-        // Mesma chave da mensagem: a menção é do thread, não da etapa do dia.
+        // Mesma chave da mensagem: a menção é do thread, não da ficha do dia.
+        entity_type: writeType,
         entity_id: writeId,
-        entity_name: entityName || null,
+        entity_name: writeName,
       }));
 
       await externalSupabase.from('team_chat_mentions').insert(mentions);
@@ -422,7 +458,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       // Na raiz: concluir a etapa não pode desligar quem estava acompanhando.
       void followThread(
         mentionedUserIds.map(uid => ({ user_id: uid, reason: 'mention' as const })),
-        entityType, writeId, entityName
+        writeType, writeId, writeName
       );
 
       // Send WhatsApp notification to mentioned users (using sender's instance)
@@ -432,9 +468,9 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
           message_content: content,
           sender_id: user.id,
           sender_name: senderName,
-          entity_type: entityType,
-          entity_id: entityId,
-          entity_name: entityName || null,
+          entity_type: writeType,
+          entity_id: writeId,
+          entity_name: writeName,
         },
       }).catch(err => console.error('Failed to notify mentions via WhatsApp:', err));
     }
@@ -442,7 +478,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     // Quem fala no chat está participando dele: passa a receber o que vier
     // depois, pela mesma porta de quem foi marcado.
     if (msg) {
-      void followThread([{ user_id: user.id, reason: 'message' }], entityType, writeId, entityName);
+      void followThread([{ user_id: user.id, reason: 'message' }], writeType, writeId, writeName);
     }
 
     // Web Push nativo para os participantes do thread (celular/notebook, mesmo com
@@ -451,14 +487,20 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       // O link leva à ficha ABERTA (onde a conversa está acontecendo), não à
       // raiz — que numa cadeia longa costuma estar concluída. Tanto faz para o
       // conteúdo: qualquer elo mostra o thread inteiro.
-      const url = entityChatUrl(entityType, entityId);
+      // Atividade sem processo abre a ficha que está na tela; com processo, o
+      // link é o do processo — é lá que a conversa mora agora.
+      const url = writeType === 'activity'
+        ? entityChatUrl('activity', entityId)
+        : entityChatUrl(writeType, writeId);
       cloudFunctions.invoke('send-team-push', {
         body: {
-          entity_type: entityType,
+          entity_type: writeType,
           entity_id: writeId,
-          // Quem participou da conversa pode ter falado numa etapa anterior; o
-          // servidor procura os destinatários na cadeia toda.
-          ...(readIds.length > 1 ? { entity_ids: readIds } : {}),
+          // Quem participou da conversa pode ter falado numa etapa anterior (ou
+          // em outra atividade do processo); o servidor procura os destinatários
+          // no conjunto todo.
+          ...(readIdsFlat.length > 1 ? { entity_ids: readIdsFlat } : {}),
+          user_ids: participantesRef.current.filter(id => id !== user.id),
           sender_id: user.id,
           sender_name: senderName,
           content,
@@ -470,7 +512,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     }
 
     return (msg as TeamMessage) || null;
-  }, [user, entityType, entityId, entityName, writeId, readIds]);
+  }, [user, entityType, entityId, writeType, writeId, writeName, readIdsFlat]);
 
   // Atualiza uma mensagem (ex.: preencher a transcrição do áudio depois de pronta).
   const updateMessage = useCallback(async (id: string, patch: Partial<TeamMessage>) => {
@@ -510,14 +552,17 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
 
       cloudFunctions.invoke('send-team-push', {
         body: {
-          entity_type: entityType,
+          entity_type: writeType,
           entity_id: writeId,
-          ...(readIds.length > 1 ? { entity_ids: readIds } : {}),
+          ...(readIdsFlat.length > 1 ? { entity_ids: readIdsFlat } : {}),
+          user_ids: participantesRef.current.filter(id => id !== user?.id),
           sender_id: user?.id,
           sender_name: msg?.sender_name || user?.email || 'Equipe',
           content: msg?.content || 'Mensagem urgente',
           is_urgent: true,
-          url: entityChatUrl(entityType, entityId),
+          url: writeType === 'activity'
+            ? entityChatUrl('activity', entityId)
+            : entityChatUrl(writeType, writeId),
         },
       }).catch(err => console.error('Falha ao enviar Web Push (urgente):', err));
 
@@ -526,7 +571,7 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
       console.error('[useTeamChat] erro ao reenviar alerta urgente:', e);
       toast.error('Não foi possível reenviar o alerta');
     }
-  }, [messages, setMessages, entityType, entityId, writeId, readIds, user?.id, user?.email]);
+  }, [messages, setMessages, entityId, writeType, writeId, readIdsFlat, user?.id, user?.email]);
 
   return {
     messages,
@@ -534,10 +579,16 @@ export function useTeamChat(entityType: string, entityId: string, entityName?: s
     sendMessage,
     updateMessage,
     alertMessageAgain,
-    /** Chave do thread (raiz da cadeia, em atividade) — quem abriu na tela. */
+    /** Chave do thread (caso, processo ou raiz da cadeia) — quem abriu na tela. */
     threadRootId: writeId,
-    /** Quantos elos a conversa atravessa: 1 = ficha comum, sem continuidade. */
-    threadSize: readIds.length,
+    /** Chave completa usada no cache e no "esta conversa já está aberta". */
+    threadKey: cacheKey,
+    /** Quantas fichas a conversa atravessa: 1 = ficha comum, sem continuidade. */
+    threadSize: readIdsFlat.length,
+    /** Quem é o dono da conversa: 'case' | 'process' | 'chain' | 'solo'. */
+    threadKind: scope?.kind || 'solo',
+    /** Rótulo do dono ("CASO 180", nº do processo) — alimenta o aviso na tela. */
+    threadLabel: scope?.label || null,
   };
 }
 

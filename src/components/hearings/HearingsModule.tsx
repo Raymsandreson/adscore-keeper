@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { addMonths, format, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { CalendarDays, ChevronLeft, ChevronRight, List, Plus, RefreshCw, Search } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Gavel, LayoutList, List, Plus, RefreshCw, Search, Stethoscope } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { Input } from '@/components/ui/input';
@@ -10,15 +10,36 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useHearings, type Hearing, type HearingCategory, type HearingStatus } from '@/hooks/useHearings';
-import { CATEGORY_LABELS, STATUS_LABELS, HEARING_TYPES } from './hearingStyles';
+import { categoriaDaAudiencia } from '@/lib/eventAgenda';
+import { cn } from '@/lib/utils';
+import { CATEGORY_LABELS, STATUS_LABELS } from './hearingStyles';
 import { HearingWeekView } from './HearingWeekView';
 import { HearingMonthView } from './HearingMonthView';
 import { HearingDayView } from './HearingDayView';
 import { HearingListView } from './HearingListView';
 import { HearingFormDialog } from './HearingFormDialog';
 
+/** Que tipo de evento a tela está mostrando. */
+type Lente = 'audiencia' | 'pericia' | 'todos';
+
+const LENTE_LABEL: Record<Lente, string> = {
+  audiencia: 'Audiências',
+  pericia: 'Perícias',
+  todos: 'Todos',
+};
+
+/**
+ * Aceita /hearings?evento=pericia para quem quiser linkar direto na agenda de
+ * perícias. Sem o parâmetro abre em Audiências, que é como a tela sempre abriu.
+ */
+function lenteInicial(): Lente {
+  const v = new URLSearchParams(window.location.search).get('evento');
+  return v === 'pericia' || v === 'todos' ? v : 'audiencia';
+}
+
 export default function HearingsModule() {
   const { data: hearings = [], isLoading } = useHearings();
+  const [lente, setLente] = useState<Lente>(lenteInicial);
   const [view, setView] = useState<'semana' | 'mes' | 'dia' | 'lista'>('semana');
   const [referenceDate, setReferenceDate] = useState(new Date());
   const [dayDate, setDayDate] = useState(new Date());
@@ -51,10 +72,55 @@ export default function HearingsModule() {
     }
   };
 
+  // Universo por lente, antes dos demais filtros: o contador tem que dizer
+  // quantas perícias existem, não quantas sobraram do filtro de status.
+  const contagem = useMemo(() => {
+    let audiencia = 0;
+    let pericia = 0;
+    for (const h of hearings) {
+      if (categoriaDaAudiencia(h.hearing_type) === 'pericia') pericia++;
+      else audiencia++;
+    }
+    return { audiencia, pericia, todos: hearings.length };
+  }, [hearings]);
+
+  // Mesma regra da aba Eventos (`categoriaDaAudiencia`): perícia pelo radical +
+  // "avaliação social". Tudo que não é perícia é audiência, inclusive as linhas
+  // sem tipo — elas continuam visíveis em algum lugar.
+  const noEscopoDaLente = useMemo(() => {
+    if (lente === 'todos') return hearings;
+    const querPericia = lente === 'pericia';
+    return hearings.filter(h => (categoriaDaAudiencia(h.hearing_type) === 'pericia') === querPericia);
+  }, [hearings, lente]);
+
+  // As opções do filtro saem do DADO, não do catálogo do formulário.
+  // Medido em 20/08/2026, com a lista fixa `HEARING_TYPES`: "Inicial" (122),
+  // "UNA" (112), "Pericia" (3), "Homologação" (2), "Julgamento" e "Encerramento"
+  // não eram opção — 241 dos 566 eventos ficavam fora do alcance do filtro. E
+  // três opções do catálogo ("UNA Virtual", "UNA Presencial", "Inicial Virtual")
+  // não existiam em linha nenhuma: escolher qualquer uma esvaziava o calendário
+  // sem motivo. O catálogo continua valendo onde faz sentido — no formulário,
+  // que precisa oferecer o nome certo pra linha nova.
+  const tiposPresentes = useMemo(() => {
+    const conta = new Map<string, number>();
+    for (const h of noEscopoDaLente) {
+      const t = (h.hearing_type || '').trim();
+      if (t) conta.set(t, (conta.get(t) || 0) + 1);
+    }
+    return [...conta.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'pt-BR'));
+  }, [noEscopoDaLente]);
+
+  // Trocar de lente pode tirar do ar o tipo escolhido ("Instrução" não existe em
+  // perícia). Sem isto o filtro seguiria valendo, invisível, e a tela apareceria
+  // vazia como se não houvesse evento.
+  useEffect(() => {
+    if (typeFilter !== 'all' && !tiposPresentes.some(([t]) => t === typeFilter)) setTypeFilter('all');
+  }, [tiposPresentes, typeFilter]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return hearings.filter((h) => {
-      if (typeFilter !== 'all' && h.hearing_type !== typeFilter) return false;
+    return noEscopoDaLente.filter((h) => {
+      if (typeFilter !== 'all' && (h.hearing_type || '').trim() !== typeFilter) return false;
       if (statusFilter !== 'all' && h.status !== statusFilter) return false;
       if (categoryFilter !== 'all' && h.category !== categoryFilter) return false;
       if (q) {
@@ -64,7 +130,7 @@ export default function HearingsModule() {
       }
       return true;
     });
-  }, [hearings, search, typeFilter, statusFilter, categoryFilter]);
+  }, [noEscopoDaLente, search, typeFilter, statusFilter, categoryFilter]);
 
   const openCreate = (dateISO?: string) => {
     setEditing(null);
@@ -79,6 +145,37 @@ export default function HearingsModule() {
 
   return (
     <div className="space-y-4">
+      {/* Que evento a tela mostra. Fica antes de tudo porque muda o universo,
+          não é mais um filtro: perícia e audiência são trabalhos diferentes. */}
+      <div className="flex items-center gap-1 flex-wrap">
+        {(['audiencia', 'pericia', 'todos'] as Lente[]).map((l) => {
+          const Icone = l === 'audiencia' ? Gavel : l === 'pericia' ? Stethoscope : LayoutList;
+          const ativa = lente === l;
+          return (
+            <button
+              key={l}
+              type="button"
+              onClick={() => setLente(l)}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all border',
+                ativa
+                  ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                  : 'border-transparent text-muted-foreground hover:bg-muted',
+              )}
+            >
+              <Icone className="h-3.5 w-3.5" />
+              {LENTE_LABEL[l]}
+              <span className={cn(
+                'rounded-full px-1.5 text-[10px] font-bold',
+                ativa ? 'bg-primary-foreground/20' : 'bg-muted-foreground/15',
+              )}>
+                {contagem[l]}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Header / filtros */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-2 lg:justify-between">
         <div className="flex flex-1 flex-wrap gap-2 items-center">
@@ -95,7 +192,9 @@ export default function HearingsModule() {
             <SelectTrigger className="w-[170px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todos os tipos</SelectItem>
-              {HEARING_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+              {tiposPresentes.map(([t, n]) => (
+                <SelectItem key={t} value={t}>{t} ({n})</SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <Select value={categoryFilter} onValueChange={setCategoryFilter}>
@@ -119,7 +218,7 @@ export default function HearingsModule() {
             {syncing ? 'Sincronizando...' : 'Sincronizar planilha'}
           </Button>
           <Button onClick={() => openCreate()} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Nova audiência
+            <Plus className="h-4 w-4" /> {lente === 'pericia' ? 'Nova perícia' : 'Nova audiência'}
           </Button>
         </div>
       </div>
@@ -190,6 +289,11 @@ export default function HearingsModule() {
         onOpenChange={setDialogOpen}
         hearing={editing}
         defaultDate={defaultDate}
+        // Criar a partir da agenda de perícias já nasce perícia: sem isto o
+        // formulário abriria em "UNA Virtual"/cível e a linha sumiria da lente
+        // em que a pessoa acabou de criá-la.
+        defaultType={lente === 'pericia' ? 'Perícia Médica (INSS)' : undefined}
+        defaultCategory={lente === 'pericia' ? 'previdenciario' : undefined}
       />
     </div>
   );

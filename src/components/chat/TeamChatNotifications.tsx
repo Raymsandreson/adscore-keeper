@@ -4,10 +4,13 @@ import { externalSupabase, ensureExternalSession } from '@/integrations/supabase
 import { useAuthContext } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { AtSign, MessageCircle, EyeOff, AlarmClock } from 'lucide-react';
+import { playUrgentChime } from '@/lib/sounds';
+import { isSoundEnabled } from '@/lib/soundSettings';
 import { TeamNotificationToast } from './TeamNotificationToast';
 import { openTeamChatConversation } from '@/lib/teamChatPanelEvents';
 import { appNavigate } from '@/lib/appNavigation';
-import { resolveActivityChatRoots, resolveActivityChatThread, resolveOpenActivityOfChain } from '@/lib/activityChatThread';
+import { resolveActivityChatRoots, resolveOpenActivityOfChain } from '@/lib/activityChatThread';
+import { resolveThreadKeys, resolveChatScope } from '@/lib/entityChatScope';
 import {
   getActiveTeamChatConversation,
   getActiveTeamChatEntity,
@@ -124,29 +127,6 @@ function clearConversationToastState(conversationId: string) {
 function dismissConversationToast(conversationId: string) {
   clearConversationToastState(conversationId);
   toast.dismiss(conversationToastId(conversationId));
-}
-
-function playUrgentSound() {
-  try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    [0, 0.25, 0.5].forEach((offset) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.001, ctx.currentTime + offset);
-      gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + offset + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.18);
-      osc.start(ctx.currentTime + offset);
-      osc.stop(ctx.currentTime + offset + 0.2);
-    });
-    setTimeout(() => void ctx.close(), 1200);
-  } catch {
-    // Navegador pode bloquear áudio antes de interação do usuário
-  }
 }
 
 function showNotificationToast({
@@ -271,7 +251,8 @@ function showConversationToast({
     onManualDismiss,
   });
 
-  if (urgent) playUrgentSound();
+  // Mudo de fábrica: liga em Configurações → Notificações → Sons do sistema.
+  if (urgent && isSoundEnabled('chatUrgent')) playUrgentChime();
 }
 
 export function TeamChatNotifications() {
@@ -404,19 +385,17 @@ export function TeamChatNotifications() {
       entityName?: string | null;
       content: string;
     }) => {
-      // Responder pelo popup entra no MESMO thread do chat: em atividade, a
-      // raiz da cadeia. Popup de mensagem legada (gravada no id do elo) não
-      // pode reabrir a conversa num lugar separado.
-      const alvo = entityType === 'activity'
-        ? (await resolveActivityChatThread(entityId)).rootId
-        : entityId;
+      // Responder pelo popup entra no MESMO thread do chat: no processo quando
+      // a atividade tem um, senão na raiz da cadeia. Popup de mensagem legada
+      // (gravada no id da atividade) não pode reabrir a conversa em separado.
+      const escopo = await resolveChatScope(entityType, entityId);
 
       const { error } = await externalSupabase
         .from('team_chat_messages')
         .insert({
-          entity_type: entityType,
-          entity_id: alvo,
-          entity_name: entityName || null,
+          entity_type: escopo.writeType,
+          entity_id: escopo.writeId,
+          entity_name: escopo.writeName || entityName || null,
           content,
           sender_id: user.id,
           sender_name: getCurrentUserName(),
@@ -511,6 +490,12 @@ export function TeamChatNotifications() {
         }
         case 'whatsapp':
           return `/whatsapp?openChat=${encodeURIComponent(entityId)}`;
+        case 'process':
+          // Sem este case o clique no popup era morto e silencioso: o default
+          // devolvia null e openEntityChat saía sem navegar.
+          return `/cases?openProcess=${entityId}${messageParam}`;
+        case 'case':
+          return `/cases/${entityId}${messageParam ? `?${messageParam.slice(1)}` : ''}`;
         default:
           return null;
       }
@@ -645,10 +630,18 @@ export function TeamChatNotifications() {
       // Linhas gravadas antes do chat virar da cadeia apontam para o id do ELO.
       // A mensagem nova chega na raiz — sem traduzir, quem acompanhava desde
       // antes deixaria de ser avisado ao virar a etapa.
-      const raizes = await resolveActivityChatRoots(
-        seguidos.filter(f => f.entity_type === 'activity').map(f => f.entity_id)
-      );
+      const idsDeAtividade = seguidos.filter(f => f.entity_type === 'activity').map(f => f.entity_id);
+      const raizes = await resolveActivityChatRoots(idsDeAtividade);
       for (const raiz of raizes.values()) chaves.add(`activity:${raiz}`);
+
+      // Desde 19/08/2026 a conversa da atividade/processo que tem caso mora no
+      // CASO. Quem acompanhava pelo id da atividade (ou do processo, no escopo
+      // anterior, de 18/08) continua sendo avisado.
+      const donos = await resolveThreadKeys({
+        activityIds: idsDeAtividade,
+        processIds: seguidos.filter(f => f.entity_type === 'process').map(f => f.entity_id),
+      });
+      for (const chave of donos) chaves.add(chave);
 
       followedThreadsRef.current = chaves;
     };

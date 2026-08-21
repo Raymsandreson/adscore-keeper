@@ -14,6 +14,8 @@ interface EntityTeamChatDockProps {
   title?: string;
   /** Aberto por padrão — o chat interno é parte da ficha, não uma aba escondida. */
   defaultOpen?: boolean;
+  /** Mensagem a destacar (deep-link de menção). Força o dock aberto. */
+  highlightMessageId?: string | null;
 }
 
 /**
@@ -32,6 +34,7 @@ export function EntityTeamChatDock({
   className,
   title = 'Chat interno da equipe',
   defaultOpen = true,
+  highlightMessageId,
 }: EntityTeamChatDockProps) {
   const storageKey = `team-chat-dock:${entityType}`;
   const [open, setOpen] = useState(() => {
@@ -59,6 +62,10 @@ export function EntityTeamChatDock({
 
   if (!entityId) return null;
 
+  // Quem chegou por uma menção precisa ver a mensagem, mesmo tendo fechado o
+  // dock antes — a preferência guardada não pode engolir o deep-link.
+  const aberto = open || !!highlightMessageId;
+
   return (
     <section className={cn('rounded-lg border border-primary/20 overflow-hidden bg-background', className)}>
       <button
@@ -69,9 +76,9 @@ export function EntityTeamChatDock({
         <span className="flex items-center gap-1.5 text-[11px] font-medium text-primary">
           <Users className="h-3.5 w-3.5" /> {title}
         </span>
-        <ChevronDown className={cn('h-3.5 w-3.5 text-primary transition-transform', open && 'rotate-180')} />
+        <ChevronDown className={cn('h-3.5 w-3.5 text-primary transition-transform', aberto && 'rotate-180')} />
       </button>
-      {open && (
+      {aberto && (
         <div className="border-t bg-background" style={{ height: typeof height === 'number' ? `${height}px` : height }}>
           <Suspense
             fallback={
@@ -80,7 +87,12 @@ export function EntityTeamChatDock({
               </div>
             }
           >
-            <TeamChatPanel entityType={entityType} entityId={entityId} entityName={entityName} />
+            <TeamChatPanel
+              entityType={entityType}
+              entityId={entityId}
+              entityName={entityName}
+              highlightMessageId={highlightMessageId}
+            />
           </Suspense>
         </div>
       )}

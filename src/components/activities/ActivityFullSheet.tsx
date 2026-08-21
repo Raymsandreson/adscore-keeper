@@ -1693,11 +1693,21 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 <FileText className="h-3 w-3" /> Vincular Processo
               </Button>
             ) : null}
-            {/* Benefício INSS: perícia médica e perícia social. Mesmo cabeçalho da
-                tela de Atividades — a data mora no processo, não na atividade. */}
+            {/* Perícia médica e avaliação social. Mesmo cabeçalho da tela de
+                Atividades — marcar aqui cria o evento no calendário (/hearings).
+                Caso e lead vão junto porque 35% das atividades de perícia não
+                têm processo: sem eles o chip não teria onde ancorar a data. */}
             <PericiaInssChips
               processId={formProcessId}
               processTitle={(linkedProcess || linkedProcessLive)?.title || formProcessTitle}
+              caseId={formCaseId}
+              leadId={formLeadId}
+              processNumber={(linkedProcess as any)?.process_number || null}
+              caseRef={formCaseTitle || formLeadName || null}
+              activityId={activityId}
+              assignedTo={formAssignedTo}
+              activityTitle={formTitle}
+              activityTypeLabel={activityTypes.find(t => t.key === formType)?.label || null}
             />
             {/* Em que altura está o processo desta atividade. Antes era preciso
                 sair da tela pra saber se já tinha sentença. */}

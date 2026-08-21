@@ -64,7 +64,7 @@ async function fetchBrands(): Promise<any[]> {
   const r = await request('GET', `${endpoints().openkeys}/open-keys-itp/api/brands/v1/brands?type=DATA`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!r.ok) throw new Error(`Celcoin brands falhou (HTTP ${r.status})`);
+  if (!r.ok) throw new Error(`Celcoin brands falhou (HTTP ${r.status}): ${motivo(r)}`);
   const raw = r.body;
   return Array.isArray(raw) ? raw : raw?.content ?? raw?.items ?? raw?.data ?? [];
 }
@@ -207,6 +207,17 @@ function request(
   });
 }
 
+// Motivo legível de uma falha upstream. A Celcoin distingue "credencial inválida"
+// (400 invalid_client) de "credencial reconhecida mas barrada" (403) SÓ no corpo:
+// sem ele toda falha vira o mesmo "HTTP 4xx" e não dá para agir. Sequências longas
+// de dígitos são mascaradas porque o corpo de erro dos endpoints de dados pode
+// ecoar documento — mesma regra do log lá em cima.
+function motivo(r: Result): string {
+  const raw = typeof r.body === 'string' ? r.body : JSON.stringify(r.body ?? '');
+  if (!raw || raw === '""' || raw === 'null') return 'corpo vazio';
+  return raw.replace(/\d{8,}/g, (d) => `***${d.slice(-2)}`).slice(0, 300);
+}
+
 function credentials() {
   const clientId = process.env.CELCOIN_CLIENT_ID;
   const clientSecret = process.env.CELCOIN_CLIENT_SECRET;
@@ -224,7 +235,7 @@ async function getAdminToken(): Promise<string> {
   const r = await request('POST', `${endpoints().onboard}/api/portal/onboard/v2/token`, {
     headers: { Authorization: `Basic ${basic}` },
   });
-  if (!r.ok) throw new Error(`Celcoin onboard token falhou (HTTP ${r.status})`);
+  if (!r.ok) throw new Error(`Celcoin onboard token falhou (HTTP ${r.status}): ${motivo(r)}`);
   const token = r.body?.access_token || r.body?.token;
   if (!token) throw new Error('onboard token: resposta sem access_token');
 
@@ -242,7 +253,7 @@ async function getRptToken(consentId: string): Promise<string> {
   const r = await request('POST', `${endpoints().data}/api/open-keys/token`, {
     form: new URLSearchParams({ client_id: clientId, client_secret: clientSecret, scope: `consent:${consentId}` }),
   });
-  if (!r.ok) throw new Error(`Celcoin open-keys token falhou (HTTP ${r.status}) consent=${consentId}`);
+  if (!r.ok) throw new Error(`Celcoin open-keys token falhou (HTTP ${r.status}) consent=${consentId}: ${motivo(r)}`);
   const token = r.body?.access_token;
   if (!token) throw new Error('open-keys token: resposta sem access_token');
 
@@ -319,7 +330,7 @@ async function fetchPaged(
     const r = await fetchData(consentId, resourcePath, { ...query, page, 'page-size': PAGE_SIZE }, permissions);
     if (!r.ok) {
       if (r.status === 404) return out; // recurso ausente/não consentido: não é erro fatal do sync
-      throw new Error(`GET ${resourcePath} falhou (HTTP ${r.status})`);
+      throw new Error(`GET ${resourcePath} falhou (HTTP ${r.status}): ${motivo(r)}`);
     }
     const data = r.body?.data;
     if (Array.isArray(data)) out.push(...data);
@@ -409,6 +420,29 @@ export const handler: RequestHandler = async (req, res) => {
           has_client_secret: !!process.env.CELCOIN_CLIENT_SECRET,
           has_mtls_cert: !!process.env.CELCOIN_CERT_PEM && !!process.env.CELCOIN_KEY_PEM,
           redirect_url: process.env.CELCOIN_REDIRECT_URL || null,
+        });
+        return;
+      }
+
+      // Diagnóstico de borda. Descobre o IP de saída deste servidor e repete a
+      // chamada de token com credencial DELIBERADAMENTE inválida. Serve para
+      // separar duas causas que se parecem: se a borda responde 400
+      // invalid_client, a requisição chega na aplicação da Celcoin e o problema
+      // é credencial; se responde HTML, foi barrada antes (WAF/CDN) e credencial
+      // nenhuma passaria. Não envia segredo: a credencial da sonda é literal.
+      case 'egress_diag': {
+        const ipr = await request('GET', 'https://api.ipify.org?format=json');
+        const bogus = Buffer.from('probe:probe').toString('base64');
+        const pr = await request('POST', `${endpoints().onboard}/api/portal/onboard/v2/token`, {
+          headers: { Authorization: `Basic ${bogus}` },
+        });
+        const raw = typeof pr.body === 'string' ? pr.body : JSON.stringify(pr.body ?? '');
+        res.json({
+          success: true,
+          egress_ip: (ipr.body as any)?.ip ?? null,
+          probe_status: pr.status,
+          probe_e_html: /^\s*<(!doctype|html)/i.test(raw),
+          probe_trecho: raw.slice(0, 200),
         });
         return;
       }

@@ -1,6 +1,7 @@
 import { externalSupabase } from './external-client';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { attachGroupLeadIds } from './group-lead-links';
+import { withTimeout } from '@/lib/promiseTimeout';
 
 export interface ConversationSummary {
   phone: string;
@@ -137,6 +138,29 @@ export async function getConversationSummaries(
 
 function instanceNameVariants(name: string): string[] {
   return Array.from(new Set([name, name.toUpperCase(), name.toLowerCase()]));
+}
+
+/**
+ * Filtro de instância da conversa — que NÃO se aplica a grupo.
+ *
+ * Em grupo, cada instância-membro grava a sua cópia de cada mensagem, e cada
+ * uma tem um pedaço diferente do histórico: quem entrou no grupo depois só tem
+ * o que veio de lá pra cá. Medido em 750 grupos (11–18/08/2026): na metade
+ * deles a instância mais pobre enxerga 56% ou menos das mensagens, e no pior
+ * caso 2%. Ler só a instância "dona" da conversa escondia da pessoa mensagens
+ * que o colega ao lado via na tela dele. O dedup em `whatsappGroupMirror`
+ * colapsa os espelhos depois.
+ *
+ * O `limit` continua sendo de LINHAS, não de mensagens: em grupo uma página de
+ * 300 linhas rende ~115 mensagens reais (2,6 espelhos por mensagem), contra as
+ * 300 de antes. É de propósito — triplicar a página levaria a abertura de um
+ * grupo pesado de 1,5MB para 4,2MB de egress (medido no FAMILIA 374). Quem
+ * rola até o topo puxa a página seguinte automaticamente. O caminho para
+ * baratear isso é parar de trazer o `metadata` inteiro (80% do payload).
+ */
+function applyConversationInstanceFilter(query: any, phone: string, instanceName: string) {
+  if (isWhatsAppGroupId(phone)) return query;
+  return query.in('instance_name', instanceNameVariants(instanceName));
 }
 
 // Colunas da tabela conversations que espelham o retorno da RPC.
@@ -303,6 +327,60 @@ export async function getInboxActivitySignature(
   return `${latest}|${unreadRes.count ?? 'n/a'}`;
 }
 
+/**
+ * Telefones das nossas instâncias de WhatsApp (`whatsapp_instances.owner_phone`).
+ *
+ * Em grupo, uma mensagem assinada por um destes números é NOSSA mesmo quando
+ * nenhum espelho foi gravado como `outbound` — é o caso de quem responde pelo
+ * celular, fora do sistema. Ver `@/lib/whatsappGroupMirror`.
+ *
+ * Carrega uma vez por sessão; falha degrada para o conjunto vazio (aí sobra só
+ * o sinal do espelho `outbound`), sem derrubar a conversa.
+ */
+let ourInstancePhonesPromise: Promise<ReadonlySet<string>> | null = null;
+let ourInstancePhonesCache: ReadonlySet<string> = new Set();
+
+/** Última resposta de `getOurInstancePhones`, para os caminhos síncronos. Vazio antes da 1ª carga. */
+export function getOurInstancePhonesSync(): ReadonlySet<string> {
+  return ourInstancePhonesCache;
+}
+
+/**
+ * Teto de espera. Sem ele, uma requisição pendurada (aba voltando do segundo
+ * plano no celular) ficava CACHEADA na promessa desta função e travava toda
+ * abertura de conversa da sessão inteira — o spinner que nunca saía.
+ */
+const OUR_PHONES_TIMEOUT_MS = 8_000;
+
+export function getOurInstancePhones(): Promise<ReadonlySet<string>> {
+  if (!ourInstancePhonesPromise) {
+    const run = withTimeout(
+      (externalSupabase as any).from('whatsapp_instances').select('owner_phone'),
+      OUR_PHONES_TIMEOUT_MS,
+      'getOurInstancePhones',
+    )
+      .then(({ data, error }: { data: Array<{ owner_phone: string | null }> | null; error: { message: string } | null }) => {
+        if (error) {
+          console.warn('[getOurInstancePhones] falhou:', error.message);
+          // Falha não fica cacheada: a próxima abertura tenta de novo.
+          if (ourInstancePhonesPromise === run) ourInstancePhonesPromise = null;
+          return new Set<string>() as ReadonlySet<string>;
+        }
+        ourInstancePhonesCache = new Set(
+          (data || []).map(i => String(i.owner_phone || '').replace(/\D/g, '')).filter(Boolean)
+        );
+        return ourInstancePhonesCache;
+      })
+      .catch((e: unknown) => {
+        console.warn('[getOurInstancePhones] timeout/falha:', (e as Error)?.message);
+        if (ourInstancePhonesPromise === run) ourInstancePhonesPromise = null;
+        return new Set<string>() as ReadonlySet<string>;
+      });
+    ourInstancePhonesPromise = run;
+  }
+  return ourInstancePhonesPromise;
+}
+
 export async function getConversationMessages(
   phone: string,
   instanceName: string,
@@ -311,11 +389,14 @@ export async function getConversationMessages(
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  let query = (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName))
+  let query = applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  )
     .order('created_at', { ascending: false })
     .limit(limit);
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
@@ -336,11 +417,14 @@ export async function getConversationMessagesSince(
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  const { data, error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName))
+  const { data, error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  )
     .gt('created_at', afterCreatedAt)
     .order('created_at', { ascending: false })
     .limit(limit);
@@ -371,11 +455,14 @@ export async function searchConversationMessages(
   const { term, fromIso, toIso, order = 'desc', limit = 60 } = opts;
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  let query = (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName));
+  let query = applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  );
   if (term && term.trim()) {
     // `%` e `_` são curingas do LIKE; `,` quebraria o parser do PostgREST.
     const escaped = term.trim().replace(/[%_,]/g, (c) => `\\${c}`);
@@ -421,11 +508,14 @@ export async function getConversationMessagesForward(
 ): Promise<WhatsAppMessage[]> {
   const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
   const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
-  const { data, error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .select('*')
-    .in('phone', phoneVariants)
-    .in('instance_name', instanceNameVariants(instanceName))
+  const { data, error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .select('*')
+      .in('phone', phoneVariants),
+    phone,
+    instanceName,
+  )
     .gt('created_at', afterIso)
     .order('created_at', { ascending: true })
     .limit(limit);
@@ -437,26 +527,45 @@ export async function markMessagesAsRead(
   phone: string,
   instanceName: string
 ): Promise<void> {
-  const { error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .update({ read_at: new Date().toISOString() })
-    .eq('phone', phone)
-    .in('instance_name', instanceNameVariants(instanceName))
+  // Em grupo marca em TODAS as instâncias-membro: a bolha lida é a mesma
+  // mensagem espelhada, e deixar as cópias sem `read_at` mantinha o badge de
+  // não lida aceso na conversa que o próximo usuário abrisse.
+  const { error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .update({ read_at: new Date().toISOString() })
+      .eq('phone', phone),
+    phone,
+    instanceName,
+  )
     .eq('direction', 'inbound')
     .is('read_at', null);
   if (error) throw error;
 }
 
+/**
+ * Carimba o lead na conversa inteira.
+ *
+ * Em grupo pega TODAS as instâncias-membro: a conversa é uma só (o filtro por
+ * instância vinha de quando ela era N), e o `lead_id` da mensagem é o que faz
+ * `resolveLeadSearchInstanceName` achar por onde falar com o lead e o áudio da
+ * atividade achar o grupo de destino. Vincular só as linhas de uma instância
+ * deixava as cópias das outras sem lead — em 45 dias, 4.135 mensagens de grupo
+ * (5,4%) tinham espelhos discordando sobre o lead.
+ */
 export async function linkMessagesToLead(
   phone: string,
   instanceName: string,
   leadId: string
 ): Promise<void> {
-  const { error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .update({ lead_id: leadId })
-    .eq('phone', phone)
-    .in('instance_name', instanceNameVariants(instanceName));
+  const { error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .update({ lead_id: leadId })
+      .eq('phone', phone),
+    phone,
+    instanceName,
+  );
   if (error) throw error;
 }
 
@@ -529,15 +638,19 @@ export async function linkConversationContactToLead(
   return contactId;
 }
 
+/** Mesmo critério de `linkMessagesToLead`: em grupo, a conversa é uma só. */
 export async function linkMessagesToContact(
   phone: string,
   instanceName: string,
   contactId: string
 ): Promise<void> {
-  const { error } = await (externalSupabase as any)
-    .from('whatsapp_messages')
-    .update({ contact_id: contactId })
-    .eq('phone', phone)
-    .in('instance_name', instanceNameVariants(instanceName));
+  const { error } = await applyConversationInstanceFilter(
+    (externalSupabase as any)
+      .from('whatsapp_messages')
+      .update({ contact_id: contactId })
+      .eq('phone', phone),
+    phone,
+    instanceName,
+  );
   if (error) throw error;
 }

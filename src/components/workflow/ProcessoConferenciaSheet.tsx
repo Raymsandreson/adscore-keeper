@@ -276,7 +276,12 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                             moral {brl(c.danoMoral)} + estético {brl(c.danoEstetico)}
                           </div>
                           {/* A conta inteira, para o número poder ser contestado. */}
-                          {c.corrigido ? (
+                          {c.pagoEm ? (
+                            <div className="text-emerald-700 dark:text-emerald-400">
+                              Pago em {dataBR(c.pagoEm)} — valor que já caiu na conta não corrige;
+                              fica pelo nominal.
+                            </div>
+                          ) : c.corrigido ? (
                             <div className="text-emerald-700 dark:text-emerald-400">
                               {brl(c.valor)} × {c.coeficiente?.toFixed(4)} = <span className="font-semibold">{brl(c.valorAtualizado)}</span>
                               <span className="text-muted-foreground">
@@ -341,7 +346,13 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             {/* 4. Pagamentos */}
             <Secao
               titulo="Pagamentos"
-              acao={<span className="text-xs font-semibold">{brl(totalPago)} recebido</span>}
+              acao={
+                <span className="text-xs font-semibold">
+                  {totalPago === 0 && recebidos.length > 0 && recebidos.every(p => p.valor_pago == null)
+                    ? `${recebidos.length} parcela(s) recebida(s) sem valor importado`
+                    : `${brl(totalPago)} recebido`}
+                </span>
+              }
             >
               {pagamentos.length === 0 ? (
                 <p className="text-xs text-muted-foreground">Nenhuma parcela lançada para este processo.</p>
@@ -360,7 +371,11 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                         {p.data_recebida ? `recebido ${dataBR(p.data_recebida)}` : `previsto ${dataBR(p.data_prevista)}`}
                       </span>
                       <span className="w-24 shrink-0 text-right font-medium">
-                        {brl(Number(p.data_recebida ? p.valor_pago : p.valor_previsto) || 0)}
+                        {/* Recebida sem valor digitado ≠ recebeu zero — a planilha
+                            importou o status sem o valor. Dizer "R$ 0,00" mentiria. */}
+                        {(p.data_recebida ? p.valor_pago : p.valor_previsto) == null
+                          ? <span className="font-normal text-muted-foreground">sem valor</span>
+                          : brl(Number(p.data_recebida ? p.valor_pago : p.valor_previsto) || 0)}
                       </span>
                     </div>
                   ))}

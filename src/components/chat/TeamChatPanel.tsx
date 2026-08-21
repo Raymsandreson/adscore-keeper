@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useCallback, lazy, Suspense, Fragment } from 'react';
+import { playUrgentBeep } from '@/lib/sounds';
+import { isSoundEnabled } from '@/lib/soundSettings';
 import { useTeamChat, useTeamMembers, TeamMember, TeamMessage } from '@/hooks/useTeamChat';
 import { ChatMessageActions } from './ChatMessageActions';
 import { ForwardMessagePicker } from './ForwardMessagePicker';
@@ -58,29 +60,6 @@ interface TeamChatPanelProps {
 
 const MEDIA_BUCKET = 'team-chat-media';
 
-/** Bip curto (Web Audio) para avisar chegada de mensagem urgente. */
-function playUrgentBeep() {
-  try {
-    const AudioCtx =
-      window.AudioContext ||
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = 880;
-    gain.gain.value = 0.12;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.18);
-    osc.onended = () => ctx.close();
-  } catch {
-    /* silêncio se o navegador bloquear áudio */
-  }
-}
-
 function formatDuration(seconds?: number | null) {
   const s = Math.max(0, Math.floor(seconds || 0));
   const m = Math.floor(s / 60);
@@ -89,7 +68,7 @@ function formatDuration(seconds?: number | null) {
 
 export function TeamChatPanel({ entityType, entityId, entityName, highlightMessageId, onMentionUsers, footerNote }: TeamChatPanelProps) {
   const { user } = useAuthContext();
-  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadRootId, threadSize } =
+  const { messages, loading, sendMessage, updateMessage, alertMessageAgain, threadKey, threadSize, threadKind, threadLabel } =
     useTeamChat(entityType, entityId, entityName);
   const members = useTeamMembers();
   const navigate = useNavigate();
@@ -143,7 +122,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     }
   }, [messages, highlightMessageId]);
 
-  // Bip ao receber mensagem urgente de outro membro (ignora o carregamento inicial).
+  // Bip ao receber mensagem urgente de outro membro (ignora o carregamento
+  // inicial). Só toca com "Mensagem urgente" ligado em Configurações →
+  // Notificações → Sons do sistema; de fábrica é mudo.
   useEffect(() => {
     if (loading) return;
     if (firstLoadRef.current) {
@@ -154,7 +135,7 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
     for (const m of messages) {
       if (beepedRef.current.has(m.id)) continue;
       beepedRef.current.add(m.id);
-      if (m.is_urgent && m.sender_id !== user?.id && !m.deleted_at) {
+      if (m.is_urgent && m.sender_id !== user?.id && !m.deleted_at && isSoundEnabled('chatUrgent')) {
         playUrgentBeep();
       }
     }
@@ -188,9 +169,9 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
   // vendo a conversa não precisa de aviso dela. A chave é a do THREAD (raiz da
   // cadeia, em atividade) — é com ela que a mensagem nova chega.
   useEffect(() => {
-    setActiveTeamChatEntity(`${entityType}:${threadRootId}`);
+    setActiveTeamChatEntity(threadKey);
     return () => setActiveTeamChatEntity(null);
-  }, [entityType, threadRootId]);
+  }, [threadKey]);
 
   // Quem cuida do caso por trás deste chat (responsável processual + acolhedor).
   const { owners } = useCaseOwners(entityType, entityId, members);
@@ -897,15 +878,30 @@ export function TeamChatPanel({ entityType, entityId, entityName, highlightMessa
 
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
-        {/* Atividade que já virou etapa nova: a conversa é a mesma desde o
-            primeiro dia — quem chega agora vê o que foi combinado antes. */}
-        {threadSize > 1 && messages.length > 0 && (
+        {/* De quem é esta conversa. Fora do dock do próprio dono o aviso é
+            obrigatório: o que se escreve aqui vai para o caso e aparece em
+            todas as atividades e processos dele — sem dizer isso, a pessoa acha
+            que está falando só com o responsável da ficha (foi o mal-entendido
+            do CASO 180, 10/08/2026). */}
+        {threadKind === 'case' && entityType !== 'case' ? (
+          <div className="flex justify-center pb-1">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary text-center">
+              Conversa do caso{threadLabel ? ` ${threadLabel}` : ''} · aparece em todas as atividades e processos dele
+            </span>
+          </div>
+        ) : threadKind === 'process' && entityType !== 'process' ? (
+          <div className="flex justify-center pb-1">
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary text-center">
+              Conversa do processo{threadLabel ? ` ${threadLabel}` : ''} · aparece em todas as atividades dele
+            </span>
+          </div>
+        ) : threadKind === 'chain' && threadSize > 1 && messages.length > 0 ? (
           <div className="flex justify-center pb-1">
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
               Conversa contínua · {threadSize} etapas desta atividade
             </span>
           </div>
-        )}
+        ) : null}
         {messages.length === 0 && loading ? (
           /* Só a lista espera — o campo de digitação já está disponível. */
           <div className="flex items-center justify-center h-32 text-muted-foreground">

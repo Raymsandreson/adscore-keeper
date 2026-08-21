@@ -252,6 +252,7 @@ interface DbHearing {
   hearing_time: string | null;
   status: string;
   location: string | null;
+  origem: string | null;
 }
 
 // Chave de match: nº do processo (só dígitos) ou, sem processo, o "CASO n" — sempre + data
@@ -284,7 +285,7 @@ export const handler: RequestHandler = async (req, res) => {
 
     const { data: dbRows, error: dbErr } = await ext
       .from('hearings')
-      .select('id, process_number, case_ref, hearing_type, category, hearing_date, hearing_time, status, location')
+      .select('id, process_number, case_ref, hearing_type, category, hearing_date, hearing_time, status, location, origem')
       .is('deleted_at', null);
     if (dbErr) throw new Error(`hearings select: ${dbErr.message}`);
 
@@ -307,6 +308,10 @@ export const handler: RequestHandler = async (req, res) => {
         toInsert.push(p);
         continue;
       }
+      // Perícia marcada na atividade não é sobrescrita pela planilha: quem
+      // anotou tem a convocação na mão, a planilha é resumo digitado depois.
+      // A linha continua contando como "vista" (não vira insert duplicado).
+      if (existing.origem === 'atividade') continue;
       const patch: Record<string, unknown> = {};
       const before: Record<string, unknown> = {};
       if (p.hearing_time && p.hearing_time !== existing.hearing_time) { patch.hearing_time = p.hearing_time; before.hearing_time = existing.hearing_time; }
@@ -356,6 +361,7 @@ export const handler: RequestHandler = async (req, res) => {
     const errors: string[] = [];
     for (const p of toInsert) {
       const { error } = await ext.from('hearings').insert({
+        origem: 'planilha',
         process_number: p.process_number,
         case_ref: p.case_ref,
         hearing_type: p.hearing_type,

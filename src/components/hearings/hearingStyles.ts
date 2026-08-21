@@ -15,6 +15,10 @@ export const STATUS_LABELS: Record<HearingStatus, string> = {
   concluida: 'Concluída',
 };
 
+// Catálogo do formulário. Os quatro primeiros de perícia importam mais do que
+// parecem: "Perícia Médica" (71 linhas) vem da planilha e é JUDICIAL, enquanto
+// os "(INSS)" nascem no chip da atividade e são a perícia ADMINISTRATIVA — o
+// cliente vai a lugares diferentes, e o calendário precisa deixar isso claro.
 export const HEARING_TYPES = [
   'UNA Virtual',
   'UNA Presencial',
@@ -23,6 +27,9 @@ export const HEARING_TYPES = [
   'Encerramento de Instrução',
   'Inicial Virtual',
   'Perícia Médica',
+  'Perícia Médica (INSS)',
+  'Avaliação Social (INSS)',
+  'Perícia Judicial',
   'Outro',
 ];
 

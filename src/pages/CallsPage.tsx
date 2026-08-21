@@ -1,6 +1,8 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useConfirmDelete } from '@/hooks/useConfirmDelete';
 import { useCallRecords, CallRecord } from '@/hooks/useCallRecords';
+import { CallfaceTriageTab } from '@/components/calls/CallfaceTriageTab';
+import { DialQueueTab } from '@/components/calls/DialQueueTab';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -13,6 +15,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Separator } from '@/components/ui/separator';
+import { useSearchParams } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -65,7 +68,21 @@ export default function CallsPage() {
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
   const [editData, setEditData] = useState<Partial<CallRecord>>({});
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState('list');
+  // O aviso de lead novo aponta para /calls?tab=fila — a aba abre já na fila.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const abaDaUrl = searchParams.get('tab');
+  const [tab, setTab] = useState(
+    abaDaUrl && ['list', 'timeline', 'fila', 'triagem'].includes(abaDaUrl) ? abaDaUrl : 'list',
+  );
+  const trocarAba = (v: string) => {
+    setTab(v);
+    // Tira o parâmetro da URL para o F5 não puxar de volta a aba antiga.
+    if (searchParams.has('tab')) {
+      const p = new URLSearchParams(searchParams);
+      p.delete('tab');
+      setSearchParams(p, { replace: true });
+    }
+  };
   const [showNewCallDialog, setShowNewCallDialog] = useState(false);
   const [newCall, setNewCall] = useState({
     call_type: 'outbound',
@@ -671,11 +688,13 @@ export default function CallsPage() {
         </div>
       )}
 
-      {/* Tabs: List / Timeline */}
-      <Tabs value={tab} onValueChange={setTab}>
+      {/* Tabs: List / Timeline / Triagem */}
+      <Tabs value={tab} onValueChange={trocarAba}>
         <TabsList>
           <TabsTrigger value="list">Lista</TabsTrigger>
           <TabsTrigger value="timeline">Timeline por Lead</TabsTrigger>
+          <TabsTrigger value="fila">Fila de discagem</TabsTrigger>
+          <TabsTrigger value="triagem">Triagem Callface</TabsTrigger>
         </TabsList>
 
         <TabsContent value="list" className="mt-3">
@@ -770,6 +789,19 @@ export default function CallsPage() {
               </Card>
             ))
           )}
+        </TabsContent>
+
+        {/* Antes da ligação: leads que chegaram e ainda não foram discados.
+            Exporta a planilha que alimenta o discador da Callface — a API pública
+            deles não tem endpoint para originar chamada. */}
+        <TabsContent value="fila" className="mt-3">
+          <DialQueueTab />
+        </TabsContent>
+
+        {/* Depois da ligação: as que não encostaram em nenhum lead. Nada vira lead
+            automaticamente — a classificação é feita aqui, à mão. */}
+        <TabsContent value="triagem" className="mt-3">
+          <CallfaceTriageTab />
         </TabsContent>
       </Tabs>
 

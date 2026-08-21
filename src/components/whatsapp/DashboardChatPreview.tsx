@@ -40,6 +40,9 @@ import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
+import { getOurInstancePhones, getOurInstancePhonesSync } from '@/integrations/supabase/external-rpc';
+import { withTimeout } from '@/lib/promiseTimeout';
 import type { Contact } from '@/hooks/useContacts';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
@@ -64,6 +67,79 @@ const NAME_FORMAT_OPTIONS = [
   { value: 'nickname', label: 'Apelido' },
 ];
 
+/**
+ * Linhas por página da conversa.
+ *
+ * Em grupo cada mensagem real vira ~2,6 linhas (uma por instância-membro), então
+ * 800 linhas ≈ 300 mensagens. Antes eram 3.000 linhas em ordem CRESCENTE — as
+ * mais ANTIGAS: em grupo movimentado a tela parava meses atrás sem avisar
+ * (a FAMILIA 374, com 13.114 linhas, exibia só até 19/05/2026 em 18/08/2026).
+ */
+const MESSAGE_PAGE_ROWS = 800;
+
+/**
+ * Colunas da conversa + projeções de `metadata` (`->>`), que dizem quem falou no
+ * grupo. Baixar o jsonb inteiro custaria 7,5x o payload (533KB vs 71KB em 143
+ * linhas medidas), e só estes três campos são usados.
+ */
+const MESSAGE_COLUMNS =
+  'id, message_text, direction, created_at, message_type, media_url, media_type, instance_name, external_message_id, ' +
+  'sender_pn:metadata->message->>sender_pn, sender_lid:metadata->message->>sender_lid, sender_name:metadata->message->>senderName';
+
+/**
+ * Teto de espera de uma página da conversa.
+ *
+ * Server-side a consulta é barata (medido em 18/08/2026: 2,5ms para
+ * `phone = '55...'` pelo `idx_whatsapp_messages_phone`, com 1,59M linhas na
+ * tabela). O que estourava era o cliente: sem timeout no fetch, a aba voltando
+ * do segundo plano no celular ficava pendurada minutos a fio e o spinner nunca
+ * saía. 12s é folgado para 4G ruim e curto o bastante para virar erro útil.
+ */
+const MESSAGE_FETCH_TIMEOUT_MS = 12_000;
+
+/**
+ * Uma página de mensagens, da mais recente para a mais antiga.
+ *
+ * `whatsapp_messages` vive no Supabase EXTERNO — o Cloud devolvia sempre vazio.
+ * O `phone` da tabela é só dígitos, mesmo em grupo (sem o `@g.us`).
+ *
+ * `failed` distingue "conversa vazia" de "não consegui carregar" — sem isso,
+ * falha de rede aparecia como "Nenhuma mensagem encontrada", que é mentira.
+ */
+async function fetchMessagePage(
+  normalizedPhone: string,
+  instanceName: string | null,
+  includeAllInstances: boolean,
+  beforeCreatedAt: string | null,
+): Promise<{ rows: any[]; hasMore: boolean; failed: boolean }> {
+  let query = (externalSupabase as any)
+    .from('whatsapp_messages')
+    .select(MESSAGE_COLUMNS)
+    .eq('phone', normalizedPhone);
+  // No privado unificado NÃO filtra instância: queremos as conversas de todos os membros.
+  if (instanceName && !includeAllInstances) {
+    const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
+    query = query.in('instance_name', variants);
+  }
+  if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
+  try {
+    const { data, error } = await withTimeout(
+      query.order('created_at', { ascending: false }).limit(MESSAGE_PAGE_ROWS),
+      MESSAGE_FETCH_TIMEOUT_MS,
+      'fetchMessagePage',
+    );
+    if (error) {
+      console.warn('[DashboardChatPreview] fetchMessagePage error:', error.message);
+      return { rows: [], hasMore: false, failed: true };
+    }
+    const rows = (data as any[]) || [];
+    return { rows, hasMore: rows.length >= MESSAGE_PAGE_ROWS, failed: false };
+  } catch (e) {
+    console.warn('[DashboardChatPreview] fetchMessagePage timeout/falha:', (e as Error)?.message);
+    return { rows: [], hasMore: false, failed: true };
+  }
+}
+
 interface Message {
   id: string;
   message_text: string | null;
@@ -74,6 +150,14 @@ interface Message {
   media_type: string | null;
   instance_name: string | null;
   external_message_id?: string | null;
+  /** Projeções de `metadata` — quem falou, sem baixar o jsonb inteiro (7,5x o payload). */
+  sender_pn?: string | null;
+  sender_lid?: string | null;
+  sender_name?: string | null;
+  /** Preenchidos por `dedupeMirroredMessages` a partir de TODOS os espelhos. */
+  group_sender_name?: string | null;
+  group_sender_phone?: string | null;
+  mirror_ids?: string[];
 }
 
 interface CallRecord {
@@ -161,8 +245,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       });
   }, [open, canTogglePrivate]);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  /** A última carga da conversa falhou (timeout/rede)? Vira botão de tentar de novo, não "conversa vazia". */
+  const [loadFailed, setLoadFailed] = useState(false);
+  /** Incrementado pelo botão "Tentar de novo" — reexecuta o efeito de carga. */
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null);
@@ -327,7 +417,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
 
   useEffect(() => {
     if (!open || !phone) return;
+    let cancelled = false;
     setLoading(true);
+    setLoadFailed(false);
     setAiSuggestion(null);
     setAgentInfo(null);
     setCallRecords([]);
@@ -338,42 +430,37 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     setLinkedCases([]);
     const normalizedPhone = phone.replace(/\D/g, '');
     const fetchMessages = async () => {
-      // whatsapp_messages vive no Supabase EXTERNO. Usar `supabase` (Cloud) aqui
-      // retornava sempre vazio → "nenhuma mensagem encontrada" mesmo com conversa real.
-      // phone na tabela whatsapp_messages é sempre só dígitos (mesmo para grupos,
-      // sem o sufixo @g.us). Usar `normalizedPhone` aqui — caso contrário, grupos
-      // abertos via JID retornavam zero mensagens.
-      let query = (externalSupabase as any)
-        .from('whatsapp_messages')
-        .select('id, message_text, direction, created_at, message_type, media_url, media_type, instance_name, external_message_id')
-        .eq('phone', normalizedPhone);
-      // No privado unificado NÃO filtra instância: queremos as conversas de todos os membros.
-      if (instanceName && !isPrivateAllView) {
-        const variants = Array.from(new Set([instanceName, instanceName.toUpperCase(), instanceName.toLowerCase()]));
-        query = query.in('instance_name', variants);
-      }
-      const { data, error } = await query
-        .order('created_at', { ascending: true })
-        .limit(3000);
-      if (error) {
-        console.warn('[DashboardChatPreview] fetchMessages error:', error.message);
-      }
-      // Grupos: a mesma mensagem é gravada por cada instância que está no grupo.
-      // O created_at muda entre espelhos, então a chave real é o tail do external_message_id.
-      const rows = (data as any[]) || [];
-      const seen = new Set<string>();
-      const deduped = rows.filter((m) => {
-        const msgId = typeof m.external_message_id === 'string' ? m.external_message_id.split(':').pop() : null;
-        const key = msgId
-          ? `ext:${msgId}`
-          : `fallback:${m.direction}|${m.created_at}|${(m.message_text || '').trim()}|${m.media_url || ''}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-      setMessages(deduped as any);
+      // A lista NÃO espera mais `getOurInstancePhones()`. Ele só refina a
+      // autoria de mensagem de GRUPO e vinha num `Promise.all` com a página:
+      // pendurado (aba voltando do segundo plano, sem timeout), segurava a
+      // conversa inteira no spinner. Agora entra pelo cache síncrono e, se
+      // estiver frio, refina depois — sem bloquear a tela.
+      const { rows, hasMore, failed } = await fetchMessagePage(
+        normalizedPhone, instanceName, isPrivateAllView, null,
+      );
+      if (cancelled) return;
+      // Espelhos de grupo colapsados pela MESMA regra da aba do WhatsApp
+      // (`whatsappGroupMirror`): na ordem decrescente a linha mais recente é a
+      // canônica — igual ao chat — e o autor sai do conjunto todo, não de um
+      // espelho só. Depois inverte para exibir em ordem cronológica.
+      const coldPhones = getOurInstancePhonesSync();
+      setMessages(dedupeMirroredMessages(rows, { ourPhones: coldPhones }).slice().reverse() as any);
+      setHasMoreOlder(hasMore);
+      setLoadFailed(failed);
       setLoading(false);
-      setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'auto' }), 100);
+      setTimeout(() => { if (!cancelled) bottomRef.current?.scrollIntoView({ behavior: 'auto' }); }, 100);
+
+      // Refino da autoria em grupo, já com a conversa na tela. Só vale a pena
+      // se o cache estava vazio no primeiro render.
+      if (failed || rows.length === 0 || coldPhones.size > 0) return;
+      const ourPhones = await getOurInstancePhones();
+      if (cancelled || ourPhones.size === 0) return;
+      const refined = dedupeMirroredMessages(rows, { ourPhones }).slice().reverse();
+      setMessages(prev => {
+        // Preserva o que chegou por realtime enquanto o refino rodava.
+        const known = new Set(refined.map(m => m.id));
+        return [...refined, ...prev.filter(m => !known.has(m.id))];
+      });
     };
     const fetchAgent = async () => {
       const { data } = await supabase
@@ -541,7 +628,8 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     };
     fetchConversationStatus();
 
-  }, [open, phone]);
+    return () => { cancelled = true; };
+  }, [open, phone, reloadNonce]);
 
   // Casos jurídicos do lead — o menu precisa dizer "já criado" em vez de
   // oferecer criar de novo.
@@ -1547,6 +1635,30 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     if (last?.instance_name) setSendAsInstance(last.instance_name);
   }, [messages, isPrivateAllView, sendAsInstance]);
 
+  /**
+   * Página anterior do histórico. A conversa abre pelo fim (o que interessa em
+   * atividade é a última resposta do cliente); o resto vem sob demanda.
+   */
+  const loadOlderMessages = useCallback(async () => {
+    if (loadingOlder || messages.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = messages[0].created_at;
+      const [{ rows, hasMore }, ourPhones] = await Promise.all([
+        fetchMessagePage((phone || '').replace(/\D/g, ''), instanceName, isPrivateAllView, oldest),
+        getOurInstancePhones(),
+      ]);
+      const older = dedupeMirroredMessages(rows, { ourPhones }).slice().reverse();
+      setMessages(prev => {
+        const seen = new Set(prev.map(m => m.id));
+        return [...older.filter(m => !seen.has(m.id)), ...prev] as any;
+      });
+      setHasMoreOlder(hasMore);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }, [loadingOlder, messages, phone, instanceName, isPrivateAllView]);
+
   // Merge messages and call records into unified timeline
   const timelineItems = useMemo(() => {
     const items: Array<{ type: 'message'; data: Message } | { type: 'call'; data: CallRecord }> = [];
@@ -2121,11 +2233,33 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
             <div className="flex items-center justify-center py-12">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
+          ) : loadFailed ? (
+            <div className="flex flex-col items-center gap-2 py-10 text-center">
+              <p className="text-sm text-muted-foreground">
+                Não consegui carregar as mensagens agora.
+              </p>
+              <Button size="sm" variant="outline" onClick={() => setReloadNonce(n => n + 1)}>
+                Tentar de novo
+              </Button>
+            </div>
           ) : timelineItems.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">Nenhuma mensagem encontrada</p>
           ) : (
             <ScrollArea className="h-[50vh]">
               <div className="space-y-1 pr-3">
+                {hasMoreOlder && (
+                  <div className="flex justify-center pb-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 text-[10px] text-muted-foreground"
+                      disabled={loadingOlder}
+                      onClick={loadOlderMessages}
+                    >
+                      {loadingOlder ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Carregar mensagens anteriores'}
+                    </Button>
+                  </div>
+                )}
                 {timelineItems.map((item) => {
                   const dateLabel = formatDateSeparator(item.data.created_at);
                   const showDateSep = dateLabel !== lastDateLabel;
@@ -2204,6 +2338,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                             setSelectedMsgId(msg.id);
                           }}
                         >
+                          {isGroupChat && isInbound && (msg.group_sender_name || msg.group_sender_phone) && (
+                            <p className="text-[9px] font-semibold mb-0.5 text-emerald-600 dark:text-emerald-400">
+                              {msg.group_sender_name}
+                              {msg.group_sender_phone && (
+                                <span className="font-normal opacity-70">{msg.group_sender_name ? ' ' : ''}~{msg.group_sender_phone}</span>
+                              )}
+                            </p>
+                          )}
                           {isPrivateAllView && msg.instance_name && (() => {
                             const owner = instanceOwners[msg.instance_name.toLowerCase()] || msg.instance_name;
                             return (

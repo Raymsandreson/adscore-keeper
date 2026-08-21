@@ -68,31 +68,31 @@ Deno.serve(async (req) => {
       processes,
       contacts,
     ] = await Promise.all([
-      fetchAll(supabase, 'whatsapp_messages', 'phone, contact_name, created_at, instance_name', (q: any) =>
-        q.eq('direction', 'inbound').not('phone', 'like', '%@g.us').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: true })
+      fetchAll(extClient, 'whatsapp_messages', 'phone, contact_name, created_at, instance_name', (q: any) =>
+        q.eq('direction', 'inbound').not('phone', 'like', '1203%').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: true })
       ),
-      fetchAll(supabase, 'whatsapp_messages', 'phone, created_at, lead_id, action_source', (q: any) =>
-        q.eq('direction', 'outbound').not('phone', 'like', '%@g.us').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: true })
+      fetchAll(extClient, 'whatsapp_messages', 'phone, created_at, lead_id, action_source', (q: any) =>
+        q.eq('direction', 'outbound').not('phone', 'like', '1203%').gte('created_at', todayStart).lte('created_at', todayEnd).order('created_at', { ascending: true })
       ),
-      fetchAll(supabase, 'leads', 'id, acolhedor, campaign_name, lead_status, lead_phone, created_at, updated_at, whatsapp_group_id, group_link', (q: any) =>
+      fetchAll(extClient, 'leads', 'id, acolhedor, campaign_name, lead_status, lead_phone, created_at, updated_at, whatsapp_group_id, group_link', (q: any) =>
         q.eq('lead_status', 'closed').gte('updated_at', todayStart).lte('updated_at', todayEnd)
       ),
-      fetchAll(supabase, 'zapsign_documents', 'id, document_name, instance_name, lead_id, created_at, signed_at', (q: any) =>
+      fetchAll(extClient, 'zapsign_documents', 'id, document_name, instance_name, lead_id, created_at, signed_at', (q: any) =>
         q.eq('signer_status', 'signed').gte('created_at', todayStart).lte('created_at', todayEnd)
       ),
-      fetchAll(supabase, 'zapsign_documents', 'id, document_name, instance_name, lead_id, created_at', (q: any) =>
+      fetchAll(extClient, 'zapsign_documents', 'id, document_name, instance_name, lead_id, created_at', (q: any) =>
         q.eq('signer_status', 'new').gte('created_at', todayStart).lte('created_at', todayEnd)
       ),
-      fetchAll(supabase, 'leads', 'id, lead_name, acolhedor, board_id, campaign_name, created_at', (q: any) =>
+      fetchAll(extClient, 'leads', 'id, lead_name, acolhedor, board_id, campaign_name, created_at', (q: any) =>
         q.not('whatsapp_group_id', 'is', null).gte('created_at', todayStart).lte('created_at', todayEnd)
       ),
-      fetchAll(supabase, 'legal_cases', 'id, case_number, title, acolhedor, lead_id, created_at', (q: any) =>
+      fetchAll(extClient, 'legal_cases', 'id, case_number, title, acolhedor, lead_id, created_at', (q: any) =>
         q.gte('created_at', todayStart).lte('created_at', todayEnd)
       ),
-      fetchAll(supabase, 'case_process_tracking', 'id, cliente, acolhedor, lead_id, created_at', (q: any) =>
+      fetchAll(extClient, 'case_process_tracking', 'id, cliente, acolhedor, lead_id, created_at', (q: any) =>
         q.gte('created_at', todayStart).lte('created_at', todayEnd)
       ),
-      fetchAll(supabase, 'contacts', 'id, full_name, city, state, created_by, created_at', (q: any) =>
+      fetchAll(extClient, 'contacts', 'id, full_name, city, state, created_by, created_at', (q: any) =>
         q.gte('created_at', todayStart).lte('created_at', todayEnd)
       ),
     ]);
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
     // ===== CONVERSATION METRICS =====
     const phoneMap = new Map<string, { phone: string; contact_name: string | null; first_at: string; instance_name: string | null }>();
     for (const m of inboundMsgs as any[]) {
-      if (!m.phone || m.phone.includes('@g.us')) continue;
+      if (!m.phone || m.phone.replace(/\D/g, '').length >= 17) continue;
       if (!phoneMap.has(m.phone)) {
         phoneMap.set(m.phone, { phone: m.phone, contact_name: m.contact_name, first_at: m.created_at, instance_name: m.instance_name });
       }
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
 
     const outboundMap = new Map<string, { count: number; first_at: string | null }>();
     for (const m of outboundMsgs as any[]) {
-      if (!m.phone) continue;
+      if (!m.phone || m.phone.replace(/\D/g, '').length >= 17) continue;
       const ex = outboundMap.get(m.phone);
       if (!ex) outboundMap.set(m.phone, { count: 1, first_at: m.created_at });
       else ex.count++;
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
     const phonesToCheck = uniquePhones.slice(0, 2000);
     for (let i = 0; i < phonesToCheck.length; i += 50) {
       const batch = phonesToCheck.slice(i, i + 50);
-      const { data } = await supabase
+      const { data } = await extClient
         .from('whatsapp_messages')
         .select('phone')
         .lt('created_at', todayStart)
@@ -149,7 +149,7 @@ Deno.serve(async (req) => {
     // Lead lookup for new convs
     let leadPhoneMap = new Map<string, string>();
     if (trulyNewPhones.length > 0) {
-      const { data: allLeads } = await supabase.from('leads').select('lead_phone, lead_name').not('lead_phone', 'is', null);
+      const { data: allLeads } = await extClient.from('leads').select('lead_phone, lead_name').not('lead_phone', 'is', null);
       for (const l of (allLeads || []) as any[]) {
         const norm = (l.lead_phone || '').replace(/\D/g, '');
         if (norm) leadPhoneMap.set(norm.slice(-8), l.lead_name || '');
@@ -189,7 +189,7 @@ Deno.serve(async (req) => {
     if (leadsNeedingHistory.length > 0) {
       for (let i = 0; i < leadsNeedingHistory.length; i += 50) {
         const batch = leadsNeedingHistory.slice(i, i + 50).map((l: any) => l.id);
-        const histMsgs = await fetchAll(supabase, 'whatsapp_messages', 'lead_id, action_source', (q: any) =>
+        const histMsgs = await fetchAll(extClient, 'whatsapp_messages', 'lead_id, action_source', (q: any) =>
           q.eq('direction', 'outbound').in('lead_id', batch)
         );
         for (const m of histMsgs as any[]) {
@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
     const allDocLeadIds = [...new Set([...(signedDocs as any[]), ...(pendingDocs as any[])].map(d => d.lead_id).filter(Boolean))];
     let docLeadAcolhedorMap = new Map<string, string>();
     if (allDocLeadIds.length > 0) {
-      const { data } = await supabase.from('leads').select('id, acolhedor').in('id', allDocLeadIds);
+      const { data } = await extClient.from('leads').select('id, acolhedor').in('id', allDocLeadIds);
       for (const l of (data || []) as any[]) {
         if (l.acolhedor) docLeadAcolhedorMap.set(l.id, l.acolhedor);
       }
@@ -322,7 +322,7 @@ Deno.serve(async (req) => {
     const allLeadIds = [...new Set([...(cases as any[]).map(c => c.lead_id), ...(processes as any[]).map(p => p.lead_id)].filter(Boolean))];
     let leadInfoMap: Record<string, { lead_phone: string | null; whatsapp_group_id: string | null }> = {};
     if (allLeadIds.length > 0) {
-      const { data } = await supabase.from('leads').select('id, lead_phone, whatsapp_group_id').in('id', allLeadIds);
+      const { data } = await extClient.from('leads').select('id, lead_phone, whatsapp_group_id').in('id', allLeadIds);
       if (data) leadInfoMap = Object.fromEntries(data.map((l: any) => [l.id, { lead_phone: l.lead_phone, whatsapp_group_id: l.whatsapp_group_id }]));
     }
 

@@ -45,6 +45,8 @@ interface ProcessDetailSheetProps {
   onUpdated?: (updatedProcess?: any) => void;
   mode?: 'sheet' | 'dialog';
   defaultTab?: TabId;
+  /** Mensagem do chat interno a destacar — deep-link de menção do processo. */
+  highlightMessageId?: string | null;
 }
 
 function formatDateBR(val: string): string {
@@ -227,7 +229,7 @@ function classifyDocumentType(text: string): string {
   return 'outro';
 }
 
-export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab }: ProcessDetailSheetProps) {
+export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab, highlightMessageId }: ProcessDetailSheetProps) {
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
@@ -1286,7 +1288,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 processId={process.id}
                 caseId={process.case_id || form.case_id || null}
                 leadId={process.lead_id || null}
-                contextLabel="Lançamentos deste processo — inclui as despesas registradas dentro das atividades vinculadas a ele."
+                processNumber={form.process_number || process.process_number || null}
+                contextLabel="Extrato do processo — lançamentos manuais, despesas das atividades vinculadas, parcelas da jurimetria e o extrato importado da planilha, separando o que é do escritório do que é do cliente."
                 listMaxHeight="420px"
               />
             )}
@@ -1762,6 +1765,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             entityId={process.id}
             entityName={form.process_number || form.title || 'Processo'}
             height={220}
+            highlightMessageId={highlightMessageId}
           />
         </div>
       )}

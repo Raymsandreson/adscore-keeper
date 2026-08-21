@@ -16,16 +16,19 @@ import {
   linkMessagesToLead,
   linkConversationContactToLead,
   linkMessagesToContact,
+  getOurInstancePhones,
+  getOurInstancePhonesSync,
   CONVERSATIONS_PAGE_SIZE,
   type ConversationSummary,
 } from '@/integrations/supabase/external-rpc';
+import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
 import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
-import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 
 const showDisconnectedToast = (instanceId: string | undefined, instanceName: string | undefined) => {
   toast.error(
@@ -122,8 +125,17 @@ function extractLabelIdsFromMetadata(metadata: any): string[] | null {
 
 // Conversation identity = phone + instance_name. Normalize instance_name case-insensitively
 // to avoid creating phantom duplicates when the webhook saves "Cris" but the RPC returns "cris".
-const getConversationKey = (phone: string, instanceName?: string | null) =>
-  `${normalizeWhatsAppConversationPhone(phone)}__${normalizeInstanceName(instanceName)}`;
+//
+// GRUPO é a exceção: a identidade é só o telefone. Cada instância-membro grava a
+// sua cópia das mensagens, então o mesmo grupo aparecia N vezes na lista — uma
+// por instância, cada uma com um pedaço do histórico (a mais pobre enxerga 56%
+// ou menos na metade dos grupos; no pior caso, 2%). Uma chave só junta as
+// cópias na mesma conversa, na lista, no cache e no realtime.
+const getConversationKey = (phone: string, instanceName?: string | null) => {
+  const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
+  if (isWhatsAppGroupId(normalizedPhone)) return `${normalizedPhone}__group`;
+  return `${normalizedPhone}__${normalizeInstanceName(instanceName)}`;
+};
 
 // Página de mensagens por conversa: a UI renderiza 50 por vez (scroll-up
 // pagina client-side), então 300 cobre 6 "telas" antes de precisar de nova
@@ -540,7 +552,12 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         const existingTime = new Date(existingConversation.last_message_at).getTime();
         const incomingTime = new Date(summary.last_message_at).getTime();
 
-        existingConversation.unread_count += Number(summary.unread_count) || 0;
+        // Grupo: as não lidas das instâncias são as MESMAS mensagens espelhadas
+        // — somar multiplicava o badge por instância-membro. Fica a maior.
+        const incomingUnread = Number(summary.unread_count) || 0;
+        existingConversation.unread_count = isWhatsAppGroupId(summaryPhone)
+          ? Math.max(existingConversation.unread_count, incomingUnread)
+          : existingConversation.unread_count + incomingUnread;
         if (!existingConversation.contact_name && summary.contact_name) {
           existingConversation.contact_name = summary.contact_name;
         }
@@ -1658,7 +1675,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     // Canonicaliza a key ANTES de qualquer await. O handler realtime compara
     // activeConversationKeyRef contra targetConversationKey canônica; se um INSERT
     // chegar durante o await, a key raw setada antes não bate e o cache não atualiza.
-    const targetInstanceName = getCanonicalInstanceName(instanceName);
+    const targetInstanceName = instanceName ? getCanonicalInstanceName(instanceName) : null;
     const targetConversationKey = getConversationKey(phone, targetInstanceName);
     activeConversationKeyRef.current = targetConversationKey;
 
@@ -1676,8 +1693,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           cached[0].created_at
         );
         const [delta, overlap] = await Promise.all([
-          getConversationMessagesSince(phone, instanceName, newest),
-          getConversationMessages(phone, instanceName, MESSAGES_REFRESH_OVERLAP),
+          getConversationMessagesSince(phone, instanceName || '', newest),
+          getConversationMessages(phone, instanceName || '', MESSAGES_REFRESH_OVERLAP),
         ]);
         const byId = new Map<string, WhatsAppMessage>();
         for (const m of cached) byId.set(m.id, m);
@@ -1688,7 +1705,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
       } else {
-        raw = (await getConversationMessages(phone, instanceName, MESSAGES_FETCH_PAGE)) as unknown as WhatsAppMessage[];
+        raw = (await getConversationMessages(phone, instanceName || '', MESSAGES_FETCH_PAGE)) as unknown as WhatsAppMessage[];
         // Página cheia ⇒ provavelmente há mais histórico no servidor
         convHasMoreOlderRef.current[targetConversationKey] = raw.length >= MESSAGES_FETCH_PAGE;
       }
@@ -1697,17 +1714,14 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         phone: normalizeWhatsAppConversationPhone(msg.phone),
       }));
 
-      // Deduplicate group messages (same messageid from different instances)
-      const deduped: WhatsAppMessage[] = [];
-      const seenMsgIds = new Set<string>();
-      for (const m of allMsgs) {
-        const msgId = m.external_message_id?.split(':').pop();
-        const dedupKey = msgId ? `ext:${msgId}` : m.id;
-        if (!seenMsgIds.has(dedupKey)) {
-          seenMsgIds.add(dedupKey);
-          deduped.push(m);
-        }
-      }
+      // Espelhos de grupo (mesma mensagem gravada por cada instância-membro)
+      // colapsados pela MESMA regra do menu "Grupo WA" das atividades — ver
+      // `@/lib/whatsappGroupMirror`. O `direction` passa a sair do conjunto de
+      // espelhos: antes, qual deles sobrevivia decidia de que lado a bolha
+      // aparecia, e as duas telas discordavam em 20% das mensagens de grupo.
+      const deduped = dedupeMirroredMessages(allMsgs, {
+        ourPhones: await getOurInstancePhones(),
+      }) as unknown as WhatsAppMessage[];
 
       const firstNamedMessage = deduped.find(m => m.contact_name || m.contact_id || m.lead_id) || deduped[0] || null;
       const lastMessage = deduped[0] || null;
@@ -1780,8 +1794,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       const seenExtIds = new Set(
         cached.map(m => m.external_message_id?.split(':').pop()).filter(Boolean)
       );
-      const older = raw
-        .map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) }))
+      const older = (dedupeMirroredMessages(
+        raw.map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) })),
+        { ourPhones: await getOurInstancePhones() },
+      ) as unknown as WhatsAppMessage[])
         .filter(m => {
           if (existingIds.has(m.id)) return false;
           const extId = m.external_message_id?.split(':').pop();
@@ -1822,8 +1838,10 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     const seenExtIds = new Set(
       cached.map(m => m.external_message_id?.split(':').pop()).filter(Boolean)
     );
-    const fresh = incoming
-      .map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) }))
+    const fresh = (dedupeMirroredMessages(
+      incoming.map(msg => ({ ...msg, phone: normalizeWhatsAppConversationPhone(msg.phone) })),
+      { ourPhones: getOurInstancePhonesSync() },
+    ) as unknown as WhatsAppMessage[])
       .filter(m => {
         if (existingIds.has(m.id)) return false;
         existingIds.add(m.id);

@@ -113,6 +113,19 @@ const TRT16_INLINE = `Número do Processo: 0016320-73.2016.5.16.0009 Eventos: Da
   + `11/08/2026 17:07 https://pje.trt16.jus.br/consultaprocessual/detalhe-processo/0016320-73.2016.5.16.0009/1#b105d6f Despacho - Despacho `
   + `Para acessar este processo na consulta pública, clique em https://pje.trt16.jus.br/consultaprocessual .`;
 
+/**
+ * Push do TRT8 no processo 0000375-74.2026.5.08.0120, recebido em 12/06/2026:
+ * dois eventos do dia e a SALA da audiência designada para 16/09/2026. A data
+ * futura era a maior do bloco e virava a data do card — o feed mostrava a
+ * conclusão de junho como notícia de agosto.
+ */
+const TRT8_AUDIENCIA_FUTURA = `Tribunal Regional do Trabalho da 8ª Região `
+  + `Número do Processo: 0000375-74.2026.5.08.0120 Eventos: Data Evento `
+  + `12/06/2026 16:32 Conclusos os autos para julgamento Proferir sentença a UBIRAJARA SOUZA FONTENELE JUNIOR `
+  + `12/06/2026 12:08 Audiência de instrução (rito sumaríssimo) por videoconferência cancelada `
+  + `16/09/2026 08:30 Sala Principal - 2ª VARA DO TRABALHO DE ANANINDEUA `
+  + `Para acessar este processo na consulta pública, clique em https://pje.trt8.jus.br/consultaprocessual .`;
+
 describe('parseEmailPush — bloco "Eventos:" em linha corrida', () => {
   it('extrai os 3 eventos do push do TST e devolve UMA movimentação com eles junto', () => {
     const movs = parseEmailPush({
@@ -153,6 +166,24 @@ describe('parseEmailPush — bloco "Eventos:" em linha corrida', () => {
     const movs = parseEmailPush({ assunto: '[TRT10] [PUSH] Atualizações', corpo: TRT10 });
     expect(movs).toHaveLength(3);
     expect(movs[0].eventos).toBeUndefined();
+  });
+
+  it('audiência designada para daqui a três meses não vira a data da notícia', () => {
+    const movs = parseEmailPush({
+      assunto: '[TRT8] [PUSH] Atualizações de Informações Processuais',
+      corpo: TRT8_AUDIENCIA_FUTURA,
+      dataEmail: '2026-06-12',
+    });
+    expect(movs).toHaveLength(1);
+    // O evento mais recente do bloco é 16/09/2026 — que ainda não aconteceu.
+    expect(movs[0].data).toBe('2026-06-12');
+    expect(movs[0].eventos).toHaveLength(3);
+    expect(movs[0].eventos?.[2].data).toBe('2026-09-16');
+  });
+
+  it('sem a data do e-mail nada muda: o teto é opcional', () => {
+    const movs = parseEmailPush({ assunto: '', corpo: TST_INLINE });
+    expect(movs[0].data).toBe('2026-08-06');
   });
 
   it('resumo sem repetir o mesmo evento e com contagem', () => {

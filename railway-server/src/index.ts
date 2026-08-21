@@ -11,6 +11,12 @@ import {
   WEBHOOK_PUBLIC_FUNCTIONS,
 } from './lib/functionAuth';
 import { observeUazapiOriginAsync, uazapiOriginStats } from './lib/webhookOrigin';
+// Aliases explícitos: no Railway `SUPABASE_URL` sem prefixo é o Cloud (ver
+// CLOUD_FUNCTIONS_URL abaixo). Estes dois são do Externo.
+import {
+  SUPABASE_URL as EXTERNAL_SUPABASE_URL,
+  SUPABASE_SERVICE_ROLE_KEY as EXTERNAL_SERVICE_ROLE_KEY,
+} from './lib/supabase';
 
 dotenv.config();
 
@@ -730,3 +736,83 @@ async function runHearingsSync() {
   }
 }
 setInterval(runHearingsSync, 10 * 60 * 1000);
+
+// ============================================================
+// CRON: sincroniza Open Finance / Celcoin (conciliação bancária).
+// Roda nas horas de CELCOIN_SYNC_HOURS_BRT (padrão 06, 12 e 19h,
+// Brasília), com trava por data+hora. Idempotente: o upsert usa a
+// UNIQUE (provider, pluggy_transaction_id), então rodar de novo
+// sobrescreve a mesma linha em vez de duplicar.
+//
+// POR QUE AQUI E NÃO NUM pg_cron DO EXTERNO (medido em 19/08/2026):
+// a edge exige service_role no Authorization (ou um JWT de sessão do
+// Cloud em x-cloud-jwt) — ela cria consentimento e lê extrato com a
+// credencial da firma. Os 13 pg_cron do Externo que mandam Bearer
+// carregam TODOS a anon key; nenhum tem service_role. Copiar o Bearer
+// de um job existente, que é o padrão da casa, produziria 401 calado
+// todo dia. A alternativa seria gravar a service_role em texto puro
+// dentro de cron.job.command — e daí também dentro da migration no
+// repo. Aqui a chave já existe em EXTERNAL_SUPABASE_SERVICE_ROLE_KEY
+// e nenhum segredo novo circula. O bloqueio geográfico da Celcoin não
+// atrapalha: quem fala com a Celcoin é a edge, de São Paulo; o Railway
+// só fala com o Supabase.
+//
+// Intervalo curto + checagem de hora, e não setInterval de 24h, pelo
+// mesmo motivo do sync-hearings: intervalo longo não sobrevive a
+// restart, e cada deploy adiaria o disparo.
+// ============================================================
+const CELCOIN_SYNC_HOURS_BRT = String(process.env.CELCOIN_SYNC_HOURS_BRT || '6,12,19')
+  .split(',')
+  .map((h) => Number(h.trim()))
+  .filter((h) => Number.isInteger(h) && h >= 0 && h <= 23);
+let lastCelcoinSyncKey = '';
+async function runCelcoinSync() {
+  try {
+    if (!CELCOIN_SYNC_HOURS_BRT.length) return;
+    const now = new Date();
+    const spHour = Number(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Sao_Paulo', hour: 'numeric', hour12: false }).format(now));
+    const spDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(now);
+    if (!CELCOIN_SYNC_HOURS_BRT.includes(spHour)) return;
+    const key = `${spDate}T${spHour}`;
+    if (lastCelcoinSyncKey === key) return;
+    lastCelcoinSyncKey = key;
+
+    // Sem janela no corpo: a edge decide o piso sozinha (syncFloor), que é o
+    // que evita buraco no dia corrente e duplicata por cima da Pluggy.
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 5 * 60 * 1000);
+    try {
+      const resp = await fetch(`${EXTERNAL_SUPABASE_URL}/functions/v1/celcoin-open-finance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${EXTERNAL_SERVICE_ROLE_KEY}`,
+          apikey: EXTERNAL_SERVICE_ROLE_KEY,
+        },
+        body: JSON.stringify({ action: 'sync_all' }),
+        signal: ctrl.signal,
+      });
+      const json: any = await resp.json().catch(() => ({}));
+      const linha =
+        `[cron:celcoin-sync] status=${resp.status} consentimentos=${json?.consentimentos ?? '?'} ` +
+        `falhas=${json?.falhas ?? '?'} bancarias=${json?.bank_transactions ?? 0} cartao=${json?.credit_card_transactions ?? 0}`;
+      // Conexão que falha é o modo de morte desta integração: consentimento
+      // revogado ou vencido para de trazer dado e a tela não acusa nada. Sai
+      // como erro para ficar visível no log sem ninguém abrir o corpo.
+      if (!resp.ok || json?.falhas) {
+        const quais = (json?.resultados || [])
+          .filter((r: any) => !r?.ok)
+          .map((r: any) => `${r?.brand_name || r?.consent_id}: ${r?.erro || 'sem detalhe'}`)
+          .join(' | ');
+        console.error(`${linha}${quais ? ` -> ${quais}` : ''}${json?.error ? ` error=${json.error}` : ''}`);
+      } else {
+        console.log(linha);
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    console.warn('[cron:celcoin-sync] failed:', err instanceof Error ? err.message : err);
+  }
+}
+setInterval(runCelcoinSync, 10 * 60 * 1000);
