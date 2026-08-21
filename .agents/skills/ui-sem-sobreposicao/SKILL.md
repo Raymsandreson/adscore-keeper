@@ -26,6 +26,7 @@ Se um elemento precisa aparecer "na frente", o layout está errado — conserte 
 6. **`truncate` só vale em elemento de bloco/flex.** Em wrapper `inline-flex` (é o caso do `CopyableText`, `src/components/ui/copyable-text.tsx`) a classe não corta nada: o elemento tem largura shrink-to-fit e o texto vaza por cima do vizinho. Usar a **prop** `truncate` do componente + `max-w-full`, com o pai em `min-w-0`.
 7. **Dropdown/Popover:** usa `collisionPadding` e `side` para não estourar por cima do gatilho nem sair da tela?
 8. **Campo de digitar mensagem:** cresce com o texto? Chat com `<Input>` de uma linha esconde o que a pessoa está escrevendo — usar `AutoResizeTextarea` (`src/components/ui/auto-resize-textarea.tsx`) e `items-end` no rodapé.
+9. **Popup/toast que abre alguma coisa:** ao ser atendido (clique em "abrir"), ele **sai da tela**. Manter o aviso de pé depois do clique cobre o conteúdo que acabou de abrir — e, quando o painel reserva a altura da pilha (`useTopToastStackHeight`), ainda espreme o conteúdo. Descartar só o popup atendido; os outros da pilha continuam. Ver `TeamNotificationToast.handleOpen`.
 
 ## Padrões corretos (deste repo)
 

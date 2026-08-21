@@ -76,6 +76,7 @@ Estas eu abri o código e confirmei o que faz. Para o resto, use `describe-funct
 ### Infra
 - `supabase/run-external-migration` → roda SQL no Externo. Body `{ sql }` (string ou array). Tenta `EXTERNAL_DB_URL` direto, fallback REST. **Única via oficial** pra mudar schema do Externo.
 - `supabase/deploy-to-external` → deploya edge function no Externo via Management API. Body `{ slug, code, verify_jwt? }`. Usa `EXTERNAL_SUPABASE_ACCESS_TOKEN`.
+- `src/lib/promiseTimeout.ts` → `withTimeout(promise, ms, label)`. **Teto de espera de consulta no front.** O `fetch` do supabase-js não tem timeout: aba voltando do segundo plano no celular deixa a requisição pendurada por minutos e o spinner nunca sai. Não aborta a requisição — limita a espera da UI. Já usado em `DashboardChatPreview.fetchMessagePage` (12s) e `getOurInstancePhones` (8s). Antes de escrever `Promise.race` com `setTimeout` na mão, use esta.
 
 ## Lista de candidatos NÃO verificados ainda
 

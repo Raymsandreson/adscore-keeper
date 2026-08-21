@@ -348,6 +348,20 @@ O alerta que aparece na barra de notificações do celular e **fica lá até ser
 
 **Alertas que NÃO chegam com o app fechado**: metas (`useGoalNotifications`), métricas (`useMetricAlerts`), conversão (`useConversionAlerts`) e outbound (`useOutboundNotifications`) são calculados **na aba aberta**. Eles agora aparecem no celular com o app aberto — antes nem isso, porque usavam `new Notification(...)`, que **não é construível no Chrome do Android** (`TypeError: Illegal constructor`). Todos passaram a usar `showNativeNotification` (`src/lib/nativeNotification.ts`), que exibe pelo service worker. Para alcançar celular com o app **fechado**, o cálculo teria que sair da aba e virar rotina no servidor — não foi feito.
 
+#### Abrir a conversa pelo popup — carga com teto de tempo (21/08/2026)
+
+Tocar no popup abre a conversa no mesmo drawer do resto do app (`WhatsAppChatSheetHost` → `DashboardChatPreview`, `direction="top"`). Duas correções nesse caminho:
+
+**O popup atendido sai da tela.** Antes ele ficava até o X, o swipe ou o tempo — cobria o topo do chat e ainda empurrava o drawer pra baixo (`useTopToastStackHeight` reserva a altura da pilha de avisos). Agora `handleOpen` descarta **aquele** popup; os outros da pilha continuam de pé, então nenhum aviso se perde.
+
+**A conversa não fica mais presa no spinner.** O sintoma era carregar por minutos, às vezes nunca. O banco nunca foi o gargalo — medido no Externo em 18/08/2026, a página de mensagens de uma conversa privada roda em **2,5 ms** pelo `idx_whatsapp_messages_phone`, com 1,59 M de linhas na tabela. O problema era o cliente:
+
+- O `fetch` do supabase-js **não tem timeout**. Abrindo pelo popup, a aba costuma estar voltando do segundo plano no celular, com o socket morto: a requisição fica pendurada até o sistema operacional derrubar. Como `setLoading(false)` só existia depois do `await`, o spinner nunca saía.
+- `getOurInstancePhones()` entrava num `Promise.all` junto com a página de mensagens e **cacheia a promessa por sessão** — pendurada uma vez, travava toda abertura de conversa dali em diante. Ela só refina a autoria de mensagem de **grupo**; não tem por que segurar a tela.
+- Falha de rede aparecia como "Nenhuma mensagem encontrada", que é mentira e não oferece saída.
+
+O que passou a valer: página de mensagens com teto de **12 s** e `getOurInstancePhones` com teto de **8 s** (`withTimeout`, `src/lib/promiseTimeout.ts`), falha não fica cacheada, a lista entra pelo cache síncrono e refina a autoria de grupo depois, e o que falha vira **"Tentar de novo"** na tela — nunca spinner eterno nem "conversa vazia".
+
 ---
 
 ## Campanhas — `/campanhas`
