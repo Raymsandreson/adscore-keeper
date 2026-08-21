@@ -817,3 +817,77 @@ mesma lógica se aplicará depois, quando a seção financeira estiver rodando.
 
 Gatilho combinado: o Raym abre a próxima sessão com "faz o passo 1 da
 aposentadoria da Tab.Aux".
+
+## 14. 21/08/2026 — os autos restritos: 14 tentativas, zero sucesso, e o erro que sumia
+
+O certificado digital (RAYMSANDRESON, CPF 023.516.943-92, cadastrado no
+Escavador em 10/07/2026, expira 10/07/2027) ganhou em 21/08 às 12:49 um método
+TOTP "PDPJ (válido para todos os sistemas PJE)": 74 autenticações, 73 PJE + 1
+SEEU. Isso cobre **446 dos 467 processos** da carteira (96%). Ficam fora TJSP
+(10), TRF4 (3), TJMS (3), TJPR, TJAM, TJAL, TJSE e TRF6.
+
+### 14.1 O placar
+
+Treze processos foram disparados às 16:40 com `{autos:1, utilizar_certificado:1}`,
+mais um teste controlado às 17:36. Resultado das 14:
+
+| `autos_erro` | qtd |
+|---|---|
+| `SECRET_ERROR` | 8 |
+| `LOGIN_ERROR` | 5 |
+| `INTERNAL_ERROR` | 1 |
+| SUCESSO | **0** |
+
+`SECRET_ERROR` aparece em TRT-3, TRT-8, TRT-22 e TJMT — tribunais diferentes,
+mesmo erro. Não é "tribunal não suportado": é o segredo TOTP não gerar código
+que o PDPJ aceita. `LOGIN_ERROR` é a etapa anterior, o login com o certificado,
+e só dá para separar os dois depois que o TOTP estiver de pé.
+
+Até aqui o certificado nunca trouxe uma peça restrita: `jm_documentos` só tem
+`tipo = PUBLICO` / `origem = escavador_publico`.
+
+### 14.2 Falha de autos é estornada — só o sucesso custa
+
+O header `Creditos-Utilizados` devolve 150 (R$ 1,50) no disparo, mas o saldo
+subiu R$ 4,50 exatamente quando três solicitações concluíram com erro, e o teste
+controlado não moveu o saldo nenhum centavo. **Testar autos é de graça; a conta
+só começa quando funcionar.** Ordem de grandeza para quando funcionar: 446 ×
+R$ 1,50 = **R$ 669** por varredura completa, contra R$ 89 em modo público.
+
+### 14.3 O erro sumia — e por dois caminhos
+
+As treze linhas ficaram gravadas como `SUCESSO / PUBLICOS`, `motivo_erro` vazio.
+R$ 19,50 disparados (depois estornados), nenhum auto, nenhuma pista. Dois
+apagadores, os dois na edge `esc-autos`:
+
+1. ela só tratava `ultima_verificacao.status = 'PENDENTE'`; com `'ERRO'` seguia
+   adiante, tomava um 422 genérico no `/autos` e rebaixava para PUBLICOS — o
+   `SECRET_ERROR` ficava só na API do Escavador;
+2. ao concluir a colheita ela gravava `motivo_erro = null`, e a colheita que
+   conclui é a **pública**, feita depois do rebaixamento.
+
+Corrigido com `jm_esc_solicitacoes.autos_erro` e `.autos_tentado_em`
+(migration `20260821180000`). `autos_erro` só é limpo por uma colheita de autos
+que funcionou — a pública não apaga mais. Verificado no
+`0001838-13.2019.5.08.0115`: `acao=autos` devolve `SECRET_ERROR`, grava a
+coluna, e o `SUCESSO` seguinte preserva o valor. As 14 tentativas foram
+backfilladas a partir da API enquanto o dado ainda existia lá.
+
+A edge, que até então **só existia deployada**, foi versionada em
+`supabase/functions/esc-autos/index.ts`, com `verify_jwt = false` registrado no
+`config.toml` — quem a chama é o `pg_net`, sem sessão; o gate é o `?k=` no
+próprio código, e um deploy sem essa linha religaria o JWT e mataria o pipeline.
+
+### 14.4 Onde isso parou
+
+O `SECRET_ERROR` é do lado da credencial, não do nosso código — nada a fazer no
+repo até o TOTP passar. O teste que decide: entrar no `portaldeservicos.pdpj.jus.br`
+com o certificado usando um autenticador alimentado pelo **mesmo arquivo de QR
+Code** que subiu no Escavador. Se o PDPJ recusar o código, o segredo está morto
+(resetar o MFA no PDPJ e recadastrar, substituindo o método atual). Se aceitar,
+o problema é do Escavador — abrir chamado citando as solicitações `54945127` e
+`54942831`.
+
+Não existe cron que reabra processos em modo `AUTOS`: a reabertura é sempre
+manual, e é ela que define a conta. Enquanto a fila não tiver linha em
+`A_ENVIAR`, a rotina roda de graça.
