@@ -27,7 +27,6 @@
 //                         vincula os advogados do polo ativo. 1 consulta/CNJ.
 // =============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireAdmin, forbidden } from "../_shared/require-auth.ts";
 import {
   filtrarCandidatos,
   extrairAdvogadosPoloAtivo,
@@ -46,7 +45,7 @@ interface ProcessoGravado {
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id, x-prospeccao-secret',
 };
 
 const ESCAVADOR_BASE = 'https://api.escavador.com/api/v2';
@@ -67,6 +66,38 @@ const json = (body: unknown, status = 200) =>
   });
 
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Autenticação por segredo compartilhado.
+ *
+ * POR QUE NÃO É requireAdmin: o cliente External do frontend entra com
+ * signInAnonymously() (src/integrations/supabase/external-client.ts), então o
+ * JWT que chega aqui é ANÔNIMO. requireAdmin validaria o token, procuraria o
+ * uuid anônimo em user_roles, não acharia admin e devolveria 403 em toda
+ * chamada. Ele só funciona nas funções que rodam no Cloud, onde o JWT é do
+ * mesmo projeto que emitiu.
+ *
+ * Esta é ferramenta de back-office que GASTA COTA PAGA do Escavador — quem
+ * invoca é operador (curl/cron), não navegador. Segredo compartilhado é a
+ * autenticação adequada, e é a "validação manual compensatória" que o
+ * CLAUDE.md exige quando verify_jwt está desligado.
+ *
+ * FALHA FECHADA: sem PROSPECCAO_ADMIN_SECRET configurado, NADA é aceito.
+ * Nunca cair para "aberto" quando falta configuração.
+ */
+function segredoConfere(req: Request): boolean {
+  const esperado = Deno.env.get('PROSPECCAO_ADMIN_SECRET') ?? '';
+  if (esperado.length < 16) return false; // não configurado, ou fraco demais
+  const recebido = req.headers.get('x-prospeccao-secret') ?? '';
+  if (recebido.length !== esperado.length) return false;
+  // Comparação de tempo constante: sair no primeiro byte diferente permitiria
+  // descobrir o segredo byte a byte medindo a latência.
+  let diff = 0;
+  for (let i = 0; i < esperado.length; i++) {
+    diff |= esperado.charCodeAt(i) ^ recebido.charCodeAt(i);
+  }
+  return diff === 0;
+}
 
 interface Corpo {
   action?: string;
@@ -231,7 +262,12 @@ async function varrer(corpo: Corpo, token: string) {
     candidatos: candidatos.length,
     descartados: { sem_valor_de_causa: semValor, fora_do_assunto: foraDoAssunto },
     gravados,
-    amostra: candidatos.slice(0, 5),
+    // `polo_ativo` sai da amostra de propósito: é o nome do trabalhador
+    // acidentado. O schema já não guarda esse campo (ver a nota de minimização
+    // na migration); devolvê-lo aqui só o jogaria no log de quem invoca, com a
+    // mesma finalidade nenhuma. Quem decide a semente precisa de CNJ, valor,
+    // assunto e ré — não do nome da vítima.
+    amostra: candidatos.slice(0, 5).map(({ polo_ativo: _ignorado, ...resto }) => resto),
   };
 }
 
@@ -326,9 +362,10 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    // Esta função GASTA cota paga do Escavador. Só admin dispara.
-    const admin = await requireAdmin(req);
-    if (!admin) return forbidden(corsHeaders);
+    // Esta função GASTA cota paga do Escavador. Só quem tem o segredo dispara.
+    if (!segredoConfere(req)) {
+      return json({ success: false, error: 'forbidden' }, 403);
+    }
 
     const token = Deno.env.get('ESCAVADOR_API_TOKEN');
     if (!token) return json({ success: false, error: 'ESCAVADOR_API_TOKEN não configurado' });

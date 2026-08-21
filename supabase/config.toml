@@ -174,3 +174,10 @@ verify_jwt = false
 # Não expõe dado: recebe documento_id e grava no banco; o retorno é só o status.
 [functions.jm-ler-peca]
 verify_jwt = false
+
+[functions.prospectar-acidente-trabalho]
+# verify_jwt desligado de proposito: o JWT que chega no Externo vem do
+# signInAnonymously() do external-client, entao nao identifica admin. A
+# autenticacao e manual, por segredo compartilhado (PROSPECCAO_ADMIN_SECRET),
+# em tempo constante e com falha fechada. Ver o cabecalho da funcao.
+verify_jwt = false
