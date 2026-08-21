@@ -357,6 +357,16 @@ export function EntityFinancialsPanel({
   /** Contatos do lead — quem responde "de quem veio o dinheiro" fora do processo. */
   const [contatos, setContatos] = useState<{ id: string; nome: string }[]>([]);
 
+  /**
+   * Percentual do honorário contratual deste processo (`fee_percentage`).
+   *
+   * A leitura do documento precisa dele: a planilha do PJe-Calc não desconta o
+   * contratual, então o "líquido devido ao reclamante" vem com os 30% dentro e
+   * é o servidor que separa cota e honorário. 30 é o padrão da casa, o mesmo
+   * que o ProcessDetailSheet assume quando o processo não tem o campo.
+   */
+  const [hcPct, setHcPct] = useState(30);
+
   // Comprovante em mãos, antes de salvar: o arquivo (para subir) e a data URL
   // (para a IA ler e para a prévia). Um sem o outro não serve.
   const [comprovante, setComprovante] = useState<{ arquivo: File; dataUrl: string } | null>(null);
@@ -591,6 +601,22 @@ export function EntityFinancialsPanel({
     })();
     return () => { vivo = false; };
   }, [leadId]);
+
+  // Percentual do contrato deste processo, para a leitura do documento saber
+  // quanto do líquido é honorário. Falha em silêncio: sem ele vale o padrão 30.
+  useEffect(() => {
+    if (!processId) return;
+    let vivo = true;
+    void (async () => {
+      await ensureExternalSession().catch(() => {});
+      const externo = db as unknown as { from: (t: string) => any };
+      const { data } = await externo.from('lead_processes')
+        .select('fee_percentage').eq('id', processId).maybeSingle();
+      const pct = Number(data?.fee_percentage);
+      if (vivo && Number.isFinite(pct) && pct > 0 && pct < 100) setHcPct(pct);
+    })();
+    return () => { vivo = false; };
+  }, [processId]);
 
   // Deságio padrão da equipe. Falha em silêncio de propósito: sem taxa a tela
   // apenas deixa de mostrar o valor presente, e nada mais depende dela.
@@ -1012,6 +1038,7 @@ export function EntityFinancialsPanel({
             ditado: extra?.ditado || null,
             categorias: categoriasDisponiveis,
             contexto: processNumber || contextLabel || null,
+            hcPct,
             // O servidor pode estar em outro fuso: quem sabe que dia é hoje
             // para resolver "ontem" do ditado é a tela.
             hoje,

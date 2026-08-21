@@ -1009,3 +1009,37 @@ outra sessão (`jm-ler-peca` → `jm_documento_leitura.partes[].verbas[]`, 21
 leituras, prompt v3) — falta o passo que transforma aquelas verbas em linhas
 `conferido = false` no processo. As colunas (`verba`, `valor_nominal`, `juros`,
 `origem_leitura`, `conferido`) já existem esperando por isso.
+
+---
+
+## As duas regras do PJe-Calc (21/08/2026)
+
+Correção do Raym sobre a primeira leitura, e as duas mudam o resultado:
+
+**1. O "líquido devido ao reclamante" NÃO é a cota do cliente.** O PJe-Calc não
+calcula honorário contratual — aquele número ainda tem os 30% do contrato
+dentro. Lançá-lo inteiro como cota dá ao cliente dinheiro que é do escritório, e
+erra os dois lados de uma vez.
+
+**2. Honorário discriminado no PJe-Calc é SEMPRE sucumbencial.** Ele não
+discrimina contratual. A primeira leitura marcou os R$ 125.534,20 do patrono
+como "Honorários Contratuais" — está errado, é sucumbencial.
+
+### Como ficou
+
+O modelo marca a linha com `bruto_do_cliente: true` e devolve o valor **cheio**.
+Quem divide é o **servidor**, com `lead_processes.fee_percentage` (30 por
+padrão, o mesmo que o `ProcessDetailSheet` assume):
+
+```
+689.388,83  ->  482.572,18 cota do cliente  +  206.816,65 contratual (30%)
+```
+
+Multiplicar percentual é justamente o que LLM erra e servidor não, então a conta
+não fica com o modelo. E o honorário sai por **subtração em centavos**, para as
+duas linhas fecharem no total exato — dois arredondamentos separados deixariam
+um centavo sobrando em relação à planilha.
+
+Conferido contra o documento real (`v3-pjecalc-2026-08-21`): 6 itens, cota e
+contratual somando exatamente o líquido, honorário do patrono como
+sucumbencial, e a planilha de atualização entregando só a data mais recente.

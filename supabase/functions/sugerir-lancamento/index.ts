@@ -194,6 +194,13 @@ const REGRAS = [
   '   processo vale — foi o erro da primeira rodada deste prompt.',
   '   Cada valor entra UMA vez, com UMA categoria só. Em dúvida entre duas,',
   '   use a que o documento nomeia e registre a dúvida em "observacao".',
+  'PLANILHA DO PJE-CALC — duas regras que mudam o resultado:',
+  '  a) Honorário discriminado ali é SEMPRE SUCUMBENCIAL. O PJe-Calc nao calcula',
+  '     honorário contratual, entao nenhuma linha dele e "Honorários Contratuais".',
+  '  b) O "líquido devido ao reclamante" ainda NAO teve o contratual descontado.',
+  '     Marque essa linha com "bruto_do_cliente": true e devolva o valor CHEIO,',
+  '     sem dividir — quem separa cota e honorário e o servidor, com o percentual',
+  '     do contrato. Nao faca essa conta voce.',
   '4. "categoria" tem que ser uma da lista, copiada letra por letra. Se uma serve,',
   '   use. "Outros" é ÚLTIMO RECURSO: gasto com nome próprio e recorrente',
   '   (aluguel, software, cartório) deixa "categoria" null e propõe um nome curto',
@@ -221,7 +228,7 @@ const REGRAS = [
   '{"documento":null,"confianca":"baixa","observacao":null,"lancamentos":[',
   ' {"valor":null,"valor_nominal":null,"juros":null,"data":null,"tipo":null,',
   '  "descricao":null,"verba":null,"categoria":null,"categoria_nova":null,',
-  '  "parte":null,"ja_pago":false}]}',
+  '  "parte":null,"ja_pago":false,"bruto_do_cliente":false}]}',
 ].join('\n');
 
 const PADRAO = ['Honorários Contratuais', 'Honorários Sucumbenciais', 'Cota do Cliente', 'Outros'];
@@ -254,7 +261,60 @@ function limparLancamento(bruto: Record<string, unknown>, lista: string[]) {
     categoriaNova: categoria ? null : (propostaCrua || crua),
     parte: texto(bruto.parte),
     jaPago: bruto.ja_pago === true,
+    brutoDoCliente: bruto.bruto_do_cliente === true,
   };
+}
+
+
+/**
+ * Abre o "líquido devido ao reclamante" em cota do cliente + honorário contratual.
+ *
+ * POR QUE existe: a planilha do PJe-Calc não calcula honorário CONTRATUAL — ela
+ * só discrimina o sucumbencial. O "líquido devido ao reclamante" que ela mostra
+ * ainda tem os 30% do contrato dentro. Lançar aquele número como cota do cliente
+ * dá ao cliente dinheiro que é do escritório, e o resultado do processo nasce
+ * errado nos dois lados de uma vez.
+ *
+ * A CONTA É FEITA AQUI, não pelo modelo: multiplicar percentual é justamente o
+ * que LLM erra e servidor não. E o honorário sai por SUBTRAÇÃO, em centavos,
+ * para as duas linhas fecharem no total exato — dois arredondamentos separados
+ * deixariam um centavo sobrando ou faltando em relação à planilha.
+ */
+function abrirContratual(
+  item: ReturnType<typeof limparLancamento>,
+  pct: number,
+  lista: string[],
+): ReturnType<typeof limparLancamento>[] {
+  if (!item.brutoDoCliente || item.valor == null || !(pct > 0) || pct >= 100) return [item];
+  const totalCent = Math.round(item.valor * 100);
+  const honorarioCent = Math.round((totalCent * pct) / 100);
+  const cotaCent = totalCent - honorarioCent;
+  const base = item.descricao || item.verba || 'líquido do reclamante';
+  return [
+    {
+      ...item,
+      valor: cotaCent / 100,
+      // A abertura principal/juros era do valor CHEIO; partida em duas, ela não
+      // vale mais para nenhuma das metades.
+      valorNominal: null,
+      juros: null,
+      categoria: casarCategoria('Cota do Cliente', lista),
+      categoriaNova: casarCategoria('Cota do Cliente', lista) ? null : 'Cota do Cliente',
+      descricao: base + ' (líquido do cliente, já fora ' + pct + '% de contratual)',
+      brutoDoCliente: false,
+    },
+    {
+      ...item,
+      valor: honorarioCent / 100,
+      valorNominal: null,
+      juros: null,
+      categoria: casarCategoria('Honorários Contratuais', lista),
+      categoriaNova: casarCategoria('Honorários Contratuais', lista) ? null : 'Honorários Contratuais',
+      descricao: 'Honorário contratual ' + pct + '% sobre ' + base,
+      verba: 'honorário contratual',
+      brutoDoCliente: false,
+    },
+  ];
 }
 
 serve(async (req) => {
@@ -266,7 +326,7 @@ serve(async (req) => {
     });
 
   try {
-    const { descricao, ditado, comprovante, categorias, contexto, hoje } = await req.json();
+    const { descricao, ditado, comprovante, categorias, contexto, hoje, hcPct } = await req.json();
     if (!descricao && !comprovante && !ditado) {
       return json({ error: 'Mande a descrição, o ditado ou o comprovante' }, 400);
     }
@@ -331,14 +391,18 @@ serve(async (req) => {
       // Item sem valor E sem categoria não é lançamento nenhum — é ruído de
       // leitura, e mostrar linha vazia na tela só dá trabalho de fechar.
       .filter((l) => l.valor != null || l.categoria || l.categoriaNova);
+    // Percentual do contrato: vem do processo (lead_processes.fee_percentage).
+    // 30 e o padrao da casa, e so entra quando a tela nao manda o do contrato.
+    const pct = numero(hcPct) ?? 30;
+    const abertos = lancamentos.flatMap((l) => abrirContratual(l, pct, lista));
 
-    const primeiro = lancamentos[0];
+    const primeiro = abertos[0];
     return json({
       documento: texto(saida.documento),
       confianca: ['alta', 'media', 'baixa'].includes(String(saida.confianca)) ? String(saida.confianca) : 'baixa',
       observacao: texto(saida.observacao),
       promptVersao: PROMPT_VERSAO,
-      lancamentos,
+      lancamentos: abertos,
       // Espelho do primeiro item: o caminho "sugerir categoria pela descrição" e
       // o ditado devolvem um só, e quem chama não precisa saber de lista para
       // esses dois. A lista continua sendo a fonte quando há mais de um.
