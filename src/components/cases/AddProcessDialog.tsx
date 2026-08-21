@@ -485,7 +485,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
           // Auto-create/attach "Dar andamento" activity via helper central
           try {
             const extUserId = await remapToExternal(user?.id);
-            const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id, processType);
+            const { extAssignedTo, assignedName } = await resolveAssignment(title, caseId, user?.id, processType, result.numero_cnj);
             const r = await createOrAttachAndamentoActivity({
               leadId,
               caseId,
@@ -587,7 +587,7 @@ export default function AddProcessDialog({ open, onOpenChange, caseId, leadId, o
 
       // Auto-create/attach "Dar andamento" activity via helper central
       try {
-        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id, processType);
+        const { extAssignedTo, assignedName } = await resolveAssignment(manualForm.title.trim(), caseId, user?.id, processType, manualForm.process_number);
         const r = await createOrAttachAndamentoActivity({
           leadId,
           caseId,

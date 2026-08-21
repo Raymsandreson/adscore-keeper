@@ -153,6 +153,8 @@ type ProcessRow = {
 export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated, side = 'right', contentClassName }: ActivityFullSheetProps) {
   const isCreate = mode === 'create';
   const [loading, setLoading] = useState(false);
+  /** Carga da ficha falhou: mostra recuperação em vez do formulário sujo. */
+  const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<LeadActivity | null>(null);
 
@@ -436,6 +438,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const fetchActivity = useCallback(async () => {
     if (!activityId) return;
     setLoading(true);
+    setLoadError(false);
     const { data, error } = await externalSupabase
       .from('lead_activities')
       .select('*')
@@ -443,8 +446,17 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       .maybeSingle();
 
     if (error || !data) {
-      toast.error('Erro ao carregar atividade');
+      // NÃO destravar o formulário aqui. Os ~30 states abaixo ainda guardam a
+      // atividade ABERTA ANTES desta, e o `handleSave` manda `buildPayload()`
+      // inteiro: salvar gravaria o texto e o RESPONSÁVEL da outra por cima
+      // desta. Antes, isso fazia `setLoading(false)` e caía direto no formulário
+      // preenchido com dado alheio. Alcançável sem erro de rede: a RLS do
+      // Externo é `auth.uid() IS NOT NULL`, e sessão anônima expirada devolve
+      // vazio com `error: null`. 21/08/2026.
+      setSelectedActivity(null);
+      setLoadError(true);
       setLoading(false);
+      toast.error('Erro ao carregar atividade');
       return;
     }
 
@@ -613,6 +625,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       draftInitedRef.current = false;
       estimateTouchedRef.current = false; // próxima criação volta a aceitar sugestão
       setSelectedActivity(null); setCaseProcesses([]); setLeadPreview(null);
+      setLoadError(false); // senão a próxima abertura já nasce na tela de erro
     }
   }, [open, activityId, fetchActivity, isCreate, draft, initFromDraft]);
 
@@ -741,9 +754,12 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
 
   // `extraObserver` entra quando o usuário aceita continuar acompanhando a
   // atividade que acabou de passar para outra pessoa.
+  // `description` NÃO entra aqui. Não existe campo dela no formulário, mas o
+  // payload mandava `null` fixo — então toda edição apagava a coluna calada.
+  // 14.641 atividades ainda têm conteúdo lá (é legado: só a busca global lê).
+  // Na criação o `createActivity` já grava null por conta própria. 21/08/2026.
   const buildPayload = (extraObserver?: { user_id: string; full_name: string } | null) => ({
     title: formTitle,
-    description: null as string | null,
     what_was_done: formWhatWasDone || null,
     current_status_notes: formCurrentStatus || null,
     next_steps: formNextSteps || null,
@@ -1784,6 +1800,20 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-8 w-full" />
             <Skeleton className="h-32 w-full" />
+          </div>
+        ) : loadError ? (
+          /* Sem formulário: o state ainda tem a atividade anterior e o Salvar
+             gravaria ela por cima desta. Ou recarrega, ou sai. */
+          <div className="p-6 space-y-3">
+            <p className="text-sm font-medium">Não foi possível carregar esta atividade.</p>
+            <p className="text-xs text-muted-foreground">
+              Pode ser sessão expirada ou falha de rede. O formulário fica bloqueado de
+              propósito — liberá-lo mostraria os dados da atividade aberta antes desta.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Button size="sm" onClick={() => fetchActivity()}>Tentar de novo</Button>
+              <Button size="sm" variant="outline" onClick={() => onOpenChange(false)}>Fechar</Button>
+            </div>
           </div>
         ) : (
           <Tabs defaultValue="atividade" className="flex-1 flex flex-col min-h-0">

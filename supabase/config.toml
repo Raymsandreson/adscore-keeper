@@ -2,6 +2,9 @@ project_id = "gliigkupoebmlbwyvijp"
 
 
 
+[functions.esc-autos]
+verify_jwt = false
+
 [functions.campaign-ai-assistant]
 verify_jwt = false
 
