@@ -43,7 +43,7 @@ create table if not exists public.prospect_processos (
 
   -- De onde veio o candidato, e qual semente o produziu. Serve para medir
   -- rendimento por semente antes de escalar consulta paga no Escavador.
-  origem         text not null check (origem in ('escavador_oab', 'escavador_cnpj', 'datajud', 'base_interna')),
+  origem         text not null check (origem in ('escavador_oab', 'escavador_cnpj', 'escavador_nome', 'datajud', 'base_interna')),
   semente        text,
 
   created_at     timestamptz not null default now(),

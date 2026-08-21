@@ -20,7 +20,9 @@
 //
 // AÇÕES
 //   varrer_oab          — semente = OAB. Lista processos do advogado e filtra.
-//   varrer_cnpj         — semente = CNPJ da empresa ré. Mesma coisa.
+//   varrer_cnpj         — semente = CNPJ da empresa ré. Exato.
+//   varrer_nome         — semente = NOME da empresa ré. Impreciso (casa por
+//                         similaridade); usar só sem CNPJ em mãos.
 //   resolver_advogados  — para processos JÁ gravados, busca os envolvidos e
 //                         vincula os advogados do polo ativo. 1 consulta/CNJ.
 // =============================================================================
@@ -71,6 +73,8 @@ interface Corpo {
   oab_numero?: string;
   oab_estado?: string;
   cnpj?: string;
+  /** Nome da empresa ré, para varrer_nome. */
+  nome?: string;
   valor_minimo?: number;
   max_consultas?: number;
   limit?: number;
@@ -187,6 +191,15 @@ async function varrer(corpo: Corpo, token: string) {
       + `?oab_numero=${encodeURIComponent(corpo.oab_numero)}`
       + `&oab_estado=${encodeURIComponent(corpo.oab_estado.toUpperCase())}`
       + `&limit=100`;
+  } else if (action === 'varrer_nome') {
+    // Busca por nome de empresa ré. Menos precisa que CNPJ — casa por
+    // similaridade e pode trazer homônimo de outro ramo. É o caminho quando
+    // não se tem o CNPJ; havendo CNPJ, preferir varrer_cnpj.
+    const nome = (corpo.nome || '').trim();
+    if (nome.length < 4) throw new Error('nome muito curto (mínimo 4 caracteres)');
+    semente = nome;
+    origem = 'escavador_nome';
+    urlInicial = `${ESCAVADOR_BASE}/processos/buscar?nome=${encodeURIComponent(nome)}`;
   } else {
     const limpo = (corpo.cnpj || '').replace(/\D/g, '');
     if (limpo.length !== 14) throw new Error('cnpj inválido (esperado 14 dígitos)');
@@ -325,13 +338,14 @@ Deno.serve(async (req) => {
     switch (corpo.action) {
       case 'varrer_oab':
       case 'varrer_cnpj':
+      case 'varrer_nome':
         return json({ success: true, data: await varrer(corpo, token) });
       case 'resolver_advogados':
         return json({ success: true, data: await resolverAdvogados(corpo, token) });
       default:
         return json({
           success: false,
-          error: 'Ação inválida. Use: varrer_oab, varrer_cnpj, resolver_advogados',
+          error: 'Ação inválida. Use: varrer_oab, varrer_cnpj, varrer_nome, resolver_advogados',
         });
     }
   } catch (error) {
