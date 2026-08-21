@@ -118,6 +118,29 @@ export function isJudicialProcess(processType?: string | null): boolean {
 }
 
 /**
+ * `true` quando o processo corre na **Justiça do Trabalho** — segmento `5` do
+ * número CNJ (`NNNNNNN-DD.AAAA.J.TR.OOOO`, onde `J` é o segmento: 4 Federal,
+ * 5 Trabalho, 8 Estadual).
+ *
+ * Existe por causa de um estrago concreto: `process_type` só diz
+ * "administrativo × judicial", nunca "previdenciário × trabalhista". Um caso de
+ * acidente de trabalho gera as DUAS frentes e costuma ser batizado com o número
+ * do PREV ("CASO 366/ PREV 63"), então a reclamatória trabalhista era lida como
+ * "processo judicial de caso PREV" e caía no rodízio previdenciário. Em
+ * 06/08/2026 o backfill `20260806160000_backfill_responsavel_prev.sql` levou 7
+ * atividades trabalhistas dos donos reais (Abderaman, Felipe, Natasha) para a
+ * dupla judicial do PREV — e o audit não registra troca de responsável, então
+ * ninguém viu.
+ *
+ * `area` não serve para isso: está nula em 2.413 dos 2.500 processos (96,5%).
+ * O número CNJ está preenchido e é inequívoco — previdenciário nunca corre em TRT.
+ */
+export function isLaborProcess(processNumber?: string | null): boolean {
+  const m = String(processNumber || '').match(/^\d{7}-\d{2}\.\d{4}\.(\d)\./);
+  return m?.[1] === '5';
+}
+
+/**
  * Quem o prompt já deixa pré-selecionado. Retorna null quando não dá pra
  * extrair o número do PREV — aí o usuário escolhe do zero, sem chute nosso.
  */
@@ -268,6 +291,9 @@ export async function pickCaseAssigneeForNewCase(
  *    O primeiro processo de cada trilha define o dono dela (prompt); daí em
  *    diante todo processo daquela trilha herda calado. Uma trilha nunca
  *    sobrescreve a outra.
+ *    Exceção: processo da **Justiça do Trabalho** dentro de caso PREV não entra
+ *    no rodízio — ver `isLaborProcess`. Caso de acidente de trabalho tem as duas
+ *    matérias sob o mesmo nome, e a reclamatória é de quem cuida de trabalhista.
  * 2. Fora do PREV, mapa fixo (Natasha, João Vitor, Wanessa, Abderaman).
  * 3. "Benefício INSS" em caso "CASO" → José Francisco.
  * 4. "Benefício INSS" em caso que não deu pra classificar → pergunta (item 1).
@@ -280,11 +306,16 @@ export async function resolveProcessAssignment(
   caseNumber?: string | null | undefined,
   processType?: string | null | undefined,
   caseId?: string | null | undefined,
+  processNumber?: string | null | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
   // Olhamos title + case_number juntos. Usuários frequentemente nomeiam casos
   // sem "PREV"/"CASO" no título (ex: "✅Familia 384 Cocal...") mas o
   // case_number sempre carrega o prefixo do funil ("CASO 384", "PREV 1607").
-  if (isPrevCase(caseTitle, caseNumber)) {
+  //
+  // O nome do caso é do FUNIL, não da matéria: "CASO 366/ PREV 63" abriga o
+  // benefício e a reclamatória trabalhista do mesmo acidente. Sem o segundo
+  // teste, a trabalhista era sequestrada pelo rodízio previdenciário.
+  if (isPrevCase(caseTitle, caseNumber) && !isLaborProcess(processNumber)) {
     return resolvePrevTrilha(caseTitle, caseNumber, processType, caseId, currentUserId);
   }
 
@@ -374,6 +405,7 @@ export async function resolveAssignmentForCase(
   caseId: string,
   currentUserId: string | undefined,
   processType?: string | null | undefined,
+  processNumber?: string | null | undefined,
 ): Promise<{ extAssignedTo: string | null; assignedName: string | null }> {
   let caseTitle: string | null = null;
   let caseNumber: string | null = null;
@@ -386,7 +418,7 @@ export async function resolveAssignmentForCase(
     caseTitle = (data as any)?.title || null;
     caseNumber = (data as any)?.case_number || null;
   } catch {}
-  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber, processType, caseId);
+  return resolveProcessAssignment(processTitle, caseTitle, currentUserId, caseNumber, processType, caseId, processNumber);
 }
 
 /** Em qual dos três momentos o prompt está sendo aberto. */

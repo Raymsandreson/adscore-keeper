@@ -84,6 +84,7 @@ import {
   resolveProcessAssignment,
   pickCaseAssigneeForNewCase,
   isPrevCase,
+  isLaborProcess,
   INSS_PREV_OPTIONS,
 } from '@/lib/processAssignment';
 
@@ -327,6 +328,68 @@ describe('caso LEAD do funil previdenciário', () => {
 
     expect(aceitaSugestao).not.toHaveBeenCalled();
     expect(r.assignedName).toBe('Natasha');
+  });
+});
+
+describe('processo trabalhista dentro de caso PREV', () => {
+  // Incidente 06/08/2026: o backfill do rodízio PREV escolheu os casos pelo
+  // nome ("%PREV%") e a trilha por `process_type='judicial'`. Como acidente de
+  // trabalho gera benefício E reclamatória sob o mesmo caso, 7 atividades
+  // trabalhistas saíram dos donos reais para a dupla judicial do previdenciário
+  // — entre elas a do CASO 366/PREV 63, que era do Abderaman e foi parar com a
+  // Gisele. Nada disso apareceu no audit, que não registra troca de responsável.
+  it('segmento 5 do CNJ é Justiça do Trabalho', () => {
+    expect(isLaborProcess('0000526-07.2026.5.22.0005')).toBe(true);
+    expect(isLaborProcess('1001554-41.2025.5.02.0051')).toBe(true);
+    // Federal e Estadual seguem valendo como previdenciário judicial.
+    expect(isLaborProcess('5001234-56.2026.4.01.3300')).toBe(false);
+    expect(isLaborProcess('0801234-56.2026.8.18.0001')).toBe(false);
+    // Requerimento administrativo (NB/NUP) e vazio não são CNJ.
+    expect(isLaborProcess('1234567890')).toBe(false);
+    expect(isLaborProcess(null)).toBe(false);
+    expect(isLaborProcess(undefined)).toBe(false);
+  });
+
+  it('a reclamatória NÃO entra no rodízio PREV nem dispara prompt', async () => {
+    const r = await resolveProcessAssignment(
+      'AÇÃO DE INDENIZAÇÃO',
+      'CASO 366/ PREV 63 - Edilson/ Francisco',
+      'cloud-user',
+      'PREV 63',
+      'judicial',
+      'case-366',
+      '0000526-07.2026.5.22.0005',
+    );
+
+    // Final 3 → ímpar → cairia na Gisele. Com o guard, não cai.
+    expect(r.assignedName).not.toBe(GISELE.userName);
+    expect(aceitaSugestao).not.toHaveBeenCalled();
+    expect(state.updates).toHaveLength(0);
+    // "Indenização" não está no mapa fixo com esse título exato → criador.
+    expect(r.extAssignedTo).toBe('ext:cloud-user');
+  });
+
+  it('caso PREV com o mesmo nome, mas processo federal, segue no rodízio', async () => {
+    const r = await resolveProcessAssignment(
+      'Benefício INSS',
+      'CASO 366/ PREV 63 - Edilson/ Francisco',
+      'cloud-user',
+      'PREV 63',
+      'judicial',
+      'case-366',
+      '5001234-56.2026.4.01.3300',
+    );
+
+    expect(r.assignedName).toBe(GISELE.userName);
+  });
+
+  it('sem número de processo o comportamento antigo é preservado', async () => {
+    const r = await resolveProcessAssignment(
+      'Benefício INSS', '✅PREV 1984 - AMANDA', 'cloud-user', 'PREV 1984', 'judicial', 'case-1',
+    );
+
+    // Final 4 → par → Isabela, exatamente como antes do guard.
+    expect(r.assignedName).toBe(ISABELA.userName);
   });
 });
 
