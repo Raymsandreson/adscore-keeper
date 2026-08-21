@@ -1090,9 +1090,28 @@ escondido: apareceu o **"ver todas as N"**, que abre a lista completa rolável.
 O plano segue sendo **um** combinado: as parcelas continuam no mesmo
 `parcela_grupo`, com `parcela_n`/`parcela_de` e a mesma régua de centavo.
 
+### E na parcela JÁ gravada
+
+Trocar o tipo depois de salvo sempre funcionou — o UPDATE leva `entry_type` e vai
+com `.eq('id', ...)`, então muda **uma** linha, não o grupo. O que não funcionava
+era chegar até lá:
+
+- **a linha inteira agora abre a edição** (`role="button"`, Enter/Espaço também).
+  Ninguém mira num lápis de 24px para consertar o tipo de um lançamento. Os
+  botões da linha — comprovante, conferir, baixar, editar, remover — param o
+  clique antes de ele virar "abrir edição". Linha de `jm_pagamentos` ou da
+  planilha continua sem abrir: a fonte dela não é este formulário;
+- **`openEdit` limpa `itensIa`/`escolha`.** A conferência de um documento com
+  vários valores toma o diálogo inteiro; sem a limpeza, quem lia um documento,
+  desistia e clicava numa linha existente reabria a lista da leitura anterior — e
+  o formulário, com o par Receita/Despesa dentro dele, nem aparecia.
+
 ### Testes
 
 `src/components/finance/__tests__/EntityFinancialsPanel.parcela-tipo.test.tsx`
-(3 casos, render de verdade do painel): clicar na 2ª de 3 grava
+(6 casos, render de verdade do painel): clicar na 2ª de 3 grava
 `['entrada','saida','entrada']` no mesmo grupo; trocar o tipo do topo apaga a
-exceção; lançamento avulso segue com um tipo só.
+exceção; lançamento avulso segue com um tipo só; clique na linha abre a edição;
+botão de dentro da linha não abre; e leitura de documento abandonada não
+sequestra a edição da linha. Os três últimos foram vistos **vermelhos** com o
+painel revertido, antes de ficarem verdes.

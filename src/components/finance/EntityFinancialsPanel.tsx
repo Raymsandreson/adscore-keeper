@@ -1455,6 +1455,12 @@ export function EntityFinancialsPanel({
     setSugestao(null);
     setTiposParcela({});
     setVerTodasParcelas(false);
+    // A conferência de um documento com vários valores TOMA o diálogo inteiro:
+    // sem limpar aqui, quem lê um documento, desiste e clica para editar uma
+    // linha existente reabre a lista da leitura anterior — e o formulário, com o
+    // par Receita/Despesa dentro dele, nem aparece.
+    setItensIa([]);
+    setEscolha(new Set());
     setForm({
       entry_type: entry.entry_type,
       amount: String(entry.amount),
@@ -1911,7 +1917,21 @@ export function EntityFinancialsPanel({
           ) : extrato.length === 0 ? (
             <p className="text-center text-sm text-muted-foreground py-4">{EMPTY_MESSAGE[scope]}</p>
           ) : extrato.map(linha => (
-            <div key={linha.key} className={`flex items-center justify-between p-2 rounded border text-sm ${linha.previsto ? 'opacity-70' : ''}`}>
+            <div
+              key={linha.key}
+              // A linha inteira abre a edição. O lápis continua onde estava, mas
+              // ninguém mira num ícone de 24px para consertar o tipo de um
+              // lançamento. Só linha MANUAL abre: parcela de `jm_pagamentos` e
+              // linha da planilha são leitura, a fonte delas não é este form.
+              role={linha.entry ? 'button' : undefined}
+              tabIndex={linha.entry ? 0 : undefined}
+              title={linha.entry ? 'Abrir para editar' : undefined}
+              onClick={linha.entry ? () => openEdit(linha.entry!) : undefined}
+              onKeyDown={linha.entry ? e => {
+                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(linha.entry!); }
+              } : undefined}
+              className={`flex items-center justify-between p-2 rounded border text-sm ${linha.previsto ? 'opacity-70' : ''}${linha.entry ? ' cursor-pointer hover:bg-muted/50' : ''}`}
+            >
               <div className="flex items-center gap-2 min-w-0">
                 <Badge
                   variant={linha.direcao === 'entrada' ? 'default' : linha.direcao === 'saida' ? 'destructive' : 'secondary'}
@@ -1988,7 +2008,7 @@ export function EntityFinancialsPanel({
                   <Button
                     variant="ghost" size="icon" className="h-6 w-6"
                     title="Ver comprovante"
-                    onClick={() => setVerComprovante(linha.entry?.receipt_url || null)}
+                    onClick={e => { e.stopPropagation(); setVerComprovante(linha.entry?.receipt_url || null); }}
                   >
                     <Paperclip className="h-3 w-3" />
                   </Button>
@@ -1997,7 +2017,7 @@ export function EntityFinancialsPanel({
                   <Button
                     variant="ghost" size="icon" className="h-6 w-6 text-violet-600"
                     title="A IA sugeriu esta linha. Conferir faz ela contar nos totais."
-                    onClick={() => conferir(linha.entry!)}
+                    onClick={e => { e.stopPropagation(); conferir(linha.entry!); }}
                   >
                     <Sparkles className="h-3.5 w-3.5" />
                   </Button>
@@ -2012,15 +2032,21 @@ export function EntityFinancialsPanel({
                         size="icon"
                         className="h-6 w-6 text-green-600"
                         title={linha.direcao === 'saida' ? 'Marcar como pago hoje' : 'Marcar como recebido hoje'}
-                        onClick={() => baixar(linha.entry!)}
+                        onClick={e => { e.stopPropagation(); baixar(linha.entry!); }}
                       >
                         <CheckCircle2 className="h-3.5 w-3.5" />
                       </Button>
                     )}
-                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => openEdit(linha.entry!)}>
+                    <Button
+                      variant="ghost" size="icon" className="h-6 w-6" title="Editar"
+                      onClick={e => { e.stopPropagation(); openEdit(linha.entry!); }}
+                    >
                       <Edit2 className="h-3 w-3" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => handleDelete(linha.entry!.id)}>
+                    <Button
+                      variant="ghost" size="icon" className="h-6 w-6 text-destructive" title="Remover"
+                      onClick={e => { e.stopPropagation(); handleDelete(linha.entry!.id); }}
+                    >
                       <Trash2 className="h-3 w-3" />
                     </Button>
                   </>

@@ -14,10 +14,15 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-const { fakeClient, inseridos } = vi.hoisted(() => {
+const { fakeClient, inseridos, estado } = vi.hoisted(() => {
   const inseridos: any[] = [];
+  /** O que o banco devolve e o que a IA responde — cada teste semeia o seu. */
+  const estado: { linhas: any[]; respostaIa: any } = { linhas: [], respostaIa: null };
   const chain = (tabela: string): any => {
-    const p: any = Promise.resolve({ data: [], error: null });
+    const p: any = Promise.resolve({
+      data: tabela === 'lead_financials' ? estado.linhas : [],
+      error: null,
+    });
     return new Proxy(function () {} as any, {
       get(_t, prop) {
         if (prop === 'then') return p.then.bind(p);
@@ -36,6 +41,7 @@ const { fakeClient, inseridos } = vi.hoisted(() => {
   };
   return {
     inseridos,
+    estado,
     fakeClient: {
       from: (tabela: string) => chain(tabela),
       auth: {
@@ -62,7 +68,9 @@ vi.mock('@/integrations/supabase/external-client', () => ({
   ensureExternalSession: async () => {},
 }));
 vi.mock('@/integrations/supabase/uuid-remap', () => ({ remapToExternal: async () => 'ext-u1' }));
-vi.mock('@/lib/functionRouter', () => ({ cloudFunctions: { invoke: async () => ({ data: null, error: null }) } }));
+vi.mock('@/lib/functionRouter', () => ({
+  cloudFunctions: { invoke: async () => ({ data: estado.respostaIa, error: null }) },
+}));
 vi.mock('@/hooks/useFinanceTimeTracker', () => ({ trackFinanceEntry: () => {} }));
 vi.mock('@/components/whatsapp/MediaLightbox', () => ({ MediaLightbox: () => null }));
 vi.mock('sonner', () => ({ toast: { success: () => {}, error: () => {}, info: () => {} } }));
@@ -109,8 +117,37 @@ async function parcelarEm(user: ReturnType<typeof novoUser>, quantas: string) {
   await user.type(quantidade, quantas);
 }
 
+/** Uma parcela já gravada, do jeito que o fetchEntries a entrega. */
+const PARCELA_GRAVADA = {
+  id: 'fin-1',
+  entry_type: 'saida',
+  amount: 100,
+  entry_date: '2026-08-21',
+  description: 'Parcela do acordo',
+  category: 'Acordo',
+  settled_at: '2026-08-21',
+  parcela_grupo: 'g1',
+  parcela_n: 2,
+  parcela_de: 3,
+  conferido: true,
+  lead_id: 'lead-1',
+  case_id: null,
+  process_id: null,
+  activity_id: null,
+  parte_id: null,
+  parte_nome: null,
+  receipt_url: null,
+  notes: null,
+  payment_method: null,
+  created_at: '2026-08-21T10:00:00-03:00',
+};
+
 describe('EntityFinancialsPanel — tipo por parcela', () => {
-  beforeEach(() => { inseridos.length = 0; });
+  beforeEach(() => {
+    inseridos.length = 0;
+    estado.linhas = [];
+    estado.respostaIa = null;
+  });
 
   it('clicar numa parcela grava só ela com o tipo trocado', async () => {
     const user = novoUser();
@@ -163,5 +200,55 @@ describe('EntityFinancialsPanel — tipo por parcela', () => {
 
     await waitFor(() => expect(inseridos).toHaveLength(1));
     expect(inseridos[0]).toMatchObject({ entry_type: 'entrada', amount: 300, parcela_grupo: null, parcela_n: null });
+  });
+
+  it('clicar na linha de uma parcela já gravada abre a edição com o par Receita/Despesa', async () => {
+    estado.linhas = [PARCELA_GRAVADA];
+    const user = novoUser();
+    render(<EntityFinancialsPanel scope="lead" leadId="lead-1" />);
+
+    await user.click(await screen.findByRole('button', { name: /Parcela do acordo/ }));
+
+    // Edição, não lançamento novo: o rodapé diz Atualizar.
+    expect(await screen.findByRole('button', { name: 'Atualizar' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Receita/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Despesa/ })).toBeInTheDocument();
+  });
+
+  it('botão dentro da linha não dispara a edição da linha', async () => {
+    estado.linhas = [PARCELA_GRAVADA];
+    const user = novoUser();
+    render(<EntityFinancialsPanel scope="lead" leadId="lead-1" />);
+
+    await user.click(await screen.findByRole('button', { name: 'Remover' }));
+
+    expect(screen.queryByRole('button', { name: 'Atualizar' })).not.toBeInTheDocument();
+  });
+
+  it('leitura de documento abandonada não sequestra a edição da linha', async () => {
+    estado.linhas = [PARCELA_GRAVADA];
+    // Documento com dois valores: o diálogo vira conferência e esconde o formulário.
+    estado.respostaIa = {
+      confianca: 'alta',
+      lancamentos: [
+        { descricao: 'Honorário', valor: 2000, tipo: 'entrada', categoria: 'Honorários Contratuais' },
+        { descricao: 'Custas', valor: 180, tipo: 'saida', categoria: 'Custas Processuais' },
+      ],
+    };
+    const user = novoUser();
+    render(<EntityFinancialsPanel scope="lead" leadId="lead-1" />);
+
+    await user.click(await screen.findByRole('button', { name: /Novo Lançamento/i }));
+    await user.type(screen.getByPlaceholderText(/pago 3ª parcela do acordo/i), 'Alvará');
+    await user.click(screen.getByRole('button', { name: /sugerir categoria/i }));
+    expect(await screen.findByText(/2 valores lidos/)).toBeInTheDocument();
+
+    // Desiste da leitura e vai consertar uma linha que já existe.
+    await user.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await user.click(await screen.findByRole('button', { name: /Parcela do acordo/ }));
+
+    expect(await screen.findByRole('button', { name: 'Atualizar' })).toBeInTheDocument();
+    expect(screen.queryByText(/2 valores lidos/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Despesa/ })).toBeInTheDocument();
   });
 });
