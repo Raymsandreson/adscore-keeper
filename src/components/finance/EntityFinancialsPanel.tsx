@@ -887,7 +887,50 @@ export function EntityFinancialsPanel({
     setCategoriaCriada(null);
     setItensIa([]);
     setEscolha(new Set());
+    setTiposParcela({});
+    setVerTodasParcelas(false);
   };
+
+  /**
+   * Parcela que FOGE do tipo escolhido lá em cima: n -> 'entrada' | 'saida'.
+   * Só a EXCEÇÃO mora aqui — a parcela que segue o tipo do lançamento não ocupa
+   * lugar no mapa. Existe porque um combinado nem sempre é homogêneo: o acordo
+   * entra em 3x e a perícia dele sai no meio das entradas, e lançar isso como
+   * dois planos separados quebra a leitura do que foi um combinado só.
+   */
+  const [tiposParcela, setTiposParcela] = useState<Record<number, 'entrada' | 'saida'>>({});
+  /** A prévia enxuta esconde o miolo do plano; sem isso não dá para clicar nele. */
+  const [verTodasParcelas, setVerTodasParcelas] = useState(false);
+
+  /** Tipo efetivo da parcela: a exceção, se houver, senão o tipo do lançamento. */
+  const tipoDaParcela = (n: number): 'entrada' | 'saida' => tiposParcela[n] ?? form.entry_type;
+
+  const alternarTipoParcela = (n: number) => {
+    setTiposParcela(prev => {
+      const novo = (prev[n] ?? form.entry_type) === 'entrada' ? 'saida' : 'entrada';
+      const out = { ...prev };
+      // Voltar ao tipo do topo APAGA a exceção em vez de gravá-la igual: assim
+      // trocar o tipo do lançamento depois arrasta essa parcela junto.
+      if (novo === form.entry_type) delete out[n]; else out[n] = novo;
+      return out;
+    });
+  };
+
+  // Exceção só sobrevive enquanto a parcela existe e ainda É exceção. Sem esta
+  // limpeza, encolher o plano de 5 para 2 e voltar para 5 ressuscitaria o tipo
+  // antigo de uma parcela que ninguém mais estava vendo.
+  useEffect(() => {
+    setTiposParcela(prev => {
+      const n = Number(form.parcelas);
+      const limpo: Record<number, 'entrada' | 'saida'> = {};
+      for (const [chave, tipo] of Object.entries(prev)) {
+        const i = Number(chave);
+        if (form.parcelar && Number.isInteger(n) && i <= n && tipo !== form.entry_type) limpo[i] = tipo;
+      }
+      const igual = Object.keys(limpo).length === Object.keys(prev).length;
+      return igual ? prev : limpo;
+    });
+  }, [form.parcelar, form.parcelas, form.entry_type]);
 
   /**
    * As parcelas que o plano atual geraria, para CONFERIR antes de salvar. Valor
@@ -919,12 +962,29 @@ export function EntityFinancialsPanel({
     const ps = previaParcelas.parcelas;
     if (!ps) return null;
     return {
+      todas: ps,
       inicio: ps.slice(0, 3),
       ultima: ps.length > 3 ? ps[ps.length - 1] : null,
       ocultas: Math.max(0, ps.length - 4),
       total: ps.reduce((s, p) => s + p.valor, 0),
     };
   }, [previaParcelas]);
+
+  /**
+   * Soma do plano JÁ separada por direção. Plano misto não tem "total": somar
+   * o que entra com o que sai devolve um número que não é nem uma coisa nem
+   * outra — por isso o rodapé passa a mostrar Entram e Saem.
+   */
+  const somaParcelas = useMemo(() => {
+    const ps = previaParcelas.parcelas;
+    if (!ps) return null;
+    let entra = 0, sai = 0;
+    for (const p of ps) {
+      if ((tiposParcela[p.n] ?? form.entry_type) === 'entrada') entra += p.valor;
+      else sai += p.valor;
+    }
+    return { entra, sai, total: entra + sai, misto: entra > 0 && sai > 0 };
+  }, [previaParcelas, tiposParcela, form.entry_type]);
 
   /**
    * De quem veio (ou para quem foi) o dinheiro. No processo as PARTES vêm
@@ -1287,6 +1347,9 @@ export function EntityFinancialsPanel({
         const linhas = plano
           ? plano.map(p => ({
               ...vinculos,
+              // Depois do spread de propósito: o tipo do topo é só o PADRÃO do
+              // plano, e a parcela marcada como exceção grava o dela.
+              entry_type: tipoDaParcela(p.n),
               created_by: createdBy,
               amount: p.valor,
               entry_date: p.data,
@@ -1390,6 +1453,8 @@ export function EntityFinancialsPanel({
     setTargetKey(targetKeyOf(entry));
     setComprovante(null);
     setSugestao(null);
+    setTiposParcela({});
+    setVerTodasParcelas(false);
     setForm({
       entry_type: entry.entry_type,
       amount: String(entry.amount),
@@ -1417,6 +1482,31 @@ export function EntityFinancialsPanel({
   };
 
   const formatCurrency = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  /**
+   * Linha da prévia do parcelamento. É BOTÃO, não texto: clicar troca só aquela
+   * parcela entre receita e despesa. Fica aqui embaixo porque usa
+   * `formatCurrency`, que só existe a partir desta linha.
+   */
+  const linhaPreviaParcela = (p: Parcela) => {
+    const tipo = tipoDaParcela(p.n);
+    const excecao = tiposParcela[p.n] != null;
+    return (
+      <button
+        key={p.n}
+        type="button"
+        onClick={() => alternarTipoParcela(p.n)}
+        title={`Clique para lançar a parcela ${p.n}/${p.de} como ${tipo === 'entrada' ? 'despesa' : 'receita'}`}
+        className={'flex w-full items-center justify-between gap-2 rounded px-1 py-0.5 text-left hover:bg-background/80 '
+          + (excecao ? 'bg-background ring-1 ring-inset ring-muted-foreground/30' : '')}
+      >
+        <span className="text-muted-foreground">{p.n}/{p.de} · {p.data}</span>
+        <span className={'font-medium ' + (tipo === 'entrada' ? 'text-green-600' : 'text-red-600')}>
+          {tipo === 'entrada' ? '📥 +' : '📤 -'}{formatCurrency(p.valor)}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-4">
@@ -2392,29 +2482,53 @@ export function EntityFinancialsPanel({
                     )}
                     {previaResumo && (
                       <div className="rounded bg-muted/50 p-2 text-[11px] space-y-0.5">
-                        {previaResumo.inicio.map(p => (
-                          <div key={p.n} className="flex justify-between">
-                            <span className="text-muted-foreground">{p.n}/{p.de} · {p.data}</span>
-                            <span className="font-medium">{formatCurrency(p.valor)}</span>
-                          </div>
-                        ))}
-                        {previaResumo.ocultas > 0 && (
-                          <p className="text-muted-foreground">... mais {previaResumo.ocultas} parcela(s)</p>
+                        {/* Cada linha é clicável: o plano é o mesmo combinado, mas
+                            nem toda parcela dele anda na mesma direção. */}
+                        {verTodasParcelas ? (
+                          <ScrollArea style={{ maxHeight: '180px' }}>
+                            <div className="space-y-0.5 pr-2">
+                              {previaResumo.todas.map(linhaPreviaParcela)}
+                            </div>
+                          </ScrollArea>
+                        ) : (
+                          <>
+                            {previaResumo.inicio.map(linhaPreviaParcela)}
+                            {previaResumo.ocultas > 0 && (
+                              <p className="text-muted-foreground">... mais {previaResumo.ocultas} parcela(s)</p>
+                            )}
+                            {previaResumo.ultima && linhaPreviaParcela(previaResumo.ultima)}
+                          </>
                         )}
-                        {previaResumo.ultima && (
-                          <div className="flex justify-between">
-                            <span className="text-muted-foreground">
-                              {previaResumo.ultima.n}/{previaResumo.ultima.de} · {previaResumo.ultima.data}
-                            </span>
-                            <span className="font-medium">{formatCurrency(previaResumo.ultima.valor)}</span>
-                          </div>
+                        {previaResumo.ocultas > 0 && (
+                          <Button
+                            type="button" variant="ghost" size="sm"
+                            className="h-6 w-full text-[11px]"
+                            onClick={() => setVerTodasParcelas(v => !v)}
+                          >
+                            {verTodasParcelas ? 'ver menos' : `ver todas as ${previaResumo.todas.length}`}
+                          </Button>
                         )}
                         {/* A sobra de centavo vai na última: R$ 100 em 3x são
                             33,33 + 33,33 + 33,34, e a soma fecha com o combinado. */}
-                        <div className="flex justify-between border-t pt-1 mt-1 font-semibold">
-                          <span>Soma das parcelas</span>
-                          <span>{formatCurrency(previaResumo.total)}</span>
-                        </div>
+                        {somaParcelas && (somaParcelas.misto ? (
+                          <div className="border-t pt-1 mt-1 space-y-0.5">
+                            <div className="flex justify-between font-semibold text-green-700">
+                              <span>Entram</span><span>+{formatCurrency(somaParcelas.entra)}</span>
+                            </div>
+                            <div className="flex justify-between font-semibold text-red-700">
+                              <span>Saem</span><span>-{formatCurrency(somaParcelas.sai)}</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex justify-between border-t pt-1 mt-1 font-semibold">
+                            <span>Soma das parcelas</span>
+                            <span>{formatCurrency(somaParcelas.total)}</span>
+                          </div>
+                        ))}
+                        <p className="pt-1 text-[10px] leading-snug text-muted-foreground">
+                          Clique numa parcela para lançá-la como {form.entry_type === 'entrada' ? 'despesa' : 'receita'} —
+                          o tipo escolhido lá em cima vale para as demais.
+                        </p>
                       </div>
                     )}
                   </>

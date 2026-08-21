@@ -647,6 +647,9 @@ Detalhes que a prévia do formulário mostra antes de salvar (`src/lib/antecipac
 - valor pequeno demais para dividir vira **erro**, não um punhado de linhas de
   R$ 0,00.
 
+Cada linha da prévia é clicável e troca o tipo **só daquela parcela** — ver
+"Parcela que foge do tipo do plano (21/08/2026)", no fim deste documento.
+
 ### Antecipação e deságio
 
 O bloco "Antecipar o que está a receber" responde: *quanto vale hoje o que só
@@ -1043,3 +1046,53 @@ um centavo sobrando em relação à planilha.
 Conferido contra o documento real (`v3-pjecalc-2026-08-21`): 6 itens, cota e
 contratual somando exatamente o líquido, honorário do patrono como
 sucumbencial, e a planilha de atualização entregando só a data mais recente.
+
+
+---
+
+## Parcela que foge do tipo do plano (21/08/2026)
+
+Pedido do Raym: *"ao criar um novo lançamento, ao clicar em cima dessa parcela
+seja possível alterar de receita para despesa"*.
+
+### Por que não dava
+
+O tipo era escolhido uma vez, no topo do diálogo, e entrava no objeto `vinculos`
+— o mesmo para todas as linhas do INSERT. Um combinado em 3x nascia inteiro como
+receita ou inteiro como despesa. Quando o plano tinha as duas direções (o acordo
+entra em 3x e a perícia dele sai no meio), a única saída era lançar **dois planos
+separados**, que quebra a leitura de que aquilo foi um combinado só e deixa dois
+`parcela_grupo` onde deveria haver um.
+
+### Como ficou
+
+Na prévia do parcelamento, cada parcela é **botão**: clicar troca entre 📥 receita
+e 📤 despesa, com cor e sinal na hora. O tipo do topo continua sendo o **padrão do
+plano** — só a parcela clicada vira exceção, e o `entry_type` passa a ser gravado
+por linha, depois do spread de `vinculos`.
+
+Três detalhes que a implementação carrega de propósito
+(`src/components/finance/EntityFinancialsPanel.tsx`):
+
+- **exceção que volta ao padrão deixa de ser exceção** — o mapa guarda só quem
+  difere, então trocar o tipo do lançamento depois arrasta essa parcela junto,
+  em vez de deixá-la grudada no tipo antigo;
+- **exceção não sobrevive ao plano encolher** — sem a limpeza, ir de 5 para 2
+  parcelas e voltar para 5 ressuscitaria o tipo de uma parcela que ninguém mais
+  estava vendo;
+- **plano misto não tem "total"** — o rodapé troca "Soma das parcelas" por
+  **Entram** e **Saem**. Somar direção contrária devolve um número que não é nem
+  uma coisa nem outra.
+
+A prévia enxuta mostrava 3 + a última, e não dá para clicar no que está
+escondido: apareceu o **"ver todas as N"**, que abre a lista completa rolável.
+
+O plano segue sendo **um** combinado: as parcelas continuam no mesmo
+`parcela_grupo`, com `parcela_n`/`parcela_de` e a mesma régua de centavo.
+
+### Testes
+
+`src/components/finance/__tests__/EntityFinancialsPanel.parcela-tipo.test.tsx`
+(3 casos, render de verdade do painel): clicar na 2ª de 3 grava
+`['entrada','saida','entrada']` no mesmo grupo; trocar o tipo do topo apaga a
+exceção; lançamento avulso segue com um tipo só.
