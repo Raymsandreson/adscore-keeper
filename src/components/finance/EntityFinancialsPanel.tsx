@@ -69,14 +69,38 @@ const normalizarNome = (v: string) =>
  */
 const LIMITE_COMPROVANTE_MB = 4;
 
+/**
+ * UM lançamento que a IA leu no documento. Um comprovante devolve um; uma
+ * planilha de cálculo devolve vários, e cada um tem natureza própria.
+ */
+interface ItemIa {
+  valor: number | null;
+  /** Principal sem juros. null quando o documento não separa. */
+  valorNominal: number | null;
+  juros: number | null;
+  data: string | null;
+  tipo: 'entrada' | 'saida' | null;
+  descricao: string | null;
+  /** Natureza jurídica: dano moral, sucumbência, pensionamento... */
+  verba: string | null;
+  categoria: string | null;
+  /** Nome proposto quando NENHUMA categoria existente serve. */
+  categoriaNova: string | null;
+  /** Pessoa a quem o valor se refere, como escrita no documento. */
+  parte: string | null;
+  /** true = o documento mostra que este valor JÁ foi pago. */
+  jaPago: boolean;
+}
+
 /** O que a edge function `sugerir-lancamento` devolve. Tudo pode ser null. */
 interface SugestaoIa {
+  documento: string | null;
+  lancamentos: ItemIa[];
   valor: number | null;
   data: string | null;
   tipo: 'entrada' | 'saida' | null;
   descricao: string | null;
   categoria: string | null;
-  /** Nome proposto quando NENHUMA categoria existente serve. */
   categoriaNova: string | null;
   pagador: string | null;
   beneficiario: string | null;
@@ -107,6 +131,13 @@ export interface EntityFinancialEntry {
   parte_nome: string | null;
   /** Comprovante no bucket `invoices`. null = lançamento sem prova. */
   receipt_url: string | null;
+  /** Natureza jurídica do valor: dano moral, sucumbência, pensionamento... */
+  verba: string | null;
+  /** Principal sem juros, quando o documento separa. `amount` é o total. */
+  valor_nominal: number | null;
+  juros: number | null;
+  /** false = sugestão de IA esperando alguém olhar. NÃO entra em total nenhum. */
+  conferido: boolean;
   /**
    * Quando entrou/saiu DE FATO. null = ainda é recebível — "a receber" enquanto
    * o vencimento não chega, VENCIDO depois dele. Data que passa não é prova de
@@ -248,6 +279,8 @@ interface LinhaExtrato {
   vencimento?: string | null;
   /** "3/12" quando a linha faz parte de um plano de parcelamento. */
   parcela?: { n: number; de: number } | null;
+  /** false = ainda não conferida; fica fora de todos os totais. */
+  conferido?: boolean;
   /** null = a importação não trouxe o valor (mostrar "sem valor", nunca R$ 0). */
   valor: number | null;
   origem: 'manual' | 'planilha' | 'parcela';
@@ -336,6 +369,12 @@ export function EntityFinancialsPanel({
   /** Categoria que a IA propôs criar e a pessoa aceitou. Vira opção na lista. */
   const [categoriaCriada, setCategoriaCriada] = useState<string | null>(null);
   const [verComprovante, setVerComprovante] = useState<string | null>(null);
+
+  // Documento com VÁRIOS valores: a tela deixa de preencher o formulário e passa
+  // a mostrar a lista para escolher. Preencher um campo só com o primeiro de
+  // onze seria esconder o resto do documento.
+  const [itensIa, setItensIa] = useState<ItemIa[]>([]);
+  const [escolha, setEscolha] = useState<Set<number>>(new Set());
 
   const fetchEntries = useCallback(async () => {
     setLoading(true);
@@ -615,6 +654,7 @@ export function EntityFinancialsPanel({
         vencido: previsto && e.entry_date < hoje,
         vencimento: previsto ? e.entry_date : null,
         parcela: e.parcela_n && e.parcela_de ? { n: e.parcela_n, de: e.parcela_de } : null,
+        conferido: e.conferido !== false,
         valor: Number(e.amount),
         origem: 'manual' as const,
         entry: e,
@@ -642,9 +682,12 @@ export function EntityFinancialsPanel({
     let contratual = 0, sucumbencial = 0, outrosHonorarios = 0, cliente = 0;
     let despesas = 0, adiantado = 0, parceiro = 0, brutoParcelas = 0, semValor = 0;
     let aReceberEscritorio = 0, aReceberCliente = 0;
-    let vencidoEscritorio = 0, vencidoCliente = 0, aPagar = 0, aPagarVencido = 0;
+    let vencidoEscritorio = 0, vencidoCliente = 0, aPagar = 0, aPagarVencido = 0, aConferir = 0;
     for (const l of extrato) {
       if (l.valor == null) { semValor += 1; continue; }
+      // Sugestão da IA que ninguém olhou não entra em total NENHUM — nem no
+      // caixa, nem no a receber. Ela aparece na lista, marcada, esperando.
+      if (l.conferido === false) { aConferir += l.valor; continue; }
       if (l.previsto) {
         if (l.origem === 'parcela') continue; // parcela prevista já aparece na linha
         // Saída em aberto é A PAGAR. Cair no "a receber" faria a conta de luz do
@@ -685,7 +728,7 @@ export function EntityFinancialsPanel({
       contratual, sucumbencial, outrosHonorarios, escritorio, cliente, despesas,
       resultado: escritorio - despesas,
       aReceberEscritorio, aReceberCliente, vencidoEscritorio, vencidoCliente,
-      aPagar, aPagarVencido, adiantado, parceiro, brutoParcelas, semValor,
+      aPagar, aPagarVencido, aConferir, adiantado, parceiro, brutoParcelas, semValor,
     };
   }, [extrato]);
 
@@ -723,6 +766,38 @@ export function EntityFinancialsPanel({
    * honorário aparece nos dois: aqui como direito, lá como parcela recebida.
    */
   const valorProcesso = useMemo(() => resumirValorProcesso(partesValor), [partesValor]);
+
+  /**
+   * O valor do processo MENOS o que já virou lançamento a receber.
+   *
+   * Condenação é ESTOQUE e lançamento é FLUXO — o painel sempre avisou em texto
+   * que não se somam. O aviso deixou de bastar quando a leitura do documento
+   * passou a criar lançamento a partir da MESMA condenação: aí o dinheiro
+   * aparecia inteiro nos dois blocos da mesma tela. Agora o estoque recua na
+   * medida em que o fluxo o absorve, e a tela diz quanto já migrou.
+   *
+   * Só conta lançamento MANUAL (`origem === 'manual'`): parcela de
+   * `jm_pagamentos` e linha da planilha vêm de outra fonte e já são tratadas à
+   * parte. E só o CONFERIDO, porque sugestão que ninguém olhou não move nada.
+   */
+  const estoqueRestante = useMemo(() => {
+    let cliente = 0, escritorio = 0;
+    for (const l of extrato) {
+      if (!l.previsto || l.valor == null || l.origem !== 'manual') continue;
+      if (l.conferido === false) continue;
+      if (l.titular === 'cliente') cliente += l.valor;
+      else if (l.titular === 'escritorio') escritorio += l.valor;
+    }
+    return {
+      migradoCliente: cliente,
+      migradoEscritorio: escritorio,
+      migrado: cliente + escritorio,
+      // Nunca negativo: lançamento maior que a condenação importada é sinal de
+      // que uma das duas fontes está desatualizada, não de estoque negativo.
+      cotaCliente: Math.max(0, valorProcesso.cotaCliente - cliente),
+      escritorio: Math.max(0, valorProcesso.escritorio - escritorio),
+    };
+  }, [extrato, valorProcesso]);
 
   /**
    * ATENÇÃO — os valores da Tab. Aux são **CJCM**: "com juros e correção
@@ -784,6 +859,8 @@ export function EntityFinancialsPanel({
     setComprovante(null);
     setSugestao(null);
     setCategoriaCriada(null);
+    setItensIa([]);
+    setEscolha(new Set());
   };
 
   /**
@@ -852,6 +929,22 @@ export function EntityFinancialsPanel({
     [entries, categoriaCriada, form.category],
   );
 
+  /**
+   * A opção da lista que corresponde a um nome lido no documento. Só devolve
+   * com UM candidato: dois nomes parecidos não escolhem nenhum, porque errar de
+   * quem é o dinheiro é pior que deixar em branco.
+   */
+  const casarParte = useCallback((nome: string | null): string => {
+    if (!nome) return '';
+    const alvo = normalizarNome(nome);
+    if (!alvo) return '';
+    const casam = opcoesParte.filter(o => {
+      const n = normalizarNome(o.nome);
+      return !!n && (n.includes(alvo) || alvo.includes(n));
+    });
+    return casam.length === 1 ? casam[0].valor : '';
+  }, [opcoesParte]);
+
   /** Decompõe 'parte:<id>' / 'contato:<id>' nas três colunas do banco. */
   const vinculoDaParte = (chave: string) => {
     const sep = chave.indexOf(':');
@@ -895,16 +988,11 @@ export function EntityFinancialsPanel({
     }));
 
     // Nome lido no comprovante ou dito no áudio: se casar com EXATAMENTE uma
-    // parte/contato da lista, já deixa escolhido. Dois candidatos não escolhe
-    // nenhum — chutar de quem é o dinheiro é pior que deixar em branco.
+    // parte/contato da lista, já deixa escolhido.
     const nomeLido = s.tipo === 'saida' ? (s.beneficiario || s.pagador) : (s.pagador || s.beneficiario);
     if (ehFonte && nomeLido) {
-      const alvo = normalizarNome(nomeLido);
-      const casam = opcoesParte.filter(o => {
-        const n = normalizarNome(o.nome);
-        return !!n && !!alvo && (n.includes(alvo) || alvo.includes(n));
-      });
-      if (casam.length === 1) setForm(p => ({ ...p, parte: casam[0].valor }));
+      const achou = casarParte(nomeLido);
+      if (achou) setForm(p => ({ ...p, parte: achou }));
     }
   };
 
@@ -933,10 +1021,19 @@ export function EntityFinancialsPanel({
       if (error) throw error;
       if (!data) throw new Error('sem resposta');
       if (data.error) throw new Error(data.error);
+      setSugestao(data);
+      const achados = Array.isArray(data.lancamentos) ? data.lancamentos : [];
+      if (achados.length > 1) {
+        // Documento com vários valores: mostra a lista para escolher, e NÃO mexe
+        // no formulário. Jogar o primeiro de onze num campo só esconderia o resto.
+        setItensIa(achados);
+        setEscolha(new Set(achados.map((_, i) => i)));
+        return;
+      }
+      setItensIa([]);
       // Comprovante e ditado são FONTE: sobrescrevem. Sugerir categoria pelo
       // texto só completa o que está vazio.
       aplicarSugestao(data, origem !== 'categoria');
-      setSugestao(data);
     } catch (e) {
       toast.error('A IA não conseguiu: ' + (e instanceof Error ? e.message : 'erro'));
     } finally {
@@ -1025,6 +1122,70 @@ export function EntityFinancialsPanel({
       return form.receipt_url || null;
     }
     return authClient.storage.from(BUCKET_COMPROVANTE).getPublicUrl(caminho).data.publicUrl;
+  };
+
+  /**
+   * Grava de uma vez os itens escolhidos da lista que a IA leu do documento.
+   *
+   * Cada um vira uma linha com a SUA verba, o SEU valor e a SUA parte — que é o
+   * trabalho que se estava fazendo à mão, um por um. O que o documento diz que
+   * já foi pago nasce baixado; o resto nasce a receber, fora do caixa.
+   *
+   * `conferido: true` porque a pessoa acabou de olhar item por item nesta tela.
+   * A leitura automática dos marcos é que entra como false, esperando alguém.
+   */
+  const salvarVarios = async () => {
+    const escolhidos = itensIa.filter((_, i) => escolha.has(i));
+    if (!escolhidos.length) { toast.error('Marque ao menos um valor'); return; }
+    const semCategoria = escolhidos.filter(i => !i.categoria && !i.categoriaNova).length;
+    if (semCategoria) { toast.error(semCategoria + ' item(ns) sem categoria — desmarque ou lance à mão'); return; }
+    if (hasTargets && !target) { toast.error('Escolha onde registrar'); return; }
+
+    setSaving(true);
+    try {
+      await ensureExternalSession().catch(() => {});
+      const receiptUrl = await subirComprovante();
+      const { data: { user } } = await authClient.auth.getUser();
+      const createdBy = await remapToExternal(user?.id).catch(() => null);
+      const linhas = escolhidos.map(it => ({
+        ...vinculoDaParte(casarParte(it.parte)),
+        // Sem parte casada, o nome lido ainda é gravado: saber que o dinheiro é
+        // "da Maria José" vale mesmo sem o vínculo formal.
+        parte_nome: vinculoDaParte(casarParte(it.parte)).parte_nome || it.parte,
+        lead_id: (hasTargets ? target?.leadId : leadId) || null,
+        case_id: (hasTargets ? target?.caseId : caseId) || null,
+        process_id: (hasTargets ? target?.processId : processId) || null,
+        activity_id: activityId || null,
+        entry_type: it.tipo || 'entrada',
+        amount: it.valor,
+        description: it.descricao || it.verba || 'Lido do documento',
+        category: it.categoria || it.categoriaNova,
+        verba: it.verba,
+        valor_nominal: it.valorNominal,
+        juros: it.juros,
+        entry_date: it.data || hoje,
+        settled_at: it.jaPago ? (it.data || hoje) : null,
+        receipt_url: receiptUrl,
+        conferido: true,
+        payment_method: null,
+        notes: null,
+        parcela_grupo: null,
+        parcela_n: null,
+        parcela_de: null,
+        created_by: createdBy,
+      }));
+      const { error } = await db.from('lead_financials' as any).insert(linhas);
+      if (error) throw error;
+      toast.success(linhas.length + ' lançamentos criados do documento');
+      setDialogOpen(false);
+      setEditingEntry(null);
+      resetForm();
+      fetchEntries();
+    } catch (err: any) {
+      toast.error('Erro: ' + err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1154,6 +1315,23 @@ export function EntityFinancialsPanel({
     fetchEntries();
   };
 
+  /**
+   * Confere a sugestão: a linha passa a contar nos totais.
+   *
+   * Só isso — NÃO baixa. Conferir é dizer "a IA leu certo"; baixar é dizer "o
+   * dinheiro entrou". Juntar os dois num clique faria uma condenação lida virar
+   * caixa recebido sem ninguém decidir isso.
+   */
+  const conferir = async (entry: EntityFinancialEntry) => {
+    await ensureExternalSession().catch(() => {});
+    const { error } = await db.from('lead_financials' as any)
+      .update({ conferido: true })
+      .eq('id', entry.id);
+    if (error) { toast.error('Erro ao conferir: ' + error.message); return; }
+    toast.success('Conferido — agora conta nos totais');
+    fetchEntries();
+  };
+
   /** Deságio padrão da equipe. Fica no Cloud (`system_settings`), não no navegador. */
   const salvarTaxa = async () => {
     const n = Number(String(taxaMes).replace(',', '.'));
@@ -1241,7 +1419,7 @@ export function EntityFinancialsPanel({
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground">Do cliente (líquido)</p>
               {/* A planilha já entrega líquida: o 30% saiu do vencido E do vincendo. */}
-              <p className="text-sm font-bold text-sky-700">{formatCurrency(valorProcesso.cotaCliente)}</p>
+              <p className="text-sm font-bold text-sky-700">{formatCurrency(estoqueRestante.cotaCliente)}</p>
               {valorProcesso.hcParcelado > 0 && (
                 <p className="text-[10px] text-muted-foreground leading-tight">
                   {formatCurrency(valorProcesso.cotaVencida)} já venceu
@@ -1250,7 +1428,7 @@ export function EntityFinancialsPanel({
             </div>
             <div className="text-center">
               <p className="text-[10px] text-muted-foreground">Do escritório (30% + suc.)</p>
-              <p className="text-sm font-bold text-green-700">{formatCurrency(valorProcesso.escritorio)}</p>
+              <p className="text-sm font-bold text-green-700">{formatCurrency(estoqueRestante.escritorio)}</p>
               {/* Contratual e sucumbencial são recebíveis distintos: um vem do
                   contrato com o cliente, o outro da condenação da parte contrária. */}
               <p className="text-[10px] text-muted-foreground leading-tight">
@@ -1302,6 +1480,16 @@ export function EntityFinancialsPanel({
             {jaCorrigido.regua ? REGUA_LABEL[jaCorrigido.regua] : 'justiça do processo'}.
             {jaCorrigido.pagas > 0 && ` ${jaCorrigido.pagas} parte(s) já paga(s) não corrigem mais.`}
           </p>
+
+          {estoqueRestante.migrado > 0 && (
+            <p className="text-[10px] leading-snug text-indigo-800">
+              {formatCurrency(estoqueRestante.migrado)} já viraram lançamento a receber e por isso
+              saíram daqui ({formatCurrency(estoqueRestante.migradoCliente)} do cliente,{' '}
+              {formatCurrency(estoqueRestante.migradoEscritorio)} do escritório). Este bloco mostra
+              só o que ainda <strong>não</strong> foi lançado — assim o mesmo dinheiro não aparece
+              duas vezes na mesma tela.
+            </p>
+          )}
 
           <p className="text-[10px] text-muted-foreground leading-snug">
             Valor do processo, não caixa — <strong>não some com o extrato abaixo</strong>. O mesmo
@@ -1449,6 +1637,12 @@ export function EntityFinancialsPanel({
                 {formatCurrency(totaisProcesso.vencidoEscritorio + totaisProcesso.vencidoCliente)} já
                 venceram e ninguém baixou. Continuam como direito, fora do caixa — data que passa não
                 é prova de pagamento. Baixe pelo ✓ na linha quando o dinheiro entrar.
+              </p>
+            )}
+            {totaisProcesso.aConferir > 0 && (
+              <p className="text-violet-700">
+                {formatCurrency(totaisProcesso.aConferir)} lidos por IA e ainda não conferidos —
+                fora de todos os totais até alguém confirmar. Confira pelo ✦ na linha.
               </p>
             )}
             {totaisProcesso.aPagar > 0 && (
@@ -1650,6 +1844,11 @@ export function EntityFinancialsPanel({
                     {linha.parcela.n}/{linha.parcela.de}
                   </Badge>
                 )}
+                {linha.conferido === false && (
+                  <Badge variant="outline" className="text-[10px] border-violet-300 text-violet-700">
+                    a conferir
+                  </Badge>
+                )}
                 {linha.previsto && (
                   <Badge
                     variant="outline"
@@ -1675,6 +1874,15 @@ export function EntityFinancialsPanel({
                     onClick={() => setVerComprovante(linha.entry?.receipt_url || null)}
                   >
                     <Paperclip className="h-3 w-3" />
+                  </Button>
+                )}
+                {linha.entry && linha.conferido === false && (
+                  <Button
+                    variant="ghost" size="icon" className="h-6 w-6 text-violet-600"
+                    title="A IA sugeriu esta linha. Conferir faz ela contar nos totais."
+                    onClick={() => conferir(linha.entry!)}
+                  >
+                    <Sparkles className="h-3.5 w-3.5" />
                   </Button>
                 )}
                 {linha.entry && (
@@ -1829,6 +2037,77 @@ export function EntityFinancialsPanel({
               </Button>
             </div>
 
+            {/* DOCUMENTO COM VÁRIOS VALORES — a tela vira uma conferência: marque
+                o que entra, e cada item vira uma linha com a SUA verba e a SUA
+                parte. É exatamente o trabalho que se fazia à mão, um por um. */}
+            {itensIa.length > 1 && (
+              <div className="rounded border border-violet-200 bg-violet-50/40 p-2 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="flex items-center gap-1 text-xs font-semibold text-violet-900">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    {itensIa.length} valores lidos{sugestao?.documento ? ' · ' + sugestao.documento : ''}
+                  </p>
+                  <Button
+                    type="button" variant="ghost" size="sm" className="h-6 text-[11px]"
+                    onClick={() => setEscolha(
+                      escolha.size === itensIa.length ? new Set() : new Set(itensIa.map((_, i) => i)),
+                    )}
+                  >
+                    {escolha.size === itensIa.length ? 'desmarcar todos' : 'marcar todos'}
+                  </Button>
+                </div>
+
+                {sugestao?.observacao && (
+                  <p className="text-[10px] leading-snug text-muted-foreground">{sugestao.observacao}</p>
+                )}
+
+                <ScrollArea style={{ maxHeight: '260px' }}>
+                  <div className="space-y-1 pr-2">
+                    {itensIa.map((it, i) => (
+                      <label key={i} className="flex cursor-pointer items-start gap-2 rounded border bg-background/70 px-2 py-1.5 text-[11px]">
+                        <input
+                          type="checkbox" className="mt-0.5" checked={escolha.has(i)}
+                          onChange={e => {
+                            const s = new Set(escolha);
+                            if (e.target.checked) s.add(i); else s.delete(i);
+                            setEscolha(s);
+                          }}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="truncate font-medium">{it.descricao || it.verba || 'sem descrição'}</span>
+                            <span className={'flex-shrink-0 font-bold ' + (it.tipo === 'saida' ? 'text-red-600' : 'text-green-600')}>
+                              {it.tipo === 'saida' ? '-' : '+'}
+                              {it.valor != null ? formatCurrency(it.valor) : 'sem valor'}
+                            </span>
+                          </div>
+                          <p className="truncate text-muted-foreground">
+                            {it.categoria || ('categoria nova: ' + it.categoriaNova)}
+                            {it.verba ? ' · ' + it.verba : ''}
+                            {it.parte ? ' · ' + it.parte : ''}
+                          </p>
+                          <p className="text-muted-foreground">
+                            {it.jaPago ? 'já pago' : 'a receber'}
+                            {it.data ? ' · ' + it.data : ' · sem data'}
+                            {it.valorNominal != null ? ' · principal ' + formatCurrency(it.valorNominal) : ''}
+                            {it.juros != null ? ' + juros ' + formatCurrency(it.juros) : ''}
+                            {it.parte && !casarParte(it.parte) ? ' · parte não vinculada' : ''}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </ScrollArea>
+
+                <p className="text-[10px] leading-snug text-muted-foreground">
+                  Confira antes de lançar — o que o documento diz que já foi pago entra baixado, e o
+                  resto entra como a receber, fora do caixa até alguém baixar.
+                </p>
+              </div>
+            )}
+
+            {itensIa.length <= 1 && (
+              <>
             <div className="flex gap-2">
               <Button
                 type="button"
@@ -2115,11 +2394,19 @@ export function EntityFinancialsPanel({
                 )}
               </div>
             )}
+              </>
+            )}
           </div>
           </ScrollArea>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : (editingEntry ? 'Atualizar' : 'Salvar')}</Button>
+            {itensIa.length > 1 ? (
+              <Button onClick={salvarVarios} disabled={saving || escolha.size === 0}>
+                {saving ? 'Salvando...' : 'Lançar ' + escolha.size + ' de ' + itensIa.length}
+              </Button>
+            ) : (
+              <Button onClick={handleSave} disabled={saving}>{saving ? 'Salvando...' : (editingEntry ? 'Atualizar' : 'Salvar')}</Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

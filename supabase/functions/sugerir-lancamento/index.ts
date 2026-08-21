@@ -1,38 +1,50 @@
 // =============================================================================
-// SUGERIR LANÇAMENTO — lê o comprovante (ou só a descrição) e propõe o resto.
+// SUGERIR LANÇAMENTO — lê o que foi anexado (ou dito) e propõe os lançamentos.
 //
-// Dois usos, uma função só, porque a pergunta é a mesma nos dois casos ("que
-// lançamento é este?") e duplicar o prompt em duas funções faria as respostas
-// divergirem com o tempo:
+// Quatro entradas, uma função só, porque a pergunta é a mesma nas quatro ("que
+// lançamento é este?") e prompts separados divergiriam com o tempo:
 //
 //   { descricao }    -> devolve só a categoria sugerida
-//   { comprovante }  -> lê a imagem e devolve valor, data, tipo, descrição e
-//                       categoria
+//   { ditado }       -> transcrição de voz: valor, data, tipo e de quem é
+//   { comprovante }  -> imagem ou PDF: LISTA de lançamentos
+//   { contexto }     -> apoio, nunca fonte
 //
-// REGRA DE OURO DO PROMPT: **nunca inventar**. Comprovante ilegível devolve
-// campo nulo, não um chute plausível. Valor errado num extrato financeiro é
-// pior que campo vazio — o vazio a pessoa preenche, o errado ela não percebe.
+// DEVOLVE UMA LISTA, e essa é a lição do caso que motivou a v2: uma planilha de
+// atualização de cálculo (8 páginas, lida em 21/08/2026) trazia valor da causa,
+// líquido ao reclamante, honorário do patrono, sucumbência e dois pagamentos
+// já feitos — SEIS linhas. A v1 pedia "um comprovante de pagamento", o modelo
+// leu tudo certo, não achou um pagamento único e devolveu null em todo campo.
+// A leitura estava boa; o formato do pedido é que estava errado.
 //
-// A resposta é SUGESTÃO: quem salva é o humano, com tudo editável na tela.
+// REGRA DE OURO DO PROMPT: **nunca inventar**. Campo ilegível volta nulo, não
+// um chute plausível. Valor errado num extrato financeiro é pior que campo
+// vazio — o vazio a pessoa preenche, o errado ela não percebe.
+//
+// A resposta é SUGESTÃO: quem escolhe o que salvar é o humano, na tela.
 // =============================================================================
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 // SEM import relativo, de propósito: assim a função sobe sozinha, sem precisar
 // empacotar `_shared/gemini.ts` junto. O que ela usa daquele módulo é a fatia
-// pequena — um modelo só, partes de texto e um anexo inline. O roteamento
-// Google/Anthropic, streaming e tools que vivem lá não fazem falta aqui.
+// pequena — um modelo só, partes de texto e um anexo inline.
 const MODELO = 'gemini-2.5-flash';
+const PROMPT_VERSAO = 'v2-lista-2026-08-21';
 
-/** Parte de conteúdo no formato da Generative Language API. */
 type ParteGemini = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
+};
 
 /** "data:image/png;base64,AAA" -> inlineData. Vale para imagem E para PDF. */
 function anexoInline(dataUrl: string): ParteGemini | null {
   if (!dataUrl.startsWith('data:')) return null;
   const virgula = dataUrl.indexOf(',');
   if (virgula < 0) return null;
-  const cabecalho = dataUrl.substring(0, virgula);
-  const mimeType = cabecalho.match(/data:([^;]+)/)?.[1] || 'image/jpeg';
+  const ponto = dataUrl.indexOf(';');
+  const fim = ponto > 0 && ponto < virgula ? ponto : virgula;
+  const mimeType = dataUrl.substring(5, fim) || 'image/jpeg';
   return { inlineData: { mimeType, data: dataUrl.substring(virgula + 1) } };
 }
 
@@ -48,16 +60,14 @@ async function chamarGemini(systemPrompt: string, partes: ParteGemini[]): Promis
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents: [{ role: 'user', parts: partes }],
         generationConfig: {
-          // JSON direto do modelo: sem isto ele devolve cercado em ```json e a
+          // JSON direto: sem isto o modelo devolve cercado em bloco de código, e
           // resposta cortada no meio da cerca vira "JSON inválido".
           responseMimeType: 'application/json',
-          // 2.5-flash é modelo que PENSA, e o pensamento gasta deste mesmo
-          // orçamento. Com 700 e observação um pouco longa, o JSON vinha
-          // truncado no meio. Aqui não há o que raciocinar — é leitura e
-          // classificação —, então o pensamento vai a zero e a folga sobra
-          // para a resposta.
+          // 2.5-flash PENSA, e o pensamento sai do mesmo orçamento da resposta.
+          // Aqui não há o que raciocinar — é leitura e classificação —, então o
+          // pensamento vai a zero e a folga inteira sobra para a lista.
           thinkingConfig: { thinkingBudget: 0 },
-          maxOutputTokens: 2048,
+          maxOutputTokens: 8192,
           temperature: 0,
         },
       }),
@@ -70,14 +80,17 @@ async function chamarGemini(systemPrompt: string, partes: ParteGemini[]): Promis
   return String(saida);
 }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-request-id',
-};
+const DIGITOS = '0123456789';
 
-/** Tira a cerca de código que o modelo às vezes põe mesmo mandando não pôr. */
+/** Sem regex de propósito: barra invertida não sobrevive à edição deste arquivo. */
 function extrairJson(txt: string): Record<string, unknown> | null {
-  const limpo = txt.trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+  let limpo = txt.trim();
+  const cerca = limpo.indexOf('```');
+  if (cerca >= 0) {
+    const inicio = limpo.indexOf('\n', cerca);
+    const fim = limpo.lastIndexOf('```');
+    if (inicio > 0 && fim > inicio) limpo = limpo.substring(inicio + 1, fim).trim();
+  }
   try {
     return JSON.parse(limpo);
   } catch {
@@ -87,35 +100,48 @@ function extrairJson(txt: string): Record<string, unknown> | null {
   }
 }
 
-/** "R$ 1.125,30" | "1125.30" | 1125.3 -> 1125.3. Qualquer outra coisa -> null. */
+/**
+ * "R$ 1.125,30" | "1125.30" | 1125.3 -> 1125.3. Qualquer outra coisa -> null.
+ *
+ * O ÚLTIMO separador manda: em "1.125,30" a vírgula é decimal e o ponto é
+ * milhar; em "1,125.30" é o contrário. Chutar um dos dois erra por mil.
+ */
 function numero(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v !== 'string') return null;
-  const limpo = v.replace(/[^\d,.-]/g, '').replace(/\.(?=\d{3}\b)/g, '').replace(',', '.');
+  let s = '';
+  for (const c of v) if (DIGITOS.includes(c) || c === ',' || c === '.' || c === '-') s += c;
+  if (!s) return null;
+  const ultimaVirgula = s.lastIndexOf(',');
+  const ultimoPonto = s.lastIndexOf('.');
+  const decimal = ultimaVirgula > ultimoPonto ? ',' : (ultimoPonto > -1 ? '.' : '');
+  let limpo = '';
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (c === ',' || c === '.') { if (c === decimal && i === (decimal === ',' ? ultimaVirgula : ultimoPonto)) limpo += '.'; }
+    else limpo += c;
+  }
   const n = Number(limpo);
   return Number.isFinite(n) ? n : null;
 }
 
 /** Aceita só yyyy-MM-dd. Data em outro formato é ruído, não dado. */
 function dataIso(v: unknown): string | null {
-  return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+  if (typeof v !== 'string' || v.length !== 10) return null;
+  if (v[4] !== '-' || v[7] !== '-') return null;
+  for (const i of [0, 1, 2, 3, 5, 6, 8, 9]) if (!DIGITOS.includes(v[i])) return null;
+  return v;
 }
 
 const texto = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
 /**
- * Chave de comparacao de categoria: so letras e numeros, sem acento.
+ * Chave de comparação de categoria: só letras e números, sem acento.
  *
- * NAO usa `normalize('NFD')`. Medido em 20/08/2026 contra a funcao no ar:
- * categoria SEM acento sempre casava e categoria COM acento nunca casava — a
- * assinatura de um lado chegar precomposto (i com acento num caractere so) e o
- * outro decomposto (i + marca), com o normalize nao os aproximando neste
- * runtime. Tabela explicita resolve nos dois casos: o precomposto vira a letra
- * base pelo mapa, e a marca solta do decomposto cai fora por nao ser a-z.
- *
- * Pontuacao e espaco tambem somem, entao '**Pericia**' e 'Pericia ' casam com
- * 'Perícia'. O que importa aqui e reconhecer a categoria, nao preservar grafia:
- * o valor gravado e sempre o da LISTA, nunca esta chave.
+ * NÃO usa normalize('NFD'): tabela explícita casa tanto o acento precomposto
+ * (um caractere só) quanto o decomposto (letra + marca), sem depender de como
+ * o runtime normaliza. Pontuação e espaço somem junto, então "**Pericia**" e
+ * "Pericia " casam com "Perícia". O valor GRAVADO é sempre o da lista.
  */
 const ACENTOS: Record<string, string> = {
   á: 'a', à: 'a', â: 'a', ã: 'a', ä: 'a',
@@ -133,7 +159,6 @@ const chaveCategoria = (v: string) =>
     .filter((c) => (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'))
     .join('');
 
-/** A categoria DA LISTA que corresponde ao que o modelo devolveu. */
 function casarCategoria(crua: string | null, lista: string[]): string | null {
   if (!crua) return null;
   const alvo = chaveCategoria(crua);
@@ -153,29 +178,84 @@ const REGRAS = [
   '',
   'REGRAS INEGOCIÁVEIS:',
   '1. NUNCA invente. Campo que você não conseguir ler com segurança volta null.',
-  '   Comprovante borrado, cortado ou ilegível => null, e explique em "observacao".',
-  '2. "categoria" tem que ser uma da lista, escrita igual. Se UMA DELAS SERVE, use.',
-  '   "Outros" é ÚLTIMO RECURSO, não atalho: se o gasto tem nome próprio e vai se',
-  '   repetir (aluguel, software, correios, cartório, estacionamento...), deixe',
-  '   "categoria" null e proponha um nome curto e reutilizável em "categoria_nova",',
-  '   explicando em "observacao" por que nenhuma das existentes serve. Só use',
-  '   "Outros" quando o gasto for mesmo avulso e sem nome.',
-  '   NUNCA devolva "categoria" e "categoria_nova" os dois null: ou casa com uma',
-  '   da lista, ou propõe uma nova.',
-  '3. "valor" é número em reais, ponto decimal (1125.30). Sem "R$", sem separador de milhar.',
-  '4. "data" é yyyy-MM-dd, e é a data do PAGAMENTO, não a de emissão do documento.',
-  '5. "tipo": "entrada" se o dinheiro ENTROU, "saida" se SAIU. Na dúvida, null.',
-  '6. "descricao": uma linha curta e concreta do que foi o dinheiro, em português',
-  '   (ex: "pago 3a parcela do acordo"). Sem enfeite.',
-  '7. "pagador" e "beneficiario": nomes que aparecem no comprovante, se houver. Senão null.',
-  '8. "confianca": "alta", "media" ou "baixa" — quão seguro você está do conjunto.',
+  '   Documento borrado, cortado ou ilegível => diga isso em "observacao".',
+  '2. UMA LINHA POR VALOR. Documento de cálculo ou sentença traz vários valores',
+  '   com naturezas diferentes (líquido do cliente, honorário do patrono,',
+  '   sucumbência, custas, INSS, IR, pagamentos já feitos). Cada um vira um item',
+  '   de "lancamentos". NÃO some valores diferentes num total só, e NÃO devolva',
+  '   só o maior. Comprovante simples de pagamento devolve UM item.',
+  '3. NÃO repita o mesmo dinheiro. "Valor da causa" e "total da condenação" são',
+  '   o guarda-chuva das outras verbas: só entram se o documento NÃO abrir as',
+  '   parcelas dele. Se abriu, entram as partes, não o guarda-chuva.',
+  '   PLANILHA DE ATUALIZAÇÃO traz a MESMA verba recalculada em várias datas',
+  '   (o mesmo honorário em 2023, em 2024 e em 2026). Devolva SÓ a atualização',
+  '   MAIS RECENTE de cada verba, e diga em "observacao" quantas datas havia.',
+  '   Repetir a verba por data faz o total virar o dobro ou o triplo do que o',
+  '   processo vale — foi o erro da primeira rodada deste prompt.',
+  '   Cada valor entra UMA vez, com UMA categoria só. Em dúvida entre duas,',
+  '   use a que o documento nomeia e registre a dúvida em "observacao".',
+  '4. "categoria" tem que ser uma da lista, copiada letra por letra. Se uma serve,',
+  '   use. "Outros" é ÚLTIMO RECURSO: gasto com nome próprio e recorrente',
+  '   (aluguel, software, cartório) deixa "categoria" null e propõe um nome curto',
+  '   em "categoria_nova". Nunca os dois null no mesmo item.',
+  '5. "verba" é a natureza jurídica do valor, como o documento a chama: "dano',
+  '   moral", "pensionamento", "horas extras", "sucumbência", "FGTS", "custas".',
+  '   É diferente de categoria: categoria diz de quem é o dinheiro, verba diz de',
+  '   onde ele veio.',
+  '6. "valor" é o TOTAL da linha, em reais com ponto decimal (1125.30).',
+  '   "valor_nominal" é o principal sem juros e "juros" é o que se somou até a',
+  '   data do cálculo — só quando o documento SEPARAR os dois. Se ele só traz o',
+  '   total, valor_nominal e juros voltam null. Nunca deduza um do outro.',
+  '7. "tipo": "entrada" quando o dinheiro vem PARA o escritório ou para o cliente',
+  '   dele; "saida" quando sai. Sucumbência devida PELO nosso lado é "saida".',
+  '8. "ja_pago": true só quando o documento mostra que aquele valor JÁ foi pago',
+  '   (recibo, comprovante, "pagamento efetuado em"). Valor que ainda vai ser',
+  '   pago, mesmo com data marcada, é false.',
+  '9. "data": yyyy-MM-dd. Do PAGAMENTO quando ja_pago, do vencimento quando não.',
+  '   Sem data no documento, null — não use a data de hoje.',
+  '10. "parte": a pessoa a quem o valor se refere, como escrita no documento.',
+  '11. "documento": "comprovante", "calculo", "decisao" ou "outro".',
+  '12. "confianca": "alta", "media" ou "baixa", do conjunto.',
   '',
-  'Responda SÓ com o objeto JSON, sem cerca de código e sem texto em volta:',
-  '{"valor":null,"data":null,"tipo":null,"descricao":null,"categoria":null,',
-  ' "categoria_nova":null,"pagador":null,"beneficiario":null,"confianca":"baixa","observacao":null}',
+  'Responda SÓ com este objeto JSON, sem texto em volta:',
+  '{"documento":null,"confianca":"baixa","observacao":null,"lancamentos":[',
+  ' {"valor":null,"valor_nominal":null,"juros":null,"data":null,"tipo":null,',
+  '  "descricao":null,"verba":null,"categoria":null,"categoria_nova":null,',
+  '  "parte":null,"ja_pago":false}]}',
 ].join('\n');
 
 const PADRAO = ['Honorários Contratuais', 'Honorários Sucumbenciais', 'Cota do Cliente', 'Outros'];
+
+/** Sanea UM item da lista. O que nao passa vira null, nunca chute. */
+function limparLancamento(bruto: Record<string, unknown>, lista: string[]) {
+  const crua = texto(bruto.categoria);
+  const propostaCrua = texto(bruto.categoria_nova);
+  // O modelo as vezes poe a categoria CERTA no campo de proposta. Se o nome
+  // existe na lista, ele nao e novo — e o existente escrito no campo errado.
+  const categoria = casarCategoria(crua, lista) || casarCategoria(propostaCrua, lista);
+  const tipo = texto(bruto.tipo);
+  const valor = numero(bruto.valor);
+  const nominal = numero(bruto.valor_nominal);
+  const juros = numero(bruto.juros);
+  return {
+    valor,
+    // Só devolve a abertura quando ela FECHA com o total. Nominal + juros que
+    // não somam o valor é sinal de leitura errada, e meio dado aqui engana mais
+    // que dado nenhum.
+    valorNominal: nominal != null && juros != null && valor != null
+      && Math.abs(nominal + juros - valor) < 0.02 ? nominal : (juros == null ? nominal : null),
+    juros: nominal != null && juros != null && valor != null
+      && Math.abs(nominal + juros - valor) < 0.02 ? juros : null,
+    data: dataIso(bruto.data),
+    tipo: tipo === 'entrada' || tipo === 'saida' ? tipo : null,
+    descricao: texto(bruto.descricao),
+    verba: texto(bruto.verba),
+    categoria,
+    categoriaNova: categoria ? null : (propostaCrua || crua),
+    parte: texto(bruto.parte),
+    jaPago: bruto.ja_pago === true,
+  };
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
@@ -196,7 +276,8 @@ serve(async (req) => {
 
     const lista: string[] = Array.isArray(categorias) && categorias.length ? categorias : PADRAO;
     const systemPrompt = [
-      'Você classifica lançamentos financeiros de um escritório de advocacia brasileiro.',
+      'Você lê documentos financeiros de um escritório de advocacia brasileiro e',
+      'devolve os lançamentos que eles contêm.',
       '',
       'CATEGORIAS DISPONÍVEIS (use EXATAMENTE uma destas em "categoria"):',
       ...lista.map((c) => '- ' + c),
@@ -209,7 +290,11 @@ serve(async (req) => {
       // Imagem E PDF: o Gemini aceita application/pdf como inlineData igual.
       const anexo = anexoInline(String(comprovante));
       if (!anexo) return json({ error: 'Comprovante precisa vir como data URL' }, 400);
-      partes.push({ text: 'Leia este comprovante de pagamento e devolva o JSON.' });
+      partes.push({
+        text: 'Leia este documento inteiro e devolva TODOS os lançamentos que ele traz, '
+          + 'um item por valor. Pode ser um comprovante com um valor só, ou uma planilha '
+          + 'de cálculo com dezenas — devolva o que estiver lá, sem resumir num total.',
+      });
       partes.push(anexo);
     }
     if (ditado) {
@@ -217,22 +302,20 @@ serve(async (req) => {
       // fato em voz alta, então valor e data VÊM do que ela falou.
       partes.push({
         text: 'A pessoa DITOU o lançamento em voz alta; isto é a transcrição: "' + ditado + '". '
-          + 'Os campos vêm do que ela falou, inclusive valor e data. Volte null só no que ela não '
-          + 'disse. Data relativa ("ontem", "sexta passada", "dia 10") resolve contra hoje = '
-          + (hojeIso || 'desconhecido') + '. Se citou um nome, ponha em "pagador" quando o dinheiro '
-          + 'ENTROU e em "beneficiario" quando SAIU. '
-          + 'ATENCAO: a categoria voce DEDUZ do que ela falou — ninguem dita o nome da '
-          + 'categoria em voz alta. O "volte null" acima vale para valor, data e nome, '
-          + 'NUNCA para a categoria.',
+          + 'Normalmente é UM lançamento. Os campos vêm do que ela falou, inclusive valor e '
+          + 'data. Volte null só no que ela não disse. Data relativa ("ontem", "sexta '
+          + 'passada", "dia 10") resolve contra hoje = ' + (hojeIso || 'desconhecido') + '. '
+          + 'O nome que ela citou vai em "parte". ATENÇÃO: a categoria você DEDUZ do que ela '
+          + 'falou — ninguém dita o nome da categoria em voz alta.',
       });
     }
     if (descricao) {
       const temFonte = comprovante || ditado;
       partes.push({
         text: temFonte
-          ? 'A pessoa também escreveu: "' + descricao + '". Use como apoio — o comprovante/ditado manda.'
-          : 'Sem comprovante. Classifique só por esta descrição: "' + descricao + '". Valor, data, '
-            + 'pagador e beneficiário voltam null — não dá para saber isso por texto.',
+          ? 'A pessoa também escreveu: "' + descricao + '". Use como apoio — o documento manda.'
+          : 'Sem documento. Classifique só por esta descrição: "' + descricao + '", num item '
+            + 'único. Valor, data e parte voltam null — não dá para saber isso por texto.',
       });
     }
     if (contexto) partes.push({ text: 'Contexto: ' + String(contexto).slice(0, 500) });
@@ -241,34 +324,32 @@ serve(async (req) => {
     const saida = extrairJson(bruto);
     if (!saida) return json({ error: 'A IA não devolveu JSON válido', bruto: bruto.slice(0, 400) }, 502);
 
-    // Saneamento NO SERVIDOR: a categoria tem que existir na lista. Modelo que
-    // devolve grafia diferente não pode virar "categoria nova" sem querer — era
-    // assim que a planilha antiga acumulou 81 categorias para 68 conceitos.
-    const crua = texto(saida.categoria);
-    const propostaCrua = texto(saida.categoria_nova);
-    // O modelo as vezes poe a categoria CERTA no campo de proposta: mandou
-    // 'Pericia' em `categoria_nova` mesmo com 'Perícia' na lista. Se o nome
-    // existe, ele nao e novo — e o existente escrito no campo errado, e tratar
-    // como novo criaria uma categoria duplicada a cada lancamento.
-    const categoria = casarCategoria(crua, lista) || casarCategoria(propostaCrua, lista);
-    const tipo = texto(saida.tipo);
+    const crus = Array.isArray(saida.lancamentos) ? saida.lancamentos : [];
+    const lancamentos = crus
+      .filter((l: unknown) => l && typeof l === 'object')
+      .map((l: Record<string, unknown>) => limparLancamento(l, lista))
+      // Item sem valor E sem categoria não é lançamento nenhum — é ruído de
+      // leitura, e mostrar linha vazia na tela só dá trabalho de fechar.
+      .filter((l) => l.valor != null || l.categoria || l.categoriaNova);
 
+    const primeiro = lancamentos[0];
     return json({
-      valor: numero(saida.valor),
-      data: dataIso(saida.data),
-      tipo: tipo === 'entrada' || tipo === 'saida' ? tipo : null,
-      descricao: texto(saida.descricao),
-      categoria,
-      // O que o modelo escreveu e NAO casou com a lista vira PROPOSTA, nunca lixo.
-      // Descartar era o pior dos mundos: a linha chegava sem categoria e sem
-      // sugestao, e a pessoa nao tinha o que aceitar nem o que corrigir. Assim,
-      // "Pericia Medica" (que nao existe na lista) chega como categoria nova a
-      // confirmar, e a decisao continua sendo de quem salva.
-      categoriaNova: categoria ? null : (propostaCrua || crua),
-      pagador: texto(saida.pagador),
-      beneficiario: texto(saida.beneficiario),
+      documento: texto(saida.documento),
       confianca: ['alta', 'media', 'baixa'].includes(String(saida.confianca)) ? String(saida.confianca) : 'baixa',
       observacao: texto(saida.observacao),
+      promptVersao: PROMPT_VERSAO,
+      lancamentos,
+      // Espelho do primeiro item: o caminho "sugerir categoria pela descrição" e
+      // o ditado devolvem um só, e quem chama não precisa saber de lista para
+      // esses dois. A lista continua sendo a fonte quando há mais de um.
+      valor: primeiro?.valor ?? null,
+      data: primeiro?.data ?? null,
+      tipo: primeiro?.tipo ?? null,
+      descricao: primeiro?.descricao ?? null,
+      categoria: primeiro?.categoria ?? null,
+      categoriaNova: primeiro?.categoriaNova ?? null,
+      pagador: primeiro?.tipo === 'entrada' ? (primeiro?.parte ?? null) : null,
+      beneficiario: primeiro?.tipo === 'saida' ? (primeiro?.parte ?? null) : null,
     });
   } catch (error) {
     console.error('[sugerir-lancamento]', error);

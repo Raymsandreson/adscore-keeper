@@ -930,3 +930,82 @@ acento nunca casava. Era o **teste**, não a função — `curl -d '...'` inline
 ambiente corrompe bytes não-ASCII antes de sair. Com `--data-binary @arquivo`,
 todos os sete casos passam. Antes de culpar o código, confira o que o teste
 está de fato enviando.
+
+---
+
+## Um documento, vários lançamentos (21/08/2026)
+
+### O que estava errado
+
+O Raym anexou uma planilha de atualização de cálculo (8 páginas) esperando que
+todos os valores fossem lançados de uma vez. Voltou tudo em branco, confiança
+baixa.
+
+Perguntando ao modelo o que ele via, veio a resposta inteira: *"planilha de
+atualização de cálculo, 8 páginas. Valor da causa R$ 604.180,14; líquido devido
+ao reclamante R$ 689.388,83; honorários do patrono R$ 125.534,20; sucumbência
+R$ 760.934,53"*, mais dois pagamentos já feitos.
+
+**A leitura estava perfeita.** O pedido é que estava errado: o prompt dizia
+"leia este comprovante de pagamento" e o schema tinha lugar para UM lançamento.
+O modelo viu que não era comprovante, não achou um pagamento único, e devolveu
+null em todo campo — obedecendo a regra de não inventar.
+
+### A função devolve uma lista
+
+`sugerir-lancamento` v2 (`v2-lista-2026-08-21`) devolve `lancamentos: [...]`, um
+item por valor, cada um com **verba** (natureza jurídica), **valor nominal**,
+**juros**, **parte**, **tipo** e **já pago**. Comprovante simples devolve um
+item só; os campos antigos continuam no topo, espelhando o primeiro, para os
+caminhos de ditado e de sugestão de categoria não precisarem saber de lista.
+
+Duas regras nasceram de rodar contra o documento real:
+
+- **Guarda-chuva não entra com as partes.** "Valor da causa" e "total da
+  condenação" só entram quando o documento não abre as parcelas.
+- **Planilha de atualização repete a mesma verba em várias datas.** A primeira
+  rodada devolveu 11 itens — o mesmo honorário em 2023, 2024 e 2026. Aceitar
+  todos triplicaria o processo. Agora só a atualização MAIS RECENTE de cada
+  verba entra, e a `observacao` diz quantas datas havia. Resultado: **5 itens**,
+  soma de entradas R$ 814.923,03.
+
+### A tela vira conferência
+
+Documento com mais de um valor não preenche o formulário: mostra a **lista com
+caixas de seleção**, cada linha com valor, categoria, verba, parte, se já foi
+pago e a abertura principal + juros quando o documento separa. Marca-se o que
+entra e o botão vira "Lançar N de M".
+
+O que o documento diz que **já foi pago** nasce baixado; o resto nasce **a
+receber**, fora do caixa.
+
+### Estoque recua conforme o fluxo absorve
+
+Condenação é estoque (`jm_partes`) e lançamento é fluxo. O painel sempre avisou
+em texto que não se somam — e o aviso deixou de bastar quando a leitura passou a
+criar lançamento a partir da MESMA condenação.
+
+Agora "Quanto vale o processo" mostra só o que **ainda não** virou lançamento a
+receber, e diz quanto já migrou, aberto por titular. Decisão do Raym em
+21/08/2026, entre deixar os dois blocos cheios ou fazer o estoque recuar.
+
+### `conferido`: sugestão de IA não conta sozinha
+
+Coluna nova em `lead_financials`. `false` = a IA propôs e ninguém olhou — a linha
+aparece na lista com selo "a conferir" e **fica fora de todos os totais**, caixa
+e a receber. O ✦ na linha confere.
+
+Conferir é diferente de baixar, e são dois botões: **conferir** diz "a IA leu
+certo", **baixar** diz "o dinheiro entrou". Juntar os dois faria uma condenação
+lida virar caixa recebido sem ninguém decidir isso.
+
+O que a pessoa escolhe na tela nasce já conferido — ela acabou de olhar item por
+item. `false` fica reservado para a leitura automática vinda dos marcos.
+
+### O que ainda não existe
+
+A ponte automática **marcos → lançamento**. A leitura da peça já existe e é da
+outra sessão (`jm-ler-peca` → `jm_documento_leitura.partes[].verbas[]`, 21
+leituras, prompt v3) — falta o passo que transforma aquelas verbas em linhas
+`conferido = false` no processo. As colunas (`verba`, `valor_nominal`, `juros`,
+`origem_leitura`, `conferido`) já existem esperando por isso.
