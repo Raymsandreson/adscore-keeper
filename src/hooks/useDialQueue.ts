@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+import { normalizarTelefone, telefoneDiscavel } from '@/lib/dial';
 import { toast } from 'sonner';
 
 /**
@@ -37,20 +38,10 @@ export interface DialQueueFilters {
   esconderJaLigados: boolean;
 }
 
-/** Mesma normalização do railway `sheet-lead-ingest.ts`, para casar com o que já entra. */
-export function normalizarTelefone(bruto: unknown): string {
-  const d = String(bruto ?? '').replace(/\D/g, '');
-  if (!d) return '';
-  if (d.length >= 12 && d.startsWith('55')) return d;
-  if (d.length === 10 || d.length === 11) return '55' + d;
-  return d;
-}
-
-/** 55 + DDD + 8 ou 9 dígitos. Fora disso o discador só queima tentativa. */
-export function telefoneDiscavel(bruto: unknown): boolean {
-  const d = normalizarTelefone(bruto);
-  return d.length === 12 || d.length === 13;
-}
+// Normalização e discagem moram em `@/lib/dial` — é o ponto único que a fila,
+// o alerta de lead novo e o chat do WhatsApp compartilham. Re-exportado aqui
+// porque a superfície do hook já era essa.
+export { normalizarTelefone, telefoneDiscavel } from '@/lib/dial';
 
 /** PostgREST corta em 1000 — paginar sempre, e avisar se bater no teto. */
 async function paginar<T>(monta: (de: number, ate: number) => any, teto = TETO): Promise<{ linhas: T[]; truncado: boolean }> {

@@ -549,6 +549,67 @@ Google Apps Script no `onFormSubmit`) trouxe 3.365 leads **todos com telefone** 
 `kanban_boards.sheet_webhook_token` configurado: "Acidente de Trabalho" e
 "BPC - Autismo". Religar essa via é o que faz a fila voltar a ter volume de discador.
 
+Cada linha tem um botão **Ligar**, e o telefone da linha também é link. Os dois são
+`<a href="tel:+55...">`: entregam o número já montado ao discador do aparelho —
+celular pareado, softphone instalado, ramal — sem a página navegar nem abrir aba.
+
+### Discagem: `src/lib/dial.ts`
+
+O único lugar do app que transforma telefone de lead em ligação. Existe para ser
+**ponto de troca**: se a Callface expuser endpoint de originar chamada, ou se o
+Twilio ganhar número brasileiro, muda-se `abrirDiscador` e mais nada.
+
+| função | serve para |
+|---|---|
+| `normalizarTelefone` | 55 + DDD + assinante, mesma regra do `sheet-lead-ingest` |
+| `telefoneDiscavel` | 12 ou 13 dígitos — fora disso o discador só queima tentativa |
+| `comNonoDigito` | completa celular antigo de 8 dígitos (mesma regra da edge `twilio-voice-twiml`) |
+| `paraE164` / `hrefTel` | `+5586981812709` / `tel:+5586981812709` |
+| `exibirTelefone` | `(86) 98181-2709` |
+| `abrirDiscador` | disca fora de um clique em link (ação de toast): cria âncora e clica |
+
+Consumidores: a fila de discagem, o alerta de lead novo e o botão CallFace do chat
+do WhatsApp — que antes montava `tel:` em formato local e agora usa E.164 como o
+resto. Coberto por `src/lib/__tests__/dial.test.ts`.
+
+### Alerta de lead novo para ligar
+
+`NewDialableLeadAlerts`, montado no `SidebarLayout` (rotas autenticadas, dentro do
+Router). Escuta `INSERT` em `leads` no **Supabase Externo** por Realtime — é lá que
+a tabela mora e é lá que ela está na publicação `supabase_realtime`. Quando entra
+lead com telefone discável, mostra toast com nome, telefone formatado, origem e um
+botão **Ligar** com o número já pronto.
+
+Regras que valem a pena saber:
+
+- **Não disca sozinho, de propósito.** Medido em 21/08/2026: 3 a 5 leads discáveis
+  por dia útil, e **27,5%** dos discáveis dos últimos 60 dias chegaram fora do
+  horário comercial. Robô discando nesse cenário entrega chamada sem ninguém na
+  linha. O que encurta o tempo até a primeira ligação é a pessoa ver em segundos e
+  clicar uma vez.
+- **Quem cadastrou não é avisado.** Compara `created_by` contra o uuid do Cloud e o
+  do Externo (via `auth_uuid_mapping`), porque a coluna guarda ora um, ora outro.
+  Filtrar por `created_by IS NULL` seria erro: **87% dos leads discáveis dos últimos
+  30 dias foram criados por pessoa** (origens `referral` e `whatsapp`), não por robô.
+- **Não vira enxurrada.** Junta o que chega em 2 s num aviso só e respeita piso de
+  15 s entre avisos. Se a ingestão por planilha voltar ao volume de junho
+  (~200/dia), o aviso vira "N leads novos para ligar" com ação "Ver fila", que abre
+  `/calls?tab=fila`.
+- **Som é opt-in**, como todo som da casa: Configurações → Notificações → Sons do
+  sistema → "Lead novo para ligar". Nasce desligado.
+
+**Limite conhecido:** ligação feita por `tel:` sai pelo aparelho da pessoa, então a
+Callface não registra e o filtro "esconder quem já recebeu ligação" não enxerga.
+Ele só cruza `call_records`, que é alimentado pelo webhook da Callface.
+
+**Twilio existe e não está pronto.** As edges `twilio-token` e `twilio-voice-twiml`
+estão deployadas no Cloud e o componente `TwilioSoftphone` está escrito, mas o
+`TWILIO_CALLER_ID` configurado é **+1 978 (Massachusetts)**. Ligar para celular
+brasileiro exibindo número americano derruba a taxa de atendimento e cobra como
+internacional. Usar essa via exige comprar número brasileiro no Twilio (bundle
+regulatório com CNPJ). Os outros quatro segredos `TWILIO_*` não foram verificados —
+o Cloud tem sign-in anônimo desabilitado.
+
 ### Aba "Triagem Callface"
 
 Ligação que não encostou em nenhum lead nem contato recebe a tag `triagem`

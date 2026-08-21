@@ -18,6 +18,7 @@ export const SOUND_KEYS = [
   'timerEstimateOverdue',
   'chatUrgent',
   'managerAlert',
+  'newDialableLead',
 ] as const;
 
 export type SoundKey = (typeof SOUND_KEYS)[number];
@@ -30,6 +31,7 @@ export const DEFAULT_SOUND_SETTINGS: SoundSettings = {
   timerEstimateOverdue: false,
   chatUrgent: false,
   managerAlert: false,
+  newDialableLead: false,
 };
 
 const STORAGE_KEY = 'sound-settings';

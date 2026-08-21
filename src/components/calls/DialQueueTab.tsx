@@ -8,18 +8,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, RefreshCw, Copy, PhoneOutgoing, AlertTriangle, Inbox } from 'lucide-react';
+import { Download, RefreshCw, Copy, PhoneOutgoing, AlertTriangle, Inbox, Phone } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'sonner';
-
-/** (86) 98181-2709 a partir de 5586981812709. */
-function exibirTelefone(digitos: string): string {
-  const nac = digitos.startsWith('55') ? digitos.slice(2) : digitos;
-  if (nac.length === 11) return `(${nac.slice(0, 2)}) ${nac.slice(2, 7)}-${nac.slice(7)}`;
-  if (nac.length === 10) return `(${nac.slice(0, 2)}) ${nac.slice(2, 6)}-${nac.slice(6)}`;
-  return digitos;
-}
+import { exibirTelefone, hrefTel } from '@/lib/dial';
 
 /**
  * CSV com `;` e BOM: é o que o Excel em pt-BR e o Google Sheets abrem sem
@@ -218,13 +211,22 @@ export function DialQueueTab() {
                   <TableHead>Quadro</TableHead>
                   <TableHead>Origem</TableHead>
                   <TableHead>Chegou</TableHead>
+                  <TableHead className="w-[1%]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {leads.map((l) => (
                   <TableRow key={l.id}>
                     <TableCell className="font-medium">{l.lead_name || '—'}</TableCell>
-                    <TableCell className="whitespace-nowrap">{exibirTelefone(l.telefone)}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {hrefTel(l.telefone) ? (
+                        <a href={hrefTel(l.telefone)} className="hover:underline">
+                          {exibirTelefone(l.telefone)}
+                        </a>
+                      ) : (
+                        exibirTelefone(l.telefone)
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{l.board_name}</TableCell>
                     <TableCell>
                       <Badge variant="outline" className="text-[10px] font-normal">
@@ -233,6 +235,16 @@ export function DialQueueTab() {
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-muted-foreground">
                       {format(new Date(l.created_at), 'dd/MM/yy', { locale: ptBR })}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-right">
+                      {/* `<a href="tel:">` em vez de onClick: entrega o número montado ao
+                          discador do aparelho sem a página navegar nem abrir aba. */}
+                      <Button asChild size="sm" variant="secondary" className="h-7">
+                        <a href={hrefTel(l.telefone)}>
+                          <Phone className="mr-1.5 h-3 w-3" />
+                          Ligar
+                        </a>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

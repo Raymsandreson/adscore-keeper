@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect, lazy, Suspense } from 'react';
+import { hrefTel } from '@/lib/dial';
 import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -3279,7 +3280,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 data-phone (o gancho que a extensão procura) e ainda ganha o fallback
                 do discador do sistema quando ela não está presente. */}
             <a
-              href={`tel:${whatsappPhone?.replace(/\D/g, '').replace(/^55/, '')}`}
+              href={hrefTel(whatsappPhone)}
               className="callface-dial h-6 text-xs bg-indigo-600 text-white px-2 rounded-full hover:bg-indigo-700 transition-colors inline-flex items-center gap-1 cursor-pointer border-0 whitespace-nowrap shrink-0"
               data-phone={whatsappPhone?.replace(/^55/, '')}
               title="Ligar via CallFace"

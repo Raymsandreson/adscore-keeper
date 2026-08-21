@@ -66,6 +66,17 @@ const GROUPS: { title: string; options: SoundOption[] }[] = [
       },
     ],
   },
+  {
+    title: 'Ligações',
+    options: [
+      {
+        key: 'newDialableLead',
+        label: 'Lead novo para ligar',
+        description: 'Um lead com telefone válido acabou de entrar. O aviso na tela aparece de todo jeito.',
+        preview: playUrgentChime,
+      },
+    ],
+  },
 ];
 
 /**
