@@ -1,7 +1,8 @@
-// Envia Web Push (notificação nativa) para os participantes de um thread de chat
-// de equipe. Destinatários = quem já participou do thread + mencionados, menos o
-// remetente. Usa as assinaturas em push_subscriptions (Externo) e a chave privada
-// VAPID (secret do Railway).
+// Envia notificação nativa para os participantes de um thread de chat de equipe,
+// por DOIS canais: Web Push (navegador, chave VAPID) e Expo Push (app). As duas
+// famílias de assinatura moram na mesma tabela push_subscriptions (Externo),
+// separadas pela coluna `provider`.
+// Destinatários = quem já participou do thread + mencionados, menos o remetente.
 //
 // Body: { entity_type, entity_id, sender_id, sender_name, content, is_urgent?,
 //         mentioned_user_ids?: string[], url?: string }
@@ -31,10 +32,6 @@ function ensureVapid(): boolean {
 
 export const handler: RequestHandler = async (req, res) => {
   try {
-    if (!ensureVapid()) {
-      return res.json({ success: false, error: 'VAPID não configurado (defina VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY)' });
-    }
-
     const {
       entity_type,
       entity_id,
@@ -170,8 +167,20 @@ export const handler: RequestHandler = async (req, res) => {
 
     let sent = 0;
     let failed = 0;
+
+    // O VAPID é do Web Push e só dele: o app se identifica por token Expo, que
+    // o Expo encaminha para FCM/APNs com a credencial do projeto EAS. Enquanto
+    // esta checagem guardava a entrada do handler, uma chave do navegador
+    // faltando derrubava os dois canais de uma vez — e o sintoma no celular
+    // pareceria problema de Firebase, que é onde ninguém iria procurar.
+    const vapidOk = web.length === 0 || ensureVapid();
+    if (!vapidOk) {
+      failed += web.length;
+      console.warn('[send-team-push] VAPID ausente: %d assinatura(s) de navegador ignorada(s)', web.length);
+    }
+
     await Promise.all(
-      web.map(async (s) => {
+      (vapidOk ? web : []).map(async (s) => {
         try {
           await webpush.sendNotification(
             { endpoint: s.endpoint, keys: { p256dh: s.p256dh as string, auth: s.auth as string } },
@@ -209,6 +218,13 @@ export const handler: RequestHandler = async (req, res) => {
         // Web Push faz. Sem isso a tabela só cresce e o `sent` mente.
         await supabase.from('push_subscriptions').delete().in('endpoint', r.tokensMortos);
       }
+    }
+
+    // `success: false` fica reservado ao caso em que nada PODIA sair: só havia
+    // navegador e a chave sumiu. Se o app recebeu, a chamada cumpriu o que
+    // prometeu, e quem chama lê `sent` para decidir o que dizer na tela.
+    if (!vapidOk && expo.length === 0) {
+      return res.json({ success: false, error: 'VAPID não configurado (defina VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY)' });
     }
 
     return res.json({ success: true, sent, failed });
