@@ -14,6 +14,7 @@
 // resolvidas por lock, não por lógica no processo.
 import webpush from 'web-push';
 import { supabase } from './supabase';
+import { enviarExpo } from './expo-push';
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
@@ -230,7 +231,44 @@ async function toCloudUserId(extUserId: string): Promise<string> {
   }
 }
 
-async function pushToUser(userId: string, payload: string): Promise<number> {
+/**
+ * O aviso antes de virar payload — os dois canais dizem a mesma coisa, cada um
+ * na sua embalagem.
+ */
+interface Aviso {
+  title: string;
+  body: string;
+  /** Rota no web; é o que o service worker abre. */
+  url: string;
+  /** Rota no app; outra árvore de rotas (ver `rotaDoApp`). */
+  urlApp: string;
+  tag: string;
+}
+
+/**
+ * A rota da conversa DENTRO DO APP.
+ *
+ * O web abre `/whatsapp?openChat=…`: uma tela de lista mais um parâmetro. O app
+ * tem a conversa como rota própria (`/conversa/[telefone]`) e ignoraria aquele
+ * parâmetro — o toque abriria a lista, não o papo. São duas árvores de rotas
+ * para a mesma notificação, então o endereço viaja em dobro: `url` no payload
+ * do navegador, `data.url` na mensagem do Expo.
+ *
+ * O telefone vai em dígitos porque é assim que o app identifica a conversa
+ * (`telefoneDaConversa`), inclusive grupo — lá o `@g.us` é retirado. A
+ * instância viaja junto porque a thread não a adivinha: sem ela, quem é
+ * atendido por dois números da firma abre com as conversas misturadas.
+ */
+function rotaDoApp(convDigits: string, instanceName: string, nome: string): string {
+  // `encodeURIComponent` e não `URLSearchParams`: este último escreve espaço
+  // como "+", e quem lê do outro lado é o parser de rotas do expo-router, não
+  // um formulário. Nome de grupo tem espaço em quase todos ("LEAD290 | ..."),
+  // e o "+" apareceria cru no cabeçalho da conversa.
+  const q = `instancia=${encodeURIComponent(instanceName)}&nome=${encodeURIComponent(nome)}`;
+  return `/conversa/${encodeURIComponent(convDigits)}?${q}`;
+}
+
+async function pushToUser(userId: string, aviso: Aviso): Promise<number> {
   const cloudId = await toCloudUserId(userId);
 
   // Aceita os dois: quem tem cloud_uuid = ext_uuid cai no mesmo valor, e uma
@@ -238,25 +276,74 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
   const ids = Array.from(new Set([cloudId, userId]));
   const { data: subs } = await supabase
     .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
+    .select('id, endpoint, p256dh, auth, provider')
     .in('user_id', ids);
 
   if (!subs || subs.length === 0) return 0;
 
+  // Duas famílias de assinatura na MESMA tabela: navegador (VAPID) e app (token
+  // Expo). `provider` nulo é linha anterior à migration — Web Push.
+  //
+  // Sem esta separação o token do app entrava no `webpush.sendNotification`
+  // como se fosse endpoint de navegador, com as chaves nulas, e o envio morria
+  // sem status HTTP nenhum. Era por isso que mensagem nova de WhatsApp nunca
+  // chegava no celular: o único evento dos seis do §4.2 que não passa pelo
+  // `send-team-push`, e portanto o único que ficou sem o canal do app.
+  type Sub = { id: string; endpoint: string; p256dh: string | null; auth: string | null; provider: string | null };
+  const todas = subs as Sub[];
+  const web = todas.filter((s) => (s.provider || 'webpush') === 'webpush' && s.p256dh && s.auth);
+  const expo = todas.filter((s) => s.provider === 'expo');
+
   let sent = 0;
-  await Promise.all(
-    subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
-      try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
-        sent++;
-      } catch (err: unknown) {
-        const code = (err as { statusCode?: number })?.statusCode;
-        if (code === 404 || code === 410) {
-          await supabase.from('push_subscriptions').delete().eq('id', s.id);
+
+  // O VAPID é do Web Push e só dele. A checagem mora aqui, e não na entrada de
+  // `notifyNewWhatsAppMessage`, porque lá ela derrubava os dois canais: chave
+  // do navegador faltando calava também o app, que não usa VAPID para nada.
+  if (web.length > 0 && ensureVapid()) {
+    const payload = JSON.stringify({
+      title: aviso.title,
+      body: aviso.body,
+      url: aviso.url,
+      tag: aviso.tag,
+      urgent: false,
+    });
+    await Promise.all(
+      web.map(async (s) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh as string, auth: s.auth as string } },
+            payload,
+          );
+          sent++;
+        } catch (err: unknown) {
+          const code = (err as { statusCode?: number })?.statusCode;
+          if (code === 404 || code === 410) {
+            await supabase.from('push_subscriptions').delete().eq('id', s.id);
+          }
         }
-      }
-    }),
-  );
+      }),
+    );
+  }
+
+  if (expo.length > 0) {
+    const r = await enviarExpo(
+      expo.map((s) => ({
+        to: s.endpoint,
+        title: aviso.title,
+        body: aviso.body,
+        // Mensagem de cliente não é urgência da gestão: vai no canal normal.
+        data: { url: aviso.urlApp, tag: aviso.tag },
+      })),
+    );
+    sent += r.enviados;
+
+    if (r.tokensMortos.length > 0) {
+      // App desinstalado ou token rotacionado — a mesma limpeza que o 404/410
+      // faz do lado do navegador.
+      await supabase.from('push_subscriptions').delete().in('endpoint', r.tokensMortos);
+    }
+  }
+
   return sent;
 }
 
@@ -265,8 +352,10 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
  */
 export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Promise<void> {
   try {
-    if (!ensureVapid()) return;
-
+    // Nada de `ensureVapid()` aqui. Ele guardava a função inteira, então uma
+    // chave de Web Push faltando calava também o canal do app — que é Expo e
+    // não tem nada com VAPID. A checagem foi para dentro de `pushToUser`, no
+    // ramo a que ela pertence.
     const convDigits = digits(input.phone);
     if (!convDigits) return;
 
@@ -341,6 +430,7 @@ export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Prom
     const title = (input.contactName || '').trim() || convDigits;
     const preview = previewBody(input.messageText, input.messageType);
     const url = `/whatsapp?openChat=${encodeURIComponent(input.phone)}&instance=${encodeURIComponent(input.instanceName)}`;
+    const urlApp = rotaDoApp(convDigits, input.instanceName, title);
 
     await Promise.all(
       eligible.map(async (userId) => {
@@ -363,17 +453,15 @@ export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Prom
           const pending = Number(row.pending_count || 1);
           const body = pending > 1 ? `${pending} mensagens novas — ${preview}` : preview;
 
-          const payload = JSON.stringify({
+          const sent = await pushToUser(userId, {
             title,
             body,
             url,
+            urlApp,
             // tag por conversa: o sistema SUBSTITUI a notificação anterior em vez
-            // de empilhar uma por mensagem.
+            // de empilhar uma por mensagem. Vale nos dois canais.
             tag: `wa-${convDigits}`,
-            urgent: false,
           });
-
-          const sent = await pushToUser(userId, payload);
           if (sent > 0) {
             console.log(`[wa-push] ${sent} push(es) → user ${userId} · conversa ${convDigits} · ${pending} msg(s)`);
           }
