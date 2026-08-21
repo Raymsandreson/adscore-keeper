@@ -523,12 +523,26 @@ export function useLeadActivities() {
         patch.observer_names = valid.map(p => p.name);
       }
 
-      const { error } = await externalSupabase
+      // `.select('id')` não é enfeite: sem ele o update que não casa linha nenhuma
+      // volta SEM erro, e a tela dizia "Atividade atualizada!" com o trabalho
+      // perdido. A RLS do Externo é `auth.uid() IS NOT NULL` no SELECT e no
+      // UPDATE — sessão anônima expirada faz os dois virarem no-op calado.
+      // 21/08/2026.
+      const { data: updated, error } = await externalSupabase
         .from('lead_activities')
         .update(patch)
-        .eq('id', id);
+        .eq('id', id)
+        .select('id');
 
       if (error) throw error;
+
+      if (!updated || updated.length === 0) {
+        toast.error(
+          'Nada foi salvo: a atividade não foi encontrada ou sua sessão expirou. Recarregue a página e tente de novo.',
+          { duration: 10000 },
+        );
+        return false;
+      }
 
       // If linking a lead, migrate orphan chat messages from activity_id to lead_id
       if (updates.lead_id) {

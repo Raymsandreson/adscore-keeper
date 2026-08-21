@@ -1743,7 +1743,9 @@ const ActivitiesPage = () => {
 
     await updateActivity(selectedActivity.id, {
       title: formTitle,
-      description: null,
+      // Sem `description`: mandar null fixo aqui apagava a coluna a cada
+      // edição, e não há campo dela na tela. Mesmo motivo do
+      // `buildPayload` da ActivityFullSheet. 21/08/2026.
       what_was_done: formWhatWasDone || null,
       current_status_notes: formCurrentStatus || null,
       next_steps: formNextSteps || null,
