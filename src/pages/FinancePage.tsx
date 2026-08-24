@@ -94,7 +94,7 @@ export default function FinancePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
-  const { bank: podeVerConta, loading: acessoCarregando } = useFinanceAccess();
+  const { bank: podeVerConta } = useFinanceAccess();
   const { syncAll: syncAllCelcoin } = useCelcoinOpenFinance();
   const [sincronizandoCelcoin, setSincronizandoCelcoin] = useState(false);
   const { 
@@ -143,16 +143,18 @@ export default function FinancePage() {
   //
   // Quem não tem acesso a conta nenhuma é reposicionado logo abaixo, depois que
   // `useFinanceAccess` responde.
-  const [financialSection, setFinancialSection] = usePageState<string>('finance_section_v2', 'bank');
+  // `_v3` porque a `_v2` ficou envenenada: a versão anterior reposicionava por
+  // efeito, chamando `setFinancialSection`, que GRAVA no localStorage. Como o
+  // acesso ainda não tinha resolvido no primeiro render, ela gravava
+  // 'credit-card' logo na primeira abertura e a preferência ficava presa lá —
+  // Ctrl+Shift+R não limpa localStorage, então nem recarregar resolvia.
+  const [financialSection, setFinancialSection] = usePageState<string>('finance_section_v3', 'bank');
 
-  // Quem já esteve na aba "Conta" volta nela pelo estado salvo, mesmo sem
-  // acesso — e veria uma área em branco sem explicação. Só reposiciono depois
-  // que o acesso carregou; antes disso `podeVerConta` é false por padrão e o
-  // reset descartaria a escolha de quem TEM acesso, a cada abertura da página.
-  useEffect(() => {
-    if (acessoCarregando) return;
-    if (!podeVerConta && financialSection === 'bank') setFinancialSection('credit-card');
-  }, [acessoCarregando, podeVerConta, financialSection, setFinancialSection]);
+  // Desvio DERIVADO, não gravado. Quem não tem acesso a conta vê Cartão sem que
+  // a escolha dele seja sobrescrita, e no instante em que o acesso resolve a aba
+  // certa aparece sozinha. Efeito que escreve preferência a partir de estado
+  // ainda não resolvido é uma corrida que sempre perde.
+  const secaoVisivel = !podeVerConta && financialSection === 'bank' ? 'credit-card' : financialSection;
   const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");
@@ -932,7 +934,7 @@ export default function FinancePage() {
                   />
                   
                   {/* Card Filter - only for credit card section */}
-                  {financialSection === 'credit-card' && (
+                  {secaoVisivel === 'credit-card' && (
                     <MultiSelectFilter
                       icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
                       placeholder="Cartão"
@@ -963,7 +965,7 @@ export default function FinancePage() {
                   )}
                   
                   {/* Contact Filter - only contacts linked to cards */}
-                  {financialSection === 'credit-card' && contactFilterOptions.length > 0 && (
+                  {secaoVisivel === 'credit-card' && contactFilterOptions.length > 0 && (
                     <MultiSelectFilter
                       icon={<Users className="h-4 w-4 text-muted-foreground" />}
                       placeholder="Contato"
@@ -1073,7 +1075,7 @@ export default function FinancePage() {
                 esteve em "Conta" volta nela mesmo depois de perder o acesso e
                 veria área vazia. Só reposiciono depois que o acesso carregou,
                 senão o estado salvo seria descartado a cada abertura. */}
-            <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
+            <Tabs value={secaoVisivel} onValueChange={setFinancialSection} className="mb-4">
               <TabsList className={cn('grid w-full h-11', podeVerConta ? 'grid-cols-5' : 'grid-cols-4')}>
                 <TabsTrigger value="entries" className="flex items-center gap-2">
                   <Tag className="h-4 w-4" />

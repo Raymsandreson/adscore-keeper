@@ -75,8 +75,11 @@ export function useFinanceAccess() {
 
   const carregar = useCallback(async (forcar = false) => {
     if (!user) {
+      // Sessão ainda não resolvida: fecha o acesso mas NÃO declara `loading`
+      // encerrado. Declarar aqui faria a tela concluir "não tem acesso" no
+      // primeiro render e agir sobre isso — foi o que envenenou a aba padrão
+      // em 24/08/2026. Ausência de resposta não é resposta negativa.
       setAcesso(FECHADO);
-      setLoading(false);
       return;
     }
     if (forcar) emVoo = null;
