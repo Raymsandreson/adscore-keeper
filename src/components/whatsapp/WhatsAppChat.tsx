@@ -720,10 +720,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     exitTextSelection();
   };
 
-  const handleCreateActivityFromSelection = () => {
-    if (!onCreateActivity || textSelectionOrder.length === 0) return;
-    const escolhidas = mensagensSelecionadas(textSelectionOrder);
-    const prefill = buildTextSelectionPrefill();
+  /**
+   * Manda a seleção pra virar atividade. Serve às DUAS seleções da tela: a de
+   * texto (barrinha da bolha) e a de mídia (a mesma que salva no Drive). Quem
+   * marca um PDF marca no checkbox da mídia — e ali só existia "Salvar no
+   * Drive", então o documento nunca chegava na atividade.
+   */
+  const criarAtividadeDaSelecao = (ids: string[], sairDaSelecao: () => void) => {
+    if (!onCreateActivity || ids.length === 0) return;
+    const escolhidas = mensagensSelecionadas(ids);
+    const prefill = escolhidas.map(formatMsgForActivity).join('\n');
     const midias = buildSelectionMedia(escolhidas);
     // Só bloqueia quando não sobrou NADA legível — antes, seleção de PDF sem
     // legenda caía aqui mesmo tendo o documento inteiro pra ler.
@@ -737,11 +743,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.contact_id || undefined,
       conversation.contact_name || undefined,
       prefill,
-      [...textSelectionOrder],
+      [...ids],
       midias,
     );
-    exitTextSelection();
+    sairDaSelecao();
   };
+
+  const handleCreateActivityFromSelection = () => criarAtividadeDaSelecao(textSelectionOrder, exitTextSelection);
+  const handleCreateActivityFromDriveSelection = () => criarAtividadeDaSelecao(selectionOrder, exitDriveSelection);
 
   // Pede pra IA analisar TODAS as mídias selecionadas (imagens) e devolver
   // título + titular + descrição. Filename = só o título (titular já está dentro do doc).
@@ -3420,7 +3429,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <RefreshCw className="h-4 w-4" /> Buscar histórico (msgs antigas)
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { setDriveSelectionMode(true); setSelectionOrder([]); }} className="gap-2">
-                <Sparkles className="h-4 w-4 text-blue-500" /> Selecionar mídias p/ Drive
+                <Sparkles className="h-4 w-4 text-blue-500" /> Selecionar mídias (Drive ou atividade)
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               {!primaryLeadId && contactLinkedLeadIds.length === 0 && (
@@ -3916,8 +3925,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-3">
           <span className="text-sm font-medium">{selectedDriveMsgIds.size} selecionada(s)</span>
           <Button size="sm" variant="outline" onClick={exitDriveSelection}>Cancelar</Button>
-          <Button size="sm" disabled={selectedDriveMsgIds.size === 0} onClick={openBatchDialogIfReady} className="gap-1">
+          <Button size="sm" variant="outline" disabled={selectedDriveMsgIds.size === 0} onClick={openBatchDialogIfReady} className="gap-1">
             <Sparkles className="h-3.5 w-3.5" /> Salvar no Drive
+          </Button>
+          {/* Marcar o PDF e só poder mandar pro Drive era meio caminho: quem
+              seleciona a intimação quase sempre quer a tarefa que ela gera. */}
+          <Button
+            size="sm"
+            disabled={selectedDriveMsgIds.size === 0 || !onCreateActivity}
+            onClick={handleCreateActivityFromDriveSelection}
+            className="gap-1"
+            title="Criar atividade — a IA lê o conteúdo do que está marcado"
+          >
+            <CalendarPlus className="h-3.5 w-3.5" /> Criar atividade
           </Button>
         </div>
       )}
@@ -4479,7 +4499,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                             ? "bg-white/90 border-white text-transparent opacity-100"
                             : "bg-white/90 border-white text-transparent opacity-0 group-hover/img:opacity-100"
                       )}
-                      title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para Drive (Shift+clique também funciona)'}
+                      title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar (Salvar no Drive ou criar atividade — Shift+clique também funciona)'}
                     >
                       {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                     </button>
@@ -4613,7 +4633,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                                 ? "bg-background border-muted-foreground/40 text-transparent opacity-100"
                                 : "bg-background border-muted-foreground/40 text-transparent opacity-0 group-hover/doc:opacity-100"
                           )}
-                          title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar para Drive (Shift+clique também funciona)'}
+                          title={selectedDriveMsgIds.has(msg.id) ? `Posição #${getSelectionIndex(msg.id)} — clique p/ desmarcar` : 'Selecionar (Salvar no Drive ou criar atividade — Shift+clique também funciona)'}
                         >
                           {selectedDriveMsgIds.has(msg.id) ? getSelectionIndex(msg.id) : '✓'}
                         </button>
