@@ -133,7 +133,17 @@ export default function FinancePage() {
   const [celcoinDialogOpen, setCelcoinDialogOpen] = useState(false);
   const [celcoinConnectionsOpen, setCelcoinConnectionsOpen] = useState(false);
   const [activeTab, setActiveTab] = usePageState<string>('finance_activeTab', 'workflow');
-  const [financialSection, setFinancialSection] = usePageState<string>('finance_section', 'credit-card');
+  // Abre em "Conta" — é o extrato bancário, que é o que se olha primeiro.
+  //
+  // A chave mudou de `finance_section` para `_v2` de propósito: `usePageState`
+  // guarda a escolha no localStorage, então só trocar o padrão não moveria
+  // ninguém que já usou a tela — todos continuariam caindo na aba antiga. Com a
+  // chave nova cada navegador recomeça em Conta uma vez, e a escolha seguinte
+  // volta a ser respeitada normalmente.
+  //
+  // Quem não tem acesso a conta nenhuma é reposicionado logo abaixo, depois que
+  // `useFinanceAccess` responde.
+  const [financialSection, setFinancialSection] = usePageState<string>('finance_section_v2', 'bank');
 
   // Quem já esteve na aba "Conta" volta nela pelo estado salvo, mesmo sem
   // acesso — e veria uma área em branco sem explicação. Só reposiciono depois
