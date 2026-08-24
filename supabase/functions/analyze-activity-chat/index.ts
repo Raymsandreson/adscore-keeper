@@ -276,7 +276,7 @@ Responda em português do Brasil.`;
               status: "pending",
             };
           })
-          .filter(Boolean);
+          .filter((s): s is NonNullable<typeof s> => s !== null);
 
         if (suggestions.length > 0) {
           const { error: sugError } = await supabase.from("call_field_suggestions").insert(suggestions);

@@ -1,7 +1,6 @@
 // Normalização do importador da planilha de lançamentos. Os casos vêm do PDF
 // exportado da aba Lançamentos em 18/08/2026 e do que já está em jm_lancamentos.
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error — script .mjs sem tipos; o que importa aqui é o comportamento.
 import { lerCsv, mapearColunas, data, valor, cnj, tipoNormalizado, montarLinha, chaveForte, chaveFraca, planejar } from '../../../scripts/import-lancamentos-planilha.mjs';
 
 const CABECALHO = [

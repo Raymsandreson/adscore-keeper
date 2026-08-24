@@ -13,6 +13,7 @@ const parte = (over: Partial<ParteValor> = {}): ParteValor => ({
   condenacao: 28571.43, cota: 20000, cotaVista: 20000,
   hcVista: 8571.43, hcParcelado: 0, hs: 0,
   status: 'PAGO', fase: 'Conclusão',
+  termoInicial: null,
   ...over,
 });
 
@@ -22,6 +23,7 @@ const projetada = (over: Partial<ParteValor> = {}): ParteValor => ({
   condenacao: 175571.11, cota: 0, cotaVista: 95317.1,
   hcVista: 40850.18, hcParcelado: 0, hs: 39403.83,
   status: 'PROJETADO', fase: 'Conhecimento',
+  termoInicial: null,
   ...over,
 });
 
@@ -35,6 +37,7 @@ const pensionada = (over: Partial<ParteValor> = {}): ParteValor => ({
   condenacao: 346134.35, cota: 290622.07, cotaVista: 110279.95,
   hcVista: 47262.84, hcParcelado: 77289.48, hs: 8249.44,
   status: 'A RECEBER', fase: 'Recurso Instância Superior',
+  termoInicial: null,
   ...over,
 });
 

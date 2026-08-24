@@ -278,7 +278,7 @@ serve(async (req) => {
           success: true, reset: true, actions_executed: actionsExecuted,
         }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
       } else {
-        const result = await processAgentConversationFollowups(supabase, targetPhone, targetInstance, forceImmediate);
+        const result = await processAgentConversationFollowups(supabase, extClient, targetPhone, targetInstance, forceImmediate);
         actionsExecuted += result;
       }
     }
@@ -297,7 +297,7 @@ serve(async (req) => {
   }
 });
 
-async function processAgentConversationFollowups(supabase: any, targetPhone?: string | null, targetInstance?: string | null, forceImmediate?: boolean): Promise<number> {
+async function processAgentConversationFollowups(supabase: any, extClient: any, targetPhone?: string | null, targetInstance?: string | null, forceImmediate?: boolean): Promise<number> {
   let actionsExecuted = 0;
 
   // Check current hour in Brasilia timezone
