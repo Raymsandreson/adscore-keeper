@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+// Lê e escreve no EXTERNO. Faz parte do mesmo conjunto de `useExpenseCategories`:
+// `card_assignments.cost_account_id` aponta para `cost_accounts`, e
+// `category_api_mappings` aponta para ids de `expense_categories`. Apontar uma
+// tabela para cada banco quebraria o vínculo SEM ERRO — o id simplesmente não
+// seria encontrado. Por isso as cinco se movem juntas.
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export interface CostAccount {
@@ -21,7 +26,7 @@ export function useCostAccounts() {
   const fetchAccounts = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('cost_accounts')
         .select('*')
         .order('display_order', { ascending: true });
@@ -42,7 +47,7 @@ export function useCostAccounts() {
 
   const addAccount = useCallback(async (account: Partial<CostAccount>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('cost_accounts')
         .insert([{
           name: account.name,
@@ -68,7 +73,7 @@ export function useCostAccounts() {
 
   const updateAccount = useCallback(async (id: string, updates: Partial<CostAccount>) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('cost_accounts')
         .update(updates)
         .eq('id', id);
@@ -85,7 +90,7 @@ export function useCostAccounts() {
 
   const deleteAccount = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('cost_accounts')
         .delete()
         .eq('id', id);

@@ -789,6 +789,208 @@ async function sincronizar(
   };
 }
 
+/**
+ * Traduz o uuid do Cloud (o que a sessão do front carrega) para o uuid do
+ * Externo (o que as tabelas financeiras gravam em `user_id`). NÃO é o mesmo
+ * número: dos 52 usuários em `auth_uuid_mapping`, **26 têm uuid diferente nos
+ * dois bancos**, e o dono de 100% dos lançamentos é um deles — `79c5c9d1…` no
+ * Cloud contra `21924f81…` no Externo. Comparar o uuid do Cloud direto com
+ * `user_id` devolveria **vazio, não erro**, que é a forma mais cara de errar.
+ *
+ * Sem linha no mapping devolve o próprio uuid do Cloud: 26 dos 52 são idênticos
+ * mesmo, então o palpite acerta metade das vezes e nunca é pior que falhar. Quem
+ * chama recebe `mapeado` para saber qual dos dois casos aconteceu.
+ */
+async function uuidNoExterno(cloudUuid: string): Promise<{ uuid: string; mapeado: boolean }> {
+  const { data } = await ext
+    .from('auth_uuid_mapping').select('ext_uuid').eq('cloud_uuid', cloudUuid).maybeSingle();
+  const achado = (data as any)?.ext_uuid;
+  return achado ? { uuid: String(achado), mapeado: true } : { uuid: cloudUuid, mapeado: false };
+}
+
+// Teto de linhas por chamada. O PostgREST corta em 1000 por resposta e não avisa
+// -- a versão que lia o Cloud batia nesse teto calada. Aqui pagino até o teto e
+// digo se truncou, porque lista financeira cortada em silêncio é conciliação
+// errada, não lista incompleta.
+const PAGINA_LEITURA = 1000;
+const TETO_LEITURA = 20_000;
+
+/**
+ * Lê transações aplicando **a mesma regra das policies do Externo**, que o
+ * service role ignora:
+ *   bank: user_id = eu OR can_view_pluggy_account(eu, pluggy_account_id)
+ *   card: user_id = eu OR can_view_card(eu, card_last_digits)
+ * As duas funções são `EXISTS` numa tabela de permissão e nada mais (conferido
+ * em 24/08/2026 com pg_get_functiondef), então reproduzi-las aqui é fiel. Não
+ * há bypass de admin nas policies de leitura -- não inventei um.
+ */
+async function lerTransacoes(
+  tabela: 'bank_transactions' | 'credit_card_transactions',
+  meuUuid: string,
+  de: string | null,
+  ate: string | null,
+): Promise<{ linhas: any[]; truncado: boolean; permitidos: number }> {
+  const perm = tabela === 'bank_transactions'
+    ? { tabela: 'user_account_permissions', coluna: 'pluggy_account_id' }
+    : { tabela: 'user_card_permissions', coluna: 'card_last_digits' };
+
+  const { data: linhasPerm, error: erroPerm } = await ext
+    .from(perm.tabela).select(perm.coluna).eq('user_id', meuUuid);
+  if (erroPerm) throw new Error(`${perm.tabela}: ${erroPerm.message}`);
+
+  // Sanitiza antes de entrar no `in.(...)`: o filtro do PostgREST é uma string,
+  // e vírgula ou parêntese num valor mudaria o sentido da expressão.
+  const permitidos = [...new Set(
+    (linhasPerm || [])
+      .map((r: any) => String(r[perm.coluna] ?? '').replace(/[^A-Za-z0-9_-]/g, ''))
+      .filter(Boolean),
+  )];
+
+  const filtro = permitidos.length
+    ? `user_id.eq.${meuUuid},${perm.coluna}.in.(${permitidos.join(',')})`
+    : `user_id.eq.${meuUuid}`;
+
+  const linhas: any[] = [];
+  for (let inicio = 0; inicio < TETO_LEITURA; inicio += PAGINA_LEITURA) {
+    let q = ext.from(tabela).select('*')
+      // Ordem estável: `transaction_date` sozinho não é único, e paginar por
+      // chave não-única pula e repete linha entre páginas.
+      .order('transaction_date', { ascending: false })
+      .order('id', { ascending: false })
+      .range(inicio, inicio + PAGINA_LEITURA - 1)
+      .or(filtro);
+    if (de) q = q.gte('transaction_date', de);
+    if (ate) q = q.lte('transaction_date', ate);
+
+    const { data, error } = await q;
+    if (error) throw new Error(`${tabela}: ${error.message}`);
+    linhas.push(...(data || []));
+    if (!data || data.length < PAGINA_LEITURA) {
+      return { linhas, truncado: false, permitidos: permitidos.length };
+    }
+  }
+  console.warn(`[celcoin] ${tabela}: leitura truncada no teto de ${TETO_LEITURA} linhas`);
+  return { linhas, truncado: true, permitidos: permitidos.length };
+}
+
+/**
+ * Valores distintos de uma coluna, paginando. O PostgREST não faz DISTINCT e
+ * corta em 1000 por resposta -- ler sem paginar devolveria as contas das mil
+ * primeiras linhas e omitiria as demais **sem avisar**, que é como uma conta
+ * inteira sumiria da tela de permissões.
+ */
+async function distintos(tabela: string, coluna: string): Promise<string[]> {
+  const vistos = new Set<string>();
+  for (let inicio = 0; inicio < TETO_LEITURA; inicio += PAGINA_LEITURA) {
+    const { data, error } = await ext
+      .from(tabela).select(coluna).not(coluna, 'is', null)
+      .order(coluna, { ascending: true })
+      .range(inicio, inicio + PAGINA_LEITURA - 1);
+    if (error) throw new Error(`${tabela}.${coluna}: ${error.message}`);
+    for (const r of data || []) {
+      const v = (r as any)[coluna];
+      if (v) vistos.add(String(v));
+    }
+    if (!data || data.length < PAGINA_LEITURA) break;
+  }
+  return [...vistos];
+}
+
+/**
+ * Administrar permissão é `is_admin(auth.uid())` nas policies. O service role
+ * ignora RLS, então o gate tem que ser explícito aqui -- e contra o uuid do
+ * EXTERNO, que é o que a função conhece.
+ */
+async function ehAdmin(uuidExterno: string): Promise<boolean> {
+  const { data, error } = await ext.rpc('is_admin', { _user_id: uuidExterno });
+  if (error) throw new Error(`is_admin: ${error.message}`);
+  return data === true;
+}
+
+/**
+ * Quem pode receber permissão. NÃO é o `user_roles` do Externo: lá existem
+ * 5.285 linhas `member`, que são clientes, não equipe -- um seletor com isso é
+ * inutilizável. O roster é o `auth_uuid_mapping` (52 pessoas), que por
+ * definição é quem tem conta nos dois bancos, e cujos uuids do Externo são
+ * exatamente os que as tabelas de permissão indexam.
+ */
+async function rosterFinanceiro(): Promise<any[]> {
+  const { data: mapa, error } = await ext.from('auth_uuid_mapping').select('ext_uuid, cloud_uuid, email');
+  if (error) throw new Error(`auth_uuid_mapping: ${error.message}`);
+  const ids = (mapa || []).map((m: any) => String(m.ext_uuid)).filter(Boolean);
+  if (!ids.length) return [];
+
+  const [{ data: perfis }, { data: papeis }] = await Promise.all([
+    ext.from('profiles').select('user_id, full_name, email').in('user_id', ids),
+    ext.from('user_roles').select('user_id, role').in('user_id', ids),
+  ]);
+  const porPerfil = new Map<string, any>((perfis || []).map((p: any) => [String(p.user_id), p]));
+  const porPapel = new Map<string, string>((papeis || []).map((r: any) => [String(r.user_id), String(r.role)]));
+
+  return (mapa || []).map((m: any) => ({
+    user_id: String(m.ext_uuid),
+    cloud_user_id: m.cloud_uuid ? String(m.cloud_uuid) : null,
+    full_name: porPerfil.get(String(m.ext_uuid))?.full_name ?? null,
+    email: porPerfil.get(String(m.ext_uuid))?.email ?? m.email ?? null,
+    role: porPapel.get(String(m.ext_uuid)) ?? 'member',
+  })).sort((a: any, b: any) =>
+    String(a.full_name || a.email || '').localeCompare(String(b.full_name || b.email || ''), 'pt-BR'));
+}
+
+/**
+ * Troca o conjunto inteiro de permissões de alguém numa tabela. Semântica de
+ * "conjunto" e não de grant/revoke individual porque o diálogo da tela edita o
+ * estado completo: mandar o conjunto final elimina a janela em que um grant
+ * falha depois de um revoke ter passado e a pessoa fica sem nada.
+ */
+async function trocarPermissoes(
+  tabela: 'user_account_permissions' | 'user_card_permissions',
+  coluna: 'pluggy_account_id' | 'card_last_digits',
+  alvo: string,
+  desejados: string[],
+  concedidoPor: string,
+): Promise<{ concedidos: string[]; revogados: string[] }> {
+  const { data: atuais, error } = await ext.from(tabela).select(coluna).eq('user_id', alvo);
+  if (error) throw new Error(`${tabela}: ${error.message}`);
+  const tem = new Set<string>((atuais || []).map((r: any) => String(r[coluna])));
+  const quer = new Set<string>(desejados.map((v) => String(v)).filter(Boolean));
+
+  const concedidos = [...quer].filter((v) => !tem.has(v));
+  const revogados = [...tem].filter((v) => !quer.has(v));
+
+  if (concedidos.length) {
+    // `granted_by` tem FK para o auth.users do EXTERNO. As linhas antigas
+    // guardam uuid do CLOUD e só existem porque a constraint é NOT VALID --
+    // repetir aquilo hoje toma 23503.
+    const { error: e } = await ext.from(tabela).insert(
+      concedidos.map((v) => ({ user_id: alvo, [coluna]: v, granted_by: concedidoPor })),
+    );
+    if (e) throw new Error(`conceder em ${tabela}: ${e.message}`);
+  }
+  if (revogados.length) {
+    const { error: e } = await ext.from(tabela).delete().eq('user_id', alvo).in(coluna, revogados);
+    if (e) throw new Error(`revogar em ${tabela}: ${e.message}`);
+  }
+  return { concedidos, revogados };
+}
+
+/**
+ * Uma linha por ação de dado, com QUEM e QUANTO.
+ *
+ * Existe porque o log da edge só expõe URL e status, e as 15 ações compartilham
+ * a mesma URL: um `200` não distingue "trouxe 4.609 linhas" de "voltou vazio".
+ * Foi exatamente esse buraco que deixou a Pluggy morrer calada por cinco meses,
+ * e ele voltou a morder em 24/08/2026, quando não deu para verificar pelo log se
+ * a tela tinha passado a funcionar. `mapeado=false` é o sintoma mais caro que
+ * existe aqui: a leitura volta vazia sem erro nenhum.
+ */
+function logAcao(action: string, meu: { uuid: string; mapeado: boolean }, detalhe: string): void {
+  console.log(
+    `[celcoin] ${action} user=${meu.uuid.slice(0, 8)}…` +
+      `${meu.mapeado ? '' : ' MAPEADO=NAO'} ${detalhe}`,
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
@@ -803,9 +1005,12 @@ Deno.serve(async (req) => {
   // `health` e `egress_diag` são diagnóstico e não tocam em dado de ninguém:
   // ficam abertos de propósito, para conseguir medir sem sessão.
   const ABERTAS = new Set(['health', 'egress_diag']);
+  // Guardado fora do `if` porque `list_transactions` precisa saber QUEM chamou:
+  // a identidade vem do JWT, nunca do corpo.
+  let quem: { ok: boolean; userId: string | null; via: string } = { ok: true, userId: null, via: 'aberta' };
   if (!ABERTAS.has(action)) {
-    const v = await autorizar(req);
-    if (!v.ok) return json({ success: false, error: 'não autorizado', via: v.via }, 401);
+    quem = await autorizar(req);
+    if (!quem.ok) return json({ success: false, error: 'não autorizado', via: quem.via }, 401);
   }
 
   try {
@@ -1141,6 +1346,254 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Quem pode ver o quê, para a tela decidir se mostra a aba. A regra é
+      // DERIVADA do dado (dono das linhas ou permissão concedida), nunca uma
+      // lista de nomes no código: pessoa hardcoded em fonte não sai quando sai
+      // da firma, e ninguém lembra de procurar por ela.
+      case 'my_finance_access': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+
+        const contar = async (tabela: string, coluna: string) => {
+          const { count } = await ext
+            .from(tabela).select(coluna, { count: 'exact', head: true }).eq('user_id', meu.uuid);
+          return count || 0;
+        };
+        const [donoBanco, donoCartao, permContas, permCartoes] = await Promise.all([
+          contar('bank_transactions', 'id'),
+          contar('credit_card_transactions', 'id'),
+          contar('user_account_permissions', 'pluggy_account_id'),
+          contar('user_card_permissions', 'card_last_digits'),
+        ]);
+
+        // As listas em si, e não só o booleano: `useCardPermissions` filtra a
+        // tela por `allowedCards`, e ele vinha do `user_card_permissions` do
+        // Cloud comparado com o uuid do Cloud -- nunca casava, então o filtro
+        // zerava a lista de cartão mesmo com dado legível.
+        const [{ data: minhasContas }, { data: meusCartoes }] = await Promise.all([
+          ext.from('user_account_permissions').select('pluggy_account_id').eq('user_id', meu.uuid),
+          ext.from('user_card_permissions').select('card_last_digits').eq('user_id', meu.uuid),
+        ]);
+
+        // `is_admin` do EXTERNO, que é o mesmo que gateia as ações
+        // administrativas aqui dentro. A tela lia `useUserRole`, que consulta o
+        // `user_roles` do CLOUD — conjuntos diferentes: admin só no Cloud via o
+        // painel e tomava 403; admin só no Externo nunca via o painel. Uma
+        // fonte só para quem administra.
+        const admin = await ehAdmin(meu.uuid);
+        const contasPermitidas = [...new Set((minhasContas || []).map((r: any) => String(r.pluggy_account_id)))];
+        const cartoesPermitidos = [...new Set((meusCartoes || []).map((r: any) => String(r.card_last_digits)))];
+
+        logAcao('my_finance_access', meu,
+          `admin=${admin} contas=${contasPermitidas.length} cartoes=${cartoesPermitidos.length} ` +
+          `dono(banco=${donoBanco},cartao=${donoCartao})`);
+
+        return json({
+          success: true,
+          bank: donoBanco > 0 || permContas > 0,
+          card: donoCartao > 0 || permCartoes > 0,
+          is_admin: admin,
+          allowed_accounts: contasPermitidas,
+          allowed_cards: cartoesPermitidos,
+          detalhe: { dono_banco: donoBanco, dono_cartao: donoCartao, contas: permContas, cartoes: permCartoes },
+          identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
+        });
+      }
+
+      // Painel de permissões. Substitui o que `AccountPermissionsManager` e
+      // `useCardPermissions` liam do Cloud -- e ali havia um defeito além do
+      // banco errado: a lista de pessoas vinha do `user_roles`/`profiles` do
+      // Cloud, cujos `user_id` são uuids do CLOUD, e era ESSE uuid que ia
+      // gravado nas tabelas de permissão. A leitura, que compara com uuid do
+      // Externo, nunca encontraria. Conceder acesso pela tela não funcionava.
+      case 'list_finance_permissions': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+        if (!(await ehAdmin(meu.uuid))) {
+          return json({ success: false, error: 'só administradores administram permissões' }, 403);
+        }
+
+        const [contas, cartoes, permContas, permCartoes, conexoes, equipe] = await Promise.all([
+          distintos('bank_transactions', 'pluggy_account_id'),
+          distintos('credit_card_transactions', 'card_last_digits'),
+          ext.from('user_account_permissions').select('id, user_id, pluggy_account_id'),
+          ext.from('user_card_permissions').select('*').order('created_at', { ascending: false }),
+          ext.from('pluggy_connections').select('pluggy_item_id, connector_name, custom_name'),
+          rosterFinanceiro(),
+        ]);
+
+        // Rótulo da conta: o `pluggy_item_id` da linha diz de qual conexão ela
+        // veio. Contas da Celcoin não têm conexão Pluggy -- ficam com o id.
+        const rotulo = new Map<string, string>();
+        for (const c of (conexoes.data || []) as any[]) {
+          rotulo.set(String(c.pluggy_item_id), String(c.custom_name || c.connector_name || 'Conta'));
+        }
+        const { data: amostra } = await ext
+          .from('bank_transactions').select('pluggy_account_id, pluggy_item_id')
+          .in('pluggy_account_id', contas.slice(0, 200));
+        const itemPorConta = new Map<string, string>();
+        for (const r of (amostra || []) as any[]) {
+          if (r.pluggy_account_id && r.pluggy_item_id && !itemPorConta.has(String(r.pluggy_account_id))) {
+            itemPorConta.set(String(r.pluggy_account_id), String(r.pluggy_item_id));
+          }
+        }
+
+        logAcao('list_finance_permissions', meu,
+          `contas=${contas.length} cartoes=${cartoes.length} ` +
+          `perm(conta=${(permContas.data || []).length},cartao=${(permCartoes.data || []).length}) ` +
+          `equipe=${equipe.length}`);
+        return json({
+          success: true,
+          accounts: contas.map((id) => ({
+            pluggy_account_id: id,
+            connector_name: rotulo.get(itemPorConta.get(id) || '') || 'Conta',
+            custom_name: null,
+          })),
+          cards: cartoes,
+          account_permissions: permContas.data || [],
+          card_permissions: permCartoes.data || [],
+          team: equipe,
+        });
+      }
+
+      // Renomear conexão. Escrita pequena e a única das 6 ações da Pluggy que
+      // vale portar: as outras (excluir, sincronizar, importar, connect token,
+      // salvar) pertencem a uma integração que está sendo aposentada, e as
+      // conexões aqui são registro histórico -- portar um botão de excluir para
+      // cima delas seria dar arma nova a um caminho que vai sumir.
+      case 'rename_connection': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+        const id = String(body.connection_id || '').trim();
+        const nome = String(body.custom_name ?? '').trim();
+        if (!id) return json({ success: false, error: 'connection_id é obrigatório' }, 400);
+
+        // Política de UPDATE da tabela é `user_id = auth.uid()`: só o dono
+        // renomeia. O service role ignora RLS, então confiro à mão.
+        const { data: conn } = await ext
+          .from('pluggy_connections').select('user_id').eq('id', id).maybeSingle();
+        if (!conn) return json({ success: false, error: 'conexão não encontrada' }, 404);
+        if (String((conn as any).user_id) !== meu.uuid && !(await ehAdmin(meu.uuid))) {
+          return json({ success: false, error: 'só o dono da conexão ou um administrador pode renomear' }, 403);
+        }
+
+        const { error } = await ext
+          .from('pluggy_connections')
+          .update({ custom_name: nome || null, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (error) throw new Error(error.message);
+        logAcao('rename_connection', meu, `conexao=${id.slice(0, 8)}…`);
+        return json({ success: true, connection_id: id, custom_name: nome || null });
+      }
+
+      case 'set_account_permissions':
+      case 'set_card_permissions': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+        if (!(await ehAdmin(meu.uuid))) {
+          return json({ success: false, error: 'só administradores administram permissões' }, 403);
+        }
+        const alvo = String(body.target_user_id || '').trim();
+        if (!alvo) return json({ success: false, error: 'target_user_id é obrigatório' }, 400);
+
+        const deConta = action === 'set_account_permissions';
+        const desejados: string[] = Array.isArray(deConta ? body.accounts : body.cards)
+          ? (deConta ? body.accounts : body.cards).map((v: unknown) => String(v))
+          : [];
+
+        const r = await trocarPermissoes(
+          deConta ? 'user_account_permissions' : 'user_card_permissions',
+          deConta ? 'pluggy_account_id' : 'card_last_digits',
+          alvo,
+          desejados,
+          meu.uuid,
+        );
+        logAcao(action, meu,
+          `alvo=${alvo.slice(0, 8)}… +${r.concedidos.length} -${r.revogados.length}`);
+        return json({ success: true, ...r });
+      }
+
+      // Conexões da Pluggy, que continuam sendo a única fonte de cartão
+      // (5.524 lançamentos, todos do Santander). A tela de Gastos do Cartão
+      // esconde TUDO quando esta lista vem vazia, então sem isto o extrato
+      // legível não aparece: o gate da lista vem antes do gate do dado.
+      case 'list_pluggy_connections': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+
+        // Reproduz a policy de SELECT desta tabela, que é mais frouxa que a das
+        // transações e NÃO é por conexão:
+        //   user_id = eu OR EXISTS (user_card_permissions where user_id = eu)
+        // Ou seja, quem tem permissão em qualquer cartão vê todas as conexões.
+        // Reproduzo como está; apertar isso é decisão de produto, não minha.
+        const { count } = await ext
+          .from('user_card_permissions')
+          .select('card_last_digits', { count: 'exact', head: true })
+          .eq('user_id', meu.uuid);
+
+        let q = ext.from('pluggy_connections').select('*').order('created_at', { ascending: true });
+        if (!count) q = q.eq('user_id', meu.uuid);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+
+        logAcao('list_pluggy_connections', meu,
+          `conexoes=${(data || []).length} via=${count ? 'permissao_de_cartao' : 'dono'}`);
+        return json({
+          success: true,
+          connections: data || [],
+          identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
+          via: count ? 'permissao_de_cartao' : 'dono',
+        });
+      }
+
+      // Extrato para a tela de conciliação. Existe porque as tabelas financeiras
+      // moram no Externo e as telas liam a cópia homônima do Cloud, que nunca
+      // recebeu uma linha da Celcoin -- 2.026 lançamentos corretos que não
+      // apareciam em lugar nenhum. Ler do Externo direto do front não resolve: a
+      // sessão que ele mantém lá é `signInAnonymously()`, e a policy é
+      // `user_id = auth.uid()`, então a leitura volta VAZIA, não com erro.
+      case 'list_transactions': {
+        const tipo = String(body.kind || 'bank').trim();
+        if (tipo !== 'bank' && tipo !== 'card') {
+          return json({ success: false, error: "kind deve ser 'bank' ou 'card'" }, 400);
+        }
+        const tabela = tipo === 'bank' ? 'bank_transactions' : 'credit_card_transactions';
+        const de = body.from ? String(body.from).slice(0, 10) : null;
+        const ate = body.to ? String(body.to).slice(0, 10) : null;
+
+        // A identidade vem do JWT e SÓ do JWT. Aceitar `user_id` do corpo aqui
+        // deixaria qualquer sessão válida ler o extrato de qualquer colega --
+        // é a diferença entre autenticar e autorizar.
+        let meu: { uuid: string; mapeado: boolean };
+        if (quem.userId) {
+          meu = await uuidNoExterno(quem.userId);
+        } else if (quem.via === 'service_role') {
+          // Chamada servidor-a-servidor manda o uuid DO EXTERNO já resolvido.
+          const informado = String(body.user_id || '').trim();
+          if (!informado) {
+            return json({ success: false, error: 'service_role precisa mandar user_id (uuid do Externo)' }, 400);
+          }
+          meu = { uuid: informado, mapeado: true };
+        } else {
+          return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        }
+
+        const r = await lerTransacoes(tabela as any, meu.uuid, de, ate);
+        logAcao('list_transactions', meu,
+          `kind=${tipo} janela=${de ?? '-'}..${ate ?? '-'} linhas=${r.linhas.length} ` +
+          `permitidos=${r.permitidos}${r.truncado ? ' TRUNCADO' : ''}`);
+        return json({
+          success: true,
+          transactions: r.linhas,
+          // Devolvido para que "não apareceu nada" seja diagnosticável do lado
+          // de fora: sem isto, uuid não mapeado e conta sem movimento são a
+          // mesma tela vazia.
+          identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
+          contas_permitidas: r.permitidos,
+          truncado: r.truncado,
+        });
+      }
+
       default:
         return json(
           {
@@ -1150,6 +1603,13 @@ Deno.serve(async (req) => {
               'health',
               'egress_diag',
               'list_brands',
+              'list_transactions',
+              'my_finance_access',
+              'list_pluggy_connections',
+              'list_finance_permissions',
+              'set_account_permissions',
+              'set_card_permissions',
+              'rename_connection',
               'create_consent',
               'consent_status',
               'list_resources',

@@ -1,8 +1,11 @@
 import { useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
-import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { format } from 'date-fns';
+// `cloudFunctions` do functionRouter, que roteia por função: a
+// celcoin-open-finance vive no Externo. O `lovableCloudFunctions`, que fala
+// sempre com o Cloud, saiu junto com as ações da Pluggy — e o cliente
+// `supabase` também, que só existia para pegar a sessão daquelas chamadas.
+import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 
 interface Transaction {
   id: string;
@@ -49,26 +52,7 @@ export function useCreditCardTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [connections, setConnections] = useState<PluggyConnection[]>([]);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const callPluggyFunction = useCallback(async (action: string, params: Record<string, any> = {}) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      throw new Error('Not authenticated');
-    }
-
-    const response = await cloudFunctions.invoke('pluggy-integration', {
-      body: { action, user_id: sessionData.session.user.id, ...params },
-      authToken: sessionData.session.access_token,
-    });
-
-    if (response.error) {
-      throw new Error(response.error.message);
-    }
-
-    return response.data;
-  }, []);
 
   const fetchTransactions = useCallback(async (dateRange?: DateRange) => {
     if (!user) return;
@@ -77,97 +61,60 @@ export function useCreditCardTransactions() {
     setError(null);
 
     try {
-      // RLS policies handle access control - no need to filter by user_id
-      // Admins and users with card permissions can see all transactions
-      let query = supabase
-        .from('credit_card_transactions')
-        .select('*')
-        .order('transaction_date', { ascending: false });
-
-      if (dateRange) {
-        query = query
-          .gte('transaction_date', format(dateRange.start, 'yyyy-MM-dd'))
-          .lte('transaction_date', format(dateRange.end, 'yyyy-MM-dd'));
-      }
-
-      const { data, error: fetchError } = await query;
+      // Vem do Externo pela edge. A `credit_card_transactions` existe nos dois
+      // projetos; a que recebe dado é a do Externo. O controle de acesso continua
+      // sendo o mesmo (`user_id` do dono OU permissão em `user_card_permissions`),
+      // só que aplicado dentro da edge — o service role ignora RLS, então a regra
+      // é reproduzida lá explicitamente.
+      const { data, error: fetchError } = await routedFunctions.invoke('celcoin-open-finance', {
+        body: {
+          action: 'list_transactions',
+          kind: 'card',
+          ...(dateRange
+            ? {
+                from: format(dateRange.start, 'yyyy-MM-dd'),
+                to: format(dateRange.end, 'yyyy-MM-dd'),
+              }
+            : {}),
+        },
+      });
 
       if (fetchError) throw fetchError;
-      setTransactions((data as Transaction[]) || []);
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao ler lançamentos');
+      setTransactions((data?.transactions as Transaction[]) || []);
     } catch (err: any) {
       console.error('Error fetching transactions:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [user]);
+    // Pelo ID, não pelo objeto: `useAuth` devolve referência nova a cada
+    // revalidação de sessão, e isso refazia o callback e redisparava quem
+    // depende dele — leitura em dobro a cada abertura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const fetchConnections = useCallback(async () => {
     if (!user) return;
 
     try {
-      const data = await callPluggyFunction('get_connections');
-      setConnections(data.connections || []);
+      // Vem do Externo, onde as 3 conexões da Pluggy realmente estão. A edge
+      // `pluggy-integration` do Cloud responde lista vazia, e a tela de Gastos
+      // do Cartão esconde TUDO quando `connections` está vazio — o gate da
+      // lista vem antes do gate do dado, então sem isto o extrato não aparece
+      // mesmo estando legível.
+      const { data, error: connError } = await routedFunctions.invoke('celcoin-open-finance', {
+        body: { action: 'list_pluggy_connections' },
+      });
+      if (connError) throw connError;
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao listar conexões');
+      setConnections((data?.connections as PluggyConnection[]) || []);
     } catch (err: any) {
       console.error('Error fetching connections:', err);
     }
-  }, [user, callPluggyFunction]);
-
-  const importExistingConnections = useCallback(async () => {
-    try {
-      const data = await callPluggyFunction('import_existing_connections');
-      if (data.imported > 0) {
-        await fetchConnections();
-      }
-      return data;
-    } catch (err: any) {
-      console.error('Error importing connections:', err);
-      throw err;
-    }
-  }, [callPluggyFunction, fetchConnections]);
-
-  const importByItemId = useCallback(async (itemId: string) => {
-    const data = await callPluggyFunction('import_by_item_id', { itemId });
-    await fetchConnections();
-    return data;
-  }, [callPluggyFunction, fetchConnections]);
-
-  const createConnectToken = useCallback(async (itemId?: string) => {
-    const data = await callPluggyFunction('create_connect_token', { itemId });
-    return data.connectToken;
-  }, [callPluggyFunction]);
-
-  const saveConnection = useCallback(async (itemId: string) => {
-    await callPluggyFunction('save_connection', { itemId });
-    await fetchConnections();
-  }, [callPluggyFunction, fetchConnections]);
-
-  const syncTransactions = useCallback(async (dateRange?: DateRange) => {
-    setSyncing(true);
-    setError(null);
-
-    try {
-      const params: Record<string, string> = {};
-      if (dateRange) {
-        params.from = format(dateRange.start, 'yyyy-MM-dd');
-        params.to = format(dateRange.end, 'yyyy-MM-dd');
-      }
-
-      await callPluggyFunction('sync_transactions', params);
-      await fetchTransactions(dateRange);
-    } catch (err: any) {
-      console.error('Error syncing transactions:', err);
-      setError(err.message);
-    } finally {
-      setSyncing(false);
-    }
-  }, [callPluggyFunction, fetchTransactions]);
-
-  const deleteConnection = useCallback(async (itemId: string) => {
-    await callPluggyFunction('delete_connection', { itemId });
-    await fetchConnections();
-    setTransactions([]);
-  }, [callPluggyFunction, fetchConnections]);
+    // Pelo ID: ver a nota em fetchTransactions.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const getCategoryTotals = useCallback(() => {
     const totals: Record<string, number> = {};
@@ -188,12 +135,13 @@ export function useCreditCardTransactions() {
   }, [transactions]);
 
   const updateConnectionName = useCallback(async (connectionId: string, customName: string) => {
-    const { error } = await supabase
-      .from('pluggy_connections')
-      .update({ custom_name: customName })
-      .eq('id', connectionId);
-    
+    // Escreve no Externo, que é de onde a lista é lida. Escrever no Cloud (como
+    // antes) fazia o nome sumir sem erro: a linha alterada era a de outra base.
+    const { data, error } = await routedFunctions.invoke('celcoin-open-finance', {
+      body: { action: 'rename_connection', connection_id: connectionId, custom_name: customName },
+    });
     if (error) throw error;
+    if (data?.success === false) throw new Error(data?.error || 'Falha ao renomear conexão');
     
     // Update local state
     setConnections(prev => prev.map(c => 
@@ -205,16 +153,9 @@ export function useCreditCardTransactions() {
     transactions,
     connections,
     loading,
-    syncing,
     error,
     fetchTransactions,
     fetchConnections,
-    createConnectToken,
-    saveConnection,
-    syncTransactions,
-    deleteConnection,
-    importExistingConnections,
-    importByItemId,
     getCategoryTotals,
     getTotalSpent,
     updateConnectionName,

@@ -32,7 +32,7 @@ import {
   Save
 } from 'lucide-react';
 import { useCardPermissions } from '@/hooks/useCardPermissions';
-import { useUserRole } from '@/hooks/useUserRole';
+import { useFinanceAccess } from '@/hooks/useFinanceAccess';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
 import { toast } from 'sonner';
 
@@ -41,7 +41,8 @@ interface CardPermissionsManagerProps {
 }
 
 export function CardPermissionsManager({ availableCards }: CardPermissionsManagerProps) {
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  // Mesma fonte da edge (`is_admin` do Externo), não o `useUserRole` do Cloud.
+  const { isAdmin, loading: roleLoading } = useFinanceAccess();
   const { 
     permissions, 
     teamMembers, 

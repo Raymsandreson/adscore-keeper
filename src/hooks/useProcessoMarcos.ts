@@ -29,7 +29,7 @@ export interface MarcoReguaRow {
   terminal: boolean;
   estado: MarcoEstado;
   data_detectada: string | null;
-  /** movimento | documento | escavador_texto | escavador_grau | campo_processo */
+  /** movimento | documento | escavador_texto | escavador_grau | campo_processo | email */
   fonte: string | null;
   tem_prova_documental: boolean;
   atual: boolean;
@@ -44,6 +44,9 @@ export const FONTE_LABEL: Record<string, string> = {
   escavador_texto: 'Escavador',
   escavador_grau: 'Escavador',
   campo_processo: 'capa do processo',
+  // Quinta fonte (24/08/2026): e-mail do INSS, ligado pelo protocolo
+  // administrativo. É a única que alcança requerimento sem CNJ.
+  email: 'e-mail do INSS',
 };
 
 export interface ReguaDoProcesso {

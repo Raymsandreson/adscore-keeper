@@ -29,6 +29,7 @@ import { exportBankTransactions } from '@/utils/financeExport';
 import { ExportFormatMenu } from '@/components/finance/ExportFormatMenu';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from '@/hooks/useAuth';
 import { buildExpenseFormUrl } from '@/utils/publicAppUrl';
 import { useExpenseCategories } from '@/hooks/useExpenseCategories';
@@ -157,27 +158,46 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
 
   const parentCategories = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
 
+  // Depende do ID, não do objeto `user`. `useAuth` devolve um objeto novo a
+  // cada revalidação de sessão, e depender dele fazia o efeito rodar duas vezes
+  // no mesmo segundo — MEDIDO no log da edge em 24/08/2026: `list_transactions
+  // kind=bank` saía em dobro, 4.610 linhas lidas duas vezes por abertura.
   useEffect(() => {
     if (!user) return;
     fetchTransactions();
     fetchLeadsAndContacts();
-  }, [user, startDate, endDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, startDate, endDate]);
 
   const fetchTransactions = async () => {
     if (!user) return;
     setLoading(true);
     try {
-      const fromDate = format(startDate, 'yyyy-MM-dd');
-      const toDate = format(endDate, 'yyyy-MM-dd');
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .select('id, pluggy_transaction_id, description, amount, transaction_date, transaction_time, category, transaction_type, merchant_name, merchant_cnpj, merchant_city, merchant_state, pluggy_account_id')
-        .gte('transaction_date', fromDate)
-        .lte('transaction_date', toDate)
-        .order('transaction_date', { ascending: false })
-        .order('transaction_time', { ascending: false });
+      // Vem do Externo pela edge, NÃO do cliente `supabase` (que é o Cloud).
+      // Existe uma `bank_transactions` homônima nos dois projetos e a da Celcoin
+      // é a do Externo — a cópia do Cloud nunca recebeu uma linha dela. Ler o
+      // Externo direto daqui também não serve: a sessão que o front mantém lá é
+      // anônima e a policy é `user_id = auth.uid()`, então voltaria vazio, sem
+      // erro. A edge resolve a identidade pelo JWT e lê com service role.
+      const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
+        body: {
+          action: 'list_transactions',
+          kind: 'bank',
+          from: format(startDate, 'yyyy-MM-dd'),
+          to: format(endDate, 'yyyy-MM-dd'),
+        },
+      });
       if (error) throw error;
-      setTransactions(data || []);
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao ler lançamentos');
+      // A ordenação por hora é feita aqui porque a edge pagina por uma chave
+      // estável (data + id); `transaction_time` não é único e paginar por ele
+      // pularia e repetiria linha entre páginas.
+      const linhas = ((data?.transactions as BankTransaction[]) || []).slice().sort(
+        (a, b) =>
+          (b.transaction_date || '').localeCompare(a.transaction_date || '') ||
+          (b.transaction_time || '').localeCompare(a.transaction_time || ''),
+      );
+      setTransactions(linhas);
     } catch (err) {
       console.error('Error fetching bank transactions:', err);
     } finally {

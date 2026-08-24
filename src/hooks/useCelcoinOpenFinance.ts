@@ -50,6 +50,14 @@ async function callCelcoin(action: string, params: Record<string, unknown> = {})
   return data;
 }
 
+/** O que `sync_all` devolve. Só os campos que a tela usa. */
+export interface CelcoinSyncResumo {
+  success?: boolean;
+  falhas?: number;
+  bank_transactions?: number;
+  credit_card_transactions?: number;
+}
+
 export function useCelcoinOpenFinance() {
   const [brands, setBrands] = useState<CelcoinBrand[]>([]);
   const [consents, setConsents] = useState<CelcoinConsent[]>([]);
@@ -153,7 +161,26 @@ export function useCelcoinOpenFinance() {
     [],
   );
 
-  return { brands, consents, loading, error, fetchBrands, fetchConsents, connect, checkConsent, discardConsent, syncTransactions };
+  /**
+   * Sincroniza TODAS as conexões autorizadas — é o que o cron chama, e o que o
+   * botão da tela precisa. `syncTransactions` exige um `consent_id`, que a tela
+   * não tem em mãos; e mandar um id fixo quebraria calado no dia em que o
+   * consentimento fosse renovado. Uma conexão que falha não derruba as outras.
+   */
+  const syncAll = useCallback(async (): Promise<CelcoinSyncResumo> => {
+    setLoading(true);
+    setError(null);
+    try {
+      return await callCelcoin('sync_all');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erro ao sincronizar');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  return { brands, consents, loading, error, fetchBrands, fetchConsents, connect, checkConsent, discardConsent, syncTransactions, syncAll };
 }
 
 export function popCelcoinReturnTo(): string {

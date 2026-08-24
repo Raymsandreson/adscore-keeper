@@ -9,7 +9,7 @@ import { TeamsManager } from '@/components/team/TeamsManager';
 import { AccountPermissionsManager } from '@/components/finance/AccountPermissionsManager';
 import { ModulePermissionsManager } from '@/components/team/ModulePermissionsManager';
 import { useUserRole } from '@/hooks/useUserRole';
-import { useCreditCardTransactions } from '@/hooks/useCreditCardTransactions';
+import { useCardPermissions } from '@/hooks/useCardPermissions';
 import { WeeklyEvaluations } from '@/components/team/WeeklyEvaluations';
 import { CommissionGoals } from '@/components/team/CommissionGoals';
 import { MemberRoutineManager } from '@/components/team/MemberRoutineManager';
@@ -103,17 +103,13 @@ export default function TeamPage() {
   const { isAdmin, loading } = useUserRole();
   const [activeTab, setActiveTab] = usePageState<string>('team_activeTab', 'productivity');
 
-  const { transactions, fetchTransactions, fetchConnections } = useCreditCardTransactions();
+  // A lista de cartões vem pronta da edge. Antes esta página baixava as 5.524
+  // transações de cartão E as 3 conexões só para extrair 11 strings de 4
+  // dígitos — e, pior, se o período não tivesse lançamento de cartão a lista
+  // saía VAZIA e o painel de permissões não mostrava cartão nenhum.
+  const { allKnownCards } = useCardPermissions();
 
-  useEffect(() => {
-    fetchConnections();
-    fetchTransactions();
-  }, [fetchConnections, fetchTransactions]);
-
-  const availableCards = useMemo(() => {
-    const cards = new Set(transactions.map(t => t.card_last_digits).filter(Boolean) as string[]);
-    return Array.from(cards);
-  }, [transactions]);
+  const availableCards = allKnownCards;
 
   const visibleTabs = useMemo(
     () => ALL_TABS.filter(t => !t.adminOnly || isAdmin),
