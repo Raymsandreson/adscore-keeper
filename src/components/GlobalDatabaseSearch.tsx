@@ -1,5 +1,5 @@
 // v3 - cache bust
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   CommandDialog,
@@ -31,6 +31,8 @@ import { DuplicateMergeDialog, MergeType } from '@/components/search/DuplicateMe
 import { Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+
 interface SearchResult {
   id: string;
   type: 'lead' | 'contact' | 'comment' | 'dm' | 'activity' | 'workflow' | 'case' | 'process' | 'campaign';
@@ -58,6 +60,7 @@ export function GlobalDatabaseSearch() {
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [selectedDm, setSelectedDm] = useState<any | null>(null);
   const [dmSheetOpen, setDmSheetOpen] = useState(false);
+  const [selectedProcess, setSelectedProcess] = useState<any | null>(null);
 
   // Fusão de duplicados
   const [mergeType, setMergeType] = useState<MergeType | null>(null);
@@ -329,9 +332,10 @@ export function GlobalDatabaseSearch() {
         navigate(`/cases/${result.id}`);
         break;
       case 'process':
-        // Abre o caso-pai; se o processo não tiver caso vinculado, cai no lead
-        if (result.raw?.case_id) navigate(`/cases/${result.raw.case_id}`);
-        else if (result.raw?.lead_id) navigate(`/leads?openLead=${result.raw.lead_id}`);
+        // Abre o formulário do processo aqui mesmo. Antes ia para o caso-pai, e
+        // processo sem case_id nem lead_id (o que nasce do WhatsApp, por exemplo)
+        // não abria nada: o clique só fechava a busca.
+        setSelectedProcess(result.raw);
         break;
       case 'campaign':
         // Sem tela dedicada de detalhe; apenas fecha (o valor aqui é a detecção de duplicado)
@@ -652,6 +656,18 @@ export function GlobalDatabaseSearch() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Processo — o mesmo formulário que as outras telas abrem */}
+      <Suspense fallback={null}>
+        {selectedProcess && (
+          <ProcessDetailSheet
+            open={!!selectedProcess}
+            onOpenChange={(v) => { if (!v) setSelectedProcess(null); }}
+            process={selectedProcess}
+            mode="sheet"
+          />
+        )}
+      </Suspense>
     </>
   );
 }

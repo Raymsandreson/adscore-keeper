@@ -460,24 +460,27 @@ async function conexoesIrmas(consentId: string, userId: string, brandId: unknown
 async function syncFloor(
   table: 'bank_transactions' | 'credit_card_transactions',
   userId: string,
-  conexoes: string[],
+  accountId: string,
+  irmas: string[],
 ): Promise<string> {
   // Duas perguntas diferentes, e confundi-las é o que gera duplicata OU buraco:
-  //   celcoin + conexoes -> até onde ESTA conexão já foi? Volto
-  //                 DIAS_DE_REPROCESSO por cima. Escopar por conexão não é
-  //                 refinamento: MEDIDO em 19/08/2026, o consentimento do Inter
-  //                 já tinha gravado até 18/08, e por usuário um consentimento
-  //                 novo do Santander nasceria com piso 15/08 -- de 19/03 a
-  //                 14/08 nunca seria buscado, calado.
+  //   celcoin + ESTA conta -> até onde esta conta já foi? Volto
+  //                 DIAS_DE_REPROCESSO por cima. O escopo é a CONTA, não o
+  //                 consentimento e muito menos o banco: MEDIDO em 24/08/2026,
+  //                 escopar por marca fez a conta nova da R.P.Adv nascer com o
+  //                 piso da P.CAP (mesmo Inter PJ, mesmo usuário) e a primeira
+  //                 rodada trouxe 81 linhas de 6 dias dizendo `success: true`,
+  //                 com 1.641 lançamentos de 19/03 a 18/08 nunca buscados. O
+  //                 cron não volta atrás: o buraco seria permanente.
   //   outro provider -> até onde a Pluggy foi? É piso intransponível na
   //                 primeira rodada: reimportar o que ela já trouxe apareceria
   //                 em dobro na tela, que não filtra por provider. Fica no
   //                 usuário inteiro porque não há como casar item da Pluggy com
   //                 consentimento da Celcoin. Num banco que a Pluggy nunca viu
   //                 isso encurta o histórico -- é o caso de mandar `from`.
-  const [meu, qualquer] = await Promise.all([
+  const [minha, qualquer] = await Promise.all([
     ext.from(table).select('transaction_date').eq('user_id', userId).eq('provider', 'celcoin')
-      .in('pluggy_item_id', conexoes)
+      .eq('pluggy_account_id', accountId)
       .order('transaction_date', { ascending: false }).limit(1).maybeSingle(),
     ext.from(table).select('transaction_date').eq('user_id', userId)
       .or('provider.is.null,provider.neq.celcoin')
@@ -490,16 +493,38 @@ async function syncFloor(
     return d.toISOString().slice(0, 10);
   };
 
-  const meuUltimo = toDateOnly(meu.data?.transaction_date);
+  const minhaUltima = toDateOnly(minha.data?.transaction_date);
   const outroUltimo = toDateOnly(qualquer.data?.transaction_date);
 
-  if (meuUltimo) {
-    const piso = recuar(meuUltimo, -DIAS_DE_REPROCESSO);
+  if (minhaUltima) {
+    const piso = recuar(minhaUltima, -DIAS_DE_REPROCESSO);
     // Nunca antes do dia seguinte ao que outro provider já cobriu.
-    const limite = outroUltimo && outroUltimo > meuUltimo ? recuar(outroUltimo, 1) : null;
+    const limite = outroUltimo && outroUltimo > minhaUltima ? recuar(outroUltimo, 1) : null;
     return limite && limite > piso ? limite : piso;
   }
-  if (outroUltimo) return recuar(outroUltimo, 1); // 1a rodada DESTA conexão: retomo onde a Pluggy parou
+
+  // Conta sem linha nenhuma. Ou é conta nova de verdade, ou é a mesma conta
+  // reautorizada num consentimento que trocou o accountId -- o padrão não
+  // promete id estável entre consentimentos (no Inter ele é o próprio número da
+  // conta com o dígito, mas isso é escolha DELE, não garantia do padrão).
+  // Os dois casos pedem coisas opostas e daqui não dá pra distinguir, então
+  // escolho puxar o histórico e deixar o rastro: duplicata aparece na tela e se
+  // conserta; buraco não aparece e o cron nunca volta pra buscar.
+  if (irmas.length) {
+    const { data: irma } = await ext
+      .from(table).select('transaction_date').eq('user_id', userId).eq('provider', 'celcoin')
+      .in('pluggy_item_id', irmas)
+      .order('transaction_date', { ascending: false }).limit(1).maybeSingle();
+    if (irma?.transaction_date) {
+      console.warn(
+        `[celcoin] conta ${accountId} sem lançamento próprio em ${table}, mas consentimento irmão ` +
+          `já gravou até ${toDateOnly(irma.transaction_date)}. Tratando como conta NOVA e puxando o ` +
+          `histórico. Se for a mesma conta reautorizada, confira duplicata por (data, valor, descrição).`,
+      );
+    }
+  }
+
+  if (outroUltimo) return recuar(outroUltimo, 1); // 1a rodada DESTA conta: retomo onde a Pluggy parou
   const d = new Date();
   d.setUTCMonth(d.getUTCMonth() - 12); // sem histórico nenhum: 12 meses, teto usual das transmissoras
   return d.toISOString().slice(0, 10);
@@ -552,7 +577,9 @@ class NaoAutorizado extends Error {}
 type ResumoSync = {
   bank_transactions: number;
   credit_card_transactions: number;
-  janela: { bank_from: string; card_from: string; to: string | null };
+  // Null quando o consentimento não expôs conta daquele tipo -- distinguir
+  // "nenhuma conta" de "conta sem movimento" é o que faz o alerta funcionar.
+  janela: { bank_from: string | null; card_from: string | null; to: string | null };
 };
 
 // Extrato de conta + transações de fatura, gravados com provider='celcoin'.
@@ -580,15 +607,25 @@ async function sincronizar(
   // obrigatórias, então sem `to` no body o teto é hoje em Brasília — data UTC
   // adiantaria um dia depois das 21h e viraria data futura pro detentor.
   const to = janela?.to ? String(janela.to) : hojeBrasilia();
-  const conexoes = await conexoesIrmas(consentId, userId, consentRow?.brand_id);
-  const bankFrom = janela?.from ? String(janela.from) : await syncFloor('bank_transactions', userId, conexoes);
-  const cardFrom = janela?.from ? String(janela.from) : await syncFloor('credit_card_transactions', userId, conexoes);
+  // Só para detectar reautorização com id de conta trocado -- o piso em si é
+  // por conta, calculado dentro de cada laço.
+  const irmas = await conexoesIrmas(consentId, userId, consentRow?.brand_id);
   let bankCount = 0;
   let cardCount = 0;
+  // O piso agora é por conta, então o resumo reporta o MAIS ANTIGO usado na
+  // rodada. É o número que responde "de quando pra cá isto olhou?" -- reportar
+  // o de uma conta só esconderia justamente a conta nova que puxa histórico.
+  let bankFloor: string | null = null;
+  let cardFloor: string | null = null;
 
   for (const acc of await fetchPaged(consentId, 'accounts/v2/accounts', {}, permissions)) {
     const accountId = acc?.accountId;
     if (!accountId) continue;
+
+    const bankFrom = janela?.from
+      ? String(janela.from)
+      : await syncFloor('bank_transactions', userId, String(accountId), irmas);
+    if (!bankFloor || bankFrom < bankFloor) bankFloor = bankFrom;
 
     const txs = await fetchPaged(
       consentId,
@@ -637,6 +674,11 @@ async function sincronizar(
   for (const card of await fetchPaged(consentId, 'credit-cards-accounts/v2/accounts', {}, permissions)) {
     const cardId = card?.creditCardAccountId;
     if (!cardId) continue;
+
+    const cardFrom = janela?.from
+      ? String(janela.from)
+      : await syncFloor('credit_card_transactions', userId, String(cardId), irmas);
+    if (!cardFloor || cardFrom < cardFloor) cardFloor = cardFrom;
 
     const billsPath = `credit-cards-accounts/v2/accounts/${encodeURIComponent(cardId)}/bills`;
 
@@ -735,14 +777,15 @@ async function sincronizar(
     .eq('consent_id', consentId);
 
   console.log(
-    `[celcoin] sync consent=${consentId}: ${bankCount} bancárias (desde ${bankFrom}), ${cardCount} de cartão (desde ${cardFrom})`,
+    `[celcoin] sync consent=${consentId}: ${bankCount} bancárias (desde ${bankFloor ?? 'sem conta'}), ` +
+      `${cardCount} de cartão (desde ${cardFloor ?? 'sem cartão'})`,
   );
   return {
     bank_transactions: bankCount,
     credit_card_transactions: cardCount,
     // Explícito porque a janela é calculada, não informada: sem isto um sync
     // que traz 0 linhas é indistinguível de conta sem movimento.
-    janela: { bank_from: bankFrom, card_from: cardFrom, to: to ?? null },
+    janela: { bank_from: bankFloor, card_from: cardFloor, to: to ?? null },
   };
 }
 

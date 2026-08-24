@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Download, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Download, FileText, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { bindDownload } from '@/lib/downloadFile';
 
@@ -109,7 +109,7 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
   return createPortal(
     <div
       data-media-lightbox="true"
-      className="pointer-events-auto fixed inset-0 z-[1000] bg-background/95 flex items-center justify-center p-4 animate-in fade-in overflow-hidden"
+      className="pointer-events-auto fixed inset-0 z-[1000] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 sm:p-8 animate-in fade-in overflow-hidden"
       role="dialog"
       aria-modal="true"
       aria-label={title}
@@ -124,6 +124,7 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
       }}
       onWheel={onWheel}
     >
+      {!isPdf && (
       <div
         className="absolute top-4 right-4 flex items-center gap-2"
         onPointerDown={stopEvent}
@@ -193,15 +194,44 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
           <X className="h-5 w-5" />
         </button>
       </div>
+      )}
       {isPdf ? (
-        <iframe
-          src={url}
-          title={title}
-          className="w-[95vw] h-[95vh] bg-card rounded border border-border"
+        /* PAINEL, não página. O PDF ocupava 95vw x 95vh sobre um fundo quase
+           opaco: a pessoa abria a peça e achava que tinha caído em outra aba,
+           porque o app sumia por completo e o que restava era o visualizador do
+           navegador, com barra e tudo. Aqui ele fica num cartão com largura de
+           documento, cabeçalho do app e o fundo desfocado por trás — dá para ver
+           a conferência ainda aberta atrás, que é o que diz "você não saiu". */
+        <div
+          className="flex h-[min(88vh,1040px)] w-[min(94vw,880px)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-2xl"
           onPointerDown={stopEvent}
           onMouseDown={stopEvent}
           onClick={stopEvent}
-        />
+        >
+          <div className="flex shrink-0 items-center gap-2 border-b border-border bg-card px-3 py-2">
+            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
+            <button
+              type="button"
+              onClick={bindDownload(url)}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Baixar"
+              aria-label="Baixar arquivo"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+              title="Fechar"
+              aria-label="Fechar visualização"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <iframe src={url} title={title} className="min-h-0 flex-1 bg-muted" />
+        </div>
       ) : (
         <img
           src={url}
