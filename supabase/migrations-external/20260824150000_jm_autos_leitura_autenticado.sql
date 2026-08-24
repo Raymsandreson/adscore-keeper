@@ -1,0 +1,77 @@
+-- ============================================================================
+-- RUN IN: Supabase EXTERNO (kmedldlepwiityjsdahz) — NAO no Cloud
+-- ============================================================================
+-- APLICADA em 24/08/2026 com aprovacao expressa do Raym. Verificado na hora:
+--   role authenticated -> 6.031 objetos visiveis
+--   role anon          -> 0
+-- ============================================================================
+-- O bucket `jm-autos` guarda os autos baixados do tribunal. Em 24/08/2026 ele
+-- passou a guardar peca RESTRITA de verdade: o caso 88
+-- (0011351-63.2022.5.15.0031) trouxe 140 pecas, 118 delas restritas, colhidas
+-- com certificado digital.
+--
+-- O bucket e privado e NAO tem policy nenhuma em storage.objects. Conferido:
+--
+--   select policyname from pg_policies
+--   where schemaname='storage' and tablename='objects'
+--     and (qual ilike '%jm-autos%' or with_check ilike '%jm-autos%');
+--   -> 0 linhas
+--
+-- Consequencia: so o service role alcanca o arquivo. A edge `esc-autos` grava
+-- normalmente, mas o front NAO consegue assinar URL — e o botao "ver a peca" da
+-- conferencia nunca abre nada.
+--
+-- O QUE ESTA POLICY CONCEDE, EM PORTUGUES CLARO
+--
+--   ATENCAO: neste projeto "authenticated" NAO quer dizer "usuario logado do
+--   escritorio". O front fala com o Externo via `ensureExternalSession()`, que
+--   chama `signInAnonymously()` — ou seja, QUALQUER pessoa que carregue o app
+--   ganha um JWT com role `authenticated` sem credencial nenhuma. A anon key
+--   viaja no bundle, como toda anon key.
+--
+--   Efeito real: qualquer um que alcance o projeto passa a poder ler qualquer
+--   PDF do bucket, inclusive peca RESTRITA de processo de cliente. Nao ha
+--   recorte por escritorio, por responsavel nem por processo.
+--
+--   Isso foi descrito de forma otimista quando a policy foi proposta, e a
+--   correcao esta aqui para a proxima sessao nao repetir o engano.
+--
+-- POR QUE ISSO E COERENTE COM O QUE JA EXISTE
+--
+--   `jm_documentos` — a tabela que lista essas mesmas pecas, com titulo, tipo e
+--   data — ja tem exatamente essa postura:
+--
+--     policyname | cmd    | roles           | qual
+--     jm_doc_sel | SELECT | {authenticated} | true
+--
+--   E nao e caso isolado: 81 das 96 tabelas do Externo com policy de SELECT
+--   para `authenticated` usam `qual = true`. O banco inteiro ja e legivel por
+--   sessao anonima. Esta policy segue a postura que ja existe — ela NAO a
+--   inaugura. Mas o payload aqui e o mais sensivel ate agora: o PDF do
+--   processo, nao o titulo dele.
+--
+--   Ou seja: hoje qualquer sessao ja VE que a peca restrita existe e o que ela
+--   e. Esta policy a deixa abrir o PDF.
+--
+-- O QUE ELA NAO FAZ
+--
+--   Nao concede INSERT, UPDATE nem DELETE — o arquivo continua so sendo
+--   gravado pela edge com service role. Nao torna o bucket publico: a leitura
+--   exige sessao autenticada, e a URL assinada pelo front vale 10 minutos.
+--
+-- ALTERNATIVA, SE ISSO FOR LARGO DEMAIS
+--
+--   Trocar por uma edge `jm-peca-url` que assina com service role depois de
+--   validar quem pediu contra o processo. Custa uma funcao a mais e um hop de
+--   rede por clique, e so vale a pena quando existir de fato recorte de acesso
+--   por usuario — que hoje nao existe em lugar nenhum do modulo.
+--
+-- REVERSAO (imediata, sem perda de dado):
+--   drop policy if exists jm_autos_leitura_autenticado on storage.objects;
+-- ============================================================================
+
+create policy jm_autos_leitura_autenticado
+  on storage.objects
+  for select
+  to authenticated
+  using (bucket_id = 'jm-autos');
