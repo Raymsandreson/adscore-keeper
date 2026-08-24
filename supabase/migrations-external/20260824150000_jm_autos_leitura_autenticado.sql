@@ -1,8 +1,9 @@
 -- ============================================================================
 -- RUN IN: Supabase EXTERNO (kmedldlepwiityjsdahz) — NAO no Cloud
 -- ============================================================================
--- NAO APLICADA. Aguarda aprovacao explicita do Raym: e mudanca de ACESSO a
--- documento restrito de processo, nao mudanca de schema.
+-- APLICADA em 24/08/2026 com aprovacao expressa do Raym. Verificado na hora:
+--   role authenticated -> 6.031 objetos visiveis
+--   role anon          -> 0
 -- ============================================================================
 -- O bucket `jm-autos` guarda os autos baixados do tribunal. Em 24/08/2026 ele
 -- passou a guardar peca RESTRITA de verdade: o caso 88
@@ -22,9 +23,18 @@
 --
 -- O QUE ESTA POLICY CONCEDE, EM PORTUGUES CLARO
 --
---   Qualquer usuario AUTENTICADO do sistema passa a poder ler qualquer PDF do
---   bucket, inclusive peca restrita de processo de cliente. Nao ha recorte por
---   escritorio, por responsavel nem por processo.
+--   ATENCAO: neste projeto "authenticated" NAO quer dizer "usuario logado do
+--   escritorio". O front fala com o Externo via `ensureExternalSession()`, que
+--   chama `signInAnonymously()` — ou seja, QUALQUER pessoa que carregue o app
+--   ganha um JWT com role `authenticated` sem credencial nenhuma. A anon key
+--   viaja no bundle, como toda anon key.
+--
+--   Efeito real: qualquer um que alcance o projeto passa a poder ler qualquer
+--   PDF do bucket, inclusive peca RESTRITA de processo de cliente. Nao ha
+--   recorte por escritorio, por responsavel nem por processo.
+--
+--   Isso foi descrito de forma otimista quando a policy foi proposta, e a
+--   correcao esta aqui para a proxima sessao nao repetir o engano.
 --
 -- POR QUE ISSO E COERENTE COM O QUE JA EXISTE
 --
@@ -34,9 +44,14 @@
 --     policyname | cmd    | roles           | qual
 --     jm_doc_sel | SELECT | {authenticated} | true
 --
---   Ou seja: hoje o usuario autenticado ja VE que a peca restrita existe e o
---   que ela e. Esta policy o deixa abrir o PDF. Nao amplia quem entra no
---   sistema; amplia o que quem ja esta dentro consegue ler.
+--   E nao e caso isolado: 81 das 96 tabelas do Externo com policy de SELECT
+--   para `authenticated` usam `qual = true`. O banco inteiro ja e legivel por
+--   sessao anonima. Esta policy segue a postura que ja existe — ela NAO a
+--   inaugura. Mas o payload aqui e o mais sensivel ate agora: o PDF do
+--   processo, nao o titulo dele.
+--
+--   Ou seja: hoje qualquer sessao ja VE que a peca restrita existe e o que ela
+--   e. Esta policy a deixa abrir o PDF.
 --
 -- O QUE ELA NAO FAZ
 --
