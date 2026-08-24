@@ -657,6 +657,14 @@ export default function FinancePage() {
     }
   };
 
+  // As conexões passaram a ser lidas do Externo (é onde elas existem), mas
+  // renomear, gerar link e excluir ainda escrevem na cópia do Cloud pela edge
+  // `pluggy-integration`. Enquanto os dois lados não falarem o mesmo banco, o
+  // botão faria a escrita sumir sem erro e a lista não mudaria — botão que
+  // mente é pior que botão que falta. Reabilitar junto com a etapa 2.
+  const ACOES_PLUGGY_INDISPONIVEIS =
+    'Indisponível: a conexão é lida do banco externo e esta ação ainda grava no Cloud';
+
   const getConnectionDisplayName = (conn: { custom_name: string | null; connector_name: string | null }) => {
     return conn.custom_name || conn.connector_name || 'Sem nome';
   };
@@ -816,6 +824,8 @@ export default function FinancePage() {
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5"
+                      disabled
+                      title={ACOES_PLUGGY_INDISPONIVEIS}
                       onClick={() => {
                         setEditingConnectionId(conn.id);
                         setEditingConnectionName(conn.custom_name || conn.connector_name || '');
@@ -832,9 +842,9 @@ export default function FinancePage() {
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
-                  disabled={generatingLinkFor === conn.pluggy_item_id}
+                  disabled
                   onClick={() => handleGenerateShareLink(conn.pluggy_item_id)}
-                  title="Gerar link de autorização"
+                  title={ACOES_PLUGGY_INDISPONIVEIS}
                 >
                   {generatingLinkFor === conn.pluggy_item_id ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
@@ -846,6 +856,8 @@ export default function FinancePage() {
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5 hover:bg-destructive/10"
+                  disabled
+                  title={ACOES_PLUGGY_INDISPONIVEIS}
                   onClick={() => handleDeleteConnection(conn.pluggy_item_id)}
                 >
                   <Trash2 className="h-3 w-3 text-destructive" />

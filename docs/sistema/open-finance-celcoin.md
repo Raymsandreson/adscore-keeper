@@ -235,10 +235,32 @@ Conferido contra gabarito calculado no banco com as próprias funções
 `can_view_*`: dono 4.609 banco / 5.524 cartão, e cada um dos outros com o seu
 subconjunto — todos batendo linha a linha.
 
+**A terceira leitura, achada por print da tela (v18).** Corrigir as transações
+não bastou: a tela de Gastos do Cartão esconde **tudo** quando `connections` vem
+vazia (`FinancePage.tsx`, `connections.length === 0`), e essa lista vinha da edge
+`pluggy-integration` do **Cloud**. As 3 conexões existem no Externo, todas de
+`21924f81`. O gate da lista vem antes do gate do dado — com o extrato já legível,
+a tela continuava dizendo "Nenhuma conta conectada". Resolvido com
+`list_pluggy_connections`, que reproduz a policy da tabela como ela é: `user_id =
+eu OR EXISTS (user_card_permissions where user_id = eu)` — mais frouxa que a das
+transações e **não** por conexão (quem tem qualquer cartão vê todas). Reproduzida,
+não apertada; apertar é decisão de produto.
+
+Lição que vale além daqui: numa tela com estado vazio, **corrigir a fonte do dado
+não adianta se o gate do render lê outra fonte.** Procurar todos os `length === 0`
+que escondem a tela, não só as queries do dado.
+
+**Três botões desligados de propósito** (`ACOES_PLUGGY_INDISPONIVEIS`): renomear,
+gerar link e excluir conexão. Eles só passaram a aparecer porque a lista voltou a
+ter linhas, e os três escrevem na cópia do **Cloud** — o clique sumiria sem erro e
+a linha continuaria lá. Botão que mente é pior que botão que falta. Voltam com a
+etapa 2.
+
 **Ainda leem o Cloud** (etapa 2): `AccountPermissionsManager.tsx` e
-`useCardPermissions.ts`, que administram as permissões, mais `pluggy_connections`.
-Enquanto isso, a fonte da verdade das permissões é a cópia do Externo — que é a
-que a leitura consulta.
+`useCardPermissions.ts`, que administram as permissões, mais as 6 ações de
+escrita da Pluggy em `useCreditCardTransactions` (import, connect token, save,
+sync, delete, rename). Enquanto isso, a fonte da verdade das permissões é a cópia
+do Externo — que é a que a leitura consulta.
 
 Isso não afeta o dado gravado: a sucessão Pluggy → Celcoin no Externo está
 contígua e sem sobreposição — pluggy 2.583 linhas de 13/02/2025 a 18/03/2026,
@@ -259,6 +281,13 @@ Medeiros Cavalcante (`cfab247e…`, 5 contas concedidas) e raymsandresonadv
 João Pedro, luisralves7 e Juliana Clara — **só de conta**; as permissões de cartão
 dos três ficaram intactas. Rollback em
 `scratchpad/rollback-permissoes-conta-20260824.sql`.
+
+No mesmo dia Alexandre recebeu também os **10 cartões** (mesmo conjunto do
+raymsandresonadv), porque a policy de `pluggy_connections` exige permissão de
+cartão para ver a lista de conexões — sem isso a tela de Gastos do Cartão
+continuaria vazia para ele. Alcance conferido: 4.609 de banco e 5.510 de cartão
+(os 14 restantes até 5.524 são cartões fora das permissões, que só o dono vê).
+Rollback em `scratchpad/rollback-cartoes-alexandre-20260824.sql`.
 
 **Pegadinha achada ao aplicar:** `user_account_permissions.granted_by` tem FK para
 o `auth.users` do **Externo**, mas as 7 linhas que já existiam guardam
@@ -377,4 +406,5 @@ argumento.
 | Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) subiu na v14 e foi conferido: o Inter devolve `2026-08-20`, as demais conexões `null`. Falta o aviso **fora** do painel de conexões — hoje é preciso abrir a aba para ver, e o alerta que exige ser procurado não é alerta. |
 | Conciliação em tela | **Corrigida em 24/08/2026** (v17). Extrato de conta e de cartão passam a vir do Externo pela ação `list_transactions`, com tradução de uuid e a mesma regra de visibilidade das policies. Conferido contra gabarito: 4.609/5.524 para o dono. Faltam os dois gerenciadores de permissão, que ainda escrevem no Cloud. |
 | Quem vê a aba "Conta" | **Alexandre Medeiros e raymsandresonadv**, desde 24/08/2026. Regra derivada do dado (`my_finance_access`), sem nome hardcoded. |
+| Tela de Gastos do Cartão | **Corrigida em 24/08/2026** (v18). Mostrava "Nenhuma conta conectada" porque a lista de conexões vinha do Cloud; agora vem do Externo por `list_pluggy_connections`. Renomear/gerar link/excluir ficaram desligados — ainda escrevem no Cloud. |
 | **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. O alerta de obsolescência saiu da lista em 20/08 — ver seção própria. |

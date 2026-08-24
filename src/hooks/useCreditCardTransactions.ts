@@ -114,8 +114,17 @@ export function useCreditCardTransactions() {
     if (!user) return;
 
     try {
-      const data = await callPluggyFunction('get_connections');
-      setConnections(data.connections || []);
+      // Vem do Externo, onde as 3 conexões da Pluggy realmente estão. A edge
+      // `pluggy-integration` do Cloud responde lista vazia, e a tela de Gastos
+      // do Cartão esconde TUDO quando `connections` está vazio — o gate da
+      // lista vem antes do gate do dado, então sem isto o extrato não aparece
+      // mesmo estando legível.
+      const { data, error: connError } = await routedFunctions.invoke('celcoin-open-finance', {
+        body: { action: 'list_pluggy_connections' },
+      });
+      if (connError) throw connError;
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao listar conexões');
+      setConnections((data?.connections as PluggyConnection[]) || []);
     } catch (err: any) {
       console.error('Error fetching connections:', err);
     }

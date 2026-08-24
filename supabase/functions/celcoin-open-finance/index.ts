@@ -1257,6 +1257,37 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Conexões da Pluggy, que continuam sendo a única fonte de cartão
+      // (5.524 lançamentos, todos do Santander). A tela de Gastos do Cartão
+      // esconde TUDO quando esta lista vem vazia, então sem isto o extrato
+      // legível não aparece: o gate da lista vem antes do gate do dado.
+      case 'list_pluggy_connections': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+
+        // Reproduz a policy de SELECT desta tabela, que é mais frouxa que a das
+        // transações e NÃO é por conexão:
+        //   user_id = eu OR EXISTS (user_card_permissions where user_id = eu)
+        // Ou seja, quem tem permissão em qualquer cartão vê todas as conexões.
+        // Reproduzo como está; apertar isso é decisão de produto, não minha.
+        const { count } = await ext
+          .from('user_card_permissions')
+          .select('card_last_digits', { count: 'exact', head: true })
+          .eq('user_id', meu.uuid);
+
+        let q = ext.from('pluggy_connections').select('*').order('created_at', { ascending: true });
+        if (!count) q = q.eq('user_id', meu.uuid);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+
+        return json({
+          success: true,
+          connections: data || [],
+          identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
+          via: count ? 'permissao_de_cartao' : 'dono',
+        });
+      }
+
       // Extrato para a tela de conciliação. Existe porque as tabelas financeiras
       // moram no Externo e as telas liam a cópia homônima do Cloud, que nunca
       // recebeu uma linha da Celcoin -- 2.026 lançamentos corretos que não
@@ -1313,6 +1344,7 @@ Deno.serve(async (req) => {
               'list_brands',
               'list_transactions',
               'my_finance_access',
+              'list_pluggy_connections',
               'create_consent',
               'consent_status',
               'list_resources',
