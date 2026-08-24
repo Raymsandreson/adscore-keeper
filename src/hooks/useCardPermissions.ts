@@ -94,7 +94,8 @@ export function useCardPermissions() {
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin, chamar]);
+    // Pelo ID: `useAuth` troca a referência do objeto a cada revalidação.
+  }, [user?.id, isAdmin, chamar]);
 
   useEffect(() => {
     if (!acessoLoading && user) fetchPermissions();

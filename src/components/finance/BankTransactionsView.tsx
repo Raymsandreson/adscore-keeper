@@ -158,11 +158,16 @@ export function BankTransactionsView({ startDate, endDate, searchTerm: externalS
 
   const parentCategories = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
 
+  // Depende do ID, não do objeto `user`. `useAuth` devolve um objeto novo a
+  // cada revalidação de sessão, e depender dele fazia o efeito rodar duas vezes
+  // no mesmo segundo — MEDIDO no log da edge em 24/08/2026: `list_transactions
+  // kind=bank` saía em dobro, 4.610 linhas lidas duas vezes por abertura.
   useEffect(() => {
     if (!user) return;
     fetchTransactions();
     fetchLeadsAndContacts();
-  }, [user, startDate, endDate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, startDate, endDate]);
 
   const fetchTransactions = async () => {
     if (!user) return;

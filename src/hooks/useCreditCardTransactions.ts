@@ -108,7 +108,10 @@ export function useCreditCardTransactions() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+    // Pelo ID, não pelo objeto: `useAuth` devolve referência nova a cada
+    // revalidação de sessão, e isso refazia o callback e redisparava quem
+    // depende dele — leitura em dobro a cada abertura.
+  }, [user?.id]);
 
   const fetchConnections = useCallback(async () => {
     if (!user) return;
@@ -128,7 +131,8 @@ export function useCreditCardTransactions() {
     } catch (err: any) {
       console.error('Error fetching connections:', err);
     }
-  }, [user, callPluggyFunction]);
+    // Pelo ID: ver a nota em fetchTransactions.
+  }, [user?.id, callPluggyFunction]);
 
   const importExistingConnections = useCallback(async () => {
     try {
