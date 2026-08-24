@@ -99,6 +99,7 @@ export default function FinancePage() {
   const [sincronizandoCelcoin, setSincronizandoCelcoin] = useState(false);
   const { 
     allowedCards, 
+    allKnownCards,
     loading: permissionsLoading, 
     filterByPermissions 
   } = useCardPermissions();
@@ -161,10 +162,20 @@ export default function FinancePage() {
   const [entryFormOpen, setEntryFormOpen] = useState(false);
 
   // Get unique card digits for assignment manager
+  // Cartões presentes NO PERÍODO filtrado. Serve ao filtro da lista: não faz
+  // sentido oferecer para filtrar um cartão que não gastou nada no mês.
   const availableCards = useMemo(() => {
     const cards = new Set(transactions.map(t => t.card_last_digits).filter(Boolean) as string[]);
     return Array.from(cards);
   }, [transactions]);
+
+  // Todos os cartões que já existiram (11), vindo da edge. É o que os
+  // gerenciadores precisam: em agosto não há lançamento de cartão nenhum — os
+  // 5.524 param em 17/03 — e com a lista do período eles ficavam VAZIOS, sem
+  // como conceder permissão ou dar apelido a cartão nenhum. Cair de volta na
+  // lista do período cobre quem não é administrador, para quem `allKnownCards`
+  // não vem (a edge recusa o painel com 403).
+  const cartoesConhecidos = allKnownCards.length ? allKnownCards : availableCards;
 
   // Get unique contacts linked to cards
   const contactFilterOptions = useMemo(() => {
@@ -675,7 +686,7 @@ export default function FinancePage() {
                   funciona. "Gerar Link Despesas" abaixo é feature nossa, não da
                   Pluggy, e continua. */}
               <ExpenseFormLinkGenerator 
-                knownCards={availableCards} 
+                knownCards={cartoesConhecidos} 
                 transactions={permittedTransactions.map(t => ({
                   id: t.id,
                   pluggy_transaction_id: t.pluggy_transaction_id,
@@ -1408,12 +1419,12 @@ export default function FinancePage() {
                 
                 {/* Card Permissions Manager - Admin only */}
                 {isAdmin && (
-                  <CardPermissionsManager availableCards={availableCards} />
+                  <CardPermissionsManager availableCards={cartoesConhecidos} />
                 )}
                 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   <ExpenseCategoryManager connections={connections.map(c => ({ id: c.id, pluggy_item_id: c.pluggy_item_id, connector_name: c.connector_name, custom_name: c.custom_name }))} />
-                  <CardAssignmentManager availableCards={availableCards} />
+                  <CardAssignmentManager availableCards={cartoesConhecidos} />
                 </div>
                 
                 {/* Cost Accounts Manager */}
