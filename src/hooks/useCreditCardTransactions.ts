@@ -205,12 +205,13 @@ export function useCreditCardTransactions() {
   }, [transactions]);
 
   const updateConnectionName = useCallback(async (connectionId: string, customName: string) => {
-    const { error } = await supabase
-      .from('pluggy_connections')
-      .update({ custom_name: customName })
-      .eq('id', connectionId);
-    
+    // Escreve no Externo, que é de onde a lista é lida. Escrever no Cloud (como
+    // antes) fazia o nome sumir sem erro: a linha alterada era a de outra base.
+    const { data, error } = await routedFunctions.invoke('celcoin-open-finance', {
+      body: { action: 'rename_connection', connection_id: connectionId, custom_name: customName },
+    });
     if (error) throw error;
+    if (data?.success === false) throw new Error(data?.error || 'Falha ao renomear conexão');
     
     // Update local state
     setConnections(prev => prev.map(c => 

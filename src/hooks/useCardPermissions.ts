@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from './useAuth';
 import { useUserRole } from './useUserRole';
 
@@ -20,6 +20,23 @@ interface TeamMember {
   full_name: string | null;
 }
 
+/**
+ * Permissões de cartão.
+ *
+ * Tudo passa pela edge, e não pelo cliente `supabase` (que é o Cloud), por dois
+ * motivos que se somam:
+ *
+ * 1. `user_card_permissions` existe nos DOIS projetos. A que a leitura de
+ *    extrato consulta é a do Externo; a do Cloud não gateia nada.
+ * 2. Os `user_id` são uuids do **Externo**, e a sessão do front é do **Cloud**.
+ *    Dos 52 usuários mapeados, 26 têm uuid diferente nos dois bancos. A versão
+ *    anterior comparava `p.user_id === user.id` (uuid do Cloud) para montar
+ *    `allowedCards` — nunca casava, e como `filterByPermissions` devolve `[]`
+ *    quando `allowedCards` está vazio, a tela de cartão zerava mesmo com dado
+ *    legível. Erro que não aparece como erro: aparece como lista vazia.
+ *
+ * A tradução de uuid acontece na edge, pelo `auth_uuid_mapping`.
+ */
 export function useCardPermissions() {
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
@@ -29,190 +46,96 @@ export function useCardPermissions() {
   const [allowedCards, setAllowedCards] = useState<string[]>([]);
   const [allKnownCards, setAllKnownCards] = useState<string[]>([]);
 
-  // Fetch all known cards from transactions (for admin access)
-  const fetchAllCards = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('credit_card_transactions')
-        .select('card_last_digits')
-        .not('card_last_digits', 'is', null);
-
-      if (error) throw error;
-      
-      const uniqueCards = [...new Set((data || []).map(t => t.card_last_digits).filter(Boolean))] as string[];
-      setAllKnownCards(uniqueCards);
-      return uniqueCards;
-    } catch (error) {
-      console.error('Error fetching all cards:', error);
-      return [];
-    }
+  const chamar = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
+    const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
+      body: { action, ...params },
+    });
+    if (error) throw error;
+    if (data?.success === false) throw new Error(data?.error || `Falha em ${action}`);
+    return data;
   }, []);
 
-  // Fetch all permissions (for admins) or just own (for members)
   const fetchPermissions = useCallback(async () => {
     if (!user) return;
-
     try {
-      const { data, error } = await supabase
-        .from('user_card_permissions')
-        .select('*')
-        .order('created_at', { ascending: false });
+      // Os cartões que EU vejo saem daqui e não da lista completa: quem não é
+      // administrador não pode ler as permissões dos outros, e não precisa.
+      const meu = await chamar('my_finance_access');
+      setAllowedCards((meu?.allowed_cards as string[]) || []);
 
-      if (error) throw error;
-      setPermissions(data || []);
-
-      // Calculate allowed cards for current user
-      const myCards = (data || [])
-        .filter(p => p.user_id === user.id)
-        .map(p => p.card_last_digits);
-      
-      // Fetch all cards to know what exists (for admin permission management UI)
-      await fetchAllCards();
-      
-      // ALL users (including admins) follow only explicit permissions
-      // Admins must be granted access to cards just like any other user
-      setAllowedCards(myCards);
+      if (isAdmin) {
+        const painel = await chamar('list_finance_permissions');
+        setPermissions((painel?.card_permissions as CardPermission[]) || []);
+        setAllKnownCards((painel?.cards as string[]) || []);
+        setTeamMembers((painel?.team as TeamMember[]) || []);
+      } else {
+        setPermissions([]);
+        setAllKnownCards([]);
+        setTeamMembers([]);
+      }
     } catch (error) {
+      // Falha fecha o acesso em vez de abrir. Erro de rede não é autorização.
       console.error('Error fetching card permissions:', error);
+      setAllowedCards([]);
+      setPermissions([]);
     } finally {
       setLoading(false);
     }
-  }, [user, isAdmin, fetchAllCards]);
+  }, [user, isAdmin, chamar]);
 
-  // Fetch team members for admin UI
-  const fetchTeamMembers = useCallback(async () => {
-    if (!isAdmin) return;
-
-    try {
-      const { data: roles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('id, user_id, role, created_at');
-
-      if (rolesError) throw rolesError;
-
-      const userIds = roles?.map(r => r.user_id) || [];
-      
-      if (userIds.length > 0) {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('user_id, full_name, email')
-          .in('user_id', userIds);
-
-        const profileMap = new Map(profiles?.map(p => [p.user_id, p]) || []);
-
-        const members: TeamMember[] = (roles || []).map(r => ({
-          id: r.id,
-          user_id: r.user_id,
-          role: r.role as 'admin' | 'member',
-          email: profileMap.get(r.user_id)?.email || null,
-          full_name: profileMap.get(r.user_id)?.full_name || null,
-        }));
-
-        setTeamMembers(members);
-      }
-    } catch (error) {
-      console.error('Error fetching team members:', error);
-    }
-  }, [isAdmin]);
-
-  // Wait for role loading to complete before fetching permissions
   useEffect(() => {
-    if (!roleLoading && user) {
-      fetchPermissions();
-      fetchTeamMembers();
-    }
-  }, [fetchPermissions, fetchTeamMembers, roleLoading, user]);
+    if (!roleLoading && user) fetchPermissions();
+  }, [fetchPermissions, roleLoading, user]);
 
-  // Grant card permission to a user
-  const grantPermission = useCallback(async (userId: string, cardLastDigits: string, pluggyAccountId?: string) => {
-    if (!isAdmin || !user) {
-      throw new Error('Only admins can grant card permissions');
-    }
-
-    const { error } = await supabase
-      .from('user_card_permissions')
-      .insert({
-        user_id: userId,
-        card_last_digits: cardLastDigits,
-        pluggy_account_id: pluggyAccountId || null,
-        granted_by: user.id,
-      });
-
-    if (error) throw error;
-    await fetchPermissions();
-  }, [isAdmin, user, fetchPermissions]);
-
-  // Revoke card permission from a user
-  const revokePermission = useCallback(async (userId: string, cardLastDigits: string) => {
-    if (!isAdmin) {
-      throw new Error('Only admins can revoke card permissions');
-    }
-
-    const { error } = await supabase
-      .from('user_card_permissions')
-      .delete()
-      .eq('user_id', userId)
-      .eq('card_last_digits', cardLastDigits);
-
-    if (error) throw error;
-    await fetchPermissions();
-  }, [isAdmin, fetchPermissions]);
-
-  // Grant multiple cards to a user at once
-  const grantMultiplePermissions = useCallback(async (userId: string, cards: { cardLastDigits: string; pluggyAccountId?: string }[]) => {
-    if (!isAdmin || !user) {
-      throw new Error('Only admins can grant card permissions');
-    }
-
-    const records = cards.map(card => ({
-      user_id: userId,
-      card_last_digits: card.cardLastDigits,
-      pluggy_account_id: card.pluggyAccountId || null,
-      granted_by: user.id,
-    }));
-
-    const { error } = await supabase
-      .from('user_card_permissions')
-      .upsert(records, { onConflict: 'user_id,card_last_digits' });
-
-    if (error) throw error;
-    await fetchPermissions();
-  }, [isAdmin, user, fetchPermissions]);
-
-  // Revoke all permissions from a user
-  const revokeAllPermissions = useCallback(async (userId: string) => {
-    if (!isAdmin) {
-      throw new Error('Only admins can revoke card permissions');
-    }
-
-    const { error } = await supabase
-      .from('user_card_permissions')
-      .delete()
-      .eq('user_id', userId);
-
-    if (error) throw error;
-    await fetchPermissions();
-  }, [isAdmin, fetchPermissions]);
-
-  // Get permissions for a specific user
   const getPermissionsForUser = useCallback((userId: string) => {
-    return permissions.filter(p => p.user_id === userId);
+    return permissions.filter((p) => p.user_id === userId);
   }, [permissions]);
 
-  // Check if current user can view a specific card
+  /**
+   * A edge recebe o CONJUNTO final, não um grant ou revoke isolado. Assim não
+   * existe a janela em que o revoke passa, o grant falha, e a pessoa fica sem
+   * nada — estado que ninguém percebe até alguém reclamar que sumiu.
+   */
+  const definirCartoes = useCallback(async (userId: string, cards: string[]) => {
+    await chamar('set_card_permissions', { target_user_id: userId, cards });
+    await fetchPermissions();
+  }, [chamar, fetchPermissions]);
+
+  const grantPermission = useCallback(async (userId: string, cardLastDigits: string) => {
+    if (!isAdmin) throw new Error('Only admins can grant card permissions');
+    const atuais = permissions.filter((p) => p.user_id === userId).map((p) => p.card_last_digits);
+    await definirCartoes(userId, [...new Set([...atuais, cardLastDigits])]);
+  }, [isAdmin, permissions, definirCartoes]);
+
+  const revokePermission = useCallback(async (userId: string, cardLastDigits: string) => {
+    if (!isAdmin) throw new Error('Only admins can revoke card permissions');
+    const atuais = permissions.filter((p) => p.user_id === userId).map((p) => p.card_last_digits);
+    await definirCartoes(userId, atuais.filter((c) => c !== cardLastDigits));
+  }, [isAdmin, permissions, definirCartoes]);
+
+  const grantMultiplePermissions = useCallback(
+    async (userId: string, cards: { cardLastDigits: string }[]) => {
+      if (!isAdmin) throw new Error('Only admins can grant card permissions');
+      const atuais = permissions.filter((p) => p.user_id === userId).map((p) => p.card_last_digits);
+      await definirCartoes(userId, [...new Set([...atuais, ...cards.map((c) => c.cardLastDigits)])]);
+    },
+    [isAdmin, permissions, definirCartoes],
+  );
+
+  const revokeAllPermissions = useCallback(async (userId: string) => {
+    if (!isAdmin) throw new Error('Only admins can revoke card permissions');
+    await definirCartoes(userId, []);
+  }, [isAdmin, definirCartoes]);
+
   const canViewCard = useCallback((cardLastDigits: string) => {
     return allowedCards.includes(cardLastDigits);
   }, [allowedCards]);
 
-  // Filter transactions to only show permitted cards
   const filterByPermissions = useCallback(<T extends { card_last_digits: string | null }>(items: T[]): T[] => {
     if (allowedCards.length === 0) return [];
-    return items.filter(item => 
-      item.card_last_digits && allowedCards.includes(item.card_last_digits)
-    );
+    return items.filter((item) => item.card_last_digits && allowedCards.includes(item.card_last_digits));
   }, [allowedCards]);
 
-  // Combined loading state includes role loading
   const isLoading = loading || roleLoading;
 
   return {

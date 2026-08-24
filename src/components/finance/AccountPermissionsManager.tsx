@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Shield, Landmark, User, Check, X, Loader2, Eye, EyeOff, Settings, Save } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from '@/hooks/useAuth';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
@@ -44,99 +44,41 @@ export function AccountPermissionsManager() {
   const [pendingChanges, setPendingChanges] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
 
-  const fetchAccounts = useCallback(async () => {
+  /**
+   * Tudo numa chamada só, pela edge.
+   *
+   * A versão anterior lia `bank_transactions`, `pluggy_connections`,
+   * `user_account_permissions`, `user_roles` e `profiles` do cliente
+   * `supabase` — que é o Cloud. Duas coisas quebravam ao mesmo tempo:
+   * as permissões que valem são as do Externo, e a lista de pessoas vinha com
+   * `user_id` do Cloud, que era o que acabava gravado. Como as tabelas de
+   * permissão são indexadas por uuid do Externo (26 dos 52 usuários têm número
+   * diferente nos dois bancos), conceder acesso por esta tela gravava um
+   * identificador que a leitura nunca encontraria — sem erro nenhum.
+   */
+  const carregar = useCallback(async () => {
     try {
-      // Get distinct bank accounts from connections + transactions
-      const { data, error } = await supabase
-        .from('bank_transactions')
-        .select('pluggy_account_id, pluggy_item_id')
-        .not('pluggy_account_id', 'is', null);
-
-      if (error) throw error;
-
-      // Get unique account IDs
-      const accountMap = new Map<string, { pluggy_account_id: string; pluggy_item_id: string | null }>();
-      (data || []).forEach(t => {
-        if (t.pluggy_account_id && !accountMap.has(t.pluggy_account_id)) {
-          accountMap.set(t.pluggy_account_id, { pluggy_account_id: t.pluggy_account_id, pluggy_item_id: t.pluggy_item_id });
-        }
+      const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
+        body: { action: 'list_finance_permissions' },
       });
-
-      // Get connection names
-      const itemIds = [...new Set([...accountMap.values()].map(a => a.pluggy_item_id).filter(Boolean))] as string[];
-      let connMap = new Map<string, { connector_name: string; custom_name: string | null }>();
-      
-      if (itemIds.length > 0) {
-        const { data: conns } = await supabase
-          .from('pluggy_connections')
-          .select('pluggy_item_id, connector_name, custom_name')
-          .in('pluggy_item_id', itemIds);
-        
-        (conns || []).forEach(c => {
-          connMap.set(c.pluggy_item_id, { connector_name: c.connector_name || 'Conta', custom_name: c.custom_name });
-        });
-      }
-
-      const result: BankAccount[] = [...accountMap.values()].map(a => {
-        const conn = a.pluggy_item_id ? connMap.get(a.pluggy_item_id) : null;
-        return {
-          pluggy_account_id: a.pluggy_account_id,
-          connector_name: conn?.connector_name || 'Conta',
-          custom_name: conn?.custom_name || null,
-        };
-      });
-
-      setAccounts(result);
-    } catch (err) {
-      console.error('Error fetching accounts:', err);
-    }
-  }, []);
-
-  const fetchPermissions = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from('user_account_permissions')
-        .select('id, user_id, pluggy_account_id');
       if (error) throw error;
-      setPermissions(data || []);
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao carregar permissões');
+      setAccounts((data?.accounts as BankAccount[]) || []);
+      setPermissions((data?.account_permissions as AccountPermission[]) || []);
+      setTeamMembers((data?.team as TeamMember[]) || []);
     } catch (err) {
       console.error('Error fetching account permissions:', err);
-    }
-  }, []);
-
-  const fetchTeamMembers = useCallback(async () => {
-    try {
-      const { data: roles, error } = await supabase
-        .from('user_roles')
-        .select('id, user_id, role');
-      if (error) throw error;
-
-      const userIds = (roles || []).map(r => r.user_id);
-      if (userIds.length === 0) { setTeamMembers([]); return; }
-
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('user_id, full_name, email')
-        .in('user_id', userIds);
-
-      const profileMap = new Map((profiles || []).map(p => [p.user_id, p]));
-      setTeamMembers((roles || []).map(r => ({
-        id: r.id,
-        user_id: r.user_id,
-        role: r.role,
-        email: profileMap.get(r.user_id)?.email || null,
-        full_name: profileMap.get(r.user_id)?.full_name || null,
-      })));
-    } catch (err) {
-      console.error('Error fetching team members:', err);
+      setAccounts([]);
+      setPermissions([]);
+      setTeamMembers([]);
     }
   }, []);
 
   useEffect(() => {
     if (!roleLoading && user) {
-      Promise.all([fetchAccounts(), fetchPermissions(), fetchTeamMembers()]).finally(() => setLoading(false));
+      carregar().finally(() => setLoading(false));
     }
-  }, [roleLoading, user, fetchAccounts, fetchPermissions, fetchTeamMembers]);
+  }, [roleLoading, user, carregar]);
 
   const getPermissionsForUser = useCallback((userId: string) => {
     return permissions.filter(p => p.user_id === userId);
@@ -161,33 +103,22 @@ export function AccountPermissionsManager() {
     if (!selectedUser || !user) return;
     setSaving(true);
     try {
-      const currentPerms = getPermissionsForUser(selectedUser).map(p => p.pluggy_account_id);
-      
-      const toGrant = accounts
-        .filter(acc => pendingChanges[acc.pluggy_account_id] && !currentPerms.includes(acc.pluggy_account_id))
+      // Manda o CONJUNTO final, não uma sequência de grant e revoke. A versão
+      // anterior revogava num laço depois de conceder: se um DELETE falhasse no
+      // meio, a pessoa ficava com permissão pela metade e a tela dizia que deu
+      // erro sem dizer o que sobrou. `granted_by` quem carimba é a edge, com o
+      // uuid do Externo — o do Cloud viola a FK da tabela.
+      const desejados = accounts
+        .filter(acc => pendingChanges[acc.pluggy_account_id])
         .map(acc => acc.pluggy_account_id);
-      
-      const toRevoke = currentPerms.filter(id => !pendingChanges[id]);
 
-      if (toGrant.length > 0) {
-        const { error } = await supabase
-          .from('user_account_permissions')
-          .upsert(toGrant.map(id => ({ user_id: selectedUser, pluggy_account_id: id, granted_by: user.id })), { onConflict: 'user_id,pluggy_account_id' });
-        if (error) throw error;
-      }
+      const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
+        body: { action: 'set_account_permissions', target_user_id: selectedUser, accounts: desejados },
+      });
+      if (error) throw error;
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao salvar permissões');
 
-      if (toRevoke.length > 0) {
-        for (const id of toRevoke) {
-          const { error } = await supabase
-            .from('user_account_permissions')
-            .delete()
-            .eq('user_id', selectedUser)
-            .eq('pluggy_account_id', id);
-          if (error) throw error;
-        }
-      }
-
-      await fetchPermissions();
+      await carregar();
       toast.success('Permissões de contas atualizadas!');
       setIsDialogOpen(false);
     } catch (err: any) {

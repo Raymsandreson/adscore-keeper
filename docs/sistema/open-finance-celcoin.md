@@ -256,11 +256,81 @@ ter linhas, e os três escrevem na cópia do **Cloud** — o clique sumiria sem 
 a linha continuaria lá. Botão que mente é pior que botão que falta. Voltam com a
 etapa 2.
 
-**Ainda leem o Cloud** (etapa 2): `AccountPermissionsManager.tsx` e
-`useCardPermissions.ts`, que administram as permissões, mais as 6 ações de
-escrita da Pluggy em `useCreditCardTransactions` (import, connect token, save,
-sync, delete, rename). Enquanto isso, a fonte da verdade das permissões é a cópia
-do Externo — que é a que a leitura consulta.
+## Etapa 2: administrar permissão nunca funcionou
+
+**Feita em 24/08/2026 (v19).** Portar os dois gerenciadores revelou dois defeitos
+piores que o banco errado, os dois da mesma família — erro que não aparece como
+erro:
+
+1. **Conceder acesso pela tela jamais teve efeito.** Os gerenciadores listavam a
+   equipe do `user_roles`/`profiles` do **Cloud**, cujos `user_id` são uuids do
+   Cloud, e gravavam esse uuid em `user_account_permissions` /
+   `user_card_permissions` — indexadas por uuid do **Externo**. A permissão
+   entrava com um identificador que a leitura nunca encontraria. Nenhum erro em
+   lugar nenhum: a linha existia, só não significava nada.
+2. **`allowedCards` era sempre vazio**, porque comparava `p.user_id === user.id`
+   (uuid do Cloud). Como `filterByPermissions` devolve `[]` quando ele está
+   vazio, a lista de cartão zerava **mesmo com conexões e lançamentos legíveis**.
+   Era a camada atrás da que o print mostrou.
+
+**Como ficou.** Três ações novas, todas com gate de `is_admin` do Externo (o
+service role ignora RLS, então o gate tem que ser explícito):
+`list_finance_permissions`, `set_account_permissions`, `set_card_permissions`.
+Mais `rename_connection`.
+
+**Semântica de conjunto, não grant/revoke.** A tela edita o estado completo, e a
+versão antiga revogava num laço depois de conceder: um DELETE falhando no meio
+deixava a pessoa com permissão pela metade, e a tela só dizia "erro". Mandar o
+conjunto final elimina esse estado.
+
+**Roster = `auth_uuid_mapping` (52 pessoas), não `user_roles` do Externo.** Lá
+existem **5.285** linhas `member`, que são clientes e não equipe — um seletor com
+isso é inutilizável. O mapping é, por definição, quem tem conta nos dois bancos, e
+seus `ext_uuid` são exatamente os que as tabelas de permissão indexam.
+
+## Os menus da tela passaram a ser da Celcoin
+
+**24/08/2026.** Em vez de deixar os controles da Pluggy desligados, eles saíram e
+os da Celcoin ocuparam o lugar:
+
+| antes (Pluggy) | agora |
+|---|---|
+| "Sincronizar" → `pluggy-integration` do Cloud, janela de 24 meses | `sync_all` da Celcoin, sem janela (o piso é por conta, dentro da edge) |
+| "Conectar" → widget da Pluggy | "Conectar banco" → `CelcoinConnectDialog` |
+| "Open Finance" (botão separado) | virou o próprio "Conectar banco" |
+| "Gerar Link" → connect token do widget | removido — o link da Celcoin nasce no diálogo, e vive ~84s |
+| "importe pelo itemId" no estado vazio | removido — na Celcoin o equivalente é o consentimento, que nasce por autorização no banco |
+| por conexão: gerar link, desconectar | removidos |
+| por conexão: renomear | mantido, agora por `rename_connection` no Externo |
+| "Gerar Link Despesas" | mantido — é feature nossa, nunca foi da Pluggy |
+| subtítulo "Open Finance via Pluggy" | "Open Finance via Celcoin" |
+
+**A sincronização automática ao abrir também era da Pluggy** e é o caso mais
+perigoso dos dois: enquanto a lista de conexões vinha vazia ela nunca disparava,
+mas com a lista corrigida passaria a rodar em **toda abertura** contra uma
+credencial que não traz dado desde 18/03/2026, avisando "Transações atualizadas
+automaticamente" sobre zero linha. Foi convertida para a Celcoin, e o aviso agora
+diz **quantos** lançamentos chegaram e só aparece quando algo realmente chegou —
+rodada silenciosa não merece toast. Foi um toast desses que deixou a Pluggy
+cinco meses parada sem ninguém notar.
+
+Saíram com eles os handlers mortos (`handleConnect`, `handleGenerateShareLink`,
+`handleImportByItemId`, `handleImportConnections`, `handleDeleteConnection`) e os
+estados que só os serviam. As ações continuam existindo no
+`useCreditCardTransactions` e na edge do Cloud; o que sumiu foi o caminho da tela
+até elas.
+
+**As conexões listadas continuam sendo as 3 da Pluggy** — elas são o registro
+histórico e a única fonte dos 5.524 lançamentos de cartão, que não têm sucessor
+na Celcoin. Desconectar/gerenciar consentimento da Celcoin é em "Conexões".
+
+**Gabarito do painel** (24/08/2026): 5 contas, 11 cartões, 52 pessoas no roster
+(13 admin), 8 permissões de conta e 55 de cartão.
+
+**Detalhe deliberado:** o filtro do front exige permissão **explícita**, inclusive
+para quem é dono das linhas — por isso o raymsandresonadv vê 5.510 e não 5.524 na
+tela de cartão (os 14 restantes são cartões sem permissão, que a edge devolve por
+ele ser dono). Regra antiga, mantida; mudá-la é decisão de produto.
 
 Isso não afeta o dado gravado: a sucessão Pluggy → Celcoin no Externo está
 contígua e sem sobreposição — pluggy 2.583 linhas de 13/02/2025 a 18/03/2026,
@@ -406,5 +476,7 @@ argumento.
 | Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) subiu na v14 e foi conferido: o Inter devolve `2026-08-20`, as demais conexões `null`. Falta o aviso **fora** do painel de conexões — hoje é preciso abrir a aba para ver, e o alerta que exige ser procurado não é alerta. |
 | Conciliação em tela | **Corrigida em 24/08/2026** (v17). Extrato de conta e de cartão passam a vir do Externo pela ação `list_transactions`, com tradução de uuid e a mesma regra de visibilidade das policies. Conferido contra gabarito: 4.609/5.524 para o dono. Faltam os dois gerenciadores de permissão, que ainda escrevem no Cloud. |
 | Quem vê a aba "Conta" | **Alexandre Medeiros e raymsandresonadv**, desde 24/08/2026. Regra derivada do dado (`my_finance_access`), sem nome hardcoded. |
+| Administrar permissões | **Corrigida em 24/08/2026** (v19). Antes gravava uuid do Cloud em tabela indexada por uuid do Externo — conceder acesso pela tela não tinha efeito nenhum, sem erro. Agora pela edge, com gate de `is_admin` do Externo e semântica de conjunto. |
+| Menus da tela de cartão | **Trocados para a Celcoin em 24/08/2026.** Sincronizar, conectar e o auto-sync de abertura chamavam a Pluggy do Cloud — rodavam, diziam que deu certo e não traziam nada desde 18/03. Ver seção própria. |
 | Tela de Gastos do Cartão | **Corrigida em 24/08/2026** (v18). Mostrava "Nenhuma conta conectada" porque a lista de conexões vinha do Cloud; agora vem do Externo por `list_pluggy_connections`. Renomear/gerar link/excluir ficaram desligados — ainda escrevem no Cloud. |
 | **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. O alerta de obsolescência saiu da lista em 20/08 — ver seção própria. |

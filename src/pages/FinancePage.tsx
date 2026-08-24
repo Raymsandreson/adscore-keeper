@@ -19,12 +19,10 @@ import {
   CalendarIcon, 
   Search, 
   ArrowLeft,
-  Link2,
   Link2Off,
   Building2,
   TrendingDown,
   Download,
-  Trash2,
   Settings,
   LayoutGrid,
   Users,
@@ -38,9 +36,7 @@ import {
   Edit2,
   Check,
   Landmark,
-  CheckCircle2,
-  Share2,
-  Loader2
+  CheckCircle2
 } from "lucide-react";
 import { format, startOfMonth, endOfMonth, subMonths, subDays, subWeeks, startOfWeek, endOfWeek, startOfYear, subYears } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -56,6 +52,7 @@ import { useCostAccounts } from "@/hooks/useCostAccounts";
 import { toast } from "sonner";
 import { ExpenseCategoryManager } from "@/components/finance/ExpenseCategoryManager";
 import { CelcoinConnectDialog } from "@/components/finance/CelcoinConnectDialog";
+import { useCelcoinOpenFinance } from "@/hooks/useCelcoinOpenFinance";
 import { CelcoinConnectionsSheet } from "@/components/finance/CelcoinConnectionsSheet";
 import { CardAssignmentManager } from "@/components/finance/CardAssignmentManager";
 import { CardPermissionsManager } from "@/components/finance/CardPermissionsManager";
@@ -98,6 +95,8 @@ export default function FinancePage() {
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
   const { bank: podeVerConta, loading: acessoCarregando } = useFinanceAccess();
+  const { syncAll: syncAllCelcoin } = useCelcoinOpenFinance();
+  const [sincronizandoCelcoin, setSincronizandoCelcoin] = useState(false);
   const { 
     allowedCards, 
     loading: permissionsLoading, 
@@ -107,16 +106,9 @@ export default function FinancePage() {
     transactions,
     connections,
     loading,
-    syncing,
     error,
     fetchTransactions,
     fetchConnections,
-    createConnectToken,
-    saveConnection,
-    syncTransactions,
-    deleteConnection,
-    importExistingConnections,
-    importByItemId,
     getCategoryTotals,
     getTotalSpent,
     updateConnectionName,
@@ -138,12 +130,8 @@ export default function FinancePage() {
   const [filterContacts, setFilterContacts] = useState<string[]>(["all"]);
   const [aggregationType, setAggregationType] = useState<AggregationType>('card');
   
-  const [isConnecting, setIsConnecting] = useState(false);
   const [celcoinDialogOpen, setCelcoinDialogOpen] = useState(false);
   const [celcoinConnectionsOpen, setCelcoinConnectionsOpen] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
-  const [manualItemId, setManualItemId] = useState("");
-  const [isImportingManual, setIsImportingManual] = useState(false);
   const [activeTab, setActiveTab] = usePageState<string>('finance_activeTab', 'workflow');
   const [financialSection, setFinancialSection] = usePageState<string>('finance_section', 'credit-card');
 
@@ -158,7 +146,6 @@ export default function FinancePage() {
   const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");
-  const [generatingLinkFor, setGeneratingLinkFor] = useState<string | null>(null);
   const [entryFormOpen, setEntryFormOpen] = useState(false);
 
   // Get unique card digits for assignment manager
@@ -245,20 +232,26 @@ export default function FinancePage() {
     loadData();
   }, [user, fetchConnections, fetchTransactions, startDate, endDate]);
 
-  // Auto-sync when connections exist and page loads
+  // Sincronização automática ao abrir, agora pela Celcoin.
+  //
+  // Chamava a Pluggy com janela de 24 meses. Enquanto a lista de conexões vinha
+  // vazia isto nunca disparava; com a lista corrigida passaria a rodar em toda
+  // abertura contra uma credencial que não traz dado desde 18/03/2026, e a
+  // avisar "Transações atualizadas automaticamente" sobre zero linha — que é
+  // exatamente como a Pluggy ficou cinco meses parada sem ninguém notar.
+  //
+  // Sem janela: o piso é por conta, calculado dentro da edge. E o aviso só
+  // aparece quando algo REALMENTE chegou; rodada silenciosa não merece toast.
   useEffect(() => {
     const autoSync = async () => {
-      if (connections.length > 0 && !syncing && !autoSyncing) {
+      if (connections.length > 0 && !sincronizandoCelcoin && !autoSyncing) {
         setAutoSyncing(true);
         try {
-          // Sync all historical data (last 24 months) on first load
-          const historicalStart = subMonths(new Date(), 24);
-          const historicalEnd = endOfMonth(new Date());
-          await syncTransactions({ start: historicalStart, end: historicalEnd });
-          // Refresh the view with current filter
+          const r = await syncAllCelcoin();
           await fetchTransactions({ start: startDate, end: endDate });
           setLastSyncTime(new Date());
-          toast.success('Transações atualizadas automaticamente');
+          const novos = (r?.bank_transactions ?? 0) + (r?.credit_card_transactions ?? 0);
+          if (novos > 0) toast.success(`${novos} lançamento(s) novo(s)`);
         } catch (err) {
           console.error('Auto-sync failed:', err);
         } finally {
@@ -273,105 +266,38 @@ export default function FinancePage() {
     }
   }, [connections.length]);
 
-  // Auto-import existing Pluggy connections if none found
-  const handleImportConnections = useCallback(async () => {
-    setIsImporting(true);
-    try {
-      const result = await importExistingConnections();
-      if (result.imported > 0) {
-        toast.success(`${result.imported} conta(s) importada(s) com sucesso!`);
-        await syncTransactions({ start: startDate, end: endDate });
-      } else {
-        toast.info('Nenhuma conexão ativa encontrada no Pluggy');
-      }
-    } catch (err: any) {
-      console.error('Error importing:', err);
-      toast.error('Erro ao importar conexões');
-    } finally {
-      setIsImporting(false);
-    }
-  }, [importExistingConnections, syncTransactions, startDate, endDate]);
 
-  const handleImportByItemId = useCallback(async () => {
-    if (!manualItemId.trim()) {
-      toast.error('Informe o itemId');
-      return;
-    }
-    
-    setIsImportingManual(true);
-    try {
-      const result = await importByItemId(manualItemId.trim());
-      toast.success(`Conexão "${result.connection.connector_name}" importada com sucesso!`);
-      setManualItemId("");
-      await syncTransactions({ start: startDate, end: endDate });
-    } catch (err: any) {
-      console.error('Error importing by itemId:', err);
-      toast.error(`Erro ao importar: ${err.message}`);
-    } finally {
-      setIsImportingManual(false);
-    }
-  }, [manualItemId, importByItemId, syncTransactions, startDate, endDate]);
 
-  const handleConnect = useCallback(async () => {
-    setIsConnecting(true);
-    try {
-      const connectToken = await createConnectToken();
-      
-      const PluggyConnect = (window as unknown as { PluggyConnect?: PluggyConnectConstructor }).PluggyConnect;
-      
-      if (PluggyConnect) {
-        const pluggyConnect = new PluggyConnect({
-          connectToken,
-          includeSandbox: false,
-          onSuccess: async (data) => {
-            await saveConnection(data.item.id);
-            toast.success('Conta conectada com sucesso!');
-            await syncTransactions({ start: startDate, end: endDate });
-            setIsConnecting(false);
-          },
-          onError: (error) => {
-            console.error('Pluggy Connect error:', error);
-            toast.error('Erro ao conectar conta');
-            setIsConnecting(false);
-          },
-          onClose: () => {
-            setIsConnecting(false);
-          },
-        });
-        await pluggyConnect.init();
-      } else {
-        toast.error('SDK Pluggy não carregado. Tente recarregar a página.');
-        setIsConnecting(false);
-      }
-    } catch (err: any) {
-      console.error('Error creating connect token:', err);
-      toast.error('Erro ao iniciar conexão');
-      setIsConnecting(false);
-    }
-  }, [createConnectToken, saveConnection, syncTransactions, startDate, endDate]);
 
+  /**
+   * Sincroniza pela Celcoin, não pela Pluggy.
+   *
+   * O `syncTransactions` antigo chamava a edge `pluggy-integration` do Cloud,
+   * cuja credencial parou de trazer dado em 18/03/2026 — o botão rodava, dizia
+   * "Transações sincronizadas!" e não trazia nada havia cinco meses. Aqui não
+   * passo janela: o piso é calculado por conta dentro da edge, a partir do
+   * último lançamento que cada uma já tem.
+   */
   const handleSync = useCallback(async () => {
-    // Sync all historical data, not just the current filter period
-    // Fetch last 24 months of data to get complete history
-    const historicalStart = subMonths(new Date(), 24);
-    const historicalEnd = endOfMonth(new Date());
-    await syncTransactions({ start: historicalStart, end: historicalEnd });
-    // Refresh the view with current filter
-    await fetchTransactions({ start: startDate, end: endDate });
-    setLastSyncTime(new Date());
-    toast.success('Transações sincronizadas!');
-  }, [syncTransactions, fetchTransactions, startDate, endDate]);
-
-  const handleDeleteConnection = useCallback((itemId: string) => {
-    confirmDelete(
-      'Desconectar Conta',
-      'Tem certeza que deseja desconectar esta conta? Esta ação não pode ser desfeita.',
-      async () => {
-        await deleteConnection(itemId);
-        toast.success('Conta desconectada');
-      }
-    );
-  }, [deleteConnection, confirmDelete]);
+    setSincronizandoCelcoin(true);
+    try {
+      const r = await syncAllCelcoin();
+      await fetchTransactions({ start: startDate, end: endDate });
+      await fetchConnections();
+      setLastSyncTime(new Date());
+      const novos = (r?.bank_transactions ?? 0) + (r?.credit_card_transactions ?? 0);
+      const falhas = r?.falhas ?? 0;
+      // Diz quantos vieram, não só que rodou: "sincronizado" sobre zero linha é
+      // exatamente o que escondeu a Pluggy parada.
+      toast.success(
+        `${novos} lançamento(s) sincronizado(s)` + (falhas ? ` — ${falhas} conexão(ões) falhou(aram)` : ''),
+      );
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao sincronizar');
+    } finally {
+      setSincronizandoCelcoin(false);
+    }
+  }, [syncAllCelcoin, fetchTransactions, fetchConnections, startDate, endDate]);
 
   // Filter transactions by card permissions first, then by all filters
   const permittedTransactions = useMemo(() => {
@@ -662,28 +588,14 @@ export default function FinancePage() {
   // `pluggy-integration`. Enquanto os dois lados não falarem o mesmo banco, o
   // botão faria a escrita sumir sem erro e a lista não mudaria — botão que
   // mente é pior que botão que falta. Reabilitar junto com a etapa 2.
-  const ACOES_PLUGGY_INDISPONIVEIS =
-    'Indisponível: a conexão é lida do banco externo e esta ação ainda grava no Cloud';
+  // Renomear já foi portado (`rename_connection`). Excluir e gerar link seguem
+  // desligados: escrevem no Cloud pela `pluggy-integration` e pertencem a uma
+  // integração em aposentadoria — o clique sumiria sem erro e a linha ficaria.
 
   const getConnectionDisplayName = (conn: { custom_name: string | null; connector_name: string | null }) => {
     return conn.custom_name || conn.connector_name || 'Sem nome';
   };
 
-  const handleGenerateShareLink = useCallback(async (itemId?: string) => {
-    const key = itemId || '__new__';
-    setGeneratingLinkFor(key);
-    try {
-      const connectToken = await createConnectToken(itemId);
-      const shareUrl = `https://connect.pluggy.ai/?connect_token=${connectToken}`;
-      await navigator.clipboard.writeText(shareUrl);
-      toast.success('Link copiado para a área de transferência! Válido por 30 minutos.');
-    } catch (err: any) {
-      console.error('Error generating share link:', err);
-      toast.error('Erro ao gerar link: ' + err.message);
-    } finally {
-      setGeneratingLinkFor(null);
-    }
-  }, [createConnectToken]);
 
   if (!user) {
     return (
@@ -708,7 +620,7 @@ export default function FinancePage() {
                 <div>
                   <h1 className="text-xl font-semibold">Gastos do Cartão</h1>
                   <p className="text-xs text-muted-foreground">
-                    Open Finance via Pluggy
+                    Open Finance via Celcoin
                   </p>
                 </div>
               </div>
@@ -720,30 +632,23 @@ export default function FinancePage() {
                   Atualizado às {format(lastSyncTime, "HH:mm")}
                 </span>
               )}
+              {/* Sincronizar e conectar são da Celcoin. Os botões da Pluggy
+                  saíram: chamavam a edge do Cloud, cuja credencial não traz
+                  dado desde 18/03/2026 — rodavam, diziam que deu certo e não
+                  traziam nada. Botão que mente é pior que botão que falta. */}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={handleSync}
-                disabled={syncing || autoSyncing || connections.length === 0}
+                disabled={sincronizandoCelcoin || autoSyncing}
                 className="h-8"
               >
-                <RefreshCw className={cn("h-4 w-4 mr-2", (syncing || autoSyncing) && "animate-spin")} />
-                {autoSyncing ? 'Atualizando...' : 'Sincronizar'}
+                <RefreshCw className={cn("h-4 w-4 mr-2", (sincronizandoCelcoin || autoSyncing) && "animate-spin")} />
+                {sincronizandoCelcoin || autoSyncing ? 'Atualizando...' : 'Sincronizar'}
               </Button>
-              <Button size="sm" onClick={handleConnect} disabled={isConnecting} className="h-8">
-                <Link2 className="h-4 w-4 mr-2" />
-                Conectar
-              </Button>
-              {/* Open Finance (Celcoin) — sucessor da Pluggy. Convivem enquanto a
-                  migração não é validada; a coluna provider separa a origem. */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCelcoinDialogOpen(true)}
-                className="h-8"
-              >
+              <Button size="sm" onClick={() => setCelcoinDialogOpen(true)} className="h-8">
                 <Landmark className="h-4 w-4 mr-2" />
-                Open Finance
+                Conectar banco
               </Button>
               {/* Ver o estado das conexões e sincronizar pela tela. Sem isto o
                   consentimento ficava invisível depois de criado, e a sincronização
@@ -757,20 +662,12 @@ export default function FinancePage() {
                 <Landmark className="h-4 w-4 mr-2" />
                 Conexões
               </Button>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => handleGenerateShareLink()} 
-                disabled={generatingLinkFor === '__new__'} 
-                className="h-8"
-              >
-                {generatingLinkFor === '__new__' ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Share2 className="h-4 w-4 mr-2" />
-                )}
-                Gerar Link
-              </Button>
+              {/* "Gerar Link" da Pluggy saiu: gerava connect token do widget
+                  deles. O link de autorização da Celcoin nasce dentro do
+                  diálogo de conectar, com o titular já com o celular na mão --
+                  ele vive cerca de 84 segundos, então gerar e mandar depois não
+                  funciona. "Gerar Link Despesas" abaixo é feature nossa, não da
+                  Pluggy, e continua. */}
               <ExpenseFormLinkGenerator 
                 knownCards={availableCards} 
                 transactions={permittedTransactions.map(t => ({
@@ -824,8 +721,6 @@ export default function FinancePage() {
                       variant="ghost"
                       size="icon"
                       className="h-5 w-5"
-                      disabled
-                      title={ACOES_PLUGGY_INDISPONIVEIS}
                       onClick={() => {
                         setEditingConnectionId(conn.id);
                         setEditingConnectionName(conn.custom_name || conn.connector_name || '');
@@ -838,30 +733,11 @@ export default function FinancePage() {
                 <Badge variant={conn.status === 'UPDATED' ? 'default' : 'secondary'} className="text-[10px] h-4 px-1.5">
                   {conn.status === 'UPDATED' ? 'OK' : conn.status}
                 </Badge>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5"
-                  disabled
-                  onClick={() => handleGenerateShareLink(conn.pluggy_item_id)}
-                  title={ACOES_PLUGGY_INDISPONIVEIS}
-                >
-                  {generatingLinkFor === conn.pluggy_item_id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Share2 className="h-3 w-3 text-muted-foreground" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-5 w-5 hover:bg-destructive/10"
-                  disabled
-                  title={ACOES_PLUGGY_INDISPONIVEIS}
-                  onClick={() => handleDeleteConnection(conn.pluggy_item_id)}
-                >
-                  <Trash2 className="h-3 w-3 text-destructive" />
-                </Button>
+                {/* Gerar link e desconectar eram da Pluggy e escreviam no
+                    Cloud. Saíram junto com o resto do menu dela. Estas conexões
+                    são registro histórico: os 5.524 lançamentos de cartão vêm
+                    daqui e não têm sucessor na Celcoin ainda. Desconectar pela
+                    Celcoin é em Conexões, que trata consentimento. */}
               </div>
             ))}
           </div>
@@ -874,40 +750,21 @@ export default function FinancePage() {
               <Link2Off className="h-12 w-12 text-muted-foreground mb-4" />
               <h3 className="text-lg font-medium mb-2">Nenhuma conta conectada</h3>
               <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
-                Conecte uma conta bancária através do Open Finance para acompanhar seus gastos no cartão de crédito.
+                Conecte uma conta bancária pelo Open Finance para acompanhar seus gastos no cartão de crédito.
               </p>
               <div className="flex gap-2">
-                <Button onClick={handleConnect} disabled={isConnecting}>
-                  <Link2 className="h-4 w-4 mr-2" />
-                  Conectar Banco
+                <Button onClick={() => setCelcoinDialogOpen(true)}>
+                  <Landmark className="h-4 w-4 mr-2" />
+                  Conectar banco
+                </Button>
+                <Button variant="outline" onClick={() => setCelcoinConnectionsOpen(true)}>
+                  <Landmark className="h-4 w-4 mr-2" />
+                  Ver conexões
                 </Button>
               </div>
-              
-              {/* Manual Import Section */}
-              <div className="mt-6 pt-6 border-t w-full max-w-md">
-                <p className="text-sm text-muted-foreground mb-3 text-center">
-                  Ou importe uma conexão existente pelo itemId:
-                </p>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Cole o itemId aqui..."
-                    value={manualItemId}
-                    onChange={(e) => setManualItemId(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button 
-                    onClick={handleImportByItemId} 
-                    disabled={isImportingManual || !manualItemId.trim()}
-                    variant="secondary"
-                  >
-                    {isImportingManual ? (
-                      <RefreshCw className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Importar"
-                    )}
-                  </Button>
-                </div>
-              </div>
+              {/* O "importe pelo itemId" era da Pluggy: item era o identificador
+                  de conexão deles. Na Celcoin o equivalente é o consentimento,
+                  que nasce por autorização no banco e não se cola à mão. */}
             </CardContent>
           </Card>
         )}
