@@ -100,8 +100,9 @@ import { CSS } from '@dnd-kit/utilities';
 import { PopMarcosSection } from './PopMarcosSection';
 import { PopCodigosAuditoria } from './PopCodigosAuditoria';
 import { PopFilaRequerimentosInss } from './PopFilaRequerimentosInss';
+import { PopDeteccaoSheet } from './PopDeteccaoSheet';
 import { PopCarteiraSheet } from './PopCarteiraSheet';
-import { Wallet } from 'lucide-react';
+import { Wallet, Radar } from 'lucide-react';
 import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { ResponsavelSelect } from './ResponsavelSelect';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -253,10 +254,18 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
     return cargo ? `Cargo: ${cargo}` : null;
   };
 
-  /** stage_id → marco. A fase é o marco, então a linha da fase mostra os dois. */
-  const marcoPorStage = useMemo(() => {
-    const mapa: Record<string, (typeof popMarcos)[number]> = {};
-    for (const m of popMarcos) if (m.stage_id) mapa[m.stage_id] = m;
+  /**
+   * stage_id → marcos DAQUELA fase. A fase é o marco, então a linha da fase
+   * mostra os dois.
+   *
+   * Era um Record<stage, marco> com `mapa[m.stage_id] = m`, e uma fase pode ter
+   * VÁRIOS marcos — a fase judicial do POP de BPC tem dez. O último sobrescrevia
+   * os outros, então a linha da FASE 5 do BPC JUDICIAL anunciava "2 sinais"
+   * tendo 31: mostrava só os do último marco a ser lido (24/08/2026).
+   */
+  const marcosPorStage = useMemo(() => {
+    const mapa: Record<string, typeof popMarcos> = {};
+    for (const m of popMarcos) if (m.stage_id) (mapa[m.stage_id] ||= []).push(m);
     return mapa;
   }, [popMarcos]);
   const [formName, setFormName] = useState('');
@@ -301,6 +310,9 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
   const [saving, setSaving] = useState(false);
   // Sheet da carteira do POP (processos por marco, tempo, estágio financeiro, custo).
   const [carteiraAberta, setCarteiraAberta] = useState(false);
+  /** Painel de detecção: abre da linha da fase, focado nos marcos dela. */
+  const [deteccaoAberta, setDeteccaoAberta] = useState(false);
+  const [deteccaoFoco, setDeteccaoFoco] = useState<string | null>(null);
   const [scriptDialog, setScriptDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; script: string } | null>(null);
   const [descDialog, setDescDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; description: string } | null>(null);
   const [docChecklistDialog, setDocChecklistDialog] = useState<{ phaseIdx: number; objIdx: number; stepId: string; items: DocChecklistItem[]; checklistType: ChecklistType } | null>(null);
@@ -2105,28 +2117,52 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                            (estágio financeiro e sinal de reconhecimento) mora aqui,
                            na própria linha. Seção à parte repetia a mesma lista. */}
                        {(() => {
-                         const marco = marcoPorStage[phase.stageId];
-                         if (!marco) return null;
-                         const s = sinaisPorMarco[marco.id] || { tpu: 0, documento: 0 };
-                         const total = s.tpu + s.documento;
+                         const daFase = marcosPorStage[phase.stageId];
+                         if (!daFase?.length) return null;
+                         // O estágio financeiro é por marco; a linha da fase mostra
+                         // o do marco mais adiantado dela, que é o que a fase
+                         // significa quando termina.
+                         const maisAdiantado = daFase[daFase.length - 1];
+                         // O sinal, esse, é somado: a fase só é detectável se algum
+                         // dos seus marcos for.
+                         const total = daFase.reduce((acc, m) => {
+                           const s = sinaisPorMarco[m.id] || { tpu: 0, documento: 0 };
+                           return acc + s.tpu + s.documento;
+                         }, 0);
+                         const semSinal = daFase.filter(m => {
+                           const s = sinaisPorMarco[m.id] || { tpu: 0, documento: 0 };
+                           return s.tpu + s.documento === 0;
+                         }).length;
                          return (
                            <>
-                             {marco.estagio_financeiro_sugerido ? (
+                             {maisAdiantado.estagio_financeiro_sugerido ? (
                                <span
                                  className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground whitespace-nowrap"
-                                 title="Estágio financeiro que este marco implica"
+                                 title={`Estágio financeiro que "${maisAdiantado.rotulo}" implica`}
                                >
-                                 {ESTAGIO_LABEL[marco.estagio_financeiro_sugerido] || marco.estagio_financeiro_sugerido}
+                                 {ESTAGIO_LABEL[maisAdiantado.estagio_financeiro_sugerido] || maisAdiantado.estagio_financeiro_sugerido}
                                </span>
                              ) : null}
-                             <span
-                               className={`shrink-0 text-[10px] whitespace-nowrap ${total === 0 ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground'}`}
+                             {/* Clicar abre o painel de detecção nesta fase: até
+                                 24/08/2026 este selo era morto e a regra só se
+                                 editava por SQL. */}
+                             <button
+                               type="button"
+                               onClick={e => {
+                                 e.stopPropagation();
+                                 setDeteccaoFoco(phase.stageId);
+                                 setDeteccaoAberta(true);
+                               }}
+                               className={`shrink-0 whitespace-nowrap rounded px-1 text-[10px] underline-offset-2 hover:underline ${total === 0 ? 'text-amber-600 dark:text-amber-500' : 'text-muted-foreground'}`}
                                title={total === 0
-                                 ? 'Nenhum sinal cadastrado: este marco nunca vai ser detectado sozinho'
-                                 : `${s.tpu} movimentação(ões) e ${s.documento} documento(s) reconhecem este marco`}
+                                 ? `Nenhum sinal nos ${daFase.length} marco(s) desta fase: ela nunca vai ser detectada sozinha. Clique para configurar.`
+                                 : `${total} regra(s) reconhecem os ${daFase.length} marco(s) desta fase` +
+                                   (semSinal > 0 ? `; ${semSinal} ainda sem sinal` : '') +
+                                   '. Clique para configurar.'}
                              >
                                {total === 0 ? 'sem sinal' : `${total} sinal${total > 1 ? 'is' : ''}`}
-                             </span>
+                               {semSinal > 0 && total > 0 ? ' ·' : ''}
+                             </button>
                            </>
                          );
                        })()}
@@ -2723,6 +2759,41 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     objetivo e passo, porque marco é do POP: um lado diz onde o
                     processo está (automático), o outro o que a equipe faz. */}
                 {editingBoardId ? <PopMarcosSection boardId={editingBoardId} /> : null}
+                {/* Painel de detecção: a régua inteira, marco a marco, com as
+                    regras que reconhecem cada um e a contra-prova antes de
+                    gravar. Abre pelo selo de sinal na linha da fase, ou por
+                    este botão quando se quer ver o POP todo de uma vez. */}
+                {editingBoardId ? (
+                  <div className="mt-4 flex items-center justify-between gap-2 rounded-lg border p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-sm font-semibold">
+                        <Radar className="h-4 w-4" /> Detecção automática
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Como cada marco deste POP é reconhecido sem ninguém marcar passo — código
+                        do DataJud, texto da movimentação, título da peça, grau ou e-mail do INSS.
+                        Toda regra é testada contra os processos reais antes de valer.
+                      </p>
+                    </div>
+                    <Button
+                      variant="outline" size="sm" className="shrink-0"
+                      onClick={() => { setDeteccaoFoco(null); setDeteccaoAberta(true); }}
+                    >
+                      Abrir painel
+                    </Button>
+                  </div>
+                ) : null}
+
+                {editingBoardId ? (
+                  <PopDeteccaoSheet
+                    boardId={editingBoardId}
+                    boardName={formName}
+                    open={deteccaoAberta}
+                    onOpenChange={(o) => { setDeteccaoAberta(o); if (!o) setDeteccaoFoco(null); }}
+                    focoStageId={deteccaoFoco}
+                  />
+                ) : null}
+
                 {editingBoardId ? <PopCodigosAuditoria boardId={editingBoardId} /> : null}
 
                 {/* A auditoria acima cobre a fonte judicial (código TPU). Esta
