@@ -974,6 +974,23 @@ async function trocarPermissoes(
   return { concedidos, revogados };
 }
 
+/**
+ * Uma linha por ação de dado, com QUEM e QUANTO.
+ *
+ * Existe porque o log da edge só expõe URL e status, e as 15 ações compartilham
+ * a mesma URL: um `200` não distingue "trouxe 4.609 linhas" de "voltou vazio".
+ * Foi exatamente esse buraco que deixou a Pluggy morrer calada por cinco meses,
+ * e ele voltou a morder em 24/08/2026, quando não deu para verificar pelo log se
+ * a tela tinha passado a funcionar. `mapeado=false` é o sintoma mais caro que
+ * existe aqui: a leitura volta vazia sem erro nenhum.
+ */
+function logAcao(action: string, meu: { uuid: string; mapeado: boolean }, detalhe: string): void {
+  console.log(
+    `[celcoin] ${action} user=${meu.uuid.slice(0, 8)}…` +
+      `${meu.mapeado ? '' : ' MAPEADO=NAO'} ${detalhe}`,
+  );
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
@@ -1358,12 +1375,26 @@ Deno.serve(async (req) => {
           ext.from('user_card_permissions').select('card_last_digits').eq('user_id', meu.uuid),
         ]);
 
+        // `is_admin` do EXTERNO, que é o mesmo que gateia as ações
+        // administrativas aqui dentro. A tela lia `useUserRole`, que consulta o
+        // `user_roles` do CLOUD — conjuntos diferentes: admin só no Cloud via o
+        // painel e tomava 403; admin só no Externo nunca via o painel. Uma
+        // fonte só para quem administra.
+        const admin = await ehAdmin(meu.uuid);
+        const contasPermitidas = [...new Set((minhasContas || []).map((r: any) => String(r.pluggy_account_id)))];
+        const cartoesPermitidos = [...new Set((meusCartoes || []).map((r: any) => String(r.card_last_digits)))];
+
+        logAcao('my_finance_access', meu,
+          `admin=${admin} contas=${contasPermitidas.length} cartoes=${cartoesPermitidos.length} ` +
+          `dono(banco=${donoBanco},cartao=${donoCartao})`);
+
         return json({
           success: true,
           bank: donoBanco > 0 || permContas > 0,
           card: donoCartao > 0 || permCartoes > 0,
-          allowed_accounts: [...new Set((minhasContas || []).map((r: any) => String(r.pluggy_account_id)))],
-          allowed_cards: [...new Set((meusCartoes || []).map((r: any) => String(r.card_last_digits)))],
+          is_admin: admin,
+          allowed_accounts: contasPermitidas,
+          allowed_cards: cartoesPermitidos,
           detalhe: { dono_banco: donoBanco, dono_cartao: donoCartao, contas: permContas, cartoes: permCartoes },
           identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
         });
@@ -1407,6 +1438,10 @@ Deno.serve(async (req) => {
           }
         }
 
+        logAcao('list_finance_permissions', meu,
+          `contas=${contas.length} cartoes=${cartoes.length} ` +
+          `perm(conta=${(permContas.data || []).length},cartao=${(permCartoes.data || []).length}) ` +
+          `equipe=${equipe.length}`);
         return json({
           success: true,
           accounts: contas.map((id) => ({
@@ -1447,6 +1482,7 @@ Deno.serve(async (req) => {
           .update({ custom_name: nome || null, updated_at: new Date().toISOString() })
           .eq('id', id);
         if (error) throw new Error(error.message);
+        logAcao('rename_connection', meu, `conexao=${id.slice(0, 8)}…`);
         return json({ success: true, connection_id: id, custom_name: nome || null });
       }
 
@@ -1472,10 +1508,8 @@ Deno.serve(async (req) => {
           desejados,
           meu.uuid,
         );
-        console.log(
-          `[celcoin] permissões de ${deConta ? 'conta' : 'cartão'} de ${alvo.slice(0, 8)}… por ` +
-            `${meu.uuid.slice(0, 8)}…: +${r.concedidos.length} -${r.revogados.length}`,
-        );
+        logAcao(action, meu,
+          `alvo=${alvo.slice(0, 8)}… +${r.concedidos.length} -${r.revogados.length}`);
         return json({ success: true, ...r });
       }
 
@@ -1502,6 +1536,8 @@ Deno.serve(async (req) => {
         const { data, error } = await q;
         if (error) throw new Error(error.message);
 
+        logAcao('list_pluggy_connections', meu,
+          `conexoes=${(data || []).length} via=${count ? 'permissao_de_cartao' : 'dono'}`);
         return json({
           success: true,
           connections: data || [],
@@ -1543,6 +1579,9 @@ Deno.serve(async (req) => {
         }
 
         const r = await lerTransacoes(tabela as any, meu.uuid, de, ate);
+        logAcao('list_transactions', meu,
+          `kind=${tipo} janela=${de ?? '-'}..${ate ?? '-'} linhas=${r.linhas.length} ` +
+          `permitidos=${r.permitidos}${r.truncado ? ' TRUNCADO' : ''}`);
         return json({
           success: true,
           transactions: r.linhas,

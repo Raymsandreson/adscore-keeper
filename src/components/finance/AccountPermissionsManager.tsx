@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Shield, Landmark, User, Check, X, Loader2, Eye, EyeOff, Settings, Save } from 'lucide-react';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from '@/hooks/useAuth';
-import { useUserRole } from '@/hooks/useUserRole';
+import { useFinanceAccess } from '@/hooks/useFinanceAccess';
 import { toast } from 'sonner';
 
 interface BankAccount {
@@ -34,7 +34,9 @@ interface TeamMember {
 
 export function AccountPermissionsManager() {
   const { user } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  // `isAdmin` do Externo, o mesmo que a edge usa para gatear estas ações.
+  // `useUserRole` lê o Cloud, e os dois conjuntos não coincidem.
+  const { isAdmin, loading: roleLoading } = useFinanceAccess();
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [permissions, setPermissions] = useState<AccountPermission[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);

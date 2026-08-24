@@ -1,58 +1,84 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from './useAuth';
 
+interface AcessoFinanceiro {
+  bank: boolean;
+  card: boolean;
+  isAdmin: boolean;
+  allowedCards: string[];
+  allowedAccounts: string[];
+}
+
+const FECHADO: AcessoFinanceiro = {
+  bank: false,
+  card: false,
+  isAdmin: false,
+  allowedCards: [],
+  allowedAccounts: [],
+};
+
 /**
- * Quem pode ver extrato de conta e de cartão.
+ * Quem vê o quê no financeiro, e quem administra.
  *
- * A resposta vem da edge e não de uma consulta daqui porque `bank_transactions`
- * e `credit_card_transactions` são das poucas tabelas do Externo com RLS de
- * verdade (`user_id = auth.uid()`, mais `can_view_pluggy_account`/`can_view_card`),
- * e a sessão que o front mantém lá é `signInAnonymously()`. Perguntar daqui
- * devolveria "não pode" para todo mundo — vazio, sem erro.
+ * Fonte única, respondida pela edge (`my_finance_access`). Não dá para perguntar
+ * daqui: `bank_transactions` e `credit_card_transactions` são das poucas tabelas
+ * do Externo com RLS de verdade (`user_id = auth.uid()`), e a sessão que o front
+ * mantém lá é `signInAnonymously()` — a resposta seria "não pode" para todo
+ * mundo, vazia e sem erro.
  *
- * A regra é derivada do dado: é dono de lançamento OU tem permissão concedida.
- * Deliberadamente não existe lista de nomes no código — quem sai da firma perde
- * o acesso ao perder a permissão, sem depender de alguém lembrar de um `if`.
+ * `isAdmin` vem daqui e NÃO de `useUserRole`, que lê o `user_roles` do **Cloud**.
+ * As ações administrativas são gateadas pelo `is_admin` do **Externo**, e os dois
+ * conjuntos não coincidem: quem era admin só no Cloud via o painel e tomava 403;
+ * quem era admin só no Externo nunca via o painel. Medido em 24/08/2026.
+ *
+ * A regra de acesso é derivada do dado — é dono de lançamento ou tem permissão
+ * concedida. Deliberadamente não existe lista de nomes no código: quem sai da
+ * firma perde o acesso ao perder a permissão, sem depender de alguém lembrar de
+ * um `if`.
  */
 export function useFinanceAccess() {
   const { user } = useAuth();
-  const [bank, setBank] = useState(false);
-  const [card, setCard] = useState(false);
+  const [acesso, setAcesso] = useState<AcessoFinanceiro>(FECHADO);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let vivo = true;
+  const carregar = useCallback(async () => {
     if (!user) {
-      setBank(false);
-      setCard(false);
+      setAcesso(FECHADO);
       setLoading(false);
       return;
     }
     setLoading(true);
-    (async () => {
-      try {
-        const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
-          body: { action: 'my_finance_access' },
-        });
-        if (!vivo) return;
-        if (error || data?.success === false) throw new Error(data?.error || error?.message);
-        setBank(Boolean(data?.bank));
-        setCard(Boolean(data?.card));
-      } catch (err) {
-        // Falha fecha as abas em vez de abrir. Erro de rede não é autorização.
-        if (!vivo) return;
-        console.warn('[useFinanceAccess] falhou, fechando abas:', err);
-        setBank(false);
-        setCard(false);
-      } finally {
-        if (vivo) setLoading(false);
-      }
-    })();
+    try {
+      const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
+        body: { action: 'my_finance_access' },
+      });
+      if (error || data?.success === false) throw new Error(data?.error || error?.message);
+      setAcesso({
+        bank: Boolean(data?.bank),
+        card: Boolean(data?.card),
+        isAdmin: Boolean(data?.is_admin),
+        allowedCards: (data?.allowed_cards as string[]) || [],
+        allowedAccounts: (data?.allowed_accounts as string[]) || [],
+      });
+    } catch (err) {
+      // Falha fecha o acesso em vez de abrir. Erro de rede não é autorização.
+      console.warn('[useFinanceAccess] falhou, fechando acesso:', err);
+      setAcesso(FECHADO);
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    let vivo = true;
+    carregar().finally(() => {
+      if (!vivo) return;
+    });
     return () => {
       vivo = false;
     };
-  }, [user]);
+  }, [carregar]);
 
-  return { bank, card, loading };
+  return { ...acesso, loading, refetch: carregar };
 }

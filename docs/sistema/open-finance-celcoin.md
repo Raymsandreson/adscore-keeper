@@ -288,6 +288,38 @@ existem **5.285** linhas `member`, que são clientes e não equipe — um seleto
 isso é inutilizável. O mapping é, por definição, quem tem conta nos dois bancos, e
 seus `ext_uuid` são exatamente os que as tabelas de permissão indexam.
 
+## Uma linha de log por ação, e uma fonte só de `isAdmin`
+
+**24/08/2026 (v20).** Duas correções que saíram de tentar *verificar* o trabalho
+anterior e não conseguir.
+
+**O log da edge não distingue as ações.** Ele expõe URL e status, e as 15 ações
+compartilham a mesma URL — um `200` não separa "trouxe 4.610 linhas" de "voltou
+vazio". Foi esse buraco que deixou a Pluggy morrer calada por cinco meses, e ele
+mordeu de novo aqui: com o front publicado, não havia como saber pelo log se as
+telas tinham passado a funcionar. Agora cada ação de dado emite uma linha com
+quem chamou, o que pediu e quanto voltou:
+
+```
+list_transactions user=21924f81… kind=bank janela=-..- linhas=4610 permitidos=3
+list_transactions user=cfab247e… kind=card janela=-..- linhas=5510 permitidos=10
+my_finance_access user=cfab247e… admin=true contas=5 cartoes=10 dono(banco=0,cartao=0)
+```
+
+`MAPEADO=NAO` aparece quando o uuid do Cloud não tem linha em
+`auth_uuid_mapping` — é o sintoma mais caro que existe aqui, porque a leitura
+volta **vazia sem erro nenhum**.
+
+**O gate de admin estava partido entre os dois bancos.** `useUserRole` lê o
+`user_roles` do **Cloud**; as ações administrativas da edge são gateadas pelo
+`is_admin` do **Externo**. Os conjuntos não coincidem: quem era admin só no Cloud
+via o painel e tomava **403**; quem era admin só no Externo **nunca via o painel**.
+`my_finance_access` passou a devolver `is_admin` do Externo, e
+`useFinanceAccess` virou a fonte única — `useCardPermissions`,
+`CardPermissionsManager` e `AccountPermissionsManager` consomem dali. De quebra
+sumiu uma chamada duplicada: o hook de cartão pedia `my_finance_access` por conta
+própria.
+
 ## Os menus da tela passaram a ser da Celcoin
 
 **24/08/2026.** Em vez de deixar os controles da Pluggy desligados, eles saíram e
@@ -477,6 +509,8 @@ argumento.
 | Conciliação em tela | **Corrigida em 24/08/2026** (v17). Extrato de conta e de cartão passam a vir do Externo pela ação `list_transactions`, com tradução de uuid e a mesma regra de visibilidade das policies. Conferido contra gabarito: 4.609/5.524 para o dono. Faltam os dois gerenciadores de permissão, que ainda escrevem no Cloud. |
 | Quem vê a aba "Conta" | **Alexandre Medeiros e raymsandresonadv**, desde 24/08/2026. Regra derivada do dado (`my_finance_access`), sem nome hardcoded. |
 | Administrar permissões | **Corrigida em 24/08/2026** (v19). Antes gravava uuid do Cloud em tabela indexada por uuid do Externo — conceder acesso pela tela não tinha efeito nenhum, sem erro. Agora pela edge, com gate de `is_admin` do Externo e semântica de conjunto. |
+| Diagnóstico das ações | **Uma linha de log por ação desde 24/08/2026** (v20), com quem chamou, o que pediu e quantas linhas voltaram. Antes o log só tinha URL e status, e as 15 ações dividem a mesma URL — `200` não distinguia dado de vazio. |
+| Gate de administrador | **Unificado em 24/08/2026** (v20) no `is_admin` do Externo, via `my_finance_access`. Antes a tela usava o `user_roles` do Cloud e a edge o do Externo: admin só no Cloud tomava 403, admin só no Externo não via o painel. |
 | Menus da tela de cartão | **Trocados para a Celcoin em 24/08/2026.** Sincronizar, conectar e o auto-sync de abertura chamavam a Pluggy do Cloud — rodavam, diziam que deu certo e não traziam nada desde 18/03. Ver seção própria. |
 | Tela de Gastos do Cartão | **Corrigida em 24/08/2026** (v18). Mostrava "Nenhuma conta conectada" porque a lista de conexões vinha do Cloud; agora vem do Externo por `list_pluggy_connections`. Renomear/gerar link/excluir ficaram desligados — ainda escrevem no Cloud. |
 | **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. O alerta de obsolescência saiu da lista em 20/08 — ver seção própria. |

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from './useAuth';
-import { useUserRole } from './useUserRole';
+import { useFinanceAccess } from './useFinanceAccess';
 
 interface CardPermission {
   id: string;
@@ -39,11 +39,12 @@ interface TeamMember {
  */
 export function useCardPermissions() {
   const { user } = useAuth();
-  const { isAdmin, loading: roleLoading } = useUserRole();
+  // Identidade, cartões permitidos e `isAdmin` vêm todos daqui: uma chamada só,
+  // e `isAdmin` do MESMO banco que gateia as ações administrativas na edge.
+  const { isAdmin, allowedCards, loading: acessoLoading } = useFinanceAccess();
   const [permissions, setPermissions] = useState<CardPermission[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
-  const [allowedCards, setAllowedCards] = useState<string[]>([]);
   const [allKnownCards, setAllKnownCards] = useState<string[]>([]);
 
   const chamar = useCallback(async (action: string, params: Record<string, unknown> = {}) => {
@@ -58,11 +59,8 @@ export function useCardPermissions() {
   const fetchPermissions = useCallback(async () => {
     if (!user) return;
     try {
-      // Os cartões que EU vejo saem daqui e não da lista completa: quem não é
-      // administrador não pode ler as permissões dos outros, e não precisa.
-      const meu = await chamar('my_finance_access');
-      setAllowedCards((meu?.allowed_cards as string[]) || []);
-
+      // O painel inteiro é de administrador. Quem não é não precisa da lista
+      // dos outros — e a edge recusaria com 403 de qualquer forma.
       if (isAdmin) {
         const painel = await chamar('list_finance_permissions');
         setPermissions((painel?.card_permissions as CardPermission[]) || []);
@@ -74,9 +72,7 @@ export function useCardPermissions() {
         setTeamMembers([]);
       }
     } catch (error) {
-      // Falha fecha o acesso em vez de abrir. Erro de rede não é autorização.
       console.error('Error fetching card permissions:', error);
-      setAllowedCards([]);
       setPermissions([]);
     } finally {
       setLoading(false);
@@ -84,8 +80,8 @@ export function useCardPermissions() {
   }, [user, isAdmin, chamar]);
 
   useEffect(() => {
-    if (!roleLoading && user) fetchPermissions();
-  }, [fetchPermissions, roleLoading, user]);
+    if (!acessoLoading && user) fetchPermissions();
+  }, [fetchPermissions, acessoLoading, user]);
 
   const getPermissionsForUser = useCallback((userId: string) => {
     return permissions.filter((p) => p.user_id === userId);
@@ -136,7 +132,7 @@ export function useCardPermissions() {
     return items.filter((item) => item.card_last_digits && allowedCards.includes(item.card_last_digits));
   }, [allowedCards]);
 
-  const isLoading = loading || roleLoading;
+  const isLoading = loading || acessoLoading;
 
   return {
     permissions,
