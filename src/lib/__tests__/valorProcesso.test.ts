@@ -13,6 +13,7 @@ const parte = (over: Partial<ParteValor> = {}): ParteValor => ({
   condenacao: 28571.43, cota: 20000, cotaVista: 20000,
   hcVista: 8571.43, hcParcelado: 0, hs: 0,
   status: 'PAGO', fase: 'Conclusão',
+  termoInicial: null,
   ...over,
 });
 

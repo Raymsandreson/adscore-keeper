@@ -1,7 +1,6 @@
 // Importador da aba Tab. Aux (Jurimetria/indenização) -> jm_partes.
 // Os casos vêm do CSV real exportado em 18/08/2026: 1.029 partes, 287 processos.
 import { describe, it, expect } from 'vitest';
-// @ts-expect-error — script .mjs sem tipos; o que importa aqui é o comportamento.
 import { mapearColunas, valor, status, nomeChave, chaveParte, cnjDigitos, montarLinha, planejar, gerarSql } from '../../../scripts/import-tab-aux.mjs';
 
 const CABECALHO = [

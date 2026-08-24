@@ -127,11 +127,12 @@ async function fetchMessagePage(
   }
   if (beforeCreatedAt) query = query.lt('created_at', beforeCreatedAt);
   try {
-    const { data, error } = await withTimeout(
+    const result = await withTimeout(
       query.order('created_at', { ascending: false }).limit(MESSAGE_PAGE_ROWS),
       MESSAGE_FETCH_TIMEOUT_MS,
       'fetchMessagePage',
     );
+    const { data, error } = result as { data: any[] | null; error: any };
     if (error) {
       console.warn('[DashboardChatPreview] fetchMessagePage error:', error.message);
       return { rows: [], hasMore: false, failed: true };
