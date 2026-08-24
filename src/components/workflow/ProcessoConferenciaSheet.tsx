@@ -12,18 +12,21 @@
 //      (somar todas infla ~2,6x; a tela mostra a soma ingênua para comparação).
 //   4. Pagamentos — o que virou caixa de verdade.
 // =============================================================================
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Milestone, RefreshCw, ShieldAlert, XCircle,
+  AlertTriangle, CheckCircle2, FileText, Info, Milestone, Paperclip, RefreshCw, ShieldAlert, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { formatCnj, onlyDigits } from '@/lib/cnj';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
+import { melhorPeca, rotuloDaPeca, type AssuntoPeca, type PecaDoProcesso } from '@/lib/pecasDoProcesso';
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -76,6 +79,43 @@ function Secao({ titulo, children, acao, refSecao }: {
   );
 }
 
+/**
+ * "ver a peça" — abre o PDF dos autos por cima da tela, nunca em aba nova.
+ *
+ * Regra permanente do projeto: clique que abre alguma coisa abre em painel por
+ * cima, e o fechar devolve a pessoa exatamente de onde saiu. O MediaLightbox é
+ * o mesmo visualizador do WhatsApp — mesma leitura, mesmo botão de baixar.
+ *
+ * Sem peça casada o botão NÃO aparece. Botão que não abre nada é pior que
+ * ausência de botão: promete prova e entrega frustração.
+ */
+function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
+  pecas: PecaDoProcesso[];
+  data: string | null;
+  assunto: AssuntoPeca;
+  janelaDias?: number;
+  onAbrir: (peca: PecaDoProcesso, rotulo: string) => void;
+}) {
+  const peca = melhorPeca(pecas, data, { assunto, janelaDias });
+  if (!peca) return null;
+  const rotulo = rotuloDaPeca(peca);
+  return (
+    <button
+      type="button"
+      onClick={() => onAbrir(peca, rotulo)}
+      className="inline-flex items-center gap-1 text-[11px] underline underline-offset-2 hover:text-foreground"
+      title={rotulo}
+    >
+      <Paperclip className="h-3 w-3 shrink-0" />
+      ver a peça
+      {peca.tipo === 'RESTRITO' && (
+        <Badge variant="outline" className="ml-0.5 px-1 py-0 text-[8px]">restrita</Badge>
+      )}
+      {!peca.exata && <span className="text-muted-foreground">(+{peca.distanciaDias}d)</span>}
+    </button>
+  );
+}
+
 interface Props {
   alvo: AlvoConferencia | null;
   onClose: () => void;
@@ -89,6 +129,20 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
     totalConferido, totalAtualizado, totalPago, somaIngenua, alertas, loading, erro,
     recarregar, leadDoProcesso, jcmIndice, jcmReferencia,
   } = useConferenciaProcesso(alvo);
+
+  // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
+  const { pecas, assinar } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
+  const [erroPeca, setErroPeca] = useState<string | null>(null);
+
+  const abrirPeca = useCallback(async (peca: PecaDoProcesso, rotulo: string) => {
+    setErroPeca(null);
+    const url = await assinar(peca.storagePath);
+    // Assinatura falha quando o bucket não libera a sessão. Dizer isso é melhor
+    // que abrir um visualizador vazio e deixar a pessoa achando que quebrou.
+    if (!url) { setErroPeca(`Não consegui abrir "${rotulo}".`); return; }
+    setPecaAberta({ url, titulo: rotulo });
+  }, [assinar]);
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
@@ -217,6 +271,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                       <span className="shrink-0 text-[10px] text-muted-foreground">
                         {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
                       </span>
+                      <BotaoPeca
+                        pecas={pecas} data={m.dataDetectada} assunto="MARCO"
+                        onAbrir={abrirPeca}
+                      />
                       <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
                     </div>
                   ))}
@@ -295,17 +353,25 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                               Sem índice de correção para este ramo — o valor fica pelo nominal.
                             </div>
                           )}
-                          {c.decisaoUsada.link && (
-                            /* Site do tribunal: não roda dentro do app — exceção legítima. */
-                            <a
-                              href={c.decisaoUsada.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="underline underline-offset-2"
-                            >
-                              ver a decisão no tribunal
-                            </a>
-                          )}
+                          {/* A prova vem primeiro de casa: temos os autos no bucket. O
+                              site do tribunal só sobra para decisão cujo PDF não baixamos —
+                              aí sim é exceção legítima, porque não roda dentro do app. */}
+                          <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                            <BotaoPeca
+                              pecas={pecas} data={c.decisaoUsada.data_decisao} assunto="DECISAO"
+                              onAbrir={abrirPeca}
+                            />
+                            {c.decisaoUsada.link && !melhorPeca(pecas, c.decisaoUsada.data_decisao, { assunto: 'DECISAO' }) && (
+                              <a
+                                href={c.decisaoUsada.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-[11px] underline underline-offset-2"
+                              >
+                                ver a decisão no tribunal
+                              </a>
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="mt-1 flex items-center gap-1 text-[11px] text-amber-600 dark:text-amber-400">
@@ -370,6 +436,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                       <span className="shrink-0 text-muted-foreground">
                         {p.data_recebida ? `recebido ${dataBR(p.data_recebida)}` : `previsto ${dataBR(p.data_prevista)}`}
                       </span>
+                      <BotaoPeca
+                        pecas={pecas} data={p.data_recebida ?? p.data_prevista}
+                        assunto="PAGAMENTO" janelaDias={15} onAbrir={abrirPeca}
+                      />
                       <span className="w-24 shrink-0 text-right font-medium">
                         {/* Recebida sem valor digitado ≠ recebeu zero — a planilha
                             importou o status sem o valor. Dizer "R$ 0,00" mentiria. */}
@@ -425,7 +495,23 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             </p>
           </>
         )}
+        {/* Falha de assinatura não pode virar clique morto: a pessoa clicou
+            esperando a prova e precisa saber por que ela não veio. */}
+        {erroPeca && (
+          <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+            {erroPeca} A peça está nos autos, mas o bucket não liberou o acesso.
+          </p>
+        )}
       </SheetContent>
+
+      {/* Empilha por cima do próprio Sheet: telão -> conferência -> peça, e o
+          fechar devolve à conferência, não à carteira. Mesmo visualizador do
+          WhatsApp, com o mesmo botão de baixar. */}
+      <MediaLightbox
+        url={pecaAberta?.url ?? null}
+        title={pecaAberta?.titulo ?? 'Peça dos autos'}
+        onClose={() => setPecaAberta(null)}
+      />
     </Sheet>
   );
 }
