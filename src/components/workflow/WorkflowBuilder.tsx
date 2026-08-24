@@ -99,6 +99,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { PopMarcosSection } from './PopMarcosSection';
 import { PopCodigosAuditoria } from './PopCodigosAuditoria';
+import { PopFilaRequerimentosInss } from './PopFilaRequerimentosInss';
 import { PopCarteiraSheet } from './PopCarteiraSheet';
 import { Wallet } from 'lucide-react';
 import { usePopMarcos, ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
@@ -2723,6 +2724,12 @@ export function WorkflowBuilder({ open, onOpenChange, onWorkflowSaved, initialEd
                     processo está (automático), o outro o que a equipe faz. */}
                 {editingBoardId ? <PopMarcosSection boardId={editingBoardId} /> : null}
                 {editingBoardId ? <PopCodigosAuditoria boardId={editingBoardId} /> : null}
+
+                {/* A auditoria acima cobre a fonte judicial (código TPU). Esta
+                    cobre a administrativa: o e-mail do INSS não tem CNJ, tem
+                    protocolo — e sem o protocolo anotado ele não vira marco de
+                    ninguém. Some sozinha em POP sem sinal de e-mail. */}
+                {editingBoardId ? <PopFilaRequerimentosInss boardId={editingBoardId} /> : null}
 
                 {/* Carteira do POP — a régua de marcos com o dinheiro em cima.
                     Abre em Sheet por cima do editor (regra da casa: nunca
