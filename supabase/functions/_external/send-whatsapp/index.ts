@@ -1,4 +1,14 @@
-// send-whatsapp v25 (projeto externo kmedldlepwiityjsdahz)
+// send-whatsapp v26 (projeto externo kmedldlepwiityjsdahz)
+//
+// v26: GATE DE OPT-OUT. Envio 1:1 para número com opt-out ativo em
+// `whatsapp_optouts` é recusado com error_code RECIPIENT_OPTED_OUT (não
+// retryable), em vez de sair. É a primeira vez que "não me manda mais" vale
+// alguma coisa no sistema: `leads.is_blocked` existia e estava em 0 de 21.439
+// leads porque nenhuma das ~40 chamadas de envio consultava. Grupos e links de
+// convite não passam pelo gate; `ignore_optout: true` no body pula (aviso
+// processual a cliente ativo) e fica no log.
+// ROLLBACK: apagar o bloco marcado "v26: GATE DE OPT-OUT" e redeployar — o
+// resto da função fica idêntico à v25.
 //
 // v25: `phone` gravado em whatsapp_messages sempre em dígitos (`storagePhone`),
 // mesmo quando o envio vai para o JID do grupo. Antes gravava o JID cru e a
@@ -75,6 +85,21 @@ function storagePhone(t) {
 }
 function getTarget(p, c) {
   return typeof c === 'string' && c.trim() ? c.trim() : typeof p === 'string' && p.trim() ? p.trim() : '';
+}
+/**
+ * v26: chave canônica do telefone para o gate de opt-out — 55 + DDD + 8 últimos
+ * dígitos. Espelha `public.wa_optout_key(text)` e a edge whatsapp-optout;
+ * mudar aqui exige mudar nos dois. Existe porque o mesmo número aparece nas
+ * duas formas no banco (1.372 números com 12 dígitos e 729 com 13 nos últimos
+ * 30 dias) — sem normalizar, quem pediu para sair por uma forma continuaria
+ * recebendo pela outra.
+ */
+function optoutKey(raw) {
+  let v = String(raw ?? '').replace(/@.*$/, '').replace(/\D/g, '');
+  if (!v) return null;
+  if (v.length >= 10 && v.length <= 11) v = '55' + v;
+  if (v.startsWith('55') && v.length === 13 && v[4] === '9') v = v.slice(0, 4) + v.slice(5);
+  return v || null;
 }
 function jsonResp(p, s = 200) {
   return new Response(JSON.stringify(p), {
@@ -284,6 +309,55 @@ Deno.serve(async (req)=>{
         });
       }
     }
+    // === v26: GATE DE OPT-OUT ===
+    // Quem pediu para não receber mais não recebe — e é aqui que isso vale,
+    // porque este arquivo é a fonte REAL do envio: são ~40 pontos de chamada
+    // espalhados pelo sistema e nenhum deles checava nada. Antes desta versão,
+    // `leads.is_blocked` existia e estava em 0 de 21.439 leads, sem nenhum
+    // consumidor — marcar alguém como bloqueado não impedia envio nenhum.
+    //
+    // Só vale para 1:1: grupo e link de convite passam direto (opt-out é do
+    // indivíduo, não do grupo). `ignore_optout: true` é a válvula para o caso
+    // legítimo — cliente ativo com processo em andamento que precisa de aviso
+    // processual — e fica registrada no log de quem usou.
+    //
+    // Falha de consulta NÃO bloqueia envio: banco fora do ar não pode virar
+    // parada de atendimento. O gate é conservador para o lado de entregar.
+    if (useTarget && tgt && !isGroupJid(tgt) && !isInviteLink(tgt) && body.ignore_optout === true) {
+      // Bypass sempre deixa rastro: se um dia voltarmos a receber denúncia, é
+      // por aqui que se descobre quem furou a fila.
+      console.warn('[send-whatsapp] GATE DE OPT-OUT IGNORADO (ignore_optout=true):', {
+        phone: `***${String(tgt).replace(/\D/g, '').slice(-4)}`,
+        instance_name: body.instance_name || null,
+        motivo: body.ignore_optout_reason || 'não informado'
+      });
+    }
+    if (useTarget && tgt && !isGroupJid(tgt) && !isInviteLink(tgt) && body.ignore_optout !== true) {
+      const key = optoutKey(tgt);
+      if (key) {
+        try {
+          const { data: optout } = await extClient.from('whatsapp_optouts').select('id, created_at, source').eq('phone_key', key).is('revoked_at', null).maybeSingle();
+          if (optout) {
+            console.log('[send-whatsapp] envio barrado por opt-out:', {
+              phone: `***${key.slice(-4)}`,
+              optout_id: optout.id,
+              desde: optout.created_at,
+              origem: optout.source
+            });
+            return jsonResp({
+              success: false,
+              error: 'Este número pediu para não receber mais mensagens. Envio bloqueado.',
+              error_code: 'RECIPIENT_OPTED_OUT',
+              retryable: false,
+              opted_out_at: optout.created_at
+            });
+          }
+        } catch (e) {
+          console.warn('[send-whatsapp] consulta de opt-out falhou, seguindo com o envio:', e?.message);
+        }
+      }
+    }
+    // === END GATE DE OPT-OUT ===
     if (action === 'resolve_group_link') {
       if (!body.group_link) return jsonResp({
         success: false,

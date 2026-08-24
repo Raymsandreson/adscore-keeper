@@ -6,6 +6,11 @@ import {
   resolveSupabaseUrl,
 } from "../_shared/supabase-url-resolver.ts";
 import {
+  normalizeAckStatus,
+  pediuParaParar,
+  statusAbaixoDe,
+} from "../_shared/optout.ts";
+import {
   CLOUD_ANON_KEY as cloudAnonKey,
   CLOUD_FUNCTIONS_URL as cloudFunctionsUrl,
 } from "../_shared/cloud-functions-url.ts";
@@ -932,6 +937,20 @@ async function handleCallEvent(supabase: any, body: any) {
   return record;
 }
 
+// ===================== ACK DE ENTREGA E PEDIDO DE PARADA =====================
+//
+// Até 24/08/2026 o webhook descartava `messages_update` e `message_ack` no
+// early skip. Consequência medida no Externo: das 38.438 mensagens outbound dos
+// últimos 30 dias, 38.438 estavam com status 'sent' e ZERO com delivered/read.
+// Ficávamos cegos para quem nos bloqueou — e a detecção de bloqueio do
+// wjia-followup-processor ("3 outbound seguidas presas em 'sent'") rodava sobre
+// uma condição sempre verdadeira, porque nada nunca saía de 'sent'.
+//
+// A lógica pura mora em _shared/optout.ts para poder ser testada
+// (src/lib/__tests__/whatsappOptout.test.ts) — o detector de pedido de parada é
+// a parte que não pode errar: falso positivo fecha o lead de quem ainda queria
+// atendimento.
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -1074,6 +1093,55 @@ Deno.serve(async (req) => {
       );
     }
 
+
+    // ========== ACK DE ENTREGA: grava delivered/read antes do early skip ==========
+    // Roda ANTES do skip de ruído porque é exatamente lá que estes eventos eram
+    // jogados fora. Payload não reconhecido não interrompe nada: cai no skip de
+    // sempre, com uma amostra no console para mapear depois.
+    if (["messages_update", "message_ack"].includes(eventType) && !isCallEvent) {
+      try {
+        const m = body.message || body.data || {};
+        const ackId = String(
+          m.id || m.messageid || m.messageId || m.key?.id ||
+            body.id || body.messageid || body.key?.id || "",
+        ).trim();
+        const novoStatus = normalizeAckStatus(
+          m.status ?? m.ack ?? body.status ?? body.ack ?? null,
+        );
+
+        if (ackId && novoStatus) {
+          const sobrescreve = statusAbaixoDe(novoStatus);
+          if (sobrescreve.length > 0) {
+            const { error } = await supabase
+              .from("whatsapp_messages")
+              .update({ status: novoStatus })
+              .eq("external_message_id", ackId)
+              .eq("direction", "outbound")
+              .in("status", sobrescreve);
+            if (error) {
+              console.warn("[whatsapp-webhook][ack] update falhou:", error.message);
+            }
+          }
+          return new Response(
+            JSON.stringify({ success: true, ack: novoStatus }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } },
+          );
+        }
+
+        // Só o FORMATO do payload, nunca o conteúdo: um evento de ack carrega
+        // a mensagem do cliente junto, e mensagem de cliente não vai para log.
+        // As chaves bastam para mapear o formato com evidência depois.
+        console.log("[whatsapp-webhook][ack] payload não reconhecido, chaves:", {
+          raiz: Object.keys(body || {}),
+          message: Object.keys(body?.message || {}),
+          data: Object.keys(body?.data || {}),
+          tem_id: !!ackId,
+          status_bruto: typeof (m.status ?? m.ack ?? body.status ?? body.ack),
+        });
+      } catch (e: any) {
+        console.warn("[whatsapp-webhook][ack] erro:", e?.message);
+      }
+    }
 
     // ========== EARLY SKIP: Filter high-volume noise events BEFORE logging ==========
     // NOTA: "labels" NÃO está aqui — é processado abaixo (WA -> Sistema, mover card no Kanban)
@@ -2523,6 +2591,51 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.error("Outbound echo dedup error:", e);
+      }
+    }
+
+    // ========== PEDIDO DE PARADA: registra opt-out e fecha o lead ==========
+    // Quem escreve "não me manda mais" recebendo outra cobrança automática no
+    // dia seguinte é quem clica em Denunciar — e denúncia mata a instância.
+    // Medido no Externo em 24/08/2026: 461 conversas que nunca responderam
+    // receberam 2+ mensagens nossas, 161 receberam 4+, e as 5 instâncias que
+    // morreram no mês tinham 43,7%-58,0% de conversas mudas contra 13,0%-38,7%
+    // das que seguem vivas.
+    //
+    // É `await` de propósito (com teto de 5s): o opt-out precisa estar gravado
+    // antes que qualquer automação dispare a próxima mensagem para este número.
+    // Falha aqui não derruba o webhook — a mensagem segue sendo salva normalmente.
+    if (direction === "inbound" && !isGroup && pediuParaParar(messageText)) {
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const r = await fetch(`${RESOLVED_SUPABASE_URL}/functions/v1/whatsapp-optout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${RESOLVED_SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify({
+            action: "register",
+            phone,
+            instance_name: instanceName,
+            lead_id: leadId,
+            source: "whatsapp_text",
+            reason: "Pediu por mensagem para não receber mais contato",
+            message_text: messageText,
+          }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        const out = await r.json().catch(() => null);
+        console.log("[whatsapp-webhook][optout] pedido de parada registrado:", {
+          phone: `***${String(phone).slice(-4)}`,
+          instance_name: instanceName,
+          leads_fechados: out?.leads_fechados ?? null,
+          ja_registrado: out?.already_registered ?? false,
+        });
+      } catch (e: any) {
+        console.error("[whatsapp-webhook][optout] falha ao registrar:", e?.message);
       }
     }
 
