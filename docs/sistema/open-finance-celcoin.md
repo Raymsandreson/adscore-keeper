@@ -182,9 +182,9 @@ causa diferente, conserto diferente, rótulo diferente.
 
 Testes: `src/hooks/__tests__/celcoinConsentStatus.test.ts`.
 
-## As telas de conciliação leem o Cloud; a Celcoin grava no Externo
+## As telas de conciliação liam o Cloud; a Celcoin grava no Externo
 
-**Descoberto em 20/08/2026, não corrigido.** Os quatro pontos do front que leem
+**Descoberto em 20/08/2026, corrigido em 24/08/2026 (v17).** Os quatro pontos do front que leem
 transação apontam para o cliente `supabase` — que é o **Cloud**
 (`gliigkupoebmlbwyvijp`):
 
@@ -199,19 +199,72 @@ lá (PostgREST devolve `PGRST205`). Medido: o `bank_transactions` do Cloud **nã
 tem a coluna `provider`** (erro `42703`), ou seja, nunca recebeu a migration
 `20260810201123`. São dois objetos homônimos em bancos diferentes.
 
-Consequência: **os 300 lançamentos do Inter não aparecem em tela nenhuma.**
+Consequência enquanto durou: **os lançamentos da Celcoin não apareciam em tela
+nenhuma.**
 
-O conserto não é trocar o cliente para `externalSupabase`. A RLS do Externo
-nessas tabelas é `user_id = auth.uid()`, e a sessão que o front mantém lá é
-`signInAnonymously()` (`external-client.ts`) — um uid anônimo que nunca casa com
-o dono das linhas (`21924f81…`, 2.883 linhas, todas dele). A leitura voltaria
-**vazia, não com erro**, que é a forma cara de errar. As saídas reais são ler
-via edge com service role (como `list_connections` já faz) ou dar identidade de
-verdade ao front no Externo. Decisão pendente.
+**Por que trocar o cliente para `externalSupabase` não resolveria.** Duas razões
+independentes, e a segunda é a que quase ninguém vê:
+
+1. A RLS do Externo nessas tabelas é `user_id = auth.uid()` (mais
+   `can_view_pluggy_account`/`can_view_card`), e a sessão que o front mantém lá é
+   `signInAnonymously()` (`external-client.ts`). Uid anônimo nunca casa com o dono
+   das linhas. A leitura voltaria **vazia, não com erro**.
+2. **Os uuids não são os mesmos nos dois bancos.** Medido em 24/08/2026: dos 52
+   usuários em `auth_uuid_mapping`, **26 têm uuid diferente** no Cloud e no
+   Externo — e o dono de 100% dos lançamentos é um deles (`79c5c9d1…` no Cloud,
+   `21924f81…` no Externo). Os 7 usuários das tabelas de permissão são **todos**
+   uuids do Externo; **zero** batem como uuid do Cloud. Mesmo com sessão
+   autenticada de verdade, comparar o uid do Cloud com `user_id` daria vazio.
+
+**Como ficou (v17).** A edge ganhou `list_transactions`: resolve a identidade
+pelo JWT do Cloud, traduz pelo `auth_uuid_mapping`, reproduz a regra das policies
+(`user_id = eu` OR conta/cartão permitido — as duas funções são `EXISTS` numa
+tabela de permissão e nada mais, conferido com `pg_get_functiondef`) e lê com
+service role. `BankTransactionsView` e `useCreditCardTransactions` passaram a ler
+por ela. A identidade vem do JWT e **nunca** do corpo: aceitar `user_id` do body
+deixaria qualquer sessão válida ler o extrato de qualquer colega.
+
+Pagina de mil em mil com chave estável (`transaction_date` + `id`). O teto de
+1.000 linhas do PostgREST cortava a lista **calado** na versão que lia o Cloud —
+lista financeira truncada em silêncio é conciliação errada, não lista incompleta.
+A resposta devolve `truncado` e `identidade` para que "não apareceu nada" seja
+diagnosticável de fora: sem isso, uuid não mapeado e conta sem movimento são a
+mesma tela vazia.
+
+Conferido contra gabarito calculado no banco com as próprias funções
+`can_view_*`: dono 4.609 banco / 5.524 cartão, e cada um dos outros com o seu
+subconjunto — todos batendo linha a linha.
+
+**Ainda leem o Cloud** (etapa 2): `AccountPermissionsManager.tsx` e
+`useCardPermissions.ts`, que administram as permissões, mais `pluggy_connections`.
+Enquanto isso, a fonte da verdade das permissões é a cópia do Externo — que é a
+que a leitura consulta.
 
 Isso não afeta o dado gravado: a sucessão Pluggy → Celcoin no Externo está
 contígua e sem sobreposição — pluggy 2.583 linhas de 13/02/2025 a 18/03/2026,
-celcoin 300 de 19/03/2026 a 20/08/2026.
+celcoin 2.026 de 19/03/2026 em diante.
+
+## Quem vê a aba "Conta"
+
+A aba aparece para quem **é dono de lançamento OU tem permissão concedida** —
+regra derivada do dado, respondida pela ação `my_finance_access` e consumida pelo
+hook `useFinanceAccess`. Deliberadamente **não existe lista de nomes no código**:
+pessoa hardcoded em fonte não sai quando sai da firma, e ninguém lembra de
+procurar por ela depois. Falha de rede fecha a aba em vez de abrir — erro não é
+autorização.
+
+Em 24/08/2026 o acesso foi restrito a duas pessoas a pedido do usuário: Alexandre
+Medeiros Cavalcante (`cfab247e…`, 5 contas concedidas) e raymsandresonadv
+(`21924f81…`, que enxerga por ser dono das linhas). Foram revogadas as 7 linhas de
+João Pedro, luisralves7 e Juliana Clara — **só de conta**; as permissões de cartão
+dos três ficaram intactas. Rollback em
+`scratchpad/rollback-permissoes-conta-20260824.sql`.
+
+**Pegadinha achada ao aplicar:** `user_account_permissions.granted_by` tem FK para
+o `auth.users` do **Externo**, mas as 7 linhas que já existiam guardam
+`79c5c9d1…`, que é uuid do **Cloud**. Elas só existem porque a constraint foi
+criada `NOT VALID` — inserir esse mesmo valor hoje toma `23503`. Linhas novas
+precisam do uuid do Externo.
 
 ## O sync recorrente mora no Railway, não em pg_cron
 
@@ -322,5 +375,6 @@ argumento.
 | Pluggy | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
 | Piso da janela | **Por conta desde 24/08/2026** (v16). Foi por usuário (até v12) e por marca (v13); a segunda fez a conta nova da R.P.Adv herdar o piso da P.CAP e pular 1.641 lançamentos dizendo `success: true`. Verificado após o deploy: R.P.Adv usa 21/08 e P.CAP 19/08, cada uma com o seu. |
 | Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) subiu na v14 e foi conferido: o Inter devolve `2026-08-20`, as demais conexões `null`. Falta o aviso **fora** do painel de conexões — hoje é preciso abrir a aba para ver, e o alerta que exige ser procurado não é alerta. |
-| Conciliação em tela | **Quebrada, e não era conhecido.** As telas leem o Cloud, a Celcoin grava no Externo. Ver seção própria. |
+| Conciliação em tela | **Corrigida em 24/08/2026** (v17). Extrato de conta e de cartão passam a vir do Externo pela ação `list_transactions`, com tradução de uuid e a mesma regra de visibilidade das policies. Conferido contra gabarito: 4.609/5.524 para o dono. Faltam os dois gerenciadores de permissão, que ainda escrevem no Cloud. |
+| Quem vê a aba "Conta" | **Alexandre Medeiros e raymsandresonadv**, desde 24/08/2026. Regra derivada do dado (`my_finance_access`), sem nome hardcoded. |
 | **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. O alerta de obsolescência saiu da lista em 20/08 — ver seção própria. |

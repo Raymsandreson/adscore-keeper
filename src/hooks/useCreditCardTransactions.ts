@@ -3,6 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+// Roteador de verdade: `lovableCloudFunctions` fala sempre com o Cloud, e a
+// celcoin-open-finance vive no Externo. Importado com nome próprio para não
+// colidir com o de cima, que a integração da Pluggy ainda usa.
+import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 
 interface Transaction {
   id: string;
@@ -77,23 +81,27 @@ export function useCreditCardTransactions() {
     setError(null);
 
     try {
-      // RLS policies handle access control - no need to filter by user_id
-      // Admins and users with card permissions can see all transactions
-      let query = supabase
-        .from('credit_card_transactions')
-        .select('*')
-        .order('transaction_date', { ascending: false });
-
-      if (dateRange) {
-        query = query
-          .gte('transaction_date', format(dateRange.start, 'yyyy-MM-dd'))
-          .lte('transaction_date', format(dateRange.end, 'yyyy-MM-dd'));
-      }
-
-      const { data, error: fetchError } = await query;
+      // Vem do Externo pela edge. A `credit_card_transactions` existe nos dois
+      // projetos; a que recebe dado é a do Externo. O controle de acesso continua
+      // sendo o mesmo (`user_id` do dono OU permissão em `user_card_permissions`),
+      // só que aplicado dentro da edge — o service role ignora RLS, então a regra
+      // é reproduzida lá explicitamente.
+      const { data, error: fetchError } = await routedFunctions.invoke('celcoin-open-finance', {
+        body: {
+          action: 'list_transactions',
+          kind: 'card',
+          ...(dateRange
+            ? {
+                from: format(dateRange.start, 'yyyy-MM-dd'),
+                to: format(dateRange.end, 'yyyy-MM-dd'),
+              }
+            : {}),
+        },
+      });
 
       if (fetchError) throw fetchError;
-      setTransactions((data as Transaction[]) || []);
+      if (data?.success === false) throw new Error(data?.error || 'Falha ao ler lançamentos');
+      setTransactions((data?.transactions as Transaction[]) || []);
     } catch (err: any) {
       console.error('Error fetching transactions:', err);
       setError(err.message);

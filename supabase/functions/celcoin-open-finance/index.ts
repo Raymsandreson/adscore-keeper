@@ -789,6 +789,90 @@ async function sincronizar(
   };
 }
 
+/**
+ * Traduz o uuid do Cloud (o que a sessão do front carrega) para o uuid do
+ * Externo (o que as tabelas financeiras gravam em `user_id`). NÃO é o mesmo
+ * número: dos 52 usuários em `auth_uuid_mapping`, **26 têm uuid diferente nos
+ * dois bancos**, e o dono de 100% dos lançamentos é um deles — `79c5c9d1…` no
+ * Cloud contra `21924f81…` no Externo. Comparar o uuid do Cloud direto com
+ * `user_id` devolveria **vazio, não erro**, que é a forma mais cara de errar.
+ *
+ * Sem linha no mapping devolve o próprio uuid do Cloud: 26 dos 52 são idênticos
+ * mesmo, então o palpite acerta metade das vezes e nunca é pior que falhar. Quem
+ * chama recebe `mapeado` para saber qual dos dois casos aconteceu.
+ */
+async function uuidNoExterno(cloudUuid: string): Promise<{ uuid: string; mapeado: boolean }> {
+  const { data } = await ext
+    .from('auth_uuid_mapping').select('ext_uuid').eq('cloud_uuid', cloudUuid).maybeSingle();
+  const achado = (data as any)?.ext_uuid;
+  return achado ? { uuid: String(achado), mapeado: true } : { uuid: cloudUuid, mapeado: false };
+}
+
+// Teto de linhas por chamada. O PostgREST corta em 1000 por resposta e não avisa
+// -- a versão que lia o Cloud batia nesse teto calada. Aqui pagino até o teto e
+// digo se truncou, porque lista financeira cortada em silêncio é conciliação
+// errada, não lista incompleta.
+const PAGINA_LEITURA = 1000;
+const TETO_LEITURA = 20_000;
+
+/**
+ * Lê transações aplicando **a mesma regra das policies do Externo**, que o
+ * service role ignora:
+ *   bank: user_id = eu OR can_view_pluggy_account(eu, pluggy_account_id)
+ *   card: user_id = eu OR can_view_card(eu, card_last_digits)
+ * As duas funções são `EXISTS` numa tabela de permissão e nada mais (conferido
+ * em 24/08/2026 com pg_get_functiondef), então reproduzi-las aqui é fiel. Não
+ * há bypass de admin nas policies de leitura -- não inventei um.
+ */
+async function lerTransacoes(
+  tabela: 'bank_transactions' | 'credit_card_transactions',
+  meuUuid: string,
+  de: string | null,
+  ate: string | null,
+): Promise<{ linhas: any[]; truncado: boolean; permitidos: number }> {
+  const perm = tabela === 'bank_transactions'
+    ? { tabela: 'user_account_permissions', coluna: 'pluggy_account_id' }
+    : { tabela: 'user_card_permissions', coluna: 'card_last_digits' };
+
+  const { data: linhasPerm, error: erroPerm } = await ext
+    .from(perm.tabela).select(perm.coluna).eq('user_id', meuUuid);
+  if (erroPerm) throw new Error(`${perm.tabela}: ${erroPerm.message}`);
+
+  // Sanitiza antes de entrar no `in.(...)`: o filtro do PostgREST é uma string,
+  // e vírgula ou parêntese num valor mudaria o sentido da expressão.
+  const permitidos = [...new Set(
+    (linhasPerm || [])
+      .map((r: any) => String(r[perm.coluna] ?? '').replace(/[^A-Za-z0-9_-]/g, ''))
+      .filter(Boolean),
+  )];
+
+  const filtro = permitidos.length
+    ? `user_id.eq.${meuUuid},${perm.coluna}.in.(${permitidos.join(',')})`
+    : `user_id.eq.${meuUuid}`;
+
+  const linhas: any[] = [];
+  for (let inicio = 0; inicio < TETO_LEITURA; inicio += PAGINA_LEITURA) {
+    let q = ext.from(tabela).select('*')
+      // Ordem estável: `transaction_date` sozinho não é único, e paginar por
+      // chave não-única pula e repete linha entre páginas.
+      .order('transaction_date', { ascending: false })
+      .order('id', { ascending: false })
+      .range(inicio, inicio + PAGINA_LEITURA - 1)
+      .or(filtro);
+    if (de) q = q.gte('transaction_date', de);
+    if (ate) q = q.lte('transaction_date', ate);
+
+    const { data, error } = await q;
+    if (error) throw new Error(`${tabela}: ${error.message}`);
+    linhas.push(...(data || []));
+    if (!data || data.length < PAGINA_LEITURA) {
+      return { linhas, truncado: false, permitidos: permitidos.length };
+    }
+  }
+  console.warn(`[celcoin] ${tabela}: leitura truncada no teto de ${TETO_LEITURA} linhas`);
+  return { linhas, truncado: true, permitidos: permitidos.length };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
@@ -803,9 +887,12 @@ Deno.serve(async (req) => {
   // `health` e `egress_diag` são diagnóstico e não tocam em dado de ninguém:
   // ficam abertos de propósito, para conseguir medir sem sessão.
   const ABERTAS = new Set(['health', 'egress_diag']);
+  // Guardado fora do `if` porque `list_transactions` precisa saber QUEM chamou:
+  // a identidade vem do JWT, nunca do corpo.
+  let quem: { ok: boolean; userId: string | null; via: string } = { ok: true, userId: null, via: 'aberta' };
   if (!ABERTAS.has(action)) {
-    const v = await autorizar(req);
-    if (!v.ok) return json({ success: false, error: 'não autorizado', via: v.via }, 401);
+    quem = await autorizar(req);
+    if (!quem.ok) return json({ success: false, error: 'não autorizado', via: quem.via }, 401);
   }
 
   try {
@@ -1141,6 +1228,80 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Quem pode ver o quê, para a tela decidir se mostra a aba. A regra é
+      // DERIVADA do dado (dono das linhas ou permissão concedida), nunca uma
+      // lista de nomes no código: pessoa hardcoded em fonte não sai quando sai
+      // da firma, e ninguém lembra de procurar por ela.
+      case 'my_finance_access': {
+        if (!quem.userId) return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        const meu = await uuidNoExterno(quem.userId);
+
+        const contar = async (tabela: string, coluna: string) => {
+          const { count } = await ext
+            .from(tabela).select(coluna, { count: 'exact', head: true }).eq('user_id', meu.uuid);
+          return count || 0;
+        };
+        const [donoBanco, donoCartao, permContas, permCartoes] = await Promise.all([
+          contar('bank_transactions', 'id'),
+          contar('credit_card_transactions', 'id'),
+          contar('user_account_permissions', 'pluggy_account_id'),
+          contar('user_card_permissions', 'card_last_digits'),
+        ]);
+
+        return json({
+          success: true,
+          bank: donoBanco > 0 || permContas > 0,
+          card: donoCartao > 0 || permCartoes > 0,
+          detalhe: { dono_banco: donoBanco, dono_cartao: donoCartao, contas: permContas, cartoes: permCartoes },
+          identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
+        });
+      }
+
+      // Extrato para a tela de conciliação. Existe porque as tabelas financeiras
+      // moram no Externo e as telas liam a cópia homônima do Cloud, que nunca
+      // recebeu uma linha da Celcoin -- 2.026 lançamentos corretos que não
+      // apareciam em lugar nenhum. Ler do Externo direto do front não resolve: a
+      // sessão que ele mantém lá é `signInAnonymously()`, e a policy é
+      // `user_id = auth.uid()`, então a leitura volta VAZIA, não com erro.
+      case 'list_transactions': {
+        const tipo = String(body.kind || 'bank').trim();
+        if (tipo !== 'bank' && tipo !== 'card') {
+          return json({ success: false, error: "kind deve ser 'bank' ou 'card'" }, 400);
+        }
+        const tabela = tipo === 'bank' ? 'bank_transactions' : 'credit_card_transactions';
+        const de = body.from ? String(body.from).slice(0, 10) : null;
+        const ate = body.to ? String(body.to).slice(0, 10) : null;
+
+        // A identidade vem do JWT e SÓ do JWT. Aceitar `user_id` do corpo aqui
+        // deixaria qualquer sessão válida ler o extrato de qualquer colega --
+        // é a diferença entre autenticar e autorizar.
+        let meu: { uuid: string; mapeado: boolean };
+        if (quem.userId) {
+          meu = await uuidNoExterno(quem.userId);
+        } else if (quem.via === 'service_role') {
+          // Chamada servidor-a-servidor manda o uuid DO EXTERNO já resolvido.
+          const informado = String(body.user_id || '').trim();
+          if (!informado) {
+            return json({ success: false, error: 'service_role precisa mandar user_id (uuid do Externo)' }, 400);
+          }
+          meu = { uuid: informado, mapeado: true };
+        } else {
+          return json({ success: false, error: 'sem identidade de usuário' }, 401);
+        }
+
+        const r = await lerTransacoes(tabela as any, meu.uuid, de, ate);
+        return json({
+          success: true,
+          transactions: r.linhas,
+          // Devolvido para que "não apareceu nada" seja diagnosticável do lado
+          // de fora: sem isto, uuid não mapeado e conta sem movimento são a
+          // mesma tela vazia.
+          identidade: { cloud: quem.userId, externo: meu.uuid, mapeado: meu.mapeado },
+          contas_permitidas: r.permitidos,
+          truncado: r.truncado,
+        });
+      }
+
       default:
         return json(
           {
@@ -1150,6 +1311,8 @@ Deno.serve(async (req) => {
               'health',
               'egress_diag',
               'list_brands',
+              'list_transactions',
+              'my_finance_access',
               'create_consent',
               'consent_status',
               'list_resources',

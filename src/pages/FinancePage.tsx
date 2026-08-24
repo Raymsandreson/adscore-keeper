@@ -49,6 +49,7 @@ import { useCreditCardTransactions } from "@/hooks/useCreditCardTransactions";
 import { useAuth } from "@/hooks/useAuth";
 import { useCardPermissions } from "@/hooks/useCardPermissions";
 import { useUserRole } from "@/hooks/useUserRole";
+import { useFinanceAccess } from "@/hooks/useFinanceAccess";
 import { useExpenseCategories } from "@/hooks/useExpenseCategories";
 import { useCategoryApiMappings } from "@/hooks/useCategoryApiMappings";
 import { useCostAccounts } from "@/hooks/useCostAccounts";
@@ -96,6 +97,7 @@ export default function FinancePage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { isAdmin, loading: roleLoading } = useUserRole();
+  const { bank: podeVerConta, loading: acessoCarregando } = useFinanceAccess();
   const { 
     allowedCards, 
     loading: permissionsLoading, 
@@ -144,6 +146,15 @@ export default function FinancePage() {
   const [isImportingManual, setIsImportingManual] = useState(false);
   const [activeTab, setActiveTab] = usePageState<string>('finance_activeTab', 'workflow');
   const [financialSection, setFinancialSection] = usePageState<string>('finance_section', 'credit-card');
+
+  // Quem já esteve na aba "Conta" volta nela pelo estado salvo, mesmo sem
+  // acesso — e veria uma área em branco sem explicação. Só reposiciono depois
+  // que o acesso carregou; antes disso `podeVerConta` é false por padrão e o
+  // reset descartaria a escolha de quem TEM acesso, a cada abertura da página.
+  useEffect(() => {
+    if (acessoCarregando) return;
+    if (!podeVerConta && financialSection === 'bank') setFinancialSection('credit-card');
+  }, [acessoCarregando, podeVerConta, financialSection, setFinancialSection]);
   const [filterConnections, setFilterConnections] = useState<string[]>(["all"]);
   const [editingConnectionId, setEditingConnectionId] = useState<string | null>(null);
   const [editingConnectionName, setEditingConnectionName] = useState("");
@@ -1179,8 +1190,12 @@ export default function FinancePage() {
             </Card>
 
             {/* Financial Section Tabs */}
+            {/* A seção fica salva por usuário (`usePageState`), então quem já
+                esteve em "Conta" volta nela mesmo depois de perder o acesso e
+                veria área vazia. Só reposiciono depois que o acesso carregou,
+                senão o estado salvo seria descartado a cada abertura. */}
             <Tabs value={financialSection} onValueChange={setFinancialSection} className="mb-4">
-              <TabsList className="grid w-full grid-cols-5 h-11">
+              <TabsList className={cn('grid w-full h-11', podeVerConta ? 'grid-cols-5' : 'grid-cols-4')}>
                 <TabsTrigger value="entries" className="flex items-center gap-2">
                   <Tag className="h-4 w-4" />
                   <span className="hidden sm:inline">Lançamentos</span>
@@ -1191,11 +1206,13 @@ export default function FinancePage() {
                   <span className="hidden sm:inline">Cartão</span>
                   <span className="sm:hidden">Cartão</span>
                 </TabsTrigger>
-                <TabsTrigger value="bank" className="flex items-center gap-2">
-                  <Wallet className="h-4 w-4" />
-                  <span className="hidden sm:inline">Conta</span>
-                  <span className="sm:hidden">Conta</span>
-                </TabsTrigger>
+                {podeVerConta && (
+                  <TabsTrigger value="bank" className="flex items-center gap-2">
+                    <Wallet className="h-4 w-4" />
+                    <span className="hidden sm:inline">Conta</span>
+                    <span className="sm:hidden">Conta</span>
+                  </TabsTrigger>
+                )}
                 <TabsTrigger value="investments" className="flex items-center gap-2">
                   <TrendingDown className="h-4 w-4" />
                   <span className="hidden sm:inline">Invest.</span>
@@ -1217,6 +1234,11 @@ export default function FinancePage() {
                 />
               </TabsContent>
 
+              {/* Sem acesso a conta nenhuma o conteúdo nem monta: esconder só o
+                  gatilho deixaria a aba acessível por estado salvo. O gate de
+                  verdade é a edge, que aplica a mesma regra ao ler -- aqui é
+                  para não mostrar tela vazia a quem não deve nem ver a aba. */}
+              {podeVerConta && (
               <TabsContent value="bank" className="mt-4">
                 <BankTransactionsView 
                   startDate={startDate} 
@@ -1226,6 +1248,7 @@ export default function FinancePage() {
                   filterSubcategory={filterSubcategory}
                 />
               </TabsContent>
+              )}
 
               <TabsContent value="investments" className="mt-4">
                 <InvestmentsView 
