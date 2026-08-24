@@ -23,6 +23,8 @@ import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
+import type { MidiaDaMensagem } from '@/lib/midiaDaConversa';
+import { acharVinculoDaAtividade, descreverVinculo } from '@/lib/vinculoDaAtividade';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { ConversationOwnerControl } from './ConversationOwnerControl';
@@ -1552,10 +1554,12 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
    *
    * Sem mensagem de origem (menu do topo da conversa) o caminho antigo continua.
    */
-  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => {
+  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[], originMedia?: MidiaDaMensagem[]) => {
     setActivityOriginMsgIds(originMessageIds || []);
 
-    if (!prefillText || !(originMessageIds || []).length) {
+    const midias = originMedia || [];
+    // Com anexo a IA tem o que ler mesmo sem texto nenhum (PDF sem legenda).
+    if ((!prefillText && midias.length === 0) || !(originMessageIds || []).length) {
       setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
       setShowActivitySheet(true);
       return;
@@ -1577,13 +1581,39 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       }
       const memberNames = profiles.map(p => p.full_name).filter(Boolean) as string[];
 
+      if (midias.length > 0) {
+        // Ler PDF/áudio/link leva alguns segundos a mais que só texto — o aviso
+        // evita o assessor achar que travou e clicar de novo.
+        toast.info(`Lendo ${midias.length === 1 ? 'o anexo' : `os ${midias.length} anexos`} da conversa…`, { duration: 3000 });
+      }
       const { data, error } = await routedFunctions.invoke('chat-to-activity', {
-        body: { transcript: prefillText, activity_types: typeOptions, member_names: memberNames },
+        body: { transcript: prefillText, media: midias, activity_types: typeOptions, member_names: memberNames },
       });
       if (error) throw error;
       if (!data?.success) throw new Error(data?.error || 'Falha ao gerar o rascunho da atividade');
 
       const f = data.fields || {};
+      // Anexo que não deu pra ler não derruba a atividade, mas o assessor tem
+      // que saber que ela nasceu sem aquela parte.
+      const ignorados = (data.media_read?.ignorados || []) as { url: string; motivo: string }[];
+      if (ignorados.length > 0) {
+        toast.warning(
+          ignorados.length === 1
+            ? `Um anexo não pôde ser lido: ${ignorados[0].motivo}.`
+            : `${ignorados.length} anexos não puderam ser lidos (o primeiro: ${ignorados[0].motivo}).`,
+          { duration: 7000 },
+        );
+      }
+
+      // Nº do processo e partes lidos no material viram vínculo: o rascunho já
+      // abre no processo/caso/lead certos, em vez de o assessor procurar a ficha
+      // logo depois de a IA ter lido o número na tela dele.
+      const vinculo = await acharVinculoDaAtividade({
+        processNumber: f.process_number,
+        partyNames: f.party_names,
+        leadName: leadId ? null : f.lead_name,
+      });
+      if (vinculo) toast.success(descreverVinculo(vinculo), { duration: 6000 });
       // Assessor sugerido pela IA (nome exato) vence; sem sugestão, fica com
       // quem está criando. Mesmo critério para o prazo: o citado na conversa
       // vence, senão hoje.
@@ -1593,19 +1623,34 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       const me = profiles.find(p => p.user_id === user?.id);
       const assignee = suggested || me || null;
 
+      // Achou o processo? Então lead/caso/processo vêm todos dele — misturar o
+      // lead da conversa com o processo do documento deixaria o vínculo torto
+      // (atividade no lead A apontando pro processo do lead B). Sem processo, a
+      // conversa aberta manda: quem clicou está falando com aquele cliente.
+      const leadDoVinculo = vinculo?.process_id ? vinculo.lead_id : undefined;
+      const origemNotas = [
+        prefillText ? `— Origem: conversa do WhatsApp —\n${prefillText}` : '— Origem: anexo da conversa do WhatsApp —',
+        vinculo ? descreverVinculo(vinculo) : '',
+      ].filter(Boolean).join('\n\n');
+
       setActivityDraft({
         title: f.title || '',
         activity_type: f.activity_type || 'tarefa',
         priority: f.priority || 'normal',
         deadline: f.deadline || format(new Date(), 'yyyy-MM-dd'),
-        lead_id: leadId || undefined,
-        lead_name: leadName || f.lead_name || undefined,
+        lead_id: leadDoVinculo || leadId || vinculo?.lead_id || undefined,
+        lead_name: leadDoVinculo ? (vinculo?.lead_name || leadName) : (leadName || vinculo?.lead_name || f.lead_name || undefined),
+        case_id: vinculo?.case_id,
+        case_title: vinculo?.case_title,
+        process_id: vinculo?.process_id,
+        process_title: vinculo?.process_title,
+        workflow_id: vinculo?.workflow_id,
         assigned_to: assignee?.user_id || undefined,
         assigned_to_name: assignee?.full_name || undefined,
         what_was_done: f.what_was_done || '',
         current_status_notes: f.current_status || '',
         next_steps: f.next_steps || '',
-        notes: [f.notes || '', `— Origem: conversa do WhatsApp —\n${prefillText}`].filter(Boolean).join('\n\n'),
+        notes: [f.notes || '', origemNotas].filter(Boolean).join('\n\n'),
       });
       setActivityFullOpen(true);
     } catch (e) {
