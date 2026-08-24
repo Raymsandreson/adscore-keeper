@@ -1,5 +1,22 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+// Lê e escreve no EXTERNO, não no Cloud.
+//
+// `card_assignments`, `expense_categories` e `transaction_category_overrides`
+// existem nos dois projetos. A cópia do Externo é a que acompanha os lançamentos
+// (`credit_card_transactions` / `bank_transactions` moram lá), e é a que tem os
+// apelidos dos cartões — "Raym Pessoal", "João Manoel", "Juliana Acolhedora".
+// Lendo do Cloud a tela mostrava só os 4 dígitos.
+//
+// As três se movem JUNTAS de propósito: `transaction_category_overrides`
+// referencia ids de `expense_categories`, e apontar uma para cada banco
+// quebraria o vínculo sem erro nenhum — a categoria simplesmente não seria
+// encontrada.
+//
+// Aqui dá para usar o cliente direto, sem edge: as três têm policy `TO public`
+// com `qual: true` no Externo (medido em 24/08/2026), diferente das tabelas de
+// transação, que exigem identidade. Isso também é um buraco de RLS a fechar —
+// qualquer um com a anon key lê E escreve essas três.
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { trackFinanceEntry } from '@/hooks/useFinanceTimeTracker';
 
@@ -92,7 +109,7 @@ export function useExpenseCategories() {
   const fetchCategories = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('expense_categories')
         .select('*')
         .order('display_order', { ascending: true });
@@ -109,7 +126,7 @@ export function useExpenseCategories() {
 
   const fetchCardAssignments = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('card_assignments')
         .select('*')
         .order('created_at', { ascending: false });
@@ -123,7 +140,7 @@ export function useExpenseCategories() {
 
   const fetchOverrides = useCallback(async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('transaction_category_overrides')
         .select('*');
 
@@ -136,7 +153,7 @@ export function useExpenseCategories() {
 
   const addCategory = useCallback(async (category: Partial<ExpenseCategory>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('expense_categories')
         .insert([{
           name: category.name,
@@ -187,7 +204,7 @@ export function useExpenseCategories() {
 
       console.log('Updating category with:', updateData);
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('expense_categories')
         .update(updateData)
         .eq('id', id);
@@ -204,7 +221,7 @@ export function useExpenseCategories() {
 
   // Check if a category has linked expenses (overrides)
   const getCategoryExpenseCount = useCallback(async (categoryId: string): Promise<number> => {
-    const { count, error } = await supabase
+    const { count, error } = await externalSupabase
       .from('transaction_category_overrides')
       .select('*', { count: 'exact', head: true })
       .eq('category_id', categoryId);
@@ -219,7 +236,7 @@ export function useExpenseCategories() {
   // Reassign expenses from one category to another
   const reassignExpenses = useCallback(async (fromCategoryId: string, toCategoryId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('transaction_category_overrides')
         .update({ category_id: toCategoryId })
         .eq('category_id', fromCategoryId);
@@ -239,7 +256,7 @@ export function useExpenseCategories() {
         await reassignExpenses(id, reassignToCategoryId);
       }
 
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('expense_categories')
         .delete()
         .eq('id', id);
@@ -256,7 +273,7 @@ export function useExpenseCategories() {
 
   const assignCard = useCallback(async (assignment: Partial<CardAssignment>) => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('card_assignments')
         .upsert([{
           card_last_digits: assignment.card_last_digits,
@@ -284,7 +301,7 @@ export function useExpenseCategories() {
 
   const updateCardAssignment = useCallback(async (id: string, updates: Partial<CardAssignment>) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('card_assignments')
         .update(updates)
         .eq('id', id);
@@ -301,7 +318,7 @@ export function useExpenseCategories() {
 
   const removeCardAssignment = useCallback(async (id: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('card_assignments')
         .delete()
         .eq('id', id);
@@ -337,7 +354,7 @@ export function useExpenseCategories() {
     }
   ) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('transaction_category_overrides')
         .upsert([{
           transaction_id: transactionId,

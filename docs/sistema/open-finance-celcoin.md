@@ -288,6 +288,45 @@ existem **5.285** linhas `member`, que são clientes e não equipe — um seleto
 isso é inutilizável. O mapping é, por definição, quem tem conta nos dois bancos, e
 seus `ext_uuid` são exatamente os que as tabelas de permissão indexam.
 
+## Os cartões apareciam só como 4 dígitos
+
+**24/08/2026.** Quarta ocorrência do mesmo padrão. `useExpenseCategories` lia
+`card_assignments` do **Cloud**, e os apelidos estão no **Externo** — "Raym
+Pessoal", "Juliana Acolhedora", "João Manoel", "Bruno Dantas", "Wana Lara",
+"Abraci". Sem eles a tela só tinha o que vem no lançamento: os 4 dígitos.
+
+**Cinco tabelas, e elas se movem juntas** — `card_assignments`,
+`expense_categories`, `transaction_category_overrides`, `category_api_mappings` e
+`cost_accounts`. Não é preferência: `card_assignments.cost_account_id` aponta
+para `cost_accounts`, `transaction_category_overrides` e
+`category_api_mappings` apontam para ids de `expense_categories`. Apontar uma
+para cada banco quebraria o vínculo **sem erro nenhum** — o id simplesmente não
+seria encontrado.
+
+**Aqui não precisou de edge**, ao contrário das transações: as cinco têm policy
+`TO public` com `qual: true` no Externo, medido com a anon key (8, 15, 86, 32 e 5
+linhas legíveis sem sessão). **Isso é um buraco de RLS a fechar**: qualquer um
+com a anon key lê *e escreve* apelido de cartão, categoria e categorização. Fica
+registrado como frente própria — ver [[supabase-externo-rls-gap]].
+
+**O risco assumido, explicitamente.** As cinco cópias do Externo têm
+`updated_at` de 29/04/2026 e conteúdo que para em fev/mar — são um retrato
+congelado na migração, igual ao `pluggy_connections`. Qualquer categorização
+feita pelo app depois de abril foi para o **Cloud** e não está aqui. Não deu para
+medir quanto: a anon key não lê o `card_assignments` do Cloud (`42501 permission
+denied for table`) e a Management API responde 403 naquele projeto. A evidência
+de que a perda é pequena é indireta mas boa: a tela vinha mostrando os cartões
+como dígitos, ou seja, a cópia do Cloud não tinha os apelidos. Reverter é uma
+linha por hook.
+
+**Três cartões seguem sem apelido** — `6517` (37 lançamentos), `0893` (14) e
+`0408` (2). Aparecem pelos dígitos porque nunca receberam nome, não por defeito.
+
+**Ainda no Cloud:** `useCompanies`, `useCostCenters` e `useBeneficiaries`.
+As duas primeiras têm dado no Externo (6 e 2 linhas); **`beneficiaries` está
+vazia lá**, então trocar essa esvaziaria o seletor — precisa de migração antes,
+não de troca de cliente.
+
 ## Uma linha de log por ação, e uma fonte só de `isAdmin`
 
 **24/08/2026 (v20).** Duas correções que saíram de tentar *verificar* o trabalho
@@ -509,6 +548,7 @@ argumento.
 | Conciliação em tela | **Corrigida em 24/08/2026** (v17). Extrato de conta e de cartão passam a vir do Externo pela ação `list_transactions`, com tradução de uuid e a mesma regra de visibilidade das policies. Conferido contra gabarito: 4.609/5.524 para o dono. Faltam os dois gerenciadores de permissão, que ainda escrevem no Cloud. |
 | Quem vê a aba "Conta" | **Alexandre Medeiros e raymsandresonadv**, desde 24/08/2026. Regra derivada do dado (`my_finance_access`), sem nome hardcoded. |
 | Administrar permissões | **Corrigida em 24/08/2026** (v19). Antes gravava uuid do Cloud em tabela indexada por uuid do Externo — conceder acesso pela tela não tinha efeito nenhum, sem erro. Agora pela edge, com gate de `is_admin` do Externo e semântica de conjunto. |
+| Apelido dos cartões | **Corrigido em 24/08/2026.** `useExpenseCategories`, `useCategoryApiMappings` e `useCostAccounts` passam a ler o Externo — 5 tabelas que se movem juntas por causa dos vínculos de id. Sem edge: as policies lá são `TO public` com `qual: true`, o que é um buraco de RLS a fechar. |
 | Diagnóstico das ações | **Uma linha de log por ação desde 24/08/2026** (v20), com quem chamou, o que pediu e quantas linhas voltaram. Antes o log só tinha URL e status, e as 15 ações dividem a mesma URL — `200` não distinguia dado de vazio. |
 | Gate de administrador | **Unificado em 24/08/2026** (v20) no `is_admin` do Externo, via `my_finance_access`. Antes a tela usava o `user_roles` do Cloud e a edge o do Externo: admin só no Cloud tomava 403, admin só no Externo não via o painel. |
 | Menus da tela de cartão | **Trocados para a Celcoin em 24/08/2026.** Sincronizar, conectar e o auto-sync de abertura chamavam a Pluggy do Cloud — rodavam, diziam que deu certo e não traziam nada desde 18/03. Ver seção própria. |

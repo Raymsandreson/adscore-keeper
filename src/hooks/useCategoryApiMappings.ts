@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+// Lê e escreve no EXTERNO. Faz parte do mesmo conjunto de `useExpenseCategories`:
+// `card_assignments.cost_account_id` aponta para `cost_accounts`, e
+// `category_api_mappings` aponta para ids de `expense_categories`. Apontar uma
+// tabela para cada banco quebraria o vínculo SEM ERRO — o id simplesmente não
+// seria encontrado. Por isso as cinco se movem juntas.
+import { externalSupabase } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 
 export interface CategoryApiMapping {
@@ -98,7 +103,7 @@ export function useCategoryApiMappings() {
   const fetchMappings = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await externalSupabase
         .from('category_api_mappings')
         .select('*')
         .order('created_at', { ascending: true });
@@ -118,7 +123,7 @@ export function useCategoryApiMappings() {
 
   const addMapping = useCallback(async (categoryId: string, apiCategoryName: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('category_api_mappings')
         .insert([{ category_id: categoryId, api_category_name: apiCategoryName }]);
 
@@ -140,7 +145,7 @@ export function useCategoryApiMappings() {
 
   const removeMapping = useCallback(async (mappingId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await externalSupabase
         .from('category_api_mappings')
         .delete()
         .eq('id', mappingId);
@@ -157,14 +162,14 @@ export function useCategoryApiMappings() {
   const setMappingsForCategory = useCallback(async (categoryId: string, apiCategories: string[]) => {
     try {
       // Remove existing mappings
-      await supabase
+      await externalSupabase
         .from('category_api_mappings')
         .delete()
         .eq('category_id', categoryId);
 
       // Add new mappings
       if (apiCategories.length > 0) {
-        const { error } = await supabase
+        const { error } = await externalSupabase
           .from('category_api_mappings')
           .insert(apiCategories.map(name => ({
             category_id: categoryId,
