@@ -1,7 +1,7 @@
 -- =============================================================================
 -- O RECÁLCULO PRECISA ALCANÇAR QUEM PERDEU A CHAVE
 -- Banco alvo: Supabase EXTERNO kmedldlepwiityjsdahz.
--- Depende de: 20260824150100_regua_administrativa_bpc_por_email.sql
+-- Depende de: 20260824151100_regua_administrativa_bpc_por_email.sql
 --
 -- Bug encontrado no teste ponta a ponta, minutos depois de aplicar a migration
 -- anterior. `alvo` seleciona processo COM CNJ ou COM protocolo. Quem PERDE a
@@ -13,7 +13,7 @@
 -- Medido: desvincular o protocolo de teste deixou 3 marcos órfãos
 -- (process_pop_marcos foi de 2.982 para 2.985).
 --
--- É o mesmo buraco que o cabeçalho de 20260824150100 já previa para o caso de
+-- É o mesmo buraco que o cabeçalho de 20260824151100 já previa para o caso de
 -- entrada — e que passou despercebido no caso de SAÍDA.
 --
 -- Correção: quem JÁ TEM marco gravado entra no alvo por isso mesmo. O
@@ -23,7 +23,7 @@
 -- administrativo, 780 fases escritas por marco — todos idênticos ao retrato
 -- anterior à mudança do e-mail.
 --
--- REVERSÃO: recriar a função com a definição de 20260824150100.
+-- REVERSÃO: recriar a função com a definição de 20260824151100.
 -- =============================================================================
 create or replace function public.refresh_process_pop_marcos(p_process_id uuid default null)
 returns integer

@@ -1,7 +1,7 @@
 -- =============================================================================
 -- A RÉGUA ADMINISTRATIVA DO BPC, LIDA DO E-MAIL DO INSS
 -- Banco alvo: Supabase EXTERNO kmedldlepwiityjsdahz.
--- Depende de: 20260824150000_email_vira_fonte_de_marco.sql
+-- Depende de: 20260824151000_email_vira_fonte_de_marco.sql
 --
 -- O POP - BPC - Administrativo (8377ee1b) tem 5 fases. As três primeiras são o
 -- ciclo administrativo inteiro — Triagem, CadÚnico, Protocolo/Análise INSS — e
@@ -29,7 +29,7 @@
 -- (Caso Indeferido)" sozinho — aplicar_fase_por_marco só avança, então isso
 -- nunca puxa ninguém para trás.
 --
--- REVERSÃO: ver o cabeçalho de 20260824150000.
+-- REVERSÃO: ver o cabeçalho de 20260824151000.
 -- =============================================================================
 
 -- ---------------------------------------------------------------------------
