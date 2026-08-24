@@ -86,21 +86,44 @@ duplicata num sentido e buraco no outro:
 
 | pergunta | filtro | o que faz |
 |---|---|---|
-| até onde **esta conexão** já foi? | `provider='celcoin'` + `pluggy_item_id in (irmãs)` | volta `DIAS_DE_REPROCESSO` (3) por cima |
+| até onde **esta conta** já foi? | `provider='celcoin'` + `pluggy_account_id = <conta>` | volta `DIAS_DE_REPROCESSO` (3) por cima |
 | até onde a **Pluggy** foi? | `provider is null or provider <> 'celcoin'` | piso intransponível: a tela não filtra por provider |
 
-O escopo da primeira linha é **por conexão, não por usuário** (v13, 19/08/2026).
-Não é refinamento: com o Inter já tendo gravado até 18/08, um consentimento novo
-do Santander nasceria com piso 15/08, e de 19/03 a 14/08 nunca seria buscado —
-calado. Simulado contra o banco real antes de subir: Inter continua em 15/08
-(sem regressão), Santander nasceria em 19/03, exatamente onde a Pluggy parou.
+O escopo da primeira linha é **por conta** — não por usuário, não por
+consentimento, não por banco (v16, 24/08/2026). Ele já foi as três coisas
+erradas, e cada correção veio de um buraco encontrado depois:
 
-"Irmãs" são todos os `consent_id` do mesmo `brand_id` e do mesmo usuário,
-**inclusive os `ABANDONED`**. Reautorizar o banco emite um `consent_id` novo, e o
-extrato que o anterior trouxe continua sendo dessa conexão; sem isso a
-reautorização reimportaria o histórico inteiro, porque o transmissor não promete
-`transactionId` estável entre consentimentos. O Inter já tem 7 consentimentos
-irmãos (6 `ABANDONED` + 1 `AUTHORISED`).
+| versão | escopo | como falhava |
+|---|---|---|
+| até v12 | usuário | consentimento novo de outro banco nascia com o piso do banco já sincronizado |
+| v13 (19/08) | consentimento + irmãs por `brand_id` | **duas contas no mesmo banco viram irmãs** |
+| v16 (24/08) | conta (`pluggy_account_id`) | — |
+
+O caso da v13 não é hipotético: em 24/08/2026 a conta da R.P.Advogados foi
+conectada no mesmo `brand_id` da P.CAP (ambas Inter PJ, mesmo usuário). A
+primeira rodada nasceu com o piso da P.CAP, trouxe **81 linhas de 6 dias** e
+respondeu `success: true`. Os **1.641** lançamentos de 19/03 a 18/08 não seriam
+buscados nunca — o cron só anda para a frente. O que denunciou foi o campo
+`janela` na resposta: `bank_from: 2026-08-19` onde deveria ser `2026-03-19`.
+Sem esse campo o sync teria passado por bem-sucedido.
+
+Corrigido rodando `sync_transactions` com `from` explícito: 1.722 lançamentos,
+19/03→24/08, R$ 4.894.999,07 de crédito. Zero `pluggy_transaction_id` repetido e
+zero linha Celcoin antes de 19/03 — o encaixe com a Pluggy ficou exato.
+
+**O que sobrou de risco.** Uma conta sem lançamento próprio é ambígua: ou é conta
+nova, ou é a mesma conta reautorizada num consentimento que trocou o
+`accountId` — o padrão não promete id estável entre consentimentos. Os dois casos
+pedem coisas opostas e dali não dá para distinguir. A escolha foi **puxar o
+histórico e avisar**: se houver consentimento irmão com dado, sai um
+`console.warn` nomeando a conta e até onde o irmão gravou. Duplicata aparece na
+tela de conciliação e se conserta; buraco não aparece e ninguém volta para
+buscar. No Inter o `accountId` é o próprio número da conta com o dígito
+(`210193930` para a conta terminada em `93-0`), então lá o caso não deve ocorrer.
+
+"Irmãs" continuam sendo todos os `consent_id` do mesmo `brand_id` e do mesmo
+usuário, **inclusive os `ABANDONED`** — mas agora servem só para emitir esse
+aviso, não para calcular o piso.
 
 O `.or('provider.is.null,provider.neq.celcoin')` da segunda linha é guarda
 deliberada: no PostgREST, `.neq()` **exclui NULL** (`NULL <> 'celcoin'` é NULL, e
@@ -286,17 +309,18 @@ de gerada. Não adianta gerar e mandar depois: gerar com o titular já com o
 celular na mão. `scratchpad/of-link.sh` gera um em ~2s e aceita o CNPJ como
 argumento.
 
-## Estado em 20/08/2026
+## Estado em 24/08/2026
 
 | item | estado |
 |---|---|
 | Inter PJ / Prudencio Capital | **AUTHORISED** até 2027-08-18. 298 lançamentos de 19/03 a 18/08, **conferidos contra o extrato em PDF: diferença zero** em data e valor, os 6 meses fechando individualmente. |
-| Inter PJ / R.P.Advogados | pendente — falta o CNPJ |
-| Santander | pendente — é conta **pessoal** (`PERSONAL_BANK`), consentimento PF sem CNPJ |
+| Inter PJ / R.P.Advogados | **AUTHORISED** em 24/08/2026 (CNPJ 32.965.023/0001-27). 1.722 lançamentos de 19/03 a 24/08, R$ 4.894.999,07 de crédito. É a conta principal: 5,7× a P.CAP em lançamentos e 6,6× em dinheiro. Sem conta de cartão exposta. |
+| Santander | pendente. É conta **pessoal** (`PERSONAL_BANK` em `pluggy_connections`), consentimento PF sem CNPJ — a marca está certa. Três tentativas (19/08 e duas em 24/08) e nenhuma autorizou: a página de autorização do Santander **trava carregando** depois de receber o `request_uri`. Não é link vencido — link vencido devolve na hora `400 invalid_request_uri`, que é o que a sondagem mostra *depois* do clique consumir o `request_uri`. Causa desconhecida; próximo passo é tentar pelo celular com o app instalado e registrar o que aparece antes de travar. |
 | Cartão de crédito | A conta existe (`40b9d9e8…`) e `/bills` responde 200 — com **lista vazia**. Instrumentado em 19/08: não é o nome do campo `billId`, é a lista mesmo. Corroborado pela Pluggy, que em 14 meses nunca viu fatura nas 2 conexões do Inter (os 5.524 lançamentos de cartão são **todos** do Santander). **Desempatado em 20/08/2026** (v14): o `/bills` foi chamado duas vezes, com janela (729b) e sem (597b), e as duas voltaram vazias — `0 faturas, com e sem janela`. A janela não está engolindo resultado; o Inter não tem fatura mesmo. Fica a ressalva de que isso **não prova** que `fromDueDate/toDueDate` sejam os nomes certos num transmissor que TENHA fatura — as duas hipóteses dão vazio aqui. O retry cobre esse caso quando aparecer: se vier 0 com janela e N sem, ele usa as N e o log diz que o par de parâmetros não vale. |
 | Consentimentos órfãos | **Resolvidos em 19/08/2026.** Os 6 `AWAITING` viraram `ABANDONED` (a Celcoin recusou revogar, 422) e saíram da tela. Seguem existindo na Celcoin, sem acesso a nada, até 18/08/2027. |
+| Contas ainda de fora | A Pluggy via **três** contas; hoje duas estão na Celcoin. Identificadas em `pluggy_connections`: `0a7772c8` = Inter R.P.Adv (conectada 24/08), `899a397c` = Inter P.CAP (conectada 18/08), `e23e8530` = Santander PF (pendente). A do Santander é a única fonte de cartão que já existiu: os 5.524 lançamentos de cartão são todos dela. |
 | Pluggy | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
-| Piso da janela | **Por conexão desde 19/08/2026** (v13). Antes era por usuário, e um consentimento novo do Santander nasceria com piso 15/08 — de 19/03 a 14/08 nunca seria buscado, calado. Simulado contra dado real: Inter segue em 15/08 (sem regressão), Santander nasceria em 19/03, exatamente onde a Pluggy parou. |
+| Piso da janela | **Por conta desde 24/08/2026** (v16). Foi por usuário (até v12) e por marca (v13); a segunda fez a conta nova da R.P.Adv herdar o piso da P.CAP e pular 1.641 lançamentos dizendo `success: true`. Verificado após o deploy: R.P.Adv usa 21/08 e P.CAP 19/08, cada uma com o seu. |
 | Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) subiu na v14 e foi conferido: o Inter devolve `2026-08-20`, as demais conexões `null`. Falta o aviso **fora** do painel de conexões — hoje é preciso abrir a aba para ver, e o alerta que exige ser procurado não é alerta. |
 | Conciliação em tela | **Quebrada, e não era conhecido.** As telas leem o Cloud, a Celcoin grava no Externo. Ver seção própria. |
 | **Sync recorrente** | **Existe desde 19/08/2026**: `runCelcoinSync` no Railway, 06h/12h/19h BRT, chamando `sync_all`. Verificado à mão na mesma data: 1 consentimento, 0 falhas, janela `2026-08-15 → 2026-08-19`. O alerta de obsolescência saiu da lista em 20/08 — ver seção própria. |
