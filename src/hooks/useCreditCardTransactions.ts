@@ -1,11 +1,10 @@
 import { useState, useCallback } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { startOfMonth, endOfMonth, format } from 'date-fns';
-import { cloudFunctions } from '@/lib/lovableCloudFunctions';
-// Roteador de verdade: `lovableCloudFunctions` fala sempre com o Cloud, e a
-// celcoin-open-finance vive no Externo. Importado com nome próprio para não
-// colidir com o de cima, que a integração da Pluggy ainda usa.
+import { format } from 'date-fns';
+// `cloudFunctions` do functionRouter, que roteia por função: a
+// celcoin-open-finance vive no Externo. O `lovableCloudFunctions`, que fala
+// sempre com o Cloud, saiu junto com as ações da Pluggy — e o cliente
+// `supabase` também, que só existia para pegar a sessão daquelas chamadas.
 import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 
 interface Transaction {
@@ -53,26 +52,7 @@ export function useCreditCardTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [connections, setConnections] = useState<PluggyConnection[]>([]);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const callPluggyFunction = useCallback(async (action: string, params: Record<string, any> = {}) => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      throw new Error('Not authenticated');
-    }
-
-    const response = await cloudFunctions.invoke('pluggy-integration', {
-      body: { action, user_id: sessionData.session.user.id, ...params },
-      authToken: sessionData.session.access_token,
-    });
-
-    if (response.error) {
-      throw new Error(response.error.message);
-    }
-
-    return response.data;
-  }, []);
 
   const fetchTransactions = useCallback(async (dateRange?: DateRange) => {
     if (!user) return;
@@ -111,6 +91,7 @@ export function useCreditCardTransactions() {
     // Pelo ID, não pelo objeto: `useAuth` devolve referência nova a cada
     // revalidação de sessão, e isso refazia o callback e redisparava quem
     // depende dele — leitura em dobro a cada abertura.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const fetchConnections = useCallback(async () => {
@@ -132,63 +113,8 @@ export function useCreditCardTransactions() {
       console.error('Error fetching connections:', err);
     }
     // Pelo ID: ver a nota em fetchTransactions.
-  }, [user?.id, callPluggyFunction]);
-
-  const importExistingConnections = useCallback(async () => {
-    try {
-      const data = await callPluggyFunction('import_existing_connections');
-      if (data.imported > 0) {
-        await fetchConnections();
-      }
-      return data;
-    } catch (err: any) {
-      console.error('Error importing connections:', err);
-      throw err;
-    }
-  }, [callPluggyFunction, fetchConnections]);
-
-  const importByItemId = useCallback(async (itemId: string) => {
-    const data = await callPluggyFunction('import_by_item_id', { itemId });
-    await fetchConnections();
-    return data;
-  }, [callPluggyFunction, fetchConnections]);
-
-  const createConnectToken = useCallback(async (itemId?: string) => {
-    const data = await callPluggyFunction('create_connect_token', { itemId });
-    return data.connectToken;
-  }, [callPluggyFunction]);
-
-  const saveConnection = useCallback(async (itemId: string) => {
-    await callPluggyFunction('save_connection', { itemId });
-    await fetchConnections();
-  }, [callPluggyFunction, fetchConnections]);
-
-  const syncTransactions = useCallback(async (dateRange?: DateRange) => {
-    setSyncing(true);
-    setError(null);
-
-    try {
-      const params: Record<string, string> = {};
-      if (dateRange) {
-        params.from = format(dateRange.start, 'yyyy-MM-dd');
-        params.to = format(dateRange.end, 'yyyy-MM-dd');
-      }
-
-      await callPluggyFunction('sync_transactions', params);
-      await fetchTransactions(dateRange);
-    } catch (err: any) {
-      console.error('Error syncing transactions:', err);
-      setError(err.message);
-    } finally {
-      setSyncing(false);
-    }
-  }, [callPluggyFunction, fetchTransactions]);
-
-  const deleteConnection = useCallback(async (itemId: string) => {
-    await callPluggyFunction('delete_connection', { itemId });
-    await fetchConnections();
-    setTransactions([]);
-  }, [callPluggyFunction, fetchConnections]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   const getCategoryTotals = useCallback(() => {
     const totals: Record<string, number> = {};
@@ -227,16 +153,9 @@ export function useCreditCardTransactions() {
     transactions,
     connections,
     loading,
-    syncing,
     error,
     fetchTransactions,
     fetchConnections,
-    createConnectToken,
-    saveConnection,
-    syncTransactions,
-    deleteConnection,
-    importExistingConnections,
-    importByItemId,
     getCategoryTotals,
     getTotalSpent,
     updateConnectionName,

@@ -595,15 +595,9 @@ export default function FinancePage() {
     }
   };
 
-  // As conexões passaram a ser lidas do Externo (é onde elas existem), mas
-  // renomear, gerar link e excluir ainda escrevem na cópia do Cloud pela edge
-  // `pluggy-integration`. Enquanto os dois lados não falarem o mesmo banco, o
-  // botão faria a escrita sumir sem erro e a lista não mudaria — botão que
-  // mente é pior que botão que falta. Reabilitar junto com a etapa 2.
-  // Renomear já foi portado (`rename_connection`). Excluir e gerar link seguem
-  // desligados: escrevem no Cloud pela `pluggy-integration` e pertencem a uma
-  // integração em aposentadoria — o clique sumiria sem erro e a linha ficaria.
-
+  // As 3 conexões listadas são da Pluggy e são registro histórico: os 5.524
+  // lançamentos de cartão vêm delas e não têm sucessor na Celcoin ainda. Só
+  // renomear sobrou como ação, e ela grava no Externo (`rename_connection`).
   const getConnectionDisplayName = (conn: { custom_name: string | null; connector_name: string | null }) => {
     return conn.custom_name || conn.connector_name || 'Sem nome';
   };

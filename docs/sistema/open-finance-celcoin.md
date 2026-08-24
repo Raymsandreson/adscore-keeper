@@ -288,6 +288,31 @@ existem **5.285** linhas `member`, que são clientes e não equipe — um seleto
 isso é inutilizável. O mapping é, por definição, quem tem conta nos dois bancos, e
 seus `ext_uuid` são exatamente os que as tabelas de permissão indexam.
 
+## A Pluggy saiu do código, não dos dados
+
+**24/08/2026.** "Aposentar" aqui significou remover o caminho, não o histórico.
+
+Saíram do `useCreditCardTransactions`: o proxy `callPluggyFunction` — que pegava
+a sessão do Cloud e chamava a edge `pluggy-integration` — e as **6 ações de
+escrita** que dependiam dele (`import_existing_connections`, `import_by_item_id`,
+`create_connect_token`, `save_connection`, `sync_transactions`,
+`delete_connection`). Todas estavam **sem nenhum consumidor** desde a troca dos
+menus: verificado por `grep` em todo o `src/` antes de cortar.
+
+Saíram junto o estado `syncing`, o import do `lovableCloudFunctions` (que fala
+sempre com o Cloud) e o do cliente `supabase`, que só existia para pegar a sessão
+daquelas chamadas — o que também eliminou o aviso de `no-restricted-imports` no
+arquivo. O hook foi de 244 para 161 linhas.
+
+**Nenhum caminho do front chama mais a `pluggy-integration`.** Sobraram apenas
+menções em comentário.
+
+**O que NÃO foi mexido, de propósito:** as 2.583 linhas de `bank_transactions` e
+as 5.524 de `credit_card_transactions` com `provider` da Pluggy, e as 3 linhas de
+`pluggy_connections`. São o registro histórico anterior a 19/03/2026 e a **única
+fonte de cartão que já existiu** — a Celcoin ainda não traz fatura nenhuma. A
+edge `pluggy-integration` também segue deployada no Cloud, sem chamadores.
+
 ## Os cartões apareciam só como 4 dígitos
 
 **24/08/2026.** Quarta ocorrência do mesmo padrão. `useExpenseCategories` lia
@@ -542,7 +567,8 @@ argumento.
 | Cartão de crédito | A conta existe (`40b9d9e8…`) e `/bills` responde 200 — com **lista vazia**. Instrumentado em 19/08: não é o nome do campo `billId`, é a lista mesmo. Corroborado pela Pluggy, que em 14 meses nunca viu fatura nas 2 conexões do Inter (os 5.524 lançamentos de cartão são **todos** do Santander). **Desempatado em 20/08/2026** (v14): o `/bills` foi chamado duas vezes, com janela (729b) e sem (597b), e as duas voltaram vazias — `0 faturas, com e sem janela`. A janela não está engolindo resultado; o Inter não tem fatura mesmo. Fica a ressalva de que isso **não prova** que `fromDueDate/toDueDate` sejam os nomes certos num transmissor que TENHA fatura — as duas hipóteses dão vazio aqui. O retry cobre esse caso quando aparecer: se vier 0 com janela e N sem, ele usa as N e o log diz que o par de parâmetros não vale. |
 | Consentimentos órfãos | **Resolvidos em 19/08/2026.** Os 6 `AWAITING` viraram `ABANDONED` (a Celcoin recusou revogar, 422) e saíram da tela. Seguem existindo na Celcoin, sem acesso a nada, até 18/08/2027. |
 | Contas ainda de fora | A Pluggy via **três** contas; hoje duas estão na Celcoin. Identificadas em `pluggy_connections`: `0a7772c8` = Inter R.P.Adv (conectada 24/08), `899a397c` = Inter P.CAP (conectada 18/08), `e23e8530` = Santander PF (pendente). A do Santander é a única fonte de cartão que já existiu: os 5.524 lançamentos de cartão são todos dela. |
-| Pluggy | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
+| Pluggy | **Código aposentado em 24/08/2026; dado preservado.** Saíram do `useCreditCardTransactions` o proxy `callPluggyFunction` e as 6 ações de escrita (import ×2, connect token, save, sync, delete) — todas sem consumidor. Nenhum caminho do front chama mais a edge `pluggy-integration` do Cloud. As 2.583 + 5.524 linhas históricas e as 3 conexões continuam intactas: são registro e a única fonte de cartão que já existiu. |
+| Pluggy (nota antiga) | **não aposentada.** Parou de trazer dado em 18/03/2026 mas as 3 conexões ainda dizem `status: UPDATED` (rótulo velho — o medidor é `last_sync_at`). O hook `useCreditCardTransactions` ainda tem 7 ações vivas apontando pra edge `pluggy-integration` no Cloud. As 2.583 + 5.524 linhas históricas são tudo que existe antes de 19/03. |
 | Piso da janela | **Por conta desde 24/08/2026** (v16). Foi por usuário (até v12) e por marca (v13); a segunda fez a conta nova da R.P.Adv herdar o piso da P.CAP e pular 1.641 lançamentos dizendo `success: true`. Verificado após o deploy: R.P.Adv usa 21/08 e P.CAP 19/08, cada uma com o seu. |
 | Alerta de obsolescência | **Front pronto em 20/08/2026** (`consentHealth` + 6 testes). O campo que ele consome (`last_transaction_date` em `list_connections`) subiu na v14 e foi conferido: o Inter devolve `2026-08-20`, as demais conexões `null`. Falta o aviso **fora** do painel de conexões — hoje é preciso abrir a aba para ver, e o alerta que exige ser procurado não é alerta. |
 | Conciliação em tela | **Corrigida em 24/08/2026** (v17). Extrato de conta e de cartão passam a vir do Externo pela ação `list_transactions`, com tradução de uuid e a mesma regra de visibilidade das policies. Conferido contra gabarito: 4.609/5.524 para o dono. Faltam os dois gerenciadores de permissão, que ainda escrevem no Cloud. |
