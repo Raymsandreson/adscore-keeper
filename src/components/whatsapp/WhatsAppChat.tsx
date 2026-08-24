@@ -37,6 +37,7 @@ import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments, type CommitmentReminder } from '@/hooks/useClientCommitments';
 import { buildReminderText } from '@/lib/clientCommitments';
 import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
+import { midiasDaMensagem, rotuloDaMidia, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
 import { format, isToday, isYesterday, isSameDay } from 'date-fns';
@@ -150,8 +151,11 @@ interface Props {
   onCreateCase?: () => void;
   extractingData?: boolean;
   extractionStep?: string;
-  /** `originMessageIds`: mensagens que originaram a atividade — viram o selo "Virou atividade" na bolha. */
-  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => void;
+  /**
+   * `originMessageIds`: mensagens que originaram a atividade — viram o selo "Virou atividade" na bolha.
+   * `originMedia`: anexos/links dessas mensagens, pra IA ler o que não é texto.
+   */
+  onCreateActivity?: (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[], originMedia?: MidiaDaMensagem[]) => void;
   onNavigateToLead?: (leadId: string) => void;
   onViewContact?: (contactId: string) => void;
   onPrivacyChanged?: () => void;
@@ -628,22 +632,35 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setTextSelectionMode(false);
     setTextSelectionOrder([]);
   };
+  /** Quem falou e quando — o rótulo que a IA da atividade usa pra situar cada mensagem. */
+  const rotuloDoAutor = (m: any) => ({
+    who: m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente'),
+    when: (() => {
+      try { return format(new Date(m.created_at), 'dd/MM HH:mm', { locale: ptBR }); }
+      catch { return ''; } // data inválida: segue sem
+    })(),
+  });
   /** Uma mensagem no formato que a IA da atividade lê: quem falou, quando, o quê. */
   const formatMsgForActivity = (m: any): string => {
-    const who = m.direction === 'outbound' ? 'Eu' : (conversation.contact_name || 'Cliente');
-    let when = '';
-    try { when = format(new Date(m.created_at), "dd/MM HH:mm", { locale: ptBR }); } catch { /* data inválida: segue sem */ }
-    return `[${who}${when ? ' · ' + when : ''}] ${m.message_text}`;
+    const { who, when } = rotuloDoAutor(m);
+    // Mensagem que é só anexo não tem texto — sem o rótulo do arquivo a linha
+    // sairia "[Cliente · 11:06] undefined" e a IA não saberia que houve anexo.
+    const corpo = (m.message_text || '').trim() || rotuloDaMidia(m) || '(mensagem sem texto)';
+    return `[${who}${when ? ' · ' + when : ''}] ${corpo}`;
   };
 
-  const buildTextSelectionPrefill = (): string => {
+  /** As mensagens selecionadas, na ordem em que foram clicadas. */
+  const mensagensSelecionadas = (ids: string[]): any[] => {
     const msgMap = new Map((messages || []).map((m: any) => [m.id, m]));
-    return textSelectionOrder
-      .map((id) => msgMap.get(id))
-      .filter((m: any) => m && m.message_text)
-      .map(formatMsgForActivity)
-      .join('\n');
+    return ids.map((id) => msgMap.get(id)).filter(Boolean);
   };
+
+  const buildTextSelectionPrefill = (): string =>
+    mensagensSelecionadas(textSelectionOrder).map(formatMsgForActivity).join('\n');
+
+  /** Anexos e links das mensagens selecionadas — o que o servidor vai ler de fato. */
+  const buildSelectionMedia = (msgs: any[]): MidiaDaMensagem[] =>
+    msgs.flatMap((m) => midiasDaMensagem(m, rotuloDoAutor(m)));
   // Contexto p/ sugestão de resposta da IA: últimas mensagens com texto, em ordem cronológica.
   const buildReplyContext = (): string => {
     return (messages || [])
@@ -705,9 +722,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
   const handleCreateActivityFromSelection = () => {
     if (!onCreateActivity || textSelectionOrder.length === 0) return;
+    const escolhidas = mensagensSelecionadas(textSelectionOrder);
     const prefill = buildTextSelectionPrefill();
-    if (!prefill) {
-      toast.error('Nenhuma mensagem com texto selecionada.');
+    const midias = buildSelectionMedia(escolhidas);
+    // Só bloqueia quando não sobrou NADA legível — antes, seleção de PDF sem
+    // legenda caía aqui mesmo tendo o documento inteiro pra ler.
+    if (!prefill && midias.length === 0) {
+      toast.error('Nada legível na seleção — a mídia ainda não foi baixada.');
       return;
     }
     onCreateActivity(
@@ -717,6 +738,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       conversation.contact_name || undefined,
       prefill,
       [...textSelectionOrder],
+      midias,
     );
     exitTextSelection();
   };
@@ -4667,13 +4689,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </div>
                 )}
                 {msg.message_text && (
+                  <p className="whitespace-pre-wrap">
+                    {msg.message_type === 'audio' && (
+                      <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
+                    )}
+                    {renderMessageText(msg.message_text, msg.direction === 'outbound')}
+                  </p>
+                )}
+                {/* Barra de ações da bolha. Ficava dentro do `message_text`, e
+                    por isso PDF/print sem legenda não tinha nem checkbox nem
+                    "Criar atividade" — justamente a mídia que mais vira tarefa. */}
+                {(msg.message_text || msg.media_url) && (
                   <>
-                    <p className="whitespace-pre-wrap">
-                      {msg.message_type === 'audio' && (
-                        <span className="text-[10px] font-medium text-muted-foreground block mb-0.5">🎤 Transcrição:</span>
-                      )}
-                      {renderMessageText(msg.message_text, msg.direction === 'outbound')}
-                    </p>
                     <div className={cn(
                       "flex items-center gap-1 mt-1 transition-opacity",
                       textSelectionMode || selectedTextMsgIds.has(msg.id)
@@ -4697,6 +4724,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       >
                         {selectedTextMsgIds.has(msg.id) ? getTextSelectionIndex(msg.id) : '✓'}
                       </button>
+                      {msg.message_text && (
                       <button
                         type="button"
                         title="Copiar texto"
@@ -4716,7 +4744,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       >
                         <Copy className="h-3 w-3" /> Copiar
                       </button>
-                      {!textSelectionMode && (
+                      )}
+                      {!textSelectionMode && msg.message_text && (
                         <button
                           type="button"
                           title="Sugerir resposta a esta mensagem com IA"
@@ -4733,7 +4762,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           <Sparkles className="h-3 w-3" /> Responder c/ IA
                         </button>
                       )}
-                      {!textSelectionMode && (
+                      {!textSelectionMode && msg.message_text && (
                         <button
                           type="button"
                           title="Comentar esta mensagem no chat interno da equipe"
@@ -4762,6 +4791,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                               conversation.contact_name || undefined,
                               formatMsgForActivity(msg),
                               [msg.id],
+                              midiasDaMensagem(msg, rotuloDoAutor(msg)),
                             );
                           }}
                           className={cn(
@@ -4772,7 +4802,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           <CalendarPlus className="h-3 w-3" /> Criar atividade
                         </button>
                       )}
-                      {!textSelectionMode && (
+                      {!textSelectionMode && msg.message_text && (
                         <button
                           type="button"
                           title="O cliente ficou de fazer algo nesta mensagem — registrar como pendência dele"

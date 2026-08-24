@@ -23,11 +23,12 @@ import { WhatsAppSettingsPage } from './WhatsAppSettingsPage';
 import { WhatsAppReconnectDialog } from './WhatsAppReconnectDialog';
 import { WhatsAppActivitySheet } from './WhatsAppActivitySheet';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
+import type { MidiaDaMensagem } from '@/lib/midiaDaConversa';
+import { avisarLeituraDeAnexos, daPraGerarRascunho, gerarRascunhoDaConversa } from '@/lib/rascunhoDaConversa';
 import { useActivityTypes } from '@/hooks/useActivityTypes';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { ConversationOwnerControl } from './ConversationOwnerControl';
 import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
-import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { format } from 'date-fns';
 
 // Formulário COMPLETO de atividade (o mesmo do chat interno) — lazy pra não
@@ -1552,10 +1553,12 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
    *
    * Sem mensagem de origem (menu do topo da conversa) o caminho antigo continua.
    */
-  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[]) => {
+  const handleCreateActivity = async (leadId: string, leadName: string, contactId?: string, contactName?: string, prefillText?: string, originMessageIds?: string[], originMedia?: MidiaDaMensagem[]) => {
     setActivityOriginMsgIds(originMessageIds || []);
 
-    if (!prefillText || !(originMessageIds || []).length) {
+    const midias = originMedia || [];
+    // Com anexo a IA tem o que ler mesmo sem texto nenhum (PDF sem legenda).
+    if (!daPraGerarRascunho(prefillText, midias) || !(originMessageIds || []).length) {
       setActivityDefaults({ leadId, leadName, contactId, contactName, dictationText: prefillText });
       setShowActivitySheet(true);
       return;
@@ -1563,50 +1566,17 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
 
     setActivityDraftLoading(true);
     try {
-      // Tipos ainda não carregados no clique (cache frio) → busca direto; com
-      // lista vazia a IA é instruída a deixar o TIPO em branco.
-      let typeOptions = activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label }));
-      if (typeOptions.length === 0) {
-        const { data: tRows } = await externalSupabase
-          .from('activity_types')
-          .select('key, label, is_active')
-          .order('display_order', { ascending: true });
-        typeOptions = ((tRows as { key: string; label: string; is_active: boolean }[]) || [])
-          .filter(t => t.is_active)
-          .map(t => ({ key: t.key, label: t.label }));
-      }
-      const memberNames = profiles.map(p => p.full_name).filter(Boolean) as string[];
-
-      const { data, error } = await routedFunctions.invoke('chat-to-activity', {
-        body: { transcript: prefillText, activity_types: typeOptions, member_names: memberNames },
+      avisarLeituraDeAnexos(midias);
+      const { draft } = await gerarRascunhoDaConversa({
+        prefillText,
+        midias,
+        leadId,
+        leadName,
+        activityTypes: activityTypes.filter(t => t.is_active).map(t => ({ key: t.key, label: t.label })),
+        profiles,
+        currentUserId: user?.id,
       });
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Falha ao gerar o rascunho da atividade');
-
-      const f = data.fields || {};
-      // Assessor sugerido pela IA (nome exato) vence; sem sugestão, fica com
-      // quem está criando. Mesmo critério para o prazo: o citado na conversa
-      // vence, senão hoje.
-      const suggested = f.assignee_name
-        ? profiles.find(p => (p.full_name || '').trim().toLowerCase() === String(f.assignee_name).trim().toLowerCase())
-        : null;
-      const me = profiles.find(p => p.user_id === user?.id);
-      const assignee = suggested || me || null;
-
-      setActivityDraft({
-        title: f.title || '',
-        activity_type: f.activity_type || 'tarefa',
-        priority: f.priority || 'normal',
-        deadline: f.deadline || format(new Date(), 'yyyy-MM-dd'),
-        lead_id: leadId || undefined,
-        lead_name: leadName || f.lead_name || undefined,
-        assigned_to: assignee?.user_id || undefined,
-        assigned_to_name: assignee?.full_name || undefined,
-        what_was_done: f.what_was_done || '',
-        current_status_notes: f.current_status || '',
-        next_steps: f.next_steps || '',
-        notes: [f.notes || '', `— Origem: conversa do WhatsApp —\n${prefillText}`].filter(Boolean).join('\n\n'),
-      });
+      setActivityDraft(draft);
       setActivityFullOpen(true);
     } catch (e) {
       console.error('[WhatsAppInbox] erro ao gerar atividade da conversa:', e);
