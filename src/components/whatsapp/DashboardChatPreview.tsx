@@ -57,7 +57,11 @@ import { WhatsAppActivitySheet } from '@/components/whatsapp/WhatsAppActivityShe
 const ActivityFullSheet = lazy(() =>
   import('@/components/activities/ActivityFullSheet').then((m) => ({ default: m.ActivityFullSheet }))
 );
+import type { ActivityDraft } from '@/components/activities/ActivityFullSheet';
 import { bindDownload } from '@/lib/downloadFile';
+import { midiasDaMensagem, rotuloDaMidia } from '@/lib/midiaDaConversa';
+import { avisarLeituraDeAnexos, gerarRascunhoDaConversa } from '@/lib/rascunhoDaConversa';
+import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -371,6 +375,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [replySuggestTarget, setReplySuggestTarget] = useState('');
   const [showActivitySheet, setShowActivitySheet] = useState(false);
   const [activityPrefill, setActivityPrefill] = useState('');
+  // Rascunho montado pela IA a partir de uma mensagem (com anexo, quando há).
+  const [activityDraft, setActivityDraft] = useState<ActivityDraft | null>(null);
+  const [activityDraftLoading, setActivityDraftLoading] = useState(false);
+  /** Mensagem que originou o rascunho — vira o selo e o "ver mensagem de origem". */
+  const [activityOriginMsgId, setActivityOriginMsgId] = useState<string | null>(null);
   const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const mediaInputRef = useRef<HTMLInputElement>(null);
@@ -750,9 +759,62 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     };
   };
 
-  const openActivityFromMessage = (prefillText: string) => {
-    setActivityPrefill(prefillText);
-    setShowActivitySheet(true);
+  /**
+   * "Atividade" na bolha: mesmo caminho da caixa de entrada. A IA lê a mensagem
+   * — e o anexo, quando é PDF/print/áudio/link — e devolve a ficha preenchida,
+   * já no processo que o documento citar.
+   *
+   * Antes daqui saía só o texto cru pro formulário em branco, e mídia sem
+   * legenda nem tinha botão: o que valia estava no arquivo, e ninguém lia.
+   */
+  const openActivityFromMessage = async (msg: Message) => {
+    const quem = msg.direction === 'outbound' ? 'Eu' : (contactName || 'Cliente');
+    let quando = '';
+    try { quando = format(parseISO(msg.created_at), 'dd/MM HH:mm'); } catch { /* data inválida: segue sem */ }
+    const corpo = (msg.message_text || '').trim() || rotuloDaMidia(msg) || '(mensagem sem texto)';
+    const prefillText = `[${quem}${quando ? ' · ' + quando : ''}] ${corpo}`;
+    const midias = midiasDaMensagem(msg, { who: quem, when: quando });
+
+    setActivityDraftLoading(true);
+    try {
+      avisarLeituraDeAnexos(midias);
+      const { draft } = await gerarRascunhoDaConversa({
+        prefillText,
+        midias,
+        leadId: linkedLead?.id,
+        leadName: linkedLead?.lead_name || contactName || undefined,
+        profiles: teamProfiles,
+        currentUserId: user?.id,
+      });
+      setActivityOriginMsgId(String(msg.id));
+      setActivityDraft(draft);
+    } catch (e) {
+      console.error('[DashboardChatPreview] erro ao gerar atividade da mensagem:', e);
+      toast.error((e as Error)?.message || 'Não foi possível gerar a atividade — abrindo o formulário em branco');
+      // Falhou a IA: cai no formulário de sempre, com o texto que já existia.
+      setActivityPrefill(prefillText);
+      setShowActivitySheet(true);
+    } finally {
+      setActivityDraftLoading(false);
+    }
+  };
+
+  /**
+   * Grava de qual mensagem a atividade nasceu. É o que faz a bolha ganhar o selo
+   * "Virou atividade" e a ficha ganhar o atalho "Ver mensagem de origem".
+   */
+  const registrarOrigemDaAtividade = async (created?: { id?: string; title?: string } | null) => {
+    if (!created?.id || !activityOriginMsgId || !phone) return;
+    await linkWhatsAppMessagesToActivity({
+      messageIds: [activityOriginMsgId],
+      phone,
+      instanceName,
+      activityId: created.id,
+      activityTitle: created.title || null,
+      createdBy: user?.id || null,
+    });
+    setActivityOriginMsgId(null);
+    toast.success('Atividade criada a partir da mensagem!');
   };
 
   const buildFinalMessage = async (message: string): Promise<string> => {
@@ -2404,21 +2466,27 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                                 >
                                   <Sparkles className="h-2.5 w-2.5" /> Responder c/ IA
                                 </button>
-                                <button
-                                  type="button"
-                                  title="Criar atividade a partir desta mensagem"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openActivityFromMessage(msg.message_text || '');
-                                  }}
-                                  className={cn(
-                                    "inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors",
-                                    isInbound ? "text-muted-foreground" : "text-primary-foreground/70"
-                                  )}
-                                >
-                                  <ClipboardList className="h-2.5 w-2.5" /> Atividade
-                                </button>
                               </>
+                            )}
+                            {/* Fora do guard de texto: mídia sem legenda (a
+                                intimação em PDF, o print do PJe) também vira
+                                atividade — é a IA que lê o anexo. */}
+                            {(msg.message_text || msg.media_url) && (
+                              <button
+                                type="button"
+                                title={msg.media_url ? 'Criar atividade — a IA lê o anexo desta mensagem' : 'Criar atividade a partir desta mensagem'}
+                                disabled={activityDraftLoading}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void openActivityFromMessage(msg);
+                                }}
+                                className={cn(
+                                  "inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors disabled:opacity-50",
+                                  isInbound ? "text-muted-foreground" : "text-primary-foreground/70"
+                                )}
+                              >
+                                <ClipboardList className="h-2.5 w-2.5" /> Atividade
+                              </button>
                             )}
                             {msg.media_url && (
                               <button
@@ -2782,6 +2850,33 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       profiles={teamProfiles}
       onSave={(extId) => commitments.setAssignee(trocandoDono!.id, extId)}
     />
+
+    {/* Rascunho montado pela IA a partir de uma mensagem da conversa. */}
+    {activityDraft && (
+      <Suspense fallback={null}>
+        <ActivityFullSheet
+          open
+          mode="create"
+          draft={activityDraft}
+          activityId={null}
+          onOpenChange={(o) => {
+            // Fechar sem criar descarta a origem — senão a próxima atividade
+            // herdaria a mensagem desta.
+            if (!o) { setActivityDraft(null); setActivityOriginMsgId(null); }
+          }}
+          onCreated={registrarOrigemDaAtividade}
+          side="left"
+        />
+      </Suspense>
+    )}
+
+    {/* Enquanto a IA lê a mensagem (e o anexo) e monta o rascunho */}
+    {activityDraftLoading && (
+      <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 bg-background border shadow-lg rounded-full px-4 py-2 flex items-center gap-2">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <span className="text-sm">Lendo a mensagem e montando a atividade...</span>
+      </div>
+    )}
 
     {/* Ficha da atividade gerada pela pendência — abre ao lado, sem sair da conversa. */}
     {openActivityId && (
