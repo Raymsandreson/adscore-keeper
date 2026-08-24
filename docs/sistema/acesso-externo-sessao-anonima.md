@@ -67,28 +67,47 @@ existe, só não é levada para o Externo.
 Escala total: **402 chamadas** de `ensureExternalSession` em 151 arquivos (fora
 os de teste); **132 arquivos** usam o client externo.
 
-## 4. A ponte Cloud → Externo está pela metade
+## 4. A ponte Cloud → Externo existe, e está inteira
 
-Ela foi começada e parou no meio. A edge `sync-auth-cloud-to-external` diz, na
-primeira linha do próprio arquivo:
+**Correção de 24/08, feita depois de medir com os dados reais do Cloud.** A
+primeira versão deste documento afirmava que os UUIDs eram os mesmos nos dois
+bancos, citando o comentário da edge `sync-auth-cloud-to-external`:
 
-> Sincroniza shells de auth.users do Cloud -> External (mesmo UUID, **sem
-> senha**). Objetivo: satisfazer FKs auth.users(id) no External para a migração
-> de dados.
+> Sincroniza shells de auth.users do Cloud -> External (**mesmo UUID**, sem
+> senha).
 
-Ou seja: os 54 usuários existem no Externo com o **mesmo UUID** do Cloud, mas
-sem senha. Não dá para logar neles. Foram criados para o banco não reclamar de
-chave estrangeira, não para autenticar ninguém.
+**Isso não corresponde ao banco.** Os UUIDs divergem, e existe uma tabela de
+tradução: `public.auth_uuid_mapping` (`cloud_uuid`, `ext_uuid`, `email`), com
+**52 linhas**.
 
-É por isso que o anônimo virou o caminho único.
+Cruzando os 36 UUIDs ativos do Cloud (últimos 90 dias) contra ela:
+
+| conferência | resultado |
+|---|---|
+| ativos do Cloud conferidos | 36 |
+| têm linha em `auth_uuid_mapping` | **36** |
+| cujo `ext_uuid` tem shell válido no Externo | **36** |
+| pelo UUID do Cloud direto (sem o mapa) | 19 — por isso a premissa errada custava caro |
+
+**Ninguém fica de fora.** A lacuna que travava o plano está fechada, e fechada
+para o lado bom.
+
+O que falta nos shells continua sendo a senha — eles existem para satisfazer FK.
+Por isso o anônimo virou caminho único: não é que a ponte não exista, é que
+ninguém a atravessa.
 
 ## 5. As saídas
 
 ### A. Trocar sessão via edge (recomendada)
 
 Uma edge `externo-sessao` que recebe o access token do Cloud, valida contra o
-Cloud com service role, e devolve uma sessão do Externo para o **mesmo UUID**
-(os shells já existem). O front chama `setSession()` no client externo.
+Cloud com service role, traduz o UUID por `auth_uuid_mapping` e devolve uma
+sessão do Externo para o `ext_uuid` correspondente. O front chama
+`setSession()` no client externo.
+
+A tradução é obrigatória: usar o UUID do Cloud direto acerta só 19 dos 36
+ativos. Quem escrever essa edge sem passar pelo mapa vai derrubar quase metade
+do escritório e achar que o problema é outro.
 
 `ensureExternalSession()` passa a ser: logado no Cloud → sessão real; página
 pública por token → anônimo, como hoje.
@@ -129,10 +148,10 @@ incidente de TI.
 
 ## 6. Lacunas — o que este levantamento NÃO conseguiu medir
 
-1. **Quantos usuários ativos existem no Cloud** e se os 54 shells do Externo
-   cobrem todos. O MCP desta sessão não tem permissão no projeto
-   `gliigkupoebmlbwyvijp`. Sem isso não dá para garantir que ninguém fica de
-   fora na troca de sessão.
+1. ~~Quantos usuários ativos existem no Cloud e se os shells cobrem todos.~~
+   **FECHADA em 24/08** com dados trazidos do Lovable, que tem acesso ao Cloud.
+   Cloud: 53 usuários, **zero anônimos**, 13 ativos em 30d, 37 em 90d. Todos os
+   36 conferidos têm mapa e shell. Ver seção 4.
 2. **Se `BookingPage` funciona hoje sem `ensureExternalSession`.** Ela usa `db`
    mas não pede sessão — ou depende de uma sessão criada por outra tela antes,
    ou lê tabela com policy para `anon`. Precisa de teste na página real.
@@ -141,7 +160,7 @@ incidente de TI.
 
 ## 7. Ordem sugerida
 
-1. Fechar as três lacunas do item 6.
+1. Fechar as lacunas restantes do item 6 (a principal já caiu).
 2. Construir a edge `externo-sessao` com fallback para anônimo — nada aperta
    ainda, nada quebra.
 3. Provar em produção que o usuário logado recebe sessão real (medir
