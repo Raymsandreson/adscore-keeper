@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Shield, Landmark, User, Check, X, Loader2, Eye, EyeOff, Settings, Save } from 'lucide-react';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from '@/hooks/useAuth';
-import { useFinanceAccess } from '@/hooks/useFinanceAccess';
+import { useFinanceAccess, invalidarAcessoFinanceiro } from '@/hooks/useFinanceAccess';
 import { toast } from 'sonner';
 
 interface BankAccount {
@@ -120,6 +120,10 @@ export function AccountPermissionsManager() {
       if (error) throw error;
       if (data?.success === false) throw new Error(data?.error || 'Falha ao salvar permissões');
 
+      // O acesso de quem foi alterado está em cache no `useFinanceAccess`; sem
+      // invalidar, a pessoa continuaria vendo (ou não vendo) o de antes até
+      // recarregar a página inteira.
+      invalidarAcessoFinanceiro();
       await carregar();
       toast.success('Permissões de contas atualizadas!');
       setIsDialogOpen(false);

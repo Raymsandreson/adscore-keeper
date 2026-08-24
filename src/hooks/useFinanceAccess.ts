@@ -19,6 +19,37 @@ const FECHADO: AcessoFinanceiro = {
 };
 
 /**
+ * Uma resposta por usuário, compartilhada entre todas as instâncias do hook.
+ *
+ * MEDIDO em 24/08/2026 pelo log da edge: uma abertura da tela financeira
+ * disparava `my_finance_access` 2×, `list_pluggy_connections` 2× e
+ * `list_finance_permissions` 3× — onze chamadas onde bastavam cinco. O hook é
+ * montado em mais de um lugar (a página, o hook de cartão, os gerenciadores) e
+ * cada instância buscava por conta própria. Guardar a *promessa* e não só o
+ * resultado é o que resolve: as instâncias montam no mesmo tick, então um cache
+ * de resultado ainda deixaria todas saírem juntas antes da primeira responder.
+ */
+let emVoo: { chave: string; promessa: Promise<AcessoFinanceiro> } | null = null;
+
+export function invalidarAcessoFinanceiro(): void {
+  emVoo = null;
+}
+
+async function buscarAcesso(): Promise<AcessoFinanceiro> {
+  const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
+    body: { action: 'my_finance_access' },
+  });
+  if (error || data?.success === false) throw new Error(data?.error || error?.message);
+  return {
+    bank: Boolean(data?.bank),
+    card: Boolean(data?.card),
+    isAdmin: Boolean(data?.is_admin),
+    allowedCards: (data?.allowed_cards as string[]) || [],
+    allowedAccounts: (data?.allowed_accounts as string[]) || [],
+  };
+}
+
+/**
  * Quem vê o quê no financeiro, e quem administra.
  *
  * Fonte única, respondida pela edge (`my_finance_access`). Não dá para perguntar
@@ -42,27 +73,23 @@ export function useFinanceAccess() {
   const [acesso, setAcesso] = useState<AcessoFinanceiro>(FECHADO);
   const [loading, setLoading] = useState(true);
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (forcar = false) => {
     if (!user) {
       setAcesso(FECHADO);
       setLoading(false);
       return;
     }
+    if (forcar) emVoo = null;
     setLoading(true);
     try {
-      const { data, error } = await cloudFunctions.invoke('celcoin-open-finance', {
-        body: { action: 'my_finance_access' },
-      });
-      if (error || data?.success === false) throw new Error(data?.error || error?.message);
-      setAcesso({
-        bank: Boolean(data?.bank),
-        card: Boolean(data?.card),
-        isAdmin: Boolean(data?.is_admin),
-        allowedCards: (data?.allowed_cards as string[]) || [],
-        allowedAccounts: (data?.allowed_accounts as string[]) || [],
-      });
+      if (!emVoo || emVoo.chave !== user.id) {
+        emVoo = { chave: user.id, promessa: buscarAcesso() };
+      }
+      setAcesso(await emVoo.promessa);
     } catch (err) {
       // Falha fecha o acesso em vez de abrir. Erro de rede não é autorização.
+      // A promessa falhada não fica no cache: a próxima montagem tenta de novo.
+      emVoo = null;
       console.warn('[useFinanceAccess] falhou, fechando acesso:', err);
       setAcesso(FECHADO);
     } finally {
@@ -71,14 +98,8 @@ export function useFinanceAccess() {
   }, [user]);
 
   useEffect(() => {
-    let vivo = true;
-    carregar().finally(() => {
-      if (!vivo) return;
-    });
-    return () => {
-      vivo = false;
-    };
+    void carregar();
   }, [carregar]);
 
-  return { ...acesso, loading, refetch: carregar };
+  return { ...acesso, loading, refetch: () => carregar(true) };
 }

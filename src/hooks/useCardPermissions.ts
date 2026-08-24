@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { cloudFunctions } from '@/lib/functionRouter';
 import { useAuth } from './useAuth';
-import { useFinanceAccess } from './useFinanceAccess';
+import { useFinanceAccess, invalidarAcessoFinanceiro } from './useFinanceAccess';
 
 interface CardPermission {
   id: string;
@@ -12,6 +12,14 @@ interface CardPermission {
   created_at: string;
 }
 
+/**
+ * O painel é o mesmo para todas as instâncias do hook, então uma busca serve
+ * todas. MEDIDO em 24/08/2026: `list_finance_permissions` saía **3×** por
+ * abertura da tela, e é a ação mais cara que existe aqui — varre os valores
+ * distintos de `pluggy_account_id` e `card_last_digits` sobre ~10 mil linhas.
+ * Guardar a promessa (e não o resultado) é o que resolve: as instâncias montam
+ * no mesmo tick e sairiam todas juntas antes da primeira responder.
+ */
 interface TeamMember {
   id: string;
   user_id: string;
@@ -19,6 +27,14 @@ interface TeamMember {
   email: string | null;
   full_name: string | null;
 }
+
+interface PainelPermissoes {
+  cards?: string[];
+  card_permissions?: CardPermission[];
+  team?: TeamMember[];
+}
+
+let painelEmVoo: Promise<PainelPermissoes> | null = null;
 
 /**
  * Permissões de cartão.
@@ -62,7 +78,8 @@ export function useCardPermissions() {
       // O painel inteiro é de administrador. Quem não é não precisa da lista
       // dos outros — e a edge recusaria com 403 de qualquer forma.
       if (isAdmin) {
-        const painel = await chamar('list_finance_permissions');
+        if (!painelEmVoo) painelEmVoo = chamar('list_finance_permissions');
+        const painel = await painelEmVoo;
         setPermissions((painel?.card_permissions as CardPermission[]) || []);
         setAllKnownCards((painel?.cards as string[]) || []);
         setTeamMembers((painel?.team as TeamMember[]) || []);
@@ -94,6 +111,10 @@ export function useCardPermissions() {
    */
   const definirCartoes = useCallback(async (userId: string, cards: string[]) => {
     await chamar('set_card_permissions', { target_user_id: userId, cards });
+    // Mudou permissão: o painel em cache está velho, e o acesso de quem foi
+    // alterado também. Invalidar os dois é o que faz a tela refletir a mudança.
+    painelEmVoo = null;
+    invalidarAcessoFinanceiro();
     await fetchPermissions();
   }, [chamar, fetchPermissions]);
 
