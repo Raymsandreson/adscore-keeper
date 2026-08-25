@@ -33,6 +33,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { ALL_METRICS } from '@/components/team/TeamsManager';
+import { CARGOS_JURIDICOS_SUGERIDOS } from '@/lib/cargosJuridicos';
 import { toast } from 'sonner';
 
 interface PopTeamCargosSectionProps {
@@ -245,6 +246,13 @@ export const PopTeamCargosSection = memo(function PopTeamCargosSection({ teamId,
   const [fichaPlanoId, setFichaPlanoId] = useState('');
   const [fichaSaving, setFichaSaving] = useState(false);
 
+  // ─── Novo cargo (ficha formal criada de dentro do POP) ───
+  const [novoCargoOpen, setNovoCargoOpen] = useState(false);
+  const [novoCargoNome, setNovoCargoNome] = useState('');
+  const [novoCargoDesc, setNovoCargoDesc] = useState('');
+  const [novoCargoPlanoId, setNovoCargoPlanoId] = useState('');
+  const [criandoCargo, setCriandoCargo] = useState(false);
+
   const carregarPlanoCarreira = useCallback(async () => {
     try {
       const [posRes, planRes, mpRes] = await Promise.all([
@@ -312,6 +320,12 @@ export const PopTeamCargosSection = memo(function PopTeamCargosSection({ teamId,
   const posPorNome = useMemo(() => new Map(
     positions.map(p => [p.name.trim().toLowerCase(), p])
   ), [positions]);
+
+  /** Atalhos do "Novo cargo": só os que ainda não têm ficha formal. */
+  const sugestoesInexistentes = useMemo(
+    () => CARGOS_JURIDICOS_SUGERIDOS.filter(s => !posPorNome.has(s.nome.trim().toLowerCase())),
+    [posPorNome],
+  );
 
   const planoNome = useMemo(() => new Map(planos.map(p => [p.id, p.name])), [planos]);
 
@@ -403,6 +417,43 @@ export const PopTeamCargosSection = memo(function PopTeamCargosSection({ teamId,
     }
   };
 
+  /**
+   * Cria a ficha formal de um cargo novo (job_positions). É o que põe o cargo
+   * nas opções de responsável de TODOS os POPs, mesmo sem ninguém ocupando —
+   * texto livre no campo de cargo fica só naquele time e sem descrição.
+   *
+   * RLS de job_positions é admin-only, igual a salvarFicha e ao card de
+   * sugestões da IA: o erro precisa dizer isso, não "erro ao criar".
+   */
+  const criarCargo = async () => {
+    const nome = novoCargoNome.trim();
+    if (!nome) return;
+    setCriandoCargo(true);
+    try {
+      const { data: existente } = await (supabase as any).from('job_positions')
+        .select('id').ilike('name', nome).limit(1).maybeSingle();
+      if (existente) {
+        toast.error(`Já existe um cargo chamado "${nome}".`);
+        return;
+      }
+      const { error } = await (supabase as any).from('job_positions').insert({
+        name: nome,
+        description: novoCargoDesc.trim() || null,
+        career_plan_id: novoCargoPlanoId || null,
+      });
+      if (error) throw error;
+      await carregarPlanoCarreira();
+      setNovoCargoOpen(false);
+      setNovoCargoNome(''); setNovoCargoDesc(''); setNovoCargoPlanoId('');
+      toast.success(`Cargo "${nome}" criado — já aparece nas opções de responsável.`);
+    } catch (e) {
+      console.error('[PopTeamCargos] Failed to create job position:', e);
+      toast.error('Sem permissão para criar cargo formal — é gestão de admin (Equipe → Carreira).');
+    } finally {
+      setCriandoCargo(false);
+    }
+  };
+
   const abrirFichaEditor = (userId: string, nome: string, pos?: JobPositionLite) => {
     setFichaEditor({ userId, posId: pos?.id, nome });
     setFichaDesc(pos?.description || '');
@@ -455,12 +506,94 @@ export const PopTeamCargosSection = memo(function PopTeamCargosSection({ teamId,
           Time e cargos
           {teamId && <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{membros.length}</Badge>}
         </span>
-        {!novoTimeOpen && (
-          <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setNovoTimeOpen(true)}>
-            <Plus className="h-3 w-3 mr-1" />Novo time
-          </Button>
-        )}
+        <span className="flex items-center gap-1">
+          {/* Criar cargo aqui, e não só em Equipe → Carreira: quem monta o POP
+              descobre o cargo que falta montando o POP. Até 24/08/2026 o campo
+              aceitava texto livre, mas cargo sem ficha formal não entra nas
+              opções dos outros POPs nem tem descrição — e era por isso que a
+              lista era quase toda comercial. */}
+          {!novoCargoOpen && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setNovoCargoOpen(true)}>
+              <Plus className="h-3 w-3 mr-1" />Novo cargo
+            </Button>
+          )}
+          {!novoTimeOpen && (
+            <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setNovoTimeOpen(true)}>
+              <Plus className="h-3 w-3 mr-1" />Novo time
+            </Button>
+          )}
+        </span>
       </div>
+
+      {novoCargoOpen && (
+        <div className="space-y-2 rounded-md border border-dashed p-2.5">
+          {/* Atalhos: os cargos que tocam um POP previdenciário e que a lista
+              formal não tinha. Preenchem nome e descrição; o texto continua
+              editável antes de gravar. */}
+          {sugestoesInexistentes.length > 0 && (
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground">
+                Do jurídico, ainda sem ficha — clique para preencher:
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {sugestoesInexistentes.map(s => (
+                  <Button
+                    key={s.nome}
+                    type="button" variant="outline" size="sm"
+                    className="h-6 px-1.5 text-[10px]"
+                    onClick={() => { setNovoCargoNome(s.nome); setNovoCargoDesc(s.descricao); }}
+                  >
+                    {s.nome}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <Input
+            value={novoCargoNome}
+            onChange={e => setNovoCargoNome(e.target.value)}
+            placeholder="Nome do cargo (ex.: Assessor Jurídico)"
+            className="h-7 text-[11px]"
+            autoFocus
+          />
+          <Textarea
+            value={novoCargoDesc}
+            onChange={e => setNovoCargoDesc(e.target.value)}
+            placeholder="O que este cargo faz — e o que ele NÃO pode fazer. É esta descrição que aparece quando alguém escolhe o responsável do passo."
+            className="min-h-[60px] text-[11px]"
+          />
+          <div className="flex items-center gap-2">
+            <Select value={novoCargoPlanoId || 'nenhum'} onValueChange={v => setNovoCargoPlanoId(v === 'nenhum' ? '' : v)}>
+              <SelectTrigger className="h-7 flex-1 text-[11px]">
+                <SelectValue placeholder="Plano de crescimento (opcional)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="nenhum" className="text-[11px]">Sem plano de crescimento</SelectItem>
+                {planos.map(p => (
+                  <SelectItem key={p.id} value={p.id} className="text-[11px]">{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              size="sm" className="h-7 text-xs"
+              onClick={criarCargo}
+              disabled={criandoCargo || !novoCargoNome.trim()}
+            >
+              {criandoCargo ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Criar cargo'}
+            </Button>
+            <Button
+              variant="ghost" size="sm" className="h-7 text-xs"
+              onClick={() => { setNovoCargoOpen(false); setNovoCargoNome(''); setNovoCargoDesc(''); setNovoCargoPlanoId(''); }}
+            >
+              Cancelar
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            O cargo passa a aparecer nas opções de todos os POPs, mesmo antes de alguém assumi-lo.
+          </p>
+        </div>
+      )}
 
       {novoTimeOpen && (
         <div className="flex items-center gap-2">
