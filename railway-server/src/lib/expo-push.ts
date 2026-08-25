@@ -18,6 +18,17 @@ export interface ExpoMensagem {
   body: string;
   data?: Record<string, unknown>;
   urgente?: boolean;
+  /**
+   * Chave de SUBSTITUIÇÃO: chegando outra com a mesma chave, ela toma o lugar da
+   * anterior em vez de empilhar. É o equivalente do `tag` do Web Push, e no Expo
+   * precisa de dois campos porque as plataformas resolvem isso em lugares
+   * diferentes — `tag` troca a notificação já na tela do Android, `collapseId`
+   * faz o mesmo no iOS e, nos dois, faz o aparelho offline receber só a última.
+   *
+   * Só use onde a mensagem nova CONTÉM a anterior. Substituir texto que a pessoa
+   * ainda não leu por texto novo apaga o que ela não viu.
+   */
+  substitui?: string;
 }
 
 export interface ResultadoExpo {
@@ -45,6 +56,7 @@ function paraCorpo(m: ExpoMensagem) {
     // problema que o Web Push já tinha.
     priority: 'high',
     channelId: m.urgente ? 'urgente' : 'default',
+    ...(m.substitui ? { tag: m.substitui, collapseId: m.substitui } : {}),
   };
 }
 
