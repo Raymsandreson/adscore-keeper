@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, Replace, ShieldAlert, Trash2, Undo2, XCircle,
+  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
@@ -99,11 +99,9 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
   const peca = melhorPeca(pecas, data, { assunto, janelaDias });
   if (!peca) return null;
   const rotulo = rotuloDaPeca(peca);
-  // De onde a peça veio decide se ela pode ser excluída — e quem procura a
-  // lixeira e não acha precisa saber por quê, senão acha que a tela quebrou.
-  const procedencia = peca.origem === 'manual'
-    ? 'anexada à mão — pode ser excluída'
-    : 'peça do tribunal — o acervo não se apaga';
+  // De onde a peça veio: quem confere precisa saber se está lendo o que o
+  // tribunal juntou ou o que alguém do escritório subiu à mão.
+  const procedencia = peca.origem === 'manual' ? 'anexada à mão' : 'peça do tribunal';
   return (
     <button
       type="button"
@@ -170,47 +168,39 @@ function BotaoAnexar({ rotulo, data, onAnexar }: {
 }
 
 /**
- * "esta peça está errada" — e a resposta muda conforme de onde ela veio.
+ * "desvincular" — a peça errada sai de cena, e nada se apaga.
  *
- * Peça ANEXADA À MÃO se apaga: é upload de alguém, sem valor de acervo, e o
- * arquivo errado não serve para nada.
+ * Vale igual para peça do tribunal e para upload manual: o Escavador baixa
+ * trocado, o tribunal junta no lugar errado, o casamento por data pega a peça de
+ * outro ato, ou alguém sobe o arquivo errado. Em todos, o que se quer é que ela
+ * pare de aparecer aqui — não que ela deixe de existir.
  *
- * Peça DO TRIBUNAL se OCULTA. O Escavador baixa trocado, o tribunal junta no
- * lugar errado, e o casamento por data às vezes pega a peça de outro ato — o
- * Raym levantou isso em 25/08. Mas apagar custaria uma solicitação nova, que
- * hoje funciona em um tribunal de oito. Ocultar conserta a exibição e mantém o
- * acervo; desfazer é um clique.
+ * Apagar não traria nada que isto não traga, e traria risco: o que veio do
+ * tribunal custou uma solicitação, e ela funciona em um tribunal de oito.
  */
-function BotaoTrocarPeca({ peca, onExcluir, onOcultar }: {
+function BotaoDesvincular({ peca, onDesvincular }: {
   peca: PecaDoProcesso;
-  onExcluir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
-  onOcultar: (p: PecaDoProcesso, motivo: string) => Promise<{ ok: boolean; erro?: string }>;
+  onDesvincular: (p: PecaDoProcesso, motivo: string) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const [indo, setIndo] = useState(false);
-  const manual = peca.origem === 'manual';
-  const Icone = manual ? Trash2 : Replace;
   return (
     <button
       type="button"
       disabled={indo}
       onClick={async () => {
         setIndo(true);
-        await (manual
-          ? onExcluir(peca)
-          : onOcultar(peca, 'peça errada para este marco'));
+        await onDesvincular(peca, 'peça errada para este marco');
         setIndo(false);
       }}
-      className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50"
-      title={manual
-        ? 'Excluir esta peça anexada à mão'
-        : 'Peça errada: tira de cena para você anexar a certa. O arquivo continua no acervo e dá para desfazer.'}
+      className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
+      title="Desvincular: a peça deixa de aparecer neste marco. O arquivo continua no acervo e dá para desfazer."
     >
-      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Icone className="h-3 w-3" />}
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlink className="h-3 w-3" />}
     </button>
   );
 }
 
-/** Uma peça foi tirada de cena aqui — o caminho de volta fica à vista. */
+/** Uma peça foi desvinculada aqui — o caminho de volta fica à vista. */
 function AvisoOculta({ pecas, data, onReexibir }: {
   pecas: PecaDoProcesso[]; data: string | null;
   onReexibir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
@@ -224,7 +214,7 @@ function AvisoOculta({ pecas, data, onReexibir }: {
       disabled={indo}
       onClick={async () => { setIndo(true); await onReexibir(p); setIndo(false); }}
       className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
-      title={`"${p.titulo ?? 'peça'}" foi tirada de cena — clique para trazer de volta`}
+      title={`"${p.titulo ?? 'peça'}" foi desvinculada — clique para trazer de volta`}
     >
       <Undo2 className="h-3 w-3" /> desfazer
     </button>
@@ -246,7 +236,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, ocultas, assinar, anexar, excluir, ocultar, reexibir } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, ocultar, reexibir } = usePecasDoProcesso(alvo?.cnj ?? null);
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
 
@@ -412,7 +402,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                                   pecas={pecas} data={m.dataDetectada} assunto="MARCO"
                                   onAbrir={abrirPeca}
                                 />
-                                <BotaoTrocarPeca peca={p} onExcluir={excluir} onOcultar={ocultar} />
+                                <BotaoDesvincular peca={p} onDesvincular={ocultar} />
                               </>
                             ) : (
                               <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexar} />

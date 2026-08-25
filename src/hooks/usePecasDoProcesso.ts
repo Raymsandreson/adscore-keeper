@@ -121,29 +121,16 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, [cnj, recarregar]);
 
-  /** Só apaga o que foi anexado à mão — a policy do banco recusa o resto. */
-  const excluir = useCallback(async (peca: PecaDoProcesso): Promise<{ ok: boolean; erro?: string }> => {
-    try {
-      await ensureExternalSession();
-      const del = await (db as unknown as { from: (t: string) => { delete: () => { eq: (c: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
-        .from('jm_documentos').delete().eq('id', peca.id);
-      if (del.error) return { ok: false, erro: del.error.message || 'esta peça não pode ser excluída' };
-      if (peca.storagePath) await db.storage.from(BUCKET).remove([peca.storagePath]);
-      await recarregar();
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, erro: String((e as Error)?.message || e) };
-    }
-  }, [recarregar]);
-
   /**
    * Tira a peça de cena SEM apagar o arquivo.
    *
-   * Peça do tribunal também vem errada — o Escavador baixa trocado, o tribunal
-   * junta no lugar errado, ou o casamento por data pega a peça de outro ato.
-   * Apagar seria caro e irreversível: recolher de novo custa uma solicitação, e
-   * ela funciona em um tribunal de oito. Ocultar resolve a exibição e mantém o
-   * acervo intacto.
+   * NADA SE APAGA — decisão do Raym em 25/08/2026: "em vez de apagar só
+   * desvincular". Vale para peça do tribunal e para upload manual igualmente.
+   *
+   * A peça errada some do casamento e da tela, o arquivo continua no bucket, e
+   * desfazer é um clique. Apagar não traria benefício nenhum que isto não traga:
+   * a exibição fica igualmente certa, e o que foi recolhido do tribunal (caro:
+   * uma solicitação, e ela funciona em um tribunal de oito) continua em casa.
    */
   const ocultar = useCallback(async (peca: PecaDoProcesso, motivo: string) => {
     try {
@@ -181,5 +168,5 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
   const pecas = todas.filter(p => !p.ocultaEm);
   const ocultas = todas.filter(p => p.ocultaEm);
 
-  return { pecas, ocultas, loading, erro, assinar, anexar, excluir, ocultar, reexibir, recarregar };
+  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, recarregar };
 }
