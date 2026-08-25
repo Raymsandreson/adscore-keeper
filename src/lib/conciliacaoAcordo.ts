@@ -36,8 +36,24 @@
 
 /** Percentual contratual padrão. Negociação diferente é rara e vira exceção manual. */
 export const HC_PADRAO = 0.30;
-/** Sucumbencial: pago pela parte contrária, não sai da cota do cliente. */
-export const HS_PADRAO = 0.10;
+
+/**
+ * O SUCUMBENCIAL NÃO TEM PADRÃO — e por isso não entra na régua.
+ *
+ * Corrigido em 25/08/2026, depois que o Raym desmentiu a primeira versão deste
+ * arquivo: o HS varia de 5% a 15% conforme o juiz arbitrou, pode ser majorado de
+ * novo no cumprimento de sentença, e pode ser dispensado. Tem acordo que traz,
+ * tem acordo que não traz.
+ *
+ * Que o caso 88 tenha dado 10% redondos foi coincidência daquele caso, não regra.
+ * Prever HS e cobrar a diferença acusaria divergência em acordo correto — o
+ * pior defeito possível numa tela de conferência, porque destrói a confiança em
+ * todos os outros alertas dela.
+ *
+ * Aqui o HS é OBSERVADO, nunca esperado. A faixa serve só para a tela comentar
+ * quando o valor lançado cai fora do usual; fora dela nada é acusado.
+ */
+export const HS_FAIXA = { min: 0.05, max: 0.15 } as const;
 
 /** Centavo de arredondamento não é divergência. Abaixo disso, é ruído. */
 export const TOLERANCIA = 1;
@@ -63,10 +79,15 @@ export interface Conciliacao {
   /** Valor da indenização antes do honorário: cliente ÷ 0,7. */
   bruto: number;
   hcEsperado: number;
-  hsEsperado: number;
+  /** % do bruto que o HS lançado representa. null quando não há HS. */
+  hsPctDoBruto: number | null;
+  /** true = há HS lançado e ele cai fora da faixa usual de 5% a 15%. Comentário,
+   *  não acusação: o juiz pode ter arbitrado assim. */
+  hsForaDaFaixa: boolean;
   /** Positivo = falta lançar honorário nosso. Negativo = há honorário a mais. */
   faltaHc: number;
-  /** O acordo como ele deveria ter sido lançado, sem a multa. */
+  /** O acordo como deveria ter sido lançado: cota + HC de 30% + o HS que a peça
+   *  trouxe. O HS entra pelo valor OBSERVADO, porque não há como prevê-lo. */
   acordoEsperado: number;
   /** O que a planilha realmente traz, sem a multa. */
   acordoLancado: number;
@@ -87,7 +108,8 @@ export function conciliarAcordo(l: LancadoNoAcordo): Conciliacao {
   // conciliação; a tela precisa saber que este caso não pode ser conferido.
   if (cliente <= 0) {
     return {
-      cliente, hc, hs, multa, bruto: 0, hcEsperado: 0, hsEsperado: 0,
+      cliente, hc, hs, multa, bruto: 0, hcEsperado: 0,
+      hsPctDoBruto: null, hsForaDaFaixa: false,
       faltaHc: 0, acordoEsperado: 0, acordoLancado: arred(hc + hs),
       situacao: 'SEM_CLIENTE',
     };
@@ -95,12 +117,16 @@ export function conciliarAcordo(l: LancadoNoAcordo): Conciliacao {
 
   const bruto = arred(cliente / (1 - HC_PADRAO));
   const hcEsperado = arred(bruto * HC_PADRAO);
-  const hsEsperado = arred(bruto * HS_PADRAO);
   const faltaHc = arred(hcEsperado - hc);
+  // HS zerado é legítimo: pode ter sido dispensado, ou o acordo não o previu.
+  const hsPctDoBruto = hs > 0 ? Math.round((hs / bruto) * 10000) / 10000 : null;
 
   return {
-    cliente, hc, hs, multa, bruto, hcEsperado, hsEsperado, faltaHc,
-    acordoEsperado: arred(cliente + hcEsperado + hsEsperado),
+    cliente, hc, hs, multa, bruto, hcEsperado, faltaHc,
+    hsPctDoBruto,
+    hsForaDaFaixa: hsPctDoBruto != null
+      && (hsPctDoBruto < HS_FAIXA.min || hsPctDoBruto > HS_FAIXA.max),
+    acordoEsperado: arred(cliente + hcEsperado + hs),
     acordoLancado: arred(cliente + hc + hs),
     situacao: Math.abs(faltaHc) <= TOLERANCIA ? 'OK'
       : faltaHc > 0 ? 'HC_FALTANDO' : 'HC_SOBRANDO',

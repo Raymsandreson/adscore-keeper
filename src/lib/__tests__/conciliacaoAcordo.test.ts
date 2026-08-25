@@ -12,12 +12,15 @@ describe('caso 88 — a régua fecha contra o documento', () => {
     expect(c.hcEsperado).toBeCloseTo(170454.54, 1);
   });
 
-  it('reconstrói o HS do termo (R$ 56.818,18)', () => {
-    expect(c.hsEsperado).toBeCloseTo(56818.18, 1);
+  it('NÃO prevê o HS — ele varia de 5% a 15% conforme o juiz arbitrou', () => {
+    // O termo do caso 88 traz HS de R$ 56.818,18, que calha de ser 10% redondos.
+    // Foi coincidência daquele caso: a régua não deve reproduzi-la.
+    expect(c).not.toHaveProperty('hsEsperado');
   });
 
-  it('o acordo esperado bate com os R$ 625.000 homologados', () => {
-    expect(c.acordoEsperado).toBeCloseTo(625000, 0);
+  it('o acordo esperado usa o HS OBSERVADO, não um previsto', () => {
+    // cota 397.727,26 + HC 170.454,54 + o HS que a planilha trouxe (1.992,59)
+    expect(c.acordoEsperado).toBeCloseTo(570174.39, 0);
   });
 
   it('acusa honorário SOBRANDO — foi lançado mais do que o acordo previa', () => {
@@ -28,6 +31,31 @@ describe('caso 88 — a régua fecha contra o documento', () => {
   it('a multa viaja para a tela mas fica fora da conciliação', () => {
     expect(c.multa).toBe(66000);
     expect(c.acordoLancado).toBeCloseTo(684561.25, 0); // sem a multa
+  });
+});
+
+describe('o sucumbencial é observado, nunca esperado', () => {
+  it('HS ausente não é divergência: pode ter sido dispensado', () => {
+    const c = conciliarAcordo({ cliente: 70000, hc: 30000 });
+    expect(c.situacao).toBe('OK');
+    expect(c.hsPctDoBruto).toBeNull();
+    expect(c.hsForaDaFaixa).toBe(false);
+  });
+
+  it('HS de 5% e de 15% são normais — a faixa inteira que o juiz pode arbitrar', () => {
+    expect(conciliarAcordo({ cliente: 70000, hc: 30000, hs: 5000 }).hsForaDaFaixa).toBe(false);
+    expect(conciliarAcordo({ cliente: 70000, hc: 30000, hs: 15000 }).hsForaDaFaixa).toBe(false);
+  });
+
+  it('fora da faixa a tela comenta, mas NÃO acusa divergência', () => {
+    const c = conciliarAcordo({ cliente: 70000, hc: 30000, hs: 30000 });
+    expect(c.hsForaDaFaixa).toBe(true);
+    expect(c.situacao).toBe('OK'); // o HC continua certo; só o HS chama atenção
+  });
+
+  it('majoração no cumprimento de sentença não vira erro', () => {
+    // HS que subiu de 10% para 14% em execução continua dentro do usual.
+    expect(conciliarAcordo({ cliente: 70000, hc: 30000, hs: 14000 }).hsForaDaFaixa).toBe(false);
   });
 });
 
