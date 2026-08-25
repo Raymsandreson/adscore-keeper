@@ -20,26 +20,14 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-// Tons disponíveis para a sugestão. label = exibido, prompt = instrução para a IA.
-const TONES: Record<string, { label: string; prompt: string }> = {
-  cordial: { label: 'Cordial', prompt: 'tom cordial e profissional' },
-  formal: { label: 'Formal', prompt: 'tom formal e respeitoso' },
-  friendly: { label: 'Amigável', prompt: 'tom amigável e acolhedor' },
-  empathetic: { label: 'Empático', prompt: 'tom empático e compreensivo' },
-  concise: { label: 'Direto', prompt: 'tom direto e objetivo, sem rodeios' },
-  firm: { label: 'Firme', prompt: 'tom firme e assertivo, porém educado' },
-};
+import {
+  TONS as TONES,
+  gerarSugestaoDeResposta,
+  type EstadoDaResposta,
+} from '@/lib/sugestaoDeResposta';
 
 /** Estado da conversa usado para decidir se há resposta pendente. */
-export interface ReplyState {
-  /** true = a última mensagem é do cliente (há algo a responder). */
-  pending: boolean;
-  /** Texto da última mensagem enviada pelo atendente (para evitar repetição). */
-  lastOutboundText: string;
-  /** Texto da última mensagem do cliente (âncora do que responder). */
-  lastClientText: string;
-}
+export type ReplyState = EstadoDaResposta;
 
 interface Props {
   /** Transcrição da conversa (contexto). Recalculada a cada abertura. */
@@ -63,6 +51,12 @@ interface Props {
    * 'team' = colega respondendo outro colega no chat interno da equipe.
    */
   mode?: 'client' | 'team';
+  /**
+   * Abre acima da pilha de avisos (z-120 do sonner). Usado quando a sugestão é
+   * pedida de dentro de um popup de notificação — sem isto o diálogo abria
+   * atrás do próprio popup que o chamou.
+   */
+  elevated?: boolean;
 }
 
 export function AISuggestReply({
@@ -76,6 +70,7 @@ export function AISuggestReply({
   onOpenChange,
   hideTrigger,
   mode = 'client',
+  elevated,
 }: Props) {
   const isTeam = mode === 'team';
   // Palavras conforme a persona: quem é o interlocutor e quem sou "Eu".
@@ -109,47 +104,15 @@ export function AISuggestReply({
     }
     setLoading(true);
     try {
-      const tonePrompt = TONES[toneKey]?.prompt || 'tom cordial e profissional';
-      // Âncora: a última fala do interlocutor é o que deve ser respondido (quando não há alvo explícito).
-      const anchorLine = !target?.trim() && clientMsg?.trim()
-        ? ` A ÚLTIMA mensagem enviada pelo ${counterpart} foi: "${clientMsg.trim()}". Sua resposta DEVE reagir diretamente a essa fala do ${counterpart}, e não a mensagens anteriores já respondidas.`
-        : '';
-      const targetLine = target?.trim()
-        ? ` O ${me} quer responder ESPECIFICAMENTE a esta mensagem do ${counterpart}: "${target.trim()}". Foque a resposta nela; use o restante da conversa apenas como contexto.`
-        : '';
-      // Evita que a IA reescreva/parafraseie a última mensagem que "Eu" já enviei.
-      const alreadyLine = already?.trim() && already.trim() !== target?.trim()
-        ? ` ATENÇÃO: o ${me} JÁ enviou recentemente esta mensagem — NÃO a repita nem a reescreva com outras palavras: "${already.trim()}". Escreva apenas a CONTINUAÇÃO, respondendo ao que o ${counterpart} falou depois disso.`
-        : '';
-      const extraLine = extra.trim()
-        ? ` Instrução adicional do ${me}: ${extra.trim()}.`
-        : '';
-      const custom_prompt = isTeam
-        ? (
-          `Você é um membro da equipe de um escritório de advocacia trocando mensagens com um COLEGA no chat interno da equipe. ` +
-          `Abaixo está o histórico da conversa (Eu = você; o nome antes de cada fala é o colega que a enviou). ` +
-          `Escreva APENAS a próxima mensagem que você deve enviar ao colega, em ${tonePrompt}, ` +
-          `em português brasileiro, natural e direto, como se fala entre colegas de trabalho. ` +
-          `Responda ao que o colega falou por último e ainda não foi respondido. ` +
-          `Não escreva saudações repetidas se a conversa já começou, não invente fatos. ` +
-          `Responda só com o texto da mensagem, sem aspas.` +
-          `${anchorLine}${targetLine}${alreadyLine}${extraLine}`
-        )
-        : (
-          `Você é o atendente de um escritório de advocacia previdenciário respondendo um cliente pelo WhatsApp. ` +
-          `Abaixo está o histórico da conversa (Eu = atendente, Cliente = a pessoa atendida). ` +
-          `Escreva APENAS a próxima mensagem que o atendente deve enviar como resposta, em ${tonePrompt}, ` +
-          `em português brasileiro, natural e claro. Responda ao que o CLIENTE falou por último e ainda não foi respondido. ` +
-          `Não escreva saudações repetidas se a conversa já começou, ` +
-          `não invente fatos jurídicos nem prometa prazos ou valores. Responda só com o texto da mensagem, sem aspas.` +
-          `${anchorLine}${targetLine}${alreadyLine}${extraLine}`
-        );
-
-      const { data, error } = await supabase.functions.invoke('ai-text-editor', {
-        body: { text: ctx, action: 'custom', custom_prompt },
+      const opts = await gerarSugestaoDeResposta({
+        contexto: ctx,
+        modo: mode,
+        tom: toneKey,
+        instrucao: extra,
+        alvo: target,
+        jaEnviado: already,
+        ultimaDoInterlocutor: clientMsg,
       });
-      if (error) throw error;
-      const opts: string[] = Array.isArray(data?.options) ? data.options.filter(Boolean) : [];
       if (!opts.length) {
         toast.error('Nenhuma sugestão retornada. Tente novamente.');
         return;
@@ -262,7 +225,10 @@ export function AISuggestReply({
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-xl">
+        <DialogContent
+          className={cn('max-w-xl', elevated && 'z-[200]')}
+          overlayClassName={elevated ? 'z-[190]' : undefined}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" /> Sugerir resposta
