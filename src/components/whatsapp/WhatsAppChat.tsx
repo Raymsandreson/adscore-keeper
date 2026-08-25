@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -62,6 +62,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import {
@@ -1151,14 +1152,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize the composer textarea based on content
-  useEffect(() => {
-    const el = messageInputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [newMessage]);
+  const sugestaoFantasmaRef = useRef<HTMLDivElement>(null);
   const rosterFetchedForRef = useRef<string | null>(null); // conversation.phone whose roster we already fetched
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1167,6 +1161,56 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Sugestão da IA já escrita no campo: aparece apagada dentro do "Digite uma
+  // mensagem" e vira texto de verdade com a seta para a direita (→) ou o botão
+  // ao lado. Enquanto não for aceita, não é o valor do campo — nada é enviado.
+  const ultimaMensagem = messages[messages.length - 1];
+  const ancoraDaSugestao = ultimaMensagem
+    ? `${conversation.phone}|${conversation.instance_name || ''}|${ultimaMensagem.id}`
+    : '';
+  const sugestaoCabeAqui =
+    inputMode === 'message' && !newMessage.trim() && !isRecording && !pastedImage && !shareInfo;
+  const {
+    sugestao: sugestaoAuto,
+    carregando: sugerindo,
+    aceitar: aceitarSugestao,
+    dispensar: dispensarSugestao,
+    regenerar: regerarSugestao,
+    ligada: sugestaoLigada,
+    setLigada: setSugestaoLigada,
+  } = useSugestaoAutomatica({
+    ativa: sugestaoCabeAqui,
+    ancora: ancoraDaSugestao,
+    buildContext: buildReplyContext,
+    getState: buildReplyState,
+  });
+  /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
+  const usarSugestao = () => {
+    const texto = aceitarSugestao();
+    if (!texto) return;
+    setNewMessage(texto);
+    requestAnimationFrame(() => {
+      const el = messageInputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(texto.length, texto.length);
+    });
+  };
+  const temSugestaoNoCampo = sugestaoCabeAqui && !!sugestaoAuto;
+
+  // Auto-resize the composer textarea based on content. A sugestão apagada mora
+  // por cima do campo: se ela for mais alta que o texto digitado, o campo cresce
+  // junto — senão a sugestão sairia cortada pela metade.
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const alturaDaSugestao = temSugestaoNoCampo || sugerindo
+      ? (sugestaoFantasmaRef.current?.scrollHeight ?? 0)
+      : 0;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, alturaDaSugestao), 200)}px`;
+  }, [newMessage, sugestaoAuto, temSugestaoNoCampo, sugerindo]);
 
   // Deep link vindo da ficha da atividade ("ver a mensagem que gerou"): rola até
   // a bolha e destaca por 2s. Depende de `messages` porque a conversa pode ainda
@@ -2804,6 +2848,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Sugestão apagada no campo: a seta para a direita (ou Tab) traz o texto para
+    // dentro, pronto para editar ou enviar. Esc joga fora. Só vale com o campo
+    // vazio — com texto digitado, a seta volta a ser só mover o cursor.
+    if (temSugestaoNoCampo && groupMentionQuery === null) {
+      if (e.key === 'ArrowRight' || e.key === 'Tab') {
+        e.preventDefault();
+        usarSugestao();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dispensarSugestao();
+        return;
+      }
+    }
     // While the @ picker is open, Enter/Tab pick the first match and Escape dismisses it.
     if (groupMentionQuery !== null && mentionMatches.length > 0) {
       if (e.key === 'Enter' || e.key === 'Tab') {
@@ -5094,6 +5153,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               )}
             </>
           )}
+          {inputMode === 'message' && !shareInfo && (
+            <>
+              <Label htmlFor="sugestao-automatica" className="text-xs text-muted-foreground cursor-pointer" title="A IA já deixa a resposta escrita no campo, apagada. Você aceita com → e envia.">
+                Sugerir resposta
+              </Label>
+              <Switch
+                id="sugestao-automatica"
+                checked={sugestaoLigada}
+                onCheckedChange={setSugestaoLigada}
+              />
+            </>
+          )}
           {inputMode === 'message' && (
             <>
               <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
@@ -5211,6 +5282,30 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </Button>
           </div>
         ) : !pastedImage && (
+          <>
+          {/* Aviso de que o texto apagado no campo é da IA e como aceitá-lo. */}
+          {sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) && (
+            <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+              <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+              {sugerindo ? (
+                <span>A IA está escrevendo uma sugestão de resposta...</span>
+              ) : (
+                <>
+                  <span className="min-w-0 truncate">
+                    Sugestão da IA — <strong className="font-medium text-foreground">→</strong> para usar,{' '}
+                    <strong className="font-medium text-foreground">Esc</strong> para dispensar.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={regerarSugestao}
+                    className="shrink-0 underline underline-offset-2 hover:text-foreground"
+                  >
+                    Outra
+                  </button>
+                </>
+              )}
+            </div>
+          )}
           <div className="flex gap-1 items-end">
             {/* Attach menu with internal options */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
@@ -5277,25 +5372,51 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               targetMessage={replySuggestTarget}
               hideTrigger
             />
-            <Textarea
-              ref={messageInputRef}
-              placeholder={
-                inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
-                  : inputMode === 'chat' ? (mentionUserName ? `Mensagem para @${mentionUserName}...` : "Selecione um membro acima...")
-                  : isGroup ? "Digite uma mensagem... (@ para marcar)"
-                  : "Digite uma mensagem..."
-              }
-              value={newMessage}
-              onChange={handleMessageChange}
-              onKeyDown={handleKeyDown}
-              onPaste={inputMode === 'message' ? handlePaste : undefined}
-              className={cn(
-                "min-h-[44px] max-h-[200px] resize-none overflow-y-auto text-sm flex-1",
-                inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
-                inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
+            {/* O campo e, por baixo dele, a sugestão apagada. O texto sugerido NÃO é
+                o valor do campo — só entra quando o usuário aceita, com → ou no botão. */}
+            <div className="relative flex-1">
+              {sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) && (
+                <div
+                  ref={sugestaoFantasmaRef}
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-md border border-transparent px-3 py-2 text-sm text-muted-foreground/60"
+                >
+                  {temSugestaoNoCampo ? sugestaoAuto : 'Escrevendo uma sugestão de resposta...'}
+                </div>
               )}
-              rows={1}
-            />
+              <Textarea
+                ref={messageInputRef}
+                placeholder={
+                  sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) ? ''
+                    : inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
+                    : inputMode === 'chat' ? (mentionUserName ? `Mensagem para @${mentionUserName}...` : "Selecione um membro acima...")
+                    : isGroup ? "Digite uma mensagem... (@ para marcar)"
+                    : "Digite uma mensagem..."
+                }
+                value={newMessage}
+                onChange={handleMessageChange}
+                onKeyDown={handleKeyDown}
+                onPaste={inputMode === 'message' ? handlePaste : undefined}
+                className={cn(
+                  "min-h-[44px] max-h-[200px] resize-none overflow-y-auto text-sm w-full bg-transparent",
+                  inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
+                  inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
+                )}
+                rows={1}
+              />
+            </div>
+            {/* Aceitar a sugestão: mesma coisa que apertar a seta para a direita. */}
+            {temSugestaoNoCampo && (
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-10 w-10 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                title="Usar a sugestão (seta para a direita →)"
+                onClick={usarSugestao}
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
             {newMessage.trim() ? (
               <Button
                 size="icon"
@@ -5322,6 +5443,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </Button>
             ) : null}
           </div>
+          </>
         )}
         {/* Location Dialog */}
         <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
