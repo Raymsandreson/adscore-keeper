@@ -1,4 +1,13 @@
-// send-whatsapp v26 (projeto externo kmedldlepwiityjsdahz)
+// send-whatsapp v27 (projeto externo kmedldlepwiityjsdahz)
+//
+// v27: action `send_menu` — o balão de escolha ("Pode continuar" / "Não tenho
+// interesse") via /send/menu da UazAPI, endpoint confirmado por chamada real em
+// 25/08/2026. Passa pelo mesmo gate de opt-out da v26. O rótulo do botão de
+// saída é casado de propósito com o reconhecedor da trigger do banco: tocar no
+// botão devolve o rótulo como texto, a trigger lê e registra o opt-out sozinha
+// — sem depender de redeploy do webhook.
+// ROLLBACK: apagar o bloco `action === 'send_menu'` e tirar 'send_menu' do
+// array useTarget; a v26 fica intacta.
 //
 // v26: GATE DE OPT-OUT. Envio 1:1 para número com opt-out ativo em
 // `whatsapp_optouts` é recusado com error_code RECIPIENT_OPTED_OUT (não
@@ -289,7 +298,11 @@ Deno.serve(async (req)=>{
     const useTarget = action === undefined || [
       'send_media',
       'send_location',
-      'send_text'
+      'send_text',
+      // v27: send_menu entra aqui para passar pelo gate de opt-out logo abaixo.
+      // Um balão perguntando "quer continuar?" enviado a quem já pediu para sair
+      // seria a pior versão da funcionalidade.
+      'send_menu'
     ].includes(action);
     const tgt = getTarget(body.phone, body.chat_id);
     if (useTarget && isInviteLink(tgt)) {
@@ -463,6 +476,97 @@ Deno.serve(async (req)=>{
       return jsonResp({
         success: true,
         deleted: count
+      });
+    }
+    // v27: BALÃO DE ESCOLHA (menu com botões).
+    //
+    // Confirmado contra a UazAPI em 25/08/2026 (chamada real, instância viva):
+    // `/send/menu` existe, aceita type "button" e devolve 200 com um
+    // NativeFlowMessage de quick_reply. Detalhe do formato que só aparece
+    // testando: a PRIMEIRA LINHA de `text` vira o cabeçalho (header.title) e o
+    // resto vira o corpo — por isso o texto padrão abaixo começa com uma linha
+    // curta de identificação.
+    //
+    // POR QUE ISTO EXISTE: medido em 90 dias de mensagens recebidas, ninguém
+    // escreve "sair" ou "pare" — zero ocorrências em 66.253 mensagens. Quem não
+    // quer simplesmente some (e envenena a instância) ou denuncia (e mata a
+    // instância). O botão é a saída barata que falta.
+    //
+    // O RÓTULO DO BOTÃO DE SAÍDA NÃO É LIVRE: ao tocar nele, o WhatsApp devolve
+    // o rótulo como mensagem de texto comum, e é a trigger
+    // `trg_wa_optout_detecta_inbound` que lê esse texto para registrar o opt-out
+    // e fechar o lead. "Não tenho interesse" casa com o reconhecedor — que é a
+    // forma nº 1 de recusa real nesta base (16 ocorrências em 90 dias). Mudar
+    // este texto sem mudar os padrões quebra o balão em silêncio; o teste em
+    // src/lib/__tests__/whatsappOptout.test.ts trava isso.
+    if (action === 'send_menu') {
+      const target = getTarget(body.phone, body.chat_id);
+      if (!target || !body.message) return jsonResp({
+        success: false,
+        error: 'phone/chat_id and message required'
+      });
+      const inst = await getInstance(cloudClient, extClient, body.instance_id, target, body.instance_name);
+      if (!inst) return jsonResp({
+        success: false,
+        error: 'Instância da conversa indisponível.',
+        error_code: 'INSTANCE_UNRESOLVED',
+        instance_name: body.instance_name || null
+      });
+      const base = inst.base_url || 'https://abraci.uazapi.com';
+      const choices = Array.isArray(body.choices) && body.choices.length
+        ? body.choices.map((c)=>String(c))
+        : ['Pode continuar', 'Não tenho interesse'];
+      const ur = await fetch(`${base}/send/menu`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          token: inst.instance_token
+        },
+        body: JSON.stringify({
+          number: target,
+          type: body.menu_type || 'button',
+          text: body.message,
+          choices,
+          footerText: body.footer || ''
+        })
+      });
+      if (!ur.ok) {
+        const et = await readSafe(ur);
+        if (isDisc(ur.status, et)) return jsonResp(discPayload(inst.instance_name, et));
+        return jsonResp({
+          success: false,
+          error: `Erro menu: ${et || ur.status}`,
+          error_code: 'SEND_FAILED',
+          instance_name: inst.instance_name
+        });
+      }
+      const ud = await ur.json().catch(()=>({}));
+      const eid = ud?.key?.id || ud?.id || null;
+      // Grava como texto para a conversa na tela ficar legível — a bolha do
+      // WhatsApp mostra pergunta e botões, e aqui fica pergunta + opções.
+      const row = {
+        phone: storagePhone(target),
+        message_text: `${body.message}\n\n[ ${choices.join(' ] [ ')} ]`,
+        message_type: 'text',
+        direction: 'outbound',
+        status: 'sent',
+        contact_id: body.contact_id || null,
+        lead_id: body.lead_id || null,
+        instance_name: inst.instance_name,
+        instance_token: inst.instance_token,
+        external_message_id: eid,
+        metadata: {
+          menu: true,
+          choices
+        }
+      };
+      const sm = await saveMsg(cloudClient, extClient, row);
+      return jsonResp({
+        success: true,
+        message_id: sm?.id || null,
+        external_message_id: eid,
+        instance_name: inst.instance_name,
+        choices
       });
     }
     if (action === 'send_media') {

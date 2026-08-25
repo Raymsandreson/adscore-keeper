@@ -32,6 +32,23 @@ export function optoutKey(raw: unknown): string | null {
 }
 
 /**
+ * Rótulos dos botões do balão de escolha (Fase 2).
+ *
+ * O texto do botão de saída NÃO é livre: quando a pessoa toca nele, o WhatsApp
+ * devolve o rótulo como uma mensagem de texto comum. É esse texto que a trigger
+ * `trg_wa_optout_detecta_inbound` lê para registrar o opt-out e fechar o lead.
+ * Ou seja, o botão só funciona porque o rótulo casa com `pediuParaParar` — e o
+ * teste em whatsappOptout.test.ts trava isso: mudar o rótulo sem mudar os
+ * padrões quebra a suíte, em vez de quebrar o atendimento em silêncio.
+ *
+ * Confirmado contra a UazAPI em 25/08/2026: /send/menu com type "button" devolve
+ * NativeFlowMessage com dois quick_reply, e o id de cada botão é o próprio
+ * rótulo.
+ */
+export const BOTAO_CONTINUAR = 'Pode continuar';
+export const BOTAO_SAIR = 'Não tenho interesse';
+
+/**
  * Só a mensagem INTEIRA vale como comando de saída. "Vou sair do trabalho
  * agora" e "pode parar na esquina" não podem fechar um atendimento.
  */

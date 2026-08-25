@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BOTAO_CONTINUAR,
+  BOTAO_SAIR,
   normalizeAckStatus,
   optoutKey,
   pediuParaParar,
@@ -128,5 +130,19 @@ describe('ack de entrega', () => {
     expect(statusAbaixoDe('delivered')).toEqual(['sent']);
     // Tudo já nasce 'sent': ack de 'sent' não tem o que sobrescrever.
     expect(statusAbaixoDe('sent')).toEqual([]);
+  });
+});
+
+describe('balão de escolha (Fase 2)', () => {
+  it('o rótulo do botão de saída É reconhecido como pedido de parada', () => {
+    // Este é o teste que faz o balão funcionar. Tocar no botão devolve o rótulo
+    // como mensagem de texto; é a trigger no banco que lê esse texto e registra
+    // o opt-out. Mudar o rótulo sem mudar os padrões quebraria o balão em
+    // silêncio — a pessoa clicaria em "não quero" e continuaria recebendo.
+    expect(pediuParaParar(BOTAO_SAIR)).toBe(true);
+  });
+
+  it('o rótulo do botão de continuar NÃO é confundido com pedido de parada', () => {
+    expect(pediuParaParar(BOTAO_CONTINUAR)).toBe(false);
   });
 });
