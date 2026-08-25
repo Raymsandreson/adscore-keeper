@@ -18,9 +18,15 @@ interface Agent {
 interface Props {
   phone: string;
   instanceName: string;
+  /**
+   * Rótulo ao lado do botão. No cabeçalho do chat o robozinho se explica pelo
+   * contexto; solto num popup de aviso, não — e o rótulo some junto com o
+   * controle quando não há agente nenhum cadastrado.
+   */
+  label?: string;
 }
 
-export function WhatsAppAgentToggle({ phone, instanceName }: Props) {
+export function WhatsAppAgentToggle({ phone, instanceName, label }: Props) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [activeAgentName, setActiveAgentName] = useState<string | null>(null);
@@ -163,6 +169,9 @@ export function WhatsAppAgentToggle({ phone, instanceName }: Props) {
 
   return (
     <div className="flex items-center gap-1">
+      {label && (
+        <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</span>
+      )}
       {/* Quick toggle */}
       <Button
         variant={agentEnabled ? 'default' : 'ghost'}

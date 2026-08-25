@@ -1,4 +1,4 @@
-import { useState, useRef, type KeyboardEvent, type ReactNode, type TouchEvent } from 'react';
+import { useEffect, useMemo, useState, useRef, type KeyboardEvent, type ReactNode, type TouchEvent } from 'react';
 import { Loader2, Send, Clock, X, FileText, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,24 @@ interface TeamNotificationToastProps {
   onReply?: (reply: string) => Promise<void>;
   /** Chamado quando o usuário fecha o popup deliberadamente (X ou swipe) sem responder nem abrir o chat */
   onManualDismiss?: () => void;
+  /** Ações extras ao lado do campo de resposta (ex.: sugerir resposta com IA). */
+  composerActions?: (api: ComposerApi) => ReactNode;
+  /** Ações extras na linha de baixo (ex.: ligar/desligar o agente de IA da conversa). */
+  footerActions?: ReactNode;
+  /**
+   * Fechar sozinho depois deste tempo (ms), controlado por AQUI e não pelo sonner.
+   * O relógio do sonner não dá para pausar: o aviso sumia no meio da resposta
+   * sendo digitada ou com o diálogo da IA aberto. Este para no primeiro toque —
+   * quem encostou no aviso está tratando a mensagem. Some sozinho só o aviso que
+   * ninguém tocou. Quem usa isto passa `duration: Infinity` no toast.
+   */
+  autoCloseMs?: number;
+}
+
+/** O que as ações extras podem fazer no popup. */
+export interface ComposerApi {
+  /** Escreve no campo de resposta (a pessoa revisa e envia). */
+  setReply: (text: string) => void;
 }
 
 const MUTE_OPTIONS = [
@@ -56,9 +74,14 @@ export function TeamNotificationToast({
   onMuteForMinutes,
   onReply,
   onManualDismiss,
+  composerActions,
+  footerActions,
+  autoCloseMs,
 }: TeamNotificationToastProps) {
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  // Mexeu no aviso = está tratando a mensagem: o relógio para.
+  const [held, setHeld] = useState(false);
   // Imagem sempre abre no visualizador interno — nunca em outra página.
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   // Já abriu o chat por este popup? Fechar depois disso não é "ignorou a
@@ -136,6 +159,14 @@ export function TeamNotificationToast({
     }
   };
 
+  useEffect(() => {
+    if (!autoCloseMs || held) return;
+    const timer = setTimeout(() => toast.dismiss(toastId), autoCloseMs);
+    return () => clearTimeout(timer);
+  }, [autoCloseMs, held, toastId]);
+
+  const composerApi = useMemo<ComposerApi>(() => ({ setReply }), []);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Enter') {
       event.preventDefault();
@@ -149,6 +180,7 @@ export function TeamNotificationToast({
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      onPointerDownCapture={() => setHeld(true)}
       className={`relative w-[min(24rem,calc(100vw-2rem))] rounded-xl border bg-background p-3 shadow-xl ${
         urgent ? 'border-destructive ring-2 ring-destructive/40' : 'border-border'
       }`}
@@ -225,7 +257,8 @@ export function TeamNotificationToast({
       )}
 
       {onReply && (
-        <div className="mt-3 flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
+        <div className="mt-3 flex items-center gap-1.5" onClick={(event) => event.stopPropagation()}>
+          {composerActions?.(composerApi)}
           <Input
             value={reply}
             onChange={(event) => setReply(event.target.value)}
@@ -245,31 +278,36 @@ export function TeamNotificationToast({
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-end gap-2" onClick={(event) => event.stopPropagation()}>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="h-8 gap-1">
-              <Clock className="h-3.5 w-3.5" />
-              Silenciar
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="z-[200]">
-            {MUTE_OPTIONS.map((opt) => (
-              <DropdownMenuItem
-                key={opt.label}
-                onClick={() => {
-                  onMuteForMinutes(opt.minutes);
-                  toast.dismiss(toastId);
-                }}
-              >
-                {opt.label}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-        <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => void handleOpen()}>
-          Abrir chat
-        </Button>
+      {/* flex-wrap: em tela estreita o controle do agente e os botões dividem a
+          linha por pouco — quebrar é melhor do que espremer/estourar o cartão. */}
+      <div className="mt-3 flex flex-wrap items-center gap-2" onClick={(event) => event.stopPropagation()}>
+        {footerActions}
+        <div className="ml-auto flex items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="sm" className="h-8 gap-1">
+                <Clock className="h-3.5 w-3.5" />
+                Silenciar
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="z-[200]">
+              {MUTE_OPTIONS.map((opt) => (
+                <DropdownMenuItem
+                  key={opt.label}
+                  onClick={() => {
+                    onMuteForMinutes(opt.minutes);
+                    toast.dismiss(toastId);
+                  }}
+                >
+                  {opt.label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button type="button" variant="outline" size="sm" className="h-8" onClick={() => void handleOpen()}>
+            Abrir chat
+          </Button>
+        </div>
       </div>
 
       <MediaLightbox url={lightboxUrl} onClose={() => setLightboxUrl(null)} />
