@@ -24,6 +24,7 @@ import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { formatCnj, onlyDigits } from '@/lib/cnj';
+import { MudancasDaPecaDialog } from './MudancasDaPecaDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
 import { melhorPeca, rotuloDaPeca, type AssuntoPeca, type PecaDoProcesso } from '@/lib/pecasDoProcesso';
@@ -236,9 +237,41 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, ocultas, assinar, anexar, ocultar, reexibir } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca } = usePecasDoProcesso(alvo?.cnj ?? null);
+
+  // O que muda com a peça recém-anexada. Sem este retorno, trocar documento é um
+  // clique que não produz efeito visível — e o Raym leu isso como tela quebrada.
+  const [mudancas, setMudancas] = useState<{
+    aberto: boolean; carregando: boolean; erro: string | null;
+    leitura: Record<string, unknown> | null; titulo: string;
+  }>({ aberto: false, carregando: false, erro: null, leitura: null, titulo: '' });
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
+  // O `anexar` recarrega a lista; a ref dá acesso ao valor JÁ atualizado sem
+  // esperar o próximo render.
+  const pecasRef = useRef<PecaDoProcesso[]>([]);
+
+  /** Anexa e, na sequência, mostra o efeito nos números. */
+  const anexarEMostrar = useCallback(async (
+    arquivo: File, dados: { titulo: string; dataDocumento: string | null },
+  ) => {
+    const r = await anexar(arquivo, dados);
+    if (!r.ok) return r;
+    // A peça acabou de nascer: acha o id dela pela data e pelo título que demos.
+    const nova = pecasRef.current.find(
+      p => p.origem === 'manual' && p.titulo === dados.titulo
+        && (p.dataDocumento ?? null) === (dados.dataDocumento ?? null),
+    );
+    if (!nova) return r; // anexou, mas não deu para localizar — melhor calar que errar
+    setMudancas({ aberto: true, carregando: true, erro: null, leitura: null, titulo: dados.titulo });
+    const lida = await lerPeca(nova.id);
+    setMudancas(m => ({
+      ...m, carregando: false,
+      leitura: lida.leitura ?? null,
+      erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
+    }));
+    return r;
+  }, [anexar, lerPeca]);
 
   const abrirPeca = useCallback(async (peca: PecaDoProcesso, rotulo: string) => {
     setErroPeca(null);
@@ -248,6 +281,8 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
     if (!url) { setErroPeca(`Não consegui abrir "${rotulo}".`); return; }
     setPecaAberta({ url, titulo: rotulo });
   }, [assinar]);
+
+  pecasRef.current = pecas;
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
@@ -405,7 +440,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                                 <BotaoDesvincular peca={p} onDesvincular={ocultar} />
                               </>
                             ) : (
-                              <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexar} />
+                              <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexarEMostrar} />
                             )}
                             <AvisoOculta pecas={ocultas} data={m.dataDetectada} onReexibir={reexibir} />
                           </span>
@@ -643,6 +678,16 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
       {/* Empilha por cima do próprio Sheet: telão -> conferência -> peça, e o
           fechar devolve à conferência, não à carteira. Mesmo visualizador do
           WhatsApp, com o mesmo botão de baixar. */}
+      <MudancasDaPecaDialog
+        aberto={mudancas.aberto}
+        onClose={() => setMudancas(m => ({ ...m, aberto: false }))}
+        carregando={mudancas.carregando}
+        erro={mudancas.erro}
+        leitura={mudancas.leitura}
+        tituloPeca={mudancas.titulo}
+        atuais={clientes.map(c => ({ cliente: c.cliente, valor: c.valor }))}
+      />
+
       <MediaLightbox
         url={pecaAberta?.url ?? null}
         title={pecaAberta?.titulo ?? 'Peça dos autos'}

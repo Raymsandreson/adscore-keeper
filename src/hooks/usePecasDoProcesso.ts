@@ -168,5 +168,47 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
   const pecas = todas.filter(p => !p.ocultaEm);
   const ocultas = todas.filter(p => p.ocultaEm);
 
-  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, recarregar };
+  /**
+   * Manda ler a peça e espera o resultado, para a tela poder mostrar O QUE MUDA.
+   *
+   * Trocar a peça de um marco sem dizer o que isso faz com os números é pior que
+   * não trocar: a pessoa mexe, nada acontece à vista, e ela conclui que a tela
+   * está quebrada. Foi o que o Raym viu em 25/08/2026.
+   *
+   * O disparo vai por RPC `jm_ler_documento` (SECURITY DEFINER) porque a chave
+   * da edge mora em `jm_config`, que só o service role alcança — o front nunca
+   * a vê. A leitura é assíncrona, então aqui se espera pela linha aparecer.
+   */
+  const lerPeca = useCallback(async (
+    documentoId: number,
+    opts: { tentativas?: number; intervaloMs?: number } = {},
+    // Forma frouxa em vez de união discriminada: este projeto roda com
+    // `strict: false`, e sem strictNullChecks o TS não estreita `ok: true` contra
+    // `ok: false` — o campo do outro lado da união vira erro no consumidor.
+  ): Promise<{ ok: boolean; leitura?: Record<string, unknown>; erro?: string }> => {
+    const tentativas = opts.tentativas ?? 20;
+    const intervalo = opts.intervaloMs ?? 3000;
+    try {
+      await ensureExternalSession();
+      const rpc = await (db as unknown as { rpc: (n: string, a: unknown) => Promise<{ error: { message?: string } | null }> })
+        .rpc('jm_ler_documento', { p_documento_id: documentoId });
+      if (rpc.error) return { ok: false, erro: rpc.error.message || 'falha ao disparar a leitura' };
+
+      for (let i = 0; i < tentativas; i += 1) {
+        const r = await (db as unknown as { from: (t: string) => { select: (c: string) => { eq: (c: string, v: unknown) => { maybeSingle: () => Promise<{ data: Record<string, unknown> | null }> } } } })
+          .from('jm_documento_leitura')
+          .select('id, especie, valor_condenacao, partes, processo, cronograma, resumo')
+          .eq('documento_id', documentoId).maybeSingle();
+        if (r.data) return { ok: true, leitura: r.data };
+        await new Promise(res => setTimeout(res, intervalo));
+      }
+      // Não é erro definitivo: a leitura pode chegar depois. Dizer isso é melhor
+      // que fingir que falhou e fazer a pessoa anexar de novo.
+      return { ok: false, erro: 'a leitura ainda não voltou — reabra a conferência em um minuto' };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, []);
+
+  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, lerPeca, recarregar };
 }
