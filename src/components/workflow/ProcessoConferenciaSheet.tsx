@@ -99,12 +99,17 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
   const peca = melhorPeca(pecas, data, { assunto, janelaDias });
   if (!peca) return null;
   const rotulo = rotuloDaPeca(peca);
+  // De onde a peça veio decide se ela pode ser excluída — e quem procura a
+  // lixeira e não acha precisa saber por quê, senão acha que a tela quebrou.
+  const procedencia = peca.origem === 'manual'
+    ? 'anexada à mão — pode ser excluída'
+    : 'peça do tribunal — o acervo não se apaga';
   return (
     <button
       type="button"
       onClick={() => onAbrir(peca, rotulo)}
       className="inline-flex items-center gap-1 text-[11px] underline underline-offset-2 hover:text-foreground"
-      title={rotulo}
+      title={`${rotulo} · ${procedencia}`}
     >
       <Paperclip className="h-3 w-3 shrink-0" />
       ver a peça
@@ -320,13 +325,27 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
               {marcos.length > 0 && (
                 <div className="space-y-1 pt-1">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trilha detectada</div>
-                  {marcos.map(m => (
+                  {/* Do mais antigo para o mais novo: a trilha é a história do
+                      processo, e história se lê de cima para baixo. A `ordem` do
+                      marco no POP saiu da tela — é número interno da régua, não
+                      diz nada a quem lê, e competia com a data pela atenção. */}
+                  {[...marcos]
+                    .sort((a, b) => (a.dataDetectada ?? '').localeCompare(b.dataDetectada ?? ''))
+                    .map((m, i, todos) => (
                     <div
                       key={`${m.chave}-${m.dataDetectada}`}
-                      className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs ${m.atual ? 'bg-muted/60 font-medium' : ''}`}
+                      className={`flex items-start gap-2 rounded px-1.5 py-1 text-xs ${m.atual ? 'bg-muted/60 font-medium' : ''}`}
                     >
-                      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                        {m.ordem ?? '—'}
+                      {/* Fio da linha do tempo: bolinha cheia no marco atual, e o
+                          traço só até o penúltimo, para a linha não sobrar solta. */}
+                      <span className="relative flex w-3 shrink-0 justify-center self-stretch">
+                        <span
+                          className={`z-10 mt-1 h-2 w-2 shrink-0 rounded-full ${
+                            m.atual ? 'bg-primary ring-2 ring-primary/30' : 'bg-muted-foreground/40'}`}
+                        />
+                        {i < todos.length - 1 && (
+                          <span className="absolute left-1/2 top-2 h-full w-px -translate-x-1/2 bg-border" />
+                        )}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{m.rotulo}</span>
                       {m.atravessaFases && (
