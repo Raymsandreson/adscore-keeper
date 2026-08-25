@@ -138,3 +138,83 @@ export function gmailBodyToText(msg: any): string {
   }
   return '';
 }
+
+// ---------------------------------------------------------------------------
+// Pontos pendentes de uma EXIGÊNCIA
+//
+// O despacho de exigência tem três formatos, medidos em 40 amostras reais
+// (25/08/2026): "solicitamos o envio eletrônico dos documentos descritos
+// abaixo" com lista numerada (9), "agende a perícia/avaliação" (31 somando os
+// dois textos de agendamento) e casos avulsos (biometria, procuração).
+//
+// Por isso a extração NÃO procura uma lista: ela corta o rodapé de instruções
+// — "como anexar no Meu INSS", "só imprima o necessário", "atenciosamente" —
+// e devolve o miolo, que é o que o assessor precisa ler. Em 3 das 40 o miolo
+// passa de 1.200 caracteres e sai truncado; nas outras 37 cabe inteiro.
+// ---------------------------------------------------------------------------
+
+/** Onde o texto deixa de falar do caso e vira manual de uso do Meu INSS. */
+const RODAPE_EXIGENCIA: RegExp[] = [
+  /O cumprimento de exig[êe]ncia por meio eletr[ôo]nico/i,
+  /Se preferir, agende o servi[çc]o/i,
+  /É poss[íi]vel acompanhar o andamento/i,
+  /S[óo] imprima o necess[áa]rio/i,
+  /Clique aqui e crie sua assinatura/i,
+  /Atenciosamente,?\s*Instituto Nacional/i,
+  /O n[ãa]o atendimento desta exig[êe]ncia/i,
+  // Passo a passo de como usar o Meu INSS: vem em 31 das 40 amostras e é
+  // sempre o mesmo texto. O que interessa está na frase antes dele.
+  /Para agendar:/i,
+  /Outra forma de agendar/i,
+];
+
+/** Saudação e prefixo de protocolo interno, que não dizem nada do caso. */
+const ABERTURA = /^(NR:\s*)?(Prezado\(a\)\s*(Sr\.?\(a\)|Senhor\(a\))\s*,?\s*)?/i;
+
+const MAX_PONTOS = 1200;
+
+/**
+ * O prazo mora justamente na frase de rodapé que é cortada ("...até o dia
+ * 20/07/2026 (30 dias de prazo)"), e perder a data é perder o que torna a
+ * tarefa urgente. Por isso ela volta como uma linha própria.
+ */
+function extrairPrazo(texto: string): string | null {
+  const data = texto.match(/at[ée] o dia (\d{2}\/\d{2}\/\d{4})/i);
+  if (data) return data[1];
+  const dias = texto.match(/em at[ée] (\d{1,3}) dias/i);
+  return dias ? `${dias[1]} dias a contar da exigência` : null;
+}
+
+/**
+ * Miolo do despacho de exigência, em linhas — o que está pendente, sem o
+ * manual do Meu INSS. Devolve null quando não sobra texto aproveitável.
+ */
+export function extrairPontosPendentes(despacho?: string | null): string | null {
+  const bruto = (despacho || '').replace(/\s+/g, ' ').trim();
+  if (!bruto) return null;
+
+  const prazo = extrairPrazo(bruto);
+
+  let corte = bruto.length;
+  for (const re of RODAPE_EXIGENCIA) {
+    const m = bruto.match(re);
+    if (m?.index !== undefined && m.index < corte) corte = m.index;
+  }
+
+  let miolo = bruto.slice(0, corte).replace(ABERTURA, '').trim();
+  if (miolo.length < 20) return null;
+
+  if (miolo.length > MAX_PONTOS) miolo = `${miolo.slice(0, MAX_PONTOS).trim()}…`;
+
+  // Itens numerados ("1.", "2)") e o bullet que chega corrompido como "?"
+  // viram linha própria: em texto corrido a lista fica ilegível na atividade.
+  const linhas = miolo
+    .replace(/\s(\d{1,2}[.)])\s/g, '\n$1 ')
+    .replace(/\s\?\s/g, '\n- ')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  const corpo = linhas.join('\n');
+  return prazo ? `${corpo}\n\n⏳ Prazo: ${prazo}` : corpo;
+}

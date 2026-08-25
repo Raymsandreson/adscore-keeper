@@ -232,6 +232,11 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 
 **Alerta de sync parado**: se o `gmail-inss-sync` não roda há mais de 2h, as telas avisam. Sem isso, sync parado exibe 0 e parece que ninguém protocolou.
 
+**Responsável da atividade "INSS atualizou …"** (25/08/2026): o `notify-inss-update` grava dono fixo por status — `Protocolado` → **Luana Barros**, todo o resto (Exigência, Em Análise, Concluída, Pendente, Cancelada) → **Jose Francisco Campos de Oliveira**. Antes herdava `leads.assigned_to`, e o lead do requerimento quase nunca tem alguém: 340 das 381 atividades (89%) nasciam sem dono e só andavam quando alguém tropeçava nelas. Backfill aplicado no mesmo dia nas pendentes dos últimos 32 dias; as anteriores ficaram sem dono de propósito.
+
+- O UUID da Luana ali é o `profiles.user_id` (`1589c873…`), **não** o `profiles.id` (`c5284e57…`). O filtro de "minhas atividades" remapeia e casa por `user_id` — o `sync-process-compromissos` grava o `profiles.id` nas audiências, e por isso as 19 criadas por ele não aparecem para ela.
+- Essas atividades **não carimbam `action_source`**: entram como `manual`. Medir "quanto o robô cria" por `action_source` deixa as 400 de fora — o que identifica é o título `INSS atualizou %`.
+
 **Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
 
 **Vínculo automático — duas passadas** (`match-inss-orphans`, cron de 15 min):

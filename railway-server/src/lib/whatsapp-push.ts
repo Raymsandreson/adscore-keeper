@@ -14,6 +14,7 @@
 // resolvidas por lock, não por lógica no processo.
 import webpush from 'web-push';
 import { supabase } from './supabase';
+import { enviarExpo } from './expo-push';
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || '';
@@ -230,7 +231,17 @@ async function toCloudUserId(extUserId: string): Promise<string> {
   }
 }
 
-async function pushToUser(userId: string, payload: string): Promise<number> {
+/** O aviso em si, antes de virar payload de um canal ou de outro. */
+interface Aviso {
+  title: string;
+  body: string;
+  /** URL do SITE. O app traduz para a rota dele em `src/lib/push/rota.ts`. */
+  url: string;
+  /** Chave da conversa: a notificação nova toma o lugar da anterior. */
+  tag: string;
+}
+
+async function pushToUser(userId: string, aviso: Aviso): Promise<number> {
   const cloudId = await toCloudUserId(userId);
 
   // Aceita os dois: quem tem cloud_uuid = ext_uuid cai no mesmo valor, e uma
@@ -238,25 +249,65 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
   const ids = Array.from(new Set([cloudId, userId]));
   const { data: subs } = await supabase
     .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
+    .select('id, endpoint, p256dh, auth, provider')
     .in('user_id', ids);
 
   if (!subs || subs.length === 0) return 0;
 
+  // Duas famílias de assinatura na mesma tabela: navegador (VAPID) e app (token
+  // Expo). `provider` nulo é linha anterior à migration — Web Push. Mesma
+  // separação do `send-team-push`.
+  type Sub = { id: string; endpoint: string; p256dh: string | null; auth: string | null; provider: string | null };
+  const todas = subs as Sub[];
+  const web = todas.filter((s) => (s.provider || 'webpush') === 'webpush' && s.p256dh && s.auth);
+  const expo = todas.filter((s) => s.provider === 'expo');
+
   let sent = 0;
-  await Promise.all(
-    subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
-      try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
-        sent++;
-      } catch (err: unknown) {
-        const code = (err as { statusCode?: number })?.statusCode;
-        if (code === 404 || code === 410) {
-          await supabase.from('push_subscriptions').delete().eq('id', s.id);
+
+  // O VAPID é condição do navegador, não do aviso: sem chave configurada o app
+  // continua sendo notificado. Era aqui que a checagem no topo do
+  // `notifyNewWhatsAppMessage` derrubava os dois canais de uma vez.
+  if (web.length > 0 && ensureVapid()) {
+    const payload = JSON.stringify({ ...aviso, urgent: false });
+    await Promise.all(
+      web.map(async (s) => {
+        try {
+          await webpush.sendNotification(
+            { endpoint: s.endpoint, keys: { p256dh: s.p256dh as string, auth: s.auth as string } },
+            payload,
+          );
+          sent++;
+        } catch (err: unknown) {
+          const code = (err as { statusCode?: number })?.statusCode;
+          if (code === 404 || code === 410) {
+            await supabase.from('push_subscriptions').delete().eq('id', s.id);
+          }
         }
-      }
-    }),
-  );
+      }),
+    );
+  }
+
+  // Canal do app. Substituir é seguro AQUI porque o `wa_push_claim` já agregou:
+  // o corpo da mensagem nova diz "N mensagens novas" e contém a anterior. No
+  // chat da equipe não seria — lá cada push é um texto diferente.
+  if (expo.length > 0) {
+    const r = await enviarExpo(
+      expo.map((s) => ({
+        to: s.endpoint,
+        title: aviso.title,
+        body: aviso.body,
+        data: { url: aviso.url, tag: aviso.tag },
+        substitui: aviso.tag,
+      })),
+    );
+    sent += r.enviados;
+
+    if (r.tokensMortos.length > 0) {
+      // App desinstalado ou token rotacionado: mesma limpeza que o 404/410 faz.
+      await supabase.from('push_subscriptions').delete().in('endpoint', r.tokensMortos);
+    }
+  }
+
   return sent;
 }
 
@@ -265,8 +316,6 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
  */
 export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Promise<void> {
   try {
-    if (!ensureVapid()) return;
-
     const convDigits = digits(input.phone);
     if (!convDigits) return;
 
@@ -363,17 +412,14 @@ export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Prom
           const pending = Number(row.pending_count || 1);
           const body = pending > 1 ? `${pending} mensagens novas — ${preview}` : preview;
 
-          const payload = JSON.stringify({
+          const sent = await pushToUser(userId, {
             title,
             body,
             url,
             // tag por conversa: o sistema SUBSTITUI a notificação anterior em vez
             // de empilhar uma por mensagem.
             tag: `wa-${convDigits}`,
-            urgent: false,
           });
-
-          const sent = await pushToUser(userId, payload);
           if (sent > 0) {
             console.log(`[wa-push] ${sent} push(es) → user ${userId} · conversa ${convDigits} · ${pending} msg(s)`);
           }

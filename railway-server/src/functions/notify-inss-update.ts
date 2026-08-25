@@ -1,6 +1,8 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { geminiChat } from '../lib/gemini';
+import { classifyResultado, extrairPontosPendentes } from '../lib/inss-despacho';
+import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
 
 /**
  * Quando chega um update do INSS para processo já vinculado:
@@ -58,19 +60,28 @@ const onlyDigits = (v?: string | null) => (v || '').replace(/\D/g, '');
  * de outro caso do mesmo cliente.
  */
 async function findLeadProcess(
-  caseId: string,
+  caseId: string | null,
   leadId: string | null,
   requerimento?: string | null,
 ): Promise<{ id: string; title: string | null; process_number: string | null } | null> {
   const alvo = onlyDigits(requerimento);
   if (!alvo) return null;
-  const cols = 'id, title, process_number';
-  const { data: doCaso } = await supabase.from('lead_processes').select(cols).eq('case_id', caseId);
-  const noCaso = (doCaso || []).find((p: any) => onlyDigits(p.process_number) === alvo);
-  if (noCaso) return noCaso as any;
+  // Duas colunas guardam o requerimento: `process_number` (cadastro antigo, que
+  // mistura CNJ e requerimento) e `protocolo_administrativo` (a coluna própria,
+  // preenchida em 275 processos no backfill de 25/08/2026). Conferir só a
+  // primeira deixava 106 das 399 atividades sem processo vinculado.
+  const cols = 'id, title, process_number, protocolo_administrativo';
+  const casa = (p: any) =>
+    onlyDigits(p.process_number) === alvo || onlyDigits(p.protocolo_administrativo) === alvo;
+
+  if (caseId) {
+    const { data: doCaso } = await supabase.from('lead_processes').select(cols).eq('case_id', caseId);
+    const noCaso = (doCaso || []).find(casa);
+    if (noCaso) return noCaso as any;
+  }
   if (!leadId) return null;
   const { data: doLead } = await supabase.from('lead_processes').select(cols).eq('lead_id', leadId);
-  return ((doLead || []).find((p: any) => onlyDigits(p.process_number) === alvo) as any) || null;
+  return ((doLead || []).find(casa) as any) || null;
 }
 
 async function sendUazapiText(args: {
@@ -114,17 +125,23 @@ export const handler: RequestHandler = async (req, res) => {
     if (procErr || !proc) {
       return res.status(200).json({ success: false, error: procErr?.message || 'process not found' });
     }
-    if (!proc.case_id) {
-      return res.status(200).json({ success: false, error: 'process not linked to a case' });
-    }
-
     const caseInfo: any = proc.legal_cases;
     const leadId: string | null = proc.lead_id || caseInfo?.lead_id || null;
+
+    // Até 25/08/2026 requerimento sem caso saía daqui sem atividade nenhuma —
+    // 546 dos 986 estão nesse estado, ou seja, mais da metade dos e-mails do
+    // INSS não virava tarefa de ninguém. Agora basta ter LEAD: a atividade
+    // nasce ligada a ele e o caso entra depois, quando o vínculo for feito.
+    // Sem lead e sem caso não há onde pendurar, e a fila de vínculo
+    // (match-inss-orphans) é quem resolve.
+    if (!proc.case_id && !leadId) {
+      return res.status(200).json({ success: false, error: 'process without case and without lead' });
+    }
 
     // Pega updates não notificados (último primeiro), até 5
     const { data: pending } = await supabase
       .from('inss_status_history')
-      .select('id, from_status, to_status, email_subject, email_received_at')
+      .select('id, from_status, to_status, email_subject, email_received_at, despacho')
       .eq('process_id', processId)
       .eq('notified', false)
       .order('email_received_at', { ascending: false })
@@ -139,26 +156,45 @@ export const handler: RequestHandler = async (req, res) => {
     // 1) Cria atividade no Externo
     // "Concluída" sozinho não diz o desfecho: o INSS só manda o veredito no
     // Despacho do corpo, que o sync já classificou em proc.resultado.
+    // O veredito não vem do INSS pronto: "Concluída" é tudo que o assunto diz, e
+    // deferido/indeferido está no texto do Despacho. `proc.resultado` guarda o
+    // que o sync classificou, mas ficou nulo em 21 das 111 conclusões — daí a
+    // segunda tentativa, classificando o despacho deste evento na hora.
     const RESULTADO_LABELS: Record<string, string> = {
-      deferido: 'deferida',
-      indeferido: 'indeferida',
-      arquivado_decurso: 'arquivada por exigência não cumprida',
+      deferido: 'DEFERIDO',
+      indeferido: 'INDEFERIDO',
+      arquivado_decurso: 'arquivado por exigência não cumprida',
     };
-    const resultadoLabel = /conclu[íi]d/i.test(latest.to_status || '') && proc.resultado
-      ? RESULTADO_LABELS[proc.resultado]
-      : undefined;
-    const statusLabel = resultadoLabel ? `${latest.to_status} (${resultadoLabel})` : latest.to_status;
+    const ehConclusao = /conclu[íi]d/i.test(latest.to_status || '');
+    const resultado = ehConclusao
+      ? (proc.resultado || classifyResultado(latest.despacho) || null)
+      : null;
+    const statusLabel = ehConclusao
+      ? `Conclusão — ${resultado ? RESULTADO_LABELS[resultado] : 'sem veredito no despacho'}`
+      : latest.to_status;
     const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
-    const activityDesc = `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".\n\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}\n\nCaso: ${caseInfo?.case_number || ''} — ${caseInfo?.title || ''}`;
-    let assignedTo: string | null = null;
+    // O nome do lead é o que diz a matéria ("Família 400" e "CASO 146" são
+    // trabalhistas; "PREV 1800" é previdenciário) — ver lib/inss-roteamento.
+    let leadName: string | null = null;
     if (leadId) {
       const { data: lead } = await supabase
-        .from('leads')
-        .select('assigned_to')
-        .eq('id', leadId)
-        .maybeSingle();
-      assignedTo = lead?.assigned_to || null;
+        .from('leads').select('lead_name').eq('id', leadId).maybeSingle();
+      leadName = lead?.lead_name || null;
     }
+    const dono = donoDaAtualizacaoInss({ status: latest.to_status, leadName });
+
+    // Exigência sem o texto vira "vá ver no Meu INSS". Os pontos pendentes saem
+    // do próprio despacho (preenchido em 552 das 592 exigências).
+    const pontosPendentes = /exig[êe]nc/i.test(latest.to_status || '')
+      ? extrairPontosPendentes(latest.despacho)
+      : null;
+
+    const activityDesc = [
+      `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".`,
+      pontosPendentes ? `\n📋 PENDÊNCIAS APONTADAS PELO INSS:\n${pontosPendentes}` : '',
+      `\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}`,
+      caseInfo ? `\nCaso: ${caseInfo.case_number || ''} — ${caseInfo.title || ''}` : '',
+    ].filter(Boolean).join('\n');
 
     // Vínculo com caso e processo: até 17/08/2026 o insert levava só `lead_id`,
     // e 205 das 252 atividades nasceram órfãs — todas com caso disponível (o
@@ -174,7 +210,8 @@ export const handler: RequestHandler = async (req, res) => {
       activity_type: 'notificacao',
       status: 'pendente',
       priority: 'normal',
-      assigned_to: assignedTo,
+      assigned_to: dono.id,
+      assigned_to_name: dono.name,
       deadline: new Date().toISOString().slice(0, 10),
       case_id: proc.case_id,
       case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
@@ -185,7 +222,10 @@ export const handler: RequestHandler = async (req, res) => {
     // 2) Acha o grupo do lead e manda zap humanizado
     let sentToGroup = false;
     let humanText: string | null = null;
-    if (leadId) {
+    // O zap vai para o CLIENTE. Ele só existia para requerimento com caso, e
+    // ampliar isso junto com a atividade seria estender uma mensagem externa
+    // sem ninguém ter pedido — o caminho novo (só lead) cria a tarefa e cala.
+    if (leadId && proc.case_id) {
       const { data: groups } = await supabase
         .from('lead_whatsapp_groups')
         .select('group_jid, instance_name')
