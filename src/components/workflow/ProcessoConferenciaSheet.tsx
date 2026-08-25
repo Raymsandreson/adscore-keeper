@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Milestone, Paperclip, RefreshCw, ShieldAlert, XCircle,
+  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Trash2, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
@@ -116,6 +116,75 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
   );
 }
 
+/**
+ * "anexar peça" — o caminho manual, que existe porque o automático não basta.
+ *
+ * O certificado digital abre um tribunal em oito, e a peça que decide dinheiro
+ * (termo de acordo, planilha homologada) é quase sempre restrita. Sem isto, a
+ * carteira ficaria esperando um certificado que pode nunca funcionar.
+ *
+ * A peça entra amarrada à DATA DO MARCO — é o que faz o casamento por data
+ * encontrá-la depois, sem nenhuma chave nova.
+ */
+function BotaoAnexar({ rotulo, data, onAnexar }: {
+  rotulo: string;
+  data: string | null;
+  onAnexar: (a: File, d: { titulo: string; dataDocumento: string | null }) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const input = useRef<HTMLInputElement | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  return (
+    <>
+      <input
+        ref={input} type="file" accept="application/pdf" className="hidden"
+        onChange={async (e) => {
+          const a = e.target.files?.[0];
+          e.target.value = ''; // permite reanexar o mesmo arquivo depois de um erro
+          if (!a) return;
+          setSubindo(true); setErro(null);
+          const r = await onAnexar(a, { titulo: rotulo, dataDocumento: data });
+          setSubindo(false);
+          if (!r.ok) setErro(r.erro ?? 'falha ao anexar');
+        }}
+      />
+      <button
+        type="button"
+        disabled={subindo}
+        onClick={() => input.current?.click()}
+        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+        title={`Anexar a peça que comprova "${rotulo}"`}
+      >
+        {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+        {subindo ? 'anexando…' : 'anexar peça'}
+      </button>
+      {erro && <span className="text-[10px] text-destructive">{erro}</span>}
+    </>
+  );
+}
+
+/** Lixeira só onde ela é legítima: peça anexada à mão. O acervo do tribunal
+ *  não se apaga — a policy do banco recusa, e a tela nem oferece. */
+function BotaoExcluir({ peca, onExcluir }: {
+  peca: PecaDoProcesso;
+  onExcluir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const [indo, setIndo] = useState(false);
+  if (peca.origem !== 'manual') return null;
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => { setIndo(true); await onExcluir(peca); setIndo(false); }}
+      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+      title="Excluir esta peça anexada à mão"
+    >
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+    </button>
+  );
+}
+
 interface Props {
   alvo: AlvoConferencia | null;
   onClose: () => void;
@@ -131,7 +200,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, assinar } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, assinar, anexar, excluir } = usePecasDoProcesso(alvo?.cnj ?? null);
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
 
@@ -271,10 +340,25 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                       <span className="shrink-0 text-[10px] text-muted-foreground">
                         {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
                       </span>
-                      <BotaoPeca
-                        pecas={pecas} data={m.dataDetectada} assunto="MARCO"
-                        onAbrir={abrirPeca}
-                      />
+                      {(() => {
+                        const p = melhorPeca(pecas, m.dataDetectada, { assunto: 'MARCO' });
+                        // Sem peça casada, o que a linha precisa não é de um botão
+                        // morto: é do caminho para trazer a prova que falta.
+                        if (!p) {
+                          return (
+                            <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexar} />
+                          );
+                        }
+                        return (
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <BotaoPeca
+                              pecas={pecas} data={m.dataDetectada} assunto="MARCO"
+                              onAbrir={abrirPeca}
+                            />
+                            <BotaoExcluir peca={p} onExcluir={excluir} />
+                          </span>
+                        );
+                      })()}
                       <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
                     </div>
                   ))}

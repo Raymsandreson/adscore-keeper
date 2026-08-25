@@ -28,19 +28,17 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  useEffect(() => {
-    let vivo = true;
+  const recarregar = useCallback(async () => {
     if (!cnj) { setPecas([]); return; }
-    (async () => {
+    {
       setLoading(true);
       setErro(null);
       try {
         await ensureExternalSession();
         const r = await (externo.from('jm_documentos')
-          .select('id, titulo, tipo, data_documento, storage_path, paginas')
+          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem')
           .in('processo_cnj', cnjVariantes(cnj)) as Promise<Consulta>);
         if (r.error) throw new Error(r.error.message || 'Falha ao carregar as peças');
-        if (!vivo) return;
         setPecas(((r.data || []) as Record<string, unknown>[]).map(d => ({
           id: Number(d.id),
           titulo: (d.titulo as string) ?? null,
@@ -48,15 +46,17 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
           dataDocumento: (d.data_documento as string) ?? null,
           storagePath: (d.storage_path as string) ?? null,
           paginas: d.paginas == null ? null : Number(d.paginas),
+          origem: (d.origem as string) ?? null,
         })));
       } catch (e) {
-        if (vivo) setErro(String((e as Error)?.message || e));
+        setErro(String((e as Error)?.message || e));
       } finally {
-        if (vivo) setLoading(false);
+        setLoading(false);
       }
-    })();
-    return () => { vivo = false; };
+    }
   }, [cnj]);
+
+  useEffect(() => { void recarregar(); }, [recarregar]);
 
   /**
    * URL temporária do PDF. Volta null quando a peça não foi baixada ou o bucket
@@ -71,5 +71,68 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     return data.signedUrl;
   }, []);
 
-  return { pecas, loading, erro, assinar };
+  /**
+   * Anexa uma peça à mão, amarrada à data do marco.
+   *
+   * Vai para `<cnj>/manual/<uuid>.pdf` — a pasta `manual` não é enfeite: é ela
+   * que a policy do bucket usa para permitir o DELETE. Acervo colhido do
+   * tribunal fica fora dela e não pode ser apagado por ninguém.
+   */
+  const anexar = useCallback(async (
+    arquivo: File,
+    dados: { titulo: string; dataDocumento: string | null },
+  ): Promise<{ ok: true } | { ok: false; erro: string }> => {
+    if (!cnj) return { ok: false, erro: 'processo sem CNJ' };
+    if (arquivo.type !== 'application/pdf') return { ok: false, erro: 'só PDF por enquanto' };
+    // Teto do bucket. Peça de processo passa longe disso; arquivo maior é sinal
+    // de que alguém está subindo os autos inteiros como um PDF só.
+    if (arquivo.size > 25 * 1024 * 1024) return { ok: false, erro: 'arquivo acima de 25 MB' };
+
+    try {
+      await ensureExternalSession();
+      const caminho = `${cnj}/manual/${crypto.randomUUID()}.pdf`;
+      const up = await db.storage.from(BUCKET).upload(caminho, arquivo, {
+        contentType: 'application/pdf', upsert: false,
+      });
+      if (up.error) return { ok: false, erro: up.error.message };
+
+      const ins = await (db as unknown as { from: (t: string) => { insert: (v: unknown) => Promise<{ error: { message?: string } | null }> } })
+        .from('jm_documentos').insert({
+          processo_cnj: cnj,
+          titulo: dados.titulo,
+          tipo: 'RESTRITO',
+          origem: 'manual',
+          data_documento: dados.dataDocumento,
+          storage_path: caminho,
+          stored_at: new Date().toISOString(),
+        });
+      if (ins.error) {
+        // Registro falhou: tira o arquivo órfão, senão fica lixo pago no bucket
+        // que ninguém encontra porque não há linha apontando para ele.
+        await db.storage.from(BUCKET).remove([caminho]);
+        return { ok: false, erro: ins.error.message || 'falha ao registrar a peça' };
+      }
+      await recarregar();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, [cnj, recarregar]);
+
+  /** Só apaga o que foi anexado à mão — a policy do banco recusa o resto. */
+  const excluir = useCallback(async (peca: PecaDoProcesso): Promise<{ ok: boolean; erro?: string }> => {
+    try {
+      await ensureExternalSession();
+      const del = await (db as unknown as { from: (t: string) => { delete: () => { eq: (c: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
+        .from('jm_documentos').delete().eq('id', peca.id);
+      if (del.error) return { ok: false, erro: del.error.message || 'esta peça não pode ser excluída' };
+      if (peca.storagePath) await db.storage.from(BUCKET).remove([peca.storagePath]);
+      await recarregar();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, [recarregar]);
+
+  return { pecas, loading, erro, assinar, anexar, excluir, recarregar };
 }

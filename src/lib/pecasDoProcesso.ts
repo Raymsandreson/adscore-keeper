@@ -38,6 +38,8 @@ export interface PecaDoProcesso {
   dataDocumento: string | null;
   storagePath: string | null;
   paginas: number | null;
+  /** `manual` = anexada por alguém e, só por isso, apagável. */
+  origem?: string | null;
 }
 
 /** Para que número a peça está sendo procurada — muda o desempate por título. */
