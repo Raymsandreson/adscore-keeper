@@ -907,7 +907,15 @@ escolhidos pelo maior valor pago.
 | 0000672-06.2023.5.09.0655 | TRT9 | R$ 561.875,00 | `INTERNAL_ERROR` | 54,4 min |
 | 0000407-35.2023.5.23.0066 | TRT23 | R$ 594.999,96 | `SECRET_ERROR` | 84,6 min |
 | 0000453-61.2023.5.20.0016 | TRT20 | R$ 645.000,00 | `INTERNAL_ERROR` | 96,2 min |
-| 0000407-37.2017.5.22.0110 | TRT22 | R$ 540.000,00 | pendente >132 min | — |
+| 0000407-37.2017.5.22.0110 | TRT22 | R$ 540.000,00 | **travado** | >183 min |
+
+O TRT22 nunca concluiu. Ficou `PENDENTE` por mais de três horas — contra 49 min
+do único sucesso e 96 min da falha mais lenta — e foi tratado como travado, sem
+novo disparo. Não há status terminal para ele na API; é um sexto desfecho, nem
+sucesso nem erro, e vale registrar porque uma fila em massa precisa de um teto de
+espera: solicitação que não fecha ocupa vaga para sempre.
+
+**Placar final do passo 1: 0 de 5.**
 
 ### 15.2 O mapa de cobertura, com tudo que já foi testado
 
