@@ -35,6 +35,11 @@ export interface MensagemAgendada {
   total_enviado: number;
   ultimo_envio_at: string | null;
   ultimo_erro: string | null;
+  /** Ligado: nao sai se o cliente responder antes da hora marcada. */
+  pular_se_responder: boolean;
+  ultima_verificacao_at: string | null;
+  /** O que aconteceu no ultimo disparo, em portugues. */
+  ultimo_resultado: string | null;
   encerrado_motivo: string | null;
   criado_por: string | null;
   criado_por_nome: string | null;
@@ -63,6 +68,8 @@ export interface NovoAgendamento {
   diasDaSemana: number[];
   repetirAte: Date | null;
   maxEnvios: number | null;
+  /** Conferir a conversa antes de enviar. Padrao: true. */
+  pularSeResponder: boolean;
   criadoPor?: string | null;
   criadoPorNome?: string | null;
 }
@@ -70,7 +77,8 @@ export interface NovoAgendamento {
 const SELECT = `id, phone, chat_id, instance_name, contact_id, lead_id, contact_name,
   mensagem, mensagem_original, replyid, mentions, proximo_envio_at, repeticao, intervalo,
   unidade, dias_da_semana, repetir_ate, max_envios, ativo, total_enviado, ultimo_envio_at,
-  ultimo_erro, encerrado_motivo, criado_por, criado_por_nome, criado_em, cancelado_em,
+  ultimo_erro, encerrado_motivo, pular_se_responder, ultima_verificacao_at, ultimo_resultado,
+  criado_por, criado_por_nome, criado_em, cancelado_em,
   cancelado_por_nome`;
 
 /** `repetir_ate` é DATE no banco — só o dia, sem fuso para atrapalhar. */
@@ -163,6 +171,7 @@ export function useMensagensAgendadas({ phone, instanceName }: Params) {
           dias_da_semana: novo.repeticao === 'semanal' && novo.diasDaSemana.length ? novo.diasDaSemana : null,
           repetir_ate: soODia(novo.repetirAte),
           max_envios: novo.maxEnvios,
+          pular_se_responder: novo.pularSeResponder,
           criado_por: novo.criadoPor || null,
           criado_por_nome: novo.criadoPorNome || null,
         })
