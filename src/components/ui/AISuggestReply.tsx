@@ -106,7 +106,7 @@ export function AISuggestReply({
     try {
       const opts = await gerarSugestaoDeResposta({
         contexto: ctx,
-        modo,
+        modo: mode,
         tom: toneKey,
         instrucao: extra,
         alvo: target,
