@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Trash2, XCircle,
+  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, Replace, ShieldAlert, Trash2, Undo2, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
@@ -169,23 +169,64 @@ function BotaoAnexar({ rotulo, data, onAnexar }: {
   );
 }
 
-/** Lixeira só onde ela é legítima: peça anexada à mão. O acervo do tribunal
- *  não se apaga — a policy do banco recusa, e a tela nem oferece. */
-function BotaoExcluir({ peca, onExcluir }: {
+/**
+ * "esta peça está errada" — e a resposta muda conforme de onde ela veio.
+ *
+ * Peça ANEXADA À MÃO se apaga: é upload de alguém, sem valor de acervo, e o
+ * arquivo errado não serve para nada.
+ *
+ * Peça DO TRIBUNAL se OCULTA. O Escavador baixa trocado, o tribunal junta no
+ * lugar errado, e o casamento por data às vezes pega a peça de outro ato — o
+ * Raym levantou isso em 25/08. Mas apagar custaria uma solicitação nova, que
+ * hoje funciona em um tribunal de oito. Ocultar conserta a exibição e mantém o
+ * acervo; desfazer é um clique.
+ */
+function BotaoTrocarPeca({ peca, onExcluir, onOcultar }: {
   peca: PecaDoProcesso;
   onExcluir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
+  onOcultar: (p: PecaDoProcesso, motivo: string) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const [indo, setIndo] = useState(false);
-  if (peca.origem !== 'manual') return null;
+  const manual = peca.origem === 'manual';
+  const Icone = manual ? Trash2 : Replace;
   return (
     <button
       type="button"
       disabled={indo}
-      onClick={async () => { setIndo(true); await onExcluir(peca); setIndo(false); }}
-      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-      title="Excluir esta peça anexada à mão"
+      onClick={async () => {
+        setIndo(true);
+        await (manual
+          ? onExcluir(peca)
+          : onOcultar(peca, 'peça errada para este marco'));
+        setIndo(false);
+      }}
+      className="shrink-0 text-muted-foreground hover:text-destructive disabled:opacity-50"
+      title={manual
+        ? 'Excluir esta peça anexada à mão'
+        : 'Peça errada: tira de cena para você anexar a certa. O arquivo continua no acervo e dá para desfazer.'}
     >
-      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Icone className="h-3 w-3" />}
+    </button>
+  );
+}
+
+/** Uma peça foi tirada de cena aqui — o caminho de volta fica à vista. */
+function AvisoOculta({ pecas, data, onReexibir }: {
+  pecas: PecaDoProcesso[]; data: string | null;
+  onReexibir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const [indo, setIndo] = useState(false);
+  const p = pecas.find(x => (x.dataDocumento ?? '') === (data ?? '') && data);
+  if (!p) return null;
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => { setIndo(true); await onReexibir(p); setIndo(false); }}
+      className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+      title={`"${p.titulo ?? 'peça'}" foi tirada de cena — clique para trazer de volta`}
+    >
+      <Undo2 className="h-3 w-3" /> desfazer
     </button>
   );
 }
@@ -205,7 +246,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, assinar, anexar, excluir } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, excluir, ocultar, reexibir } = usePecasDoProcesso(alvo?.cnj ?? null);
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
 
@@ -363,18 +404,20 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                         const p = melhorPeca(pecas, m.dataDetectada, { assunto: 'MARCO' });
                         // Sem peça casada, o que a linha precisa não é de um botão
                         // morto: é do caminho para trazer a prova que falta.
-                        if (!p) {
-                          return (
-                            <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexar} />
-                          );
-                        }
                         return (
                           <span className="flex shrink-0 items-center gap-1.5">
-                            <BotaoPeca
-                              pecas={pecas} data={m.dataDetectada} assunto="MARCO"
-                              onAbrir={abrirPeca}
-                            />
-                            <BotaoExcluir peca={p} onExcluir={excluir} />
+                            {p ? (
+                              <>
+                                <BotaoPeca
+                                  pecas={pecas} data={m.dataDetectada} assunto="MARCO"
+                                  onAbrir={abrirPeca}
+                                />
+                                <BotaoTrocarPeca peca={p} onExcluir={excluir} onOcultar={ocultar} />
+                              </>
+                            ) : (
+                              <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexar} />
+                            )}
+                            <AvisoOculta pecas={ocultas} data={m.dataDetectada} onReexibir={reexibir} />
                           </span>
                         );
                       })()}

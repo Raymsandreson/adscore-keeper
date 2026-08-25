@@ -24,22 +24,22 @@ const externo = db as unknown as {
 };
 
 export function usePecasDoProcesso(cnj: string | null | undefined) {
-  const [pecas, setPecas] = useState<PecaDoProcesso[]>([]);
+  const [todas, setTodas] = useState<PecaDoProcesso[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const recarregar = useCallback(async () => {
-    if (!cnj) { setPecas([]); return; }
+    if (!cnj) { setTodas([]); return; }
     {
       setLoading(true);
       setErro(null);
       try {
         await ensureExternalSession();
         const r = await (externo.from('jm_documentos')
-          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem')
+          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem, oculta_em, oculta_motivo')
           .in('processo_cnj', cnjVariantes(cnj)) as Promise<Consulta>);
         if (r.error) throw new Error(r.error.message || 'Falha ao carregar as peças');
-        setPecas(((r.data || []) as Record<string, unknown>[]).map(d => ({
+        setTodas(((r.data || []) as Record<string, unknown>[]).map(d => ({
           id: Number(d.id),
           titulo: (d.titulo as string) ?? null,
           tipo: (d.tipo as string) ?? null,
@@ -47,6 +47,8 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
           storagePath: (d.storage_path as string) ?? null,
           paginas: d.paginas == null ? null : Number(d.paginas),
           origem: (d.origem as string) ?? null,
+          ocultaEm: (d.oculta_em as string) ?? null,
+          ocultaMotivo: (d.oculta_motivo as string) ?? null,
         })));
       } catch (e) {
         setErro(String((e as Error)?.message || e));
@@ -134,5 +136,50 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, [recarregar]);
 
-  return { pecas, loading, erro, assinar, anexar, excluir, recarregar };
+  /**
+   * Tira a peça de cena SEM apagar o arquivo.
+   *
+   * Peça do tribunal também vem errada — o Escavador baixa trocado, o tribunal
+   * junta no lugar errado, ou o casamento por data pega a peça de outro ato.
+   * Apagar seria caro e irreversível: recolher de novo custa uma solicitação, e
+   * ela funciona em um tribunal de oito. Ocultar resolve a exibição e mantém o
+   * acervo intacto.
+   */
+  const ocultar = useCallback(async (peca: PecaDoProcesso, motivo: string) => {
+    try {
+      await ensureExternalSession();
+      const r = await (db as unknown as { from: (t: string) => { update: (v: unknown) => { eq: (c: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
+        .from('jm_documentos')
+        .update({ oculta_em: new Date().toISOString(), oculta_motivo: motivo })
+        .eq('id', peca.id);
+      if (r.error) return { ok: false, erro: r.error.message };
+      await recarregar();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, [recarregar]);
+
+  /** Desfaz o ocultar. Errar a correção tem que custar um clique, não um chamado. */
+  const reexibir = useCallback(async (peca: PecaDoProcesso) => {
+    try {
+      await ensureExternalSession();
+      const r = await (db as unknown as { from: (t: string) => { update: (v: unknown) => { eq: (c: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
+        .from('jm_documentos')
+        .update({ oculta_em: null, oculta_motivo: null })
+        .eq('id', peca.id);
+      if (r.error) return { ok: false, erro: r.error.message };
+      await recarregar();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, [recarregar]);
+
+  // A peça oculta não some do hook: ela sai do casamento e continua alcançável
+  // para desfazer. Sumir de vez tornaria o erro irreversível pela tela.
+  const pecas = todas.filter(p => !p.ocultaEm);
+  const ocultas = todas.filter(p => p.ocultaEm);
+
+  return { pecas, ocultas, loading, erro, assinar, anexar, excluir, ocultar, reexibir, recarregar };
 }
