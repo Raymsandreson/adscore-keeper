@@ -181,6 +181,35 @@ export function descreverAgendamento(quando: Date, regra: RegraDeRepeticao): str
 }
 
 /**
+ * A regra de uma linha já salva, remontada das colunas do banco — para a
+ * conversa e a janela descreverem o agendamento com a mesma frase.
+ */
+export function regraDaLinha(linha: {
+  repeticao: Repeticao;
+  intervalo: number;
+  unidade: Unidade;
+  dias_da_semana?: number[] | null;
+  repetir_ate?: string | null;
+  max_envios?: number | null;
+}): RegraDeRepeticao {
+  return {
+    repeticao: linha.repeticao,
+    intervalo: linha.intervalo,
+    unidade: linha.unidade,
+    diasDaSemana: linha.dias_da_semana || [],
+    // `repetir_ate` é DATE (yyyy-MM-dd): o T00:00 evita ler como UTC e voltar
+    // um dia no fuso de Brasília.
+    repetirAte: linha.repetir_ate ? new Date(`${linha.repetir_ate}T00:00:00`) : null,
+    maxEnvios: linha.max_envios ?? null,
+  };
+}
+
+/** A recorrência sozinha, sem a hora — "Toda segunda e quinta". */
+export function descreverRepeticao(quando: Date, regra: RegraDeRepeticao): string {
+  return descreverAgendamento(quando, regra).replace(/ às \d{2}:\d{2}/, '');
+}
+
+/**
  * O que impede de agendar. Devolve a frase do erro, ou null quando está tudo
  * certo. A tela usa isto para travar o botão e dizer por quê.
  */

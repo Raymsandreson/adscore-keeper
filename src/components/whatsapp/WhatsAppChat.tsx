@@ -38,6 +38,7 @@ import { useClientCommitments, type CommitmentReminder } from '@/hooks/useClient
 import { buildReminderText } from '@/lib/clientCommitments';
 import { lastSenderName, matchMemberByName, prefixarRemetente } from '@/lib/whatsappSenderName';
 import { AgendarMensagemDialog } from './AgendarMensagemDialog';
+import { descreverRepeticao, regraDaLinha } from '@/lib/mensagemAgendada';
 import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
 import { midiasDaMensagem, rotuloDaMidia, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
@@ -269,6 +270,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // em "Sem título" — buscado só quando a janela abre, que é quando importa.
   const [showAgendar, setShowAgendar] = useState(false);
   const [tratamentoDoPerfil, setTratamentoDoPerfil] = useState<string | null>(null);
+  const [cancelandoAgendada, setCancelandoAgendada] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
@@ -2828,6 +2830,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return () => { vivo = false; };
   }, [showAgendar, tratamentoDoPerfil, user]);
 
+  /** Tirar da fila pela própria bolha de prévia, sem abrir a janela. */
+  const handleCancelarAgendada = async (id: string) => {
+    setCancelandoAgendada(id);
+    try {
+      await agendadas.cancelar(id, profile?.full_name || null);
+      toast.success('Tirada da fila — não vai mais sair');
+    } catch (e: any) {
+      toast.error('Não consegui cancelar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setCancelandoAgendada(null);
+    }
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -5057,6 +5072,65 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             Role para baixo para continuar a conversa…
           </div>
         )}
+
+        {/* O que ainda vai sair: a mensagem agendada aparece no lugar onde vai
+            cair, em bolha tracejada — nem enviada nem esquecida. Escondida
+            quando a conversa está ancorada numa mensagem antiga: ali o fim da
+            lista não é o fim da conversa, e a prévia mentiria sobre a ordem. */}
+        {agendadas.pendentes.length > 0 && !(anchorActive && hasNewerHidden) && (
+          <>
+            <div className="flex items-center gap-2 py-1">
+              <div className="h-px flex-1 bg-border" />
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <CalendarClock className="h-3 w-3" />
+                {agendadas.pendentes.length === 1 ? 'Agendada' : `${agendadas.pendentes.length} agendadas`}
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            {agendadas.pendentes.map((item) => {
+              const quando = new Date(item.proximo_envio_at);
+              return (
+                <div key={item.id} className="flex group justify-end">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center mr-1 text-muted-foreground hover:text-destructive"
+                    title="Tirar da fila — não vai mais sair"
+                    disabled={cancelandoAgendada === item.id}
+                    onClick={() => handleCancelarAgendada(item.id)}
+                  >
+                    {cancelandoAgendada === item.id
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Trash2 className="h-3 w-3" />}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAgendar(true)}
+                    title="Abrir os agendamentos desta conversa"
+                    className="max-w-[70%] rounded-2xl rounded-br-sm border-2 border-dashed border-green-600/50 bg-green-600/5 px-4 py-2 text-left text-sm hover:bg-green-600/10"
+                  >
+                    <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-green-700 dark:text-green-400">
+                      <CalendarClock className="h-3 w-3 shrink-0" />
+                      {format(quando, "dd/MM 'às' HH:mm", { locale: ptBR })}
+                      {item.repeticao !== 'nenhuma' && (
+                        <span className="font-normal text-muted-foreground">
+                          · {descreverRepeticao(quando, regraDaLinha(item))}
+                        </span>
+                      )}
+                    </p>
+                    <p className="whitespace-pre-wrap break-words text-foreground/80">{item.mensagem}</p>
+                    {item.ultimo_erro && (
+                      <p className="mt-1 text-[10px] text-destructive">
+                        último envio falhou: {item.ultimo_erro}
+                      </p>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -5366,9 +5440,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               )}
             </div>
           )}
-          {/* O que ainda vai sair sozinho nesta conversa. Sem isso, mensagem
-              agendada some da vista e vira surpresa para quem atende depois. */}
-          {inputMode === 'message' && agendadas.pendentes.length > 0 && (
+          {/* O que ainda vai sair sozinho nesta conversa. Só quando a conversa
+              está ancorada numa mensagem antiga — no fim da lista as próprias
+              bolhas de prévia já estão logo acima, e o chip repetiria. */}
+          {inputMode === 'message' && agendadas.pendentes.length > 0 && anchorActive && hasNewerHidden && (
             <button
               type="button"
               onClick={() => setShowAgendar(true)}
