@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { geminiChat } from '../lib/gemini';
 import { classifyResultado, extrairPontosPendentes } from '../lib/inss-despacho';
+import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
 
 /**
  * Quando chega um update do INSS para processo já vinculado:
@@ -48,44 +49,6 @@ function formatLabel(numero?: string | null, titulo?: string | null): string {
 }
 
 const onlyDigits = (v?: string | null) => (v || '').replace(/\D/g, '');
-
-/**
- * Dono das atividades do INSS — decisão do usuário (25/08/2026).
- *
- * Até aqui o responsável era herdado de `leads.assigned_to`, e isso resolvia
- * pouco: das 381 atividades "INSS atualizou" criadas desde 15/06/2026, 340
- * (89%) nasceram SEM responsável, porque o lead do requerimento normalmente
- * não tem ninguém atribuído. Sem dono, a atividade fica na lista geral e só
- * anda quando alguém tropeça nela — foi o que aconteceu com o requerimento
- * 2105413979, parado 8 dias.
- *
- * UUID conferido em `profiles.user_id` do Externo em 25/08/2026.
- */
-const ASSESSOR_INSS = {
-  id: 'e1849012-7d6b-49b9-a5e5-36a2332e6eb8',
-  name: 'Jose Francisco Campos de Oliveira',
-};
-
-/**
- * Protocolo é o único status que não é do José — decisão do usuário
- * (25/08/2026). "Protocolado" é o requerimento recém-entrado ("[INSS]
- * Requerimento realizado com sucesso", 292 dos 294 casos), e essa etapa é da
- * Luana.
- *
- * UUID é o `profiles.user_id` (auth do Externo), NÃO o `profiles.id`: são
- * diferentes para ela, e é o user_id que `assigned_to` guarda em 730 das 749
- * atividades dela. As outras 19 vieram do sync-process-compromissos, que
- * gravou o profiles.id e por isso não casa com o filtro da tela.
- */
-const ASSESSOR_PROTOCOLO = {
-  id: '1589c873-0550-418b-b828-f290e852d5d5',
-  name: 'Luana Barros',
-};
-
-/** Dono da atividade conforme o status que o INSS acabou de anunciar. */
-function donoDaAtualizacao(status?: string | null) {
-  return /protocolad/i.test(status || '') ? ASSESSOR_PROTOCOLO : ASSESSOR_INSS;
-}
 
 /**
  * Acha em `lead_processes` o processo do requerimento do INSS.
@@ -210,7 +173,15 @@ export const handler: RequestHandler = async (req, res) => {
       ? `Conclusão — ${resultado ? RESULTADO_LABELS[resultado] : 'sem veredito no despacho'}`
       : latest.to_status;
     const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
-    const dono = donoDaAtualizacao(latest.to_status);
+    // O nome do lead é o que diz a matéria ("Família 400" e "CASO 146" são
+    // trabalhistas; "PREV 1800" é previdenciário) — ver lib/inss-roteamento.
+    let leadName: string | null = null;
+    if (leadId) {
+      const { data: lead } = await supabase
+        .from('leads').select('lead_name').eq('id', leadId).maybeSingle();
+      leadName = lead?.lead_name || null;
+    }
+    const dono = donoDaAtualizacaoInss({ status: latest.to_status, leadName });
 
     // Exigência sem o texto vira "vá ver no Meu INSS". Os pontos pendentes saem
     // do próprio despacho (preenchido em 552 das 592 exigências).
