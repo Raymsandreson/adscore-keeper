@@ -13,6 +13,7 @@
 // as 4 cópias da mesma mensagem de grupo chegam em milissegundos e precisam ser
 // resolvidas por lock, não por lógica no processo.
 import webpush from 'web-push';
+import { enviarExpo, type ExpoMensagem } from './expo-push';
 import { supabase } from './supabase';
 
 const VAPID_PUBLIC = process.env.VAPID_PUBLIC_KEY || '';
@@ -230,6 +231,21 @@ async function toCloudUserId(extUserId: string): Promise<string> {
   }
 }
 
+/**
+ * Entrega a UMA pessoa, pelos dois canais.
+ *
+ * Esta função nasceu antes do app existir e mandava só Web Push. O
+ * `send-team-push` foi atualizado quando a coluna `provider` entrou (migration
+ * `20260818200000_push_subscriptions_expo`), este despacho não — e a diferença
+ * era invisível: a inscrição do app tem `provider = 'expo'`, `p256dh` e `auth`
+ * NULOS e o token Expo no `endpoint`. Ela era selecionada junto, entregue ao
+ * `webpush.sendNotification`, falhava por falta de chave, e o erro morria no
+ * `catch` por inscrição. Resultado: **mensagem nova de WhatsApp nunca chegou em
+ * celular nenhum**, sem uma linha de erro que denunciasse.
+ *
+ * É o mesmo modo de falha do §4.2 do escopo do mobile — "entrega em silêncio
+ * para ninguém" —, só que ali a causa era o uuid trocado e aqui é o canal.
+ */
 async function pushToUser(userId: string, payload: string): Promise<number> {
   const cloudId = await toCloudUserId(userId);
 
@@ -238,16 +254,29 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
   const ids = Array.from(new Set([cloudId, userId]));
   const { data: subs } = await supabase
     .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
+    .select('id, endpoint, p256dh, auth, provider')
     .in('user_id', ids);
 
   if (!subs || subs.length === 0) return 0;
 
+  // `provider` nulo é linha anterior à migration: Web Push. A checagem de
+  // `p256dh`/`auth` não é redundante — sem elas uma linha meia-boca voltaria a
+  // cair no `webpush` e a falhar calada, que é o defeito que esta função
+  // acabou de corrigir.
+  type Sub = { id: string; endpoint: string; p256dh: string | null; auth: string | null; provider: string | null };
+  const todas = subs as Sub[];
+  const web = todas.filter((s) => (s.provider || 'webpush') === 'webpush' && s.p256dh && s.auth);
+  const expo = todas.filter((s) => s.provider === 'expo');
+
   let sent = 0;
+
   await Promise.all(
-    subs.map(async (s: { id: string; endpoint: string; p256dh: string; auth: string }) => {
+    (ensureVapid() ? web : []).map(async (s) => {
       try {
-        await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
+        await webpush.sendNotification(
+          { endpoint: s.endpoint, keys: { p256dh: s.p256dh as string, auth: s.auth as string } },
+          payload,
+        );
         sent++;
       } catch (err: unknown) {
         const code = (err as { statusCode?: number })?.statusCode;
@@ -257,6 +286,40 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
       }
     }),
   );
+
+  // Canal do app. O corpo é o mesmo do Web Push — quem muda é o transporte —,
+  // e `url`/`tag` viajam em `data` para o toque abrir a conversa certa.
+  if (expo.length > 0) {
+    // O payload já vem pronto como JSON porque o Web Push manda string; aqui
+    // ele é reaberto para virar campo. Se um dia deixar de ser JSON válido, o
+    // `catch` de quem chama trata — esta função nunca lança (ver o cabeçalho
+    // do arquivo).
+    const corpo = JSON.parse(payload) as {
+      title?: string;
+      body?: string;
+      url?: string;
+      tag?: string;
+      urgent?: boolean;
+    };
+
+    const mensagens: ExpoMensagem[] = expo.map((s) => ({
+      to: s.endpoint,
+      title: corpo.title || 'WhatsApp',
+      body: corpo.body || '',
+      urgente: !!corpo.urgent,
+      data: { url: corpo.url || '/', tag: corpo.tag },
+    }));
+
+    const r = await enviarExpo(mensagens);
+    sent += r.enviados;
+
+    if (r.tokensMortos.length > 0) {
+      // App desinstalado ou token rotacionado: mesma limpeza que o 404/410 do
+      // Web Push faz. Sem isso a tabela só cresce e o `sent` mente.
+      await supabase.from('push_subscriptions').delete().in('endpoint', r.tokensMortos);
+    }
+  }
+
   return sent;
 }
 
@@ -265,7 +328,11 @@ async function pushToUser(userId: string, payload: string): Promise<number> {
  */
 export async function notifyNewWhatsAppMessage(input: NewMessagePushInput): Promise<void> {
   try {
-    if (!ensureVapid()) return;
+    // O VAPID NÃO é conferido aqui, e isso é de propósito: ele é credencial do
+    // Web Push e o canal do app não depende dela. Enquanto a checagem morava
+    // neste topo, faltar `VAPID_PUBLIC_KEY` no ambiente calava os dois canais —
+    // um problema de configuração do navegador derrubando o push do celular
+    // junto. Agora ela gateia só o laço do Web Push, dentro do `pushToUser`.
 
     const convDigits = digits(input.phone);
     if (!convDigits) return;
