@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -36,7 +36,9 @@ import { ClientCommitmentsPanel, type CommitmentDraft, type CommitmentCardItem }
 import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments, type CommitmentReminder } from '@/hooks/useClientCommitments';
 import { buildReminderText } from '@/lib/clientCommitments';
-import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
+import { lastSenderName, matchMemberByName, prefixarRemetente } from '@/lib/whatsappSenderName';
+import { AgendarMensagemDialog } from './AgendarMensagemDialog';
+import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
 import { midiasDaMensagem, rotuloDaMidia, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
@@ -220,6 +222,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     contactId: conversation.contact_id,
     clientName: conversation.contact_name,
   });
+  // A fila de mensagens agendadas desta conversa — o chip acima do campo só
+  // aparece quando tem alguma esperando a hora.
+  const agendadas = useMensagensAgendadas({
+    phone: conversation.phone,
+    instanceName: conversation.instance_name,
+  });
   /**
    * Cobrança armada: o texto está no campo e o próximo envio vai sair citando a
    * mensagem em que o cliente prometeu (igual ao "responder" do WhatsApp) e
@@ -256,6 +264,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [nicknames, setNicknames] = useState<string[]>([]);
   const [selectedNickname, setSelectedNickname] = useState<string>('');
   const [newNickname, setNewNickname] = useState('');
+  // Agendar mensagem: escrever agora, sair na hora marcada. `tratamentoDoPerfil`
+  // é o título padrão do perfil (Dr./Dra.), que o envio usa quando a barra está
+  // em "Sem título" — buscado só quando a janela abre, que é quando importa.
+  const [showAgendar, setShowAgendar] = useState(false);
+  const [tratamentoDoPerfil, setTratamentoDoPerfil] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
@@ -2767,6 +2780,53 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       setSending(false);
     }
   };
+
+  /**
+   * O texto exatamente como vai sair — com a assinatura `*Nome:*` quando
+   * "Identificar remetente" está ligado.
+   *
+   * A mensagem agendada grava o texto JÁ PRONTO no banco, então ele não pode
+   * divergir do envio na hora: os dois passam pelo mesmo `prefixarRemetente`,
+   * com as mesmas escolhas da barra (formato do nome, título, apelido).
+   */
+  const envioComoVaiSair = useMemo(() => {
+    const cru = newMessage.trim();
+    if (!cru) return { texto: '', mentions: [] as string[] };
+    // Em grupo, "@Fulano" vira "@<número>" antes de sair — o agendado tem que
+    // guardar o texto já reescrito, com a lista de marcados.
+    const { text, mentions } = buildMentionPayload(cru);
+    const assina = shareInfo ? shareInfo.identify_sender : identifySender;
+    if (!user || !assina) return { texto: text, mentions };
+    // "Sem título" na barra devolve null e o envio cai no título do perfil.
+    const tituloDaBarra = nameFormat === 'nickname' ? null : (treatmentTitle || null);
+    return {
+      texto: prefixarRemetente(text, {
+        fullName: profile?.full_name,
+        nameFormat,
+        treatmentTitle: tituloDaBarra !== null ? tituloDaBarra : (tratamentoDoPerfil || ''),
+        nickname: nameFormat === 'nickname' ? (selectedNickname || null) : null,
+      }),
+      mentions,
+    };
+  }, [
+    newMessage, shareInfo, identifySender, user, profile?.full_name,
+    nameFormat, treatmentTitle, selectedNickname, tratamentoDoPerfil,
+    mentionedParticipants,
+  ]);
+
+  // O título de tratamento padrão do perfil (Dr./Dra.) só faz falta para montar
+  // a assinatura da agendada — busca quando a janela abre, não a cada conversa.
+  useEffect(() => {
+    if (!showAgendar || tratamentoDoPerfil !== null || !user) return;
+    let vivo = true;
+    supabase
+      .from('profiles')
+      .select('treatment_title')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => { if (vivo) setTratamentoDoPerfil(((data as any)?.treatment_title as string) || ''); });
+    return () => { vivo = false; };
+  }, [showAgendar, tratamentoDoPerfil, user]);
 
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
@@ -5306,6 +5366,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               )}
             </div>
           )}
+          {/* O que ainda vai sair sozinho nesta conversa. Sem isso, mensagem
+              agendada some da vista e vira surpresa para quem atende depois. */}
+          {inputMode === 'message' && agendadas.pendentes.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowAgendar(true)}
+              className="flex items-center gap-1.5 self-start rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-primary/10"
+            >
+              <CalendarClock className="h-3 w-3 shrink-0 text-primary" />
+              <span>
+                {agendadas.pendentes.length === 1 ? '1 mensagem agendada' : `${agendadas.pendentes.length} mensagens agendadas`}
+                {' — próxima '}
+                {format(new Date(agendadas.pendentes[0].proximo_envio_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
+              </span>
+            </button>
+          )}
           <div className="flex gap-1 items-end">
             {/* Attach menu with internal options */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
@@ -5341,6 +5417,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <DropdownMenuItem onClick={() => { setInputMode('chat'); setShowMentionPicker(true); setShowAttachMenu(false); }} className="gap-2 text-blue-600 dark:text-blue-400">
                   <AtSign className="h-4 w-4" /> Chat Interno
                 </DropdownMenuItem>
+                {inputMode === 'message' && (
+                  <DropdownMenuItem onClick={() => { setShowAttachMenu(false); setShowAgendar(true); }} className="gap-2">
+                    <CalendarClock className="h-4 w-4" /> Agendar mensagem
+                  </DropdownMenuItem>
+                )}
                 {onCreateActivity && (
                   <DropdownMenuItem onClick={() => {
                     setShowAttachMenu(false);
@@ -5417,6 +5498,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <ArrowRight className="h-4 w-4" />
               </Button>
             )}
+            {/* Mandar depois: mesma mensagem, hora marcada. Só faz sentido no
+                modo mensagem — nota interna e chat da equipe não saem para o
+                cliente. */}
+            {inputMode === 'message' && newMessage.trim() && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 shrink-0 text-muted-foreground hover:text-primary"
+                title="Agendar envio"
+                onClick={() => setShowAgendar(true)}
+              >
+                <CalendarClock className="h-4 w-4" />
+              </Button>
+            )}
             {newMessage.trim() ? (
               <Button
                 size="icon"
@@ -5445,6 +5540,26 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           </div>
           </>
         )}
+        {/* Agendar mensagem: escrever agora, sair na hora marcada. */}
+        <AgendarMensagemDialog
+          open={showAgendar}
+          onOpenChange={setShowAgendar}
+          conversa={{
+            phone: conversation.phone,
+            chatId: conversationChatId,
+            instanceName: effectiveInstanceName,
+            contactId: conversation.contact_id,
+            leadId: conversation.lead_id,
+            contactName: conversation.contact_name,
+          }}
+          texto={newMessage.trim()}
+          textoFinal={envioComoVaiSair.texto}
+          mentions={envioComoVaiSair.mentions}
+          criadoPor={user?.id || null}
+          criadoPorNome={profile?.full_name || null}
+          onAgendado={() => { setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null); }}
+        />
+
         {/* Location Dialog */}
         <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
           <DialogContent>

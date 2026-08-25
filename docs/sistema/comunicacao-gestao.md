@@ -183,6 +183,20 @@ Migration `20260807170000_pendencia_vira_atividade_e_responsavel.sql`. A view pr
 
 **Fluxo recomendado**: selecionar a instância → abrir a conversa → usar "Sugerir resposta com IA" quando útil → quando o lead avança, "Criar Lead + Contato" e depois "Criar Caso Jurídico"; "Atualizar com IA" completa os campos ao longo do atendimento. Dúvida interna sobre o que o cliente disse: "Comentar" na mensagem e `@` em quem precisa responder — em vez de printar e mandar em outro canal. Promessa do cliente ("vou avaliar", "vou gravar o vídeo") a IA já registra sozinha na barra "Cliente ficou de" — o assessor só marca **Feito**, **Cobra** ou corrige com **"Não era"**.
 
+### Mensagem agendada — escrever agora, sair na hora marcada (25/08/2026)
+
+Escreve no campo do chat e clica no **relógio ao lado do botão de enviar** (ou "Agendar mensagem" no menu do clipe). Escolhe dia e hora — com atalhos "Daqui a 1 hora", "Amanhã 8h", "Segunda 8h" — e, se quiser, a repetição: **todo dia, toda semana** (com os dias marcados: seg/qui, por exemplo), **todo mês** ou **personalizado** ("a cada 3 semanas"). A recorrência aceita fim por data (`repetir_ate`) ou por número de envios (`max_envios`); sem nenhum dos dois, repete sem fim. A janela mostra a frase pronta ("Toda segunda e quinta às 08:00") e os **próximos 4 envios** antes de salvar.
+
+Enquanto houver algo na fila, um chip acima do campo diz quantas e quando sai a próxima — mensagem agendada não pode virar surpresa para quem atende a conversa depois. Cancelar é "tirar da fila" na própria janela: a linha fica com `cancelado_em`, não é apagada.
+
+- **Quem dispara é o banco, não o navegador.** `wa_agendadas_tick()` roda de minuto em minuto no pg_cron do **Externo** e chama a MESMA edge function do envio na hora (`send-whatsapp`) — sem segunda porta de saída para o WhatsApp. A mensagem sai com o computador desligado.
+- **O texto vai pronto para o banco**, já com a assinatura `*Nome:*` de "Identificar remetente", montada por `prefixarRemetente` (`src/lib/whatsappSenderName.ts`) — o mesmo trecho que o envio imediato usa desde que foi extraído para lá. Em grupo, `@Fulano` já vai reescrito como `@<número>`, com a lista de marcados. O banco não remonta texto.
+- **Atraso não vira enxurrada.** O que venceu há mais de 12 h (tick parado) fica registrado como `pulada` e a recorrência anda para a data seguinte — "bom dia" às 3 da manhã de dois dias depois é pior que não mandar. A mesma regra vale ao recalcular: a próxima data pula tudo que ficou para trás, em vez de despejar os envios perdidos.
+- **Saiu ou não saiu**: `whatsapp_agendamento_envios` guarda uma linha por disparo; `wa_agendadas_conferir()` lê a resposta do pg_net e carimba `enviada`/`falhou`. Necessário porque `net._http_response` só guarda ~6 h — sem essa tabela, falha de madrugada não deixaria rastro. HTTP 200 não basta: a `send-whatsapp` responde 200 com `{"success": false}` em instância desconectada.
+- **A conta da próxima data existe em dois lugares** — `public.wa_agendada_proximo` (banco, decide) e `proximoEnvio` em `src/lib/mensagemAgendada.ts` (tela, mostra a previsão). Mesmas regras: a hora do dia nunca muda, mês curto encurta o dia (31/01 → 28/02) e a conta é feita em horário de Brasília. Mexeu num, mexa no outro.
+- **Não é um `cron.schedule` por mensagem**: job por agendamento vira lixo acumulado e não responde "o que está agendado para este contato?", que é o que a tela precisa mostrar.
+- Migration: `supabase/migrations-external/20260825170000_mensagem_agendada_com_recorrencia.sql` (Externo). Tabelas `whatsapp_mensagens_agendadas` e `whatsapp_agendamento_envios`.
+
 ### Vincular grupo do WhatsApp ao lead — "Buscar grupos" (ago/2026)
 
 Mesmo dialog (`LeadGroupSearchDialog`) na ficha do lead (campo "Grupos WhatsApp") e na tela de Atividades (botão "Vincular WA"). Dois modos:

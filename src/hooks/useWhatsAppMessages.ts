@@ -22,6 +22,7 @@ import {
   type ConversationSummary,
 } from '@/integrations/supabase/external-rpc';
 import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
+import { prefixarRemetente } from '@/lib/whatsappSenderName';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { useUserRole } from '@/hooks/useUserRole';
 import { toast } from 'sonner';
@@ -837,24 +838,16 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       if (user && identifySender) {
         const fmt = nameFormatOverride || 'first_last';
 
-        if (fmt === 'nickname' && nicknameOverride) {
-          // Nickname mode: just the nickname, no treatment title
-          finalMessage = `*${nicknameOverride}:*\n${message}`;
-        } else if (profileCacheRef.current?.full_name) {
-          const { full_name } = profileCacheRef.current;
-          let displayName = full_name;
-          if (fmt === 'first') {
-            displayName = full_name.split(' ')[0];
-          } else if (fmt === 'first_last') {
-            const parts = full_name.split(' ');
-            displayName = parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1]}` : parts[0];
-          }
-          const title = treatmentOverride !== undefined && treatmentOverride !== null
+        finalMessage = prefixarRemetente(message, {
+          fullName: profileCacheRef.current?.full_name,
+          nameFormat: fmt,
+          treatmentTitle: treatmentOverride !== undefined && treatmentOverride !== null
             ? treatmentOverride
-            : (profileCacheRef.current.treatment_title || '');
-          const senderName = title ? `${title} ${displayName}` : displayName;
-          finalMessage = `*${senderName}:*\n${message}`;
-        } else {
+            : (profileCacheRef.current?.treatment_title || ''),
+          nickname: nicknameOverride,
+        });
+
+        if (finalMessage === message) {
           // Sinaliza alto pra debug: identifySender estava ON mas não tem como prefixar.
           console.warn(`[sendMessage ${debugId}] identifySender=true mas full_name indisponível — enviado SEM prefixo`, {
             hasUser: !!user,

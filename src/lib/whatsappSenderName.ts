@@ -14,6 +14,52 @@
 /** Títulos de tratamento que o sistema prefixa antes do nome. */
 const TREATMENT_TITLES = ['dr', 'dra', 'sr', 'sra', 'exmo', 'exma'];
 
+/** Quem assina a mensagem, do jeito que a barra do chat deixa escolher. */
+export interface IdentidadeDoRemetente {
+  fullName?: string | null;
+  /** 'full' | 'first' | 'first_last' | 'nickname'. Padrão: 'first_last'. */
+  nameFormat?: string | null;
+  treatmentTitle?: string | null;
+  /** Só usado quando nameFormat === 'nickname'. */
+  nickname?: string | null;
+}
+
+/**
+ * Coloca o `*Nome:*` na frente do texto — o mesmo prefixo que
+ * `extractSenderName` lê de volta.
+ *
+ * Sem nome para assinar (perfil sem full_name, apelido em branco), devolve o
+ * texto intacto: melhor sair sem assinatura do que sair com `*undefined:*`.
+ * Quem chama compara com o texto original para saber que isso aconteceu.
+ *
+ * Vive aqui porque DOIS caminhos precisam do prefixo idêntico: o envio na hora
+ * (`useWhatsAppMessages.sendMessage`) e o envio agendado, que grava o texto
+ * final no banco na hora de agendar.
+ */
+export function prefixarRemetente(texto: string, quem: IdentidadeDoRemetente): string {
+  const fmt = quem.nameFormat || 'first_last';
+
+  if (fmt === 'nickname') {
+    const apelido = (quem.nickname || '').trim();
+    // Apelido não leva título de tratamento.
+    return apelido ? `*${apelido}:*\n${texto}` : texto;
+  }
+
+  const full = (quem.fullName || '').trim();
+  if (!full) return texto;
+
+  let displayName = full;
+  if (fmt === 'first') {
+    displayName = full.split(' ')[0];
+  } else if (fmt === 'first_last') {
+    const partes = full.split(' ');
+    displayName = partes.length > 1 ? `${partes[0]} ${partes[partes.length - 1]}` : partes[0];
+  }
+
+  const titulo = (quem.treatmentTitle || '').trim();
+  return `*${titulo ? `${titulo} ${displayName}` : displayName}:*\n${texto}`;
+}
+
 /**
  * Extrai o nome do prefixo `*Nome:*` da primeira linha. Devolve null quando a
  * mensagem não tem prefixo (envio anônimo, mensagem do agente de IA, mídia).
