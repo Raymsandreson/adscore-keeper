@@ -66,6 +66,27 @@ const ASSESSOR_INSS = {
 };
 
 /**
+ * Protocolo é o único status que não é do José — decisão do usuário
+ * (25/08/2026). "Protocolado" é o requerimento recém-entrado ("[INSS]
+ * Requerimento realizado com sucesso", 292 dos 294 casos), e essa etapa é da
+ * Luana.
+ *
+ * UUID é o `profiles.user_id` (auth do Externo), NÃO o `profiles.id`: são
+ * diferentes para ela, e é o user_id que `assigned_to` guarda em 730 das 749
+ * atividades dela. As outras 19 vieram do sync-process-compromissos, que
+ * gravou o profiles.id e por isso não casa com o filtro da tela.
+ */
+const ASSESSOR_PROTOCOLO = {
+  id: '1589c873-0550-418b-b828-f290e852d5d5',
+  name: 'Luana Barros',
+};
+
+/** Dono da atividade conforme o status que o INSS acabou de anunciar. */
+function donoDaAtualizacao(status?: string | null) {
+  return /protocolad/i.test(status || '') ? ASSESSOR_PROTOCOLO : ASSESSOR_INSS;
+}
+
+/**
  * Acha em `lead_processes` o processo do requerimento do INSS.
  *
  * `inss_admin_processes` e `lead_processes` são tabelas distintas e o elo entre
@@ -166,6 +187,7 @@ export const handler: RequestHandler = async (req, res) => {
       : undefined;
     const statusLabel = resultadoLabel ? `${latest.to_status} (${resultadoLabel})` : latest.to_status;
     const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
+    const dono = donoDaAtualizacao(latest.to_status);
     const activityDesc = `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".\n\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}\n\nCaso: ${caseInfo?.case_number || ''} — ${caseInfo?.title || ''}`;
 
     // Vínculo com caso e processo: até 17/08/2026 o insert levava só `lead_id`,
@@ -182,8 +204,8 @@ export const handler: RequestHandler = async (req, res) => {
       activity_type: 'notificacao',
       status: 'pendente',
       priority: 'normal',
-      assigned_to: ASSESSOR_INSS.id,
-      assigned_to_name: ASSESSOR_INSS.name,
+      assigned_to: dono.id,
+      assigned_to_name: dono.name,
       deadline: new Date().toISOString().slice(0, 10),
       case_id: proc.case_id,
       case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
