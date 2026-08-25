@@ -24,6 +24,8 @@ export interface ActivityMessageContext {
   formTitle: string;
   formDeadline: string;
   formNotificationDate: string;
+  /** `HH:mm` da notificação. Vazio ou '00:00' = sem hora definida. */
+  formNotificationTime?: string;
   formWhatWasDone: string;
   formCurrentStatus: string;
   formNextSteps: string;
@@ -123,7 +125,7 @@ export function buildActivityMessage(
   audience: 'client' | 'assessor' = 'client',
 ): string {
   const {
-    formTitle, formDeadline, formNotificationDate,
+    formTitle, formDeadline, formNotificationDate, formNotificationTime,
     formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
@@ -133,11 +135,22 @@ export function buildActivityMessage(
   const stripHtml = stripHtmlForMessage;
     const joinNames = (names: string[]) =>
       names.length <= 1 ? (names[0] || '') : `${names.slice(0, -1).join(', ')} e ${names[names.length - 1]}`;
-    const notifDate = formNotificationDate ? (() => {
-      const d = parseISO(formNotificationDate);
+    // Hora do aviso: '00:00' é a convenção de "sem hora" (as 22.247 linhas
+    // anteriores a 25/08/2026 não tinham como guardar hora nenhuma).
+    const notifHora = formNotificationTime && formNotificationTime !== '00:00'
+      ? formNotificationTime.slice(0, 5)
+      : '';
+    // Só a data por extenso — usada na frase de retorno, que emenda a hora (ou
+    // "até o final do dia") logo depois e não pode repetir o horário.
+    const notifDateOnly = formNotificationDate ? (() => {
+      const d = parseISO(formNotificationDate.slice(0, 10));
       const dias = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
       return `${format(d, 'dd/MM/yyyy')} ${dias[d.getDay()]}`;
     })() : '';
+    // Data completa para exibição (linha "*Notificação:*" e {{data_retorno}}).
+    const notifDate = notifDateOnly
+      ? (notifHora ? `${notifDateOnly}, às ${notifHora}` : notifDateOnly)
+      : '';
     const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
     // Campos que NUNCA vão pra mensagem copiada/enviada, mesmo que o usuário marque include_in_message.
     // resposta_juizo é conteúdo interno (uso da equipe), não deve ir pro cliente.
@@ -154,12 +167,20 @@ export function buildActivityMessage(
     const updatedAtFmt = selectedActivity?.updated_at && selectedActivity.updated_at !== selectedActivity.created_at ? format(parseISO(selectedActivity.updated_at), "dd/MM/yyyy 'às' HH:mm") : null;
     // Tempo dedicado NÃO vai mais em nenhuma mensagem (copiada ou enviada) —
     // decisão jul/2026. O tempo continua visível no editor (badge da ficha).
-    const activityLink = selectedActivity ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}` : '';
+    // Link SÓ na mensagem ao assessor. Na mensagem de cliente (Copiar com lead,
+    // Enviar ao Grupo e áudio TTS) ele não abre — /?openActivity= exige sessão —
+    // então virava ruído no grupo do cliente e ainda expunha o id interno da
+    // atividade. Decisão do usuário em 25/08/2026. Nos ramos abaixo isto deixa
+    // `{{link_atividade}}` renderizando vazio e desliga a auto-injeção do link.
+    const activityLink = (audience === 'assessor' && selectedActivity)
+      ? `🔗 Ver atividade: ${window.location.origin}/?openActivity=${selectedActivity.id}`
+      : '';
     const updatedInfo = updatedByName && updatedAtFmt ? `\n*Última atualização por:* ${updatedByName} em ${updatedAtFmt}` : '';
     const buildReturnDateLine = (responsavelDr: string) => {
-      if (!notifDate) return '';
+      if (!notifDateOnly) return '';
       const subject = responsavelDr ? `${responsavelDr} voltará` : 'Retornaremos';
-      return `*${subject} com mais informações no dia ${notifDate}, até o final do dia.*`;
+      const quando = notifHora ? `às ${notifHora}` : 'até o final do dia';
+      return `*${subject} com mais informações no dia ${notifDateOnly}, ${quando}.*`;
     };
 
     // Linked process info — "Referente ao processo n° "X" de "Y""
@@ -428,7 +449,7 @@ export function buildActivityMessage(
       // se há data de notificação, garante que ela apareça sempre — mesmo que o
       // template salvo não referencie {{linha_retorno}} nem {{data_retorno}}.
       // Injeta antes de "Estamos à disposição" (ou da assinatura, se não houver).
-      if (returnDateLine && !result.includes(notifDate)) {
+      if (returnDateLine && !result.includes(notifDateOnly)) {
         const lines = result.split('\n');
         const anchorIdx = lines.findIndex(line =>
           line.includes('Estamos à disposição') ||

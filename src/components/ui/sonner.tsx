@@ -22,6 +22,12 @@ const Toaster = ({ ...props }: ToasterProps) => {
           description: "group-[.toast]:text-muted-foreground",
           actionButton: "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground",
           cancelButton: "group-[.toast]:bg-muted group-[.toast]:text-muted-foreground",
+          // O X só aparece nos toasts que pedem `closeButton: true` (hoje os
+          // popups de atividade). A classe existe para ele herdar o tema do
+          // app — sem isso o botão usa as variáveis próprias do sonner e
+          // destoa do fundo `bg-background` que sobrescrevemos acima.
+          closeButton:
+            "group-[.toast]:bg-background group-[.toast]:text-foreground group-[.toast]:border-border group-[.toast]:hover:bg-muted",
         },
       }}
       {...props}

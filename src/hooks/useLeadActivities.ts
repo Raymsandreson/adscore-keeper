@@ -43,6 +43,13 @@ export interface LeadActivity {
   rescheduled_to?: string | null;
   deadline: string | null;
   notification_date: string | null;
+  /**
+   * Instante do aviso: data + HORA. `notification_date` continua guardando a
+   * parte da data e é o que todo leitor antigo usa (agenda, Google Calendar,
+   * BulkReassign, contagem de carga do dia). NULL ou 00:00 = sem hora definida.
+   * timestamptz no Externo (migration 20260825120000).
+   */
+  notification_at?: string | null;
   /** Previsão de tempo (min) para executar. O cronômetro herda ao iniciar a sessão. */
   estimated_minutes?: number | null;
   /** Data e hora da reunião (só quando activity_type = 'reuniao'). timestamptz no Externo. */
@@ -301,6 +308,10 @@ export function useLeadActivities() {
           assigned_to_name: activity.assigned_to_name || null,
           deadline: activity.deadline || null,
           notification_date: activity.notification_date || null,
+          // Hora do aviso. Fora desta whitelist a hora escolhida no formulário
+          // seria descartada na CRIAÇÃO e só apareceria numa edição posterior —
+          // exatamente o que aconteceu com Solicitação, Resposta e previsão.
+          notification_at: activity.notification_at || null,
           meeting_at: activity.meeting_at || null,
           // Coluna criada em 20260814190000; sem ela aqui, retorno agendado
           // preenchido na criação seria descartado igual à Solicitação.
