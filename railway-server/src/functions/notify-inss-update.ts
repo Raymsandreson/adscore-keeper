@@ -49,6 +49,23 @@ function formatLabel(numero?: string | null, titulo?: string | null): string {
 const onlyDigits = (v?: string | null) => (v || '').replace(/\D/g, '');
 
 /**
+ * Dono das atividades do INSS — decisão do usuário (25/08/2026).
+ *
+ * Até aqui o responsável era herdado de `leads.assigned_to`, e isso resolvia
+ * pouco: das 381 atividades "INSS atualizou" criadas desde 15/06/2026, 340
+ * (89%) nasceram SEM responsável, porque o lead do requerimento normalmente
+ * não tem ninguém atribuído. Sem dono, a atividade fica na lista geral e só
+ * anda quando alguém tropeça nela — foi o que aconteceu com o requerimento
+ * 2105413979, parado 8 dias.
+ *
+ * UUID conferido em `profiles.user_id` do Externo em 25/08/2026.
+ */
+const ASSESSOR_INSS = {
+  id: 'e1849012-7d6b-49b9-a5e5-36a2332e6eb8',
+  name: 'Jose Francisco Campos de Oliveira',
+};
+
+/**
  * Acha em `lead_processes` o processo do requerimento do INSS.
  *
  * `inss_admin_processes` e `lead_processes` são tabelas distintas e o elo entre
@@ -150,15 +167,6 @@ export const handler: RequestHandler = async (req, res) => {
     const statusLabel = resultadoLabel ? `${latest.to_status} (${resultadoLabel})` : latest.to_status;
     const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
     const activityDesc = `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".\n\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}\n\nCaso: ${caseInfo?.case_number || ''} — ${caseInfo?.title || ''}`;
-    let assignedTo: string | null = null;
-    if (leadId) {
-      const { data: lead } = await supabase
-        .from('leads')
-        .select('assigned_to')
-        .eq('id', leadId)
-        .maybeSingle();
-      assignedTo = lead?.assigned_to || null;
-    }
 
     // Vínculo com caso e processo: até 17/08/2026 o insert levava só `lead_id`,
     // e 205 das 252 atividades nasceram órfãs — todas com caso disponível (o
@@ -174,7 +182,8 @@ export const handler: RequestHandler = async (req, res) => {
       activity_type: 'notificacao',
       status: 'pendente',
       priority: 'normal',
-      assigned_to: assignedTo,
+      assigned_to: ASSESSOR_INSS.id,
+      assigned_to_name: ASSESSOR_INSS.name,
       deadline: new Date().toISOString().slice(0, 10),
       case_id: proc.case_id,
       case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
