@@ -114,6 +114,8 @@ describe('AgendarMensagemDialog', () => {
       ativo: true,
       total_enviado: 0,
       criado_por_nome: 'Raym Andreson',
+      pular_se_responder: true,
+      ultimo_resultado: null,
       ultimo_erro: null,
     }];
 
@@ -123,6 +125,42 @@ describe('AgendarMensagemDialog', () => {
 
     fireEvent.click(screen.getByTitle('Tirar da fila'));
     await waitFor(() => expect(cancelar).toHaveBeenCalledWith('ag-1', 'Raym Andreson'));
+  });
+
+  it('por padrão confere a conversa antes de enviar', async () => {
+    abrir();
+    const chave = screen.getByLabelText(/Não enviar se o cliente responder antes/i);
+    expect(chave).toBeChecked();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Agendar$/ }));
+    await waitFor(() => expect(agendar).toHaveBeenCalledTimes(1));
+    expect(agendar.mock.calls[0][0].pularSeResponder).toBe(true);
+  });
+
+  it('desligando a chave, a mensagem sai de qualquer jeito', async () => {
+    abrir();
+    fireEvent.click(screen.getByLabelText(/Não enviar se o cliente responder antes/i));
+    expect(screen.getByText(/Sai na hora marcada de qualquer jeito/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Agendar$/ }));
+    await waitFor(() => expect(agendar).toHaveBeenCalledTimes(1));
+    expect(agendar.mock.calls[0][0].pularSeResponder).toBe(false);
+  });
+
+  it('a fila diz se cada uma confere a conversa antes', () => {
+    pendentes.atual = [{
+      id: 'ag-3', phone: conversa.phone, instance_name: 'atendimento',
+      mensagem: 'oi', mensagem_original: 'oi',
+      proximo_envio_at: new Date(2026, 8, 12, 8, 0).toISOString(),
+      repeticao: 'nenhuma', intervalo: 1, unidade: 'dias', dias_da_semana: null,
+      repetir_ate: null, max_envios: null, ativo: true, total_enviado: 0,
+      criado_por_nome: null, pular_se_responder: true,
+      ultimo_resultado: 'nao enviada: o cliente respondeu em 25/08 16:21', ultimo_erro: null,
+    }];
+
+    abrir();
+    expect(screen.getByText(/Só sai se ele não responder antes/i)).toBeInTheDocument();
+    expect(screen.getByText(/o cliente respondeu em 25\/08 16:21/i)).toBeInTheDocument();
   });
 
   it('mensagem que já falhou mostra o erro do último envio', () => {
@@ -142,6 +180,8 @@ describe('AgendarMensagemDialog', () => {
       ativo: true,
       total_enviado: 3,
       criado_por_nome: null,
+      pular_se_responder: false,
+      ultimo_resultado: null,
       ultimo_erro: 'WhatsApp instance is disconnected.',
     }];
 

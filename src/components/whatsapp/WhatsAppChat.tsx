@@ -265,11 +265,13 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [nicknames, setNicknames] = useState<string[]>([]);
   const [selectedNickname, setSelectedNickname] = useState<string>('');
   const [newNickname, setNewNickname] = useState('');
-  // Agendar mensagem: escrever agora, sair na hora marcada. `tratamentoDoPerfil`
-  // é o título padrão do perfil (Dr./Dra.), que o envio usa quando a barra está
-  // em "Sem título" — buscado só quando a janela abre, que é quando importa.
+  // Agendar mensagem: escrever agora, sair na hora marcada. `perfilDoEnvio` é
+  // quem assina — nome completo e título padrão (Dr./Dra.) lidos de `profiles`,
+  // a MESMA fonte do envio na hora. O `profile` do contexto não serve sozinho:
+  // ele não traz treatment_title e às vezes chega sem full_name, e aí a
+  // agendada saía sem a assinatura que o envio imediato coloca.
   const [showAgendar, setShowAgendar] = useState(false);
-  const [tratamentoDoPerfil, setTratamentoDoPerfil] = useState<string | null>(null);
+  const [perfilDoEnvio, setPerfilDoEnvio] = useState<{ full_name: string | null; treatment_title: string | null } | null>(null);
   const [cancelandoAgendada, setCancelandoAgendada] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
@@ -2803,32 +2805,38 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     const tituloDaBarra = nameFormat === 'nickname' ? null : (treatmentTitle || null);
     return {
       texto: prefixarRemetente(text, {
-        fullName: profile?.full_name,
+        fullName: perfilDoEnvio?.full_name || profile?.full_name,
         nameFormat,
-        treatmentTitle: tituloDaBarra !== null ? tituloDaBarra : (tratamentoDoPerfil || ''),
+        treatmentTitle: tituloDaBarra !== null ? tituloDaBarra : (perfilDoEnvio?.treatment_title || ''),
         nickname: nameFormat === 'nickname' ? (selectedNickname || null) : null,
       }),
       mentions,
     };
   }, [
-    newMessage, shareInfo, identifySender, user, profile?.full_name,
-    nameFormat, treatmentTitle, selectedNickname, tratamentoDoPerfil,
+    newMessage, shareInfo, identifySender, user, profile?.full_name, perfilDoEnvio,
+    nameFormat, treatmentTitle, selectedNickname,
     mentionedParticipants,
   ]);
 
-  // O título de tratamento padrão do perfil (Dr./Dra.) só faz falta para montar
-  // a assinatura da agendada — busca quando a janela abre, não a cada conversa.
+  // Quem assina só faz falta na hora de agendar (o envio imediato busca por
+  // conta própria) — então a leitura acontece quando a janela abre.
   useEffect(() => {
-    if (!showAgendar || tratamentoDoPerfil !== null || !user) return;
+    if (!showAgendar || perfilDoEnvio !== null || !user) return;
     let vivo = true;
     supabase
       .from('profiles')
-      .select('treatment_title')
+      .select('full_name, treatment_title')
       .eq('user_id', user.id)
       .maybeSingle()
-      .then(({ data }) => { if (vivo) setTratamentoDoPerfil(((data as any)?.treatment_title as string) || ''); });
+      .then(({ data }) => {
+        if (!vivo) return;
+        setPerfilDoEnvio({
+          full_name: ((data as any)?.full_name as string) || profile?.full_name || null,
+          treatment_title: ((data as any)?.treatment_title as string) || null,
+        });
+      });
     return () => { vivo = false; };
-  }, [showAgendar, tratamentoDoPerfil, user]);
+  }, [showAgendar, perfilDoEnvio, user, profile?.full_name]);
 
   /** Tirar da fila pela própria bolha de prévia, sem abrir a janela. */
   const handleCancelarAgendada = async (id: string) => {
@@ -5120,6 +5128,16 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       )}
                     </p>
                     <p className="whitespace-pre-wrap break-words text-foreground/80">{item.mensagem}</p>
+                    {item.pular_se_responder && (
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Não sai se ele responder antes
+                      </p>
+                    )}
+                    {item.ultimo_resultado && (
+                      <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+                        {item.ultimo_resultado}
+                      </p>
+                    )}
                     {item.ultimo_erro && (
                       <p className="mt-1 text-[10px] text-destructive">
                         último envio falhou: {item.ultimo_erro}
@@ -5631,7 +5649,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           textoFinal={envioComoVaiSair.texto}
           mentions={envioComoVaiSair.mentions}
           criadoPor={user?.id || null}
-          criadoPorNome={profile?.full_name || null}
+          criadoPorNome={perfilDoEnvio?.full_name || profile?.full_name || null}
           onAgendado={() => { setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null); }}
         />
 

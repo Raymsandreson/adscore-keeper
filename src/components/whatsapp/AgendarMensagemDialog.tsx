@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { CalendarClock, Loader2, Repeat, Trash2, AlertTriangle } from 'lucide-react';
 import { format, addDays, addHours, startOfHour } from 'date-fns';
@@ -84,6 +85,7 @@ export function AgendarMensagemDialog({
   const [limite, setLimite] = useState<Limite>('sempre');
   const [ate, setAte] = useState('');
   const [vezes, setVezes] = useState(4);
+  const [pularSeResponder, setPularSeResponder] = useState(true);
   const [cancelando, setCancelando] = useState<string | null>(null);
 
   // Cada abertura recomeça do zero — a janela é sobre a mensagem que está no
@@ -100,6 +102,7 @@ export function AgendarMensagemDialog({
     setLimite('sempre');
     setAte('');
     setVezes(4);
+    setPularSeResponder(true);
   }, [open]);
 
   const quando = useMemo(() => {
@@ -169,6 +172,7 @@ export function AgendarMensagemDialog({
         diasDaSemana: regra.diasDaSemana,
         repetirAte: regra.repetirAte,
         maxEnvios: regra.maxEnvios,
+        pularSeResponder,
         criadoPor,
         criadoPorNome,
       });
@@ -325,6 +329,27 @@ export function AgendarMensagemDialog({
             </div>
           )}
 
+          {/* Confere a conversa antes de mandar. Quase toda agendada é cobrança
+              de uma resposta que ainda não veio; se ela vier antes da hora, a
+              cobrança chega como se ninguém tivesse lido o cliente. */}
+          <div className="flex items-start justify-between gap-3 rounded-md border p-3">
+            <div className="min-w-0">
+              <Label htmlFor="pular-se-responder" className="text-xs cursor-pointer">
+                Não enviar se o cliente responder antes
+              </Label>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                {pularSeResponder
+                  ? 'Na hora marcada, olha a conversa: se ele tiver falado depois de agora, a mensagem não sai.'
+                  : 'Sai na hora marcada de qualquer jeito — para aviso de audiência, parabéns, lembrete de parcela.'}
+              </p>
+            </div>
+            <Switch
+              id="pular-se-responder"
+              checked={pularSeResponder}
+              onCheckedChange={setPularSeResponder}
+            />
+          </div>
+
           {/* A promessa, escrita: quando sai e quais são os próximos. */}
           {erro ? (
             <p className="flex items-center gap-1.5 text-xs text-destructive">
@@ -377,8 +402,12 @@ export function AgendarMensagemDialog({
                   <p className="truncate text-xs text-muted-foreground">
                     {item.mensagem_original || item.mensagem}
                   </p>
-                  {item.criado_por_nome && (
-                    <p className="text-[10px] text-muted-foreground">por {item.criado_por_nome}</p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {item.pular_se_responder ? 'Só sai se ele não responder antes' : 'Sai de qualquer jeito'}
+                    {item.criado_por_nome ? ` · por ${item.criado_por_nome}` : ''}
+                  </p>
+                  {item.ultimo_resultado && (
+                    <p className="text-[10px] text-amber-600 dark:text-amber-400">{item.ultimo_resultado}</p>
                   )}
                   {item.ultimo_erro && (
                     <p className="text-[10px] text-destructive">último envio falhou: {item.ultimo_erro}</p>
