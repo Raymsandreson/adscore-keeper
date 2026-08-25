@@ -29,6 +29,7 @@ import PericiaInssChips from '@/components/activities/PericiaInssChips';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
+import { buildNotificationAt, hydrateNotificationTime } from '@/lib/notificationDateTime';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
@@ -198,7 +199,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   const [formNotificationDate, setFormNotificationDate] = useState('');
   const [formMeetingAt, setFormMeetingAt] = useState('');
   // Retorno agendado (datetime-local, fuso do navegador) — vira callback_at (ISO) no banco.
-  const [formCallbackAt, setFormCallbackAt] = useState('');
+  // Hora da notificação (`HH:mm`, fuso do navegador) → notification_at no banco.
+  const [formNotificationTime, setFormNotificationTime] = useState('');
   const [formAssignedTo, setFormAssignedTo] = useState('');
   const [formAssignedToName, setFormAssignedToName] = useState('');
   const [formMatrixQuadrant, setFormMatrixQuadrant] = useState('');
@@ -477,7 +479,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormNotificationDate(act.notification_date || act.deadline || '');
     // meeting_at é timestamptz; datetime-local espera YYYY-MM-DDTHH:mm
     setFormMeetingAt((((act as any).meeting_at as string | null) || '').slice(0, 16));
-    setFormCallbackAt((act as any).callback_at ? format(parseISO((act as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
+    setFormNotificationTime(hydrateNotificationTime((act as any).notification_at));
     const assignedCloud = ((await remapToCloud(act.assigned_to)) as string) || '';
     setFormAssignedTo(assignedCloud);
     setFormAssignedToName(act.assigned_to_name || '');
@@ -565,7 +567,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setFormDeadline(d.deadline || '');
     setFormNotificationDate('');
     setFormMeetingAt('');
-    setFormCallbackAt('');
+    setFormNotificationTime('');
     setFormAssignedTo(d.assigned_to || '');
     setFormAssignedToName(d.assigned_to_name || '');
     setFormMatrixQuadrant('');
@@ -774,6 +776,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     assigned_to_name: formAssignedToName || null,
     deadline: formDeadline || null,
     notification_date: formNotificationDate || null,
+    notification_at: buildNotificationAt(formNotificationDate, formNotificationTime),
     // Só persiste horário quando o tipo é Reunião (detecção por rótulo — no Externo a key é custom_...).
     meeting_at: isMeetingType(formType, activityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
     notes: formNotes || null,
@@ -792,17 +795,6 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     crm_campaign_id: formCampaignId || null,
     feedback: formFeedback || null,
     rescheduled_to: formRescheduledTo || null,
-    // Retorno agendado: só entra quando MUDOU. Não existe callback_notified_at
-    // no Externo (o comentário antigo prometia esse carimbo); o ganho real é
-    // não reescrever a coluna a cada save. Campo limpo vira null aqui, então
-    // dá para desmarcar o retorno.
-    ...(() => {
-      const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
-      const prevRaw = (selectedActivity as any)?.callback_at || null;
-      const prevMs = prevRaw ? new Date(prevRaw).getTime() : null;
-      const nextMs = nextIso ? new Date(nextIso).getTime() : null;
-      return prevMs !== nextMs ? { callback_at: nextIso } : {};
-    })(),
     // Arrays multi-assessor/observador: só entram quando há (ou quando a atividade
     // carregada já tinha — para permitir limpar). Hook remapeia Cloud→Externo.
     ...(formCoAssignees.length === 0 && !loadedHadCoAssignees ? {} : {
@@ -1347,7 +1339,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
   /** Mensagem da atividade — idêntica à da tela de Atividades (função compartilhada). */
   const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
     buildActivityMessage({
-      formTitle, formDeadline, formNotificationDate,
+      formTitle, formDeadline, formNotificationDate, formNotificationTime,
       formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
@@ -1859,8 +1851,8 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 spentSeconds={liveSpentSeconds}
                 estimateSamples={isCreate ? estimateSamplesFor(formType) : 0}
                 formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
-                formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
                 formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
+                formNotificationTime={formNotificationTime} setFormNotificationTime={setFormNotificationTime}
                 formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
                 formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
                 formLeadId={formLeadId} formLeadName={formLeadName}

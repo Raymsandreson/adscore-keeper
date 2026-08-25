@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { hydrateNotificationTime } from '@/lib/notificationDateTime';
 
 interface ConfirmDialogDateFieldsProps {
   confirmNewActivity: any;
@@ -16,6 +17,7 @@ export function ConfirmDialogDateFields({ confirmNewActivity, setConfirmNewActiv
   const assignedTo = confirmNewActivity?.assigned_to;
   const deadline = confirmNewActivity?.deadline;
   const notificationDate = confirmNewActivity?.notification_date;
+  const notificationAt = confirmNewActivity?.notification_at;
 
   useEffect(() => {
     if (!assignedTo || !deadline) { setDeadlineCount(null); return; }
@@ -85,10 +87,18 @@ export function ConfirmDialogDateFields({ confirmNewActivity, setConfirmNewActiv
               </Badge>
             )}
           </div>
+          {/* Este input já era `datetime-local`, mas a hora ia para
+              `notification_date`, que é DATE — o banco truncava em silêncio.
+              Desde 25/08/2026 a hora tem coluna própria (`notification_at`) e a
+              data continua indo pura para `notification_date`. */}
           <Input
             type="datetime-local"
-            value={notificationDate || ''}
-            onChange={(e) => setConfirmNewActivity((prev: any) => prev ? { ...prev, notification_date: e.target.value } : prev)}
+            value={notificationDate ? `${String(notificationDate).slice(0, 10)}T${hydrateNotificationTime(notificationAt) || '00:00'}` : ''}
+            onChange={(e) => setConfirmNewActivity((prev: any) => prev ? {
+              ...prev,
+              notification_date: e.target.value ? e.target.value.slice(0, 10) : null,
+              notification_at: e.target.value ? new Date(e.target.value).toISOString() : null,
+            } : prev)}
             className="h-8 text-sm"
           />
         </div>

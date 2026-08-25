@@ -204,8 +204,13 @@ interface ActivityFormCompactProps {
   /** Amostra da mediana que gerou a sugestão (tooltip "baseado em N execuções"). */
   estimateSamples?: number;
   formDeadline: string; handleDeadlineChange: (v: string) => void;
-  formCallbackAt?: string; setFormCallbackAt?: (v: string) => void;
   formNotificationDate: string; setFormNotificationDate: (v: string) => void;
+  /**
+   * `HH:mm` da notificação. Fica em estado separado de propósito: assim
+   * `formNotificationDate` continua sendo `yyyy-MM-dd` puro e todas as
+   * gravações de `notification_date` seguem idênticas. Vazio = sem hora.
+   */
+  formNotificationTime?: string; setFormNotificationTime?: (v: string) => void;
   formMeetingAt: string; setFormMeetingAt: (v: string) => void;
   formMatrixQuadrant: string; setFormMatrixQuadrant: (v: string) => void;
   formLeadId: string; formLeadName: string;
@@ -1512,7 +1517,21 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               </span>
             )}
           </div>
-          <Input type="date" value={props.formNotificationDate} onChange={e => props.setFormNotificationDate(e.target.value)} className="h-8 text-xs" />
+          {/* Data + HORA numa caixa só (25/08/2026). O estado continua partido em
+              dois — `formNotificationDate` (`yyyy-MM-dd`) e `formNotificationTime`
+              (`HH:mm`) — porque a coluna `notification_date` é DATE e é ela que
+              alimenta agenda, Google Calendar, BulkReassign e a contagem de carga
+              do dia. A hora vai para a coluna nova `notification_at`. */}
+          <Input
+            type="datetime-local"
+            value={props.formNotificationDate ? `${props.formNotificationDate}T${props.formNotificationTime || '00:00'}` : ''}
+            onChange={e => {
+              const [dia, hora] = e.target.value.split('T');
+              props.setFormNotificationDate(dia || '');
+              props.setFormNotificationTime?.(hora ? hora.slice(0, 5) : '');
+            }}
+            className="h-8 text-xs"
+          />
         </div>
       </div>
 
@@ -1534,47 +1553,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
         );
       })()}
-
-      {/* === ROW 4b: Retorno agendado (opcional) ===
-          Quando voltar a falar com o cliente/parte. Fora da grade acima de
-          propósito: Prazo e Notificação são obrigatórios, este não — misturar
-          os três daria a entender que todos precisam ser preenchidos.
-          A prop chegava aqui desde jul/2026 e NENHUM componente a usava: o
-          campo existia no payload, no reset e na hidratação, mas não tinha
-          input — por isso 100% das atividades têm callback_at nulo. A coluna
-          só passou a existir em 14/08/2026 (migration 20260814190000).
-          Efeito visível: entra no minicalendário de pendentes à frente do
-          prazo (ActivityTimerOverlay keyDate: meeting_at > callback_at >
-          deadline > notification_date). */}
-      {props.setFormCallbackAt && (
-        <div>
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
-              ↩️ Retorno agendado
-            </span>
-            {props.formCallbackAt ? (
-              <button
-                type="button"
-                onClick={() => props.setFormCallbackAt?.('')}
-                className="text-[10px] text-muted-foreground hover:text-foreground"
-              >
-                ✕ limpar
-              </button>
-            ) : (
-              <span className="text-[10px] text-muted-foreground/70">opcional</span>
-            )}
-          </div>
-          <Input
-            type="datetime-local"
-            value={props.formCallbackAt || ''}
-            onChange={e => props.setFormCallbackAt?.(e.target.value)}
-            className="h-8 text-xs"
-          />
-          <p className="text-[10px] text-muted-foreground mt-0.5">
-            Data e hora de voltar a falar com o cliente/parte. Vale na lista de pendentes antes do prazo.
-          </p>
-        </div>
-      )}
 
       {/* === ROW 5: Repeat weekdays (only on create) === */}
       {!props.selectedActivity && (

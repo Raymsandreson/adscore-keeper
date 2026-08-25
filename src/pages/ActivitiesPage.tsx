@@ -34,6 +34,7 @@ import { copyTextToClipboard } from '@/lib/clipboard';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
+import { buildNotificationAt, hydrateNotificationTime } from "@/lib/notificationDateTime";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
 import { CompleteAndNotifyDialog, fetchLeadGroupOptions, type GroupOption } from '@/components/activities/CompleteAndNotifyDialog';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
@@ -387,9 +388,11 @@ const ActivitiesPage = () => {
   const [formRescheduledTo, setFormRescheduledTo] = useState('');
   const [formDeadline, setFormDeadline] = useState('');
   const [formNotificationDate, setFormNotificationDate] = useState('');
+  // Hora da notificação (`HH:mm`, fuso do navegador) — vira notification_at (ISO)
+  // no banco. Estado separado da data de propósito: `formNotificationDate` segue
+  // sendo `yyyy-MM-dd` puro e nenhuma gravação de `notification_date` muda.
+  const [formNotificationTime, setFormNotificationTime] = useState('');
   const [formMeetingAt, setFormMeetingAt] = useState('');
-  // Retorno agendado (datetime-local, fuso do navegador) — vira callback_at (ISO) no banco.
-  const [formCallbackAt, setFormCallbackAt] = useState('');
   // Gravação automática ao chegar via popup "Ligar agora" (?callNow=1).
   const [callRecorderAutoStart, setCallRecorderAutoStart] = useState(false);
   const [formNotes, setFormNotes] = useState('');
@@ -941,7 +944,7 @@ const ActivitiesPage = () => {
     const todayStr = format(new Date(), 'yyyy-MM-dd');
     setFormDeadline(todayStr);
     setFormNotificationDate(todayStr);
-    setFormCallbackAt('');
+    setFormNotificationTime('');
     setFormMeetingAt('');
     setFormNotes('');
     setFormRepeatWeekDays([]);
@@ -1293,21 +1296,20 @@ const ActivitiesPage = () => {
         observer_names: observers.map(o => o.full_name),
       } : {}),
       ...(groupId ? { assignment_group_id: groupId } : {}),
-      ...(formCallbackAt ? { callback_at: new Date(formCallbackAt).toISOString() } : {}),
       ...(isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) && formMeetingAt ? { meeting_at: formMeetingAt } : {}),
     };
 
     // Variações de data: dias da semana repetidos ou o prazo único do form.
-    const dateVariants: { deadline: string | null; notification_date: string | null }[] = [];
+    const dateVariants: { deadline: string | null; notification_date: string | null; notification_at: string | null }[] = [];
     if (formRepeatWeekDays.length > 0 && formDeadline) {
       const baseDate = parseISO(formDeadline);
       const weekStart = startOfWeek(baseDate, { weekStartsOn: 1 }); // Monday
       for (const dayIdx of formRepeatWeekDays) {
         const dateStr = format(addDays(weekStart, dayIdx), 'yyyy-MM-dd');
-        dateVariants.push({ deadline: dateStr, notification_date: dateStr });
+        dateVariants.push({ deadline: dateStr, notification_date: dateStr, notification_at: buildNotificationAt(dateStr, formNotificationTime) });
       }
     } else {
-      dateVariants.push({ deadline: formDeadline || null, notification_date: formNotificationDate || null });
+      dateVariants.push({ deadline: formDeadline || null, notification_date: formNotificationDate || null, notification_at: buildNotificationAt(formNotificationDate, formNotificationTime) });
     }
 
     let createdActivityId: string | null = null;
@@ -1507,7 +1509,7 @@ const ActivitiesPage = () => {
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
     // edição (inclusive vincular lead/caso) persistia nelas.
     setFormNotificationDate(activity.notification_date || activity.deadline || '');
-    setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
+    setFormNotificationTime(hydrateNotificationTime((activity as any).notification_at));
     setFormMeetingAt((((activity as any).meeting_at as string | null) || '').slice(0, 16));
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
@@ -1776,17 +1778,7 @@ const ActivitiesPage = () => {
       client_name_override: formClientNameOverride || null,
       feedback: formFeedback || null,
       rescheduled_to: formRescheduledTo || null,
-      // Só entra no update quando MUDOU. Não existe callback_notified_at no
-      // Externo (o comentário antigo prometia esse carimbo); o ganho real é
-      // não reescrever a coluna a cada save. Campo limpo vira null aqui, então
-      // dá para desmarcar o retorno.
-      ...(() => {
-        const nextIso = formCallbackAt ? new Date(formCallbackAt).toISOString() : null;
-        const prevRaw = (selectedActivity as any).callback_at || null;
-        const prevMs = prevRaw ? new Date(prevRaw).getTime() : null;
-        const nextMs = nextIso ? new Date(nextIso).getTime() : null;
-        return prevMs !== nextMs ? { callback_at: nextIso } : {};
-      })(),
+      notification_at: buildNotificationAt(formNotificationDate, formNotificationTime),
       // Reunião: grava/limpa o horário conforme o tipo (detecção por rótulo, key custom_ no Externo).
       meeting_at: isMeetingType(formType, dbActivityTypes.find(t => t.key === formType)?.label) ? (formMeetingAt || null) : null,
       ...buildAssigneesPayload(),
@@ -1979,11 +1971,10 @@ const ActivitiesPage = () => {
         assigned_to_name: formAssignedToName || null,
         deadline: formDeadline || null,
         notification_date: formNotificationDate || null,
-        // Retorno agendado segue prazo e notificação: as datas do formulário
-        // são as da PRÓXIMA etapa. Sem esta linha, quem preenchesse "Retorno
-        // agendado" e clicasse aqui perderia o valor calado — a mãe é
-        // concluída sem salvar o formulário.
-        callback_at: formCallbackAt ? new Date(formCallbackAt).toISOString() : null,
+        // A hora do aviso segue prazo e notificação: as datas do formulário são
+        // as da PRÓXIMA etapa. Sem esta linha, quem escolhesse a hora e clicasse
+        // aqui a perderia calado — a mãe é concluída sem salvar o formulário.
+        notification_at: buildNotificationAt(formNotificationDate, formNotificationTime),
         notes: formNotes || null,
         contact_id: formContactId || null,
         contact_name: formContactName || null,
@@ -2252,7 +2243,7 @@ const ActivitiesPage = () => {
     // notification_date, e o Salvar exige o campo — sem o fallback, nenhuma
     // edição (inclusive vincular lead/caso) persistia nelas.
     setFormNotificationDate(activity.notification_date || activity.deadline || '');
-    setFormCallbackAt((activity as any).callback_at ? format(parseISO((activity as any).callback_at), "yyyy-MM-dd'T'HH:mm") : '');
+    setFormNotificationTime(hydrateNotificationTime((activity as any).notification_at));
     setFormMeetingAt((((activity as any).meeting_at as string | null) || '').slice(0, 16));
     setFormNotes(activity.notes || '');
     setFormStatus(activity.status || 'pendente');
@@ -2342,7 +2333,9 @@ const ActivitiesPage = () => {
       estimated_minutes: formEstimatedMinutes ?? null, lead_id: formLeadId || null,
       lead_name: formLeadName || null, assigned_to: formAssignedTo || null,
       assigned_to_name: formAssignedToName || null, deadline: formDeadline || null,
-      notification_date: formNotificationDate || null, notes: formNotes || null,
+      notification_date: formNotificationDate || null,
+      notification_at: buildNotificationAt(formNotificationDate, formNotificationTime),
+      notes: formNotes || null,
       status: formStatus, contact_id: formContactId || null, contact_name: formContactName || null,
       case_id: formCaseId || null, case_title: formCaseTitle || null,
       crm_campaign_id: formCampaignId || null,
@@ -3462,7 +3455,7 @@ const ActivitiesPage = () => {
   // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
   const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
     buildActivityMessage({
-      formTitle, formDeadline, formNotificationDate,
+      formTitle, formDeadline, formNotificationDate, formNotificationTime,
       formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
@@ -3508,9 +3501,9 @@ const ActivitiesPage = () => {
       )}
       estimateSamples={sheetMode === 'create' ? estimateSamplesFor(formType) : 0}
       formDeadline={formDeadline} handleDeadlineChange={handleDeadlineChange}
-      formCallbackAt={formCallbackAt} setFormCallbackAt={setFormCallbackAt}
       formMeetingAt={formMeetingAt} setFormMeetingAt={setFormMeetingAt}
       formNotificationDate={formNotificationDate} setFormNotificationDate={setFormNotificationDate}
+      formNotificationTime={formNotificationTime} setFormNotificationTime={setFormNotificationTime}
       formMatrixQuadrant={formMatrixQuadrant} setFormMatrixQuadrant={setFormMatrixQuadrant}
       formLeadId={formLeadId} formLeadName={formLeadName}
       formContactId={formContactId} formContactName={formContactName}
@@ -6595,6 +6588,7 @@ const ActivitiesPage = () => {
                               contact_name: formContactName || null,
                               deadline: formDeadline || null,
                               notification_date: formNotificationDate || null,
+                              notification_at: buildNotificationAt(formNotificationDate, formNotificationTime),
                               client_name_override: formClientNameOverride || null,
                               ...buildAssigneesPayload(),
                             });
