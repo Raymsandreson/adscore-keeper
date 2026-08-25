@@ -26,7 +26,9 @@ import {
   DIAS_DA_SEMANA,
   REGRA_PADRAO,
   descreverAgendamento,
+  descreverRepeticao,
   listarProximosEnvios,
+  regraDaLinha,
   validarAgendamento,
   type RegraDeRepeticao,
   type Repeticao,
@@ -405,13 +407,5 @@ export function AgendarMensagemDialog({
 
 /** A frase da recorrência de uma linha já salva, reconstruída do banco. */
 function descreverRepeticaoDaLinha(item: MensagemAgendada): string {
-  const quando = new Date(item.proximo_envio_at);
-  return descreverAgendamento(quando, {
-    repeticao: item.repeticao,
-    intervalo: item.intervalo,
-    unidade: item.unidade,
-    diasDaSemana: item.dias_da_semana || [],
-    repetirAte: item.repetir_ate ? new Date(`${item.repetir_ate}T00:00:00`) : null,
-    maxEnvios: item.max_envios,
-  }).replace(/ às \d{2}:\d{2}/, '');
+  return descreverRepeticao(new Date(item.proximo_envio_at), regraDaLinha(item));
 }
