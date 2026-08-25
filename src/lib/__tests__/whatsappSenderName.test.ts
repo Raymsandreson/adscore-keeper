@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractSenderName, lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
+import { extractSenderName, lastSenderName, matchMemberByName, prefixarRemetente } from '@/lib/whatsappSenderName';
 
 describe('extractSenderName', () => {
   it('lê o prefixo que o envio com "Identificar remetente" coloca', () => {
@@ -82,5 +82,38 @@ describe('matchMemberByName', () => {
       { user_id: '2', full_name: 'Ana Carolina Souza' },
     ];
     expect(matchMemberByName('Ana Souza', ambiguos)).toBeNull();
+  });
+});
+
+describe('prefixarRemetente', () => {
+  it('assina com primeiro e último nome (padrão da barra do chat)', () => {
+    expect(prefixarRemetente('Bom dia', { fullName: 'Ana Carolina Moreira Souza' }))
+      .toBe('*Ana Souza:*\nBom dia');
+  });
+
+  it('respeita o formato escolhido', () => {
+    const quem = { fullName: 'Ana Carolina Moreira Souza' };
+    expect(prefixarRemetente('oi', { ...quem, nameFormat: 'full' })).toBe('*Ana Carolina Moreira Souza:*\noi');
+    expect(prefixarRemetente('oi', { ...quem, nameFormat: 'first' })).toBe('*Ana:*\noi');
+  });
+
+  it('põe o título de tratamento na frente', () => {
+    expect(prefixarRemetente('oi', { fullName: 'Ana Souza', treatmentTitle: 'Dra.' }))
+      .toBe('*Dra. Ana Souza:*\noi');
+  });
+
+  it('apelido não leva título', () => {
+    expect(prefixarRemetente('oi', { fullName: 'Ana Souza', nameFormat: 'nickname', nickname: 'Financeiro', treatmentTitle: 'Dra.' }))
+      .toBe('*Financeiro:*\noi');
+  });
+
+  it('sem nome para assinar, o texto sai intacto', () => {
+    expect(prefixarRemetente('oi', { fullName: null })).toBe('oi');
+    expect(prefixarRemetente('oi', { fullName: 'Ana Souza', nameFormat: 'nickname', nickname: '  ' })).toBe('oi');
+  });
+
+  it('o que ele escreve, extractSenderName lê de volta', () => {
+    const texto = prefixarRemetente('Segue o documento', { fullName: 'Ana Carolina Souza', treatmentTitle: 'Dra.' });
+    expect(extractSenderName(texto)).toBe('Ana Souza');
   });
 });
