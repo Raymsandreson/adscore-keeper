@@ -186,7 +186,7 @@ begin
 end;
 $$;
 
-comment on function public.wa_optout_fecha_leads(text, text, text) is
+comment on function public.wa_optout_fecha_leads(text, text, text, uuid) is
   'Fecha os leads abertos de um número que pediu opt-out. Status default refused (closed = virou cliente neste banco). Retorna os ids fechados.';
 
 -- Sem este índice a função varre as 21.439 linhas de `leads` a cada opt-out.

@@ -39,6 +39,15 @@ const OPTOUT_MENSAGEM_EXATA =
   /^(sair|parar|pare|para|stop|cancelar|descadastrar|remover|sai fora)[.!]?$/i;
 
 const OPTOUT_FRASES = [
+  // Como a recusa realmente aparece nesta base — os quatro primeiros padrões
+  // saíram de ler 90 dias de mensagens recebidas (66.253 inbound curtas), não
+  // de imaginar como alguém escreveria. "sair"/"pare"/"stop" sozinhos: ZERO
+  // ocorrências no período. "não tenho interesse": 16. "não quero" no fim da
+  // frase: 7. "não quero prosseguir/dar continuidade": 6.
+  /n[ãa]o\s+tenho\s+(mais\s+)?interesse/i,
+  /n[ãa]o\s+quero\s*(mais)?\s*[.!]?$/i,
+  /n[ãa]o\s+quero\s+(mais\s+|ma[si]\s+)?(dar\s+continuidade|prosseguir|continuar|seguir)\b/i,
+  /^\s*sem\s+interesse/i,
   /n[ãa]o\s+(quero|desejo)\s+(mais\s+)?(receber|nada|ser\s+contatad)/i,
   /n[ãa]o\s+(me\s+)?(mand[ea]|envie|manda)\s+mais/i,
   /par[ea]\s+de\s+(me\s+)?(mandar|enviar|encher|perturbar)/i,

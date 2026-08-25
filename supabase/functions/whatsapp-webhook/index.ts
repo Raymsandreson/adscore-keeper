@@ -7,7 +7,6 @@ import {
 } from "../_shared/supabase-url-resolver.ts";
 import {
   normalizeAckStatus,
-  pediuParaParar,
   statusAbaixoDe,
 } from "../_shared/optout.ts";
 import {
@@ -947,9 +946,14 @@ async function handleCallEvent(supabase: any, body: any) {
 // uma condição sempre verdadeira, porque nada nunca saía de 'sent'.
 //
 // A lógica pura mora em _shared/optout.ts para poder ser testada
-// (src/lib/__tests__/whatsappOptout.test.ts) — o detector de pedido de parada é
-// a parte que não pode errar: falso positivo fecha o lead de quem ainda queria
-// atendimento.
+// (src/lib/__tests__/whatsappOptout.test.ts).
+//
+// A DETECÇÃO do pedido de parada NÃO está aqui: virou a trigger
+// `trg_wa_optout_detecta_inbound` (migration 20260825020000), que pega a
+// mensagem por onde quer que ela seja gravada e não exigiu redeployar esta
+// função — que está 158 mil caracteres e atrasada em relação ao repo. O ack
+// ficou porque não há alternativa: `messages_update` é descartado ANTES de
+// qualquer INSERT, então nenhuma trigger alcança.
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -2591,51 +2595,6 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         console.error("Outbound echo dedup error:", e);
-      }
-    }
-
-    // ========== PEDIDO DE PARADA: registra opt-out e fecha o lead ==========
-    // Quem escreve "não me manda mais" recebendo outra cobrança automática no
-    // dia seguinte é quem clica em Denunciar — e denúncia mata a instância.
-    // Medido no Externo em 24/08/2026: 461 conversas que nunca responderam
-    // receberam 2+ mensagens nossas, 161 receberam 4+, e as 5 instâncias que
-    // morreram no mês tinham 43,7%-58,0% de conversas mudas contra 13,0%-38,7%
-    // das que seguem vivas.
-    //
-    // É `await` de propósito (com teto de 5s): o opt-out precisa estar gravado
-    // antes que qualquer automação dispare a próxima mensagem para este número.
-    // Falha aqui não derruba o webhook — a mensagem segue sendo salva normalmente.
-    if (direction === "inbound" && !isGroup && pediuParaParar(messageText)) {
-      try {
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 5000);
-        const r = await fetch(`${RESOLVED_SUPABASE_URL}/functions/v1/whatsapp-optout`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${RESOLVED_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({
-            action: "register",
-            phone,
-            instance_name: instanceName,
-            lead_id: leadId,
-            source: "whatsapp_text",
-            reason: "Pediu por mensagem para não receber mais contato",
-            message_text: messageText,
-          }),
-          signal: ctrl.signal,
-        });
-        clearTimeout(timer);
-        const out = await r.json().catch(() => null);
-        console.log("[whatsapp-webhook][optout] pedido de parada registrado:", {
-          phone: `***${String(phone).slice(-4)}`,
-          instance_name: instanceName,
-          leads_fechados: out?.leads_fechados ?? null,
-          ja_registrado: out?.already_registered ?? false,
-        });
-      } catch (e: any) {
-        console.error("[whatsapp-webhook][optout] falha ao registrar:", e?.message);
       }
     }
 

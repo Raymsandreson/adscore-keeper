@@ -54,6 +54,18 @@ describe('pediuParaParar', () => {
         'remova meu número',
         'me deixa em paz',
         'vou denunciar esse número',
+        // Como a recusa REALMENTE chega nesta base — textos reais de 90 dias
+        // de mensagens recebidas (com os erros de digitação que vieram junto).
+        'Não tenho mais interesse',
+        'Nao tenho interesse',
+        'Não tenho interesse obrigada',
+        'Bom dia, obrigada pelo convite, mas no momento não tenho interesse.',
+        'Mais não quero',
+        'Eu vi nao quero mais',
+        'Olá, não quero dar continuidade',
+        'Eu não quero prosseguir com o BPC agora',
+        'Foi negado e eu não quero mas prosseguir',
+        'Sem interesse',
       ]
     ) {
       expect(pediuParaParar(t), `deveria reconhecer: ${t}`).toBe(true);
@@ -73,6 +85,13 @@ describe('pediuParaParar', () => {
         'stopping? não entendi',
         'me manda mais informações por favor',
         'quero receber o contrato',
+        // Falsos positivos reais que apareceram na base ao calibrar os padrões:
+        // todos contêm as palavras da recusa sem serem recusa do atendimento.
+        'Eu não quero escutar choro pra pagar parcelado',
+        'E deixa te falar não quero prejudicar os outros que continuam trabalhando la',
+        'Paz pras 12hr quando eu parar pro almoço',
+        'Me Tira Uma Dúvida',
+        'Mais não preciso pagar nada se não der em nada né',
       ]
     ) {
       expect(pediuParaParar(t), `NÃO deveria reconhecer: ${t}`).toBe(false);
