@@ -73,6 +73,12 @@ export function ActivityNotificationsListener() {
       const opts = {
         description: parts.join('\n'),
         duration: isCobranca ? 30000 : 15000,
+        // X para fechar. Estes popups ficam 15s (feedback, atribuição) a 30s
+        // (cobrança, incompleto, insatisfeito) na tela e podem chegar
+        // empilhados — sem o botão só saíam esperando o tempo acabar, porque
+        // clicar no corpo não fecha e o único botão é "Abrir atividade", que
+        // ainda dá preventDefault para manter o popup aberto.
+        closeButton: true,
         action: n.activity_id
           ? {
               label: 'Abrir atividade',
