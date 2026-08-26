@@ -495,9 +495,19 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             {/* 3. Valor — a abertura por parte */}
             <Secao
               refSecao={secaoValores}
-              titulo={clientes.length === 1 ? 'Valor da parte' : `Valor por parte (${clientes.length})`}
+              /* "líquido" no nome, não em nota de rodapé: este número é a cota do
+                 cliente JÁ descontado o honorário contratual — o termo do caso 88
+                 diz isso com todas as letras ("já descontados os honorários
+                 contratuais"). Sem o rótulo, ele passa por valor do processo, e o
+                 processo vale mais. */
+              titulo={clientes.length === 1
+                ? 'Valor líquido da parte'
+                : `Valor líquido das partes (${clientes.length})`}
               acao={
                 <span className="flex flex-col items-end leading-tight">
+                  <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                    líquido total das partes
+                  </span>
                   <span className="text-xs font-semibold">{brl(totalConferido)}</span>
                   {totalAtualizado > totalConferido + 0.01 && (
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
@@ -514,8 +524,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
               ) : (
                 <>
                   <p className="text-[11px] leading-snug text-muted-foreground">
-                    O valor é de cada PARTE, não do processo. O que a carteira mostra é a soma
-                    das {clientes.length} {clientes.length === 1 ? 'parte' : 'partes'} abaixo.
+                    Valor LÍQUIDO de cada parte — já sem o honorário contratual. Não é o valor do
+                    processo: a condenação inteira é maior, porque inclui o que é do escritório. O que
+                    a carteira mostra é a soma das {clientes.length}{' '}
+                    {clientes.length === 1 ? 'parte' : 'partes'} abaixo.
                   </p>
                   {clientes.map(c => (
                     <div key={c.cliente} className="rounded-md border p-2">
