@@ -68,6 +68,30 @@ async function findLeadProcess(
   return ((doLead || []).find(casa) as any) || null;
 }
 
+/**
+ * Marca o evento como notificado. As colunas `zap_*` chegaram na migration
+ * 20260826120000 — se o código subir antes dela, o UPDATE inteiro falharia e o
+ * evento voltaria à fila a cada rodada, duplicando atividade. Aqui a marcação
+ * é o que não pode falhar: se o patch de zap for recusado, grava só o notified
+ * e deixa o motivo no log.
+ */
+async function marcarNotificado(
+  ids: string[],
+  quando: string,
+  zapPatch: Record<string, any>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('inss_status_history')
+    .update({ notified: true, notified_at: quando, ...zapPatch })
+    .in('id', ids);
+  if (!error) return;
+  console.warn('[notify-inss-update] update com zap_* falhou, gravando só notified:', error.message);
+  await supabase
+    .from('inss_status_history')
+    .update({ notified: true, notified_at: quando })
+    .in('id', ids);
+}
+
 export const handler: RequestHandler = async (req, res) => {
   const processId: string | undefined = req.body?.process_id;
   if (!processId) {
@@ -246,16 +270,10 @@ export const handler: RequestHandler = async (req, res) => {
     // 3) Marca como notificado. Só o evento mais recente pode virar mensagem;
     // os outros do lote entram como 'suprimido' pra ninguém achar que sumiram.
     const agora = new Date().toISOString();
-    await supabase
-      .from('inss_status_history')
-      .update({ notified: true, notified_at: agora, ...zapPatch })
-      .eq('id', latest.id);
+    await marcarNotificado([latest.id], agora, zapPatch);
     const antigos = pending.slice(1).map((p) => p.id);
     if (antigos.length > 0) {
-      await supabase
-        .from('inss_status_history')
-        .update({ notified: true, notified_at: agora, zap_status: 'suprimido' })
-        .in('id', antigos);
+      await marcarNotificado(antigos, agora, { zap_status: 'suprimido' });
     }
     const ids = pending.map((p) => p.id);
 
