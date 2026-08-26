@@ -16,6 +16,13 @@ import { AlertTriangle, CheckCircle2, HelpCircle, RefreshCw, TrendingDown, Trend
 import { useConciliacaoAcordos } from '@/hooks/useConciliacaoAcordos';
 import { ordenarPorDivergencia, totalizarConciliacao } from '@/lib/conciliacaoAcordo';
 import { formatCnj } from '@/lib/cnj';
+import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
+import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
+import { db, ensureExternalSession } from '@/integrations/supabase';
+import { toast } from 'sonner';
+import { lazy, Suspense, useState } from 'react';
+
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
@@ -52,10 +59,27 @@ interface Props {
 
 export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
   const { acordos, loading, erro, recarregar } = useConciliacaoAcordos(board?.id ?? null);
+  // Conferência e ficha são IRMÃS deste sheet, não filhas: empilhar por cima é o
+  // padrão da casa, e o fechar devolve exatamente para a conciliação.
+  const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+  const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
+
+  const abrirFicha = async (processId: string) => {
+    try {
+      await ensureExternalSession();
+      const { data, error } = await db.from('lead_processes').select('*').eq('id', processId).maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Processo não encontrado'); return; }
+      setFicha(data as Record<string, unknown>);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
+    }
+  };
   const t = totalizarConciliacao(acordos.map(a => a.conciliacao));
   const ordenados = ordenarPorDivergencia(acordos);
 
   return (
+    <>
     <Sheet open={!!board} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="space-y-1">
@@ -101,7 +125,16 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
                   : c.situacao === 'SEM_CLIENTE' ? 'text-muted-foreground'
                   : c.faltaHc > 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400';
                 return (
-                  <div key={a.processId} className="rounded-md border p-2.5">
+                  <button
+                    key={a.processId}
+                    type="button"
+                    onClick={() => board && setConferindo({
+                      processId: a.processId, boardId: board.id, cnj: a.cnj,
+                      titulo: a.titulo, foco: 'valores',
+                    })}
+                    className="w-full rounded-md border p-2.5 text-left transition-colors hover:bg-muted/50"
+                    title="Abrir a conferência: ver a trilha, anexar ou trocar a peça, e corrigir o valor"
+                  >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <span className="min-w-0">
                         <span className="block truncate text-sm font-medium">
@@ -156,7 +189,7 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
                         conferido até alguém lançar a indenização.
                       </div>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -170,5 +203,23 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
         )}
       </SheetContent>
     </Sheet>
+
+    <ProcessoConferenciaSheet
+      alvo={conferindo}
+      onClose={() => setConferindo(null)}
+      onAbrirFicha={id => void abrirFicha(id)}
+    />
+
+    <Suspense fallback={null}>
+      {ficha && (
+        <ProcessDetailSheet
+          open={!!ficha}
+          onOpenChange={aberto => { if (!aberto) setFicha(null); }}
+          process={ficha}
+          mode="sheet"
+        />
+      )}
+    </Suspense>
+    </>
   );
 }
