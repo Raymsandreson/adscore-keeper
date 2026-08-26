@@ -409,6 +409,54 @@ export async function getConversationMessages(
  * Delta de mensagens desde `afterCreatedAt` — reaproveita cache local: quem já
  * baixou a conversa busca só o que chegou depois, em vez de rebaixar tudo.
  */
+/**
+ * Acha a bolha de uma mensagem CITADA (o "responder" do WhatsApp) pelo id do
+ * WhatsApp (`stanzaID`), para quando ela está fora da janela já carregada.
+ *
+ * `external_message_id` é "<owner>:<messageid>" e tem índice btree
+ * (`idx_whatsapp_messages_external_id`): a busca monta os valores exatos — um
+ * por instância dona — em vez de um `LIKE '%:id'`, que varreria a tabela.
+ * O LIKE fica de plano B e preso ao `phone` da conversa (centenas de linhas),
+ * nunca à tabela inteira.
+ */
+export async function findMessageByWhatsAppId(
+  phone: string,
+  instanceName: string,
+  whatsappMessageId: string,
+): Promise<WhatsAppMessage | null> {
+  const id = String(whatsappMessageId || '').trim();
+  if (!id) return null;
+  const normalizedPhone = normalizeWhatsAppConversationPhone(phone);
+  const phoneVariants = Array.from(new Set([phone, normalizedPhone, `${normalizedPhone}@g.us`].filter(Boolean)));
+
+  const base = () =>
+    applyConversationInstanceFilter(
+      (externalSupabase as any)
+        .from('whatsapp_messages')
+        .select('*')
+        .in('phone', phoneVariants),
+      phone,
+      instanceName,
+    );
+
+  const owners = await getOurInstancePhones();
+  const exatos = Array.from(owners, (o) => `${o}:${id}`);
+  if (exatos.length) {
+    const { data, error } = await base()
+      .in('external_message_id', exatos)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (!error && data?.length) return data[0];
+  }
+
+  const { data, error } = await base()
+    .like('external_message_id', `%:${id}`)
+    .order('created_at', { ascending: true })
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] || null;
+}
+
 export async function getConversationMessagesSince(
   phone: string,
   instanceName: string,

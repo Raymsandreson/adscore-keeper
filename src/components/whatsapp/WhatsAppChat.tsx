@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect, lazy, Suspense } from 'react';
 import { hrefTel } from '@/lib/dial';
-import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
+import { WhatsAppConversation, type WhatsAppMessage } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -49,6 +49,13 @@ import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { WhatsAppChatSearchPanel, HighlightedText, type ChatSearchHit } from './WhatsAppChatSearchPanel';
 import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
+import {
+  extractQuotedMessage,
+  getWhatsAppMessageId,
+  type QuotedMessageInfo,
+} from '@/lib/whatsappQuotedMessage';
+import { QuotedMessagePreview } from './QuotedMessagePreview';
+import { findMessageByWhatsAppId } from '@/integrations/supabase/external-rpc';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -1178,6 +1185,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  /**
+   * Id do WhatsApp -> bolha carregada. É por aqui que a citação ("responder")
+   * acha a mensagem original: o `stanzaID` que vem na resposta é o mesmo em
+   * todas as cópias espelhadas do grupo, o uuid da linha não. Map em vez de
+   * varredura por bolha — a conversa passa de mil mensagens sem esforço.
+   */
+  const mensagensPorIdDoWhatsApp = useMemo(() => {
+    const map = new Map<string, WhatsAppMessage>();
+    for (const m of conversation.messages || []) {
+      const waId = getWhatsAppMessageId(m);
+      if (waId && !map.has(waId)) map.set(waId, m);
+    }
+    return map;
+  }, [conversation.messages]);
 
   // Sugestão da IA já escrita no campo: aparece apagada dentro do "Digite uma
   // mensagem" e vira texto de verdade com a seta para a direita (→) ou o botão
@@ -2448,6 +2470,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAnchor(null);
     setSearchOpen(false);
     setSearchTerm('');
+    setCitadaPendente(null);
   }, [conversation.phone, conversation.instance_name]);
 
   // Volta pro fim da conversa (sai do modo âncora).
@@ -2492,6 +2515,73 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     pendingAnchorScrollRef.current = hit.id;
     setAnchor({ msgId: hit.id, created_at: hit.created_at, before: 25, after: 40 });
   }, [conversation.messages, conversation.phone, conversation.instance_name, onLoadMessagesAround]);
+
+  /**
+   * Citação clicada: pula até a mensagem original, igual ao WhatsApp.
+   * Quando ela está fora do que já foi carregado, o id do WhatsApp vira
+   * `created_at` no banco (índice de `external_message_id`) e o trecho é
+   * baixado em volta dele. `citadaPendente` marca a espera — a bolha visível
+   * pode ser a cópia de OUTRA instância do grupo, então quem fecha o pulo é o
+   * efeito abaixo, quando a lista chega.
+   */
+  const [citadaPendente, setCitadaPendente] = useState<{ stanzaId: string } | null>(null);
+
+  const pularParaMensagem = useCallback((alvo: WhatsAppMessage) => {
+    void jumpToSearchHit({
+      id: alvo.id,
+      created_at: alvo.created_at,
+      message_text: alvo.message_text,
+      message_type: alvo.message_type || 'text',
+      direction: alvo.direction,
+    });
+  }, [jumpToSearchHit]);
+
+  const abrirMensagemCitada = useCallback(async (stanzaId: string) => {
+    const emMemoria = mensagensPorIdDoWhatsApp.get(stanzaId);
+    if (emMemoria) {
+      pularParaMensagem(emMemoria);
+      return;
+    }
+    if (!onLoadMessagesAround) {
+      toast.error('Não consigo abrir esse trecho da conversa aqui.');
+      return;
+    }
+    setCitadaPendente({ stanzaId });
+    try {
+      const original = await findMessageByWhatsAppId(
+        conversation.phone,
+        conversation.instance_name || '',
+        stanzaId,
+      );
+      if (!original) {
+        setCitadaPendente(null);
+        toast.error('A mensagem citada não está no histórico salvo aqui.');
+        return;
+      }
+      await onLoadMessagesAround(conversation.phone, conversation.instance_name, original.created_at);
+    } catch (e) {
+      console.warn('[citacao] falha ao abrir a mensagem citada:', e);
+      setCitadaPendente(null);
+      toast.error('Falha ao abrir a mensagem citada.');
+    }
+  }, [mensagensPorIdDoWhatsApp, pularParaMensagem, onLoadMessagesAround, conversation.phone, conversation.instance_name]);
+
+  // Chegou o trecho pedido: acha a cópia visível da citada e pula. Se nem
+  // depois do carregamento ela aparecer, avisa em vez de ficar girando.
+  useEffect(() => {
+    if (!citadaPendente) return;
+    const alvo = mensagensPorIdDoWhatsApp.get(citadaPendente.stanzaId);
+    if (alvo) {
+      setCitadaPendente(null);
+      pularParaMensagem(alvo);
+      return;
+    }
+    const t = setTimeout(() => {
+      setCitadaPendente(null);
+      toast.error('Não consegui abrir a mensagem citada.');
+    }, 10_000);
+    return () => clearTimeout(t);
+  }, [citadaPendente, mensagensPorIdDoWhatsApp, pularParaMensagem]);
 
   /**
    * "Cobrar" na pendência: escreve o texto no campo e deixa o envio armado para
@@ -3375,6 +3465,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
     }
     return phone;
+  };
+
+  /**
+   * Quem escreveu a mensagem citada. Com a original em memória o remetente sai
+   * dela (é o mesmo caminho do nome em cima da bolha); sem ela, resta o
+   * `participant` do payload — que em grupo é @lid e só vira nome pelo roster.
+   */
+  const resolverAutorCitado = (quoted: QuotedMessageInfo, original: WhatsAppMessage | null): string | null => {
+    if (original) {
+      if (original.direction === 'outbound') return 'Você';
+      if (isGroup) {
+        const s = getGroupSenderInfo(original);
+        return s.name || (s.phone ? formatPhone(s.phone) : null);
+      }
+      return conversation.contact_name || formatPhone(conversation.phone);
+    }
+    if (quoted.participantLid) {
+      const info = groupLidMap[quoted.participantLid];
+      if (info) return info.name || (info.phone ? formatPhone(info.phone) : null);
+      return null;
+    }
+    if (quoted.participantPhone) {
+      return groupPhoneNameMap[quoted.participantPhone]
+        || groupPhoneNameMap[quoted.participantPhone.slice(-8)]
+        || formatPhone(quoted.participantPhone);
+    }
+    return null;
   };
 
   const phoneDigits = conversation.phone.replace(/\D/g, '');
@@ -4574,6 +4691,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         <span className="font-normal text-muted-foreground ml-1">~{formatPhone(sender.phone)}</span>
                       )}
                     </p>
+                  );
+                })()}
+                {/* Citação: o "responder" do WhatsApp. Clicar leva até a original. */}
+                {(() => {
+                  const quoted = extractQuotedMessage(msg.metadata);
+                  if (!quoted) return null;
+                  const original = mensagensPorIdDoWhatsApp.get(quoted.stanzaId) || null;
+                  return (
+                    <QuotedMessagePreview
+                      quoted={quoted}
+                      autor={resolverAutorCitado(quoted, original)}
+                      outbound={msg.direction === 'outbound'}
+                      carregando={citadaPendente?.stanzaId === quoted.stanzaId}
+                      onClick={() => { void abrirMensagemCitada(quoted.stanzaId); }}
+                    />
                   );
                 })()}
                 {/* CTWA Ad Creative Card */}
