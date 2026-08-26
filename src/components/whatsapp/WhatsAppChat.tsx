@@ -70,6 +70,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useWhatsAppTimeTracker } from '@/hooks/useWhatsAppTimeTracker';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { WhatsAppAvatar } from './WhatsAppAvatar';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
@@ -3509,9 +3510,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}
-        <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
-          <User className="h-5 w-5 text-green-600" />
-        </div>
+        <WhatsAppAvatar
+          phone={conversation.phone}
+          instanceName={conversation.instance_name}
+          isGroup={isGroup}
+          className="shrink-0"
+        />
         <div className="flex-1 min-w-0 basis-[220px]">
           <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm max-w-full" as="p" truncate>
             {conversation.contact_name || formatPhone(conversation.phone)}

@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { dentroDaJanela, JANELA_FIM_HORA, JANELA_INICIO_HORA } from '../lib/inss-mensagem-cliente';
-import { enviarTextoUazapi, resolverGrupoDoLead } from '../lib/inss-zap';
+import { descreverErro, enviarTextoAoGrupo, resolverGrupoDoLead } from '../lib/inss-zap';
 
 /**
  * Despacha a fila de mensagens do INSS que ficou esperando a janela de 8h–20h.
@@ -71,7 +71,7 @@ export const handler: RequestHandler = async (req, res) => {
           patch.zap_status = 'sem_grupo';
           patch.zap_erro = destino.erro;
         } else {
-          const sent = await enviarTextoUazapi({
+          const sent = await enviarTextoAoGrupo({
             group_jid: destino.grupo.group_jid,
             text: item.zap_texto,
             instance_name: destino.grupo.instance_name,
@@ -82,7 +82,7 @@ export const handler: RequestHandler = async (req, res) => {
             enviados++;
           } else {
             patch.zap_status = 'erro';
-            patch.zap_erro = `uazapi ${sent.status}: ${String(sent.body).slice(0, 200)}`;
+            patch.zap_erro = descreverErro(sent);
             falhas++;
           }
           await new Promise((r) => setTimeout(r, PAUSA_ENTRE_ENVIOS_MS));

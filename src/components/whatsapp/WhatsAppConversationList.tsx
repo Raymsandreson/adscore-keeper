@@ -20,7 +20,8 @@ import {
   loadPhonesWithPendingActivity,
   subscribeWhatsAppMessageActivityLinked,
 } from '@/lib/whatsappMessageActivities';
-import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { WhatsAppAvatar } from './WhatsAppAvatar';
 
 interface LeadInfo {
   id: string;
@@ -992,14 +993,12 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                 : "hover:bg-accent/40 border-l-2 border-l-transparent"
           )}
         >
-          <div className={cn(
-            "h-10 w-10 rounded-full flex items-center justify-center flex-shrink-0",
-            isSelected
-              ? "bg-primary-foreground/20"
-              : "bg-green-100 dark:bg-green-900/30"
-          )}>
-            <User className={cn("h-5 w-5", isSelected ? "text-primary-foreground" : "text-green-600")} />
-          </div>
+          <WhatsAppAvatar
+            phone={conv.phone}
+            instanceName={conv.instance_name}
+            isGroup={isWhatsAppGroupId(conv.phone)}
+            selected={isSelected}
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between gap-2">
               <span className={cn(

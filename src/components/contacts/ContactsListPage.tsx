@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback, useDeferredValue, useRef, lazy, Suspense } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { DashboardChatPreview } from '@/components/whatsapp/DashboardChatPreview';
+import { WhatsAppAvatar } from '@/components/whatsapp/WhatsAppAvatar';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import type { Lead } from '@/hooks/useLeads';
 import { useContacts, Contact } from '@/hooks/useContacts';
@@ -1704,6 +1705,18 @@ export function ContactsListPage() {
                       onCheckedChange={() => toggleContact(contact.id)}
                       onClick={(e) => e.stopPropagation()}
                     />
+                    {/* Foto do WhatsApp. `autoFetch` segue o mesmo teto das
+                        etiquetas (ENRICH_LIMIT): abaixo dele a foto só aparece
+                        se já estiver em cache — rolar 36 mil contatos buscando
+                        foto seria uma consulta à UazAPI por linha. */}
+                    {contact.phone && (
+                      <WhatsAppAvatar
+                        phone={contact.phone}
+                        autoFetch={enriched}
+                        className="h-9 w-9 mt-0.5"
+                        iconClassName="h-4 w-4"
+                      />
+                    )}
                     <div className="flex-1 min-w-0 space-y-1">
                       <p className="font-medium text-sm truncate">{contact.full_name}</p>
                       {/* Telefone, lugar e profissão na mesma linha: são o que

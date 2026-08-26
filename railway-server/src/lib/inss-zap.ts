@@ -7,6 +7,13 @@
 import { supabase } from './supabase';
 import { geminiChat } from './gemini';
 import {
+  escolherCandidatas,
+  jidDeGrupo,
+  normalizarNome,
+} from './inss-zap-destino';
+export { escolherCandidatas, jidDeGrupo, descreverErro } from './inss-zap-destino';
+import { descreverErro } from './inss-zap-destino';
+import {
   fallbackMensagemCliente,
   promptMensagemCliente,
   mascararDocumentos,
@@ -54,7 +61,42 @@ export async function resolverGrupoDoLead(
   return { erro: `lead com ${grupos.length} grupos e sem desempate` };
 }
 
-/** Manda o texto pela UazAPI, preferindo a instância anotada no grupo. */
+/**
+ * Instâncias que podem falar nesse grupo, em ordem de preferência.
+ *
+ * Grupo da firma tem VÁRIAS instâncias-membro e cada mensagem é espelhada por
+ * todas elas, então o histórico é a única fonte confiável de quem ainda está
+ * dentro. Mesma regra do `src/lib/whatsappGroupInstance.ts` do front, que
+ * nasceu de dois incidentes de mensagem saindo pela instância errada.
+ *
+ * Instância que parou de espelhar há mais de 7 dias (enquanto o grupo seguiu
+ * ativo) provavelmente saiu — escolhê-la dá NOT_IN_GROUP.
+ */
+export async function instanciasCandidatasDoGrupo(
+  groupJid: string,
+  preferida?: string | null,
+): Promise<string[]> {
+  const phone = (groupJid || '').replace(/@.*$/, '').replace(/\D/g, '');
+  const out: string[] = [];
+  const push = (n?: string | null) => {
+    if (n && !out.some((x) => normalizarNome(x) === normalizarNome(n))) out.push(n);
+  };
+  push(preferida);
+  if (!phone) return out;
+
+  const { data } = await supabase
+    .from('whatsapp_messages')
+    .select('instance_name, created_at')
+    .eq('phone', phone)
+    .not('instance_name', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(150);
+  const rows = (data || []) as { instance_name: string; created_at: string }[];
+  for (const nome of escolherCandidatas(rows)) push(nome);
+  return out;
+}
+
+/** Manda o texto por UMA instância. */
 export async function enviarTextoUazapi(args: {
   group_jid: string;
   text: string;
@@ -72,7 +114,7 @@ export async function enviarTextoUazapi(args: {
   const resp = await fetch(`${base}/send/text`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-    body: JSON.stringify({ number: args.group_jid, text: args.text }),
+    body: JSON.stringify({ number: jidDeGrupo(args.group_jid), text: args.text }),
   });
   let body: any = null;
   try {
@@ -81,6 +123,35 @@ export async function enviarTextoUazapi(args: {
     body = await resp.text().catch(() => null);
   }
   return { ok: resp.ok, status: resp.status, body };
+}
+
+/**
+ * Envia tentando as instâncias-membro do grupo, uma a uma.
+ *
+ * Sem isto o envio ia pela "primeira instância ativa" que o banco devolvesse —
+ * entre 26 — que quase nunca é membro do grupo: o primeiro envio real do
+ * recurso, em 26/08/2026, morreu com 503 exatamente assim. Erro numa instância
+ * não é veredito sobre o grupo; é motivo para tentar a próxima.
+ */
+export async function enviarTextoAoGrupo(args: {
+  group_jid: string;
+  text: string;
+  instance_name?: string | null;
+}): Promise<{ ok: boolean; status: number; body?: any; instancia?: string; tentativas: number }> {
+  const candidatas = await instanciasCandidatasDoGrupo(args.group_jid, args.instance_name);
+  if (candidatas.length === 0) {
+    const r = await enviarTextoUazapi({ group_jid: args.group_jid, text: args.text });
+    return { ...r, tentativas: 1 };
+  }
+  let ultimo: { ok: boolean; status: number; body?: any } = { ok: false, status: 0 };
+  let tentativas = 0;
+  for (const inst of candidatas.slice(0, 4)) {
+    tentativas++;
+    ultimo = await enviarTextoUazapi({ group_jid: args.group_jid, text: args.text, instance_name: inst });
+    if (ultimo.ok) return { ...ultimo, instancia: inst, tentativas };
+    console.warn(`[inss-zap] envio falhou por "${inst}": ${descreverErro(ultimo)}`);
+  }
+  return { ...ultimo, tentativas };
 }
 
 /**

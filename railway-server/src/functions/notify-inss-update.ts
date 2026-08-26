@@ -8,7 +8,8 @@ import {
   eventoElegivelParaZap,
 } from '../lib/inss-mensagem-cliente';
 import {
-  enviarTextoUazapi,
+  descreverErro,
+  enviarTextoAoGrupo,
   jaAvisouEsseTipo,
   montarTextoMensagemCliente,
   resolverGrupoDoLead,
@@ -240,7 +241,7 @@ export const handler: RequestHandler = async (req, res) => {
           if (!dentroDaJanela(new Date())) {
             zapPatch = { zap_status: 'agendado', zap_tipo: tipoMensagem, zap_texto: texto };
           } else {
-            const sent = await enviarTextoUazapi({
+            const sent = await enviarTextoAoGrupo({
               group_jid: destino.grupo.group_jid,
               text: texto,
               instance_name: destino.grupo.instance_name,
@@ -257,7 +258,7 @@ export const handler: RequestHandler = async (req, res) => {
                   zap_status: 'erro',
                   zap_tipo: tipoMensagem,
                   zap_texto: texto,
-                  zap_erro: `uazapi ${sent.status}: ${String(sent.body).slice(0, 200)}`,
+                  zap_erro: descreverErro(sent),
                 };
           }
           console.log(
