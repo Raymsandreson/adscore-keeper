@@ -891,3 +891,77 @@ o problema é do Escavador — abrir chamado citando as solicitações `54945127
 Não existe cron que reabra processos em modo `AUTOS`: a reabertura é sempre
 manual, e é ela que define a conta. Enquanto a fila não tiver linha em
 `A_ENVIAR`, a rotina roda de graça.
+
+## 15. 25/08/2026 — o certificado funciona em UM tribunal, não em todos
+
+O passo 1 do plano de varredura (processos com pagamento já lançado à mão, para
+conferir a planilha de cálculo do processo contra o lançamento do Raym) foi
+disparado em 25/08 às 02:16 UTC: cinco processos, cinco tribunais diferentes,
+escolhidos pelo maior valor pago.
+
+### 15.1 Placar: 0 de 5
+
+| processo | tribunal | pago lançado | resultado | tempo |
+|---|---|---|---|---|
+| 0000084-44.2020.5.08.0101 | TRT8 | R$ 1.005.658,51 | `SECRET_ERROR` | 13,8 min |
+| 0000672-06.2023.5.09.0655 | TRT9 | R$ 561.875,00 | `INTERNAL_ERROR` | 54,4 min |
+| 0000407-35.2023.5.23.0066 | TRT23 | R$ 594.999,96 | `SECRET_ERROR` | 84,6 min |
+| 0000453-61.2023.5.20.0016 | TRT20 | R$ 645.000,00 | `INTERNAL_ERROR` | 96,2 min |
+| 0000407-37.2017.5.22.0110 | TRT22 | R$ 540.000,00 | **travado** | >183 min |
+
+O TRT22 nunca concluiu. Ficou `PENDENTE` por mais de três horas — contra 49 min
+do único sucesso e 96 min da falha mais lenta — e foi tratado como travado, sem
+novo disparo. Não há status terminal para ele na API; é um sexto desfecho, nem
+sucesso nem erro, e vale registrar porque uma fila em massa precisa de um teto de
+espera: solicitação que não fecha ocupa vaga para sempre.
+
+**Placar final do passo 1: 0 de 5.**
+
+### 15.2 O mapa de cobertura, com tudo que já foi testado
+
+| tribunal | resultado |
+|---|---|
+| **TRT15** | **SUCESSO** — 140 peças, 118 restritas (caso 88, 24/08) |
+| TRT3 | `SECRET_ERROR` |
+| TRT8 | `SECRET_ERROR` (21/08 e 25/08) |
+| TRT9 | `INTERNAL_ERROR` (21/08 e 25/08) |
+| TRT20 | `INTERNAL_ERROR` |
+| TRT22 | `SECRET_ERROR` (23/08) |
+| TRT23 | `SECRET_ERROR` |
+| TJMT | `SECRET_ERROR` |
+
+**Um sucesso em oito tribunais.** O "PDPJ (válido para todos os sistemas PJE)"
+do painel do Escavador é uma lista de 165 sistemas, não um passe universal: o
+TRT15 está nela e os demais testados, aparentemente, não — ou estão com um
+segredo que o tribunal recusa.
+
+### 15.3 A régua dos 25 minutos era artefato de lote — não use
+
+A seção 14 registrou que as 13 falhas de 21/08 concluíram todas em 25,0–25,1
+minutos, e daí se concluiu que passar de 25 min era sinal de sucesso. **Isso não
+se sustenta.** As 13 foram disparadas no mesmo segundo e concluíram juntas
+porque estavam na mesma leva de processamento do Escavador, não porque 25 min
+seja limite de nada.
+
+Medido em 25/08, com disparos igualmente simultâneos mas conclusões espalhadas:
+`SECRET_ERROR` em 13,8 min e em 84,6 min; `INTERNAL_ERROR` em 54,4 e 96,2. O
+único sucesso levou 49 min. **Tempo decorrido não prevê resultado.** Só o status
+final conta.
+
+### 15.4 O que isso faz com a conta da varredura
+
+A conta deixa de ser "446 × R$ 1,50 = R$ 669" e passa a ser "quantos processos
+estão em tribunal que o certificado alcança". Pelo que há hoje, pode ser fração
+pequena da carteira.
+
+Antes de gastar, o passo barato é **um processo por tribunal**, para levantar o
+mapa de cobertura. Falha de autos é estornada (seção 14.2), então o mapeamento
+custa zero e responde de vez.
+
+Em paralelo, vale chamado no Escavador: oito tribunais, um único sucesso, mesmo
+certificado e mesmo TOTP é argumento forte de problema do lado deles. Citar as
+solicitações 55039016 (o sucesso, TRT15) e 55116672 / 55116673 / 55116674 /
+55116675 / 55116676 (as falhas de 25/08).
+
+Nenhuma planilha de cálculo foi lida ainda — a comparação entre o valor do
+processo e o lançamento manual do Raym continua sem resposta.

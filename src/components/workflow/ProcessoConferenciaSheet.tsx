@@ -18,12 +18,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Milestone, Paperclip, RefreshCw, ShieldAlert, XCircle,
+  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { formatCnj, onlyDigits } from '@/lib/cnj';
+import { MudancasDaPecaDialog } from './MudancasDaPecaDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
 import { melhorPeca, rotuloDaPeca, type AssuntoPeca, type PecaDoProcesso } from '@/lib/pecasDoProcesso';
@@ -99,12 +100,15 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
   const peca = melhorPeca(pecas, data, { assunto, janelaDias });
   if (!peca) return null;
   const rotulo = rotuloDaPeca(peca);
+  // De onde a peça veio: quem confere precisa saber se está lendo o que o
+  // tribunal juntou ou o que alguém do escritório subiu à mão.
+  const procedencia = peca.origem === 'manual' ? 'anexada à mão' : 'peça do tribunal';
   return (
     <button
       type="button"
       onClick={() => onAbrir(peca, rotulo)}
       className="inline-flex items-center gap-1 text-[11px] underline underline-offset-2 hover:text-foreground"
-      title={rotulo}
+      title={`${rotulo} · ${procedencia}`}
     >
       <Paperclip className="h-3 w-3 shrink-0" />
       ver a peça
@@ -112,6 +116,108 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
         <Badge variant="outline" className="ml-0.5 px-1 py-0 text-[8px]">restrita</Badge>
       )}
       {!peca.exata && <span className="text-muted-foreground">(+{peca.distanciaDias}d)</span>}
+    </button>
+  );
+}
+
+/**
+ * "anexar peça" — o caminho manual, que existe porque o automático não basta.
+ *
+ * O certificado digital abre um tribunal em oito, e a peça que decide dinheiro
+ * (termo de acordo, planilha homologada) é quase sempre restrita. Sem isto, a
+ * carteira ficaria esperando um certificado que pode nunca funcionar.
+ *
+ * A peça entra amarrada à DATA DO MARCO — é o que faz o casamento por data
+ * encontrá-la depois, sem nenhuma chave nova.
+ */
+function BotaoAnexar({ rotulo, data, onAnexar }: {
+  rotulo: string;
+  data: string | null;
+  onAnexar: (a: File, d: { titulo: string; dataDocumento: string | null }) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const input = useRef<HTMLInputElement | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  return (
+    <>
+      <input
+        ref={input} type="file" accept="application/pdf" className="hidden"
+        onChange={async (e) => {
+          const a = e.target.files?.[0];
+          e.target.value = ''; // permite reanexar o mesmo arquivo depois de um erro
+          if (!a) return;
+          setSubindo(true); setErro(null);
+          const r = await onAnexar(a, { titulo: rotulo, dataDocumento: data });
+          setSubindo(false);
+          if (!r.ok) setErro(r.erro ?? 'falha ao anexar');
+        }}
+      />
+      <button
+        type="button"
+        disabled={subindo}
+        onClick={() => input.current?.click()}
+        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+        title={`Anexar a peça que comprova "${rotulo}"`}
+      >
+        {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+        {subindo ? 'anexando…' : 'anexar peça'}
+      </button>
+      {erro && <span className="text-[10px] text-destructive">{erro}</span>}
+    </>
+  );
+}
+
+/**
+ * "desvincular" — a peça errada sai de cena, e nada se apaga.
+ *
+ * Vale igual para peça do tribunal e para upload manual: o Escavador baixa
+ * trocado, o tribunal junta no lugar errado, o casamento por data pega a peça de
+ * outro ato, ou alguém sobe o arquivo errado. Em todos, o que se quer é que ela
+ * pare de aparecer aqui — não que ela deixe de existir.
+ *
+ * Apagar não traria nada que isto não traga, e traria risco: o que veio do
+ * tribunal custou uma solicitação, e ela funciona em um tribunal de oito.
+ */
+function BotaoDesvincular({ peca, onDesvincular }: {
+  peca: PecaDoProcesso;
+  onDesvincular: (p: PecaDoProcesso, motivo: string) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const [indo, setIndo] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => {
+        setIndo(true);
+        await onDesvincular(peca, 'peça errada para este marco');
+        setIndo(false);
+      }}
+      className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
+      title="Desvincular: a peça deixa de aparecer neste marco. O arquivo continua no acervo e dá para desfazer."
+    >
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlink className="h-3 w-3" />}
+    </button>
+  );
+}
+
+/** Uma peça foi desvinculada aqui — o caminho de volta fica à vista. */
+function AvisoOculta({ pecas, data, onReexibir }: {
+  pecas: PecaDoProcesso[]; data: string | null;
+  onReexibir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const [indo, setIndo] = useState(false);
+  const p = pecas.find(x => (x.dataDocumento ?? '') === (data ?? '') && data);
+  if (!p) return null;
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => { setIndo(true); await onReexibir(p); setIndo(false); }}
+      className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+      title={`"${p.titulo ?? 'peça'}" foi desvinculada — clique para trazer de volta`}
+    >
+      <Undo2 className="h-3 w-3" /> desfazer
     </button>
   );
 }
@@ -131,9 +237,41 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, assinar } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
+
+  // O que muda com a peça recém-anexada. Sem este retorno, trocar documento é um
+  // clique que não produz efeito visível — e o Raym leu isso como tela quebrada.
+  const [mudancas, setMudancas] = useState<{
+    aberto: boolean; carregando: boolean; erro: string | null;
+    leitura: Record<string, unknown> | null; titulo: string;
+  }>({ aberto: false, carregando: false, erro: null, leitura: null, titulo: '' });
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
+  // O `anexar` recarrega a lista; a ref dá acesso ao valor JÁ atualizado sem
+  // esperar o próximo render.
+  const pecasRef = useRef<PecaDoProcesso[]>([]);
+
+  /** Anexa e, na sequência, mostra o efeito nos números. */
+  const anexarEMostrar = useCallback(async (
+    arquivo: File, dados: { titulo: string; dataDocumento: string | null },
+  ) => {
+    const r = await anexar(arquivo, dados);
+    if (!r.ok) return r;
+    // A peça acabou de nascer: acha o id dela pela data e pelo título que demos.
+    const nova = pecasRef.current.find(
+      p => p.origem === 'manual' && p.titulo === dados.titulo
+        && (p.dataDocumento ?? null) === (dados.dataDocumento ?? null),
+    );
+    if (!nova) return r; // anexou, mas não deu para localizar — melhor calar que errar
+    setMudancas({ aberto: true, carregando: true, erro: null, leitura: null, titulo: dados.titulo });
+    const lida = await lerPeca(nova.id);
+    setMudancas(m => ({
+      ...m, carregando: false,
+      leitura: lida.leitura ?? null,
+      erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
+    }));
+    return r;
+  }, [anexar, lerPeca]);
 
   const abrirPeca = useCallback(async (peca: PecaDoProcesso, rotulo: string) => {
     setErroPeca(null);
@@ -143,6 +281,8 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
     if (!url) { setErroPeca(`Não consegui abrir "${rotulo}".`); return; }
     setPecaAberta({ url, titulo: rotulo });
   }, [assinar]);
+
+  pecasRef.current = pecas;
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
@@ -251,13 +391,27 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
               {marcos.length > 0 && (
                 <div className="space-y-1 pt-1">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trilha detectada</div>
-                  {marcos.map(m => (
+                  {/* Do mais antigo para o mais novo: a trilha é a história do
+                      processo, e história se lê de cima para baixo. A `ordem` do
+                      marco no POP saiu da tela — é número interno da régua, não
+                      diz nada a quem lê, e competia com a data pela atenção. */}
+                  {[...marcos]
+                    .sort((a, b) => (a.dataDetectada ?? '').localeCompare(b.dataDetectada ?? ''))
+                    .map((m, i, todos) => (
                     <div
                       key={`${m.chave}-${m.dataDetectada}`}
-                      className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs ${m.atual ? 'bg-muted/60 font-medium' : ''}`}
+                      className={`flex items-start gap-2 rounded px-1.5 py-1 text-xs ${m.atual ? 'bg-muted/60 font-medium' : ''}`}
                     >
-                      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                        {m.ordem ?? '—'}
+                      {/* Fio da linha do tempo: bolinha cheia no marco atual, e o
+                          traço só até o penúltimo, para a linha não sobrar solta. */}
+                      <span className="relative flex w-3 shrink-0 justify-center self-stretch">
+                        <span
+                          className={`z-10 mt-1 h-2 w-2 shrink-0 rounded-full ${
+                            m.atual ? 'bg-primary ring-2 ring-primary/30' : 'bg-muted-foreground/40'}`}
+                        />
+                        {i < todos.length - 1 && (
+                          <span className="absolute left-1/2 top-2 h-full w-px -translate-x-1/2 bg-border" />
+                        )}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{m.rotulo}</span>
                       {m.atravessaFases && (
@@ -271,10 +425,27 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                       <span className="shrink-0 text-[10px] text-muted-foreground">
                         {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
                       </span>
-                      <BotaoPeca
-                        pecas={pecas} data={m.dataDetectada} assunto="MARCO"
-                        onAbrir={abrirPeca}
-                      />
+                      {(() => {
+                        const p = melhorPeca(pecas, m.dataDetectada, { assunto: 'MARCO' });
+                        // Sem peça casada, o que a linha precisa não é de um botão
+                        // morto: é do caminho para trazer a prova que falta.
+                        return (
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            {p ? (
+                              <>
+                                <BotaoPeca
+                                  pecas={pecas} data={m.dataDetectada} assunto="MARCO"
+                                  onAbrir={abrirPeca}
+                                />
+                                <BotaoDesvincular peca={p} onDesvincular={ocultar} />
+                              </>
+                            ) : (
+                              <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexarEMostrar} />
+                            )}
+                            <AvisoOculta pecas={ocultas} data={m.dataDetectada} onReexibir={reexibir} />
+                          </span>
+                        );
+                      })()}
                       <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
                     </div>
                   ))}
@@ -507,6 +678,24 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
       {/* Empilha por cima do próprio Sheet: telão -> conferência -> peça, e o
           fechar devolve à conferência, não à carteira. Mesmo visualizador do
           WhatsApp, com o mesmo botão de baixar. */}
+      <MudancasDaPecaDialog
+        aberto={mudancas.aberto}
+        onClose={() => setMudancas(m => ({ ...m, aberto: false }))}
+        carregando={mudancas.carregando}
+        erro={mudancas.erro}
+        leitura={mudancas.leitura}
+        tituloPeca={mudancas.titulo}
+        atuais={clientes.map(c => ({ cliente: c.cliente, valor: c.valor }))}
+        /* A decisão que a peça corrige é a que a carteira está usando hoje —
+           todas as partes apontam para a mesma, por isso basta a primeira. */
+        decId={clientes.find(c => c.decisaoUsada?.dec_id)?.decisaoUsada?.dec_id ?? null}
+        onAplicar={async (leituraId, decId) => {
+          const r = await corrigirValores(leituraId, decId, false);
+          if (r.ok) await recarregar();
+          return r;
+        }}
+      />
+
       <MediaLightbox
         url={pecaAberta?.url ?? null}
         title={pecaAberta?.titulo ?? 'Peça dos autos'}

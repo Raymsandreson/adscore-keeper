@@ -1,9 +1,20 @@
-import { useCallback, useEffect } from 'react';
+import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { MessageSquare } from 'lucide-react';
 import { TeamNotificationToast } from '@/components/chat/TeamNotificationToast';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
+import { enviarRespostaRapida } from '@/lib/whatsappQuickReply';
+
+// Sugestão de IA e agente da conversa só carregam quando um aviso de WhatsApp
+// aparece — a ponte fica montada no app inteiro, não pode arrastar o diálogo de
+// IA para o bundle inicial.
+const WhatsAppSuggestReplyButton = lazy(() =>
+  import('@/components/notifications/WhatsAppToastActions').then((m) => ({ default: m.WhatsAppSuggestReplyButton }))
+);
+const WhatsAppToastAgentToggle = lazy(() =>
+  import('@/components/notifications/WhatsAppToastActions').then((m) => ({ default: m.WhatsAppToastAgentToggle }))
+);
 
 /**
  * Ponte entre o service worker de push e o app.
@@ -124,6 +135,12 @@ export function PushNotificationBridge() {
       const key = payload.tag || url;
       if (isMuted(key)) return;
 
+      // Conversa por trás do aviso: é o que permite responder, pedir a sugestão
+      // da IA e mexer no agente sem abrir o chat.
+      const target = parsePushTarget(url, window.location.origin);
+      const conversa = target?.kind === 'whatsapp' ? target : null;
+      const contato = payload.title || null;
+
       toast.custom(
         (toastId) => (
           <TeamNotificationToast
@@ -134,9 +151,43 @@ export function PushNotificationBridge() {
             preview={payload.body || 'Nova mensagem'}
             onOpen={() => openUrl(url, payload.title)}
             onMuteForMinutes={(minutes) => muteConversation(key, minutes)}
+            onReply={
+              conversa
+                ? (text) =>
+                    enviarRespostaRapida({
+                      phone: conversa.phone,
+                      instanceName: conversa.instanceName,
+                      message: text,
+                    })
+                : undefined
+            }
+            composerActions={
+              conversa
+                ? ({ setReply }) => (
+                    <Suspense fallback={null}>
+                      <WhatsAppSuggestReplyButton
+                        phone={conversa.phone}
+                        instanceName={conversa.instanceName}
+                        contactName={contato}
+                        onApply={setReply}
+                      />
+                    </Suspense>
+                  )
+                : undefined
+            }
+            footerActions={
+              conversa?.instanceName ? (
+                <Suspense fallback={null}>
+                  <WhatsAppToastAgentToggle phone={conversa.phone} instanceName={conversa.instanceName} />
+                </Suspense>
+              ) : undefined
+            }
+            // Relógio do próprio popup: com resposta sendo digitada ou diálogo da
+            // IA aberto, o do sonner fechava a janela no meio do trabalho.
+            autoCloseMs={12_000}
           />
         ),
-        { id: key, duration: 12_000, position: 'top-center' }
+        { id: key, duration: Infinity, position: 'top-center' }
       );
     },
     [openUrl]

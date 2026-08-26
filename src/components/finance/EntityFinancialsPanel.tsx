@@ -19,7 +19,11 @@ import { toast } from 'sonner';
 import {
   Plus, Trash2, DollarSign, TrendingUp, TrendingDown, Edit2, Landmark, User, Handshake,
   CalendarClock, CheckCircle2, Repeat, Paperclip, Sparkles, Loader2, X, Mic, Square,
+  Link2, Link2Off, AlertTriangle,
 } from 'lucide-react';
+// Conciliação: dizer se o valor digitado aqui apareceu mesmo no extrato do banco.
+import { ConciliarLancamentoDialog } from '@/components/finance/ConciliarLancamentoDialog';
+import { conciliacaoDivergente } from '@/hooks/useConciliacaoOpenFinance';
 import { format } from 'date-fns';
 import { cnjVariantes } from '@/lib/cnj';
 // TODA edge function passa pelo roteador — é ele que sabe se a função vive no
@@ -151,6 +155,22 @@ export interface EntityFinancialEntry {
   payment_method: string | null;
   notes: string | null;
   created_at: string;
+  /**
+   * A linha do extrato do Open Finance que baixou este lançamento — o ponteiro
+   * (`of_transacao_id` + `of_transacao_tipo`) e o RETRATO dela (descrição, data,
+   * valor). O retrato existe porque ler `bank_transactions` do front não
+   * funciona: a policy é `user_id = auth.uid()` e a sessão que o app mantém no
+   * Externo é anônima, então a leitura volta vazia sem erro. Ver
+   * useConciliacaoOpenFinance.
+   * null em tudo = ninguém conferiu contra o banco ainda.
+   */
+  of_transacao_id: string | null;
+  of_transacao_tipo: 'bank' | 'card' | null;
+  of_descricao: string | null;
+  of_data: string | null;
+  of_valor: number | null;
+  of_conciliado_em: string | null;
+  of_conciliado_por: string | null;
 }
 
 /**
@@ -379,6 +399,8 @@ export function EntityFinancialsPanel({
   /** Categoria que a IA propôs criar e a pessoa aceitou. Vira opção na lista. */
   const [categoriaCriada, setCategoriaCriada] = useState<string | null>(null);
   const [verComprovante, setVerComprovante] = useState<string | null>(null);
+  /** Lançamento aberto na tela de conciliação. null = fechada. */
+  const [conciliando, setConciliando] = useState<EntityFinancialEntry | null>(null);
 
   // Documento com VÁRIOS valores: a tela deixa de preencher o formulário e passa
   // a mostrar a lista para escolher. Preencher um campo só com o primeiro de
@@ -1910,7 +1932,16 @@ export function EntityFinancialsPanel({
       </Button>
 
       {/* List */}
-      <ScrollArea style={{ maxHeight: listMaxHeight }}>
+      {/*
+        O `!block` do viewport conserta o que escondia o VALOR da linha: o
+        Viewport do Radix embrulha o conteúdo num
+        `<div style="min-width:100%;display:table">`, e caixa de tabela
+        dimensiona pelo conteúdo. Com isso a largura da linha passava a ser a da
+        descrição inteira sem quebra — o `truncate` nunca entrava, a lista
+        ganhava rolagem horizontal, e valor, comprovante e botões ficavam fora da
+        tela dentro da ficha do lead, que é estreita.
+      */}
+      <ScrollArea className="[&_[data-radix-scroll-area-viewport]>div]:!block" style={{ maxHeight: listMaxHeight }}>
         <div className="space-y-2">
           {loading ? (
             <p className="text-center text-sm text-muted-foreground py-4">Carregando...</p>
@@ -1932,7 +1963,7 @@ export function EntityFinancialsPanel({
               } : undefined}
               className={`flex items-center justify-between p-2 rounded border text-sm ${linha.previsto ? 'opacity-70' : ''}${linha.entry ? ' cursor-pointer hover:bg-muted/50' : ''}`}
             >
-              <div className="flex items-center gap-2 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 flex-1">
                 <Badge
                   variant={linha.direcao === 'entrada' ? 'default' : linha.direcao === 'saida' ? 'destructive' : 'secondary'}
                   className="text-xs flex-shrink-0"
@@ -1953,7 +1984,13 @@ export function EntityFinancialsPanel({
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
+              {/*
+                `flex-wrap` + teto de 60%: dentro da ficha do lead a coluna tem
+                ~430px, e badge de titular + espécie + parcela + conciliação não
+                cabem numa linha só. Sem quebrar, o grupo empurrava valor e botões
+                para fora; sem o teto, ele comeria a descrição inteira.
+              */}
+              <div className="flex items-center justify-end gap-1 flex-shrink-0 flex-wrap max-w-[60%]">
                 {/* De quem é o dinheiro e que espécie é — as duas perguntas que
                     o extrato responde em cada linha. A espécie já diz honorário
                     contratual/sucumbencial, então o titular vira só o ícone. */}
@@ -1986,6 +2023,45 @@ export function EntityFinancialsPanel({
                     a conferir
                   </Badge>
                 )}
+                {/*
+                  "Esse valor saiu mesmo da conta?" — a pergunta que o extrato do
+                  lead não respondia. Só aparece na linha MANUAL: parcela da
+                  jurimetria e linha de planilha não são movimento da nossa conta,
+                  e oferecer conciliação nelas prometeria algo que não existe.
+                  O badge é o botão: abrir a busca do extrato a partir dele é o
+                  caminho mais curto entre a dúvida e a resposta.
+                */}
+                {linha.entry && (() => {
+                  const e = linha.entry;
+                  const conc = !!e.of_transacao_id;
+                  const diverge = conc && conciliacaoDivergente(Number(e.amount), e);
+                  return (
+                    <Badge
+                      variant="outline"
+                      role="button"
+                      tabIndex={0}
+                      title={conc
+                        ? `Extrato ${e.of_transacao_tipo === 'card' ? 'do cartão' : 'da conta'} · ${e.of_data || 'sem data'} · ` +
+                          `${e.of_valor != null ? formatCurrency(Number(e.of_valor)) : 'sem valor'}` +
+                          `${e.of_descricao ? ' · ' + e.of_descricao : ''}` +
+                          `${diverge ? ' — DIVERGE do valor lançado' : ''}`
+                        : 'Ainda não conferido contra o extrato do Open Finance. Clique para procurar a transação.'}
+                      onClick={ev => { ev.stopPropagation(); setConciliando(e); }}
+                      onKeyDown={ev => {
+                        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ev.stopPropagation(); setConciliando(e); }
+                      }}
+                      className={'text-[10px] gap-1 cursor-pointer ' + (
+                        diverge ? 'border-amber-400 text-amber-800'
+                          : conc ? 'border-emerald-300 text-emerald-700'
+                          : 'border-dashed text-muted-foreground')}
+                    >
+                      {diverge ? <AlertTriangle className="h-2.5 w-2.5" />
+                        : conc ? <Link2 className="h-2.5 w-2.5" />
+                        : <Link2Off className="h-2.5 w-2.5" />}
+                      {diverge ? 'extrato ≠ valor' : conc ? 'no extrato' : 'sem extrato'}
+                    </Badge>
+                  );
+                })()}
                 {linha.previsto && (
                   <Badge
                     variant="outline"
@@ -2058,6 +2134,12 @@ export function EntityFinancialsPanel({
       </ScrollArea>
 
       <MediaLightbox url={verComprovante} title="Comprovante" onClose={() => setVerComprovante(null)} />
+
+      <ConciliarLancamentoDialog
+        lancamento={conciliando}
+        onOpenChange={aberto => { if (!aberto) setConciliando(null); }}
+        onMudou={fetchEntries}
+      />
 
       {/* Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>

@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -36,7 +36,10 @@ import { ClientCommitmentsPanel, type CommitmentDraft, type CommitmentCardItem }
 import { CommitmentAssigneeDialog } from './CommitmentAssigneeDialog';
 import { useClientCommitments, type CommitmentReminder } from '@/hooks/useClientCommitments';
 import { buildReminderText } from '@/lib/clientCommitments';
-import { lastSenderName, matchMemberByName } from '@/lib/whatsappSenderName';
+import { lastSenderName, matchMemberByName, prefixarRemetente } from '@/lib/whatsappSenderName';
+import { AgendarMensagemDialog } from './AgendarMensagemDialog';
+import { descreverRepeticao, regraDaLinha } from '@/lib/mensagemAgendada';
+import { useMensagensAgendadas } from '@/hooks/useMensagensAgendadas';
 import { midiasDaMensagem, rotuloDaMidia, type MidiaDaMensagem } from '@/lib/midiaDaConversa';
 import { LeadEditDialog } from '@/components/kanban/LeadEditDialog';
 import { WhatsAppCallRecorder } from './WhatsAppCallRecorder';
@@ -62,6 +65,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import {
@@ -219,6 +223,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     contactId: conversation.contact_id,
     clientName: conversation.contact_name,
   });
+  // A fila de mensagens agendadas desta conversa — o chip acima do campo só
+  // aparece quando tem alguma esperando a hora.
+  const agendadas = useMensagensAgendadas({
+    phone: conversation.phone,
+    instanceName: conversation.instance_name,
+  });
   /**
    * Cobrança armada: o texto está no campo e o próximo envio vai sair citando a
    * mensagem em que o cliente prometeu (igual ao "responder" do WhatsApp) e
@@ -255,6 +265,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [nicknames, setNicknames] = useState<string[]>([]);
   const [selectedNickname, setSelectedNickname] = useState<string>('');
   const [newNickname, setNewNickname] = useState('');
+  // Agendar mensagem: escrever agora, sair na hora marcada. `perfilDoEnvio` é
+  // quem assina — nome completo e título padrão (Dr./Dra.) lidos de `profiles`,
+  // a MESMA fonte do envio na hora. O `profile` do contexto não serve sozinho:
+  // ele não traz treatment_title e às vezes chega sem full_name, e aí a
+  // agendada saía sem a assinatura que o envio imediato coloca.
+  const [showAgendar, setShowAgendar] = useState(false);
+  const [perfilDoEnvio, setPerfilDoEnvio] = useState<{ full_name: string | null; treatment_title: string | null } | null>(null);
+  const [cancelandoAgendada, setCancelandoAgendada] = useState<string | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [togglingPrivate, setTogglingPrivate] = useState(false);
   const [showGroupMembers, setShowGroupMembers] = useState(false);
@@ -1151,14 +1169,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const conversationKeyRef = useRef<string>('');
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
-
-  // Auto-resize the composer textarea based on content
-  useEffect(() => {
-    const el = messageInputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
-  }, [newMessage]);
+  const sugestaoFantasmaRef = useRef<HTMLDivElement>(null);
   const rosterFetchedForRef = useRef<string | null>(null); // conversation.phone whose roster we already fetched
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -1167,6 +1178,56 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const messages = [...conversation.messages].sort(
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
+
+  // Sugestão da IA já escrita no campo: aparece apagada dentro do "Digite uma
+  // mensagem" e vira texto de verdade com a seta para a direita (→) ou o botão
+  // ao lado. Enquanto não for aceita, não é o valor do campo — nada é enviado.
+  const ultimaMensagem = messages[messages.length - 1];
+  const ancoraDaSugestao = ultimaMensagem
+    ? `${conversation.phone}|${conversation.instance_name || ''}|${ultimaMensagem.id}`
+    : '';
+  const sugestaoCabeAqui =
+    inputMode === 'message' && !newMessage.trim() && !isRecording && !pastedImage && !shareInfo;
+  const {
+    sugestao: sugestaoAuto,
+    carregando: sugerindo,
+    aceitar: aceitarSugestao,
+    dispensar: dispensarSugestao,
+    regenerar: regerarSugestao,
+    ligada: sugestaoLigada,
+    setLigada: setSugestaoLigada,
+  } = useSugestaoAutomatica({
+    ativa: sugestaoCabeAqui,
+    ancora: ancoraDaSugestao,
+    buildContext: buildReplyContext,
+    getState: buildReplyState,
+  });
+  /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
+  const usarSugestao = () => {
+    const texto = aceitarSugestao();
+    if (!texto) return;
+    setNewMessage(texto);
+    requestAnimationFrame(() => {
+      const el = messageInputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(texto.length, texto.length);
+    });
+  };
+  const temSugestaoNoCampo = sugestaoCabeAqui && !!sugestaoAuto;
+
+  // Auto-resize the composer textarea based on content. A sugestão apagada mora
+  // por cima do campo: se ela for mais alta que o texto digitado, o campo cresce
+  // junto — senão a sugestão sairia cortada pela metade.
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    const alturaDaSugestao = temSugestaoNoCampo || sugerindo
+      ? (sugestaoFantasmaRef.current?.scrollHeight ?? 0)
+      : 0;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, alturaDaSugestao), 200)}px`;
+  }, [newMessage, sugestaoAuto, temSugestaoNoCampo, sugerindo]);
 
   // Deep link vindo da ficha da atividade ("ver a mensagem que gerou"): rola até
   // a bolha e destaca por 2s. Depende de `messages` porque a conversa pode ainda
@@ -2724,6 +2785,72 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     }
   };
 
+  /**
+   * O texto exatamente como vai sair — com a assinatura `*Nome:*` quando
+   * "Identificar remetente" está ligado.
+   *
+   * A mensagem agendada grava o texto JÁ PRONTO no banco, então ele não pode
+   * divergir do envio na hora: os dois passam pelo mesmo `prefixarRemetente`,
+   * com as mesmas escolhas da barra (formato do nome, título, apelido).
+   */
+  const envioComoVaiSair = useMemo(() => {
+    const cru = newMessage.trim();
+    if (!cru) return { texto: '', mentions: [] as string[] };
+    // Em grupo, "@Fulano" vira "@<número>" antes de sair — o agendado tem que
+    // guardar o texto já reescrito, com a lista de marcados.
+    const { text, mentions } = buildMentionPayload(cru);
+    const assina = shareInfo ? shareInfo.identify_sender : identifySender;
+    if (!user || !assina) return { texto: text, mentions };
+    // "Sem título" na barra devolve null e o envio cai no título do perfil.
+    const tituloDaBarra = nameFormat === 'nickname' ? null : (treatmentTitle || null);
+    return {
+      texto: prefixarRemetente(text, {
+        fullName: perfilDoEnvio?.full_name || profile?.full_name,
+        nameFormat,
+        treatmentTitle: tituloDaBarra !== null ? tituloDaBarra : (perfilDoEnvio?.treatment_title || ''),
+        nickname: nameFormat === 'nickname' ? (selectedNickname || null) : null,
+      }),
+      mentions,
+    };
+  }, [
+    newMessage, shareInfo, identifySender, user, profile?.full_name, perfilDoEnvio,
+    nameFormat, treatmentTitle, selectedNickname,
+    mentionedParticipants,
+  ]);
+
+  // Quem assina só faz falta na hora de agendar (o envio imediato busca por
+  // conta própria) — então a leitura acontece quando a janela abre.
+  useEffect(() => {
+    if (!showAgendar || perfilDoEnvio !== null || !user) return;
+    let vivo = true;
+    supabase
+      .from('profiles')
+      .select('full_name, treatment_title')
+      .eq('user_id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (!vivo) return;
+        setPerfilDoEnvio({
+          full_name: ((data as any)?.full_name as string) || profile?.full_name || null,
+          treatment_title: ((data as any)?.treatment_title as string) || null,
+        });
+      });
+    return () => { vivo = false; };
+  }, [showAgendar, perfilDoEnvio, user, profile?.full_name]);
+
+  /** Tirar da fila pela própria bolha de prévia, sem abrir a janela. */
+  const handleCancelarAgendada = async (id: string) => {
+    setCancelandoAgendada(id);
+    try {
+      await agendadas.cancelar(id, profile?.full_name || null);
+      toast.success('Tirada da fila — não vai mais sair');
+    } catch (e: any) {
+      toast.error('Não consegui cancelar: ' + (e?.message || 'erro desconhecido'));
+    } finally {
+      setCancelandoAgendada(null);
+    }
+  };
+
   const handleSend = async () => {
     if (!newMessage.trim() || sending) return;
 
@@ -2804,6 +2931,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Sugestão apagada no campo: a seta para a direita (ou Tab) traz o texto para
+    // dentro, pronto para editar ou enviar. Esc joga fora. Só vale com o campo
+    // vazio — com texto digitado, a seta volta a ser só mover o cursor.
+    if (temSugestaoNoCampo && groupMentionQuery === null) {
+      if (e.key === 'ArrowRight' || e.key === 'Tab') {
+        e.preventDefault();
+        usarSugestao();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dispensarSugestao();
+        return;
+      }
+    }
     // While the @ picker is open, Enter/Tab pick the first match and Escape dismisses it.
     if (groupMentionQuery !== null && mentionMatches.length > 0) {
       if (e.key === 'Enter' || e.key === 'Tab') {
@@ -4938,6 +5080,75 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             Role para baixo para continuar a conversa…
           </div>
         )}
+
+        {/* O que ainda vai sair: a mensagem agendada aparece no lugar onde vai
+            cair, em bolha tracejada — nem enviada nem esquecida. Escondida
+            quando a conversa está ancorada numa mensagem antiga: ali o fim da
+            lista não é o fim da conversa, e a prévia mentiria sobre a ordem. */}
+        {agendadas.pendentes.length > 0 && !(anchorActive && hasNewerHidden) && (
+          <>
+            <div className="flex items-center gap-2 py-1">
+              <div className="h-px flex-1 bg-border" />
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <CalendarClock className="h-3 w-3" />
+                {agendadas.pendentes.length === 1 ? 'Agendada' : `${agendadas.pendentes.length} agendadas`}
+              </span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+
+            {agendadas.pendentes.map((item) => {
+              const quando = new Date(item.proximo_envio_at);
+              return (
+                <div key={item.id} className="flex group justify-end">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity self-center mr-1 text-muted-foreground hover:text-destructive"
+                    title="Tirar da fila — não vai mais sair"
+                    disabled={cancelandoAgendada === item.id}
+                    onClick={() => handleCancelarAgendada(item.id)}
+                  >
+                    {cancelandoAgendada === item.id
+                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                      : <Trash2 className="h-3 w-3" />}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowAgendar(true)}
+                    title="Abrir os agendamentos desta conversa"
+                    className="max-w-[70%] rounded-2xl rounded-br-sm border-2 border-dashed border-green-600/50 bg-green-600/5 px-4 py-2 text-left text-sm hover:bg-green-600/10"
+                  >
+                    <p className="mb-1 flex items-center gap-1 text-[10px] font-medium text-green-700 dark:text-green-400">
+                      <CalendarClock className="h-3 w-3 shrink-0" />
+                      {format(quando, "dd/MM 'às' HH:mm", { locale: ptBR })}
+                      {item.repeticao !== 'nenhuma' && (
+                        <span className="font-normal text-muted-foreground">
+                          · {descreverRepeticao(quando, regraDaLinha(item))}
+                        </span>
+                      )}
+                    </p>
+                    <p className="whitespace-pre-wrap break-words text-foreground/80">{item.mensagem}</p>
+                    {item.pular_se_responder && (
+                      <p className="mt-1 text-[10px] text-muted-foreground">
+                        Não sai se ele responder antes
+                      </p>
+                    )}
+                    {item.ultimo_resultado && (
+                      <p className="mt-1 text-[10px] text-amber-600 dark:text-amber-400">
+                        {item.ultimo_resultado}
+                      </p>
+                    )}
+                    {item.ultimo_erro && (
+                      <p className="mt-1 text-[10px] text-destructive">
+                        último envio falhou: {item.ultimo_erro}
+                      </p>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
@@ -5094,6 +5305,18 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               )}
             </>
           )}
+          {inputMode === 'message' && !shareInfo && (
+            <>
+              <Label htmlFor="sugestao-automatica" className="text-xs text-muted-foreground cursor-pointer" title="A IA já deixa a resposta escrita no campo, apagada. Você aceita com → e envia.">
+                Sugerir resposta
+              </Label>
+              <Switch
+                id="sugestao-automatica"
+                checked={sugestaoLigada}
+                onCheckedChange={setSugestaoLigada}
+              />
+            </>
+          )}
           {inputMode === 'message' && (
             <>
               <Label htmlFor="identify-sender" className="text-xs text-muted-foreground cursor-pointer">
@@ -5211,6 +5434,47 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </Button>
           </div>
         ) : !pastedImage && (
+          <>
+          {/* Aviso de que o texto apagado no campo é da IA e como aceitá-lo. */}
+          {sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) && (
+            <div className="flex items-center gap-2 px-1 text-[11px] text-muted-foreground">
+              <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+              {sugerindo ? (
+                <span>A IA está escrevendo uma sugestão de resposta...</span>
+              ) : (
+                <>
+                  <span className="min-w-0 truncate">
+                    Sugestão da IA — <strong className="font-medium text-foreground">→</strong> para usar,{' '}
+                    <strong className="font-medium text-foreground">Esc</strong> para dispensar.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={regerarSugestao}
+                    className="shrink-0 underline underline-offset-2 hover:text-foreground"
+                  >
+                    Outra
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          {/* O que ainda vai sair sozinho nesta conversa. Só quando a conversa
+              está ancorada numa mensagem antiga — no fim da lista as próprias
+              bolhas de prévia já estão logo acima, e o chip repetiria. */}
+          {inputMode === 'message' && agendadas.pendentes.length > 0 && anchorActive && hasNewerHidden && (
+            <button
+              type="button"
+              onClick={() => setShowAgendar(true)}
+              className="flex items-center gap-1.5 self-start rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-[11px] text-muted-foreground hover:bg-primary/10"
+            >
+              <CalendarClock className="h-3 w-3 shrink-0 text-primary" />
+              <span>
+                {agendadas.pendentes.length === 1 ? '1 mensagem agendada' : `${agendadas.pendentes.length} mensagens agendadas`}
+                {' — próxima '}
+                {format(new Date(agendadas.pendentes[0].proximo_envio_at), "dd/MM 'às' HH:mm", { locale: ptBR })}
+              </span>
+            </button>
+          )}
           <div className="flex gap-1 items-end">
             {/* Attach menu with internal options */}
             <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
@@ -5246,6 +5510,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 <DropdownMenuItem onClick={() => { setInputMode('chat'); setShowMentionPicker(true); setShowAttachMenu(false); }} className="gap-2 text-blue-600 dark:text-blue-400">
                   <AtSign className="h-4 w-4" /> Chat Interno
                 </DropdownMenuItem>
+                {inputMode === 'message' && (
+                  <DropdownMenuItem onClick={() => { setShowAttachMenu(false); setShowAgendar(true); }} className="gap-2">
+                    <CalendarClock className="h-4 w-4" /> Agendar mensagem
+                  </DropdownMenuItem>
+                )}
                 {onCreateActivity && (
                   <DropdownMenuItem onClick={() => {
                     setShowAttachMenu(false);
@@ -5277,25 +5546,65 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               targetMessage={replySuggestTarget}
               hideTrigger
             />
-            <Textarea
-              ref={messageInputRef}
-              placeholder={
-                inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
-                  : inputMode === 'chat' ? (mentionUserName ? `Mensagem para @${mentionUserName}...` : "Selecione um membro acima...")
-                  : isGroup ? "Digite uma mensagem... (@ para marcar)"
-                  : "Digite uma mensagem..."
-              }
-              value={newMessage}
-              onChange={handleMessageChange}
-              onKeyDown={handleKeyDown}
-              onPaste={inputMode === 'message' ? handlePaste : undefined}
-              className={cn(
-                "min-h-[44px] max-h-[200px] resize-none overflow-y-auto text-sm flex-1",
-                inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
-                inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
+            {/* O campo e, por baixo dele, a sugestão apagada. O texto sugerido NÃO é
+                o valor do campo — só entra quando o usuário aceita, com → ou no botão. */}
+            <div className="relative flex-1">
+              {sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) && (
+                <div
+                  ref={sugestaoFantasmaRef}
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-md border border-transparent px-3 py-2 text-sm text-muted-foreground/60"
+                >
+                  {temSugestaoNoCampo ? sugestaoAuto : 'Escrevendo uma sugestão de resposta...'}
+                </div>
               )}
-              rows={1}
-            />
+              <Textarea
+                ref={messageInputRef}
+                placeholder={
+                  sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) ? ''
+                    : inputMode === 'note' ? "Nota interna (não será enviada ao contato)..."
+                    : inputMode === 'chat' ? (mentionUserName ? `Mensagem para @${mentionUserName}...` : "Selecione um membro acima...")
+                    : isGroup ? "Digite uma mensagem... (@ para marcar)"
+                    : "Digite uma mensagem..."
+                }
+                value={newMessage}
+                onChange={handleMessageChange}
+                onKeyDown={handleKeyDown}
+                onPaste={inputMode === 'message' ? handlePaste : undefined}
+                className={cn(
+                  "min-h-[44px] max-h-[200px] resize-none overflow-y-auto text-sm w-full bg-transparent",
+                  inputMode === 'note' && "border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20",
+                  inputMode === 'chat' && "border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20"
+                )}
+                rows={1}
+              />
+            </div>
+            {/* Aceitar a sugestão: mesma coisa que apertar a seta para a direita. */}
+            {temSugestaoNoCampo && (
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-10 w-10 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                title="Usar a sugestão (seta para a direita →)"
+                onClick={usarSugestao}
+              >
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            )}
+            {/* Mandar depois: mesma mensagem, hora marcada. Só faz sentido no
+                modo mensagem — nota interna e chat da equipe não saem para o
+                cliente. */}
+            {inputMode === 'message' && newMessage.trim() && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-10 w-10 shrink-0 text-muted-foreground hover:text-primary"
+                title="Agendar envio"
+                onClick={() => setShowAgendar(true)}
+              >
+                <CalendarClock className="h-4 w-4" />
+              </Button>
+            )}
             {newMessage.trim() ? (
               <Button
                 size="icon"
@@ -5322,7 +5631,28 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               </Button>
             ) : null}
           </div>
+          </>
         )}
+        {/* Agendar mensagem: escrever agora, sair na hora marcada. */}
+        <AgendarMensagemDialog
+          open={showAgendar}
+          onOpenChange={setShowAgendar}
+          conversa={{
+            phone: conversation.phone,
+            chatId: conversationChatId,
+            instanceName: effectiveInstanceName,
+            contactId: conversation.contact_id,
+            leadId: conversation.lead_id,
+            contactName: conversation.contact_name,
+          }}
+          texto={newMessage.trim()}
+          textoFinal={envioComoVaiSair.texto}
+          mentions={envioComoVaiSair.mentions}
+          criadoPor={user?.id || null}
+          criadoPorNome={perfilDoEnvio?.full_name || profile?.full_name || null}
+          onAgendado={() => { setNewMessage(''); setMentionedParticipants([]); setGroupMentionQuery(null); }}
+        />
+
         {/* Location Dialog */}
         <Dialog open={showLocationDialog} onOpenChange={setShowLocationDialog}>
           <DialogContent>
