@@ -64,6 +64,18 @@ describe('WhatsAppAvatar', () => {
     expect(requestAvatar).toHaveBeenCalledWith('5547999639870', 'Raym');
   });
 
+  it('pede foto sem instância — é o caso da ficha do lead e da lista de contatos', () => {
+    getAvatar.mockReturnValue(null);
+    render(<WhatsAppAvatar phone="5547999639870" />);
+    expect(requestAvatar).toHaveBeenCalledWith('5547999639870', undefined);
+  });
+
+  it('com autoFetch=false não vai buscar — só mostra o que já está em cache', () => {
+    getAvatar.mockReturnValue(null);
+    render(<WhatsAppAvatar phone="5547999639870" autoFetch={false} />);
+    expect(requestAvatar).not.toHaveBeenCalled();
+  });
+
   it('não pede foto de novo quando já tem a URL', () => {
     getAvatar.mockReturnValue('https://exemplo.test/foto.webp');
     render(<WhatsAppAvatar phone="5547999639870" instanceName="Raym" />);

@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { WhatsAppAvatar } from '@/components/whatsapp/WhatsAppAvatar';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -690,7 +691,13 @@ export function ContactDetailSheet({
          <Header className="pb-4">
           <div className="flex items-center justify-between">
             <Title className="flex items-center gap-2 text-xl">
-              <User className="h-5 w-5" />
+              {/* Foto do WhatsApp do contato; sem telefone ou sem foto, o
+                  ícone de sempre. */}
+              {contact.phone ? (
+                <WhatsAppAvatar phone={contact.phone} className="h-9 w-9" iconClassName="h-5 w-5" />
+              ) : (
+                <User className="h-5 w-5" />
+              )}
               <CopyableText copyValue={fullName || contact.full_name} label="Nome">
                 {fullName || contact.full_name}
               </CopyableText>

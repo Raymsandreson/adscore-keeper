@@ -14,8 +14,14 @@
 // guardada no bucket privado `wa-avatars` do Externo. O front recebe signed URL
 // de 7 dias — nada público, nada adivinhável (foto de cliente é dado pessoal).
 //
-// POST { instance_name, phones: string[], refresh?: boolean }
+// POST { instance_name?, phones: string[], refresh?: boolean }
 // Resp: { success, avatars: { [phone]: string | null }, stats: {...} }
+//
+// `instance_name` é OPCIONAL: a aba do WhatsApp sabe de qual instância é a
+// conversa, mas a ficha do lead e a lista de contatos não — ali existe só o
+// telefone. Sem ela, a instância sai de quem já conversou com aquele número
+// (whatsapp_messages), e o cache é lido por telefone em qualquer instância, o
+// que reaproveita a foto que a aba do WhatsApp já baixou.
 //
 // `phones` aceita telefone ou grupo, em dígitos ou JID. A chave da resposta é
 // sempre o valor em dígitos puros — o mesmo formato que o webhook grava em
@@ -40,8 +46,14 @@ const MISS_MS = 3 * 24 * 60 * 60 * 1000;
 // Teto por requisição. A lista do inbox pede em lotes conforme rola a tela.
 const MAX_PHONES = 80;
 const CONCURRENCY = 6;
+// Teto de instâncias sondadas por telefone. Cada tentativa é uma chamada à
+// UazAPI; varrer as 26 sairia caro pelo caso (comum) de o contato simplesmente
+// não ter foto.
+const MAX_INSTANCE_TRIES = 3;
 const UAZ_TIMEOUT_MS = 8000;
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+// Link vencido na origem: tenta de novo em uma hora, não no TTL cheio.
+const RETRY_AFTER_FAIL_MS = 60 * 60 * 1000;
 // Mesmo critério de isWhatsAppGroupId() no front: telefone vai até 15 dígitos,
 // ID de grupo tem 18 (`1203...`).
 const GROUP_ID_MIN_DIGITS = 17;
@@ -173,6 +185,49 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (t: T) =>
   return out;
 }
 
+
+// --- quais instâncias estão realmente conectadas ---------------------------
+// `whatsapp_instances.is_active` é `true` nas 26 cadastradas, inclusive nas que
+// não estão ligadas: medido em 26/08/2026, só 8 respondiam `connected`, 14
+// diziam `disconnected` e 4 devolviam 401. Perguntar a foto a uma instância
+// desligada é chamada perdida e devolve "sem foto" para quem tem. O estado é
+// sondado no máximo a cada 5 minutos e vale para o processo inteiro.
+const STATUS_TTL_MS = 5 * 60 * 1000;
+let statusCache: { at: number; connected: Set<string> } | null = null;
+let statusInFlight: Promise<Set<string>> | null = null;
+
+async function connectedInstanceNames(instances: any[]): Promise<Set<string>> {
+  if (statusCache && Date.now() - statusCache.at < STATUS_TTL_MS) return statusCache.connected;
+  if (statusInFlight) return statusInFlight;
+  statusInFlight = (async () => {
+    const connected = new Set<string>();
+    await Promise.all(
+      instances.map(async (i) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), UAZ_TIMEOUT_MS);
+        try {
+          const r = await fetch(`${String(i.base_url || DEFAULT_BASE).replace(/\/$/, '')}/instance/status`, {
+            headers: { token: i.instance_token },
+            signal: controller.signal,
+          });
+          if (!r.ok) return;
+          const b: any = await r.json().catch(() => null);
+          const st = String(b?.instance?.status || b?.status || '').toLowerCase();
+          if (st === 'connected') connected.add(String(i.instance_name || '').trim().toLowerCase());
+        } catch {
+          /* sem resposta = não conectada */
+        } finally {
+          clearTimeout(timer);
+        }
+      }),
+    );
+    statusCache = { at: Date.now(), connected };
+    statusInFlight = null;
+    return connected;
+  })();
+  return statusInFlight;
+}
+
 export const handler: RequestHandler = async (req, res) => {
   try {
     const { instance_name, phones, refresh } = (req.body || {}) as {
@@ -189,36 +244,90 @@ export const handler: RequestHandler = async (req, res) => {
       return res.status(200).json({ success: true, avatars: {}, stats: { requested: 0 } });
     }
 
-    // --- instância: a da conversa é quem tem o contato salvo e enxerga a foto.
-    // Se ela não estiver cadastrada, cai na primeira ativa em vez de devolver
-    // vazio (o inbox mostra conversa de instância antiga, ver fóssil de
-    // instance_name em whatsapp_messages).
+    // --- instâncias disponíveis
     const { data: allInst } = await ext
       .from('whatsapp_instances')
       .select('instance_name, instance_token, base_url, is_active')
       .not('instance_token', 'is', null);
 
     const instances = ((allInst as any[]) || []).filter((i) => i?.instance_token);
-    const wanted = String(instance_name || '').trim().toLowerCase();
-    const inst =
-      instances.find((i) => String(i.instance_name || '').trim().toLowerCase() === wanted) ||
-      instances.find((i) => i.is_active !== false) ||
-      null;
-
-    if (!inst) {
+    if (instances.length === 0) {
       return res.status(200).json({ success: false, error: 'nenhuma instância com token disponível', avatars: {} });
     }
-    const instanceKey: string = inst.instance_name;
+    const byName = new Map<string, any>(
+      instances.map((i) => [String(i.instance_name || '').trim().toLowerCase(), i]),
+    );
+
+    // Se a sondagem toda falhar (UazAPI fora), não filtra nada — melhor tentar
+    // com todas do que não tentar com nenhuma.
+    const connected = await connectedInstanceNames(instances);
+    const online = (i: any) =>
+      connected.size === 0 || connected.has(String(i?.instance_name || '').trim().toLowerCase());
+
+    const wanted = String(instance_name || '').trim().toLowerCase();
+    // A instância da conversa é quem tem o contato salvo e enxerga a foto. Ela
+    // pode não estar mais cadastrada (o `instance_name` das mensagens guarda
+    // nome fóssil) ou estar desligada — daí a cascata abaixo.
+    const candidateOf = (i: any) => (i && online(i) ? i : null);
+    const preferred = wanted ? candidateOf(byName.get(wanted)) : null;
+    const fallback = instances.find((i) => online(i)) || instances[0];
 
     // --- cache
-    const { data: cachedRows } = await ext
+    // Com instância pedida, o cache é dela. Sem instância, vale a linha de
+    // qualquer uma: é a mesma pessoa, e a foto que a aba do WhatsApp já baixou
+    // serve para a ficha do lead sem gastar chamada nova.
+    let cacheQuery = ext
       .from('whatsapp_avatars')
       .select('instance_name, phone, storage_path, has_photo, source_key, checked_at')
-      .eq('instance_name', instanceKey)
       .in('phone', targets);
+    if (preferred) cacheQuery = cacheQuery.eq('instance_name', preferred.instance_name);
+    const { data: cachedRows } = await cacheQuery;
 
     const cache = new Map<string, AvatarRow>();
-    for (const r of ((cachedRows as any[]) || [])) cache.set(r.phone, r as AvatarRow);
+    for (const r of ((cachedRows as any[]) || []) as AvatarRow[]) {
+      const prev = cache.get(r.phone);
+      // Sem instância pedida podem vir várias linhas do mesmo telefone: fica a
+      // que tem foto e, entre essas, a checada mais recentemente.
+      if (!prev) { cache.set(r.phone, r); continue; }
+      const melhor =
+        (r.has_photo && !prev.has_photo) ||
+        (r.has_photo === prev.has_photo && new Date(r.checked_at) > new Date(prev.checked_at));
+      if (melhor) cache.set(r.phone, r);
+    }
+
+    /**
+     * De quais instâncias perguntar pela foto deste número, em ordem: a pedida
+     * → a que já tem linha no cache → as que já trocaram mensagem com ele →
+     * uma ativa qualquer. É lista, não uma só, porque não existe coluna de
+     * "conectada": as 26 estão `is_active = true` e algumas respondem 503 (a
+     * WHATSJUD IA, na medição de 26/08/2026). Sem cascata, o telefone cuja dona
+     * está fora ficaria sem foto. O `phone` de whatsapp_messages tem índice
+     * btree, e o lookup só acontece para quem não está em cache.
+     */
+    const resolveCandidates = async (target: string): Promise<any[]> => {
+      const out: any[] = [];
+      const push = (i: any) => {
+        const cand = candidateOf(i);
+        if (cand && !out.some((x) => x.instance_name === cand.instance_name)) out.push(cand);
+      };
+      if (preferred) push(preferred);
+      const cached = cache.get(target);
+      if (cached) push(byName.get(String(cached.instance_name).trim().toLowerCase()));
+      if (out.length < MAX_INSTANCE_TRIES) {
+        const { data: msgs } = await ext
+          .from('whatsapp_messages')
+          .select('instance_name')
+          .eq('phone', target)
+          .not('instance_name', 'is', null)
+          .limit(30);
+        for (const m of ((msgs as any[]) || [])) {
+          push(byName.get(String(m.instance_name || '').trim().toLowerCase()));
+          if (out.length >= MAX_INSTANCE_TRIES) break;
+        }
+      }
+      push(fallback);
+      return out.slice(0, MAX_INSTANCE_TRIES);
+    };
 
     const now = Date.now();
     const isFresh = (row: AvatarRow | undefined) => {
@@ -234,17 +343,38 @@ export const handler: RequestHandler = async (req, res) => {
     let failed = 0;
     let unreachable = 0;
     await mapWithConcurrency(toFetch, CONCURRENCY, async (target) => {
-      const details = await fetchChatDetails(inst.base_url || DEFAULT_BASE, inst.instance_token, uazNumber(target));
       const prev = cache.get(target);
 
-      // Instância fora do ar: não grava nada. Marcar has_photo=false aqui
-      // apagaria da tela, por dias, a foto de quem tem.
-      if (!details.ok) {
+      // Percorre as candidatas até uma trazer foto. Uma instância que não tem o
+      // contato salvo responde 200 sem imagem, e parar aí devolveria "sem foto"
+      // para quem tem — é o mesmo motivo de fetchDetailsAcrossInstances em
+      // get-group-participants.
+      let respondeu = false;
+      let imageUrl: string | null = null;
+      let instanceKey = '';
+      for (const cand of await resolveCandidates(target)) {
+        const details = await fetchChatDetails(
+          cand.base_url || DEFAULT_BASE,
+          cand.instance_token,
+          uazNumber(target),
+        );
+        if (!details.ok) continue;
+        respondeu = true;
+        if (!instanceKey) instanceKey = cand.instance_name;
+        const url = pickImageUrl(details.data);
+        if (url) {
+          imageUrl = url;
+          instanceKey = cand.instance_name;
+          break;
+        }
+      }
+
+      // Nenhuma respondeu: não grava nada. Marcar has_photo=false aqui apagaria
+      // da tela, por dias, a foto de quem tem.
+      if (!respondeu) {
         unreachable++;
         return;
       }
-
-      const imageUrl = pickImageUrl(details.data);
 
       // Sem foto: registra a checagem para não repetir a chamada por MISS_MS.
       if (!imageUrl) {
@@ -273,16 +403,21 @@ export const handler: RequestHandler = async (req, res) => {
 
       const bin = await downloadImage(imageUrl);
       if (!bin) {
-        // URL vencida na origem. Mantém a foto anterior (melhor foto velha que
-        // avatar vazio) e marca a checagem para tentar de novo no próximo TTL.
+        // A UazAPI devolveu link já vencido — acontece, ela guarda a URL dela.
+        // Mantém a foto anterior (melhor foto velha que avatar vazio), mas
+        // envelhece o `checked_at` de propósito para a linha vencer em uma
+        // hora: gravar "agora" esconderia por dias uma foto que existe, e não
+        // gravar nada faria cada abertura de tela repetir a chamada.
         failed++;
+        const temFoto = !!prev?.storage_path;
+        const retryAt = new Date(Date.now() - (temFoto ? FRESH_MS : MISS_MS) + RETRY_AFTER_FAIL_MS);
         const row = {
           instance_name: instanceKey,
           phone: target,
           storage_path: prev?.storage_path ?? null,
-          has_photo: !!prev?.storage_path,
+          has_photo: temFoto,
           source_key: prev?.source_key ?? null,
-          checked_at: new Date().toISOString(),
+          checked_at: retryAt.toISOString(),
           updated_at: new Date().toISOString(),
         };
         await ext.from('whatsapp_avatars').upsert(row, { onConflict: 'instance_name,phone' });
@@ -345,14 +480,16 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     console.log(
-      `[get-whatsapp-avatars] ${instanceKey}: pedidos=${targets.length} baixados=${fetched} ` +
+      `[get-whatsapp-avatars] ${preferred?.instance_name || 'instância por telefone'}: ` +
+      `conectadas=${connected.size}/${instances.length} ` +
+      `pedidos=${targets.length} baixados=${fetched} ` +
       `cache=${targets.length - toFetch.length} falhas=${failed} instancia_fora=${unreachable} ` +
       `com_foto=${Object.values(avatars).filter(Boolean).length}`,
     );
 
     return res.status(200).json({
       success: true,
-      instance_name: instanceKey,
+      instance_name: preferred?.instance_name || null,
       avatars,
       stats: {
         requested: targets.length,

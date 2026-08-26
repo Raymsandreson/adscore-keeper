@@ -15,10 +15,20 @@ import { useWhatsAppAvatars } from '@/hooks/useWhatsAppAvatars';
 
 interface Props {
   phone: string;
+  /**
+   * De qual instância perguntar. Opcional: a ficha do lead e a lista de
+   * contatos só têm o telefone, e aí quem descobre é o servidor.
+   */
   instanceName?: string | null;
   isGroup?: boolean;
   /** Item selecionado na lista: o círculo troca de cor junto com a linha. */
   selected?: boolean;
+  /**
+   * `false` mostra a foto só se já estiver em cache, sem ir buscar. É o que
+   * telas com lista enorme usam abaixo do próprio teto de enriquecimento — em
+   * 36 mil contatos, rolar tudo buscando foto seria uma consulta por linha.
+   */
+  autoFetch?: boolean;
   className?: string;
   iconClassName?: string;
 }
@@ -44,7 +54,7 @@ function observe(el: Element, cb: () => void) {
   return () => { callbacks.delete(el); observer?.unobserve(el); };
 }
 
-export function WhatsAppAvatar({ phone, instanceName, isGroup, selected, className, iconClassName }: Props) {
+export function WhatsAppAvatar({ phone, instanceName, isGroup, selected, autoFetch = true, className, iconClassName }: Props) {
   const { getAvatar, requestAvatar } = useWhatsAppAvatars();
   const ref = useRef<HTMLDivElement | null>(null);
   const [broken, setBroken] = useState(false);
@@ -54,9 +64,9 @@ export function WhatsAppAvatar({ phone, instanceName, isGroup, selected, classNa
 
   useEffect(() => {
     const el = ref.current;
-    if (!el || url) return;
+    if (!el || url || !autoFetch) return;
     return observe(el, () => requestAvatar(phone, instanceName));
-  }, [phone, instanceName, url, requestAvatar]);
+  }, [phone, instanceName, url, autoFetch, requestAvatar]);
 
   const Icon = isGroup ? Users : User;
 

@@ -67,9 +67,9 @@ Quando alguém responde citando uma mensagem, a UazAPI entrega a resposta com o 
 - **Escala e cobertura**: 2.497 de 28.684 mensagens (8,7%) em 24–26/08 são respostas citando alguma coisa; numa amostra de 200, **200 tinham a mensagem original salva no banco** — o clique quase sempre encontra alvo. Quando não encontra, avisa em vez de ficar girando.
 - **Não confundir com o anúncio Click-to-WhatsApp**, que também usa `contextInfo` (via `externalAdReply`) mas não cita mensagem nenhuma — segue caindo no card de anúncio.
 
-### Foto de perfil do WhatsApp na conversa (26/08/2026)
+### Foto de perfil do WhatsApp — conversa, ficha do lead e contatos (26/08/2026)
 
-A lista de conversas e o cabeçalho do chat mostram a **foto de perfil do contato ou do grupo**, no lugar do círculo verde com ícone. Quem não tem foto (ou não a expõe) continua no ícone de sempre — nunca fica espaço vazio.
+A **foto de perfil do WhatsApp** aparece na lista de conversas, no cabeçalho do chat, no resumo da **ficha do lead**, na **ficha do contato** e na **lista de contatos**, no lugar do ícone. Quem não tem foto (ou não a expõe) continua no ícone de sempre — nunca fica espaço vazio.
 
 - **A UazAPI entrega a foto em `/chat/details`**: `imagePreview` (96px) com `preview: true`, `image` (original) com `preview: false`.
 - **A URL dela NÃO serve para exibir.** O link aponta para `pps.whatsapp.net` com validade assinada no próprio endereço (`oe=<epoch em hex>`). Medido em 26/08/2026 sobre `whatsapp_chat_details_cache`: **9 das 25 fotos mais recentes já respondiam 403** — inclusive linhas gravadas no mesmo dia, porque a UazAPI guarda a URL dela e devolve vencida. Colocar esse link num `<img>` dá foto que quebra em dias, calada.
@@ -78,6 +78,10 @@ A lista de conversas e o cabeçalho do chat mostram a **foto de perfil do contat
 - **Instância fora do ar ≠ sem foto.** A `WHATSJUD IA` respondia 503 na medição; se isso virasse `has_photo = false`, a foto de quem tem sumiria da tela por três dias. Falha de consulta não grava nada e volta a ser tentada.
 - **Grupo é o ID de 18 dígitos sem `@g.us`** — é assim que o webhook grava `whatsapp_messages.phone`. A chave do cache e da resposta é sempre só dígitos; o `@g.us` é acrescentado apenas na hora de perguntar à UazAPI, que só reconhece grupo pelo JID completo.
 - **Custo controlado**: a foto só é pedida quando o avatar entra na tela (IntersectionObserver único), em lotes de até 40 conversas por chamada, com cache em memória + `sessionStorage`. Sem isso, abrir o inbox com 400 conversas seriam 400 consultas à UazAPI de uma vez.
+- **A instância é opcional.** A aba do WhatsApp sabe de qual instância é a conversa; a ficha do lead e a lista de contatos só têm o telefone. Sem ela, o servidor pergunta a quem já trocou mensagem com aquele número (`whatsapp_messages.phone`, que tem índice) e lê o cache por telefone em qualquer instância — assim a foto que a aba do WhatsApp já baixou serve para a ficha sem gastar chamada nova.
+- **Só instância conectada é consultada.** `whatsapp_instances.is_active` é `true` nas 26 cadastradas, inclusive nas desligadas: medido em 26/08/2026, **8 respondiam `connected`, 14 `disconnected` e 4 devolviam 401**. Antes desse filtro, pedir a foto sem instância caía em instância morta e voltava "sem foto" para todo mundo. O estado é sondado (`/instance/status`) no máximo a cada 5 minutos, e a busca tenta até 3 instâncias por telefone.
+- **Link vencido na origem** (a UazAPI às vezes devolve URL já expirada) mantém a foto anterior e reagenda a tentativa para **1 hora**, não para o TTL cheio.
+- **Teto na lista de contatos**: abaixo de `ENRICH_LIMIT` (300 linhas, o mesmo teto das etiquetas) a foto só aparece se já estiver em cache — rolar 36 mil contatos buscando foto seria uma consulta por linha.
 - Arquivos: `railway-server/src/functions/get-whatsapp-avatars.ts`, `src/hooks/useWhatsAppAvatars.ts`, `src/components/whatsapp/WhatsAppAvatar.tsx`.
 
 ### Chat interno da equipe dentro da conversa (botão "Equipe")

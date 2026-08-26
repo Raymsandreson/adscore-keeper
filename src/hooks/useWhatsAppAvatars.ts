@@ -7,6 +7,8 @@
  * no bucket privado e devolve signed URL de 7 dias. Este hook só orquestra:
  *
  * - pede em LOTE (uma chamada para até 40 conversas) em vez de uma por avatar;
+ * - aceita ficar sem instância (ficha do lead, contatos): aí quem descobre de
+ *   qual instância perguntar é o servidor, pelo telefone;
  * - só pede o que está VISÍVEL na tela (o componente WhatsAppAvatar avisa),
  *   senão abrir o inbox com 400 conversas viraria 400 chamadas à UazAPI;
  * - cache em memória + sessionStorage, então trocar de aba não repete nada.
@@ -102,7 +104,7 @@ async function flush() {
     try {
       const { data, error } = await cloudFunctions.invoke<{ success: boolean; avatars?: Record<string, string | null> }>(
         'get-whatsapp-avatars',
-        { body: { instance_name: batch.instance, phones: batch.phones } },
+        { body: { instance_name: batch.instance || undefined, phones: batch.phones } },
       );
       const now = Date.now();
       if (error || !data?.success) {
@@ -136,8 +138,9 @@ function enqueue(phone: string, instanceName?: string | null) {
   hydrate();
   const target = normalizeTarget(phone);
   if (!target) return;
+  // Instância vazia é caso legítimo: a ficha do lead e a lista de contatos só
+  // têm o telefone. Quem descobre de qual instância perguntar é o servidor.
   const instance = (instanceName || '').trim();
-  if (!instance) return; // sem instância não dá pra perguntar à UazAPI
   const key = `${instance.toLowerCase()}|${target}`;
   if (isUsable(cache.get(key)) || inFlight.has(key)) return;
   const failed = failedAt.get(key);
