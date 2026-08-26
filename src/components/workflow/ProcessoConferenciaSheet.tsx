@@ -237,7 +237,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
 
   // O que muda com a peça recém-anexada. Sem este retorno, trocar documento é um
   // clique que não produz efeito visível — e o Raym leu isso como tela quebrada.
@@ -686,6 +686,14 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
         leitura={mudancas.leitura}
         tituloPeca={mudancas.titulo}
         atuais={clientes.map(c => ({ cliente: c.cliente, valor: c.valor }))}
+        /* A decisão que a peça corrige é a que a carteira está usando hoje —
+           todas as partes apontam para a mesma, por isso basta a primeira. */
+        decId={clientes.find(c => c.decisaoUsada?.dec_id)?.decisaoUsada?.dec_id ?? null}
+        onAplicar={async (leituraId, decId) => {
+          const r = await corrigirValores(leituraId, decId, false);
+          if (r.ok) await recarregar();
+          return r;
+        }}
       />
 
       <MediaLightbox

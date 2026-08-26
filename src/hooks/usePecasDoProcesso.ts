@@ -210,5 +210,35 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, []);
 
-  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, lerPeca, recarregar };
+  /**
+   * Corrige os valores da decisão com o que a peça diz.
+   *
+   * "Confirmo que é corrigir" — Raym, 25/08/2026. Não nasce decisão nova: a de
+   * 10/04/2024 continua sendo a mesma, só foi LIDA errado da primeira vez, a
+   * partir da homologação pública, que não abre valor por parte.
+   *
+   * Vai por RPC e não por update direto de propósito: a função calcula os
+   * valores DA PRÓPRIA LEITURA. O front não manda número nenhum — só diz qual
+   * peça corrige qual decisão. Assim nem a tela nem uma sessão anônima
+   * conseguem escrever um valor arbitrário na carteira.
+   *
+   * `simular` devolve o que mudaria sem gravar nada.
+   */
+  const corrigirValores = useCallback(async (
+    leituraId: number, decId: string, simular = true,
+  ): Promise<{ ok: boolean; resultado?: Record<string, unknown>; erro?: string }> => {
+    try {
+      await ensureExternalSession();
+      const r = await (db as unknown as { rpc: (n: string, a: unknown) => Promise<{ data: unknown; error: { message?: string } | null }> })
+        .rpc('jm_corrigir_valores_da_leitura', {
+          p_leitura_id: leituraId, p_dec_id: decId, p_simular: simular,
+        });
+      if (r.error) return { ok: false, erro: r.error.message };
+      return { ok: true, resultado: r.data as Record<string, unknown> };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, []);
+
+  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores, recarregar };
 }

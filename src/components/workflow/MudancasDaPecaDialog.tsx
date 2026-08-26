@@ -14,8 +14,10 @@
 // =============================================================================
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { useState } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, Loader2 } from 'lucide-react';
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
@@ -45,11 +47,17 @@ interface Props {
   /** O que a carteira mostra hoje, para o lado a lado. */
   atuais: ValorAtual[];
   tituloPeca: string;
+  /** Decisão que esta peça corrige. Ausente = não há o que corrigir. */
+  decId?: string | null;
+  onAplicar?: (leituraId: number, decId: string) => Promise<{ ok: boolean; erro?: string }>;
 }
 
 export function MudancasDaPecaDialog({
-  aberto, onClose, carregando, erro, leitura, atuais, tituloPeca,
+  aberto, onClose, carregando, erro, leitura, atuais, tituloPeca, decId, onAplicar,
 }: Props) {
+  const [aplicando, setAplicando] = useState(false);
+  const [aplicado, setAplicado] = useState<string | null>(null);
+  const [erroAplicar, setErroAplicar] = useState<string | null>(null);
   const partes = (Array.isArray(leitura?.partes) ? leitura.partes : []) as ParteLida[];
   const cronograma = (Array.isArray(leitura?.cronograma) ? leitura.cronograma : []) as ParcelaLida[];
   const valorPeca = num(leitura?.valor_condenacao);
@@ -162,14 +170,46 @@ export function MudancasDaPecaDialog({
               </section>
             )}
 
-            <p className="flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-700 dark:text-amber-400">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>
-                <strong>Nada foi gravado.</strong> Isto é o que a peça diz, ao lado do que a carteira
-                mostra hoje. Aplicar depende de decidir como uma leitura vira decisão lançada — e essa
-                decisão não cabe num botão.
-              </span>
-            </p>
+            {aplicado ? (
+              <p className="flex items-start gap-1.5 rounded-md border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] leading-snug text-emerald-700 dark:text-emerald-400">
+                <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                <span>{aplicado} O valor anterior ficou guardado em cada linha — dá para auditar
+                  o que mudou e por causa de qual peça.</span>
+              </p>
+            ) : (
+              <>
+                <p className="flex items-start gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-[11px] leading-snug text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  <span>
+                    <strong>Nada foi gravado ainda.</strong> Aplicar CORRIGE a decisão que já existe —
+                    não cria decisão nova, porque o que houve foi leitura errada da mesma decisão. O
+                    valor anterior fica guardado para auditoria.
+                  </span>
+                </p>
+                {erroAplicar && (
+                  <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+                    {erroAplicar}
+                  </p>
+                )}
+                {decId && onAplicar && partes.length > 0 && (
+                  <div className="flex justify-end">
+                    <Button
+                      size="sm" disabled={aplicando}
+                      onClick={async () => {
+                        setAplicando(true); setErroAplicar(null);
+                        const r = await onAplicar(Number(leitura.id), decId);
+                        setAplicando(false);
+                        if (r.ok) setAplicado('Valores corrigidos.');
+                        else setErroAplicar(r.erro ?? 'não consegui corrigir');
+                      }}
+                    >
+                      {aplicando && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                      Corrigir os valores da decisão
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
       </DialogContent>
