@@ -20,6 +20,25 @@ type StepContextLike = {
   allSteps?: { stepId: string; phaseId: string; templateId: string; stepLabel: string; checked: boolean }[];
 } | null | undefined;
 
+/**
+ * Desfecho do requerimento INSS do caso — o que o POP não sabe.
+ *
+ * O progresso da mensagem sai dos checklists do POP, que medem execução
+ * INTERNA e seguem andando depois de o INSS decidir. Medição de 26/08/2026:
+ * em 30 dias, 36 dos 139 requerimentos que receberam "Progresso do caso: X%"
+ * no grupo já estavam concluídos no INSS quando a mensagem saiu — 33 deles
+ * indeferidos, com atraso de até 26 dias. Em 31 dos 33 não existia nem
+ * atividade avisando o indeferimento: quem mandou não tinha como saber.
+ */
+export interface InssDesfechoCaso {
+  /** Há desfecho no INSS e nenhum requerimento em andamento. */
+  encerrado: boolean;
+  resultado: 'deferido' | 'indeferido' | 'arquivado_decurso' | null;
+  requerimento: string | null;
+  /** Requerimentos do caso ainda sem desfecho. */
+  emAndamento: number;
+}
+
 export interface ActivityMessageContext {
   formTitle: string;
   formDeadline: string;
@@ -57,6 +76,8 @@ export interface ActivityMessageContext {
   resolveUserName: (userId: string | null) => string | null;
   /** Template salvo pro board/fluxo (hook useActivityMessageTemplates). */
   getTemplateForContext: (boardId?: string) => string | undefined;
+  /** Desfecho do requerimento INSS do caso (hook useInssDesfechoCaso). */
+  inssDesfecho?: InssDesfechoCaso | null;
 }
 
 export function extractClientFirstName(raw: string): string {
@@ -120,6 +141,12 @@ export function stripHtmlForMessage(html: string): string {
 
 // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
 // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
+const RESULTADO_INSS_LABEL: Record<string, string> = {
+  deferido: 'DEFERIDO',
+  indeferido: 'INDEFERIDO',
+  arquivado_decurso: 'ARQUIVADO por prazo',
+};
+
 export function buildActivityMessage(
   ctx: ActivityMessageContext,
   audience: 'client' | 'assessor' = 'client',
@@ -130,7 +157,7 @@ export function buildActivityMessage(
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
     fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, leadPreview, systemOabs,
-    currentUserId, resolveUserName, getTemplateForContext,
+    currentUserId, resolveUserName, getTemplateForContext, inssDesfecho,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
     const joinNames = (names: string[]) =>
@@ -243,6 +270,19 @@ export function buildActivityMessage(
     // headline = só a % geral (mensagem do CLIENTE — evita jargão interno).
     // full = quebra completa (mensagem ao ASSESSOR e painel). Vazio sem checklist.
     const progress = (() => {
+      // O INSS já decidiu: nenhum número de progresso vai pro cliente. Dizer
+      // "Progresso do caso: 29%" a quem teve o pedido negado é informar o
+      // contrário do que aconteceu — e o desfecho tem mensagem própria, não se
+      // dá essa notícia de esguelha no meio de uma atividade. O assessor recebe
+      // o alerta no lugar do detalhe.
+      if (inssDesfecho?.encerrado) {
+        const rotulo = RESULTADO_INSS_LABEL[inssDesfecho.resultado || ''] || 'concluído';
+        const req = inssDesfecho.requerimento ? ` ${inssDesfecho.requerimento}` : '';
+        return {
+          headline: '',
+          full: `*⚠️ Requerimento${req} está ${rotulo} no INSS* — progresso do POP omitido na mensagem ao cliente.`,
+        };
+      }
       const steps = stepContext?.allSteps || [];
       if (steps.length === 0) {
         // Sem checklist: usa a régua de marcos do processo, com rótulo próprio —

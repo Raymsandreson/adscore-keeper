@@ -257,12 +257,40 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 - **A IA nunca é o único caminho**: sem chave, timeout ou resposta vazia, sai o texto determinístico do `fallbackMensagemCliente`, que já é uma mensagem correta. Modelo: `google/gemini-3.6-flash`, ~19 chamadas/dia.
 - Fila e auditoria em `inss_status_history`: `zap_status` (enviado|agendado|silencio|sem_grupo|repetido|retroativo|suprimido|expirado|erro), `zap_tipo`, `zap_texto` (o texto exato que foi ao grupo), `zap_enviado_at`, `zap_erro`.
 
+**Progresso do caso não sai depois do desfecho** (26/08/2026): a mensagem de conclusão de atividade ("Enviar ao grupo") anexa `📊 Progresso do caso: X%`, calculado pelos checklists do POP em `buildActivityMessage.ts`. O POP mede execução **interna** e continua andando depois de o INSS decidir.
+
+- Medido em 30 dias: **139** requerimentos receberam mensagem de progresso no grupo; em **36** a mensagem saiu depois de o INSS concluir, **33** deles indeferidos, com atraso de 0 a 26 dias. Nada disso era automático — `action_source = manual` nas 1.091 mensagens do período.
+- A causa raiz não é a tela: em **31 dos 33** não existia sequer a atividade "INSS atualizou … INDEFERIDO". Quem concluiu a atividade não tinha como saber. É o buraco fechado em 25–26/08 (atividade para requerimento com lead + dono por status).
+- Defesa aplicada: `useInssDesfechoCaso(caseId, leadId)` lê `inss_admin_processes` e, quando **todos** os requerimentos do caso têm desfecho (nenhum em andamento), `buildActivityMessage` **omite o percentual na mensagem do cliente** e troca o detalhe do assessor por `⚠️ Requerimento N está INDEFERIDO no INSS`. Caso com um pedido negado e outro em análise continua mostrando progresso — ali ele é real.
+- A notícia do desfecho **não** entra nessa mensagem: quem dá é a mensagem automática do INSS, acima. Dar a negativa de esguelha no meio de uma atividade é pior que não dar.
+- **Lacuna conhecida**: `ProcessUpdatesBell` monta a mensagem dentro de um `useCallback` por movimentação e não recebe o desfecho — ali o progresso ainda pode sair. É o fluxo de movimentação judicial (CNJ), não o do requerimento administrativo.
+- Estoque a tratar: **350** requerimentos indeferidos em **171** casos, e **160 desses casos têm atividade pendente** hoje.
+
 **Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
 
 **Vínculo automático — duas passadas** (`match-inss-orphans`, cron de 15 min):
 
 1. Protocolo sem lead e sem caso (292 em 17/08/2026) → `findInssOrphanMatch` tenta nº do requerimento, NB, custom field "Nº Requerimento INSS", título de atividade, CPF e nome. Órfão com CPF é raro (16 de 292); o caminho real é o nome.
 2. Protocolo **com lead e sem caso** (277) → assume o caso mais recente daquele lead. Antes ninguém religava: o lead ganhava `legal_case` depois do vínculo e o protocolo ficava parado; 30 estavam nesse estado. Não dispara `notify-inss-update` de propósito — notificar manda WhatsApp pro cliente, e aqui não houve novidade do INSS, só arrumamos vínculo interno.
+
+**Fila de conciliação e vínculo do protocolo ao lead** (26/08/2026): 989 requerimentos, **685 com lead (69%)** e **304 órfãos** — e `linked_by` é nulo nos 685, ou seja, todo vínculo que existe foi feito pelo robô; ninguém nunca usou a tela.
+
+O que o e-mail do INSS oferece como pista, medido nos 304 órfãos: **nome do segurado em 302**, **CPF em 18** (59 na base inteira, 6%), **NB em zero**. A única chave exata é o nº do requerimento anotado no lead antes do e-mail chegar — 158 dos 989.
+
+Por que o nome não fecha sozinho — o INSS identifica pelo **beneficiário** e a base pelo rótulo do funil e pelo **responsável** (`PREV 1630 - EVELYN/BERNARDO` é mãe e criança):
+
+| critério | acha candidato | resolve p/ 1 lead | conflito | nada |
+|---|---|---|---|---|
+| nome + sobrenome | 82 | 31 | 51 | **220** |
+| só primeiro nome | 264 | 34 | **230** | 38 |
+
+Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, grupos vinculados e os 29.185 registros de `whatsapp_groups_index`. Exigir nome completo devolve lista vazia; aceitar primeiro nome devolve trinta "Maria". Por isso o desenho é **lista ordenada para uma pessoa escolher**, nunca vínculo automático nessa faixa.
+
+- **`ProtocolosListaSheet` → botão "Sem dono (N)"**: fila dos requerimentos sem caso E sem lead, do mais recente para o mais antigo por `created_at` (não por `protocol_date`, que é justamente o que falta neles). Ligar força "Qualquer data". São ~3 por dia (88 em 30 dias); o acervo parado é 304.
+- **`src/lib/inssVinculoScore.ts`**: peso por pista (requerimento 1000 → CPF 900 → nome forte 500 → nome fraco 100) mais desempate por benefício igual (+40) / diferente (−60), lead que entrou perto do protocolo (+30) e lead de outra época (−25). Nenhum bônus faz palpite ultrapassar CPF.
+- **`buscarSugestoesDeCaso`** passou a: sugerir **lead sem caso** (`lead:<id>`, "(criar caso)") — antes só entrava lead que já tivesse `legal_case`, e o protocolo previdenciário quase nunca tem; procurar o número também em `protocolo_administrativo` e no campo "Nº Requerimento INSS"; e fazer uma passada **fraca** por primeiro nome **só quando nada forte apareceu**, rotulada "confira".
+- **`vincularProtocoloAoCaso`** agora grava `leads.victim_name` com o nome do segurado quando o campo está vazio (fecha o buraco para o próximo requerimento do mesmo cliente) e chama `notify-inss-update` — o e-mail que ficou parado por falta de vínculo vira atividade na hora, e mensagem ao cliente se for posterior ao corte.
+- O que **não** adianta perseguir: extrair CPF do e-mail (54 de 928 despachos), usar NB (nunca vem) ou apertar o matcher automático por nome — cada ponto forçado ali vira risco de mandar mensagem de um cliente no grupo de outro.
 
 **O que NÃO existe** (pedido, mas sem dado): ranking de quem protocolou. Nenhuma fonte identifica o operador — `linked_by` é 0% preenchido, responsável do caso cobre 9%, atividade "PROTOCOLAR" casada cobre 24%. Só uma captura no ato do protocolo resolve, e ela não teria histórico.
 

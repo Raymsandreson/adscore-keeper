@@ -52,14 +52,19 @@ export const handler: RequestHandler = async (_req, res) => {
         });
         if (!match.leadId && !match.caseId) continue;
 
-        const { caseId } = await applyInssMatch({
+        const { caseId, leadId } = await applyInssMatch({
           processId: o.id,
           requerimento: o.requerimento_number,
           match,
         });
         matched++;
 
-        if (caseId) {
+        // Basta LEAD para notificar. Até 26/08/2026 a condição era só `caseId`,
+        // herdada de quando o notify-inss-update exigia caso; desde 25/08 ele
+        // cria a atividade com lead apenas, e o órfão casado só com lead ficava
+        // sem atividade e sem mensagem — o e-mail do INSS já tinha chegado e
+        // ninguém era avisado.
+        if (caseId || leadId) {
           selfPost('notify-inss-update', { process_id: o.id }).catch(() => {});
           notify_fired++;
         }

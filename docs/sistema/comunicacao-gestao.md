@@ -57,6 +57,16 @@ Em grupo, **cada instância-membro grava a sua própria cópia de cada mensagem*
 
 **Mensagem enviada para o JID sumia do menu** (corrigido na edge `send-whatsapp` v25, deployada no Externo em 18/08/2026): o alvo do envio pode ser `120…@g.us`, mas a coluna `phone` tem de guardar só dígitos — é assim que o webhook grava e é por essa forma que o menu procura a conversa. Eram 1.505 linhas entre 09/04 e 18/08, todas outbound nossas (~300/mês), vindas de `sendActivityGroupNotification` e `sendVoiceToWa`. `storagePhone` separa o alvo do envio da forma gravada; backfill de 1.548 linhas aplicado (inclui 43 com `@s.whatsapp.net`, de abril).
 
+### Mensagem citada — o "responder" do WhatsApp na bolha (26/08/2026)
+
+Quando alguém responde citando uma mensagem, a UazAPI entrega a resposta com o id da citada em `metadata.message.quoted` (= `content.contextInfo.stanzaID`) e uma **cópia do conteúdo citado** em `content.contextInfo.quotedMessage`. Nada disso era lido: a bolha mostrava só o texto da resposta — que muitas vezes é um "." solto, porque quem responde um PDF ou um áudio escreve só um ponto para apontar o arquivo. Sem o bloco de citação, a mensagem chegava sem contexto e não havia nada para clicar (relato de 21/08/2026 no grupo FAMÍLIA 345, respondendo um PDF de 30/06).
+
+- **A bolha mostra a citação** (`QuotedMessagePreview`): autor, ícone do tipo e prévia — texto, legenda, nome do arquivo, "Mensagem de voz", "Foto", "Localização", "Enquete". A prévia sai do próprio payload, sem ida ao banco. Tipos e desembrulho (efêmera, ver-uma-vez, documento com legenda) em `src/lib/whatsappQuotedMessage.ts`.
+- **Clicar leva até a original**, com o mesmo pulo da busca da conversa (`jumpToSearchHit`): rola até a bolha e pisca por 2s. Se a citada está fora do trecho carregado — o normal, porque se cita mensagem de meses atrás —, o id vira `created_at` em `findMessageByWhatsAppId` (`external-rpc.ts`) e o trecho é baixado em volta dela.
+- **O id do WhatsApp é a chave, não o uuid da linha.** Em grupo cada instância grava a sua cópia, com uuid próprio; o `stanzaID` é o mesmo em todas. Por isso o alvo do pulo é reprocurado depois do carregamento (a cópia visível pode ser a de outra instância) e a busca no banco monta valores exatos `<owner>:<id>` para `external_message_id` — que tem índice btree —, em vez de um `LIKE '%:id'` que varreria a tabela.
+- **Escala e cobertura**: 2.497 de 28.684 mensagens (8,7%) em 24–26/08 são respostas citando alguma coisa; numa amostra de 200, **200 tinham a mensagem original salva no banco** — o clique quase sempre encontra alvo. Quando não encontra, avisa em vez de ficar girando.
+- **Não confundir com o anúncio Click-to-WhatsApp**, que também usa `contextInfo` (via `externalAdReply`) mas não cita mensagem nenhuma — segue caindo no card de anúncio.
+
 ### Chat interno da equipe dentro da conversa (botão "Equipe")
 - Botão **"Equipe"** no topo da conversa abre/fecha o chat interno sobre aquele cliente — coluna própria no desktop, painel deslizante em tela estreita. O cliente não vê nada do que é escrito ali. O estado (aberto/fechado) fica salvo por navegador; ao fechar, um aviso lembra que a reabertura é nesse mesmo botão.
 - `@` no campo lista os membros e traz **"@todos"** no topo (avisa a equipe inteira). Escrever `@todos`, `@equipe` ou `@todas` na mão tem o mesmo efeito.
