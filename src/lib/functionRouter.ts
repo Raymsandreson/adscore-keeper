@@ -44,6 +44,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'set-stage-result-key': 'railway',
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
+  'get-whatsapp-avatars': 'railway', // foto de perfil do WhatsApp: só existe no Railway (usa sharp + bucket privado)
   'scan-duplicate-contacts': 'railway',
   'recover-leads-phone-55': 'railway',
   'transcribe-activity-call': 'railway',
