@@ -1,5 +1,12 @@
 // =============================================================================
-// Conciliação dos acordos de um POP — "o que foi lançado bate com o acordo?".
+// Conciliação de valores de um POP — "o que foi lançado bate com o que os autos
+// dizem?".
+//
+// Entram acordo homologado, liquidação, trânsito em julgado e execução iniciada.
+// O Raym pediu os três últimos em 26/08 com o motivo certo: nesses estágios o
+// valor por parte está na planilha de liquidação ou nos cálculos da execução —
+// peça restrita, que o Escavador raramente traz. São justamente os processos
+// onde a carteira tem mais chance de estar errada e ninguém sabe.
 //
 // A régua mora em `conciliacaoAcordo.ts` e é conferida contra o termo de acordo
 // real. Aqui só se lê o dado já somado.
@@ -28,13 +35,24 @@ const externo = db as unknown as {
   from: (t: string) => { select: (c: string) => { eq: (c: string, v: unknown) => Promise<Consulta> } };
 };
 
+/** O estágio mais avançado entre os que pedem conferência de valor. */
+export type EstagioConciliacao = 'EXECUCAO' | 'TRANSITO' | 'ACORDO' | 'LIQUIDACAO';
+
 export interface AcordoConciliado {
   processId: string;
   cnj: string;
   titulo: string | null;
   dataAcordo: string | null;
+  estagio: EstagioConciliacao;
   conciliacao: Conciliacao;
 }
+
+export const ESTAGIO_LABEL: Record<EstagioConciliacao, string> = {
+  EXECUCAO: 'em execução',
+  TRANSITO: 'transitado em julgado',
+  ACORDO: 'acordo homologado',
+  LIQUIDACAO: 'em liquidação',
+};
 
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
 
@@ -49,7 +67,7 @@ export function useConciliacaoAcordos(boardId: string | null | undefined) {
     try {
       await ensureExternalSession();
       const r = await externo.from('vw_jm_conciliacao_acordos')
-        .select('process_id, cnj, titulo, data_acordo, cliente, hc, hs, multa')
+        .select('process_id, cnj, titulo, data_acordo, estagio, cliente, hc, hs, multa')
         .eq('board_id', boardId);
       if (r.error) throw new Error(r.error.message || 'Falha ao conciliar os acordos');
 
@@ -58,6 +76,7 @@ export function useConciliacaoAcordos(boardId: string | null | undefined) {
         cnj: String(a.cnj ?? ''),
         titulo: (a.titulo as string) ?? null,
         dataAcordo: (a.data_acordo as string) ?? null,
+        estagio: (a.estagio as EstagioConciliacao) ?? 'ACORDO',
         conciliacao: conciliarAcordo({
           cliente: n(a.cliente), hc: n(a.hc), hs: n(a.hs), multa: n(a.multa),
         }),
