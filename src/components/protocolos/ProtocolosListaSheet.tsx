@@ -238,6 +238,8 @@ function Conteudo({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
   const [familia, setFamilia] = useState<FamiliaCaso | "TODAS">("TODAS");
   const [faixaDe, setFaixaDe] = useState("");
   const [faixaAte, setFaixaAte] = useState("");
+  /** Fila de conciliação: só o que chegou do INSS e não tem dono. */
+  const [soSemVinculo, setSoSemVinculo] = useState(false);
 
   const intervaloInvalido = de > ate;
 
@@ -373,12 +375,35 @@ function Conteudo({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
     if (filtroPorCasoAtivo) setEscopoData("qualquer");
   }, [filtroPorCasoAtivo]);
 
+  // Órfão quase nunca tem data de protocolo lida do e-mail: com o recorte de
+  // período ligado, a fila apareceria pela metade e ninguém saberia.
+  useEffect(() => {
+    if (soSemVinculo) setEscopoData("qualquer");
+  }, [soSemVinculo]);
+
   const filtradas = useMemo(() => {
-    if (!filtroPorCasoAtivo) return rows;
-    return rows.filter((p) => dentroDaFaixa(vinculoDe(p).sequencia, faixa));
-  }, [rows, faixa, filtroPorCasoAtivo, vinculoDe]);
+    const base = filtroPorCasoAtivo
+      ? rows.filter((p) => dentroDaFaixa(vinculoDe(p).sequencia, faixa))
+      : rows;
+    if (!soSemVinculo) return base;
+    // Fila do dia: sem caso E sem lead, do que chegou mais recentemente para o
+    // mais antigo. Ordena por `created_at` (chegada do e-mail) e não por
+    // `protocol_date`, que é justamente o que falta em boa parte dos órfãos —
+    // ordenar por ela jogaria a fila do dia para o fim da lista.
+    return base
+      .filter((p) => !p.case_id && !p.lead_id)
+      .slice()
+      .sort((a, b) => String(b.created_at || "").localeCompare(String(a.created_at || "")));
+  }, [rows, faixa, filtroPorCasoAtivo, vinculoDe, soSemVinculo]);
 
   const semCaso = useMemo(() => filtradas.filter((p) => !p.case_id).length, [filtradas]);
+  // Tamanho da fila sobre TUDO que foi carregado, não sobre a lista já
+  // filtrada: o número no botão não pode mudar de significado quando a pessoa
+  // liga o próprio botão.
+  const filaSemDono = useMemo(
+    () => rows.filter((p) => !p.case_id && !p.lead_id).length,
+    [rows],
+  );
   const semVinculoNenhum = useMemo(
     () => filtradas.filter((p) => !p.case_id && !p.lead_id).length,
     [filtradas],
@@ -386,7 +411,7 @@ function Conteudo({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
 
   useEffect(() => {
     setPage(1);
-  }, [de, ate, escopoData, faixaDe, faixaAte, familia]);
+  }, [de, ate, escopoData, faixaDe, faixaAte, familia, soSemVinculo]);
 
   const totalPages = Math.max(1, Math.ceil(filtradas.length / PAGE_SIZE));
   useEffect(() => {
@@ -483,6 +508,15 @@ function Conteudo({ onAbrirLead }: { onAbrirLead: (leadId: string) => void }) {
             title="Ignora a data e inclui também os requerimentos sem data de protocolo"
           >
             Qualquer data
+          </Button>
+          <Button
+            size="sm"
+            variant={soSemVinculo ? "default" : "outline"}
+            className="h-7 px-2.5 text-xs"
+            onClick={() => setSoSemVinculo((v) => !v)}
+            title="Requerimentos que chegaram do INSS e não têm caso nem lead — ninguém é avisado enquanto ficarem assim"
+          >
+            Sem dono{filaSemDono > 0 ? ` (${filaSemDono})` : ""}
           </Button>
         </div>
 

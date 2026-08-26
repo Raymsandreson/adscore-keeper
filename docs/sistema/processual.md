@@ -273,6 +273,25 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 1. Protocolo sem lead e sem caso (292 em 17/08/2026) → `findInssOrphanMatch` tenta nº do requerimento, NB, custom field "Nº Requerimento INSS", título de atividade, CPF e nome. Órfão com CPF é raro (16 de 292); o caminho real é o nome.
 2. Protocolo **com lead e sem caso** (277) → assume o caso mais recente daquele lead. Antes ninguém religava: o lead ganhava `legal_case` depois do vínculo e o protocolo ficava parado; 30 estavam nesse estado. Não dispara `notify-inss-update` de propósito — notificar manda WhatsApp pro cliente, e aqui não houve novidade do INSS, só arrumamos vínculo interno.
 
+**Fila de conciliação e vínculo do protocolo ao lead** (26/08/2026): 989 requerimentos, **685 com lead (69%)** e **304 órfãos** — e `linked_by` é nulo nos 685, ou seja, todo vínculo que existe foi feito pelo robô; ninguém nunca usou a tela.
+
+O que o e-mail do INSS oferece como pista, medido nos 304 órfãos: **nome do segurado em 302**, **CPF em 18** (59 na base inteira, 6%), **NB em zero**. A única chave exata é o nº do requerimento anotado no lead antes do e-mail chegar — 158 dos 989.
+
+Por que o nome não fecha sozinho — o INSS identifica pelo **beneficiário** e a base pelo rótulo do funil e pelo **responsável** (`PREV 1630 - EVELYN/BERNARDO` é mãe e criança):
+
+| critério | acha candidato | resolve p/ 1 lead | conflito | nada |
+|---|---|---|---|---|
+| nome + sobrenome | 82 | 31 | 51 | **220** |
+| só primeiro nome | 264 | 34 | **230** | 38 |
+
+Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, grupos vinculados e os 29.185 registros de `whatsapp_groups_index`. Exigir nome completo devolve lista vazia; aceitar primeiro nome devolve trinta "Maria". Por isso o desenho é **lista ordenada para uma pessoa escolher**, nunca vínculo automático nessa faixa.
+
+- **`ProtocolosListaSheet` → botão "Sem dono (N)"**: fila dos requerimentos sem caso E sem lead, do mais recente para o mais antigo por `created_at` (não por `protocol_date`, que é justamente o que falta neles). Ligar força "Qualquer data". São ~3 por dia (88 em 30 dias); o acervo parado é 304.
+- **`src/lib/inssVinculoScore.ts`**: peso por pista (requerimento 1000 → CPF 900 → nome forte 500 → nome fraco 100) mais desempate por benefício igual (+40) / diferente (−60), lead que entrou perto do protocolo (+30) e lead de outra época (−25). Nenhum bônus faz palpite ultrapassar CPF.
+- **`buscarSugestoesDeCaso`** passou a: sugerir **lead sem caso** (`lead:<id>`, "(criar caso)") — antes só entrava lead que já tivesse `legal_case`, e o protocolo previdenciário quase nunca tem; procurar o número também em `protocolo_administrativo` e no campo "Nº Requerimento INSS"; e fazer uma passada **fraca** por primeiro nome **só quando nada forte apareceu**, rotulada "confira".
+- **`vincularProtocoloAoCaso`** agora grava `leads.victim_name` com o nome do segurado quando o campo está vazio (fecha o buraco para o próximo requerimento do mesmo cliente) e chama `notify-inss-update` — o e-mail que ficou parado por falta de vínculo vira atividade na hora, e mensagem ao cliente se for posterior ao corte.
+- O que **não** adianta perseguir: extrair CPF do e-mail (54 de 928 despachos), usar NB (nunca vem) ou apertar o matcher automático por nome — cada ponto forçado ali vira risco de mandar mensagem de um cliente no grupo de outro.
+
 **O que NÃO existe** (pedido, mas sem dado): ranking de quem protocolou. Nenhuma fonte identifica o operador — `linked_by` é 0% preenchido, responsável do caso cobre 9%, atividade "PROTOCOLAR" casada cobre 24%. Só uma captura no ato do protocolo resolve, e ela não teria histórico.
 
 ---
