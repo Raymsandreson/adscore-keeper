@@ -237,6 +237,26 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 - O UUID da Luana ali é o `profiles.user_id` (`1589c873…`), **não** o `profiles.id` (`c5284e57…`). O filtro de "minhas atividades" remapeia e casa por `user_id` — o `sync-process-compromissos` grava o `profiles.id` nas audiências, e por isso as 19 criadas por ele não aparecem para ela.
 - Essas atividades **não carimbam `action_source`**: entram como `manual`. Medir "quanto o robô cria" por `action_source` deixa as 400 de fora — o que identifica é o título `INSS atualizou %`.
 
+**Mensagem automática no grupo do cliente** (26/08/2026): quando o e-mail do INSS chega, além da atividade sai uma mensagem no grupo do lead. O grupo tem cliente **e** equipe, então o texto fala com o cliente. `railway-server/src/lib/inss-mensagem-cliente.ts` decide o quê; `inss-zap.ts` redige e entrega.
+
+| Status | Mensagem | Por quê |
+|---|---|---|
+| Protocolado | Template fixo, **sem IA** | Os 296 eventos de protocolo têm zero despacho — não há texto pra reescrever |
+| Exigência | Pendências em linguagem simples + prazo | 553 dos 593 têm despacho; a lista sai do `extrairPontosPendentes` |
+| Concluída **com** veredito | Deferido / indeferido / arquivado por prazo | O veredito vem de `inss_admin_processes.resultado` ou do despacho |
+| Concluída **sem** veredito | Silêncio | 193 de 643. "Seu pedido foi concluído", sem dizer se ganhou, é pior que nada |
+| Em Análise, Pendente | Silêncio | O despacho ali é texto **do próprio escritório** no Meu INSS ("Segue procuração assinada em anexo") |
+| Cancelada | Silêncio | Dos 25 cancelamentos com despacho, todos são pedido nosso ou do cliente ("DESEJO CANCELAR ESSE REQUERIMENTO") |
+| PARSE_FAILED | Silêncio | 1.969 eventos em que nem o status foi lido |
+
+- **Janela 8h–20h de Brasília**: 28% dos e-mails do INSS chegam entre 20h e 8h (572 de 2.039). Fora da janela o texto é redigido na hora e gravado como `zap_status = 'agendado'`; quem entrega é o cron `dispatch-inss-zap` (10 em 10 min, devolve `skipped` fora do horário). O Railway roda em UTC — a hora sai de `Intl` com `timeZone: America/Sao_Paulo`, nunca de `getHours()`.
+- **Sem retroatividade**: só evento cujo e-mail chegou depois de `ZAP_CLIENTE_DESDE` (env `INSS_ZAP_CLIENTE_DESDE`). Há 1.480 eventos antigos nunca notificados; sem esse corte, ligar o envio despejaria notícia velha em grupo de cliente.
+- **Trava de repetição** por (processo, tipo): 108 pares (processo, status) se repetem no histórico, um deles 7 vezes, e 164 eventos repetem status já visto.
+- **Grupo determinístico**: mesma política do `src/lib/leadWhatsAppTarget.ts` — um grupo manda; vários, só se `leads.whatsapp_group_id` desempatar; sem desempate, **recusa**. Antes era `.limit(1)` sem ordenação e 36 leads têm mais de um grupo. Mensagem no grupo errado é dado de cliente vazando para outro cliente.
+- **`benefit_type` nunca é ecoado**: de 988 processos, 441 estão vazios e ~55 guardam fragmento do corpo do e-mail — alguns com o número do benefício dentro (`"(NB) 2466847943. Aguarde correspondência..."`). O rótulo sai por whitelist (`beneficioLegivel`) e a saída da IA ainda passa por `mascararDocumentos` (CPF e NB viram `***`).
+- **A IA nunca é o único caminho**: sem chave, timeout ou resposta vazia, sai o texto determinístico do `fallbackMensagemCliente`, que já é uma mensagem correta. Modelo: `google/gemini-3.6-flash`, ~19 chamadas/dia.
+- Fila e auditoria em `inss_status_history`: `zap_status` (enviado|agendado|silencio|sem_grupo|repetido|retroativo|suprimido|expirado|erro), `zap_tipo`, `zap_texto` (o texto exato que foi ao grupo), `zap_enviado_at`, `zap_erro`.
+
 **Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
 
 **Vínculo automático — duas passadas** (`match-inss-orphans`, cron de 15 min):
