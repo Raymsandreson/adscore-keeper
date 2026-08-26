@@ -61,6 +61,7 @@ import { handler as syncFunnelStatusFromSheet } from './functions/sync-funnel-st
 import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from-sheet';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
+import { handler as dispatchInssZap } from './functions/dispatch-inss-zap';
 import { handler as gmailMessageBody } from './functions/gmail-message-body';
 import { handler as backfillInssResultado } from './functions/backfill-inss-resultado';
 import { handler as inssReport } from './functions/inss-report';
@@ -143,6 +144,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'send-email': sendEmail,
   'backfill-inss-exigencia': backfillInssExigencia,
   'notify-inss-update': notifyInssUpdate,
+  'dispatch-inss-zap': dispatchInssZap,
   'match-inss-orphans': matchInssOrphans,
   'auto-link-inss-by-name': autoLinkInssByName,
   'bulk-link-inss-by-cpf': bulkLinkInssByCpf,
@@ -546,6 +548,36 @@ async function runInssSync() {
 // Escalonado do orphan scan (60s) pra não competirem no boot.
 setTimeout(runInssSync, 120_000);
 setInterval(runInssSync, INSS_SYNC_INTERVAL_MS);
+
+// ============================================================
+// CRON: despacha a fila de mensagens do INSS que esperou a
+// janela de 8h–20h (BRT) — a cada 10 min.
+//
+// 28% dos e-mails do INSS chegam entre 20h e 8h. O
+// notify-inss-update redige o texto na hora e deixa
+// zap_status='agendado'; quem entrega é este cron. Fora da
+// janela o handler devolve skipped, então rodar 24h não manda
+// nada de madrugada.
+// ============================================================
+const INSS_ZAP_INTERVAL_MS = 10 * 60 * 1000;
+async function runInssZapDispatch() {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/dispatch-inss-zap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify({}),
+    });
+    const json: any = await resp.json().catch(() => ({}));
+    if (json?.sent > 0 || json?.failed > 0 || json?.expired > 0) {
+      console.log(`[cron:dispatch-inss-zap] sent=${json.sent} failed=${json.failed} expired=${json.expired}`);
+    }
+  } catch (err) {
+    console.warn('[cron:dispatch-inss-zap] failed:', err instanceof Error ? err.message : err);
+  }
+}
+// Escalonado dos outros crons de boot (60s, 120s).
+setTimeout(runInssZapDispatch, 150_000);
+setInterval(runInssZapDispatch, INSS_ZAP_INTERVAL_MS);
 
 // ============================================================
 // CRON: relatos de acidente nos grupos marcados — a cada

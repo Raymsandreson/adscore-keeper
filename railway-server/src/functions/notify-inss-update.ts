@@ -1,8 +1,18 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { geminiChat } from '../lib/gemini';
 import { classifyResultado, extrairPontosPendentes } from '../lib/inss-despacho';
 import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
+import {
+  classificarMensagemCliente,
+  dentroDaJanela,
+  eventoElegivelParaZap,
+} from '../lib/inss-mensagem-cliente';
+import {
+  enviarTextoUazapi,
+  jaAvisouEsseTipo,
+  montarTextoMensagemCliente,
+  resolverGrupoDoLead,
+} from '../lib/inss-zap';
 
 /**
  * Quando chega um update do INSS para processo já vinculado:
@@ -11,32 +21,6 @@ import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
  *
  * Body: { process_id: string, force_history_id?: string }
  */
-
-async function humanizeStatusChange(input: {
-  from?: string | null;
-  to: string;
-  nome?: string | null;
-  beneficio?: string | null;
-}): Promise<string> {
-  const key = process.env.GOOGLE_AI_API_KEY;
-  if (!key) {
-    return `Olá! 👋 Temos uma atualização do seu pedido junto ao INSS.\n\nO status mudou para *${input.to}*.\n\nVamos verificar o que isso significa e te retornar em seguida. 🙏`;
-  }
-  try {
-    const prompt = `Você é uma atendente jurídica gentil. Escreva uma mensagem de WhatsApp CURTA (máx 4 linhas), em português brasileiro simples — entendível por alguém com baixa escolaridade — informando que o pedido do INSS teve uma atualização.\n\nDe: ${input.from || 'sem status anterior'}\nPara: ${input.to}\nNome do cliente (se houver): ${input.nome || ''}\nBenefício (se houver): ${input.beneficio || ''}\n\nRegras:\n- Sem termos técnicos jurídicos.\n- Sem citar "requerimento", use "pedido".\n- Explique em 1 linha o que esse status significa na prática.\n- Termine com algo tipo "vamos te orientar" ou "te avisaremos os próximos passos".\n- Use 1 ou 2 emojis no total, no máximo.\n- Não use saudações como "Bom dia" (não sabemos a hora).`;
-    const j = await geminiChat({
-      model: 'google/gemini-3.6-flash',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 200,
-    });
-    const txt = j?.choices?.[0]?.message?.content?.trim();
-    if (txt) return txt;
-  } catch (e) {
-    console.warn('[notify-inss-update] AI humanize failed, using fallback', e);
-  }
-  return `Olá! 👋 Atualização do seu pedido no INSS: agora ele está como *${input.to}*. Vamos verificar e te dizer o próximo passo.`;
-}
-
 
 /**
  * Rótulo canônico de caso/processo em atividade: "<número> - <título>".
@@ -82,31 +66,6 @@ async function findLeadProcess(
   if (!leadId) return null;
   const { data: doLead } = await supabase.from('lead_processes').select(cols).eq('lead_id', leadId);
   return ((doLead || []).find(casa) as any) || null;
-}
-
-async function sendUazapiText(args: {
-  group_jid: string;
-  text: string;
-  instance_name?: string | null;
-}): Promise<{ ok: boolean; status: number; body?: any }> {
-  // Pega 1ª instância ativa (preferindo a do grupo se vier)
-  let instanceQuery = supabase
-    .from('whatsapp_instances')
-    .select('id, instance_name, instance_token, base_url')
-    .eq('is_active', true);
-  if (args.instance_name) instanceQuery = instanceQuery.eq('instance_name', args.instance_name);
-  const { data: instances } = await instanceQuery.limit(1);
-  const inst = instances?.[0];
-  if (!inst) return { ok: false, status: 0, body: 'no active instance' };
-  const base = (inst.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
-  const resp = await fetch(`${base}/send/text`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-    body: JSON.stringify({ number: args.group_jid, text: args.text }),
-  });
-  let body: any = null;
-  try { body = await resp.json(); } catch { body = await resp.text().catch(() => null); }
-  return { ok: resp.ok, status: resp.status, body };
 }
 
 export const handler: RequestHandler = async (req, res) => {
@@ -219,41 +178,86 @@ export const handler: RequestHandler = async (req, res) => {
       process_title: process ? formatLabel(process.process_number, process.title) || null : null,
     } as any);
 
-    // 2) Acha o grupo do lead e manda zap humanizado
+    // 2) Mensagem para o grupo do cliente
+    //
+    // O grupo tem o cliente e a equipe. Nem todo evento vira mensagem, e o que
+    // vira só sai entre 8h e 20h — ver lib/inss-mensagem-cliente. O que não pode
+    // sair agora fica gravado como 'agendado' e o cron dispatch-inss-zap manda
+    // quando a janela abrir; nada se perde e nada chega de madrugada.
+    const entrada = {
+      status: latest.to_status,
+      resultado,
+      despacho: latest.despacho,
+      pontosPendentes,
+      nome: proc.nome_segurado,
+      beneficio: proc.benefit_type,
+      requerimento: proc.requerimento_number,
+    };
+    const tipoMensagem = classificarMensagemCliente(entrada);
+    let zapPatch: Record<string, any> = { zap_status: 'silencio' };
     let sentToGroup = false;
     let humanText: string | null = null;
-    // O zap vai para o CLIENTE. Ele só existia para requerimento com caso, e
-    // ampliar isso junto com a atividade seria estender uma mensagem externa
-    // sem ninguém ter pedido — o caminho novo (só lead) cria a tarefa e cala.
-    if (leadId && proc.case_id) {
-      const { data: groups } = await supabase
-        .from('lead_whatsapp_groups')
-        .select('group_jid, instance_name')
-        .eq('lead_id', leadId)
-        .limit(1);
-      const group = groups?.[0];
-      if (group) {
-        humanText = await humanizeStatusChange({
-          from: latest.from_status,
-          to: latest.to_status,
-          nome: proc.nome_segurado,
-          beneficio: proc.benefit_type,
-        });
-        const sent = await sendUazapiText({
-          group_jid: group.group_jid,
-          text: humanText,
-          instance_name: group.instance_name,
-        });
-        sentToGroup = sent.ok;
+
+    if (tipoMensagem) {
+      if (!eventoElegivelParaZap(latest.email_received_at)) {
+        // Ativação sem retroatividade (pedido do usuário, 26/08/2026): evento
+        // anterior ao corte nunca vira mensagem, mesmo que só agora tenha sido
+        // processado. São 1.480 eventos antigos nunca notificados no histórico.
+        zapPatch = { zap_status: 'retroativo', zap_tipo: tipoMensagem };
+      } else if (await jaAvisouEsseTipo(processId, tipoMensagem)) {
+        zapPatch = { zap_status: 'repetido', zap_tipo: tipoMensagem };
+      } else {
+        const destino = await resolverGrupoDoLead(leadId);
+        if (destino.erro) {
+          zapPatch = { zap_status: 'sem_grupo', zap_tipo: tipoMensagem, zap_erro: destino.erro };
+        } else {
+          const { texto, via } = await montarTextoMensagemCliente(tipoMensagem, entrada);
+          humanText = texto;
+          if (!dentroDaJanela(new Date())) {
+            zapPatch = { zap_status: 'agendado', zap_tipo: tipoMensagem, zap_texto: texto };
+          } else {
+            const sent = await enviarTextoUazapi({
+              group_jid: destino.grupo.group_jid,
+              text: texto,
+              instance_name: destino.grupo.instance_name,
+            });
+            sentToGroup = sent.ok;
+            zapPatch = sent.ok
+              ? {
+                  zap_status: 'enviado',
+                  zap_tipo: tipoMensagem,
+                  zap_texto: texto,
+                  zap_enviado_at: new Date().toISOString(),
+                }
+              : {
+                  zap_status: 'erro',
+                  zap_tipo: tipoMensagem,
+                  zap_texto: texto,
+                  zap_erro: `uazapi ${sent.status}: ${String(sent.body).slice(0, 200)}`,
+                };
+          }
+          console.log(
+            `[notify-inss-update] zap tipo=${tipoMensagem} via=${via} status=${zapPatch.zap_status}`,
+          );
+        }
       }
     }
 
-    // 3) Marca como notificado
-    const ids = pending.map((p) => p.id);
+    // 3) Marca como notificado. Só o evento mais recente pode virar mensagem;
+    // os outros do lote entram como 'suprimido' pra ninguém achar que sumiram.
+    const agora = new Date().toISOString();
     await supabase
       .from('inss_status_history')
-      .update({ notified: true, notified_at: new Date().toISOString() })
-      .in('id', ids);
+      .update({ notified: true, notified_at: agora, ...zapPatch })
+      .eq('id', latest.id);
+    const antigos = pending.slice(1).map((p) => p.id);
+    if (antigos.length > 0) {
+      await supabase
+        .from('inss_status_history')
+        .update({ notified: true, notified_at: agora, zap_status: 'suprimido' })
+        .in('id', antigos);
+    }
+    const ids = pending.map((p) => p.id);
 
     return res.status(200).json({
       success: true,
