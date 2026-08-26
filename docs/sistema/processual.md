@@ -257,6 +257,15 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 - **A IA nunca é o único caminho**: sem chave, timeout ou resposta vazia, sai o texto determinístico do `fallbackMensagemCliente`, que já é uma mensagem correta. Modelo: `google/gemini-3.6-flash`, ~19 chamadas/dia.
 - Fila e auditoria em `inss_status_history`: `zap_status` (enviado|agendado|silencio|sem_grupo|repetido|retroativo|suprimido|expirado|erro), `zap_tipo`, `zap_texto` (o texto exato que foi ao grupo), `zap_enviado_at`, `zap_erro`.
 
+**Progresso do caso não sai depois do desfecho** (26/08/2026): a mensagem de conclusão de atividade ("Enviar ao grupo") anexa `📊 Progresso do caso: X%`, calculado pelos checklists do POP em `buildActivityMessage.ts`. O POP mede execução **interna** e continua andando depois de o INSS decidir.
+
+- Medido em 30 dias: **139** requerimentos receberam mensagem de progresso no grupo; em **36** a mensagem saiu depois de o INSS concluir, **33** deles indeferidos, com atraso de 0 a 26 dias. Nada disso era automático — `action_source = manual` nas 1.091 mensagens do período.
+- A causa raiz não é a tela: em **31 dos 33** não existia sequer a atividade "INSS atualizou … INDEFERIDO". Quem concluiu a atividade não tinha como saber. É o buraco fechado em 25–26/08 (atividade para requerimento com lead + dono por status).
+- Defesa aplicada: `useInssDesfechoCaso(caseId, leadId)` lê `inss_admin_processes` e, quando **todos** os requerimentos do caso têm desfecho (nenhum em andamento), `buildActivityMessage` **omite o percentual na mensagem do cliente** e troca o detalhe do assessor por `⚠️ Requerimento N está INDEFERIDO no INSS`. Caso com um pedido negado e outro em análise continua mostrando progresso — ali ele é real.
+- A notícia do desfecho **não** entra nessa mensagem: quem dá é a mensagem automática do INSS, acima. Dar a negativa de esguelha no meio de uma atividade é pior que não dar.
+- **Lacuna conhecida**: `ProcessUpdatesBell` monta a mensagem dentro de um `useCallback` por movimentação e não recebe o desfecho — ali o progresso ainda pode sair. É o fluxo de movimentação judicial (CNJ), não o do requerimento administrativo.
+- Estoque a tratar: **350** requerimentos indeferidos em **171** casos, e **160 desses casos têm atividade pendente** hoje.
+
 **Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
 
 **Vínculo automático — duas passadas** (`match-inss-orphans`, cron de 15 min):
