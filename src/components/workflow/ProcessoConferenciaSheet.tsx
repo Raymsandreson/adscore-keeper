@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, XCircle,
+  AlertTriangle, Calculator, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
@@ -201,6 +201,32 @@ function BotaoDesvincular({ peca, onDesvincular }: {
   );
 }
 
+/**
+ * "o que esta peça muda" — para peça que JÁ está no marco.
+ *
+ * O diálogo de mudanças só abria depois de anexar, e isso deixava de fora o caso
+ * mais comum: a peça certa já veio nos autos e ninguém nunca a leu. Foi o que
+ * aconteceu no caso 88 — o termo de acordo estava no bucket desde 24/08 e a
+ * carteira seguia com o valor errado, sem caminho na tela para descobrir.
+ */
+function BotaoOQueMuda({ peca, onVer }: {
+  peca: PecaDoProcesso;
+  onVer: (p: PecaDoProcesso) => Promise<void>;
+}) {
+  const [indo, setIndo] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => { setIndo(true); await onVer(peca); setIndo(false); }}
+      className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
+      title="Ver o que esta peça muda nos valores"
+    >
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Calculator className="h-3 w-3" />}
+    </button>
+  );
+}
+
 /** Uma peça foi desvinculada aqui — o caminho de volta fica à vista. */
 function AvisoOculta({ pecas, data, onReexibir }: {
   pecas: PecaDoProcesso[]; data: string | null;
@@ -272,6 +298,18 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
     }));
     return r;
   }, [anexar, lerPeca]);
+
+  /** Lê uma peça que já está no marco e mostra o efeito dela nos números. */
+  const verOQueMuda = useCallback(async (peca: PecaDoProcesso) => {
+    const titulo = peca.titulo ?? 'Peça dos autos';
+    setMudancas({ aberto: true, carregando: true, erro: null, leitura: null, titulo });
+    const lida = await lerPeca(peca.id);
+    setMudancas(m => ({
+      ...m, carregando: false,
+      leitura: lida.leitura ?? null,
+      erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
+    }));
+  }, [lerPeca]);
 
   const abrirPeca = useCallback(async (peca: PecaDoProcesso, rotulo: string) => {
     setErroPeca(null);
@@ -437,6 +475,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                                   pecas={pecas} data={m.dataDetectada} assunto="MARCO"
                                   onAbrir={abrirPeca}
                                 />
+                                <BotaoOQueMuda peca={p} onVer={verOQueMuda} />
                                 <BotaoDesvincular peca={p} onDesvincular={ocultar} />
                               </>
                             ) : (
