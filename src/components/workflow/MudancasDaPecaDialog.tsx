@@ -107,7 +107,7 @@ export function MudancasDaPecaDialog({
             {partes.length > 0 && (
               <section className="rounded-lg border">
                 <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Valor por parte
+                  Valor líquido por parte
                 </div>
                 <div className="divide-y">
                   {partes.map((p, i) => {
@@ -132,7 +132,7 @@ export function MudancasDaPecaDialog({
                   })}
                 </div>
                 <div className="flex items-center justify-between border-t px-3 py-2 text-xs">
-                  <span className="text-muted-foreground">total das partes</span>
+                  <span className="text-muted-foreground">líquido total das partes</span>
                   <span className="flex items-center gap-2">
                     <span className="text-muted-foreground line-through">{brl(totalAtual)}</span>
                     <ArrowRight className="h-3 w-3 text-muted-foreground" />
