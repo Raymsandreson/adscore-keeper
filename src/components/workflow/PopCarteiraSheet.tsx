@@ -46,6 +46,7 @@ import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
 
 // A ficha do processo é pesada: entra sob demanda, como no TeamMarcoProcessosSheet.
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'));
 
 interface Props {
   boardId: string | null;
@@ -282,6 +283,8 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
   const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+  /** O caso aberto a partir da conferência — irmão da ficha, não filho dela. */
+  const [leadAberto, setLeadAberto] = useState<string | null>(null);
   /** Qual titular a tela está mostrando: tudo, só a cota, só o honorário. */
   const [modo, setModo] = useState<ModoCarteira>('JUNTOS');
   const [relacao, setRelacao] = useState<AlvoRelacao | null>(null);
@@ -657,6 +660,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
       alvo={conferindo}
       onClose={() => setConferindo(null)}
       onAbrirFicha={id => void abrirFicha(id)}
+      onAbrirLead={id => setLeadAberto(id)}
     />
 
     <Suspense fallback={null}>
@@ -667,6 +671,9 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
           process={fichaAberta}
           mode="sheet"
         />
+      )}
+      {leadAberto && (
+        <LeadPainelPorId leadId={leadAberto} onClose={() => setLeadAberto(null)} />
       )}
     </Suspense>
     </>

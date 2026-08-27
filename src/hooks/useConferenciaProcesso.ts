@@ -344,6 +344,17 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
     [duplicatas],
   );
 
+  /**
+   * O id do caso, para a conferência poder abrir a ficha do LEAD e não só a do
+   * processo. Sai da mesma linha de `lead_processes` que dá o nome; ficha sem
+   * lead vinculado devolve null, e aí o botão não aparece — botão que não abre
+   * nada é pior que ausência de botão.
+   */
+  const leadIdDoProcesso = useMemo(
+    () => duplicatas.find(d => d.esta)?.leadId ?? null,
+    [duplicatas],
+  );
+
   const marcoAtual = useMemo(() => marcos.find(m => m.atual) || null, [marcos]);
   const temAcordo = useMemo(() => marcos.some(m => m.chave === 'acordo_homologado'), [marcos]);
   const suspenso = useMemo(() => marcos.some(m => m.chave === 'suspensao'), [marcos]);
@@ -546,7 +557,7 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
   }, [alvo, loading, duplicatas, marcos, marcoAtual, decisoes, valores, clientes, totalConferido, temAcordo, ordemSentenca]);
 
   return {
-    marcos, marcoAtual, temAcordo, suspenso, ordemSentenca, leadDoProcesso,
+    marcos, marcoAtual, temAcordo, suspenso, ordemSentenca, leadDoProcesso, leadIdDoProcesso,
     clientes, decisoes, valores, pagamentos, duplicatas,
     totalConferido, totalAtualizado, somaIngenua, totalPago,
     jcmIndice: jcm.indice, jcmReferencia: jcm.referencia,

@@ -1,8 +1,13 @@
-// Painel do lead aberto a partir de uma linha da lista de protocolos.
+// Painel do lead aberto POR ID, de qualquer lugar que só tenha o id do caso.
+//
+// Nasceu na lista de protocolos e passou a servir também a Conferência do
+// processo (27/08/2026): de lá o caminho para o caso era fechar tudo e procurar
+// pelo nome. O processo é metade da história — contato, atividades e financeiro
+// do cliente moram no lead.
 //
 // Vive em arquivo separado e entra por React.lazy de propósito: ele arrasta o
-// LeadEditDialog e o useLeads junto, e nenhum dos dois tem o que fazer na
-// Visão Geral enquanto ninguém clicar numa linha.
+// LeadEditDialog e o useLeads junto, e nenhum dos dois tem o que fazer na tela
+// que o chama enquanto ninguém clicar.
 //
 // Por que reusa `updateLead` do useLeads em vez de um update direto: aquele
 // caminho sanitiza os campos de data, carimba `updated_by` remapeado pro uuid
@@ -23,7 +28,7 @@ interface Props {
   onClose: () => void;
 }
 
-export default function ProtocoloLeadPainel({ leadId, onClose }: Props) {
+export default function LeadPainelPorId({ leadId, onClose }: Props) {
   const { updateLead, loading: leadsCarregando } = useLeads();
   const { boards } = useKanbanBoards();
   const [lead, setLead] = useState<Lead | null>(null);
@@ -48,9 +53,9 @@ export default function ProtocoloLeadPainel({ leadId, onClose }: Props) {
           return;
         }
         setLead(data as unknown as Lead);
-      } catch (e: any) {
+      } catch (e) {
         if (!vivo) return;
-        toast.error("Erro ao abrir o lead: " + (e?.message || ""));
+        toast.error("Erro ao abrir o lead: " + ((e as Error)?.message || ""));
         onClose();
       }
     })();
