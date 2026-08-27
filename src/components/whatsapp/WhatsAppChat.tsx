@@ -15,7 +15,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, ChevronsUp, ChevronsDown } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -1150,6 +1150,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [loadingOlderFromServer, setLoadingOlderFromServer] = useState(false);
   const loadingOlderFromServerRef = useRef(false);
   const serverHistoryExhaustedRef = useRef(false);
+  // Teto de segurança do botão "ir para a primeira mensagem": cada página traz
+  // 300 mensagens do servidor, então 40 páginas = ~12k mensagens. Sem teto, uma
+  // conversa gigante ficaria baixando para sempre.
+  const MAX_PAGINAS_ATE_O_COMECO = 40;
+  const [indoParaOComeco, setIndoParaOComeco] = useState(false);
+  const indoParaOComecoRef = useRef(false);
   const preserveScrollRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
   const stickBottomRef = useRef<boolean>(true);
   // Busca dentro da conversa (lupa do header). `anchor` liga o "modo âncora":
@@ -2460,6 +2466,56 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       if (container) container.scrollTop = container.scrollHeight;
     });
   }, []);
+
+  /**
+   * Vai direto para a primeira mensagem da conversa, sem obrigar a pessoa a
+   * rolar até o topo. Puxa o histórico do servidor até esgotar (ou até o teto)
+   * e então abre a janela ancorada na mensagem mais antiga — não renderiza a
+   * conversa inteira de uma vez, senão trava o navegador em conversa grande.
+   */
+  const irParaPrimeiraMensagem = useCallback(async () => {
+    if (indoParaOComecoRef.current) return;
+    indoParaOComecoRef.current = true;
+    setIndoParaOComeco(true);
+    preserveScrollRef.current = null;
+    stickBottomRef.current = false;
+    try {
+      let paginas = 0;
+      if (onLoadOlderMessages) {
+        while (!serverHistoryExhaustedRef.current && paginas < MAX_PAGINAS_ATE_O_COMECO) {
+          loadingOlderFromServerRef.current = true;
+          let adicionadas = 0;
+          try {
+            adicionadas = await onLoadOlderMessages(conversation.phone, conversation.instance_name);
+          } finally {
+            loadingOlderFromServerRef.current = false;
+          }
+          paginas += 1;
+          if (adicionadas <= 0) {
+            serverHistoryExhaustedRef.current = true;
+            break;
+          }
+        }
+      }
+      // Espera o render com as mensagens recém-baixadas antes de escolher a âncora.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const primeira = allTimelineItemsRef.current.find(i => i.type === 'message') as
+        | { type: string; timestamp: string; data?: { id?: string } }
+        | undefined;
+      if (!primeira?.data?.id) {
+        messagesContainerRef.current?.scrollTo({ top: 0 });
+        return;
+      }
+      pendingAnchorScrollRef.current = primeira.data.id;
+      setAnchor({ msgId: primeira.data.id, created_at: primeira.timestamp, before: 0, after: MESSAGES_PAGE_SIZE });
+      if (paginas >= MAX_PAGINAS_ATE_O_COMECO && !serverHistoryExhaustedRef.current) {
+        toast.info('Abri o trecho mais antigo que deu para carregar de uma vez. Role para cima para continuar.');
+      }
+    } finally {
+      indoParaOComecoRef.current = false;
+      setIndoParaOComeco(false);
+    }
+  }, [onLoadOlderMessages, conversation.phone, conversation.instance_name]);
 
   // Pula até uma mensagem da busca: garante o trecho em memória, abre a janela
   // em volta dela e destaca a bolha por 2s (mesmo flash do deep link).
@@ -4403,8 +4459,10 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
         </div>
       )}
 
-      {/* Messages + Call Records Timeline */}
-      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 overflow-y-auto p-4 space-y-2 bg-muted/10">
+      {/* Messages + Call Records Timeline — a lista e o trilho de atalhos dividem
+          a mesma faixa; o trilho fica ao lado, nunca por cima das mensagens. */}
+      <div className="flex-1 flex min-h-0 bg-muted/10">
+      <div ref={messagesContainerRef} onScroll={handleMessagesScroll} className="flex-1 min-w-0 overflow-y-auto p-4 space-y-2">
         {loadingOlderFromServer && (
           <div className="flex items-center justify-center gap-2 py-2 text-[10px] text-muted-foreground">
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -5150,6 +5208,43 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           </>
         )}
         <div ref={messagesEndRef} />
+      </div>
+
+      {/* Atalhos de ponta a ponta: primeira e última mensagem sem rolar a mão */}
+      <div className="w-9 shrink-0 border-l bg-background/60 flex flex-col items-center justify-center gap-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={irParaPrimeiraMensagem}
+              disabled={indoParaOComeco || isHydratingConversation}
+              aria-label="Ir para a primeira mensagem"
+            >
+              {indoParaOComeco ? <Loader2 className="h-4 w-4 animate-spin" /> : <ChevronsUp className="h-4 w-4" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Ir para a primeira mensagem</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground hover:text-foreground"
+              onClick={exitAnchorMode}
+              disabled={isHydratingConversation}
+              aria-label="Ir para a última mensagem"
+            >
+              <ChevronsDown className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="left">Ir para a última mensagem</TooltipContent>
+        </Tooltip>
+      </div>
       </div>
 
       {/* Input */}
