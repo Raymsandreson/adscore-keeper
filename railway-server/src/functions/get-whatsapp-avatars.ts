@@ -436,7 +436,9 @@ export const handler: RequestHandler = async (req, res) => {
       const path = storagePath(instanceKey, target);
       const { error: upErr } = await ext.storage
         .from(BUCKET)
-        .upload(path, webp, { contentType: 'image/webp', upsert: true });
+        // cacheControl: sem ele o Storage responde sem `Cache-Control` e o navegador
+        // rebaixa a mesma foto a cada abertura. 7 dias casa com o TTL do cache.
+        .upload(path, webp, { contentType: 'image/webp', upsert: true, cacheControl: '604800' });
       if (upErr) {
         console.warn(`[get-whatsapp-avatars] upload falhou ${maskPhone(target)}: ${upErr.message}`);
         failed++;
