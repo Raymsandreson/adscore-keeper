@@ -394,7 +394,9 @@ export const handler: RequestHandler = async (req, res) => {
 
       const key = sourceKeyOf(imageUrl);
       // Mesma foto de antes e o arquivo já está no bucket → só renova a data.
-      if (key && prev?.source_key === key && prev?.storage_path) {
+      // `refresh` pula o atalho de propósito: é o único jeito de reenviar um
+      // arquivo antigo (ex.: os que subiram sem `cacheControl`).
+      if (!refresh && key && prev?.source_key === key && prev?.storage_path) {
         const row = { ...prev, checked_at: new Date().toISOString(), updated_at: new Date().toISOString() };
         await ext.from('whatsapp_avatars').upsert(row, { onConflict: 'instance_name,phone' });
         cache.set(target, row as AvatarRow);
