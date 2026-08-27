@@ -4649,6 +4649,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
           // Regular message
           const msg = item.data;
+          // Quem falou no grupo. Calculado uma vez: a foto e o nome usam o mesmo.
+          const groupSender = isGroup && msg.direction === 'inbound' ? getGroupSenderInfo(msg) : null;
           return (
             <div key={msg.id} data-msg-id={msg.id}>
               {dateSeparator}
@@ -4661,6 +4663,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                 </Button>
               )}
+              {/* Foto de quem falou, fora da bolha e alinhada ao nome — como no
+                  WhatsApp. Sem telefone identificado, fica o circulo com icone:
+                  o alinhamento das bolhas nao pode depender de ter foto. */}
+              {groupSender && (groupSender.phone || groupSender.name) && (
+                <button
+                  type="button"
+                  className="self-start mr-1.5 mt-0.5 shrink-0 rounded-full disabled:cursor-default"
+                  disabled={!groupSender.phone}
+                  title={groupSender.phone ? `Abrir ${groupSender.name || formatPhone(groupSender.phone)}` : undefined}
+                  onClick={() => { if (groupSender.phone) void openContactForPhone(groupSender.phone, groupSender.name); }}
+                >
+                  <WhatsAppAvatar
+                    phone={groupSender.phone || ''}
+                    instanceName={conversation.instance_name}
+                    className="h-8 w-8"
+                    iconClassName="h-4 w-4"
+                  />
+                </button>
+              )}
               <div
                 className={cn(
                   "max-w-[70%] rounded-2xl px-4 py-2 text-sm relative",
@@ -4671,8 +4692,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
               >
                 {/* Group sender name */}
-                {isGroup && msg.direction === 'inbound' && (() => {
-                  const sender = getGroupSenderInfo(msg);
+                {groupSender && (() => {
+                  const sender = groupSender;
                   if (!sender.phone && !sender.name) return null;
                   const handleSenderClick = async () => {
                     if (!sender.phone) return;
