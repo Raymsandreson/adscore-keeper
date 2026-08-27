@@ -173,7 +173,7 @@ export function CarteiraTitularPainel({
               </div>
             )}
             <div className="text-xs text-muted-foreground">
-              {processos} processos · {f.partes} partes com valor · pago {brl(pago)}
+              {processos} processos · {f.partes} partes com valor · recebido {brl(pago)}
             </div>
           </div>
         ) : (
@@ -209,6 +209,14 @@ export function CarteiraTitularPainel({
               >
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm">{ESTAGIO_LABEL[e.estagio] || e.estagio}</span>
+                  {/* Sem esta legenda, "Pago R$ 4,6 mi" fica tres linhas abaixo
+                      de "recebido R$ 5,6 mi" e os dois parecem a mesma conta —
+                      foi exatamente a leitura que o Raym fez em 27/08/2026. */}
+                  {e.estagio === 'PAGO' && (
+                    <span className="block truncate text-[10px] text-muted-foreground">
+                      condenação das partes já quitadas, não o dinheiro que entrou
+                    </span>
+                  )}
                   {/* A barrinha é a proporção dentro da fatia, não do total —
                       no modo honorários "PAGO" tem que se medir com os outros
                       honorários, não com a carteira inteira. */}
@@ -229,6 +237,13 @@ export function CarteiraTitularPainel({
               </button>
             ))}
           </div>
+          <p className="px-4 pb-2 text-[11px] leading-snug text-muted-foreground">
+            Cada linha é a <span className="font-medium text-foreground">condenação</span> das partes
+            naquele estágio — quanto vale, não quanto entrou. O dinheiro que de fato caiu na conta é
+            o <span className="font-medium text-foreground">recebido</span> lá em cima
+            ({brl(pago)}), que vem de <code>jm_pagamentos</code> e conta parcela de qualquer
+            estágio. Por isso os dois números são diferentes e nenhum dos dois está errado.
+          </p>
           <button
             type="button"
             onClick={() => onAbrirRelacao(null)}
