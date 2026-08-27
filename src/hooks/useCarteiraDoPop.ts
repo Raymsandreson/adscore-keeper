@@ -27,13 +27,17 @@
 // inteira, para a tela dizer "N de 475 processos" sem refazer a conta.
 //
 // AVISO QUE A TELA REPETE: valor é "quanto o processo vale" (última decisão por
-// cliente), não caixa do escritório — cota do cliente e honorário ainda não são
-// separados. Rentabilidade aqui compara custo de aquisição com esse valor e com
-// o PAGO realizado; leia com essa régua.
+// cliente), não caixa do escritório. `totais.porTitular` separa cota do cliente
+// e honorário nas partes cuja fonte permite — 262 das 1.660 hoje, porque a
+// decisão fixa quanto o processo vale sem dizer de quem é cada pedaço. O que
+// não separa continua somando na carteira e sai medido em `Cobertura`.
+// Rentabilidade aqui compara custo de aquisição com esse valor e com o PAGO
+// realizado; leia com essa régua.
 // =============================================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
 import { estagioDoLancamento } from '@/lib/lancamentoCategorias';
+import { separarPorTitular, type ParteDaCarteira } from '@/lib/carteiraPorTitular';
 
 export interface CarteiraPopLinha {
   process_id: string;
@@ -165,6 +169,13 @@ export interface ParteDoProcesso {
   coeficiente: number | null;
   pago: number;
   estagio: string;
+  /**
+   * Cota do cliente nesta parte. `null` = a fonte do valor não separa titular
+   * (veio da decisão, que fixa quanto o processo vale sem dizer de quem é).
+   */
+  cota: number | null;
+  /** Honorário do escritório: contratual à vista + parcelado + sucumbencial. */
+  honorario: number | null;
 }
 
 export interface ProcessoDoMarco {
@@ -180,6 +191,14 @@ export interface ProcessoDoMarco {
   suspenso: boolean;
   /** O valor do processo é a SOMA das partes — aqui está a abertura. */
   partes: ParteDoProcesso[];
+  /** Soma das cotas das partes que separam titular. */
+  cota: number;
+  /** Soma dos honorários das partes que separam titular. */
+  honorario: number;
+  /** Alguma parte deste processo não diz de quem é o dinheiro. */
+  temParteSemTitular: boolean;
+  /** Alguma parte veio com a cota zerada e honorário lançado — vai à conferência. */
+  temCotaZerada: boolean;
   /** > 1 = o CNJ tem ficha repetida neste POP (a dedup já protegeu o total). */
   cadastros: number;
   /** De quem é o processo: o lead (caso) da ficha canônica. */
@@ -529,6 +548,10 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
         leadsNomes: l.leads_nomes ?? [],
         valorAtualizado: 0,
         temParteSemCorrecao: false,
+        cota: 0,
+        honorario: 0,
+        temParteSemTitular: false,
+        temCotaZerada: false,
         ajuizamentoEm: l.ajuizamento_em ?? null,
         marcoEm: l.marco_em ?? null,
         datas: datasPorProcesso[l.process_id] || {},
@@ -563,9 +586,23 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
           coeficiente: corrigido ? coef : null,
           pago: pagoDaParte,
           estagio: l.estagio_financeiro,
+          cota: l.cota_cliente == null ? null : Number(l.cota_cliente),
+          honorario: l.honorario_parte == null ? null : Number(l.honorario_parte),
         });
         // PAGO não corrige por decisão, não por falta de índice — não é buraco.
         if (!corrigido && !jaPago && valorDaParte > 0) p.temParteSemCorrecao = true;
+
+        // De quem é o dinheiro. `null` nas duas colunas = a decisão não separa;
+        // some no processo mesmo assim, porque a carteira soma a condenação.
+        const cotaDaParte = l.cota_cliente == null ? null : Number(l.cota_cliente);
+        const honDaParte = l.honorario_parte == null ? null : Number(l.honorario_parte);
+        if (cotaDaParte == null && honDaParte == null) {
+          if (valorDaParte > 0) p.temParteSemTitular = true;
+        } else {
+          p.cota += cotaDaParte || 0;
+          p.honorario += honDaParte || 0;
+          if (cotaDaParte === 0 && (honDaParte || 0) > 0) p.temCotaZerada = true;
+        }
       }
       p.valor += valorDaParte;
       p.valorAtualizado += atualizadoDaParte;
@@ -758,6 +795,17 @@ function calcularTotais(
       porEstagio[l.estagio_financeiro] = (porEstagio[l.estagio_financeiro] || 0) + v;
     }
 
+    // Quem é o dono do dinheiro, do mesmo recorte. Sai daqui e não da lista por
+    // marco para o número grande do topo nunca divergir do que está listado.
+    const porTitular = separarPorTitular(linhas.map((l): ParteDaCarteira => ({
+      processoCnj: l.cnj_num,
+      cliente: l.cliente,
+      valor: Number(l.valor_condenacao || 0),
+      cota: l.cota_cliente == null ? null : Number(l.cota_cliente),
+      honorario: l.honorario_parte == null ? null : Number(l.honorario_parte),
+      estagio: l.estagio_financeiro,
+    })));
+
     const procs = [...processos.values()];
     const dias = procs.map(p => p.dias_no_marco).filter((d): d is number => d != null);
     const idades = procs.map(p => p.idade_dias).filter((d): d is number => d != null);
@@ -853,6 +901,9 @@ function calcularTotais(
       honorarioCnjsVencidos,
       honorarioVencidoMaisAntigo,
       porEstagio,
+      /** A carteira aberta por dono: cota do cliente, honorário, e os dois
+       *  juntos — mais a medida de quanto dela sabe responder isso. */
+      porTitular,
       mediaDiasNoMarco: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
       mediaIdadeDias: idades.length ? Math.round(idades.reduce((s, d) => s + d, 0) / idades.length) : null,
       decididos: decididos.length,
@@ -870,3 +921,7 @@ function calcularTotais(
     };
   }
 }
+
+/** Os agregados do recorte — o que o topo da carteira mostra. Tipado a partir
+ *  da função para nunca sair do lugar quando um número novo entra na conta. */
+export type TotaisCarteira = ReturnType<typeof calcularTotais>;

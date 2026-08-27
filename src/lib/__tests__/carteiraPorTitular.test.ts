@@ -1,111 +1,177 @@
 import { describe, it, expect } from 'vitest';
 import {
-  separarPorTitular, hsEhSuspeito, fatiaDoModo, type ParteDaCarteira,
+  separarPorTitular, fatiaDoModo, composicao, temSeparacao, cotaZeradaComHonorario,
+  type ParteDaCarteira,
 } from '../carteiraPorTitular';
 
-/** Números do caso 88 depois da correção pelo termo (26/08/2026). */
-const caso88: ParteDaCarteira[] = [
-  { processoCnj: '0011351-63.2022.5.15.0031', cliente: 'FRANCISCA', cota: 113636.36, hc: 48701.30, hs: 16233.77, estagio: 'PAGO' },
-  { processoCnj: '0011351-63.2022.5.15.0031', cliente: 'JOÃO', cota: 113636.36, hc: 48701.30, hs: 16233.77, estagio: 'PAGO' },
-  { processoCnj: '0011351-63.2022.5.15.0031', cliente: 'ALUÍZIO', cota: 56818.18, hc: 24350.65, hs: 8116.88, estagio: 'PAGO' },
+/** Três partes que separam titular, com a régua certa: cota 70%, honorário 30%. */
+const separadas: ParteDaCarteira[] = [
+  { processoCnj: '1', cliente: 'A', valor: 100000, cota: 70000, honorario: 30000, estagio: 'A_RECEBER' },
+  { processoCnj: '1', cliente: 'B', valor: 50000, cota: 35000, honorario: 15000, estagio: 'A_RECEBER' },
+  { processoCnj: '2', cliente: 'C', valor: 20000, cota: 14000, honorario: 6000, estagio: 'PAGO' },
 ];
 
-describe('as três leituras do mesmo dado', () => {
-  const c = separarPorTitular(caso88);
-
-  it('a cota do cliente soma só o que é dele', () => {
-    expect(c.cliente.total).toBeCloseTo(284090.90, 2);
+describe('separarPorTitular', () => {
+  it('separa o que é do cliente do que é do escritório', () => {
+    const c = separarPorTitular(separadas);
+    expect(c.cliente.total).toBe(119000);
+    expect(c.escritorio.total).toBe(51000);
   });
 
-  it('o honorário soma contratual + sucumbencial', () => {
-    expect(c.escritorio.total).toBeCloseTo(162337.67, 2);
+  it('o total JUNTOS é a condenação da carteira, não a soma das fatias', () => {
+    // Quando tudo fecha, dá no mesmo. O teste que importa é o de baixo.
+    const c = separarPorTitular(separadas);
+    expect(c.juntos.total).toBe(170000);
+    expect(c.cobertura.semDono).toBe(0);
   });
 
-  it('juntos é exatamente a soma das duas', () => {
-    expect(c.juntos.total).toBeCloseTo(c.cliente.total + c.escritorio.total, 2);
-  });
-
-  it('o modo escolhe a fatia sem recalcular nada', () => {
+  it('cada modo devolve a sua fatia', () => {
+    const c = separarPorTitular(separadas);
     expect(fatiaDoModo(c, 'CLIENTE').total).toBe(c.cliente.total);
     expect(fatiaDoModo(c, 'ESCRITORIO').total).toBe(c.escritorio.total);
     expect(fatiaDoModo(c, 'JUNTOS').total).toBe(c.juntos.total);
   });
-});
 
-describe('o sucumbencial impossível é DETECTADO, nunca descontado', () => {
-  it('HS maior que a cota é suspeito — o juiz teria de arbitrar 70%', () => {
-    expect(hsEhSuspeito({ hs: 9519047.50, cota: 100000 })).toBe(true);
+  it('abre cada fatia por estágio, do maior para o menor', () => {
+    const c = separarPorTitular(separadas);
+    expect(c.cliente.porEstagio.map(e => e.estagio)).toEqual(['A_RECEBER', 'PAGO']);
+    expect(c.cliente.porEstagio[0]).toEqual({ estagio: 'A_RECEBER', valor: 105000, partes: 2 });
   });
 
-  it('HS de 15% do bruto é normal e entra', () => {
-    // bruto 100.000 → cota 70.000, HS 15.000
-    expect(hsEhSuspeito({ hs: 15000, cota: 70000 })).toBe(false);
-  });
-
-  it('HS zero não é suspeito: pode ter sido dispensado', () => {
-    expect(hsEhSuspeito({ hs: 0, cota: 70000 })).toBe(false);
-  });
-
-  it('o suspeito SOMA normalmente — a carteira mostra o que está no banco', () => {
+  it('o estágio vazio some da abertura, mas o rótulo em branco vira SEM ESTÁGIO', () => {
     const c = separarPorTitular([
-      { processoCnj: 'X', cliente: 'A', cota: 100000, hc: 42857, hs: 9519047.50, estagio: 'CONDENACAO' },
+      { processoCnj: '1', cliente: 'A', valor: 1000, cota: 700, honorario: 300, estagio: '' },
     ]);
-    expect(c.escritorio.total).toBeCloseTo(42857 + 9519047.50, 2);
-    // e sai marcado, para a conferência chamar o processo para conserto
-    expect(c.hsSuspeito).toEqual({ valor: 9519047.5, partes: 1 });
-  });
-
-  it('o "juntos" também não esconde nada', () => {
-    const c = separarPorTitular([
-      { processoCnj: 'X', cliente: 'A', cota: 100000, hc: 0, hs: 500000, estagio: 'CONDENACAO' },
-    ]);
-    expect(c.juntos.total).toBeCloseTo(600000, 2);
+    expect(c.juntos.porEstagio[0].estagio).toBe('SEM ESTÁGIO');
   });
 });
 
-describe('quebra por estágio', () => {
-  it('agrupa e ordena do maior para o menor', () => {
-    const c = separarPorTitular([
-      { processoCnj: 'A', cliente: 'x', cota: 1000, hc: 0, hs: 0, estagio: 'A RECEBER' },
-      { processoCnj: 'B', cliente: 'y', cota: 5000, hc: 0, hs: 0, estagio: 'CONDENACAO' },
-      { processoCnj: 'C', cliente: 'z', cota: 2000, hc: 0, hs: 0, estagio: 'A RECEBER' },
-    ]);
-    expect(c.cliente.porEstagio[0]).toEqual({ estagio: 'CONDENACAO', valor: 5000, partes: 1 });
-    expect(c.cliente.porEstagio[1]).toEqual({ estagio: 'A RECEBER', valor: 3000, partes: 2 });
+describe('a parte sem separação de titular soma na carteira e sai contada', () => {
+  // 563 das 1.660 linhas do POP são assim: o valor vem de jm_valores, que fixa
+  // quanto o processo vale sem dizer quanto é de quem.
+  const semSeparar: ParteDaCarteira[] = [
+    { processoCnj: '3', cliente: 'D', valor: 80000, cota: null, honorario: null, estagio: 'CONDENACAO' },
+  ];
+
+  it('entra inteira no total da carteira', () => {
+    const c = separarPorTitular([...separadas, ...semSeparar]);
+    expect(c.juntos.total).toBe(250000);
   });
 
-  it('estágio vazio vira rótulo em vez de sumir da conta', () => {
-    const c = separarPorTitular([
-      { processoCnj: 'A', cliente: 'x', cota: 100, hc: 0, hs: 0, estagio: '' },
-    ]);
-    expect(c.cliente.porEstagio[0].estagio).toBe('SEM ESTÁGIO');
+  it('não entra em cliente nem em escritório — ninguém sabe de quem é', () => {
+    const c = separarPorTitular([...separadas, ...semSeparar]);
+    expect(c.cliente.total).toBe(119000);
+    expect(c.escritorio.total).toBe(51000);
   });
 
-  it('valor zero não cria linha de estágio', () => {
-    const c = separarPorTitular([
-      { processoCnj: 'A', cliente: 'x', cota: 0, hc: 500, hs: 0, estagio: 'PAGO' },
-    ]);
-    expect(c.cliente.porEstagio).toEqual([]);
-    expect(c.escritorio.porEstagio).toHaveLength(1);
+  it('sai medida na cobertura, com valor e contagem', () => {
+    const c = separarPorTitular([...separadas, ...semSeparar]);
+    expect(c.cobertura.semSeparacao).toBe(80000);
+    expect(c.cobertura.partesSemSeparacao).toBe(1);
+    expect(c.cobertura.comSeparacao).toBe(170000);
+    expect(c.cobertura.partesComSeparacao).toBe(3);
   });
 
-  it('o total sempre fecha com a soma dos estágios', () => {
-    const c = separarPorTitular(caso88);
-    for (const f of [c.cliente, c.escritorio, c.juntos]) {
-      expect(f.total).toBeCloseTo(f.porEstagio.reduce((s, e) => s + e.valor, 0), 2);
-    }
+  it('temSeparacao só é falso quando as DUAS colunas vêm nulas', () => {
+    expect(temSeparacao({ cota: null, honorario: null })).toBe(false);
+    expect(temSeparacao({ cota: 0, honorario: null })).toBe(true);
+    expect(temSeparacao({ cota: null, honorario: 5000 })).toBe(true);
   });
 });
 
-describe('borda', () => {
-  it('lista vazia devolve zeros, não NaN', () => {
+describe('a cota zerada da importação é DETECTADA, nunca descontada', () => {
+  // O caso real: 257 das 262 partes da Tab. Aux. deste POP vieram com
+  // cota_parte_cjcm = 0 e honorário lançado — R$ 30,1 mi sem dono.
+  const cotaZerada: ParteDaCarteira[] = [
+    { processoCnj: '9', cliente: 'Z', valor: 600000, cota: 0, honorario: 300000, estagio: 'A_RECEBER' },
+  ];
+
+  it('a condenação inteira continua na carteira', () => {
+    const c = separarPorTitular(cotaZerada);
+    expect(c.juntos.total).toBe(600000);
+  });
+
+  it('o honorário continua somando, mesmo parecendo impossível ao lado da cota', () => {
+    const c = separarPorTitular(cotaZerada);
+    expect(c.escritorio.total).toBe(300000);
+    expect(c.cliente.total).toBe(0);
+  });
+
+  it('o buraco vira número: R$ 300.000 sem dono, uma parte marcada', () => {
+    const c = separarPorTitular(cotaZerada);
+    expect(c.cobertura.semDono).toBe(300000);
+    expect(c.cobertura.partesCotaZerada).toBe(1);
+    expect(c.cobertura.valorCotaZerada).toBe(600000);
+  });
+
+  it('cota 0 sem honorário nenhum não é acusada — não há o que consertar', () => {
+    expect(cotaZeradaComHonorario({ cota: 0, honorario: 0 })).toBe(false);
+    expect(cotaZeradaComHonorario({ cota: 0, honorario: 1 })).toBe(true);
+  });
+
+  it('cota nula (a fonte não separa) não é cota zerada', () => {
+    expect(cotaZeradaComHonorario({ cota: null, honorario: 300000 })).toBe(false);
+  });
+
+  it('cota positiva, ainda que pequena, não é acusada', () => {
+    expect(cotaZeradaComHonorario({ cota: 0.01, honorario: 300000 })).toBe(false);
+  });
+});
+
+describe('composicao', () => {
+  it('reparte 100% entre cliente, escritório e sem dono', () => {
+    const c = separarPorTitular(separadas);
+    const p = composicao(c);
+    expect(p.cliente).toBe(70);
+    expect(p.escritorio).toBe(30);
+    expect(p.semDono).toBe(0);
+  });
+
+  it('a base é o que separa, não a carteira inteira', () => {
+    // A parte sem separação não pode empurrar os percentuais para baixo: ela
+    // não está sendo repartida, está fora da barra.
+    const c = separarPorTitular([
+      ...separadas,
+      { processoCnj: '3', cliente: 'D', valor: 999999, cota: null, honorario: null, estagio: 'CONDENACAO' },
+    ]);
+    expect(composicao(c).cliente).toBe(70);
+  });
+
+  it('carteira sem nenhuma separação devolve zeros, não NaN', () => {
+    const c = separarPorTitular([
+      { processoCnj: '3', cliente: 'D', valor: 80000, cota: null, honorario: null, estagio: 'CONDENACAO' },
+    ]);
+    expect(composicao(c)).toEqual({ cliente: 0, escritorio: 0, semDono: 0 });
+  });
+});
+
+describe('bordas', () => {
+  it('carteira vazia devolve zeros', () => {
     const c = separarPorTitular([]);
     expect(c.juntos.total).toBe(0);
-    expect(c.hsSuspeito.partes).toBe(0);
+    expect(c.cobertura.comSeparacao).toBe(0);
   });
 
-  it('não deixa vazar zero negativo para a tela', () => {
-    const c = separarPorTitular([{ processoCnj: 'A', cliente: 'x', cota: 0, hc: 0, hs: 0, estagio: 'PAGO' }]);
-    expect(Object.is(c.cliente.total, -0)).toBe(false);
+  it('parte zerada não vira linha de estágio', () => {
+    const c = separarPorTitular([
+      { processoCnj: 'A', cliente: 'x', valor: 0, cota: 0, honorario: 0, estagio: 'PAGO' },
+    ]);
+    expect(c.juntos.porEstagio).toEqual([]);
+    expect(c.juntos.partes).toBe(0);
+  });
+
+  it('não devolve zero negativo — a tela mostraria "-R$ 0,00"', () => {
+    const c = separarPorTitular([
+      { processoCnj: 'A', cliente: 'x', valor: 100, cota: 70, honorario: 30, estagio: 'PAGO' },
+    ]);
+    expect(Object.is(c.cobertura.semDono, -0)).toBe(false);
+    expect(c.cobertura.semDono).toBe(0);
+  });
+
+  it('fatia passando do bolo aparece como sem dono negativo, não escondida', () => {
+    const c = separarPorTitular([
+      { processoCnj: 'A', cliente: 'x', valor: 100, cota: 70, honorario: 90, estagio: 'PAGO' },
+    ]);
+    expect(c.cobertura.semDono).toBe(-60);
   });
 });

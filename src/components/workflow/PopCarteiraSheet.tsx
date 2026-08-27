@@ -11,6 +11,11 @@
 // PROCESSO (última decisão por cliente), não o caixa do escritório — o aviso
 // fica visível na tela, não em tooltip.
 //
+// O topo é o painel por titular (CarteiraTitularPainel): um número grande por
+// vez, trocado por um seletor de três posições — tudo, só a cota do cliente, só
+// honorários. Cada estágio abre a relação clicável (CarteiraRelacaoSheet), e
+// dali cada linha vai para a conferência.
+//
 // Clicar na linha abre a FICHA do processo (ProcessDetailSheet); o botão de
 // escudo abre a CONFERÊNCIA — de onde saiu aquele valor e aquele marco. Os dois
 // sheets são IRMÃOS deste, nunca filhos: dois Dialogs do Radix aninhados brigam
@@ -34,6 +39,9 @@ import {
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { duracaoLegivel } from '@/lib/duracaoLegivel';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
+import { CarteiraTitularPainel } from './CarteiraTitularPainel';
+import { CarteiraRelacaoSheet, type AlvoRelacao } from './CarteiraRelacaoSheet';
+import type { ModoCarteira } from '@/lib/carteiraPorTitular';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
 
 // A ficha do processo é pesada: entra sob demanda, como no TeamMarcoProcessosSheet.
@@ -274,6 +282,9 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
   const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+  /** Qual titular a tela está mostrando: tudo, só a cota, só o honorário. */
+  const [modo, setModo] = useState<ModoCarteira>('JUNTOS');
+  const [relacao, setRelacao] = useState<AlvoRelacao | null>(null);
 
   const abrirFicha = async (processId: string) => {
     setAbrindoId(processId);
@@ -342,49 +353,27 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
           </p>
         ) : (
           <>
-            {/* Agregados da carteira */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <div className="rounded-lg border p-2.5">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Carteira</div>
-                <div className="text-lg font-semibold">{brl(totais.valor)}</div>
-                {totais.valorAtualizado > totais.valor + 0.01 && (
-                  <div className="text-xs">
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {brl(totais.valorAtualizado)}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {' '}com juros e correção{totais.corrigidoAte ? ` (até ${mesAno(totais.corrigidoAte)})` : ''}
-                    </span>
-                  </div>
-                )}
-                {/* Índices com cadências diferentes: a SELIC vem do Bacen todo dia,
-                    a TCM ainda é manual. Dizer só a mais nova enganaria. */}
-                {Object.keys(totais.referenciasPorIndice).length > 1 && (
-                  <div className="text-[11px] text-muted-foreground">
-                    {Object.entries(totais.referenciasPorIndice)
-                      .map(([i, r]) => `${INDICE_CURTO[i] || i} até ${mesAno(r)}`)
-                      .join(' · ')}
-                  </div>
-                )}
-                <div className="text-xs text-muted-foreground">
-                  {totais.processos} processos · {totais.partes} partes · pago {brl(totais.pago)}
-                </div>
-                {totais.partesSemCorrecao > 0 && (
-                  <div className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                    {totais.partesSemCorrecao} parte(s) sem índice para o ramo — entram no atualizado
-                    pelo valor nominal, então o corrigido está subestimado.
-                  </div>
-                )}
-                {totais.cnjsComFichaRepetida > 0 && (
-                  <div className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                    <Copy className="mt-0.5 h-3 w-3 shrink-0" />
-                    <span>
-                      {totais.cnjsComFichaRepetida} CNJ(s) com ficha repetida. O total acima já conta
-                      cada um uma vez só — mas vale limpar o cadastro duplicado.
-                    </span>
-                  </div>
-                )}
-              </div>
+            {/* O dinheiro, aberto por dono. Um número grande por vez — o
+                seletor troca o número em vez de somar outro card na tela. */}
+            <CarteiraTitularPainel
+              porTitular={totais.porTitular}
+              modo={modo}
+              onModo={setModo}
+              valorAtualizado={totais.valorAtualizado}
+              corrigidoAte={totais.corrigidoAte}
+              referenciasPorIndice={totais.referenciasPorIndice}
+              processos={totais.processos}
+              pago={totais.pago}
+              partesSemCorrecao={totais.partesSemCorrecao}
+              cnjsComFichaRepetida={totais.cnjsComFichaRepetida}
+              onAbrirRelacao={estagio => setRelacao({ modo, estagio })}
+              onAbrirConferencia={() => setRelacao({ modo: 'JUNTOS', estagio: null, soCotaZerada: true })}
+              mesAno={mesAno}
+              indiceCurto={INDICE_CURTO}
+            />
+
+            {/* Operação: tempo, sucesso e custo. Fica embaixo do dinheiro. */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tempo médio</div>
                 <div className="text-lg font-semibold">{dias(totais.mediaDiasNoMarco)}</div>
@@ -413,7 +402,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                   </div>
                 )}
               </div>
-              <div className="rounded-lg border p-2.5 sm:col-span-3">
+              <div className="rounded-lg border p-2.5 col-span-2">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Custo e rentabilidade</div>
                 {totais.custo > 0 ? (
                   <div className="text-sm">
@@ -431,14 +420,6 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Carteira toda por estágio financeiro */}
-            <div className="rounded-lg border p-2.5">
-              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                Carteira por estágio financeiro
-              </div>
-              <EstagioChips porEstagio={totais.porEstagio} />
             </div>
 
             {/* Honorário que ENTROU — a planilha, não a carteira. Fica FORA dos
@@ -530,7 +511,9 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
 
             <p className="text-[11px] leading-snug text-muted-foreground">
               Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa
-              do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
+              do escritório. A separação entre cota do cliente e honorário existe só nas partes
+              cuja fonte a traz — o painel do topo diz quanto da carteira é isso e quanto ainda não
+              tem dono atribuído. Clique no valor
               de um processo para ver quanto é de cada parte. O valor CORRIGIDO (em verde) aplica
               juros e correção do termo inicial de cada decisão até a data da tabela de índices —
               SELIC simples nos trabalhistas (buscada no Bacen todo dia), TCM nos estaduais (ainda
@@ -656,7 +639,20 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
       </SheetContent>
     </Sheet>
 
-    {/* Conferência e ficha: irmãs do sheet da carteira, não filhas. */}
+    {/* Relação, conferência e ficha: irmãs do sheet da carteira, não filhas. */}
+    <CarteiraRelacaoSheet
+      alvo={relacao}
+      grupos={grupos}
+      onClose={() => setRelacao(null)}
+      onConferir={p => {
+        if (!boardId) return;
+        setConferindo({
+          processId: p.processId, boardId, cnj: p.cnj,
+          titulo: p.titulo, leadNome: p.leadNome, foco: 'valores',
+        });
+      }}
+    />
+
     <ProcessoConferenciaSheet
       alvo={conferindo}
       onClose={() => setConferindo(null)}
