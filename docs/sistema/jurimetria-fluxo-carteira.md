@@ -965,3 +965,77 @@ solicitações 55039016 (o sucesso, TRT15) e 55116672 / 55116673 / 55116674 /
 
 Nenhuma planilha de cálculo foi lida ainda — a comparação entre o valor do
 processo e o lançamento manual do Raym continua sem resposta.
+
+---
+
+## 16. 27/08/2026 — a carteira por dono do dinheiro, e a cota que veio zerada
+
+Raym pediu a carteira separada por titular: "dizer o que é do cliente, o que é
+honorários e o estágio de cada uma separada e somados... modo de visualização
+tipo só honorários, só parte líquida do cliente, juntos... se inspire no design
+do Banco Inter". Ao medir o dado para desenhar a tela, apareceu um buraco maior
+que a tela.
+
+### 16.1 O que a RPC entrega hoje
+
+`pop_carteira_marcos` tem duas fontes de valor, e só uma sabe de quem é o
+dinheiro. Medido no POP Trabalhistas judicial (`0bcd8be6…`), 1.660 linhas:
+
+| Fonte | Partes | Condenação | Separa titular? |
+| --- | ---: | ---: | --- |
+| `decisao` (`jm_valores`) | 563 | R$ 31.992.263,78 | **não** — `cota_cliente` e `honorario_parte` voltam nulos |
+| `tab_aux` (`jm_partes`) | 262 | R$ 60.149.473,03 | sim |
+| sem valor | 835 | R$ 0,00 | — |
+
+A decisão fixa **quanto o processo vale**, não quanto é de quem — isso está no
+contrato e na conta de liquidação. Então 35% da carteira com valor não tem como
+responder a pergunta do Raym, e nenhuma tela conserta isso: é peça que falta.
+
+### 16.2 O "sucumbencial impossível" era a cota zerada
+
+Na sessão anterior eu tinha classificado 258 partes com `hs > cota_parte_cjcm`
+como sucumbencial inflado. Estava errado na causa:
+
+```sql
+select count(*) filter (where cota_parte_cjcm is null) cota_null,
+       count(*) filter (where cota_parte_cjcm = 0)    cota_zero
+from jm_partes where condenacao_cjcm is not null;
+-- cota_null = 0 | cota_zero = 262   (de 688 partes)
+```
+
+**Zero importado, não nulo.** 262 das 688 partes com condenação vieram da
+importação da Tab. Aux. com `cota_parte_cjcm = 0`. O honorário não está inflado
+— a cota é que não está lá. No recorte do POP são **251 partes**, R$ 59,7 mi de
+condenação e **R$ 30,2 mi sem dono** (`valor − cota − honorário`).
+
+O conserto é a peça que traz o valor por parte (planilha de liquidação
+homologada, termo de acordo, cálculo da execução), não um filtro na tela.
+
+### 16.3 O que a tela passou a fazer
+
+`CarteiraTitularPainel` (topo do sheet da carteira) e `CarteiraRelacaoSheet`:
+
+- Seletor em pílula de três posições — **Tudo / Do cliente / Honorários**. Troca
+  o número grande em vez de somar mais um card.
+- `juntos` soma a **condenação**, que é o total que a carteira sempre mostrou.
+  Não é `cliente + escritório` — se fosse, o total cairia de R$ 92,1 mi para
+  R$ 30,0 mi sem um centavo ter saído do banco.
+- A diferença vira `Cobertura.semDono`, escrita na dobra: separação conhecida,
+  a decisão não separa, sem dono atribuído.
+- Estágios na ordem da régua (PROJETADO → PAGO), cada um clicável, abrindo a
+  relação linha a linha — uma linha por **parte** (processo × cliente), com soma
+  no rodapé que bate com o card de origem.
+- O aviso da cota zerada abre a relação **dessas** partes, e cada linha vai para
+  a conferência anexar a peça. Aviso que não leva a lugar nenhum não é entrega.
+
+Correção monetária aparece só no modo **Tudo**: o coeficiente é calculado sobre
+a condenação da parte e ninguém repartiu ele entre cota e honorário — repartir
+por regra de três seria dedução, não dado.
+
+### 16.4 O que ainda falta
+
+- Trazer a separação para as 563 partes de origem `decisao` — depende de ler a
+  conta de liquidação, não de código.
+- Corrigir as 251 partes de cota zerada pela esteira da conferência.
+- `honorario_parte` soma HC (à vista + parcelado) e HS numa coluna só; separar
+  os dois exige mexer na RPC.
