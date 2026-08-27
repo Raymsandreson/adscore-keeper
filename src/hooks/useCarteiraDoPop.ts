@@ -293,13 +293,43 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
     setErro(null);
     try {
       await ensureExternalSession();
-      const { data, error } = await (db.rpc as unknown as (
+      // ── PAGINAR A RPC, SEMPRE
+      //
+      //    O PostgREST devolve no MÁXIMO 1.000 linhas por requisição, e a RPC
+      //    não é exceção. `pop_carteira_marcos` devolve 1.660 linhas neste POP:
+      //    a chamada sem `.range()` trazia 1.000 e a carteira inteira era
+      //    calculada em cima do pedaço, SEM erro nenhum na tela.
+      //
+      //    O estrago medido em 27/08/2026, com o Raym olhando a tela:
+      //    carteira R$ 76.407.190,83 em vez de R$ 92.141.736,81 (faltavam
+      //    R$ 15.734.545,98), 433 processos em vez de 1.050, e o estágio
+      //    PROJETADO inteiro invisível — 23 partes, R$ 5.549.368,42, zero
+      //    linhas na tela. Os honorários herdavam o mesmo buraco: 12 CNJs
+      //    apareciam como "fora desta carteira" só porque estavam depois da
+      //    milésima linha.
+      //
+      //    Mesmo teto, mesma cura do laço de `jm_lancamentos` logo abaixo e da
+      //    `vw_jm_conferencia_acordos`. Regra da casa: consulta que pode passar
+      //    de 1.000 linhas se pagina — não existe "essa aqui é pequena".
+      const rpc = db.rpc as unknown as (
         f: string, a: Record<string, unknown>,
-      ) => PromiseLike<{ data?: CarteiraPopLinha[] | null; error?: { message?: string } | null }>)(
-        'pop_carteira_marcos', { p_board_id: boardId },
-      );
-      if (error) throw new Error(error.message || 'pop_carteira_marcos falhou');
-      const rows = data || [];
+      ) => {
+        range: (de: number, ate: number) => PromiseLike<{
+          data?: CarteiraPopLinha[] | null; error?: { message?: string } | null;
+        }>;
+      };
+      const rows: CarteiraPopLinha[] = [];
+      for (let inicio = 0; ; inicio += 1000) {
+        const { data, error } = await rpc('pop_carteira_marcos', { p_board_id: boardId })
+          .range(inicio, inicio + 999);
+        if (error) throw new Error(error.message || 'pop_carteira_marcos falhou');
+        const lote = data || [];
+        rows.push(...lote);
+        if (lote.length < 1000) break;
+        // Trava de segurança: 50 mil linhas é ordem de grandeza acima de
+        // qualquer POP real. Se chegar aqui, é laço infinito, não carteira.
+        if (rows.length >= 50000) break;
+      }
       setLinhas(rows);
 
       // CAC vivo no Cloud, em lotes — o snapshot do Externo é o fallback.

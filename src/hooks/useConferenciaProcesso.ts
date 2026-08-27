@@ -479,6 +479,45 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
       });
     }
 
+    // Datas que contradizem a ordem da régua: um degrau MENOR detectado DEPOIS
+    // de um degrau maior (ex.: caso 81.1 ALADIA — "Remetido ao TST" em 21/05 e
+    // "Acórdão do TST" em 19/05). A régua está na ordem certa; quando as datas
+    // invertem, a DETECÇÃO provavelmente trocou os marcos — e o marco atual
+    // pode estar errado por tabela.
+    const fasesDatadas = marcos.filter(
+      m => !m.atravessaFases && !m.semCadastroNoPop && m.dataDetectada && m.ordem != null,
+    );
+    const invertidos: string[] = [];
+    for (const a of fasesDatadas) {
+      for (const b of fasesDatadas) {
+        if ((a.ordem as number) < (b.ordem as number)
+          && (a.dataDetectada as string) > (b.dataDetectada as string)) {
+          invertidos.push(`"${a.rotulo}" (${a.dataDetectada}) veio depois de "${b.rotulo}" (${b.dataDetectada})`);
+        }
+      }
+    }
+    if (invertidos.length) {
+      out.push({
+        nivel: 'atencao',
+        titulo: 'Datas dos marcos contradizem a ordem da régua',
+        detalhe: `${invertidos.slice(0, 2).join('; ')}${invertidos.length > 2 ? ` — e mais ${invertidos.length - 2} inversão(ões)` : ''}. `
+          + 'Alguma fonte provavelmente classificou a movimentação no marco errado — conferir as peças antes de confiar na fase.',
+      });
+    }
+
+    // Trânsito em julgado detectado só por texto, sem certidão anexada: certidão
+    // de trânsito pode ser PARCIAL (de um recurso, de uma parte) e o processo
+    // seguir vivo — houve caso em que, no mesmo dia da certidão, a classe virou
+    // Recurso Ordinário e os autos foram conclusos para julgamento.
+    if (marcoAtual?.chave === 'transito_julgado' && !marcoAtual.temProvaDocumental) {
+      out.push({
+        nivel: 'atencao',
+        titulo: 'Trânsito em julgado sem prova documental',
+        detalhe: 'A certidão pode ser parcial e o processo continuar andando. Anexe a certidão de trânsito '
+          + 'ou confira as últimas movimentações antes de tratar a fase cognitiva como encerrada.',
+      });
+    }
+
     const semCadastro = marcos.filter(m => m.semCadastroNoPop);
     if (semCadastro.length) {
       out.push({

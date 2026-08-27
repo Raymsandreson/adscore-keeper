@@ -1039,3 +1039,63 @@ por regra de três seria dedução, não dado.
 - Corrigir as 251 partes de cota zerada pela esteira da conferência.
 - `honorario_parte` soma HC (à vista + parcelado) e HS numa coluna só; separar
   os dois exige mexer na RPC.
+
+---
+
+## 17. 27/08/2026 — a carteira inteira estava truncada em 1.000 linhas
+
+O Raym olhou a tela e perguntou por que "pago R$ 5.611.786,85" em cima e
+"Pago R$ 4.667.733,79" três linhas abaixo. Ao rastrear as duas somas, apareceu
+um problema maior: **todos os números da tela estavam calculados sobre 1.000 das
+1.660 linhas da RPC.**
+
+### 17.1 A prova
+
+```sql
+-- o que a tela via
+with c as (select * from pop_carteira_marcos('0bcd8be6…'::uuid) limit 1000) …
+-- carteira 76.407.190,83 · 433 processos · 656 partes · pago 5.611.786,85
+-- separação conhecida 44.434.927,05 (193) · não separa 31.972.263,78 (463)
+-- sem dono 21.949.033,69 · cota zerada 188 · honorário 8.662.504,84 / 452 / 76
+
+-- o que o banco tem
+with c as (select * from pop_carteira_marcos('0bcd8be6…'::uuid)) …
+-- carteira 92.141.736,81 · 1.050 processos · 720 partes · pago 5.667.786,85
+```
+
+Cada número da tela bateu com o `limit 1000`, na casa dos centavos. Faltavam
+**R$ 15.734.545,98**, e o estágio **PROJETADO inteiro** — 23 partes,
+R$ 5.549.368,42 — não existia na tela.
+
+Efeito colateral nos honorários: `cnjsDaCarteira` era montado a partir das
+linhas truncadas, então **12 CNJs apareciam como "fora desta carteira"**
+(R$ 210.432,16) só por estarem depois da milésima linha. Na carteira completa
+esse número é **R$ 0,00**.
+
+### 17.2 A causa
+
+`db.rpc('pop_carteira_marcos', …)` sem `.range()`. O teto de 1.000 linhas do
+PostgREST vale para RPC igual, e sem erro nenhum: chega menos linha e a conta
+sai menor. Mesmo bug da `vw_jm_conferencia_acordos` (§ conciliação, 41 acordos
+de 91) e do `process_pop_marcos`.
+
+**Regra da casa, agora com três ocorrências:** consulta que pode passar de 1.000
+linhas se pagina. Não existe "essa aqui é pequena" — a carteira tinha 475
+processos quando o laço não foi escrito.
+
+Corrigido com laço `.range(inicio, inicio + 999)` e teste de regressão que
+clona 2.500 linhas e exige as três páginas (`[0,999] [1000,1999] [2000,2999]`).
+
+### 17.3 "Pago" era duas coisas com o mesmo nome
+
+A pergunta original tinha razão de ser, e a culpa é do redesenho:
+
+| Onde | Rótulo antigo | O que é | Coluna |
+| --- | --- | --- | --- |
+| topo | `pago R$ 5.611.786,85` | dinheiro que caiu na conta, de qualquer estágio | `jm_pagamentos.valor_pago` |
+| régua | `Pago R$ 4.667.733,79` | condenação das partes já quitadas | `valor_condenacao` onde `estagio_financeiro = 'PAGO'` |
+
+Os dois estavam certos e mediam coisas diferentes, a três linhas de distância.
+O topo passou a dizer **recebido**, a linha PAGO ganhou a legenda "condenação das
+partes já quitadas, não o dinheiro que entrou", e a régua ganhou o rodapé que
+explica qual coluna é qual.
