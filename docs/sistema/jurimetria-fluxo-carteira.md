@@ -1004,12 +1004,13 @@ from jm_partes where condenacao_cjcm is not null;
 ```
 
 **Zero importado, não nulo.** 262 das 688 partes com condenação vieram da
-importação da Tab. Aux. com `cota_parte_cjcm = 0`. O honorário não está inflado
-— a cota é que não está lá. No recorte do POP são **251 partes**, R$ 59,7 mi de
-condenação e **R$ 30,2 mi sem dono** (`valor − cota − honorário`).
+Tab. Aux. com `cota_parte_cjcm = 0`. No recorte do POP são **251 partes**,
+R$ 59,7 mi de condenação e **R$ 30,2 mi sem dono** (`valor − cota − honorário`).
 
-O conserto é a peça que traz o valor por parte (planilha de liquidação
-homologada, termo de acordo, cálculo da execução), não um filtro na tela.
+> **CORREÇÃO (§18, mesmo dia):** eu concluí aqui que era erro de importação e
+> que o conserto era anexar a peça. **Está errado.** As 251 partes estão todas
+> marcadas `status_pagamento = 'PROJETADO'`: são processos sem decisão, e a cota
+> é zero porque ainda não há o que repartir. Ver § 18.
 
 ### 16.3 O que a tela passou a fazer
 
@@ -1099,3 +1100,77 @@ Os dois estavam certos e mediam coisas diferentes, a três linhas de distância.
 O topo passou a dizer **recebido**, a linha PAGO ganhou a legenda "condenação das
 partes já quitadas, não o dinheiro que entrou", e a régua ganhou o rodapé que
 explica qual coluna é qual.
+
+---
+
+## 18. 27/08/2026 — "A receber" não tem uma data sequer, e a cota zerada não era erro
+
+O Raym olhou o **A receber de R$ 15.270.402,28** e disse que estava errado. Está.
+
+### 18.1 A régua que a RPC usa
+
+```sql
+case
+  when pago > 0 …                                 then 'PAGO'
+  when pp.tem_acordo                              then 'A_RECEBER'   -- ← aqui
+  when pp.estagio_financeiro_sugerido is not null then …sugerido
+  when coalesce(vv.valor, 0) > 0                  then 'CONDENACAO'
+  else 'PROJETADO'
+end
+```
+
+A segunda linha carimba **A_RECEBER em qualquer processo com marco de acordo**,
+antes de perguntar se existe data. Pelo vocabulário (skill
+`whatsjud-fluxo-vocabulario`), A RECEBER exige **valor certo E data certa** — é o
+único estágio que a gestora antecipa. Sem data, é CONDENAÇÃO.
+
+### 18.2 A medida
+
+| | Partes | Valor |
+| --- | ---: | ---: |
+| A_RECEBER hoje | 183 | R$ 15.270.402,28 |
+| …só por `tem_acordo` | 156 | R$ 13.951.326,88 |
+| …sem leitura de decisão nenhuma | 94 | R$ 7.924.656,10 |
+| **…com parcela datada em `jm_pagamentos`** | **0** | **R$ 0,00** |
+
+**Nenhuma das 183.** E não é falha de junção: `jm_pagamentos` cobre 39 CNJs no
+banco inteiro (16 com cronograma) contra 433 processos do POP. O cronograma
+quase não existe, então o A RECEBER não podia mesmo sair dele.
+
+O caso que o Raym abriu, `0001529-83.2024.5.08.0125` (CASO 219): 11 partes,
+R$ 2.010.774,78, marco "Acordo homologado" detectado pelo DataJud **sem prova
+documental**, `jm_valores` vazio, `jm_decisoes` vazio, `jm_pagamentos` vazio, e
+as 11 partes marcadas `PROJETADO` / `Conhecimento` na Tab. Aux. A tela chamava
+isso de "a receber".
+
+### 18.3 A cota zerada NÃO era erro de importação (correção da § 16.2)
+
+```sql
+select status_pagamento, count(*)
+from jm_partes
+where condenacao_cjcm is not null and coalesce(cota_parte_cjcm,0) = 0
+group by 1;
+-- PROJETADO 251 (R$ 59.677.802,03) | os demais status: 11 partes, R$ 0,00
+```
+
+**251 de 251.** Nenhuma parte `A RECEBER` ou `PAGO` tem cota zerada. A cota está
+em zero porque o processo não tem decisão — não há o que repartir. Zero é a
+resposta certa.
+
+O que sobra de estranho é outra coisa, e menor: a Tab. Aux. **projeta o
+honorário** (R$ 29,5 mi nessas mesmas partes) e deixa a cota em zero. Projeção
+pela metade, que joga tudo para `semDono`. O detector continua, com o nome e a
+causa certos: "projeção sem cota", e sai quando a decisão sair — não é peça que
+falta, é decisão.
+
+### 18.4 Duas telas, duas fontes, o mesmo processo
+
+A **conferência** lê `jm_valores`; a **carteira** cai em `jm_partes` quando
+`jm_valores` não cobre o CNJ. No CASO 219 isso dá:
+
+- conferência: "VALOR LÍQUIDO DAS PARTES (0) · R$ 0,00 · nenhum valor lançado"
+- carteira: R$ 2.010.774,78 em 11 partes
+
+Os dois números saem do banco, de tabelas diferentes, e se contradizem na cara
+do usuário. A conferência precisa ler a mesma fonte que a carteira usou, e dizer
+qual é.

@@ -303,13 +303,14 @@ export function CarteiraTitularPainel({
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
             <span className="min-w-0 flex-1 text-[11px] leading-snug">
               <span className="block font-medium text-amber-700 dark:text-amber-400">
-                {cob.partesCotaZerada} parte{cob.partesCotaZerada === 1 ? '' : 's'} com a cota
-                zerada e honorário lançado — {brl(cob.valorCotaZerada)} de condenação.
+                {cob.partesCotaZerada} parte{cob.partesCotaZerada === 1 ? '' : 's'} com honorário
+                projetado e cota em zero — {brl(cob.valorCotaZerada)} de condenação.
               </span>
               <span className="block text-muted-foreground">
-                Cota zero com honorário do lado não existe: o contratual sai de dentro da cota.
-                A importação da Tab. Aux. gravou zero em vez do valor. O número continua somando
-                aqui; quem conserta é a conferência, anexando a peça que traz o valor por parte.
+                São processos ainda sem decisão: na Tab. Aux. estão marcados PROJETADO, quase
+                todos em Conhecimento. A cota está em zero porque ainda não há o que repartir —
+                mas o honorário foi projetado do mesmo jeito, e é essa metade só que joga tudo
+                para "sem dono". Sai daqui quando a decisão sair e for lida.
               </span>
             </span>
             {onAbrirConferencia && (

@@ -27,13 +27,12 @@
  *    - `decisao` (jm_valores) — 563 partes, R$ 32,0 mi. NÃO separa nada: cota e
  *      honorário voltam nulos. A decisão fixa o valor do processo; quem é o dono
  *      de cada pedaço está no contrato e na conta de liquidação, não ali.
- *    - `tab_aux` (jm_partes) — 262 partes, R$ 60,1 mi. Separa — mas 257 delas
- *      vieram com `cota_parte_cjcm = 0` (zero importado, não nulo), o que joga
- *      R$ 30,1 mi para `semDono` e faz o honorário parecer maior que a cota.
+ *    - `tab_aux` (jm_partes) — 262 partes, R$ 60,1 mi. Separa — mas 251 delas
+ *      vêm com `cota_parte_cjcm = 0`, o que joga R$ 30,1 mi para `semDono`.
  *
  *    Nada disso é escondido aqui. Tudo soma; `Cobertura` diz quanto de cada
- *    coisa, e a tela manda o processo para a conferência anexar a peça que traz
- *    o valor por parte. Ver a skill `conserto-estrutural-nao-pontual`.
+ *    coisa, e a tela leva o processo para a conferência. Ver a skill
+ *    `conserto-estrutural-nao-pontual`.
  */
 
 export interface ParteDaCarteira {
@@ -80,12 +79,13 @@ export interface Cobertura {
   partesSemSeparacao: number;
   /**
    * Dentro do que separa: `valor − cota − honorário`. Nem do cliente nem nosso.
-   * Quase sempre é a cota que veio zerada na importação.
+   * Quase sempre é projeção pela metade: a Tab. Aux. projetou o honorário e
+   * deixou a cota em zero, porque o processo ainda não tem decisão.
    */
   semDono: number;
-  /** Partes que separam mas chegaram com a cota zerada e honorário lançado. */
+  /** Partes que separam mas têm cota zerada com honorário projetado. */
   partesCotaZerada: number;
-  /** Condenação dessas partes — o valor que a peça certa vai redistribuir. */
+  /** Condenação dessas partes — o valor que a decisão vai repartir um dia. */
   valorCotaZerada: number;
 }
 
@@ -112,16 +112,30 @@ export function temSeparacao(p: { cota: number | null; honorario: number | null 
 }
 
 /**
- * Cota zerada com honorário lançado.
+ * Cota zerada com honorário projetado.
  *
- * Não é "cota pequena": é zero, e zero com honorário do lado não existe — o
- * contratual sai de dentro da cota, então cota 0 implicaria honorário 0.
- * A causa medida em 27/08/2026 é a importação da Tab. Aux., que gravou
- * `cota_parte_cjcm = 0` em 262 das 688 partes.
+ * ── O QUE ISTO NÃO É (corrigido em 27/08/2026, no mesmo dia em que eu errei)
+ *
+ *    Escrevi antes que era erro de importação — "a Tab. Aux. gravou zero em vez
+ *    do valor". Errado, e a evidência é limpa: das 251 partes com cota zerada e
+ *    condenação, **251 estão marcadas `status_pagamento = 'PROJETADO'`** em
+ *    `jm_partes`, quase todas em fase `Conhecimento`. Nenhuma parte marcada
+ *    `A RECEBER` ou `PAGO` tem cota zerada.
+ *
+ *    Ou seja: a cota não está lá porque **ainda não existe**. O processo não
+ *    tem decisão, o valor é projeção por tipo de parte, e não há o que repartir
+ *    entre cliente e escritório. Zero é a resposta certa.
+ *
+ * ── O QUE SOBRA DE ESTRANHO
+ *
+ *    A Tab. Aux. projeta o HONORÁRIO (R$ 29,5 mi nessas mesmas partes) e deixa
+ *    a cota em zero. A projeção é incompleta, não errada: quem projetou o
+ *    honorário poderia ter projetado a cota pela mesma régua. É isto que o
+ *    detector marca — projeção pela metade, que joga tudo para `semDono`.
  *
  * NÃO É FILTRO: nada é excluído por causa disto, o valor soma inteiro nos três
- * modos. É DETECTOR — o que ele marca vira linha na conferência, com o caminho
- * para anexar a peça que traz o valor por parte.
+ * modos. É DETECTOR — e o conserto é a decisão sair e ser lida, não anexar peça
+ * de um processo que ainda está em Conhecimento.
  */
 export function cotaZeradaComHonorario(p: { cota: number | null; honorario: number | null }): boolean {
   return p.cota != null && num(p.cota) === 0 && num(p.honorario) > 0;

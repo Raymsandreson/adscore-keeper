@@ -133,7 +133,7 @@ export function CarteiraRelacaoSheet({ alvo, grupos, onClose, onConferir }: Prop
   }, [alvo, grupos, modo, estagio, soCotaZerada]);
 
   const titulo = soCotaZerada
-    ? 'Partes com a cota zerada'
+    ? 'Projeção sem cota'
     : estagio
       ? `${ESTAGIO_LABEL[estagio] || estagio} · ${MODO_LABEL[modo]}`
       : `Relação completa · ${MODO_LABEL[modo]}`;
@@ -145,7 +145,7 @@ export function CarteiraRelacaoSheet({ alvo, grupos, onClose, onConferir }: Prop
           <SheetTitle className="text-base">{titulo}</SheetTitle>
           <p className="text-xs text-muted-foreground">
             {soCotaZerada
-              ? 'A importação da Tab. Aux. gravou cota 0 com honorário lançado. Abra o processo e anexe a peça que traz o valor por parte — a leitura grava a cota certa.'
+              ? 'Processos sem decisão (PROJETADO na Tab. Aux.): o honorário foi projetado e a cota ficou em zero. Sai daqui quando a decisão sair e for lida — não é peça que falta, é decisão.'
               : 'Uma linha por parte (processo × cliente). Clique para conferir de onde saiu o valor.'}
           </p>
         </SheetHeader>
@@ -220,7 +220,7 @@ export function CarteiraRelacaoSheet({ alvo, grupos, onClose, onConferir }: Prop
                       </Badge>
                       {l.cotaZerada && (
                         <span className="ml-1 text-[10px] text-amber-600 dark:text-amber-400">
-                          cota zerada
+                          projeção sem cota
                         </span>
                       )}
                     </td>
