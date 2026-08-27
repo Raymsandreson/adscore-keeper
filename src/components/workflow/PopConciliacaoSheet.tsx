@@ -7,14 +7,23 @@
 // O SUCUMBENCIAL NÃO ENTRA na régua — varia de 5% a 15% conforme o juiz, pode
 // ser majorado no cumprimento de sentença e pode ser dispensado. Ele aparece
 // como observação, nunca como acusação.
+//
+// ── O SUCUMBENCIAL IMPOSSÍVEL
+//
+//    `hs > cota da própria parte` não pode existir: o sucumbencial sai de dentro
+//    da cota. Esses processos ENTRAM na fila de conferência com o motivo escrito
+//    e o caminho da peça que conserta — e o valor continua somando na carteira
+//    exatamente como está no banco. Tela não desconta dado; tela mostra o dado e
+//    aponta o conserto. Ver a skill `conserto-estrutural-nao-pontual`.
 // =============================================================================
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle2, HelpCircle, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
-import { useConciliacaoAcordos } from '@/hooks/useConciliacaoAcordos';
-import { ordenarPorDivergencia, totalizarConciliacao } from '@/lib/conciliacaoAcordo';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
+import { useConciliacaoAcordos, ESTAGIO_LABEL } from '@/hooks/useConciliacaoAcordos';
+import type { AcordoConciliado } from '@/hooks/useConciliacaoAcordos';
+import { totalizarConciliacao } from '@/lib/conciliacaoAcordo';
 import { formatCnj } from '@/lib/cnj';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
@@ -32,9 +41,9 @@ const dataBR = (d: string | null) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
 
-function Card({ titulo, valor, detalhe, tom }: {
+function Card({ titulo, valor, detalhe, tom, className = '' }: {
   titulo: string; valor: string; detalhe?: string;
-  tom: 'ok' | 'falta' | 'sobra' | 'neutro' | 'multa';
+  tom: 'ok' | 'falta' | 'sobra' | 'neutro' | 'multa'; className?: string;
 }) {
   const cores = {
     ok: 'border-emerald-500/40 bg-emerald-500/5',
@@ -44,11 +53,35 @@ function Card({ titulo, valor, detalhe, tom }: {
     neutro: 'border-border bg-muted/30',
   }[tom];
   return (
-    <div className={`rounded-lg border p-3 ${cores}`}>
+    <div className={`rounded-lg border p-3 ${cores} ${className}`}>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{titulo}</div>
       <div className="mt-0.5 text-lg font-semibold leading-tight">{valor}</div>
       {detalhe && <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{detalhe}</div>}
     </div>
+  );
+}
+
+/** Grupo recolhível. O que pede ação fica aberto; o resto se abre por escolha. */
+function Secao({ titulo, itens, render, aberta, setAberta }: {
+  titulo: string; itens: AcordoConciliado[];
+  render: (a: AcordoConciliado) => React.ReactNode;
+  aberta: boolean; setAberta: (v: boolean) => void;
+}) {
+  if (itens.length === 0) return null;
+  const fixa = titulo.startsWith('Precisam');
+  return (
+    <section className="space-y-2">
+      <button
+        type="button"
+        onClick={() => { if (!fixa) setAberta(!aberta); }}
+        className="flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+      >
+        {!fixa && (aberta ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />)}
+        {titulo}
+        <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">{itens.length}</Badge>
+      </button>
+      {(fixa || aberta) && <div className="space-y-2">{itens.map(render)}</div>}
+    </section>
   );
 }
 
@@ -76,14 +109,125 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
     }
   };
   const t = totalizarConciliacao(acordos.map(a => a.conciliacao));
-  const ordenados = ordenarPorDivergencia(acordos);
+
+  // Três trabalhos diferentes, três seções. Misturados, os "sem cota" — que são
+  // maioria e mostram R$ 0,00 de diferença — empurram para baixo justamente os
+  // que pedem ação.
+  //
+  // O sucumbencial maior que a cota da parte entra aqui junto com a divergência
+  // de contratual: é um dado impossível, e o lugar dele é a fila de conserto —
+  // não um filtro que sumiria com o valor da carteira.
+  const precisaConferir = (a: AcordoConciliado) =>
+    a.conciliacao.situacao === 'HC_FALTANDO' || a.conciliacao.situacao === 'HC_SOBRANDO'
+    || a.hsSuspeito > 0;
+  const peso = (a: AcordoConciliado) => Math.max(Math.abs(a.conciliacao.faltaHc), a.hsSuspeito);
+  const divergentes = [...acordos.filter(precisaConferir)].sort((a, b) => peso(b) - peso(a));
+  const semCota = acordos.filter(a => a.conciliacao.situacao === 'SEM_CLIENTE' && !precisaConferir(a));
+  const conferem = acordos.filter(a => a.conciliacao.situacao === 'OK' && !precisaConferir(a));
+  const hsSuspeitoTotal = acordos.reduce((soma, a) => soma + a.hsSuspeito, 0);
+  const processosSuspeitos = acordos.filter(a => a.hsSuspeito > 0).length;
+  const [abrirSemCota, setAbrirSemCota] = useState(false);
+  const [abrirConferem, setAbrirConferem] = useState(false);
+
+  const linha = (a: AcordoConciliado) => {
+    const c = a.conciliacao;
+    const Icone = c.situacao === 'OK' ? CheckCircle2
+      : c.situacao === 'SEM_CLIENTE' ? HelpCircle
+      : c.faltaHc > 0 ? TrendingDown : TrendingUp;
+    const cor = c.situacao === 'OK' ? 'text-emerald-600 dark:text-emerald-400'
+      : c.situacao === 'SEM_CLIENTE' ? 'text-muted-foreground'
+      : c.faltaHc > 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400';
+    return (
+      <button
+        key={a.processId}
+        type="button"
+        onClick={() => board && setConferindo({
+          processId: a.processId, boardId: board.id, cnj: a.cnj,
+          titulo: a.titulo, foco: 'valores',
+        })}
+        className="w-full rounded-md border p-2.5 text-left transition-colors hover:bg-muted/50"
+        title="Abrir a conferência: ver a trilha, anexar ou trocar a peça, e corrigir o valor"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-medium">{a.titulo || 'Processo sem título'}</span>
+            <span className="block truncate font-mono text-[11px] text-muted-foreground">
+              {formatCnj(a.cnj)} · {dataBR(a.dataAcordo)}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <Badge variant="outline" className="text-[9px]">{ESTAGIO_LABEL[a.estagio]}</Badge>
+            <span className={`flex items-center gap-1.5 text-sm font-semibold ${cor}`}>
+              <Icone className="h-4 w-4" />
+              {c.situacao === 'OK' ? 'confere'
+                : c.situacao === 'SEM_CLIENTE' ? 'sem cota'
+                : brl(Math.abs(c.faltaHc))}
+            </span>
+          </span>
+        </div>
+
+        {c.situacao !== 'SEM_CLIENTE' && (
+          <div className="mt-1.5 grid grid-cols-3 gap-x-3 gap-y-0.5 text-[11px]">
+            <span className="text-muted-foreground">cota do cliente</span>
+            <span className="text-muted-foreground">honorário lançado</span>
+            <span className="text-muted-foreground">honorário devido (30%)</span>
+            <span className="font-medium">{brl(c.cliente)}</span>
+            <span className="font-medium">{brl(c.hc)}</span>
+            <span className="font-medium">{brl(c.hcEsperado)}</span>
+          </div>
+        )}
+
+        {/* Sucumbencial: comentário, nunca acusação — varia de 5% a 15%. */}
+        {c.hs > 0 && (
+          <div className="mt-1 text-[11px] text-muted-foreground">
+            Sucumbencial lançado: {brl(c.hs)}
+            {c.hsPctDoBruto != null && <> ({(c.hsPctDoBruto * 100).toFixed(1)}% do bruto)</>}
+            {c.hsForaDaFaixa && (
+              <Badge variant="outline" className="ml-1.5 border-amber-500/50 text-[9px] text-amber-600 dark:text-amber-400">
+                fora do usual de 5% a 15%
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {a.hsSuspeito > 0 && (
+          <div className="mt-1.5 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-[11px] leading-snug">
+            <span className="font-medium text-amber-700 dark:text-amber-400">
+              Sucumbencial maior que a cota em {a.partesSuspeitas}{' '}
+              {a.partesSuspeitas === 1 ? 'parte' : 'partes'} — {brl(a.hsSuspeito)}.
+            </span>{' '}
+            Isso não pode acontecer: o sucumbencial sai de dentro da cota da parte, então algum
+            lançamento está no titular errado ou no valor errado. O número{' '}
+            <strong>continua somando na carteira</strong> como está no banco. Para consertar de
+            verdade, anexe aqui a peça que traz o valor por parte — planilha de liquidação
+            homologada, termo de acordo ou cálculo da execução — e a leitura grava os valores
+            certos por cima destes.
+          </div>
+        )}
+
+        {c.multa > 0 && (
+          <div className="mt-1 text-[11px] text-sky-700 dark:text-sky-400">
+            Multa por descumprimento: {brl(c.multa)} — devida, mas fora da conta do acordo.
+          </div>
+        )}
+
+        {c.situacao === 'SEM_CLIENTE' && (
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+            <AlertTriangle className="h-3 w-3" />
+            Nenhuma indenização lançada — sem cota não há régua de 30%. Anexe a peça de valor
+            para a leitura preencher.
+          </div>
+        )}
+      </button>
+    );
+  };
 
   return (
     <>
     <Sheet open={!!board} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="space-y-1">
-          <SheetTitle className="text-base">Conciliação dos acordos</SheetTitle>
+          <SheetTitle className="text-base">Conciliação de valores</SheetTitle>
           <p className="text-xs text-muted-foreground">{board?.name}</p>
         </SheetHeader>
 
@@ -94,11 +238,11 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
             {erro}
           </p>
         ) : acordos.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nenhum acordo homologado neste POP.</p>
+          <p className="text-xs text-muted-foreground">Nenhum processo com valor a conferir neste POP.</p>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <Card titulo="Acordos conferidos" valor={String(t.acordos)}
+              <Card titulo="Processos conferidos" valor={String(t.acordos)}
                 detalhe={`${t.ok} batem exatos${t.semCliente ? ` · ${t.semCliente} sem cota` : ''}`} tom="neutro" />
               <Card titulo="Honorário faltando" valor={brl(t.hcFaltando)}
                 detalhe="lançado a menos que os 30% do contrato" tom="falta" />
@@ -106,93 +250,35 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
                 detalhe="lançado a mais que os 30%" tom="sobra" />
               <Card titulo="Multa por descumprimento" valor={brl(t.multa)}
                 detalhe="devida, mas fora da conta do acordo" tom="multa" />
+              {hsSuspeitoTotal > 0 && (
+                <Card
+                  className="col-span-2"
+                  titulo="Sucumbencial maior que a cota da parte"
+                  valor={brl(hsSuspeitoTotal)}
+                  detalhe={`${processosSuspeitos} ${processosSuspeitos === 1 ? 'processo' : 'processos'} — impossível, mas somando na carteira do jeito que está no banco. Abra cada um e anexe a peça de valor por parte.`}
+                  tom="sobra"
+                />
+              )}
             </div>
 
             <p className="text-[11px] leading-snug text-muted-foreground">
-              A régua é o contratual de <strong>30%</strong>: sobre o bruto, o cliente fica com 70% e o
+              Entram processos com <strong>acordo homologado</strong>, <strong>liquidação</strong>,{' '}
+              <strong>trânsito em julgado</strong> ou <strong>execução iniciada</strong> — nesses o
+              valor por parte já existe nos autos, quase sempre em peça restrita que o Escavador não
+              traz. A régua é o contratual de <strong>30%</strong>: sobre o bruto, o cliente fica com 70% e o
               escritório com 30%, então o honorário devido é a cota do cliente × 3/7. O{' '}
               <strong>sucumbencial não entra na régua</strong> — ele varia de 5% a 15% conforme o juiz
-              arbitrou, pode ser majorado no cumprimento de sentença e pode ser dispensado.
+              arbitrou, pode ser majorado no cumprimento de sentença e pode ser dispensado. O que
+              o sucumbencial <strong>não pode</strong> é passar da cota da própria parte — quando
+              passa, o processo entra na fila com o motivo escrito e o valor segue somando na
+              carteira até a peça certa corrigir o banco.
             </p>
 
-            <div className="space-y-2">
-              {ordenados.map(a => {
-                const c = a.conciliacao;
-                const Icone = c.situacao === 'OK' ? CheckCircle2
-                  : c.situacao === 'SEM_CLIENTE' ? HelpCircle
-                  : c.faltaHc > 0 ? TrendingDown : TrendingUp;
-                const cor = c.situacao === 'OK' ? 'text-emerald-600 dark:text-emerald-400'
-                  : c.situacao === 'SEM_CLIENTE' ? 'text-muted-foreground'
-                  : c.faltaHc > 0 ? 'text-destructive' : 'text-amber-600 dark:text-amber-400';
-                return (
-                  <button
-                    key={a.processId}
-                    type="button"
-                    onClick={() => board && setConferindo({
-                      processId: a.processId, boardId: board.id, cnj: a.cnj,
-                      titulo: a.titulo, foco: 'valores',
-                    })}
-                    className="w-full rounded-md border p-2.5 text-left transition-colors hover:bg-muted/50"
-                    title="Abrir a conferência: ver a trilha, anexar ou trocar a peça, e corrigir o valor"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <span className="min-w-0">
-                        <span className="block truncate text-sm font-medium">
-                          {a.titulo || 'Processo sem título'}
-                        </span>
-                        <span className="block font-mono text-[11px] text-muted-foreground">
-                          {formatCnj(a.cnj)} · acordo em {dataBR(a.dataAcordo)}
-                        </span>
-                      </span>
-                      <span className={`flex shrink-0 items-center gap-1.5 text-sm font-semibold ${cor}`}>
-                        <Icone className="h-4 w-4" />
-                        {c.situacao === 'OK' ? 'confere'
-                          : c.situacao === 'SEM_CLIENTE' ? 'sem cota lançada'
-                          : brl(Math.abs(c.faltaHc))}
-                      </span>
-                    </div>
-
-                    {c.situacao !== 'SEM_CLIENTE' && (
-                      <div className="mt-1.5 grid grid-cols-3 gap-x-3 gap-y-0.5 text-[11px]">
-                        <span className="text-muted-foreground">cota do cliente</span>
-                        <span className="text-muted-foreground">honorário lançado</span>
-                        <span className="text-muted-foreground">honorário devido (30%)</span>
-                        <span className="font-medium">{brl(c.cliente)}</span>
-                        <span className="font-medium">{brl(c.hc)}</span>
-                        <span className="font-medium">{brl(c.hcEsperado)}</span>
-                      </div>
-                    )}
-
-                    {/* Sucumbencial: comentário, nunca acusação. */}
-                    {c.hs > 0 && (
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        Sucumbencial lançado: {brl(c.hs)}
-                        {c.hsPctDoBruto != null && <> ({(c.hsPctDoBruto * 100).toFixed(1)}% do bruto)</>}
-                        {c.hsForaDaFaixa && (
-                          <Badge variant="outline" className="ml-1.5 border-amber-500/50 text-[9px] text-amber-600 dark:text-amber-400">
-                            fora do usual de 5% a 15%
-                          </Badge>
-                        )}
-                      </div>
-                    )}
-
-                    {c.multa > 0 && (
-                      <div className="mt-1 text-[11px] text-sky-700 dark:text-sky-400">
-                        Multa por descumprimento: {brl(c.multa)} — devida, mas fora da conta do acordo.
-                      </div>
-                    )}
-
-                    {c.situacao === 'SEM_CLIENTE' && (
-                      <div className="mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
-                        <AlertTriangle className="h-3 w-3" />
-                        Sem cota do cliente lançada não há régua: 30% de quê? Este acordo não pode ser
-                        conferido até alguém lançar a indenização.
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+            <Secao titulo="Precisam de conferência" itens={divergentes} render={linha} aberta setAberta={() => {}} />
+            <Secao titulo="Sem cota lançada — não dá para conferir" itens={semCota} render={linha}
+                   aberta={abrirSemCota} setAberta={setAbrirSemCota} />
+            <Secao titulo="Conferem" itens={conferem} render={linha}
+                   aberta={abrirConferem} setAberta={setAbrirConferem} />
 
             <div className="flex justify-end pb-2">
               <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => void recarregar()}>

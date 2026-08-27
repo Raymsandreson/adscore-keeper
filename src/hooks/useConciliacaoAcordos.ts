@@ -1,36 +1,73 @@
 // =============================================================================
-// Conciliação dos acordos de um POP — "o que foi lançado bate com o acordo?".
+// Conciliação de valores de um POP — "o que foi lançado bate com o que os autos
+// dizem?".
 //
-// Pedido do Raym em 25/08/2026, depois que a conferência do caso 88 mostrou
-// R$ 59.561,26 de divergência só no honorário. Medido na carteira inteira: de
-// 38 acordos com lançamento, 17 batem, 11 têm honorário faltando (R$ 416.962,51)
-// e 10 têm sobrando (R$ 172.693,35).
+// Entram acordo homologado, liquidação, trânsito em julgado e execução iniciada.
+// O Raym pediu os três últimos em 26/08 com o motivo certo: nesses estágios o
+// valor por parte está na planilha de liquidação ou nos cálculos da execução —
+// peça restrita, que o Escavador raramente traz. São justamente os processos
+// onde a carteira tem mais chance de estar errada e ninguém sabe.
 //
 // A régua mora em `conciliacaoAcordo.ts` e é conferida contra o termo de acordo
-// real. Aqui só se junta o dado: quais processos do POP têm acordo homologado, e
-// quanto foi lançado em cada um.
+// real. Aqui só se lê o dado já somado.
 //
-// Tudo SELECT. A multa ("Multa pelo descumprimento" na observação) sai da conta
-// do acordo e viaja separada — ela é devida, mas não é o acordo.
+// ── POR QUE A SOMA VEM DO BANCO
+//
+//    A primeira versão lia `process_pop_marcos` cru e filtrava o marco no
+//    JavaScript. O POP "Trabalhistas judicial" tem 2.708 marcos, e o PostgREST
+//    corta em 1.000 linhas por padrão: a tela via os mil primeiros e mostrava
+//    **41 acordos de 91**. Metade da carteira de acordos ficava invisível, sem
+//    erro nenhum na tela.
+//
+//    Os lançamentos tinham o mesmo risco — 91 processos com dezenas de linhas
+//    cada estouram o teto de novo.
+//
+//    `vw_jm_conciliacao_acordos` devolve UMA linha por acordo, com os
+//    lançamentos já somados por titular. Some o teto, some a soma no navegador,
+//    e a consulta cai de milhares de linhas para dezenas.
 // =============================================================================
 import { useCallback, useEffect, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { conciliarAcordo, type Conciliacao } from '@/lib/conciliacaoAcordo';
 
 interface Consulta { data: Record<string, unknown>[] | null; error: { message?: string } | null }
-const externo = db as unknown as { from: (t: string) => { select: (c: string) => unknown } };
+const externo = db as unknown as {
+  from: (t: string) => { select: (c: string) => { eq: (c: string, v: unknown) => Promise<Consulta> } };
+};
+
+/** O estágio mais avançado entre os que pedem conferência de valor. */
+export type EstagioConciliacao = 'EXECUCAO' | 'TRANSITO' | 'ACORDO' | 'LIQUIDACAO';
 
 export interface AcordoConciliado {
   processId: string;
   cnj: string;
   titulo: string | null;
   dataAcordo: string | null;
+  estagio: EstagioConciliacao;
   conciliacao: Conciliacao;
+  /**
+   * Sucumbencial que o banco tem lançado ACIMA da cota da própria parte — o que
+   * é impossível, porque o sucumbencial sai de dentro da cota. O número vem
+   * somado da view (`jm_partes` onde `hs > cota_parte_cjcm`).
+   *
+   * NÃO É FILTRO. Nada é descontado por causa disto, nem aqui nem na carteira:
+   * o valor continua somando como está no banco. Ele existe para o processo
+   * aparecer na fila de conferência com o motivo escrito e o caminho da peça
+   * certa. Ver a skill `conserto-estrutural-nao-pontual`.
+   */
+  hsSuspeito: number;
+  /** Quantas partes do processo estão nessa situação. */
+  partesSuspeitas: number;
 }
 
-const soDigitos = (v: unknown) => String(v ?? '').replace(/\D/g, '');
+export const ESTAGIO_LABEL: Record<EstagioConciliacao, string> = {
+  EXECUCAO: 'em execução',
+  TRANSITO: 'transitado em julgado',
+  ACORDO: 'acordo homologado',
+  LIQUIDACAO: 'em liquidação',
+};
+
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
-const ehMulta = (obs: unknown) => /multa pelo descump/i.test(String(obs ?? ''));
 
 export function useConciliacaoAcordos(boardId: string | null | undefined) {
   const [acordos, setAcordos] = useState<AcordoConciliado[]>([]);
@@ -42,55 +79,22 @@ export function useConciliacaoAcordos(boardId: string | null | undefined) {
     setLoading(true); setErro(null);
     try {
       await ensureExternalSession();
-
-      const marcos = await (externo.from('process_pop_marcos')
-        .select('process_id, marco_chave, data_detectada') as { eq: (c: string, v: unknown) => Promise<Consulta> })
+      const r = await externo.from('vw_jm_conciliacao_acordos')
+        .select('process_id, cnj, titulo, data_acordo, estagio, cliente, hc, hs, multa, hs_suspeito, partes_suspeitas')
         .eq('board_id', boardId);
-      if (marcos.error) throw new Error(marcos.error.message || 'Falha ao ler os marcos do POP');
+      if (r.error) throw new Error(r.error.message || 'Falha ao conciliar os acordos');
 
-      const comAcordo = new Map<string, string | null>();
-      for (const m of marcos.data || []) {
-        if (String(m.marco_chave) !== 'acordo_homologado') continue;
-        comAcordo.set(String(m.process_id), (m.data_detectada as string) ?? null);
-      }
-      if (comAcordo.size === 0) { setAcordos([]); return; }
-
-      const procs = await (externo.from('lead_processes')
-        .select('id, process_number, title') as { in: (c: string, v: unknown[]) => Promise<Consulta> })
-        .in('id', [...comAcordo.keys()]);
-      if (procs.error) throw new Error(procs.error.message || 'Falha ao ler os processos');
-
-      const porCnj = new Map<string, { id: string; cnj: string; titulo: string | null }>();
-      for (const p of procs.data || []) {
-        const cnj = String(p.process_number ?? '');
-        if (!cnj) continue;
-        porCnj.set(soDigitos(cnj), { id: String(p.id), cnj, titulo: (p.title as string) ?? null });
-      }
-
-      const lanc = await (externo.from('jm_lancamentos')
-        .select('processo_cnj, categoria, pessoa, valor_caixa, observacao') as {
-          in: (c: string, v: unknown[]) => Promise<Consulta> })
-        .in('processo_cnj', [...porCnj.values()].map(p => p.cnj));
-      if (lanc.error) throw new Error(lanc.error.message || 'Falha ao ler os lançamentos');
-
-      const somas = new Map<string, { cliente: number; hc: number; hs: number; multa: number }>();
-      for (const l of lanc.data || []) {
-        const k = soDigitos(l.processo_cnj);
-        if (!porCnj.has(k)) continue;
-        const s = somas.get(k) ?? { cliente: 0, hc: 0, hs: 0, multa: 0 };
-        const cat = String(l.categoria ?? '').toLowerCase();
-        const valor = n(l.valor_caixa);
-        if (ehMulta(l.observacao)) s.multa += valor;
-        else if (cat.includes('indeniza')) s.cliente += valor;
-        else if (String(l.pessoa ?? '') === 'HS') s.hs += valor;
-        else if (cat.includes('honor') || cat.includes('atrasado')) s.hc += valor;
-        somas.set(k, s);
-      }
-
-      setAcordos([...porCnj.entries()].map(([k, p]) => ({
-        processId: p.id, cnj: p.cnj, titulo: p.titulo,
-        dataAcordo: comAcordo.get(p.id) ?? null,
-        conciliacao: conciliarAcordo(somas.get(k) ?? { cliente: 0, hc: 0 }),
+      setAcordos((r.data || []).map(a => ({
+        processId: String(a.process_id),
+        cnj: String(a.cnj ?? ''),
+        titulo: (a.titulo as string) ?? null,
+        dataAcordo: (a.data_acordo as string) ?? null,
+        estagio: (a.estagio as EstagioConciliacao) ?? 'ACORDO',
+        conciliacao: conciliarAcordo({
+          cliente: n(a.cliente), hc: n(a.hc), hs: n(a.hs), multa: n(a.multa),
+        }),
+        hsSuspeito: n(a.hs_suspeito),
+        partesSuspeitas: n(a.partes_suspeitas),
       })));
     } catch (e) {
       setErro(String((e as Error)?.message || e));

@@ -32,6 +32,7 @@ import {
   type GrupoMarco, type ProcessoDoMarco,
 } from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
+import { duracaoLegivel } from '@/lib/duracaoLegivel';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
 
@@ -48,7 +49,11 @@ interface Props {
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const dias = (d: number | null) => (d == null ? '—' : d === 0 ? 'hoje' : `${d} d`);
+/** Ano/mês/dia com o total de meses entre parênteses — "782 d" não dá noção a
+ *  ninguém, e quem negocia deságio raciocina em meses. Ver duracaoLegivel.ts. */
+const dias = (d: number | null) => duracaoLegivel(d);
+/** Nas linhas estreitas os parênteses não cabem; a decomposição basta. */
+const diasCurto = (d: number | null) => duracaoLegivel(d, { comTotal: false });
 
 /** "2026-07-01" -> "jul/2026". A data limite da correção vai sempre junto do número. */
 const INDICE_CURTO: Record<string, string> = {
@@ -141,7 +146,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{grupo.rotulo}</span>
         <Badge variant="secondary" className="shrink-0">{grupo.processos.length}</Badge>
         {grupo.diasMedio != null && (
-          <span className="shrink-0 text-xs text-muted-foreground">média {dias(grupo.diasMedio)}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">média {diasCurto(grupo.diasMedio)}</span>
         )}
         {grupo.valor > 0 && (
           <span className="flex shrink-0 flex-col items-end leading-tight">
@@ -227,7 +232,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
                 onClick={() => acoes.onAbrirFicha(p.processId)}
                 title="tempo neste marco"
               >
-                {dias(p.diasNoMarco)}
+                {diasCurto(p.diasNoMarco)}
               </button>
               <button
                 type="button"
@@ -384,7 +389,7 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tempo médio</div>
                 <div className="text-lg font-semibold">{dias(totais.mediaDiasNoMarco)}</div>
                 <div className="text-xs text-muted-foreground">
-                  no marco atual · idade média {totais.mediaIdadeDias != null ? `${Math.round(totais.mediaIdadeDias / 30)} meses` : '—'}
+                  no marco atual · idade média {dias(totais.mediaIdadeDias)}
                 </div>
               </div>
               <div className="rounded-lg border p-2.5">
@@ -398,6 +403,15 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                     : 'nenhum decidido com leitura de decisão ainda'}
                   {totais.semLeitura > 0 ? ` · ${totais.semLeitura} sem leitura de decisão` : ''}
                 </div>
+                {/* A perda é o complemento do sucesso, mas ler "88%" e calcular
+                    "12%" de cabeça é trabalho que a tela pode poupar — e é a
+                    perda, não o acerto, que dimensiona risco de carteira. */}
+                {totais.avaliaveis > 0 && totais.indiceSucesso != null && (
+                  <div className="mt-0.5 text-xs text-destructive">
+                    {100 - totais.indiceSucesso}% de perdas ·{' '}
+                    {totais.avaliaveis - totais.sucessos} de {totais.avaliaveis}
+                  </div>
+                )}
               </div>
               <div className="rounded-lg border p-2.5 sm:col-span-3">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Custo e rentabilidade</div>
