@@ -4,6 +4,8 @@ import { Button } from '@/components/ui/button';
 import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
+import { useProcessoMarcos } from '@/hooks/useProcessoMarcos';
+import { ReguaMarcosDoPop, type MarcoDaRegua } from '@/components/cases/ReguaMarcosDoPop';
 import { estacoesDoProcesso } from '@/lib/processStations';
 import InssMarcosProcesso from '@/components/cases/InssMarcosProcesso';
 import { ehNumeroCnj } from '@/lib/inssRegua';
@@ -280,6 +282,11 @@ export function ProcessMovementsTimeline({
 }) {
   const [escopo, setEscopo] = useState<'processo' | 'caso'>('processo');
   const { movements, loading, refetch } = useProcessMovements(processId, { escopo, caseId });
+  // Régua do POP (unificação de 27/08/2026): a MESMA régua que move a fase do
+  // POP e o percentual da ficha passa a desenhar a linha do trem daqui. As 12
+  // estações antigas ficam de fallback (processo sem POP com régua) e seguem
+  // valendo na "linha do caso", que junta processos conexos.
+  const regua = useProcessoMarcos(processId);
   const [onlyCurrent, setOnlyCurrent] = useState(true);
   /** Estação aberta no detalhe (null = diálogo fechado). */
   const [estacaoDetalhe, setEstacaoDetalhe] = useState<MarcoTipo | null>(null);
@@ -302,8 +309,33 @@ export function ProcessMovementsTimeline({
   // Re-busca quando o pai sinaliza um novo sync (ex.: "buscar no Escavador").
   // refreshKey inicia em 0 (falsy) → não dispara no mount, só após incremento.
   useEffect(() => {
-    if (refreshKey) refetch();
-  }, [refreshKey, refetch]);
+    if (refreshKey) {
+      refetch();
+      void regua.recarregar();
+    }
+  }, [refreshKey, refetch, regua.recarregar]);
+
+  // A régua do POP assume a linha do trem quando existe (processo com POP que
+  // tem pop_marcos). O escopo "caso" segue nas 12 estações: juntar processos
+  // conexos é conceito da régua antiga e cada processo tem a sua régua de POP.
+  const marcosDoPop = useMemo<MarcoDaRegua[]>(
+    () => regua.marcos.map(m => ({
+      chave: m.marco_chave,
+      rotulo: m.rotulo,
+      ordem: m.ordem,
+      estado: m.estado,
+      eventual: m.eventual,
+      terminal: m.terminal,
+      atravessaFases: m.atravessa_fases,
+      data: m.data_detectada,
+      fonte: m.fonte,
+      temProvaDocumental: m.tem_prova_documental,
+      atual: m.atual,
+      stageNome: m.stage_nome,
+    })),
+    [regua.marcos],
+  );
+  const usaReguaDoPop = escopo === 'processo' && regua.pronto && marcosDoPop.length > 0;
 
   // Status atual = marco mais AVANÇADO na ordem canônica, não o mais recente por
   // data. Movimentação de redistribuição ("Distribuído por sorteio" no 2º grau)
@@ -338,7 +370,7 @@ export function ProcessMovementsTimeline({
     return <InssMarcosProcesso processNumber={processNumber} />;
   }
 
-  if (movements.length === 0) {
+  if (movements.length === 0 && !usaReguaDoPop) {
     return (
       <div className="text-center py-6 text-muted-foreground">
         <Milestone className="h-6 w-6 mx-auto mb-1 opacity-50" />
@@ -366,12 +398,16 @@ export function ProcessMovementsTimeline({
           </Button>
         </div>
       )}
-      <MarcosTrainLine
-        movements={movements}
-        currentProcessId={processId}
-        estacoesLista={estacoesLista}
-        onEstacaoClick={setEstacaoDetalhe}
-      />
+      {usaReguaDoPop ? (
+        <ReguaMarcosDoPop marcos={marcosDoPop} />
+      ) : (
+        <MarcosTrainLine
+          movements={movements}
+          currentProcessId={processId}
+          estacoesLista={estacoesLista}
+          onEstacaoClick={setEstacaoDetalhe}
+        />
+      )}
 
       {/* Detalhe da estação: o teor publicado que produziu o marco. Sem isto,
           a régua diz "houve sentença" e não deixa ver o que a sentença disse. */}

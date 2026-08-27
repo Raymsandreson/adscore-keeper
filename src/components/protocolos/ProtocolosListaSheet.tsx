@@ -66,7 +66,7 @@ import { cn } from "@/lib/utils";
 
 // Só baixa quando alguém clica numa linha: esse painel puxa o LeadEditDialog e
 // o useLeads, e nenhum dos dois pesa no bundle da Visão Geral até lá.
-const ProtocoloLeadPainel = lazy(() => import("@/components/protocolos/ProtocoloLeadPainel"));
+const LeadPainelPorId = lazy(() => import("@/components/leads/LeadPainelPorId"));
 // Idem para o diálogo de vínculo, que arrasta as buscas de caso/lead/contato.
 const VincularCasoDialog = lazy(() => import("@/components/protocolos/VincularCasoDialog"));
 
@@ -212,7 +212,7 @@ export default function ProtocolosListaSheet({ open, onOpenChange }: Props) {
           pra empilhar o painel do lead por cima de um sheet aberto. */}
       {leadAlvo && (
         <Suspense fallback={null}>
-          <ProtocoloLeadPainel leadId={leadAlvo} onClose={fecharLead} />
+          <LeadPainelPorId leadId={leadAlvo} onClose={fecharLead} />
         </Suspense>
       )}
     </>

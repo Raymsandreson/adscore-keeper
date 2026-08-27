@@ -12,19 +12,21 @@
 //      (somar todas infla ~2,6x; a tela mostra a soma ingênua para comparação).
 //   4. Pagamentos — o que virou caixa de verdade.
 // =============================================================================
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, Calculator, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, XCircle,
+  AlertTriangle, Calculator, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, UserRound, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
-import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
+import { FONTE_LABEL, useProcessoMarcos } from '@/hooks/useProcessoMarcos';
+import { ReguaMarcosDoPop, type MarcoDaRegua } from '@/components/cases/ReguaMarcosDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { formatCnj, onlyDigits } from '@/lib/cnj';
 import { MudancasDaPecaDialog } from './MudancasDaPecaDialog';
+import { MarcoEvidenciaDialog, type AlvoEvidencia } from './MarcoEvidenciaDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
 import { melhorPeca, rotuloDaPeca, type AssuntoPeca, type PecaDoProcesso } from '@/lib/pecasDoProcesso';
@@ -253,17 +255,30 @@ interface Props {
   onClose: () => void;
   /** Abre a ficha completa do processo — o pai monta o sheet, para não aninhar. */
   onAbrirFicha: (processId: string) => void;
+  /**
+   * Abre a ficha do CASO (o lead). Mesma razão do `onAbrirFicha`: quem monta o
+   * painel é o pai. O processo é metade da história — a outra metade (contato,
+   * atividades, financeiro do cliente) mora no lead, e até aqui a única forma de
+   * chegar nele a partir da carteira era fechar tudo e procurar pelo nome.
+   */
+  onAbrirLead?: (leadId: string) => void;
 }
 
-export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props) {
+export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirLead }: Props) {
   const {
     marcos, marcoAtual, temAcordo, suspenso, clientes, pagamentos, duplicatas,
     totalConferido, totalAtualizado, totalPago, somaIngenua, alertas, loading, erro,
-    recarregar, leadDoProcesso, jcmIndice, jcmReferencia,
+    recarregar, leadDoProcesso, leadIdDoProcesso, jcmIndice, jcmReferencia,
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
   const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
+
+  // A régua completa do POP (mesma RPC da ficha e da fase automática): a seção
+  // "Marcos" desenha a linha inteira — prevista + detectada — e não só a trilha
+  // do que foi visto. A conta local do hook segue valendo como AUDITORIA do
+  // marco atual; a régua da RPC é o retrato oficial.
+  const regua = useProcessoMarcos(alvo?.processId ?? null);
 
   // O que muda com a peça recém-anexada. Sem este retorno, trocar documento é um
   // clique que não produz efeito visível — e o Raym leu isso como tela quebrada.
@@ -273,6 +288,8 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   }>({ aberto: false, carregando: false, erro: null, leitura: null, titulo: '' });
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
+  // Qual marco está sendo auditado — "por que este marco?" abre a evidência crua.
+  const [evidenciaDe, setEvidenciaDe] = useState<AlvoEvidencia | null>(null);
   // O `anexar` recarrega a lista; a ref dá acesso ao valor JÁ atualizado sem
   // esperar o próximo render.
   const pecasRef = useRef<PecaDoProcesso[]>([]);
@@ -322,6 +339,25 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
 
   pecasRef.current = pecas;
 
+  /** A régua da RPC no formato do componente unificado. */
+  const reguaItens = useMemo<MarcoDaRegua[]>(
+    () => regua.marcos.map(m => ({
+      chave: m.marco_chave,
+      rotulo: m.rotulo,
+      ordem: m.ordem,
+      estado: m.estado,
+      eventual: m.eventual,
+      terminal: m.terminal,
+      atravessaFases: m.atravessa_fases,
+      data: m.data_detectada,
+      fonte: m.fonte,
+      temProvaDocumental: m.tem_prova_documental,
+      atual: m.atual,
+      stageNome: m.stage_nome,
+    })),
+    [regua.marcos],
+  );
+
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
 
@@ -355,9 +391,25 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             className="gap-1.5"
             onClick={() => alvo && onAbrirFicha(alvo.processId)}
           >
-            <FileText className="h-3.5 w-3.5" /> Abrir ficha completa
+            <FileText className="h-3.5 w-3.5" /> Abrir ficha do processo
           </Button>
-          <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void recarregar()} disabled={loading}>
+          {/* O caso, não o processo. Só aparece quando existe lead vinculado e
+              quem montou a conferência sabe abrir um — botão morto seria pior. */}
+          {onAbrirLead && leadIdDoProcesso && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => onAbrirLead(leadIdDoProcesso)}
+            >
+              <UserRound className="h-3.5 w-3.5" /> Abrir o caso
+            </Button>
+          )}
+          <Button
+            size="sm" variant="ghost" className="gap-1.5"
+            onClick={() => { void recarregar(); void regua.recarregar(); }}
+            disabled={loading}
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Recarregar
           </Button>
         </div>
@@ -417,6 +469,15 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                       : <> · <span className="text-amber-600 dark:text-amber-400">sem prova documental</span></>}
                     {marcoAtual.estagioSugerido && <> · sugere estágio <span className="font-medium text-foreground">{ESTAGIO_LABEL[marcoAtual.estagioSugerido] || marcoAtual.estagioSugerido}</span></>}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setEvidenciaDe({
+                      processId: alvo!.processId, marcoChave: marcoAtual.chave, rotulo: marcoAtual.rotulo,
+                    })}
+                    className="mt-1 text-[11px] underline underline-offset-2 hover:text-foreground"
+                  >
+                    Por que este marco?
+                  </button>
                   <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
                     É o marco atual por ser o de maior ordem entre os que são FASE. Acordo e suspensão são
                     estado — atravessam fases e não disputam esta posição.
@@ -426,13 +487,74 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                 <p className="text-xs text-muted-foreground">Nenhum marco de fase detectado neste processo.</p>
               )}
 
-              {marcos.length > 0 && (
+              {regua.marcos.length > 0 && (
                 <div className="space-y-1 pt-1">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trilha detectada</div>
-                  {/* Do mais antigo para o mais novo: a trilha é a história do
-                      processo, e história se lê de cima para baixo. A `ordem` do
-                      marco no POP saiu da tela — é número interno da régua, não
-                      diz nada a quem lê, e competia com a data pela atenção. */}
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos</div>
+                  {/* A régua INTEIRA do POP — prevista + detectada — no mesmo
+                      layout e com a mesma fonte da aba Marcos da ficha e da
+                      fase automática (unificação de 27/08/2026). Degrau
+                      eventual só aparece se aconteceu; acordo e suspensão são
+                      estado e viram badge no topo. */}
+                  <ReguaMarcosDoPop
+                    marcos={reguaItens}
+                    onVerFonte={(m) => setEvidenciaDe({
+                      processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
+                    })}
+                    renderDireita={(m) => {
+                      if (m.estado !== 'atingido') return null;
+                      const p = melhorPeca(pecas, m.data, { assunto: 'MARCO' });
+                      // Sem peça casada, o que a linha precisa não é de um botão
+                      // morto: é do caminho para trazer a prova que falta.
+                      return (
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {p ? (
+                            <>
+                              <BotaoPeca pecas={pecas} data={m.data} assunto="MARCO" onAbrir={abrirPeca} />
+                              <BotaoOQueMuda peca={p} onVer={verOQueMuda} />
+                              <BotaoDesvincular peca={p} onDesvincular={ocultar} />
+                            </>
+                          ) : (
+                            <BotaoAnexar rotulo={m.rotulo} data={m.data} onAnexar={anexarEMostrar} />
+                          )}
+                          <AvisoOculta pecas={ocultas} data={m.data} onReexibir={reexibir} />
+                        </span>
+                      );
+                    }}
+                  />
+                  {marcos.some(m => m.semCadastroNoPop) && (
+                    <div className="space-y-0.5 pt-1">
+                      {/* Marco gravado no processo cuja chave não existe mais na
+                          régua deste POP: a carteira o ignora, mas escondê-lo
+                          apagaria evidência. */}
+                      {marcos.filter(m => m.semCadastroNoPop).map(m => (
+                        <div key={m.chave} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs">
+                          <Badge variant="outline" className="shrink-0 border-amber-500/50 text-[9px] text-amber-600 dark:text-amber-400">
+                            fora do POP
+                          </Badge>
+                          <span className="min-w-0 flex-1 truncate">{m.rotulo}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEvidenciaDe({
+                              processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
+                            })}
+                            className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                            title="Ver a evidência que gerou este marco"
+                          >
+                            {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
+                          </button>
+                          <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {marcos.length > 0 && regua.marcos.length === 0 && (
+                <div className="space-y-1 pt-1">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos detectados</div>
+                  {/* Fallback: POP sem régua cadastrada (a RPC volta vazia) — a
+                      lista antiga, do mais antigo para o mais novo. */}
                   {[...marcos]
                     .sort((a, b) => (a.dataDetectada ?? '').localeCompare(b.dataDetectada ?? ''))
                     .map((m, i, todos) => (
@@ -460,9 +582,20 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                           fora do POP
                         </Badge>
                       )}
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {/* A fonte deixa de ser rótulo e vira porta: clicar abre a
+                          linha que gerou o marco — o movimento do DataJud, a
+                          peça, a publicação. Era a única afirmação da tela que
+                          ninguém podia conferir. */}
+                      <button
+                        type="button"
+                        onClick={() => setEvidenciaDe({
+                          processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
+                        })}
+                        className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                        title="Ver a evidência que gerou este marco"
+                      >
                         {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
-                      </span>
+                      </button>
                       {(() => {
                         const p = melhorPeca(pecas, m.dataDetectada, { assunto: 'MARCO' });
                         // Sem peça casada, o que a linha precisa não é de um botão
@@ -745,6 +878,19 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
           if (r.ok) await recarregar();
           return r;
         }}
+      />
+
+      {/* A evidência do marco. Recebe as peças já carregadas para poder abrir a
+          prova no mesmo visualizador, sem uma segunda ida ao banco. */}
+      <MarcoEvidenciaDialog
+        alvo={evidenciaDe}
+        onClose={() => setEvidenciaDe(null)}
+        pecas={pecas}
+        onAbrirPeca={abrirPeca}
+        pecaDoMarco={evidenciaDe
+          ? melhorPeca(pecas, marcos.find(m => m.chave === evidenciaDe.marcoChave)?.dataDetectada ?? null,
+              { assunto: 'MARCO' })
+          : null}
       />
 
       <MediaLightbox
