@@ -45,6 +45,19 @@ export interface AcordoConciliado {
   dataAcordo: string | null;
   estagio: EstagioConciliacao;
   conciliacao: Conciliacao;
+  /**
+   * Sucumbencial que o banco tem lançado ACIMA da cota da própria parte — o que
+   * é impossível, porque o sucumbencial sai de dentro da cota. O número vem
+   * somado da view (`jm_partes` onde `hs > cota_parte_cjcm`).
+   *
+   * NÃO É FILTRO. Nada é descontado por causa disto, nem aqui nem na carteira:
+   * o valor continua somando como está no banco. Ele existe para o processo
+   * aparecer na fila de conferência com o motivo escrito e o caminho da peça
+   * certa. Ver a skill `conserto-estrutural-nao-pontual`.
+   */
+  hsSuspeito: number;
+  /** Quantas partes do processo estão nessa situação. */
+  partesSuspeitas: number;
 }
 
 export const ESTAGIO_LABEL: Record<EstagioConciliacao, string> = {
@@ -67,7 +80,7 @@ export function useConciliacaoAcordos(boardId: string | null | undefined) {
     try {
       await ensureExternalSession();
       const r = await externo.from('vw_jm_conciliacao_acordos')
-        .select('process_id, cnj, titulo, data_acordo, estagio, cliente, hc, hs, multa')
+        .select('process_id, cnj, titulo, data_acordo, estagio, cliente, hc, hs, multa, hs_suspeito, partes_suspeitas')
         .eq('board_id', boardId);
       if (r.error) throw new Error(r.error.message || 'Falha ao conciliar os acordos');
 
@@ -80,6 +93,8 @@ export function useConciliacaoAcordos(boardId: string | null | undefined) {
         conciliacao: conciliarAcordo({
           cliente: n(a.cliente), hc: n(a.hc), hs: n(a.hs), multa: n(a.multa),
         }),
+        hsSuspeito: n(a.hs_suspeito),
+        partesSuspeitas: n(a.partes_suspeitas),
       })));
     } catch (e) {
       setErro(String((e as Error)?.message || e));

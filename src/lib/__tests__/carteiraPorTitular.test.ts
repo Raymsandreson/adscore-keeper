@@ -32,7 +32,7 @@ describe('as três leituras do mesmo dado', () => {
   });
 });
 
-describe('o sucumbencial impossível fica fora do total', () => {
+describe('o sucumbencial impossível é DETECTADO, nunca descontado', () => {
   it('HS maior que a cota é suspeito — o juiz teria de arbitrar 70%', () => {
     expect(hsEhSuspeito({ hs: 9519047.50, cota: 100000 })).toBe(true);
   });
@@ -46,19 +46,20 @@ describe('o sucumbencial impossível fica fora do total', () => {
     expect(hsEhSuspeito({ hs: 0, cota: 70000 })).toBe(false);
   });
 
-  it('o suspeito sai do honorário e vai para o balde próprio', () => {
+  it('o suspeito SOMA normalmente — a carteira mostra o que está no banco', () => {
     const c = separarPorTitular([
       { processoCnj: 'X', cliente: 'A', cota: 100000, hc: 42857, hs: 9519047.50, estagio: 'CONDENACAO' },
     ]);
-    expect(c.escritorio.total).toBeCloseTo(42857, 2); // só o contratual
+    expect(c.escritorio.total).toBeCloseTo(42857 + 9519047.50, 2);
+    // e sai marcado, para a conciliação chamar o processo para conserto
     expect(c.hsSuspeito).toEqual({ valor: 9519047.5, partes: 1 });
   });
 
-  it('o suspeito também não infla o "juntos"', () => {
+  it('o "juntos" também não esconde nada', () => {
     const c = separarPorTitular([
       { processoCnj: 'X', cliente: 'A', cota: 100000, hc: 0, hs: 500000, estagio: 'CONDENACAO' },
     ]);
-    expect(c.juntos.total).toBeCloseTo(100000, 2);
+    expect(c.juntos.total).toBeCloseTo(600000, 2);
   });
 });
 

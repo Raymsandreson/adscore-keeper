@@ -9,20 +9,21 @@
  * respondem "quanto vale o processo". Três leituras do mesmo dado — e é por isso
  * que somar tudo num número só apaga as três.
  *
- * ── O SUCUMBENCIAL SUJO, medido antes de escrever este arquivo
+ * ── A CARTEIRA SOMA O QUE ESTÁ NO BANCO. SEM EXCEÇÃO.
  *
- *    `jm_partes.hs` traz R$ 46,3 milhões. Desses, **R$ 37,2 milhões estão em 258
- *    partes onde o HS é MAIOR que a cota do cliente** — impossível: o
- *    sucumbencial roda de 5% a 15% do bruto, e a cota é 70%.
+ *    A primeira versão deste arquivo excluía do total o sucumbencial
+ *    "implausível" (HS maior que a cota, R$ 37,2 mi em 258 partes). Errado, e o
+ *    Raym cortou na hora: filtrar na tela troca um número errado por outro
+ *    número errado, agora para menos, e ainda esconde da vista o processo que
+ *    precisa de conserto.
  *
- *    Um processo tem 7 partes e R$ 9.519.047,50 de HS numa delas. E o valor
- *    R$ 251.091,02 se repete em CNJs diferentes, cara de célula arrastada na
- *    importação da Tab. Aux.
+ *    O valor suspeito continua somando aqui. Quem age sobre ele é a
+ *    CONCILIAÇÃO: o processo entra na fila com o motivo, e dali sai o caminho
+ *    que já existe — anexar a peça certa, ler, corrigir `jm_valores`. Corrigido
+ *    o dado, este módulo acerta sozinho, sem trava nenhuma.
  *
- *    Por isso o HS implausível NÃO entra no total: ele vai para um balde
- *    próprio, contado e visível. Número que ninguém consegue explicar não deve
- *    somar — mas esconder também não resolve, porque o dinheiro existe na
- *    planilha e alguém precisa ir conferir.
+ *    A regra geral, que vale para todo este projeto: tela não conserta dado.
+ *    Tela mostra o dado e aponta o caminho do conserto.
  */
 
 export interface ParteDaCarteira {
@@ -49,7 +50,10 @@ export interface CarteiraPorTitular {
   escritorio: FatiaTitular;
   /** cliente + escritório: quanto o processo vale. */
   juntos: FatiaTitular;
-  /** HS que não pode estar certo — fora de todos os totais acima. */
+  /**
+   * HS que não pode estar certo — DENTRO dos totais acima, porque a carteira
+   * soma o banco. Viaja junto só para a conciliação saber a quem chamar.
+   */
   hsSuspeito: { valor: number; partes: number };
 }
 
@@ -64,8 +68,9 @@ const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
  * HS alcançar a cota, o juiz teria de arbitrar 70% — que não existe. Quando
  * passa, o dado está errado, não o caso.
  *
- * A trava é conservadora de propósito: só acusa o que é IMPOSSÍVEL, não o que é
- * apenas alto. Um HS de 15% continua entrando normalmente.
+ * NÃO É FILTRO: nada é excluído por causa disto. É DETECTOR — o que ele marca
+ * vira linha na conciliação, com o caminho para anexar a peça que traz o valor
+ * certo. Conservador de propósito: só acusa o IMPOSSÍVEL, não o alto.
  */
 export function hsEhSuspeito(p: { hs: number; cota: number }): boolean {
   return num(p.hs) > 0 && num(p.hs) > num(p.cota);
@@ -96,10 +101,11 @@ export function separarPorTitular(partes: ParteDaCarteira[]): CarteiraPorTitular
     const hs = num(p.hs);
     const estagio = p.estagio || 'SEM ESTÁGIO';
 
-    const suspeito = hsEhSuspeito({ hs, cota });
-    if (suspeito) { hsSuspeitoValor += hs; hsSuspeitoPartes += 1; }
+    // Contado, nunca descontado: o número entra no total e o processo entra na
+    // fila de conferência. Ver o cabeçalho.
+    if (hsEhSuspeito({ hs, cota })) { hsSuspeitoValor += hs; hsSuspeitoPartes += 1; }
 
-    const nosso = hc + (suspeito ? 0 : hs);
+    const nosso = hc + hs;
     doCliente.push({ estagio, valor: cota });
     doEscritorio.push({ estagio, valor: nosso });
     juntos.push({ estagio, valor: cota + nosso });

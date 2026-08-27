@@ -7,6 +7,14 @@
 // O SUCUMBENCIAL NÃO ENTRA na régua — varia de 5% a 15% conforme o juiz, pode
 // ser majorado no cumprimento de sentença e pode ser dispensado. Ele aparece
 // como observação, nunca como acusação.
+//
+// ── O SUCUMBENCIAL IMPOSSÍVEL
+//
+//    `hs > cota da própria parte` não pode existir: o sucumbencial sai de dentro
+//    da cota. Esses processos ENTRAM na fila de conferência com o motivo escrito
+//    e o caminho da peça que conserta — e o valor continua somando na carteira
+//    exatamente como está no banco. Tela não desconta dado; tela mostra o dado e
+//    aponta o conserto. Ver a skill `conserto-estrutural-nao-pontual`.
 // =============================================================================
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import { useConciliacaoAcordos, ESTAGIO_LABEL } from '@/hooks/useConciliacaoAcordos';
 import type { AcordoConciliado } from '@/hooks/useConciliacaoAcordos';
-import { ordenarPorDivergencia, totalizarConciliacao } from '@/lib/conciliacaoAcordo';
+import { totalizarConciliacao } from '@/lib/conciliacaoAcordo';
 import { formatCnj } from '@/lib/cnj';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
@@ -33,9 +41,9 @@ const dataBR = (d: string | null) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
 
-function Card({ titulo, valor, detalhe, tom }: {
+function Card({ titulo, valor, detalhe, tom, className = '' }: {
   titulo: string; valor: string; detalhe?: string;
-  tom: 'ok' | 'falta' | 'sobra' | 'neutro' | 'multa';
+  tom: 'ok' | 'falta' | 'sobra' | 'neutro' | 'multa'; className?: string;
 }) {
   const cores = {
     ok: 'border-emerald-500/40 bg-emerald-500/5',
@@ -45,7 +53,7 @@ function Card({ titulo, valor, detalhe, tom }: {
     neutro: 'border-border bg-muted/30',
   }[tom];
   return (
-    <div className={`rounded-lg border p-3 ${cores}`}>
+    <div className={`rounded-lg border p-3 ${cores} ${className}`}>
       <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{titulo}</div>
       <div className="mt-0.5 text-lg font-semibold leading-tight">{valor}</div>
       {detalhe && <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{detalhe}</div>}
@@ -105,10 +113,19 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
   // Três trabalhos diferentes, três seções. Misturados, os "sem cota" — que são
   // maioria e mostram R$ 0,00 de diferença — empurram para baixo justamente os
   // que pedem ação.
-  const divergentes = ordenarPorDivergencia(
-    acordos.filter(a => a.conciliacao.situacao === 'HC_FALTANDO' || a.conciliacao.situacao === 'HC_SOBRANDO'));
-  const semCota = acordos.filter(a => a.conciliacao.situacao === 'SEM_CLIENTE');
-  const conferem = acordos.filter(a => a.conciliacao.situacao === 'OK');
+  //
+  // O sucumbencial maior que a cota da parte entra aqui junto com a divergência
+  // de contratual: é um dado impossível, e o lugar dele é a fila de conserto —
+  // não um filtro que sumiria com o valor da carteira.
+  const precisaConferir = (a: AcordoConciliado) =>
+    a.conciliacao.situacao === 'HC_FALTANDO' || a.conciliacao.situacao === 'HC_SOBRANDO'
+    || a.hsSuspeito > 0;
+  const peso = (a: AcordoConciliado) => Math.max(Math.abs(a.conciliacao.faltaHc), a.hsSuspeito);
+  const divergentes = [...acordos.filter(precisaConferir)].sort((a, b) => peso(b) - peso(a));
+  const semCota = acordos.filter(a => a.conciliacao.situacao === 'SEM_CLIENTE' && !precisaConferir(a));
+  const conferem = acordos.filter(a => a.conciliacao.situacao === 'OK' && !precisaConferir(a));
+  const hsSuspeitoTotal = acordos.reduce((soma, a) => soma + a.hsSuspeito, 0);
+  const processosSuspeitos = acordos.filter(a => a.hsSuspeito > 0).length;
   const [abrirSemCota, setAbrirSemCota] = useState(false);
   const [abrirConferem, setAbrirConferem] = useState(false);
 
@@ -173,6 +190,21 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
           </div>
         )}
 
+        {a.hsSuspeito > 0 && (
+          <div className="mt-1.5 rounded border border-amber-500/40 bg-amber-500/5 px-2 py-1.5 text-[11px] leading-snug">
+            <span className="font-medium text-amber-700 dark:text-amber-400">
+              Sucumbencial maior que a cota em {a.partesSuspeitas}{' '}
+              {a.partesSuspeitas === 1 ? 'parte' : 'partes'} — {brl(a.hsSuspeito)}.
+            </span>{' '}
+            Isso não pode acontecer: o sucumbencial sai de dentro da cota da parte, então algum
+            lançamento está no titular errado ou no valor errado. O número{' '}
+            <strong>continua somando na carteira</strong> como está no banco. Para consertar de
+            verdade, anexe aqui a peça que traz o valor por parte — planilha de liquidação
+            homologada, termo de acordo ou cálculo da execução — e a leitura grava os valores
+            certos por cima destes.
+          </div>
+        )}
+
         {c.multa > 0 && (
           <div className="mt-1 text-[11px] text-sky-700 dark:text-sky-400">
             Multa por descumprimento: {brl(c.multa)} — devida, mas fora da conta do acordo.
@@ -218,6 +250,15 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
                 detalhe="lançado a mais que os 30%" tom="sobra" />
               <Card titulo="Multa por descumprimento" valor={brl(t.multa)}
                 detalhe="devida, mas fora da conta do acordo" tom="multa" />
+              {hsSuspeitoTotal > 0 && (
+                <Card
+                  className="col-span-2"
+                  titulo="Sucumbencial maior que a cota da parte"
+                  valor={brl(hsSuspeitoTotal)}
+                  detalhe={`${processosSuspeitos} ${processosSuspeitos === 1 ? 'processo' : 'processos'} — impossível, mas somando na carteira do jeito que está no banco. Abra cada um e anexe a peça de valor por parte.`}
+                  tom="sobra"
+                />
+              )}
             </div>
 
             <p className="text-[11px] leading-snug text-muted-foreground">
@@ -227,7 +268,10 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
               traz. A régua é o contratual de <strong>30%</strong>: sobre o bruto, o cliente fica com 70% e o
               escritório com 30%, então o honorário devido é a cota do cliente × 3/7. O{' '}
               <strong>sucumbencial não entra na régua</strong> — ele varia de 5% a 15% conforme o juiz
-              arbitrou, pode ser majorado no cumprimento de sentença e pode ser dispensado.
+              arbitrou, pode ser majorado no cumprimento de sentença e pode ser dispensado. O que
+              o sucumbencial <strong>não pode</strong> é passar da cota da própria parte — quando
+              passa, o processo entra na fila com o motivo escrito e o valor segue somando na
+              carteira até a peça certa corrigir o banco.
             </p>
 
             <Secao titulo="Precisam de conferência" itens={divergentes} render={linha} aberta setAberta={() => {}} />
