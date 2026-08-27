@@ -52,7 +52,7 @@ export interface CarteiraPorTitular {
   juntos: FatiaTitular;
   /**
    * HS que não pode estar certo — DENTRO dos totais acima, porque a carteira
-   * soma o banco. Viaja junto só para a conciliação saber a quem chamar.
+   * soma o banco. Viaja junto só para a conferência saber a quem chamar.
    */
   hsSuspeito: { valor: number; partes: number };
 }
@@ -69,7 +69,7 @@ const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? n
  * passa, o dado está errado, não o caso.
  *
  * NÃO É FILTRO: nada é excluído por causa disto. É DETECTOR — o que ele marca
- * vira linha na conciliação, com o caminho para anexar a peça que traz o valor
+ * vira linha na conferência, com o caminho para anexar a peça que traz o valor
  * certo. Conservador de propósito: só acusa o IMPOSSÍVEL, não o alto.
  */
 export function hsEhSuspeito(p: { hs: number; cota: number }): boolean {

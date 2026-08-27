@@ -52,7 +52,7 @@ Já está construída. Não invente outra:
 
 | Etapa | Onde |
 | --- | --- |
-| Fila de conferência | `vw_jm_conciliacao_acordos` → `useConciliacaoAcordos` → `PopConciliacaoSheet` |
+| Fila de conferência | `vw_jm_conciliacao_acordos` → `useConferenciaAcordos` → `PopConferenciaSheet` |
 | Abrir o processo | `ProcessoConferenciaSheet` (trilha de marcos, cronológica) |
 | Anexar / substituir a peça | `BotaoAnexar` / `BotaoDesvincular` → `usePecasDoProcesso.anexar` / `.ocultar` |
 | Ler a peça | `rpc('jm_ler_documento')` → `jm_documento_leitura` |

@@ -1,5 +1,5 @@
 /**
- * Conciliação de acordo — o que foi lançado bate com o que o acordo diz?
+ * Conferência de acordo — o que foi lançado bate com o que o acordo diz?
  *
  * A planilha "CONTROLE FINANCEIRO GRUPO PRUDÊNCIO" foi importada uma vez, à mão,
  * e nunca mais sincronizada. Ela é a única fonte de parcela para 39 dos 353
@@ -31,7 +31,7 @@
  *    como parcela extra com "Multa pelo descumprimento" na observação. São
  *    R$ 66.000 no caso 88 — e foi isso que fez a planilha somar R$ 684.561,39
  *    contra os R$ 625.000 do acordo. Entra na carteira (decisão do Raym), mas
- *    fora da conciliação: comparar acordo com acordo, multa à parte.
+ *    fora da conferência: comparar acordo com acordo, multa à parte.
  */
 
 /** Percentual contratual padrão. Negociação diferente é rara e vira exceção manual. */
@@ -69,9 +69,9 @@ export interface LancadoNoAcordo {
   multa?: number | null;
 }
 
-export type SituacaoConciliacao = 'OK' | 'HC_FALTANDO' | 'HC_SOBRANDO' | 'SEM_CLIENTE';
+export type SituacaoConferencia = 'OK' | 'HC_FALTANDO' | 'HC_SOBRANDO' | 'SEM_CLIENTE';
 
-export interface Conciliacao {
+export interface Conferencia {
   cliente: number;
   hc: number;
   hs: number;
@@ -91,21 +91,21 @@ export interface Conciliacao {
   acordoEsperado: number;
   /** O que a planilha realmente traz, sem a multa. */
   acordoLancado: number;
-  situacao: SituacaoConciliacao;
+  situacao: SituacaoConferencia;
 }
 
 /** Centavos. O `+ 0` mata o zero NEGATIVO, que a tela mostraria como "-R$ 0,00". */
 const arred = (n: number) => Math.round(n * 100) / 100 + 0;
 const num = (v: number | null | undefined) => (Number.isFinite(Number(v)) ? Number(v) : 0);
 
-export function conciliarAcordo(l: LancadoNoAcordo): Conciliacao {
+export function conferirAcordo(l: LancadoNoAcordo): Conferencia {
   const cliente = arred(num(l.cliente));
   const hc = arred(num(l.hc));
   const hs = arred(num(l.hs));
   const multa = arred(num(l.multa));
 
   // Sem cota de cliente não há régua: 30% de quê? Devolver zero fingiria
-  // conciliação; a tela precisa saber que este caso não pode ser conferido.
+  // conferência; a tela precisa saber que este caso não pode ser conferido.
   if (cliente <= 0) {
     return {
       cliente, hc, hs, multa, bruto: 0, hcEsperado: 0,
@@ -134,11 +134,11 @@ export function conciliarAcordo(l: LancadoNoAcordo): Conciliacao {
 }
 
 /** Ordena pelo que mais dói primeiro: maior divergência em reais, sem sinal. */
-export function ordenarPorDivergencia<T extends { conciliacao: Conciliacao }>(itens: T[]): T[] {
-  return [...itens].sort((a, b) => Math.abs(b.conciliacao.faltaHc) - Math.abs(a.conciliacao.faltaHc));
+export function ordenarPorDivergencia<T extends { conferencia: Conferencia }>(itens: T[]): T[] {
+  return [...itens].sort((a, b) => Math.abs(b.conferencia.faltaHc) - Math.abs(a.conferencia.faltaHc));
 }
 
-export function totalizarConciliacao(cs: Conciliacao[]) {
+export function totalizarConferencia(cs: Conferencia[]) {
   let faltando = 0, sobrando = 0, ok = 0, semCliente = 0, multa = 0;
   for (const c of cs) {
     multa += c.multa;

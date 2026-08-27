@@ -74,8 +74,8 @@ interface BoardCardProps {
   onOpenProcesses?: () => void;
   /** Carteira do POP (marcos × dinheiro × tempo) — só faz sentido em POP. */
   onOpenCarteira?: () => void;
-  /** Conciliação dos acordos do POP. Ausente = o tipo de quadro não tem acordo. */
-  onOpenConciliacao?: () => void;
+  /** Conferência dos acordos do POP. Ausente = o tipo de quadro não tem acordo. */
+  onOpenConferencia?: () => void;
   processCount?: number;
   onDelete?: () => void;
   /** Quadro arquivado: card esmaecido, badge "Arquivado" e ação de desarquivar. */
@@ -95,7 +95,7 @@ export function BoardCard({
   onEdit,
   onOpenProcesses,
   onOpenCarteira,
-  onOpenConciliacao,
+  onOpenConferencia,
   processCount = 0,
   onDelete,
   archived = false,
@@ -313,16 +313,16 @@ export function BoardCard({
           Carteira
         </Button>
       )}
-      {onOpenConciliacao && (
+      {onOpenConferencia && (
         <Button
           variant="outline"
           size="sm"
           className="text-xs"
-          onClick={onOpenConciliacao}
+          onClick={onOpenConferencia}
           title="Conferir se o honorário lançado bate com os 30% do contrato em cada acordo homologado"
         >
           <Scale className="h-3.5 w-3.5 mr-1.5" />
-          Conciliar
+          Conferir
         </Button>
       )}
       <Button variant="outline" size="sm" className="text-xs" onClick={onOpenTeam}>

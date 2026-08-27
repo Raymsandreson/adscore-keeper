@@ -1,5 +1,5 @@
 // =============================================================================
-// Conciliação de valores de um POP — "o que foi lançado bate com o que os autos
+// Conferência de valores de um POP — "o que foi lançado bate com o que os autos
 // dizem?".
 //
 // Entram acordo homologado, liquidação, trânsito em julgado e execução iniciada.
@@ -8,8 +8,19 @@
 // peça restrita, que o Escavador raramente traz. São justamente os processos
 // onde a carteira tem mais chance de estar errada e ninguém sabe.
 //
-// A régua mora em `conciliacaoAcordo.ts` e é conferida contra o termo de acordo
+// A régua mora em `conferenciaAcordo.ts` e é conferida contra o termo de acordo
 // real. Aqui só se lê o dado já somado.
+//
+// ── O NOME
+//
+//    Isto se chama CONFERÊNCIA, não conciliação (Raym, 27/08/2026). Neste
+//    sistema "conciliação" já é outras duas coisas — a conciliação bancária do
+//    Open Finance (`useConciliacaoOpenFinance`) e a audiência de conciliação —
+//    então o mesmo nome cobria três assuntos diferentes.
+//
+//    A view no banco ainda se chama `vw_jm_conciliacao_acordos`: renomear
+//    objeto em produção é DDL e depende de aval. Só o nome do objeto ficou
+//    para trás; todo o código e toda a tela dizem conferência.
 //
 // ── POR QUE A SOMA VEM DO BANCO
 //
@@ -28,7 +39,7 @@
 // =============================================================================
 import { useCallback, useEffect, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
-import { conciliarAcordo, type Conciliacao } from '@/lib/conciliacaoAcordo';
+import { conferirAcordo, type Conferencia } from '@/lib/conferenciaAcordo';
 
 interface Consulta { data: Record<string, unknown>[] | null; error: { message?: string } | null }
 const externo = db as unknown as {
@@ -36,15 +47,15 @@ const externo = db as unknown as {
 };
 
 /** O estágio mais avançado entre os que pedem conferência de valor. */
-export type EstagioConciliacao = 'EXECUCAO' | 'TRANSITO' | 'ACORDO' | 'LIQUIDACAO';
+export type EstagioConferencia = 'EXECUCAO' | 'TRANSITO' | 'ACORDO' | 'LIQUIDACAO';
 
-export interface AcordoConciliado {
+export interface AcordoConferido {
   processId: string;
   cnj: string;
   titulo: string | null;
   dataAcordo: string | null;
-  estagio: EstagioConciliacao;
-  conciliacao: Conciliacao;
+  estagio: EstagioConferencia;
+  conferencia: Conferencia;
   /**
    * Sucumbencial que o banco tem lançado ACIMA da cota da própria parte — o que
    * é impossível, porque o sucumbencial sai de dentro da cota. O número vem
@@ -60,7 +71,7 @@ export interface AcordoConciliado {
   partesSuspeitas: number;
 }
 
-export const ESTAGIO_LABEL: Record<EstagioConciliacao, string> = {
+export const ESTAGIO_LABEL: Record<EstagioConferencia, string> = {
   EXECUCAO: 'em execução',
   TRANSITO: 'transitado em julgado',
   ACORDO: 'acordo homologado',
@@ -69,8 +80,8 @@ export const ESTAGIO_LABEL: Record<EstagioConciliacao, string> = {
 
 const n = (v: unknown) => { const x = Number(v); return Number.isFinite(x) ? x : 0; };
 
-export function useConciliacaoAcordos(boardId: string | null | undefined) {
-  const [acordos, setAcordos] = useState<AcordoConciliado[]>([]);
+export function useConferenciaAcordos(boardId: string | null | undefined) {
+  const [acordos, setAcordos] = useState<AcordoConferido[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -89,8 +100,8 @@ export function useConciliacaoAcordos(boardId: string | null | undefined) {
         cnj: String(a.cnj ?? ''),
         titulo: (a.titulo as string) ?? null,
         dataAcordo: (a.data_acordo as string) ?? null,
-        estagio: (a.estagio as EstagioConciliacao) ?? 'ACORDO',
-        conciliacao: conciliarAcordo({
+        estagio: (a.estagio as EstagioConferencia) ?? 'ACORDO',
+        conferencia: conferirAcordo({
           cliente: n(a.cliente), hc: n(a.hc), hs: n(a.hs), multa: n(a.multa),
         }),
         hsSuspeito: n(a.hs_suspeito),

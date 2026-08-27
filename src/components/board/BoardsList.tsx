@@ -16,7 +16,7 @@ import { useKanbanBoards, isBoardArchived } from "@/hooks/useKanbanBoards";
 import { useConfirmDelete } from "@/hooks/useConfirmDelete";
 import { WorkflowBuilder } from "@/components/workflow/WorkflowBuilder";
 import { PopCarteiraSheet } from "@/components/workflow/PopCarteiraSheet";
-import { PopConciliacaoSheet } from "@/components/workflow/PopConciliacaoSheet";
+import { PopConferenciaSheet } from "@/components/workflow/PopConferenciaSheet";
 import { Wallet } from "lucide-react";
 import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 import { BoardCard, type BoardType } from "@/components/board/BoardCard";
@@ -107,7 +107,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
   const [processesBoard, setProcessesBoard] = useState<{ id: string; name: string } | null>(null);
   // Carteira do POP: visão geral (marcos × dinheiro × tempo) em Sheet.
   const [carteiraBoard, setCarteiraBoard] = useState<{ id: string; name: string } | null>(null);
-  const [conciliacaoBoard, setConciliacaoBoard] = useState<{ id: string; name: string } | null>(null);
+  const [conferenciaBoard, setConferenciaBoard] = useState<{ id: string; name: string } | null>(null);
   const [boardProcesses, setBoardProcesses] = useState<LeadProcess[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<LeadProcess | null>(null);
@@ -369,8 +369,8 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 onOpenCarteira={boardType === "workflow"
                   ? () => setCarteiraBoard({ id: board.id, name: board.name })
                   : undefined}
-                onOpenConciliacao={boardType === "workflow"
-                  ? () => setConciliacaoBoard({ id: board.id, name: board.name })
+                onOpenConferencia={boardType === "workflow"
+                  ? () => setConferenciaBoard({ id: board.id, name: board.name })
                   : undefined}
                 processCount={processCounts?.[board.id] || 0}
                 onDelete={() => handleDelete({ id: board.id, name: board.name })}
@@ -452,9 +452,9 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
         />
       )}
 
-      <PopConciliacaoSheet
-        board={conciliacaoBoard}
-        onOpenChange={(o) => { if (!o) setConciliacaoBoard(null); }}
+      <PopConferenciaSheet
+        board={conferenciaBoard}
+        onOpenChange={(o) => { if (!o) setConferenciaBoard(null); }}
       />
 
       <PopCarteiraSheet

@@ -51,7 +51,7 @@ describe('o sucumbencial impossível é DETECTADO, nunca descontado', () => {
       { processoCnj: 'X', cliente: 'A', cota: 100000, hc: 42857, hs: 9519047.50, estagio: 'CONDENACAO' },
     ]);
     expect(c.escritorio.total).toBeCloseTo(42857 + 9519047.50, 2);
-    // e sai marcado, para a conciliação chamar o processo para conserto
+    // e sai marcado, para a conferência chamar o processo para conserto
     expect(c.hsSuspeito).toEqual({ valor: 9519047.5, partes: 1 });
   });
 

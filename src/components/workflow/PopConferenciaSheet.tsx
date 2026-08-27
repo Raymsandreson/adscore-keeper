@@ -1,5 +1,5 @@
 // =============================================================================
-// Conciliação dos acordos do POP — "o que foi lançado bate com o acordo?".
+// Conferência dos acordos do POP — "o que foi lançado bate com o acordo?".
 //
 // Abre por cima da lista de POPs (Sheet lateral; fechar devolve onde estava).
 //
@@ -21,9 +21,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
-import { useConciliacaoAcordos, ESTAGIO_LABEL } from '@/hooks/useConciliacaoAcordos';
-import type { AcordoConciliado } from '@/hooks/useConciliacaoAcordos';
-import { totalizarConciliacao } from '@/lib/conciliacaoAcordo';
+import { useConferenciaAcordos, ESTAGIO_LABEL } from '@/hooks/useConferenciaAcordos';
+import type { AcordoConferido } from '@/hooks/useConferenciaAcordos';
+import { totalizarConferencia } from '@/lib/conferenciaAcordo';
 import { formatCnj } from '@/lib/cnj';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
@@ -63,12 +63,12 @@ function Card({ titulo, valor, detalhe, tom, className = '' }: {
 
 /** Grupo recolhível. O que pede ação fica aberto; o resto se abre por escolha. */
 function Secao({ titulo, itens, render, aberta, setAberta }: {
-  titulo: string; itens: AcordoConciliado[];
-  render: (a: AcordoConciliado) => React.ReactNode;
+  titulo: string; itens: AcordoConferido[];
+  render: (a: AcordoConferido) => React.ReactNode;
   aberta: boolean; setAberta: (v: boolean) => void;
 }) {
   if (itens.length === 0) return null;
-  const fixa = titulo.startsWith('Precisam');
+  const fixa = titulo.startsWith('Divergem');
   return (
     <section className="space-y-2">
       <button
@@ -90,10 +90,10 @@ interface Props {
   onOpenChange: (aberto: boolean) => void;
 }
 
-export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
-  const { acordos, loading, erro, recarregar } = useConciliacaoAcordos(board?.id ?? null);
+export function PopConferenciaSheet({ board, onOpenChange }: Props) {
+  const { acordos, loading, erro, recarregar } = useConferenciaAcordos(board?.id ?? null);
   // Conferência e ficha são IRMÃS deste sheet, não filhas: empilhar por cima é o
-  // padrão da casa, e o fechar devolve exatamente para a conciliação.
+  // padrão da casa, e o fechar devolve exatamente para a conferência.
   const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
   const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
 
@@ -108,7 +108,7 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
       toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
     }
   };
-  const t = totalizarConciliacao(acordos.map(a => a.conciliacao));
+  const t = totalizarConferencia(acordos.map(a => a.conferencia));
 
   // Três trabalhos diferentes, três seções. Misturados, os "sem cota" — que são
   // maioria e mostram R$ 0,00 de diferença — empurram para baixo justamente os
@@ -117,20 +117,20 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
   // O sucumbencial maior que a cota da parte entra aqui junto com a divergência
   // de contratual: é um dado impossível, e o lugar dele é a fila de conserto —
   // não um filtro que sumiria com o valor da carteira.
-  const precisaConferir = (a: AcordoConciliado) =>
-    a.conciliacao.situacao === 'HC_FALTANDO' || a.conciliacao.situacao === 'HC_SOBRANDO'
+  const precisaConferir = (a: AcordoConferido) =>
+    a.conferencia.situacao === 'HC_FALTANDO' || a.conferencia.situacao === 'HC_SOBRANDO'
     || a.hsSuspeito > 0;
-  const peso = (a: AcordoConciliado) => Math.max(Math.abs(a.conciliacao.faltaHc), a.hsSuspeito);
+  const peso = (a: AcordoConferido) => Math.max(Math.abs(a.conferencia.faltaHc), a.hsSuspeito);
   const divergentes = [...acordos.filter(precisaConferir)].sort((a, b) => peso(b) - peso(a));
-  const semCota = acordos.filter(a => a.conciliacao.situacao === 'SEM_CLIENTE' && !precisaConferir(a));
-  const conferem = acordos.filter(a => a.conciliacao.situacao === 'OK' && !precisaConferir(a));
+  const semCota = acordos.filter(a => a.conferencia.situacao === 'SEM_CLIENTE' && !precisaConferir(a));
+  const conferem = acordos.filter(a => a.conferencia.situacao === 'OK' && !precisaConferir(a));
   const hsSuspeitoTotal = acordos.reduce((soma, a) => soma + a.hsSuspeito, 0);
   const processosSuspeitos = acordos.filter(a => a.hsSuspeito > 0).length;
   const [abrirSemCota, setAbrirSemCota] = useState(false);
   const [abrirConferem, setAbrirConferem] = useState(false);
 
-  const linha = (a: AcordoConciliado) => {
-    const c = a.conciliacao;
+  const linha = (a: AcordoConferido) => {
+    const c = a.conferencia;
     const Icone = c.situacao === 'OK' ? CheckCircle2
       : c.situacao === 'SEM_CLIENTE' ? HelpCircle
       : c.faltaHc > 0 ? TrendingDown : TrendingUp;
@@ -227,7 +227,7 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
     <Sheet open={!!board} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="space-y-1">
-          <SheetTitle className="text-base">Conciliação de valores</SheetTitle>
+          <SheetTitle className="text-base">Conferência de valores</SheetTitle>
           <p className="text-xs text-muted-foreground">{board?.name}</p>
         </SheetHeader>
 
@@ -242,8 +242,8 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
         ) : (
           <>
             <div className="grid grid-cols-2 gap-2">
-              <Card titulo="Processos conferidos" valor={String(t.acordos)}
-                detalhe={`${t.ok} batem exatos${t.semCliente ? ` · ${t.semCliente} sem cota` : ''}`} tom="neutro" />
+              <Card titulo="Processos na fila" valor={String(t.acordos)}
+                detalhe={`${t.ok} conferem exatos${t.semCliente ? ` · ${t.semCliente} sem cota` : ''}`} tom="neutro" />
               <Card titulo="Honorário faltando" valor={brl(t.hcFaltando)}
                 detalhe="lançado a menos que os 30% do contrato" tom="falta" />
               <Card titulo="Honorário sobrando" valor={brl(t.hcSobrando)}
@@ -274,7 +274,7 @@ export function PopConciliacaoSheet({ board, onOpenChange }: Props) {
               carteira até a peça certa corrigir o banco.
             </p>
 
-            <Secao titulo="Precisam de conferência" itens={divergentes} render={linha} aberta setAberta={() => {}} />
+            <Secao titulo="Divergem — anexar a peça certa" itens={divergentes} render={linha} aberta setAberta={() => {}} />
             <Secao titulo="Sem cota lançada — não dá para conferir" itens={semCota} render={linha}
                    aberta={abrirSemCota} setAberta={setAbrirSemCota} />
             <Secao titulo="Conferem" itens={conferem} render={linha}
