@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { classifyResultado, extrairPontosPendentes } from '../lib/inss-despacho';
 import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
+import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
   classificarMensagemCliente,
   dentroDaJanela,
@@ -160,10 +161,30 @@ export const handler: RequestHandler = async (req, res) => {
     // O nome do lead é o que diz a matéria ("Família 400" e "CASO 146" são
     // trabalhistas; "PREV 1800" é previdenciário) — ver lib/inss-roteamento.
     let leadName: string | null = null;
+    let victimName: string | null = null;
+    let groupName: string | null = null;
     if (leadId) {
       const { data: lead } = await supabase
-        .from('leads').select('lead_name').eq('id', leadId).maybeSingle();
+        .from('leads').select('lead_name, victim_name').eq('id', leadId).maybeSingle();
       leadName = lead?.lead_name || null;
+      victimName = (lead as any)?.victim_name || null;
+      const { data: grupos } = await supabase
+        .from('lead_whatsapp_groups').select('group_name').eq('lead_id', leadId);
+      groupName = (grupos || []).map((g: any) => g.group_name).filter(Boolean).join(' ') || null;
+    }
+
+    // O vínculo protocolo→lead é palpite de robô. Antes de escrever qualquer
+    // coisa, confere se o segurado do e-mail é mesmo a pessoa desse lead — ver
+    // lib/inss-nome-confere.
+    const conferencia = conferirNomeDoSegurado(proc.nome_segurado, {
+      victimName,
+      leadName,
+      groupName,
+    });
+    if (conferencia.veredito === 'conflito') {
+      console.warn(
+        `[notify-inss-update] vinculo suspeito req=${proc.requerimento_number}: ${conferencia.motivo}`,
+      );
     }
     const dono = donoDaAtualizacaoInss({ status: latest.to_status, leadName });
 
@@ -178,6 +199,9 @@ export const handler: RequestHandler = async (req, res) => {
       pontosPendentes ? `\n📋 PENDÊNCIAS APONTADAS PELO INSS:\n${pontosPendentes}` : '',
       `\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}`,
       caseInfo ? `\nCaso: ${caseInfo.case_number || ''} — ${caseInfo.title || ''}` : '',
+      conferencia.veredito === 'conflito'
+        ? `\n⚠️ VÍNCULO SUSPEITO — a mensagem ao cliente foi BLOQUEADA.\n${conferencia.motivo}.\nConfira se este requerimento é mesmo deste lead antes de responder. Se não for, desvincule o protocolo na tela de Protocolos.`
+        : '',
     ].filter(Boolean).join('\n');
 
     // Vínculo com caso e processo: até 17/08/2026 o insert levava só `lead_id`,
@@ -224,7 +248,15 @@ export const handler: RequestHandler = async (req, res) => {
     let humanText: string | null = null;
 
     if (tipoMensagem) {
-      if (!eventoElegivelParaZap(latest.email_received_at)) {
+      if (conferencia.veredito === 'conflito') {
+        // Nome do segurado briga com o do lead: a mensagem iria para o grupo de
+        // outro cliente. Fica registrada para conferência humana, não sai.
+        zapPatch = {
+          zap_status: 'suspeito',
+          zap_tipo: tipoMensagem,
+          zap_erro: conferencia.motivo,
+        };
+      } else if (!eventoElegivelParaZap(latest.email_received_at)) {
         // Ativação sem retroatividade (pedido do usuário, 26/08/2026): evento
         // anterior ao corte nunca vira mensagem, mesmo que só agora tenha sido
         // processado. São 1.480 eventos antigos nunca notificados no histórico.

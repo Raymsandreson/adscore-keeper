@@ -394,7 +394,9 @@ export const handler: RequestHandler = async (req, res) => {
 
       const key = sourceKeyOf(imageUrl);
       // Mesma foto de antes e o arquivo já está no bucket → só renova a data.
-      if (key && prev?.source_key === key && prev?.storage_path) {
+      // `refresh` pula o atalho de propósito: é o único jeito de reenviar um
+      // arquivo antigo (ex.: os que subiram sem `cacheControl`).
+      if (!refresh && key && prev?.source_key === key && prev?.storage_path) {
         const row = { ...prev, checked_at: new Date().toISOString(), updated_at: new Date().toISOString() };
         await ext.from('whatsapp_avatars').upsert(row, { onConflict: 'instance_name,phone' });
         cache.set(target, row as AvatarRow);
@@ -436,7 +438,9 @@ export const handler: RequestHandler = async (req, res) => {
       const path = storagePath(instanceKey, target);
       const { error: upErr } = await ext.storage
         .from(BUCKET)
-        .upload(path, webp, { contentType: 'image/webp', upsert: true });
+        // cacheControl: sem ele o Storage responde sem `Cache-Control` e o navegador
+        // rebaixa a mesma foto a cada abertura. 7 dias casa com o TTL do cache.
+        .upload(path, webp, { contentType: 'image/webp', upsert: true, cacheControl: '604800' });
       if (upErr) {
         console.warn(`[get-whatsapp-avatars] upload falhou ${maskPhone(target)}: ${upErr.message}`);
         failed++;

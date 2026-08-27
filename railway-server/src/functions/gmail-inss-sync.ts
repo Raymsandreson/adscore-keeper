@@ -451,11 +451,13 @@ export const handler: RequestHandler = async (req, res) => {
         let processId: string;
         let fromStatus: string | null = null;
         let caseId: string | null = null;
+        let leadId: string | null = null;
 
         if (existingProc) {
           processId = existingProc.id;
           fromStatus = existingProc.current_status || null;
           caseId = existingProc.case_id || null;
+          leadId = existingProc.lead_id || null;
 
           await supabase
             .from('inss_admin_processes')
@@ -539,13 +541,20 @@ export const handler: RequestHandler = async (req, res) => {
                 match,
               });
               caseId = applied.caseId || null;
+              leadId = applied.leadId || leadId;
             }
           } catch (mErr) {
             console.warn('[gmail-inss-sync] auto-match failed:', mErr);
           }
         }
 
-        if (caseId && allowNotify) {
+        // Basta LEAD para notificar. Até 27/08/2026 a condição era só `caseId`,
+        // herdada de quando o notify-inss-update exigia caso — o mesmo gate que
+        // já tinha sido corrigido no match-inss-orphans em 26/08, mas aqui
+        // passou batido. Requerimento casado só com lead (o auto-match acha o
+        // lead e o caso não existe) ficava sem atividade e sem mensagem: 524
+        // eventos em 244 processos nesse estado, 53 deles em agosto/2026.
+        if ((caseId || leadId) && allowNotify) {
           inboxResult.notify_triggers++;
           totalNotifyTriggers++;
           selfPost('notify-inss-update', { process_id: processId })

@@ -11,7 +11,7 @@
  *   qual instância perguntar é o servidor, pelo telefone;
  * - só pede o que está VISÍVEL na tela (o componente WhatsAppAvatar avisa),
  *   senão abrir o inbox com 400 conversas viraria 400 chamadas à UazAPI;
- * - cache em memória + sessionStorage, então trocar de aba não repete nada.
+ * - cache em memória + localStorage, então fechar o navegador não repete nada.
  *
  * O cache é module-level de propósito: os avatares aparecem em componentes
  * irmãos (lista e cabeçalho do chat) e precisam do mesmo estado.
@@ -23,7 +23,10 @@ import { cloudFunctions } from '@/lib/functionRouter';
 const CACHE_TTL_MS = 6 * 24 * 60 * 60 * 1000;
 // Falha (rede, instância fora do ar) não vira "sem foto" permanente.
 const RETRY_COOLDOWN_MS = 2 * 60 * 1000;
-const STORAGE_KEY = 'wa_avatars_v1';
+// localStorage, não sessionStorage: a foto tem que sobreviver a fechar a aba e o
+// navegador, senão toda abertura rebaixa tudo de novo. `v2` porque o `v1` guardou
+// chaves com a instância crua, que ninguém consegue ler.
+const STORAGE_KEY = 'wa_avatars_v2';
 const BATCH_SIZE = 40;
 const DEBOUNCE_MS = 180;
 
@@ -57,14 +60,14 @@ function hydrate() {
   if (hydrated) return;
   hydrated = true;
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as Record<string, Entry>;
     const now = Date.now();
     for (const [k, v] of Object.entries(parsed)) {
       if (v && typeof v.at === 'number' && now - v.at < CACHE_TTL_MS) cache.set(k, v);
     }
-  } catch {/* sessionStorage indisponível (aba privada) — segue sem cache */}
+  } catch {/* localStorage indisponível (aba privada) — segue sem cache */}
 }
 
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -73,7 +76,7 @@ function persist() {
   persistTimer = setTimeout(() => {
     persistTimer = null;
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(cache)));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(Object.fromEntries(cache)));
     } catch {/* cota estourada — o cache em memória continua valendo */}
   }, 500);
 }
@@ -109,14 +112,14 @@ async function flush() {
       const now = Date.now();
       if (error || !data?.success) {
         for (const p of batch.phones) {
-          inFlight.delete(`${batch.instance}|${p}`);
-          failedAt.set(`${batch.instance}|${p}`, now);
+          inFlight.delete(avatarKey(p, batch.instance));
+          failedAt.set(avatarKey(p, batch.instance), now);
         }
         console.warn('[useWhatsAppAvatars] lote falhou:', error?.message || 'resposta sem success');
         continue;
       }
       for (const p of batch.phones) {
-        const key = `${batch.instance}|${p}`;
+        const key = avatarKey(p, batch.instance);
         inFlight.delete(key);
         failedAt.delete(key);
         cache.set(key, { url: data.avatars?.[p] ?? null, at: now });
@@ -126,8 +129,8 @@ async function flush() {
     } catch (e) {
       const now = Date.now();
       for (const p of batch.phones) {
-        inFlight.delete(`${batch.instance}|${p}`);
-        failedAt.set(`${batch.instance}|${p}`, now);
+        inFlight.delete(avatarKey(p, batch.instance));
+        failedAt.set(avatarKey(p, batch.instance), now);
       }
       console.warn('[useWhatsAppAvatars] erro no lote:', (e as Error)?.message);
     }
@@ -141,7 +144,10 @@ function enqueue(phone: string, instanceName?: string | null) {
   // Instância vazia é caso legítimo: a ficha do lead e a lista de contatos só
   // têm o telefone. Quem descobre de qual instância perguntar é o servidor.
   const instance = (instanceName || '').trim();
-  const key = `${instance.toLowerCase()}|${target}`;
+  // A chave é sempre a de `avatarKey`: a instância vai para o servidor como está
+  // ("Raym"), mas no cache ela é minúscula — foi assim que a foto sumiu da aba do
+  // WhatsApp até 27/08/2026 (gravava em `Raym|55…`, lia em `raym|55…`).
+  const key = avatarKey(target, instance);
   if (isUsable(cache.get(key)) || inFlight.has(key)) return;
   const failed = failedAt.get(key);
   if (failed && Date.now() - failed < RETRY_COOLDOWN_MS) return;
@@ -176,6 +182,7 @@ export function useWhatsAppAvatars() {
 
 /** Só para teste: zera o estado compartilhado entre casos. */
 export function __resetAvatarCacheForTests() {
+  try { localStorage.removeItem(STORAGE_KEY); } catch {/* sem storage no ambiente do teste */}
   cache.clear();
   inFlight.clear();
   failedAt.clear();
