@@ -12,7 +12,7 @@
 //      (somar todas infla ~2,6x; a tela mostra a soma ingênua para comparação).
 //   4. Pagamentos — o que virou caixa de verdade.
 // =============================================================================
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,8 @@ import {
   AlertTriangle, Calculator, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
-import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
+import { FONTE_LABEL, useProcessoMarcos } from '@/hooks/useProcessoMarcos';
+import { ReguaMarcosDoPop, type MarcoDaRegua } from '@/components/cases/ReguaMarcosDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { formatCnj, onlyDigits } from '@/lib/cnj';
 import { MudancasDaPecaDialog } from './MudancasDaPecaDialog';
@@ -265,6 +266,12 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
   const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
 
+  // A régua completa do POP (mesma RPC da ficha e da fase automática): a seção
+  // "Marcos" desenha a linha inteira — prevista + detectada — e não só a trilha
+  // do que foi visto. A conta local do hook segue valendo como AUDITORIA do
+  // marco atual; a régua da RPC é o retrato oficial.
+  const regua = useProcessoMarcos(alvo?.processId ?? null);
+
   // O que muda com a peça recém-anexada. Sem este retorno, trocar documento é um
   // clique que não produz efeito visível — e o Raym leu isso como tela quebrada.
   const [mudancas, setMudancas] = useState<{
@@ -322,6 +329,25 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
 
   pecasRef.current = pecas;
 
+  /** A régua da RPC no formato do componente unificado. */
+  const reguaItens = useMemo<MarcoDaRegua[]>(
+    () => regua.marcos.map(m => ({
+      chave: m.marco_chave,
+      rotulo: m.rotulo,
+      ordem: m.ordem,
+      estado: m.estado,
+      eventual: m.eventual,
+      terminal: m.terminal,
+      atravessaFases: m.atravessa_fases,
+      data: m.data_detectada,
+      fonte: m.fonte,
+      temProvaDocumental: m.tem_prova_documental,
+      atual: m.atual,
+      stageNome: m.stage_nome,
+    })),
+    [regua.marcos],
+  );
+
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
 
@@ -357,7 +383,11 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
           >
             <FileText className="h-3.5 w-3.5" /> Abrir ficha completa
           </Button>
-          <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void recarregar()} disabled={loading}>
+          <Button
+            size="sm" variant="ghost" className="gap-1.5"
+            onClick={() => { void recarregar(); void regua.recarregar(); }}
+            disabled={loading}
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Recarregar
           </Button>
         </div>
@@ -426,13 +456,64 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                 <p className="text-xs text-muted-foreground">Nenhum marco de fase detectado neste processo.</p>
               )}
 
-              {marcos.length > 0 && (
+              {regua.marcos.length > 0 && (
                 <div className="space-y-1 pt-1">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trilha detectada</div>
-                  {/* Do mais antigo para o mais novo: a trilha é a história do
-                      processo, e história se lê de cima para baixo. A `ordem` do
-                      marco no POP saiu da tela — é número interno da régua, não
-                      diz nada a quem lê, e competia com a data pela atenção. */}
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos</div>
+                  {/* A régua INTEIRA do POP — prevista + detectada — no mesmo
+                      layout e com a mesma fonte da aba Marcos da ficha e da
+                      fase automática (unificação de 27/08/2026). Degrau
+                      eventual só aparece se aconteceu; acordo e suspensão são
+                      estado e viram badge no topo. */}
+                  <ReguaMarcosDoPop
+                    marcos={reguaItens}
+                    renderDireita={(m) => {
+                      if (m.estado !== 'atingido') return null;
+                      const p = melhorPeca(pecas, m.data, { assunto: 'MARCO' });
+                      // Sem peça casada, o que a linha precisa não é de um botão
+                      // morto: é do caminho para trazer a prova que falta.
+                      return (
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {p ? (
+                            <>
+                              <BotaoPeca pecas={pecas} data={m.data} assunto="MARCO" onAbrir={abrirPeca} />
+                              <BotaoOQueMuda peca={p} onVer={verOQueMuda} />
+                              <BotaoDesvincular peca={p} onDesvincular={ocultar} />
+                            </>
+                          ) : (
+                            <BotaoAnexar rotulo={m.rotulo} data={m.data} onAnexar={anexarEMostrar} />
+                          )}
+                          <AvisoOculta pecas={ocultas} data={m.data} onReexibir={reexibir} />
+                        </span>
+                      );
+                    }}
+                  />
+                  {marcos.some(m => m.semCadastroNoPop) && (
+                    <div className="space-y-0.5 pt-1">
+                      {/* Marco gravado no processo cuja chave não existe mais na
+                          régua deste POP: a carteira o ignora, mas escondê-lo
+                          apagaria evidência. */}
+                      {marcos.filter(m => m.semCadastroNoPop).map(m => (
+                        <div key={m.chave} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs">
+                          <Badge variant="outline" className="shrink-0 border-amber-500/50 text-[9px] text-amber-600 dark:text-amber-400">
+                            fora do POP
+                          </Badge>
+                          <span className="min-w-0 flex-1 truncate">{m.rotulo}</span>
+                          <span className="shrink-0 text-[10px] text-muted-foreground">
+                            {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
+                          </span>
+                          <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {marcos.length > 0 && regua.marcos.length === 0 && (
+                <div className="space-y-1 pt-1">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos detectados</div>
+                  {/* Fallback: POP sem régua cadastrada (a RPC volta vazia) — a
+                      lista antiga, do mais antigo para o mais novo. */}
                   {[...marcos]
                     .sort((a, b) => (a.dataDetectada ?? '').localeCompare(b.dataDetectada ?? ''))
                     .map((m, i, todos) => (

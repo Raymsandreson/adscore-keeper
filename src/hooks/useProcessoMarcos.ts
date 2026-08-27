@@ -27,6 +27,8 @@ export interface MarcoReguaRow {
   stage_nome: string | null;
   eventual: boolean;
   terminal: boolean;
+  /** Estado (acordo, suspensão…): não disputa posição na régua. A RPC devolve desde 27/08/2026. */
+  atravessa_fases: boolean;
   estado: MarcoEstado;
   data_detectada: string | null;
   /** movimento | documento | escavador_texto | escavador_grau | campo_processo | email */
