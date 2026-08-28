@@ -410,6 +410,14 @@ Tocar no popup abre a conversa no mesmo drawer do resto do app (`WhatsAppChatShe
 
 O que passou a valer: página de mensagens com teto de **12 s** e `getOurInstancePhones` com teto de **8 s** (`withTimeout`, `src/lib/promiseTimeout.ts`), falha não fica cacheada, a lista entra pelo cache síncrono e refina a autoria de grupo depois, e o que falha vira **"Tentar de novo"** na tela — nunca spinner eterno nem "conversa vazia".
 
+#### A sugestão da IA já chega escrita no popup (28/08/2026)
+
+O popup de mensagem de WhatsApp responde sem abrir o chat — e agora a resposta sugerida **nasce pronta**, como no campo do chat: assim que o aviso aparece, uma faixa acima do campo mostra o que a IA responderia. Tocar no texto leva pro campo (revisar e enviar — nada sai sozinho); "Outra" pede de novo; X dispensa. O botão de ✨ continua para quem quer o diálogo completo (tom, reformular).
+
+- **Mesmo cérebro do chat**: `useSugestaoAutomatica` + `gerarSugestaoDeResposta` — e a **mesma preferência** (`wa-sugestao-automatica`): desligar "Sugerir resposta" no chat desliga no popup também. Só pede à IA quando a última fala é do cliente.
+- **Custo**: cada popup passa a buscar o histórico (20 msgs) e, havendo pendência, faz **1 chamada** ao `ai-text-editor`. O botão de ✨ seguia o caminho barato (só no clique); a sugestão pronta é o preço de não precisar pedir.
+- Código: `WhatsAppSugestaoAutomatica` em `src/components/notifications/WhatsAppToastActions.tsx`, slot `composerHint` em `TeamNotificationToast`, ligado em `PushNotificationBridge`. Testes: `WhatsAppSugestaoAutomatica.test.tsx` (3) e `TeamNotificationToast.popup-actions.test.tsx`.
+
 ---
 
 ## Campanhas — `/campanhas`
