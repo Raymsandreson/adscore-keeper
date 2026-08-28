@@ -206,6 +206,23 @@ Arquivos: `CourtContactsSheet.tsx`, `CourtContactsForProcess.tsx`, `src/lib/cnj.
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
 
+### Ativo x ocioso com a atividade aberta (28/08/2026)
+
+Quem decide cada segundo é `activityTickMode()` em `src/contexts/ActivityTimerContext.tsx` (função pura, testada em `__tests__/ActivityTimerContext.away.test.ts`):
+
+| Situação | Conta como | Pergunta | Volta pro ativo se confirmar? |
+|---|---|---|---|
+| Na aba, mexendo no sistema | **Ativo** | — | — |
+| **Fora da aba** (PJe, Word, e-mail, telefone) até 10 min | **Ativo** | — | — |
+| Fora da aba passando de 10 min | Ocioso | "Ainda está nessa atividade?" | **Sim** — até 2h por ausência |
+| Fora da aba com **previsão** declarada ainda cobrindo | **Ativo** até o teto da previsão | no estouro | **Sim** |
+| Na aba, sem tocar em nada por 5 min (saiu do computador) | Ocioso | "Ainda está nessa atividade?" | **Não** |
+| Tela bloqueada / PC suspenso | Ocioso | só no PC suspenso | **Não** |
+
+"Fora da aba" = `document.visibilityState !== 'visible' || !document.hasFocus()` — vale para outra aba, outro programa e janela minimizada. A carência é `AWAY_GRACE_MS` (10 min); o teto do que uma ausência devolve ao ativo é `RECLAIM_MAX_SEC` (2h), para aba esquecida aberta a noite toda não virar jornada produtiva com um clique. O que é reatribuível fica em `TimerEntry.reclaimableIdle` (só na memória da aba; o banco guarda o resultado já em `active_seconds`/`idle_seconds`) e o "Sim, continuar contando" faz a transferência em `confirmStillWorking()`.
+
+Motivo: até 27/08/2026 bastavam 5 min sem tocar na aba para **tudo** virar ocioso, e o "Sim" não devolvia nada — o resgate só existia depois do estouro de uma previsão, e só 11,7% das sessões tinham previsão. Placar de 01/08 a 28/08: 1.642h ativas contra **690h ociosas**, 97% delas concentradas em 807 sessões com 5 min ou mais de ocioso (uma delas com 23,8h).
+
 ### Trabalho sem atividade aberta — guarda-chuvas do dia
 
 Sem atividade vinculada, todo segundo cai na linha de gap e conta como **ocioso** (regra do `ActivityTimerContext`). Duas frentes de trabalho não têm atividade própria e ganham uma **atividade guarda-chuva por dia** — interna (`is_management`), atribuída a quem executou, uma linha reaproveitada o dia todo:

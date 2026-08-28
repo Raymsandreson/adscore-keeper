@@ -111,15 +111,27 @@ const { dbMock, authMock, linhaBase } = vi.hoisted(() => {
       // A RPC tambem passa pelo teto de 1.000 do PostgREST, entao o hook a
       // pagina. O mock devolve tudo na primeira pagina: com menos de 1.000
       // linhas o laco para na primeira volta.
-      rpc: () => ({
-        range: (de: number, ate: number) =>
-          Promise.resolve({ data: linhas.slice(de, ate + 1), error: null }),
-      }),
+      // `_rest` existe para o mock QUEBRAR do mesmo jeito que o supabase-js
+      // quebra quando alguém faz `const rpc = db.rpc` e perde o `this`:
+      // "Cannot read properties of undefined (reading 'rest')". Sem isto o
+      // teste passa com o hook derrubando a carteira em produção — foi o que
+      // aconteceu em 27/08/2026.
+      _rest: true,
+      rpc(this: { _rest: boolean } | undefined) {
+        if (!this?._rest) throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+        return {
+          range: (de: number, ate: number) =>
+            Promise.resolve({ data: linhas.slice(de, ate + 1), error: null }),
+        };
+      },
       /** Devolve a rpc ao padrão — o teste de paginação a substitui. */
-      _rpcPadrao: () => ({
-        range: (de: number, ate: number) =>
-          Promise.resolve({ data: linhas.slice(de, ate + 1), error: null }),
-      }),
+      _rpcPadrao(this: { _rest: boolean } | undefined) {
+        if (!this?._rest) throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+        return {
+          range: (de: number, ate: number) =>
+            Promise.resolve({ data: linhas.slice(de, ate + 1), error: null }),
+        };
+      },
       from: (tabela: string) => {
         const q: Record<string, unknown> = {};
         q.select = () => q;
@@ -387,12 +399,15 @@ describe('useCarteiraDoPop', () => {
       custo_lead: null,
     }));
     const paginas: Array<[number, number]> = [];
-    dbMock.rpc = () => ({
-      range: (de: number, ate: number) => {
-        paginas.push([de, ate]);
-        return Promise.resolve({ data: muitas.slice(de, ate + 1), error: null });
-      },
-    });
+    dbMock.rpc = function (this: { _rest: boolean } | undefined) {
+      if (!this?._rest) throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+      return {
+        range: (de: number, ate: number) => {
+          paginas.push([de, ate]);
+          return Promise.resolve({ data: muitas.slice(de, ate + 1), error: null });
+        },
+      };
+    };
 
     const { result } = renderHook(() => useCarteiraDoPop('board-1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
