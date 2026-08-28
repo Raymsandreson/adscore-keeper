@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Filter, X, ChevronDown, ChevronUp, ClipboardList, UserSearch, MapPin, Search } from 'lucide-react';
 import { ProfileItem } from '@/hooks/useProfilesList';
+import { MultiSelectFilter } from '@/components/finance/MultiSelectFilter';
 
 export interface LeadFilters {
   searchTerm: string;
@@ -22,7 +23,8 @@ export interface LeadFilters {
   caseType: string;
   accidentDateFrom: string;
   accidentDateTo: string;
-  visitState: string;
+  /** Multi-seleção de UF. Lista vazia = todos os estados. */
+  visitState: string[];
   visitCity: string;
   visitRegion: string;
 }
@@ -41,10 +43,35 @@ export const emptyFilters: LeadFilters = {
   caseType: '',
   accidentDateFrom: '',
   accidentDateTo: '',
-  visitState: '',
+  visitState: [],
   visitCity: '',
   visitRegion: '',
 };
+
+// Um filtro pode ser texto ou lista (Estado aceita várias UFs de uma vez).
+export function isFilterActive(value: string | string[]): boolean {
+  return Array.isArray(value) ? value.length > 0 : value !== '';
+}
+
+export function countActiveLeadFilters(filters: LeadFilters): number {
+  return Object.values(filters).filter(isFilterActive).length;
+}
+
+export function hasAnyLeadFilter(filters: LeadFilters): boolean {
+  return countActiveLeadFilters(filters) > 0;
+}
+
+// O localStorage antigo guarda visitState como string ('SP' ou ''). Sem
+// normalizar, o filtro restaurado quebraria no .includes/.length da versão
+// multi — e campo novo ausente viraria undefined.
+export function normalizeLeadFilters(raw: unknown): LeadFilters {
+  const obj = (raw && typeof raw === 'object' ? raw : {}) as Partial<LeadFilters> & { visitState?: unknown };
+  const uf = obj.visitState;
+  const visitState = Array.isArray(uf)
+    ? uf.filter((v): v is string => typeof v === 'string' && v !== '')
+    : typeof uf === 'string' && uf !== '' ? [uf] : [];
+  return { ...emptyFilters, ...obj, visitState };
+}
 
 const AGE_RANGES = [
   { value: '0-17', label: '0–17 anos', min: 0, max: 17 },
@@ -107,11 +134,9 @@ export function LeadAdvancedFilters({
 }: LeadAdvancedFiltersProps) {
   const [open, setOpen] = useState(false);
 
-  const activeCount = useMemo(() => {
-    return Object.values(filters).filter(v => v !== '').length;
-  }, [filters]);
+  const activeCount = useMemo(() => countActiveLeadFilters(filters), [filters]);
 
-  const update = (key: keyof LeadFilters, value: string) => {
+  const update = <K extends keyof LeadFilters>(key: K, value: LeadFilters[K]) => {
     onChange({ ...filters, [key]: value });
   };
 
@@ -119,28 +144,43 @@ export function LeadAdvancedFilters({
     onChange(emptyFilters);
   };
 
-  const removeFilter = (key: keyof LeadFilters) => {
+  // `item` só chega nos filtros de lista: tira uma UF e mantém as outras.
+  const removeFilter = (key: keyof LeadFilters, item?: string) => {
+    const current = filters[key];
+    if (Array.isArray(current)) {
+      onChange({ ...filters, [key]: item ? current.filter(v => v !== item) : [] });
+      return;
+    }
     onChange({ ...filters, [key]: '' });
   };
 
   // Build active filter chips with display values
   const activeFilters = useMemo(() => {
-    const chips: { key: keyof LeadFilters; label: string; value: string }[] = [];
+    const chips: { id: string; key: keyof LeadFilters; label: string; value: string; item?: string }[] = [];
     (Object.keys(filters) as (keyof LeadFilters)[]).forEach(key => {
-      if (!filters[key]) return;
-      let displayValue = filters[key];
+      const raw = filters[key];
+      if (!isFilterActive(raw)) return;
 
-      if (key === 'createdBy' || key === 'updatedBy') {
-        const profile = profiles.find(p => p.user_id === filters[key]);
-        displayValue = profile?.full_name || profile?.email || filters[key].slice(0, 8);
-      } else if (key === 'ageRange') {
-        const range = AGE_RANGES.find(r => r.value === filters[key]);
-        displayValue = range?.label || filters[key];
-      } else if (key === 'caseType') {
-        displayValue = CASE_TYPE_LABELS[filters[key]] || filters[key];
+      // Filtro de lista vira um chip por valor: dá pra tirar um estado sem
+      // perder os outros.
+      if (Array.isArray(raw)) {
+        raw.forEach(item => chips.push({ id: `${key}:${item}`, key, label: FILTER_LABELS[key], value: item, item }));
+        return;
       }
 
-      chips.push({ key, label: FILTER_LABELS[key], value: displayValue });
+      let displayValue = raw;
+
+      if (key === 'createdBy' || key === 'updatedBy') {
+        const profile = profiles.find(p => p.user_id === raw);
+        displayValue = profile?.full_name || profile?.email || raw.slice(0, 8);
+      } else if (key === 'ageRange') {
+        const range = AGE_RANGES.find(r => r.value === raw);
+        displayValue = range?.label || raw;
+      } else if (key === 'caseType') {
+        displayValue = CASE_TYPE_LABELS[raw] || raw;
+      }
+
+      chips.push({ id: key, key, label: FILTER_LABELS[key], value: displayValue });
     });
     return chips;
   }, [filters, profiles]);
@@ -195,10 +235,10 @@ export function LeadAdvancedFilters({
         {/* Active filter chips */}
         {activeFilters.map(f => (
           <Badge
-            key={f.key}
+            key={f.id}
             variant="secondary"
             className="gap-1 pl-2 pr-1 py-1 text-xs cursor-pointer hover:bg-destructive/10"
-            onClick={() => removeFilter(f.key)}
+            onClick={() => removeFilter(f.key, f.item)}
           >
             <span className="text-muted-foreground">{f.label}:</span> {f.value}
             <X className="h-3 w-3 ml-0.5" />
@@ -398,17 +438,14 @@ export function LeadAdvancedFilters({
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">Estado</Label>
-                <Select value={filters.visitState || '_all'} onValueChange={v => update('visitState', v === '_all' ? '' : v)}>
-                  <SelectTrigger className="h-8 text-xs">
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all">Todos</SelectItem>
-                    {availableStates.map(s => (
-                      <SelectItem key={s} value={s}>{s}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <MultiSelectFilter
+                  placeholder="Todos"
+                  allLabel="Todos"
+                  className="h-8 w-full rounded-md text-xs"
+                  options={availableStates.map(s => ({ value: s, label: s }))}
+                  selectedValues={filters.visitState}
+                  onSelectionChange={vals => update('visitState', vals.filter(v => v !== 'all'))}
+                />
               </div>
 
               <div className="space-y-1">
@@ -497,7 +534,11 @@ export function applyLeadFilters(leads: any[], filters: LeadFilters): any[] {
       if (!d || d > filters.accidentDateTo) return false;
     }
 
-    if (filters.visitState && lead.visit_state !== filters.visitState) return false;
+    // Aceita também o formato antigo (string) caso venha de estado persistido.
+    const ufs = Array.isArray(filters.visitState)
+      ? filters.visitState
+      : filters.visitState ? [filters.visitState as string] : [];
+    if (ufs.length && !ufs.includes(lead.visit_state)) return false;
     if (filters.visitCity && lead.visit_city !== filters.visitCity) return false;
     if (filters.visitRegion && lead.visit_region !== filters.visitRegion) return false;
 
