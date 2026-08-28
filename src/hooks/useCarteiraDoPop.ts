@@ -312,29 +312,40 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
       //    `vw_jm_conferencia_acordos`. Regra da casa: consulta que pode passar
       //    de 1.000 linhas se pagina — não existe "essa aqui é pequena".
       //
-      // ── O `.bind(db)` NÃO É ENFEITE
+      // ── NUNCA GUARDE `db.rpc` NUMA VARIÁVEL
       //
-      //    `const rpc = db.rpc` DESVINCULA o método do objeto. Dentro do
-      //    supabase-js, `rpc()` faz `this.rest.rpc(...)`; chamado solto, `this`
-      //    vem `undefined` e a carteira inteira morre com
+      //    `const rpc = db.rpc` DESVINCULA o método do objeto. O supabase-js
+      //    implementa `rpc(fn, args) { return this.rest.rpc(...) }`; chamado
+      //    solto, `this` vem `undefined` e a carteira inteira morre com
       //    "Cannot read properties of undefined (reading 'rest')".
       //
-      //    Foi o que aconteceu em 27/08/2026: o laço de paginação nasceu com a
-      //    função extraída para uma const e derrubou a tela em produção. A
-      //    versão anterior escapava por acidente — `(db.rpc as ...)(args)` é
-      //    acesso-a-propriedade-e-chamada, que preserva o `this`.
-      const rpc = (db.rpc as unknown as (
+      //    Aconteceu em 27/08/2026 e derrubou a tela em produção. `.bind(db)`
+      //    conserta, mas continua sendo uma linha que alguém apaga sem
+      //    perceber. Aqui a chamada é sempre `db.rpc(...)` — acesso à
+      //    propriedade e chamada na mesma expressão, que preserva o `this` por
+      //    construção. Não há o que desvincular.
+      const pagina = (de: number) => (db.rpc as unknown as (
         f: string, a: Record<string, unknown>,
       ) => {
         range: (de: number, ate: number) => PromiseLike<{
           data?: CarteiraPopLinha[] | null; error?: { message?: string } | null;
         }>;
-      }).bind(db);
+      })('pop_carteira_marcos', { p_board_id: boardId }).range(de, de + 999);
+
       const rows: CarteiraPopLinha[] = [];
       for (let inicio = 0; ; inicio += 1000) {
-        const { data, error } = await rpc('pop_carteira_marcos', { p_board_id: boardId })
-          .range(inicio, inicio + 999);
-        if (error) throw new Error(error.message || 'pop_carteira_marcos falhou');
+        // O erro precisa dizer ONDE quebrou. Sem isto, uma mensagem crua do
+        // supabase-js chega na tela sem dizer de qual das seis consultas do
+        // `carregar` ela veio, e a sessão inteira vira adivinhação.
+        let data: CarteiraPopLinha[] | null | undefined;
+        try {
+          const r = await pagina(inicio);
+          if (r.error) throw new Error(r.error.message || 'sem mensagem');
+          data = r.data;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new Error(`pop_carteira_marcos falhou na página ${inicio / 1000 + 1}: ${msg}`);
+        }
         const lote = data || [];
         rows.push(...lote);
         if (lote.length < 1000) break;
