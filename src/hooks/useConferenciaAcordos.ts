@@ -39,12 +39,20 @@
 // =============================================================================
 import { useCallback, useEffect, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
+import { buscarTudo } from '@/lib/postgrestPaginacao';
 import { conferirAcordo, type Conferencia } from '@/lib/conferenciaAcordo';
 
 interface Consulta { data: Record<string, unknown>[] | null; error: { message?: string } | null }
 const externo = db as unknown as {
-  from: (t: string) => { select: (c: string) => { eq: (c: string, v: unknown) => Promise<Consulta> } };
+  from: (t: string) => { select: (c: string) => {
+    eq: (c: string, v: unknown) => Promise<Consulta>;
+    order: (col: string, o: { ascending: boolean }) => {
+      range: (de: number, ate: number) => PromiseLike<Consulta>;
+    };
+  } };
 };
+
+const soDigitos = (s: string) => s.replace(/\D/g, '');
 
 /** O estágio mais avançado entre os que pedem conferência de valor. */
 export type EstagioConferencia = 'EXECUCAO' | 'TRANSITO' | 'ACORDO' | 'LIQUIDACAO';
@@ -69,6 +77,12 @@ export interface AcordoConferido {
   hsSuspeito: number;
   /** Quantas partes do processo estão nessa situação. */
   partesSuspeitas: number;
+  /**
+   * Nomes das partes do processo (`jm_partes.cliente`), para a busca por parte
+   * na tela. Vazio quando o processo ainda não tem parte na tabela — a busca
+   * por nome só não acha, nada some da fila nem da soma.
+   */
+  partes: string[];
 }
 
 export const ESTAGIO_LABEL: Record<EstagioConferencia, string> = {
@@ -90,10 +104,28 @@ export function useConferenciaAcordos(boardId: string | null | undefined) {
     setLoading(true); setErro(null);
     try {
       await ensureExternalSession();
-      const r = await externo.from('vw_jm_conciliacao_acordos')
-        .select('process_id, cnj, titulo, data_acordo, estagio, cliente, hc, hs, multa, hs_suspeito, partes_suspeitas')
-        .eq('board_id', boardId);
+      // Os nomes das partes vêm de `jm_partes` (1.2k+ linhas, acima do teto de
+      // 1000 do PostgREST — daí o `buscarTudo`). Servem só à busca por parte:
+      // se a consulta falhar, a tela abre do mesmo jeito, sem busca por nome.
+      const [r, linhasPartes] = await Promise.all([
+        externo.from('vw_jm_conciliacao_acordos')
+          .select('process_id, cnj, titulo, data_acordo, estagio, cliente, hc, hs, multa, hs_suspeito, partes_suspeitas')
+          .eq('board_id', boardId),
+        buscarTudo<Record<string, unknown>>((de, ate) =>
+          externo.from('jm_partes').select('parte_id, processo_cnj, cliente')
+            .order('parte_id', { ascending: true }).range(de, ate),
+        ).catch(() => [] as Record<string, unknown>[]),
+      ]);
       if (r.error) throw new Error(r.error.message || 'Falha ao conciliar os acordos');
+
+      const partesPorCnj = new Map<string, string[]>();
+      for (const p of linhasPartes) {
+        const chave = soDigitos(String(p.processo_cnj ?? ''));
+        const nome = String(p.cliente ?? '').trim();
+        if (!chave || !nome) continue;
+        const lista = partesPorCnj.get(chave) ?? [];
+        if (!lista.includes(nome)) { lista.push(nome); partesPorCnj.set(chave, lista); }
+      }
 
       setAcordos((r.data || []).map(a => ({
         processId: String(a.process_id),
@@ -106,6 +138,7 @@ export function useConferenciaAcordos(boardId: string | null | undefined) {
         }),
         hsSuspeito: n(a.hs_suspeito),
         partesSuspeitas: n(a.partes_suspeitas),
+        partes: partesPorCnj.get(soDigitos(String(a.cnj ?? ''))) ?? [],
       })));
     } catch (e) {
       setErro(String((e as Error)?.message || e));
