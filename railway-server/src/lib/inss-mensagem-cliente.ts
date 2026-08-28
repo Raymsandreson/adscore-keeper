@@ -157,6 +157,11 @@ const REGRAS_COMUNS = [
   'Nada de termo jurídico, nada de número de lei, nada de "conforme", "referente", "mediante", "providenciar".',
   'Seja breve. É melhor faltar detalhe do que a pessoa não entender.',
   'NUNCA repita número de CPF, RG ou número do benefício que apareça no texto do INSS.',
+  // Pedido do usuário (27/08/2026): pendência de procuração é do escritório. O
+  // cliente lê aquilo como cobrança e não tem o que fazer — quem resolve somos
+  // nós. O corte principal é o `separarPendencias`, em lib/inss-despacho; esta
+  // regra é a segunda barreira, para o caso raro em que o texto cru chega à IA.
+  'NUNCA peça procuração, termo de responsabilidade, documento de representação, documento do advogado ou do procurador, e não fale de assinatura de procuração nem de validação de assinatura: isso é tarefa do escritório, não do cliente.',
   'Não invente prazo, valor, data de pagamento nem motivo que não esteja no texto do INSS.',
   'Não comece com "Bom dia"/"Boa tarde" — não sabemos a hora.',
   'No máximo 2 emojis na mensagem inteira. Não assine.',
@@ -262,4 +267,39 @@ export function eventoElegivelParaZap(emailRecebidoEm?: string | null): boolean 
   const t = Date.parse(emailRecebidoEm);
   if (Number.isNaN(t)) return false;
   return t >= Date.parse(ZAP_CLIENTE_DESDE);
+}
+
+// ============================================================================
+// Exigência de agendamento de perícia — quem agenda é o escritório
+// ============================================================================
+// Pedido do usuário (27/08/2026): quando o INSS manda agendar perícia, o cliente
+// NÃO recebe mensagem. A ligação para o 135 (ou o agendamento no Meu INSS) é
+// tarefa do escritório, não do cliente.
+//
+// O corte é em "agendar", nunca em "135": das 597 exigências do histórico, 495
+// citam o 135 e só 244 pedem agendamento — nas outras 228 o 135 é apenas o
+// telefone de contato no rodapé de um pedido de DOCUMENTOS, que continua indo
+// para o cliente porque é ele quem tem os papéis.
+//
+// Também não pode pegar as 8 convocações: "sua perícia foi remarcada ...
+// compareça no dia X" e "será necessário remarcar" avisam data e local de uma
+// perícia JÁ marcada. Essas o cliente precisa receber, senão falta na perícia.
+// Por isso o gatilho é o imperativo ("Agende") ou a construção de necessidade
+// ("é preciso/é necessário/deverá agendar") — nenhuma delas aparece nas
+// convocações, que dizem "convocamos para que compareça".
+const PEDE_AGENDAMENTO = [
+  /\bagende\b/i,
+  /(?:é|e)\s+(?:preciso|necess[áa]rio)\s+agendar/i,
+  /(?:precisa|dever[áa]|deve|favor)\s+(?:de\s+)?agendar/i,
+];
+const ASSUNTO_PERICIA = /per[íi]cia|avalia[çc][ãa]o social/i;
+
+/**
+ * O INSS está pedindo que alguém MARQUE uma perícia? Então é tarefa do
+ * escritório e o cliente não é avisado — ver `zap_status = 'pericia_escritorio'`.
+ */
+export function exigenciaDeAgendamentoDePericia(e: EntradaMensagemCliente): boolean {
+  const fonte = `${e.pontosPendentes || ''} ${e.despacho || ''}`;
+  if (!ASSUNTO_PERICIA.test(fonte)) return false;
+  return PEDE_AGENDAMENTO.some((re) => re.test(fonte));
 }
