@@ -1,12 +1,13 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { classifyResultado, extrairPontosPendentes } from '../lib/inss-despacho';
+import { classifyResultado, extrairPontosPendentes, separarPendencias } from '../lib/inss-despacho';
 import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
 import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
   classificarMensagemCliente,
   dentroDaJanela,
   eventoElegivelParaZap,
+  exigenciaDeAgendamentoDePericia,
 } from '../lib/inss-mensagem-cliente';
 import {
   descreverErro,
@@ -157,7 +158,23 @@ export const handler: RequestHandler = async (req, res) => {
     const statusLabel = ehConclusao
       ? `Conclusão — ${resultado ? RESULTADO_LABELS[resultado] : 'sem veredito no despacho'}`
       : latest.to_status;
-    const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
+    // Exigência sem o texto vira "vá ver no Meu INSS". Os pontos pendentes saem
+    // do próprio despacho (preenchido em 552 das 592 exigências).
+    const ehExigencia = /exig[êe]nc/i.test(latest.to_status || '');
+    const pontosPendentes = ehExigencia ? extrairPontosPendentes(latest.despacho) : null;
+
+    // Duas separações antes de escrever qualquer coisa:
+    //  - agendamento de perícia é tarefa NOSSA (ligar no 135 / Meu INSS), então
+    //    a atividade nasce como tarefa e o cliente não recebe nada;
+    //  - o que é pendência de procuração sai da mensagem e fica só na atividade.
+    // Ver lib/inss-mensagem-cliente e lib/inss-despacho.
+    const agendarPericia =
+      ehExigencia && exigenciaDeAgendamentoDePericia({ pontosPendentes, despacho: latest.despacho });
+    const pendencias = separarPendencias(pontosPendentes);
+
+    const activityTitle = agendarPericia
+      ? `Agendar perícia no INSS — requerimento ${proc.requerimento_number}`
+      : `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
     // O nome do lead é o que diz a matéria ("Família 400" e "CASO 146" são
     // trabalhistas; "PREV 1800" é previdenciário) — ver lib/inss-roteamento.
     let leadName: string | null = null;
@@ -188,15 +205,26 @@ export const handler: RequestHandler = async (req, res) => {
     }
     const dono = donoDaAtualizacaoInss({ status: latest.to_status, leadName });
 
-    // Exigência sem o texto vira "vá ver no Meu INSS". Os pontos pendentes saem
-    // do próprio despacho (preenchido em 552 das 592 exigências).
-    const pontosPendentes = /exig[êe]nc/i.test(latest.to_status || '')
-      ? extrairPontosPendentes(latest.despacho)
-      : null;
+    // Quando não há pendência nossa no meio, o bloco sai igual ao de sempre —
+    // 485 das 557 exigências com despacho (medido em 27/08/2026).
+    const blocoPendencias = !pontosPendentes
+      ? ''
+      : pendencias.escritorio
+        ? [
+            pendencias.cliente ? `\n📋 O CLIENTE PRECISA MANDAR:\n${pendencias.cliente}` : '',
+            `\n🏢 PENDÊNCIA DO ESCRITÓRIO (não foi para o grupo do cliente):\n${pendencias.escritorio}`,
+            pendencias.cliente
+              ? ''
+              : '\nNada sobrou para o cliente providenciar, então nenhuma mensagem foi enviada ao grupo.',
+          ].filter(Boolean).join('\n')
+        : `\n📋 PENDÊNCIAS APONTADAS PELO INSS:\n${pontosPendentes}`;
 
     const activityDesc = [
+      agendarPericia
+        ? '📞 TAREFA DO ESCRITÓRIO: o INSS mandou AGENDAR a perícia. Ligue no 135 ou agende pelo Meu INSS. O cliente não foi avisado — quem marca somos nós; avise a data a ele depois de marcada.'
+        : '',
       `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".`,
-      pontosPendentes ? `\n📋 PENDÊNCIAS APONTADAS PELO INSS:\n${pontosPendentes}` : '',
+      blocoPendencias,
       `\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}`,
       caseInfo ? `\nCaso: ${caseInfo.case_number || ''} — ${caseInfo.title || ''}` : '',
       conferencia.veredito === 'conflito'
@@ -237,7 +265,9 @@ export const handler: RequestHandler = async (req, res) => {
       status: latest.to_status,
       resultado,
       despacho: latest.despacho,
-      pontosPendentes,
+      // Só o lado do cliente vai para a IA e para o texto fixo; o que é nosso
+      // ficou na atividade.
+      pontosPendentes: pendencias.cliente,
       nome: proc.nome_segurado,
       beneficio: proc.benefit_type,
       requerimento: proc.requerimento_number,
@@ -256,6 +286,15 @@ export const handler: RequestHandler = async (req, res) => {
           zap_tipo: tipoMensagem,
           zap_erro: conferencia.motivo,
         };
+      } else if (agendarPericia) {
+        // Quem liga para o 135 é o escritório (pedido do usuário, 27/08/2026).
+        // A tarefa está na atividade; o cliente só é avisado da data depois de
+        // marcada, por uma pessoa.
+        zapPatch = { zap_status: 'pericia_escritorio', zap_tipo: tipoMensagem };
+      } else if (pendencias.escritorio && !pendencias.cliente) {
+        // A exigência inteira era pendência nossa (17 das 557 no histórico):
+        // mandar "o INSS pediu documentos" sem dizer quais só assusta.
+        zapPatch = { zap_status: 'so_escritorio', zap_tipo: tipoMensagem };
       } else if (!eventoElegivelParaZap(latest.email_received_at)) {
         // Ativação sem retroatividade (pedido do usuário, 26/08/2026): evento
         // anterior ao corte nunca vira mensagem, mesmo que só agora tenha sido
