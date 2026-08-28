@@ -39,6 +39,7 @@ import {
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { duracaoLegivel } from '@/lib/duracaoLegivel';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
+import { ConferenciaSubsecao } from './PopConferenciaSheet';
 import { CarteiraTitularPainel } from './CarteiraTitularPainel';
 import { CarteiraRelacaoSheet, type AlvoRelacao } from './CarteiraRelacaoSheet';
 import type { ModoCarteira } from '@/lib/carteiraPorTitular';
@@ -53,6 +54,9 @@ interface Props {
   boardName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Abrir já com a subseção de conferência expandida — o atalho "Conferência"
+   *  do card de POP cai aqui dentro em vez de abrir um sheet separado. */
+  conferenciaInicial?: boolean;
 }
 
 const brl = (v: number) =>
@@ -262,7 +266,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
   );
 }
 
-export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
+export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange, conferenciaInicial = false }: Props) {
   const [busca, setBusca] = useState('');
   const [campoData, setCampoData] = useState<string>('ajuizamento');
   const [periodo, setPeriodo] = useState<string>('tudo');
@@ -373,6 +377,16 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
               onAbrirConferencia={() => setRelacao({ modo: 'JUNTOS', estagio: null, soCotaZerada: true })}
               mesAno={mesAno}
               indiceCurto={INDICE_CURTO}
+            />
+
+            {/* A conferência mora DENTRO da carteira (Raym, 28/08): subseção
+                recolhida logo abaixo do dinheiro, para qualificar o número de
+                cima sem poluir — aberta, é a mesma tela completa de sempre.
+                Quem conserta é o ProcessoConferenciaSheet, irmão deste sheet. */}
+            <ConferenciaSubsecao
+              boardId={boardId}
+              abertaInicial={conferenciaInicial}
+              onConferir={setConferindo}
             />
 
             {/* Operação: tempo, sucesso e custo. Fica embaixo do dinheiro. */}
