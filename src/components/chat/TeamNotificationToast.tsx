@@ -32,6 +32,12 @@ interface TeamNotificationToastProps {
   onManualDismiss?: () => void;
   /** Ações extras ao lado do campo de resposta (ex.: sugerir resposta com IA). */
   composerActions?: (api: ComposerApi) => ReactNode;
+  /**
+   * Linha acima do campo de resposta (ex.: a sugestão automática da IA, que
+   * já chega escrita — um toque a leva pro campo). Renderiza junto do campo:
+   * sem `onReply` não há onde a dica cair, então ela também não aparece.
+   */
+  composerHint?: (api: ComposerApi) => ReactNode;
   /** Ações extras na linha de baixo (ex.: ligar/desligar o agente de IA da conversa). */
   footerActions?: ReactNode;
   /**
@@ -75,6 +81,7 @@ export function TeamNotificationToast({
   onReply,
   onManualDismiss,
   composerActions,
+  composerHint,
   footerActions,
   autoCloseMs,
 }: TeamNotificationToastProps) {
@@ -253,6 +260,12 @@ export function TeamNotificationToast({
               <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
             </a>
           )}
+        </div>
+      )}
+
+      {onReply && composerHint && (
+        <div className="mt-3" onClick={(event) => event.stopPropagation()}>
+          {composerHint(composerApi)}
         </div>
       )}
 

@@ -62,6 +62,22 @@ describe('TeamNotificationToast', () => {
     expect(onReply).toHaveBeenCalledWith('Sugestão da IA');
   });
 
+  it('a dica acima do campo (composerHint) escreve no campo — e sem onReply nem aparece', () => {
+    const hint = ({ setReply }: { setReply: (t: string) => void }) => (
+      <button type="button" onClick={() => setReply('Sugestão pronta')}>
+        Sugestão pronta
+      </button>
+    );
+
+    const { rerender } = render(<TeamNotificationToast {...base} onReply={vi.fn()} composerHint={hint} />);
+    fireEvent.click(screen.getByText('Sugestão pronta'));
+    expect((screen.getByPlaceholderText(/Responder ou falar/) as HTMLInputElement).value).toBe('Sugestão pronta');
+
+    // Sem campo de resposta não há onde a dica cair: ela some junto.
+    rerender(<TeamNotificationToast {...base} composerHint={hint} />);
+    expect(screen.queryByText('Sugestão pronta')).toBeNull();
+  });
+
   it('fecha sozinho no tempo pedido enquanto ninguém encosta', () => {
     render(<TeamNotificationToast {...base} autoCloseMs={12_000} />);
 

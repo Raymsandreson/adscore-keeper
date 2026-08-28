@@ -20,7 +20,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, RefreshCw, Search, TrendingDown, TrendingUp, X } from 'lucide-react';
 import { useConferenciaAcordos, ESTAGIO_LABEL } from '@/hooks/useConferenciaAcordos';
 import type { AcordoConferido } from '@/hooks/useConferenciaAcordos';
 import { totalizarConferencia } from '@/lib/conferenciaAcordo';
@@ -29,7 +29,7 @@ import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { toast } from 'sonner';
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
@@ -41,34 +41,87 @@ const dataBR = (d: string | null) => {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
 
+/** Busca sem acento e sem caixa — "jose" acha "José". */
+const semAcento = (s: string) =>
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
 function Card({ titulo, valor, detalhe, tom, className = '' }: {
   titulo: string; valor: string; detalhe?: string;
   tom: 'ok' | 'falta' | 'sobra' | 'neutro' | 'multa'; className?: string;
 }) {
   const cores = {
-    ok: 'border-emerald-500/40 bg-emerald-500/5',
-    falta: 'border-destructive/40 bg-destructive/5',
-    sobra: 'border-amber-500/40 bg-amber-500/5',
-    multa: 'border-sky-500/40 bg-sky-500/5',
+    ok: 'border-emerald-500/30 bg-emerald-500/5',
+    falta: 'border-destructive/30 bg-destructive/5',
+    sobra: 'border-amber-500/30 bg-amber-500/5',
+    multa: 'border-sky-500/30 bg-sky-500/5',
     neutro: 'border-border bg-muted/30',
   }[tom];
   return (
-    <div className={`rounded-lg border p-3 ${cores} ${className}`}>
-      <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{titulo}</div>
-      <div className="mt-0.5 text-lg font-semibold leading-tight">{valor}</div>
-      {detalhe && <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{detalhe}</div>}
+    <div className={`rounded-2xl border p-3.5 ${cores} ${className}`}>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{titulo}</div>
+      <div className="mt-1 text-lg font-bold leading-tight tracking-tight">{valor}</div>
+      {detalhe && <div className="mt-1 text-[11px] leading-snug text-muted-foreground">{detalhe}</div>}
     </div>
   );
 }
 
-/** Grupo recolhível. O que pede ação fica aberto; o resto se abre por escolha. */
-function Secao({ titulo, itens, render, aberta, setAberta }: {
+/**
+ * Progresso da conferência: quanto da fila já confere exato. Sem cota e
+ * divergente aparecem na barra como trabalho que falta — nada é descontado,
+ * é só a mesma fila lida como caminho andado.
+ */
+function ProgressoConferencia({ conferem, divergem, semCota }: {
+  conferem: number; divergem: number; semCota: number;
+}) {
+  const total = conferem + divergem + semCota;
+  if (total === 0) return null;
+  const pct = Math.round((conferem / total) * 100);
+  const larg = (n: number) => `${(n / total) * 100}%`;
+  return (
+    <div className="rounded-2xl border border-border bg-card p-3.5">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Progresso da conferência
+          </div>
+          <div className="mt-0.5 text-2xl font-bold tracking-tight text-orange-500">{pct}%</div>
+        </div>
+        <div className="text-right text-[11px] leading-snug text-muted-foreground">
+          {conferem} de {total} conferem exatos
+        </div>
+      </div>
+      <div className="mt-2 flex h-2 w-full overflow-hidden rounded-full bg-muted">
+        {conferem > 0 && <div className="bg-emerald-500" style={{ width: larg(conferem) }} />}
+        {divergem > 0 && <div className="bg-orange-500" style={{ width: larg(divergem) }} />}
+        {semCota > 0 && <div className="bg-muted-foreground/25" style={{ width: larg(semCota) }} />}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> conferem ({conferem})
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-orange-500" /> divergem ({divergem})
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40" /> sem cota ({semCota})
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Grupo recolhível. O que pede ação fica aberto; o resto se abre por escolha.
+ * Com busca ativa, tudo abre — recolhido esconderia o resultado encontrado.
+ */
+function Secao({ titulo, itens, render, aberta, setAberta, buscando = false }: {
   titulo: string; itens: AcordoConferido[];
   render: (a: AcordoConferido) => React.ReactNode;
-  aberta: boolean; setAberta: (v: boolean) => void;
+  aberta: boolean; setAberta: (v: boolean) => void; buscando?: boolean;
 }) {
   if (itens.length === 0) return null;
   const fixa = titulo.startsWith('Divergem');
+  const aberto = fixa || aberta || buscando;
   return (
     <section className="space-y-2">
       <button
@@ -76,11 +129,13 @@ function Secao({ titulo, itens, render, aberta, setAberta }: {
         onClick={() => { if (!fixa) setAberta(!aberta); }}
         className="flex w-full items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
       >
-        {!fixa && (aberta ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />)}
+        {!fixa && (aberto ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />)}
         {titulo}
-        <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">{itens.length}</Badge>
+        <Badge className="rounded-full border-transparent bg-orange-500/10 px-1.5 py-0 text-[10px] font-semibold text-orange-600 hover:bg-orange-500/10 dark:text-orange-400">
+          {itens.length}
+        </Badge>
       </button>
-      {(fixa || aberta) && <div className="space-y-2">{itens.map(render)}</div>}
+      {aberto && <div className="space-y-2">{itens.map(render)}</div>}
     </section>
   );
 }
@@ -129,6 +184,25 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
   const [abrirSemCota, setAbrirSemCota] = useState(false);
   const [abrirConferem, setAbrirConferem] = useState(false);
 
+  // Busca por caso (título), processo (CNJ com ou sem máscara) e parte (nome).
+  // Filtra só o que a lista MOSTRA — os totais e o progresso seguem somando a
+  // fila inteira, porque busca é navegação, não régua.
+  const [busca, setBusca] = useState('');
+  const casaBusca = useMemo(() => {
+    const texto = semAcento(busca.trim());
+    const digitos = busca.replace(/\D/g, '');
+    if (!texto) return null;
+    return (a: AcordoConferido) =>
+      semAcento(a.titulo ?? '').includes(texto)
+      || a.partes.some(p => semAcento(p).includes(texto))
+      || (digitos.length >= 3 && a.cnj.replace(/\D/g, '').includes(digitos));
+  }, [busca]);
+  const buscando = casaBusca != null;
+  const vDivergentes = buscando ? divergentes.filter(casaBusca) : divergentes;
+  const vSemCota = buscando ? semCota.filter(casaBusca) : semCota;
+  const vConferem = buscando ? conferem.filter(casaBusca) : conferem;
+  const encontrados = vDivergentes.length + vSemCota.length + vConferem.length;
+
   const linha = (a: AcordoConferido) => {
     const c = a.conferencia;
     const Icone = c.situacao === 'OK' ? CheckCircle2
@@ -145,7 +219,7 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
           processId: a.processId, boardId: board.id, cnj: a.cnj,
           titulo: a.titulo, foco: 'valores',
         })}
-        className="w-full rounded-md border p-2.5 text-left transition-colors hover:bg-muted/50"
+        className="w-full rounded-2xl border p-3 text-left transition-colors hover:border-orange-500/40 hover:bg-orange-500/[0.04]"
         title="Abrir a conferência: ver a trilha, anexar ou trocar a peça, e corrigir o valor"
       >
         <div className="flex flex-wrap items-start justify-between gap-2">
@@ -227,7 +301,7 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
     <Sheet open={!!board} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
         <SheetHeader className="space-y-1">
-          <SheetTitle className="text-base">Conferência de valores</SheetTitle>
+          <SheetTitle className="text-lg font-bold tracking-tight">Conferência de valores</SheetTitle>
           <p className="text-xs text-muted-foreground">{board?.name}</p>
         </SheetHeader>
 
@@ -241,6 +315,33 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
           <p className="text-xs text-muted-foreground">Nenhum processo com valor a conferir neste POP.</p>
         ) : (
           <>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                type="search"
+                value={busca}
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Buscar por caso, processo ou parte…"
+                className="h-11 w-full rounded-full border border-border bg-muted/40 pl-10 pr-10 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-orange-500 focus:bg-background focus:ring-2 focus:ring-orange-500/20 [&::-webkit-search-cancel-button]:hidden"
+              />
+              {busca && (
+                <button
+                  type="button"
+                  onClick={() => setBusca('')}
+                  aria-label="Limpar busca"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <ProgressoConferencia
+              conferem={conferem.length}
+              divergem={divergentes.length}
+              semCota={semCota.length}
+            />
+
             <div className="grid grid-cols-2 gap-2">
               <Card titulo="Processos na fila" valor={String(t.acordos)}
                 detalhe={`${t.ok} conferem exatos${t.semCliente ? ` · ${t.semCliente} sem cota` : ''}`} tom="neutro" />
@@ -274,11 +375,19 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
               carteira até a peça certa corrigir o banco.
             </p>
 
-            <Secao titulo="Divergem — anexar a peça certa" itens={divergentes} render={linha} aberta setAberta={() => {}} />
-            <Secao titulo="Sem cota lançada — não dá para conferir" itens={semCota} render={linha}
-                   aberta={abrirSemCota} setAberta={setAbrirSemCota} />
-            <Secao titulo="Conferem" itens={conferem} render={linha}
-                   aberta={abrirConferem} setAberta={setAbrirConferem} />
+            {buscando && (
+              <p className="text-[11px] text-muted-foreground">
+                {encontrados === 0 ? <>Nenhum processo encontrado para “{busca.trim()}”.</>
+                  : <>{encontrados} de {acordos.length} {encontrados === 1 ? 'processo' : 'processos'} para “{busca.trim()}”.</>}
+              </p>
+            )}
+
+            <Secao titulo="Divergem — anexar a peça certa" itens={vDivergentes} render={linha}
+                   aberta setAberta={() => {}} buscando={buscando} />
+            <Secao titulo="Sem cota lançada — não dá para conferir" itens={vSemCota} render={linha}
+                   aberta={abrirSemCota} setAberta={setAbrirSemCota} buscando={buscando} />
+            <Secao titulo="Conferem" itens={vConferem} render={linha}
+                   aberta={abrirConferem} setAberta={setAbrirConferem} buscando={buscando} />
 
             <div className="flex justify-end pb-2">
               <Button variant="outline" size="sm" className="h-7 gap-1.5 text-xs" onClick={() => void recarregar()}>
