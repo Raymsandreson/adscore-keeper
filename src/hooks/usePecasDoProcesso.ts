@@ -82,7 +82,11 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
    */
   const anexar = useCallback(async (
     arquivo: File,
-    dados: { titulo: string; dataDocumento: string | null },
+    // marcoChave (29/08/2026): vínculo explícito peça→marco. É o que permite a
+    // peça sustentar um marco SEM sinal de documento cadastrado no POP — o
+    // casamento por título/regex não alcança a maioria dos marcos (agravo,
+    // constrição, levantamento…). A detecção lê jm_documentos.marco_chave.
+    dados: { titulo: string; dataDocumento: string | null; marcoChave?: string | null },
   ): Promise<{ ok: true } | { ok: false; erro: string }> => {
     if (!cnj) return { ok: false, erro: 'processo sem CNJ' };
     if (arquivo.type !== 'application/pdf') return { ok: false, erro: 'só PDF por enquanto' };
@@ -104,6 +108,7 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
           titulo: dados.titulo,
           tipo: 'RESTRITO',
           origem: 'manual',
+          marco_chave: dados.marcoChave ?? null,
           data_documento: dados.dataDocumento,
           storage_path: caminho,
           stored_at: new Date().toISOString(),

@@ -14,6 +14,7 @@
 // =============================================================================
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -131,15 +132,27 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
  *
  * A peça entra amarrada à DATA DO MARCO — é o que faz o casamento por data
  * encontrá-la depois, sem nenhuma chave nova.
+ *
+ * Marco ainda NÃO detectado não tem data — aí a data vem da pessoa (29/08/2026,
+ * pedido do Raym: "faltou as peças para subsidiar a passagem pelo marco"). O
+ * clique abre um popover pedindo a data do documento antes do PDF, e a peça
+ * sobe com `marcoChave`: é o vínculo explícito que a detecção lê, já que a
+ * maioria dos marcos não tem sinal de documento cadastrado no POP.
  */
-function BotaoAnexar({ rotulo, data, onAnexar }: {
+function BotaoAnexar({ rotulo, data, marcoChave, pedirData, onAnexar }: {
   rotulo: string;
   data: string | null;
-  onAnexar: (a: File, d: { titulo: string; dataDocumento: string | null }) => Promise<{ ok: boolean; erro?: string }>;
+  /** Chave do marco para vincular explicitamente (jm_documentos.marco_chave). */
+  marcoChave?: string;
+  /** true = marco sem data detectada: pedir a data do documento antes do PDF. */
+  pedirData?: boolean;
+  onAnexar: (a: File, d: { titulo: string; dataDocumento: string | null; marcoChave?: string | null }) => Promise<{ ok: boolean; erro?: string }>;
 }) {
   const input = useRef<HTMLInputElement | null>(null);
   const [subindo, setSubindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [pedindo, setPedindo] = useState(false);
+  const [dataEscolhida, setDataEscolhida] = useState('');
 
   return (
     <>
@@ -150,21 +163,62 @@ function BotaoAnexar({ rotulo, data, onAnexar }: {
           e.target.value = ''; // permite reanexar o mesmo arquivo depois de um erro
           if (!a) return;
           setSubindo(true); setErro(null);
-          const r = await onAnexar(a, { titulo: rotulo, dataDocumento: data });
+          const r = await onAnexar(a, {
+            titulo: rotulo,
+            dataDocumento: pedirData ? (dataEscolhida || null) : data,
+            marcoChave: marcoChave ?? null,
+          });
           setSubindo(false);
           if (!r.ok) setErro(r.erro ?? 'falha ao anexar');
         }}
       />
-      <button
-        type="button"
-        disabled={subindo}
-        onClick={() => input.current?.click()}
-        className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
-        title={`Anexar a peça que comprova "${rotulo}"`}
-      >
-        {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
-        {subindo ? 'anexando…' : 'anexar peça'}
-      </button>
+      {pedirData ? (
+        <Popover open={pedindo} onOpenChange={setPedindo}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={subindo}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+              title={`Anexar a peça que comprova "${rotulo}"`}
+            >
+              {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              {subindo ? 'anexando…' : 'anexar peça'}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 space-y-2 p-3">
+            <div className="text-xs font-medium">Peça que comprova “{rotulo}”</div>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Este marco ainda não tem data detectada. Informe a data do documento — é ela que
+              vai datar o marco na régua.
+            </p>
+            <input
+              type="date"
+              value={dataEscolhida}
+              onChange={(e) => setDataEscolhida(e.target.value)}
+              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!dataEscolhida}
+              onClick={() => { setPedindo(false); input.current?.click(); }}
+            >
+              Escolher o PDF
+            </Button>
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <button
+          type="button"
+          disabled={subindo}
+          onClick={() => input.current?.click()}
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          title={`Anexar a peça que comprova "${rotulo}"`}
+        >
+          {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+          {subindo ? 'anexando…' : 'anexar peça'}
+        </button>
+      )}
       {erro && <span className="text-[10px] text-destructive">{erro}</span>}
     </>
   );
@@ -296,10 +350,13 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirL
 
   /** Anexa e, na sequência, mostra o efeito nos números. */
   const anexarEMostrar = useCallback(async (
-    arquivo: File, dados: { titulo: string; dataDocumento: string | null },
+    arquivo: File, dados: { titulo: string; dataDocumento: string | null; marcoChave?: string | null },
   ) => {
     const r = await anexar(arquivo, dados);
     if (!r.ok) return r;
+    // Peça vinculada a marco: rematerializa a régua na hora, senão a linha
+    // continua "não houve" até o próximo tick e o anexo parece não ter feito nada.
+    if (dados.marcoChave) void regua.rematerializar();
     // A peça acabou de nascer: acha o id dela pela data e pelo título que demos.
     const nova = pecasRef.current.find(
       p => p.origem === 'manual' && p.titulo === dados.titulo
@@ -314,7 +371,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirL
       erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
     }));
     return r;
-  }, [anexar, lerPeca]);
+  }, [anexar, lerPeca, regua.rematerializar]);
 
   /** Lê uma peça que já está no marco e mostra o efeito dela nos números. */
   const verOQueMuda = useCallback(async (peca: PecaDoProcesso) => {
@@ -501,7 +558,23 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirL
                       processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
                     })}
                     renderDireita={(m) => {
-                      if (m.estado !== 'atingido') return null;
+                      if (m.estado !== 'atingido') {
+                        // Marco sem detecção ("não houve"/presumido/falta): o
+                        // caminho é trazer a peça que comprova a passagem. Ela
+                        // sobe com o marco_chave e a data informada — vira a
+                        // evidência que a detecção por documento lê.
+                        return (
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <BotaoAnexar
+                              rotulo={m.rotulo}
+                              data={null}
+                              pedirData
+                              marcoChave={m.chave}
+                              onAnexar={anexarEMostrar}
+                            />
+                          </span>
+                        );
+                      }
                       const p = melhorPeca(pecas, m.data, { assunto: 'MARCO' });
                       // Sem peça casada, o que a linha precisa não é de um botão
                       // morto: é do caminho para trazer a prova que falta.
