@@ -1,7 +1,9 @@
-// A régua não pode pular estação do caminho à frente (28/08/2026): com o marco
-// atual em "Alvará expedido", a linha ia direto para "Arquivamento definitivo",
-// escondendo "Levantamento / pagamento" por ser eventual pendente. Eventual
-// pendente só some quando ficou PARA TRÁS do marco atual.
+// A régua não pode pular estação (29/08/2026, pedido do Raym: "tem que
+// aparecer todos os marcos"). A primeira versão escondia eventual pendente e a
+// linha ia de "Alvará expedido" direto para "Arquivamento definitivo"; a
+// segunda ainda escondia eventual pendente ATRÁS do marco atual, e um processo
+// arquivado sumia com toda a fase de execução. Regra final: toda fase aparece,
+// sempre — só ESTADO (acordo, suspensão…) fica de fora, como badge.
 import { describe, expect, it } from 'vitest';
 import { fasesVisiveis, type MarcoDaRegua } from '@/components/cases/ReguaMarcosDoPop';
 
@@ -35,38 +37,27 @@ const regua: MarcoDaRegua[] = [
 ];
 
 describe('fasesVisiveis', () => {
-  it('mostra eventual pendente DEPOIS do marco atual — a linha não pula para o arquivamento', () => {
+  it('mostra TODAS as fases em ordem — pendente eventual incluído, antes e depois do marco atual', () => {
     const chaves = fasesVisiveis(regua).map(m => m.chave);
     expect(chaves).toEqual([
       'sentenca',
+      'embargos_1grau',
       'transito_julgado',
+      'liquidacao',
       'execucao_iniciada',
+      'constricao',
       'alvara_expedido',
       'pagamento',
       'arquivamento_definitivo',
     ]);
   });
 
-  it('continua escondendo eventual pendente que ficou para trás do marco atual', () => {
-    const chaves = fasesVisiveis(regua).map(m => m.chave);
-    expect(chaves).not.toContain('embargos_1grau'); // recursal que nunca houve
-    expect(chaves).not.toContain('liquidacao'); // ordem 21 < atual 25, não parou lá
-    expect(chaves).not.toContain('constricao'); // ordem 24 < atual 25, idem
-  });
-
-  it('estado (atravessa fases) nunca entra na linha', () => {
+  it('estado (atravessa fases) nunca entra na linha — vira badge', () => {
     expect(fasesVisiveis(regua).map(m => m.chave)).not.toContain('acordo_homologado');
   });
 
-  it('sem marco atual, eventual pendente segue oculto (comportamento antigo)', () => {
-    const semAtual = regua.map(m => ({ ...m, atual: false }));
-    const chaves = fasesVisiveis(semAtual).map(m => m.chave);
-    expect(chaves).toEqual([
-      'sentenca',
-      'transito_julgado',
-      'execucao_iniciada',
-      'alvara_expedido',
-      'arquivamento_definitivo',
-    ]);
+  it('ordena por ordem mesmo com entrada embaralhada', () => {
+    const embaralhada = [...regua].reverse();
+    expect(fasesVisiveis(embaralhada).map(m => m.ordem)).toEqual([7, 8, 20, 21, 22, 24, 25, 26, 27]);
   });
 });

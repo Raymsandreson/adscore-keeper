@@ -8,15 +8,14 @@
 // process_pop_marcos, a mesma que move a fase do POP e o percentual), e o
 // layout é a linha do trem da aba Marcos.
 //
-// Regras de exibição (as mesmas do percentual em pop_processo_regua):
-//   - FASE entra na linha se é obrigatória, se aconteceu (eventual atingido)
-//     OU se é eventual pendente DEPOIS do marco atual. Eventual pendente que
-//     ficou para trás não polui a linha de quem nunca vai passar por ele — é
-//     assim que "trânsito a qualquer momento" funciona: sem recurso, nenhum
-//     degrau recursal aparece e o trânsito vem logo após a sentença. Mas o
-//     caminho À FRENTE aparece inteiro (28/08/2026): esconder eventual futuro
-//     fazia a linha pular de "Alvará expedido" direto para "Arquivamento
-//     definitivo", sumindo com "Levantamento / pagamento" e afins.
+// Regras de exibição:
+//   - TODA fase entra na linha, sempre (29/08/2026, pedido do Raym: "tem que
+//     aparecer todos os marcos"). Esconder eventual pendente fazia a régua
+//     pular estações — de "Alvará expedido" direto para "Arquivamento
+//     definitivo", sumindo com "Levantamento / pagamento" e afins. O que muda
+//     por posição é só o rótulo do pendente: "falta" quando a estação ainda
+//     está à frente do marco atual, "não houve" quando o trem já passou por
+//     ela sem parar (recurso que não aconteceu, penhora que não precisou).
 //   - ESTADO (atravessa_fases: acordo, suspensão, inadimplência…) não é
 //     posição: vira badge no topo, com a data.
 //   - presumido = obrigatório anterior ao marco atual que a janela de
@@ -75,21 +74,11 @@ function humanizeDias(dias: number): string {
     : `${anos} ano${anos > 1 ? 's' : ''}`;
 }
 
-/**
- * Fases que a linha exibe: obrigatórias sempre; eventuais se aconteceram ou se
- * ainda podem acontecer (depois do marco atual). Eventual pendente atrás do
- * marco atual fica de fora: o trem já passou por essa estação sem parar.
- */
+/** Fases que a linha exibe: todas, em ordem. Só ESTADO (badge) fica de fora. */
 export function fasesVisiveis(marcos: MarcoDaRegua[]): MarcoDaRegua[] {
-  const fases = marcos
+  return marcos
     .filter(m => !m.atravessaFases)
     .sort((a, b) => a.ordem - b.ordem);
-  const atual = fases.find(m => m.atual);
-  return fases.filter(m =>
-    !m.eventual
-    || m.estado === 'atingido'
-    || (atual !== undefined && m.ordem > atual.ordem),
-  );
 }
 
 export function ReguaMarcosDoPop({
@@ -219,8 +208,17 @@ export function ReguaMarcosDoPop({
                     )
                   )}
                   {renderDireita?.(m)}
-                  <span className="w-16 text-right text-[10px] text-muted-foreground whitespace-nowrap">
-                    {m.data ? dataBR(m.data) : m.estado === 'pendente' ? 'falta' : ''}
+                  <span
+                    className="w-16 text-right text-[10px] text-muted-foreground whitespace-nowrap"
+                    title={m.estado === 'pendente' && idxAtual >= 0 && i < idxAtual
+                      ? 'Fase eventual que o processo atravessou sem registrar — não é atraso.'
+                      : undefined}
+                  >
+                    {m.data
+                      ? dataBR(m.data)
+                      : m.estado === 'pendente'
+                        ? (idxAtual >= 0 && i < idxAtual ? 'não houve' : 'falta')
+                        : ''}
                   </span>
                 </span>
               </div>
