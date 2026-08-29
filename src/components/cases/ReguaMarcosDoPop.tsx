@@ -9,10 +9,14 @@
 // layout é a linha do trem da aba Marcos.
 //
 // Regras de exibição (as mesmas do percentual em pop_processo_regua):
-//   - FASE entra na linha se é obrigatória OU se aconteceu (eventual atingido).
-//     Degrau eventual pendente não polui a linha de quem nunca vai passar por
-//     ele — é assim que "trânsito a qualquer momento" funciona: sem recurso,
-//     nenhum degrau recursal aparece e o trânsito vem logo após a sentença.
+//   - FASE entra na linha se é obrigatória, se aconteceu (eventual atingido)
+//     OU se é eventual pendente DEPOIS do marco atual. Eventual pendente que
+//     ficou para trás não polui a linha de quem nunca vai passar por ele — é
+//     assim que "trânsito a qualquer momento" funciona: sem recurso, nenhum
+//     degrau recursal aparece e o trânsito vem logo após a sentença. Mas o
+//     caminho À FRENTE aparece inteiro (28/08/2026): esconder eventual futuro
+//     fazia a linha pular de "Alvará expedido" direto para "Arquivamento
+//     definitivo", sumindo com "Levantamento / pagamento" e afins.
 //   - ESTADO (atravessa_fases: acordo, suspensão, inadimplência…) não é
 //     posição: vira badge no topo, com a data.
 //   - presumido = obrigatório anterior ao marco atual que a janela de
@@ -71,11 +75,21 @@ function humanizeDias(dias: number): string {
     : `${anos} ano${anos > 1 ? 's' : ''}`;
 }
 
-/** Fases que a linha exibe: obrigatórias sempre; eventuais só se aconteceram. */
+/**
+ * Fases que a linha exibe: obrigatórias sempre; eventuais se aconteceram ou se
+ * ainda podem acontecer (depois do marco atual). Eventual pendente atrás do
+ * marco atual fica de fora: o trem já passou por essa estação sem parar.
+ */
 export function fasesVisiveis(marcos: MarcoDaRegua[]): MarcoDaRegua[] {
-  return marcos
-    .filter(m => !m.atravessaFases && (!m.eventual || m.estado === 'atingido'))
+  const fases = marcos
+    .filter(m => !m.atravessaFases)
     .sort((a, b) => a.ordem - b.ordem);
+  const atual = fases.find(m => m.atual);
+  return fases.filter(m =>
+    !m.eventual
+    || m.estado === 'atingido'
+    || (atual !== undefined && m.ordem > atual.ordem),
+  );
 }
 
 export function ReguaMarcosDoPop({
