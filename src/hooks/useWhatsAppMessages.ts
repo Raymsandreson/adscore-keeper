@@ -201,6 +201,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
   const [instances, setInstances] = useState<WhatsAppInstance[]>([]);
   const [instanceStats, setInstanceStats] = useState<InstanceStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(true);
+  // Vira true depois da PRIMEIRA resolução de instâncias. Sem isso, `instances.length === 0`
+  // durante o fetch inicial faz a tela piscar o aviso de "sem instância".
+  const [instancesLoaded, setInstancesLoaded] = useState(false);
   const conversationsRef = useRef<WhatsAppConversation[]>([]);
   // Se restaurou do cache, considera "já carregado" — não mostra spinner
   const [hasLoaded, setHasLoaded] = useState(() => {
@@ -300,6 +303,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       setInstances([]);
     } finally {
       setStatsLoading(false);
+      setInstancesLoaded(true);
     }
   }, [user, isAdmin, forceIncludeInstanceName]);
 
@@ -2065,6 +2069,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     instances,
     instanceStats,
     statsLoading,
+    instancesLoaded,
     hasLoaded,
     sendMessage,
     sendMedia,

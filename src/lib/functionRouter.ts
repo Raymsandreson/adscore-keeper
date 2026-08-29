@@ -78,6 +78,9 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // São Paulo e passa. Some a isso a LGPD — o tráfego carrega CPF/CNPJ e extrato.
   'celcoin-open-finance': 'external',
   'update-profile-avatar': 'railway', // foto de perfil: a policy de UPDATE de profiles barra a sessão anônima do Externo — só service role grava
+  // Testemunho → Instagram: só existem no Railway (sharp + fonte embutida; token Meta no env do servidor)
+  'testimonial-to-instagram-post': 'railway',
+  'publish-instagram-testimonial': 'railway',
 
   // --- INSS administrativo / e-mails processuais ---
   // Só existem no Railway. Estavam FORA deste mapa e os componentes chamavam

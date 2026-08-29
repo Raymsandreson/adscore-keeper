@@ -169,7 +169,10 @@ function applyFilters(q: any, p: LeadListParams): any {
   if (f.acolhedor) q = q.eq('acolhedor', f.acolhedor);
   if (f.accidentDateFrom) q = q.gte('accident_date', f.accidentDateFrom);
   if (f.accidentDateTo) q = q.lte('accident_date', f.accidentDateTo);
-  if (f.visitState) q = q.eq('visit_state', f.visitState);
+  // Estado é multi: uma UF vira eq, várias viram IN.
+  const ufs = Array.isArray(f.visitState) ? f.visitState : f.visitState ? [f.visitState as string] : [];
+  if (ufs.length === 1) q = q.eq('visit_state', ufs[0]);
+  else if (ufs.length > 1) q = q.in('visit_state', ufs);
   if (f.visitCity) q = q.eq('visit_city', f.visitCity);
   if (f.visitRegion) q = q.eq('visit_region', f.visitRegion);
 

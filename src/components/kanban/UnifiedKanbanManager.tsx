@@ -4,7 +4,7 @@ import { useGroupReportsPending } from '@/hooks/useGroupReportsPending';
 import { usePageState } from '@/hooks/usePageState';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { getStageType } from '@/utils/kanbanStageTypes';
-import { LeadAdvancedFilters, LeadFilters, emptyFilters, applyLeadFilters } from './LeadAdvancedFilters';
+import { LeadAdvancedFilters, LeadFilters, emptyFilters, applyLeadFilters, normalizeLeadFilters, hasAnyLeadFilter } from './LeadAdvancedFilters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -112,7 +112,9 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
   const [showReport, setShowReport] = useState(false);
   const [editingLeadId, setEditingLeadId] = usePageState<string | null>('kanban_editingLeadId', null);
   const [showExtractor, setShowExtractor] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
+  const [storedFilters, setAdvancedFilters] = usePageState<LeadFilters>('kanban_advFilters', emptyFilters);
+  // O localStorage pode ter a forma antiga do filtro de Estado (string).
+  const advancedFilters = useMemo(() => normalizeLeadFilters(storedFilters), [storedFilters]);
   const [acolhedorFilter, setAcolhedorFilter] = usePageState<string>('kanban_acolhedorFilter', '');
   const [checklistFilteredIds, setChecklistFilteredIds] = useState<Set<string> | null>(null);
 
@@ -401,7 +403,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
     }
 
     // Apply advanced filters
-    const hasAdvanced = Object.values(advancedFilters).some(v => v !== '');
+    const hasAdvanced = hasAnyLeadFilter(advancedFilters);
     if (hasAdvanced) {
       result = applyLeadFilters(result, advancedFilters);
     }
@@ -432,7 +434,7 @@ export function UnifiedKanbanManager({ adAccountId, category }: UnifiedKanbanMan
 
   // Check if any filter is active
   const hasActiveFilters = useMemo(() => {
-    return !!searchQuery || checklistFilteredIds !== null || !!acolhedorFilter || Object.values(advancedFilters).some(v => v !== '');
+    return !!searchQuery || checklistFilteredIds !== null || !!acolhedorFilter || hasAnyLeadFilter(advancedFilters);
   }, [searchQuery, checklistFilteredIds, advancedFilters, acolhedorFilter]);
 
   // Stats for selected board using stage type classification
