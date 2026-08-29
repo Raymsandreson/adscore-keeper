@@ -18,8 +18,11 @@ import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
   Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target,
-  DollarSign
+  DollarSign, Paperclip
 } from 'lucide-react';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
+import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -545,6 +548,21 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     })();
     return () => { cancelled = true; };
   }, [activeTab, process?.id]);
+
+  // Acervo dos autos (jm_documentos, por CNJ) — a MESMA fonte da Conferência.
+  // A aba Documentos só mostrava process_documents (uploads/ZapSign/importados) e
+  // escondia as peças que o Escavador já baixou; o caso 46 tinha 20 PDFs
+  // invisíveis aqui (29/08/2026). O hook só liga com a aba aberta.
+  const { pecas: acervo, assinar: assinarPeca } = usePecasDoProcesso(
+    activeTab === 'documentos' ? (form.process_number ?? null) : null,
+  );
+  const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
+
+  const abrirPecaAcervo = async (p: PecaDoProcesso) => {
+    const url = await assinarPeca(p.storagePath);
+    if (!url) { toast.error('Não consegui abrir a peça.'); return; }
+    setPecaAberta({ url, titulo: p.titulo || 'Peça dos autos' });
+  };
 
   const fetchEscavadorDocuments = async () => {
     if (!form.process_number) {
@@ -1111,6 +1129,44 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'documentos' && (
               <div className="space-y-3">
+                {/* Acervo dos autos — as peças que o Escavador baixou (jm-autos),
+                    em ordem cronológica. É o mesmo acervo da Conferência. */}
+                {acervo.length > 0 && (
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                      <Paperclip className="h-3.5 w-3.5 text-primary" />
+                      Acervo dos autos — Escavador ({acervo.length})
+                    </h4>
+                    <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-md border p-1.5">
+                      {[...acervo]
+                        .sort((a, b) => (a.dataDocumento ?? '').localeCompare(b.dataDocumento ?? ''))
+                        .map(p => (
+                          <div key={p.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
+                            <span className="w-16 shrink-0 text-[10px] text-muted-foreground">
+                              {p.dataDocumento
+                                ? new Date(`${p.dataDocumento.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
+                                : '—'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void abrirPecaAcervo(p)}
+                              className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline"
+                              title="Abrir a peça"
+                            >
+                              {p.titulo || 'Peça dos autos'}
+                            </button>
+                            {p.tipo === 'RESTRITO' && (
+                              <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">restrita</Badge>
+                            )}
+                            {p.origem === 'manual' && (
+                              <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
+                            )}
+                          </div>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-semibold flex items-center gap-1.5">
                     <FolderOpen className="h-3.5 w-3.5 text-primary" />
@@ -1790,6 +1846,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         onOpenChange={(o) => { if (!o) { setCreateSheetOpen(false); setCreateDraft(null); } }}
         onCreated={fetchActivities}
         onUpdated={fetchActivities}
+      />
+
+      {/* Peça do acervo aberta por cima da ficha — nunca em aba nova. */}
+      <MediaLightbox
+        url={pecaAberta?.url ?? null}
+        title={pecaAberta?.titulo ?? 'Peça dos autos'}
+        onClose={() => setPecaAberta(null)}
       />
     </div>
   );

@@ -70,8 +70,11 @@ serve(async (req) => {
         }
         break;
       case 'buscar_documentos':
+        // /documentos não existe na API v2 e devolve "Not found." (medido em
+        // 29/08/2026 no caso 46). O endpoint certo é /documentos-publicos — o
+        // mesmo que a esc-autos usa para montar o acervo.
         if (!numero_cnj) throw new Error('numero_cnj é obrigatório');
-        url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/documentos`;
+        url = `${ESCAVADOR_BASE}/processos/numero_cnj/${encodeURIComponent(numero_cnj)}/documentos-publicos`;
         if (cursor) {
           url += `?cursor=${encodeURIComponent(cursor)}`;
         }
