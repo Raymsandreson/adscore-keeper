@@ -1,6 +1,6 @@
 # Testemunho de cliente → post de Instagram
 
-**Status:** implementado (ago/2026), aguardando `META_ACCESS_TOKEN` no Railway e migration aplicada no Externo.
+**Status:** implementado (ago/2026); migration aplicada no Externo em 29/08/2026. Publicação aguarda `META_ACCESS_TOKEN` no env do Railway.
 
 ## O que é
 
@@ -14,7 +14,8 @@ O agradecimento que o cliente manda por áudio no WhatsApp (transcrito pelo sist
    - o card é renderizado com `sharp` (SVG → JPEG) usando **Poppins embutida no repo** (`railway-server/assets/fonts/`, licença OFL) + `fonts.conf` gerado em runtime — o container do Railway não tem fonte nenhuma instalada;
    - a imagem sobe no bucket público `whatsapp-media` (pasta `instagram-posts/`) e o rascunho é gravado em `instagram_testimonial_posts` (Externo).
 3. O revisor edita citação, nome, contexto e legenda; "Atualizar arte" re-renderiza **sem** chamar a IA (`regenerate_post_id` + `quote_text`).
-4. Publicar exige: escolher a conta (via edge `list-instagram-accounts`) **e marcar o checkbox de autorização do cliente (LGPD)**. Aí sim `publish-instagram-testimonial` (Railway) roda o Content Publishing da Graph API: container `/media` → poll `status_code` → `/media_publish` → salva `ig_media_id` + `permalink` e status `publicado`.
+   - **Com a voz da cliente (padrão quando a bolha é áudio)**: `with_voice: true` baixa o áudio original (`media_url` da mensagem) e o ffmpeg (`ffmpeg-static`, `lib/testimonial-video.ts`) muxa card + áudio em MP4 1080×1920 (card centralizado, H.264 + AAC, `+faststart`). O vídeo sobe ao lado da imagem (`instagram-posts/<id>.mp4`) e o rascunho fica com `post_type='reel'`.
+4. Publicar exige: escolher a conta (via edge `list-instagram-accounts`) **e marcar o checkbox de autorização do cliente (LGPD)**. Aí sim `publish-instagram-testimonial` (Railway) roda o Content Publishing da Graph API: container `/media` → poll `status_code` → `/media_publish` → salva `ig_media_id` + `permalink` e status `publicado`. Rascunho `reel` publica com `media_type=REELS` + `share_to_feed=true` (aparece no grid também); o poll de vídeo espera até ~2min o transcode da Meta.
 
 ## Peças
 

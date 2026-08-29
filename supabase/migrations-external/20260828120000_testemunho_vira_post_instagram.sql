@@ -32,6 +32,14 @@ CREATE TABLE IF NOT EXISTS public.instagram_testimonial_posts (
   image_path text,                  -- caminho no bucket whatsapp-media
   image_url text,                   -- URL pública usada pela Graph API
 
+  -- Post com a VOZ do cliente: o áudio original vira Reel (card + áudio → MP4
+  -- via ffmpeg no Railway). audio_url é a fonte; video_* é o MP4 gerado.
+  post_type text NOT NULL DEFAULT 'imagem'
+    CHECK (post_type IN ('imagem', 'reel')),
+  audio_url text,
+  video_path text,
+  video_url text,
+
   status text NOT NULL DEFAULT 'rascunho'
     CHECK (status IN ('rascunho', 'publicado', 'descartado')),
 

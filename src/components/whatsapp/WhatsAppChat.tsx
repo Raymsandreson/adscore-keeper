@@ -1092,7 +1092,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [replySuggestOpen, setReplySuggestOpen] = useState(false);
   const [replySuggestTarget, setReplySuggestTarget] = useState<string | undefined>(undefined);
   // Testemunho → post de Instagram (Sheet de revisão; key remonta por mensagem)
-  const [testimonialMsg, setTestimonialMsg] = useState<{ id: string; text: string } | null>(null);
+  const [testimonialMsg, setTestimonialMsg] = useState<{ id: string; text: string; hasAudio: boolean } | null>(null);
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
@@ -5090,7 +5090,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           title="Transformar este testemunho em post de Instagram (com revisão antes de publicar)"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setTestimonialMsg({ id: msg.id, text: msg.message_text || '' });
+                            setTestimonialMsg({ id: msg.id, text: msg.message_text || '', hasAudio: msg.message_type === 'audio' && !!msg.media_url });
                           }}
                           className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
                         >
@@ -5728,6 +5728,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 onOpenChange={(o) => { if (!o) setTestimonialMsg(null); }}
                 messageId={testimonialMsg.id}
                 messageText={testimonialMsg.text}
+                hasAudio={testimonialMsg.hasAudio}
                 clientName={conversation.contact_name || null}
                 phone={conversation.phone || null}
                 instanceName={conversation.instance_name || null}

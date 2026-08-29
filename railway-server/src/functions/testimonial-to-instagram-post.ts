@@ -16,6 +16,8 @@
 //   created_by?: string,
 //   brand_name?: string,           // rodapé do card (padrão: env INSTAGRAM_CARD_BRAND)
 //   handle?: string,               // @conta no rodapé (padrão: env INSTAGRAM_CARD_HANDLE)
+//   with_voice?: boolean,          // true → Reel com o áudio original do cliente
+//   audio_url?: string,            // fonte do áudio; se ausente, usa media_url da mensagem
 //   // Regeneração com ajuste manual (revisor editou a citação):
 //   regenerate_post_id?: string,   // atualiza o rascunho em vez de criar outro
 //   quote_text?: string,           // usa esta citação e NÃO chama a IA
@@ -29,6 +31,7 @@ import { randomUUID } from 'crypto';
 import { geminiChat } from '../lib/gemini';
 import { supabase } from '../lib/supabase';
 import { renderTestimonialCard } from '../lib/testimonial-card';
+import { renderTestimonialReel } from '../lib/testimonial-video';
 
 const MODEL = process.env.EXTRACT_AI_MODEL || 'google/gemini-3.6-flash';
 const BUCKET = 'whatsapp-media';
@@ -65,14 +68,27 @@ export const handler: RequestHandler = async (req, res) => {
     let testimonialText: string = (body.testimonial_text || '').trim();
     const messageId: string | undefined = body.message_id || undefined;
 
-    if (!testimonialText && messageId) {
+    const withVoice: boolean = body.with_voice === true;
+    let audioUrl: string = (body.audio_url || '').trim();
+
+    if ((!testimonialText || (withVoice && !audioUrl)) && messageId) {
       const { data: msg, error } = await supabase
         .from('whatsapp_messages')
-        .select('message_text')
+        .select('message_text, media_url, message_type')
         .eq('id', messageId)
         .maybeSingle();
       if (error) throw new Error(`Erro lendo mensagem: ${error.message}`);
-      testimonialText = (msg?.message_text || '').trim();
+      if (!testimonialText) testimonialText = (msg?.message_text || '').trim();
+      if (withVoice && !audioUrl && msg?.message_type === 'audio') {
+        audioUrl = (msg?.media_url || '').trim();
+      }
+    }
+
+    if (withVoice && !audioUrl) {
+      return res.status(400).json({
+        error: 'Esta mensagem não tem áudio disponível — desmarque "com a voz da cliente" ou escolha a bolha do áudio.',
+        error_code: 'AUDIO_NOT_FOUND',
+      });
     }
 
     if (!testimonialText) {
@@ -163,6 +179,20 @@ export const handler: RequestHandler = async (req, res) => {
     const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(imagePath);
     const imageUrl = `${pub.publicUrl}?v=${Date.now()}`;
 
+    // Reel: a voz do cliente sobre o card. Gera o MP4 e sobe ao lado da imagem.
+    let videoPath: string | null = null;
+    let videoUrl: string | null = null;
+    if (withVoice) {
+      const video = await renderTestimonialReel(image, audioUrl);
+      videoPath = `${FOLDER}/${postId}.mp4`;
+      const { error: videoUploadError } = await supabase.storage
+        .from(BUCKET)
+        .upload(videoPath, video, { contentType: 'video/mp4', upsert: true });
+      if (videoUploadError) throw new Error(`Upload do Reel falhou: ${videoUploadError.message}`);
+      const { data: videoPub } = supabase.storage.from(BUCKET).getPublicUrl(videoPath);
+      videoUrl = `${videoPub.publicUrl}?v=${Date.now()}`;
+    }
+
     const row = {
       source_message_id: messageId || null,
       phone: body.phone || null,
@@ -176,6 +206,10 @@ export const handler: RequestHandler = async (req, res) => {
       caption,
       image_path: imagePath,
       image_url: imageUrl,
+      post_type: withVoice ? 'reel' : 'imagem',
+      audio_url: withVoice ? audioUrl : null,
+      video_path: videoPath,
+      video_url: videoUrl,
       created_by: body.created_by || null,
     };
 

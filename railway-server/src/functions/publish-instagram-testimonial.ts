@@ -24,6 +24,8 @@ const TOKEN = process.env.META_ACCESS_TOKEN || '';
 
 const POLL_INTERVAL_MS = 2000;
 const POLL_MAX_TRIES = 15;
+// Vídeo demora mais no processamento da Meta (transcode do Reel).
+const POLL_MAX_TRIES_VIDEO = 60;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -67,27 +69,36 @@ export const handler: RequestHandler = async (req, res) => {
 
   const caption = (captionOverride ?? post.caption ?? '').trim();
 
+  // Reel (voz do cliente): vídeo já muxado pelo gerador; a Graph API só
+  // publica vídeo como media_type=REELS. share_to_feed mantém o post visível
+  // também no grid do perfil.
+  const isReel = post.post_type === 'reel' && !!post.video_url;
+
   try {
     // 1. Container
+    const containerBody = isReel
+      ? { media_type: 'REELS', video_url: post.video_url, caption, share_to_feed: true, access_token: TOKEN }
+      : { image_url: post.image_url, caption, access_token: TOKEN };
     const container = await graphJson(`${GRAPH}/${API_VERSION}/${igUserId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_url: post.image_url, caption, access_token: TOKEN }),
+      body: JSON.stringify(containerBody),
     });
     const creationId = container.id;
     if (!creationId) throw new Error('Graph API não devolveu o id do container');
 
-    // 2. Espera a Meta baixar e processar a imagem
+    // 2. Espera a Meta baixar e processar a mídia
+    const maxTries = isReel ? POLL_MAX_TRIES_VIDEO : POLL_MAX_TRIES;
     let status = 'IN_PROGRESS';
-    for (let i = 0; i < POLL_MAX_TRIES && status !== 'FINISHED'; i++) {
+    for (let i = 0; i < maxTries && status !== 'FINISHED'; i++) {
       await sleep(POLL_INTERVAL_MS);
       const check = await graphJson(
         `${GRAPH}/${API_VERSION}/${creationId}?fields=status_code&access_token=${TOKEN}`,
       );
       status = check.status_code;
-      if (status === 'ERROR') throw new Error('A Meta recusou a imagem (container em ERROR) — confira se a URL é pública.');
+      if (status === 'ERROR') throw new Error(`A Meta recusou ${isReel ? 'o vídeo' : 'a imagem'} (container em ERROR) — confira se a URL é pública.`);
     }
-    if (status !== 'FINISHED') throw new Error('Tempo esgotado esperando a Meta processar a imagem — tente de novo.');
+    if (status !== 'FINISHED') throw new Error(`Tempo esgotado esperando a Meta processar ${isReel ? 'o vídeo' : 'a imagem'} — tente de novo.`);
 
     // 3. Publica
     const published = await graphJson(`${GRAPH}/${API_VERSION}/${igUserId}/media_publish`, {

@@ -25,6 +25,8 @@ interface TestimonialPost {
   caption: string;
   display_name: string | null;
   image_url: string | null;
+  post_type: 'imagem' | 'reel';
+  video_url: string | null;
   status: string;
   permalink: string | null;
 }
@@ -39,6 +41,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   messageId: string | null;
   messageText: string;
+  /** true quando a bolha é um áudio — habilita o Reel com a voz do cliente. */
+  hasAudio?: boolean;
   clientName?: string | null;
   phone?: string | null;
   instanceName?: string | null;
@@ -47,7 +51,7 @@ interface Props {
 }
 
 export function TestimonialPostSheet({
-  open, onOpenChange, messageId, messageText,
+  open, onOpenChange, messageId, messageText, hasAudio,
   clientName, phone, instanceName, leadId, contactId,
 }: Props) {
   const { user } = useAuthContext();
@@ -61,6 +65,8 @@ export function TestimonialPostSheet({
   const [accounts, setAccounts] = useState<IgAccount[]>([]);
   const [igUserId, setIgUserId] = useState('');
   const [consent, setConsent] = useState(false);
+  // Áudio disponível → padrão é publicar COM a voz do cliente (Reel).
+  const [withVoice, setWithVoice] = useState(!!hasAudio);
 
   const baseBody = useMemo(() => ({
     message_id: messageId || undefined,
@@ -80,10 +86,13 @@ export function TestimonialPostSheet({
     setDisplayName(p.display_name || '');
   }, []);
 
-  const generate = useCallback(async (regenerate = false) => {
+  const generate = useCallback(async (regenerate = false, voiceOverride?: boolean) => {
     setGenerating(true);
     try {
-      const body: Record<string, unknown> = { ...baseBody };
+      const body: Record<string, unknown> = {
+        ...baseBody,
+        with_voice: voiceOverride ?? withVoice,
+      };
       if (regenerate && post) {
         // Revisor ajustou na mão → re-renderiza a arte sem passar pela IA.
         body.regenerate_post_id = post.id;
@@ -100,7 +109,7 @@ export function TestimonialPostSheet({
     } finally {
       setGenerating(false);
     }
-  }, [baseBody, post, quote, caption, displayName, contextLabel, applyPost]);
+  }, [baseBody, post, quote, caption, displayName, contextLabel, withVoice, applyPost]);
 
   // Gera o rascunho na abertura (uma vez por mensagem).
   useEffect(() => {
@@ -160,11 +169,16 @@ export function TestimonialPostSheet({
         <div className="mt-4 space-y-4 pb-8">
           {generating && !post && (
             <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground">
-              <Loader2 className="h-5 w-5 animate-spin" /> Gerando citação, legenda e arte…
+              <Loader2 className="h-5 w-5 animate-spin" />
+              {withVoice ? 'Gerando arte e montando o Reel com o áudio…' : 'Gerando citação, legenda e arte…'}
             </div>
           )}
 
-          {post?.image_url && (
+          {post?.post_type === 'reel' && post.video_url ? (
+            <div className="rounded-lg overflow-hidden border bg-muted/30">
+              <video src={post.video_url} controls className="w-full h-auto" />
+            </div>
+          ) : post?.image_url ? (
             <div className="rounded-lg overflow-hidden border bg-muted/30">
               <img
                 src={post.image_url}
@@ -172,6 +186,26 @@ export function TestimonialPostSheet({
                 className="w-full h-auto"
               />
             </div>
+          ) : null}
+
+          {hasAudio && post && !published && (
+            <label className="flex items-start gap-2 rounded-md border p-3 text-sm cursor-pointer">
+              <Checkbox
+                checked={withVoice}
+                onCheckedChange={(v) => {
+                  const on = v === true;
+                  setWithVoice(on);
+                  // Trocar o modo muda a mídia — regenera na hora com o mesmo rascunho.
+                  void generate(true, on);
+                }}
+                className="mt-0.5"
+                disabled={generating}
+              />
+              <span>
+                Publicar como <strong>Reel com a voz da cliente</strong> (o áudio original
+                toca sobre o card). Desmarcado, sai só a imagem.
+              </span>
+            </label>
           )}
 
           {post && !published && (
