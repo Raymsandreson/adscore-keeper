@@ -40,6 +40,7 @@ import { handler as whatsappBackfillMedia } from './functions/whatsapp-backfill-
 import { handler as extractConversationData } from './functions/extract-conversation-data';
 import { handler as manageWhatsappGroupParticipants } from './functions/manage-whatsapp-group-participants';
 import { handler as getGroupParticipants } from './functions/get-group-participants';
+import { handler as syncGroupContacts } from './functions/sync-group-contacts';
 import { handler as getWhatsappAvatars } from './functions/get-whatsapp-avatars';
 import { handler as listUazapiLabels } from './functions/list-uazapi-labels';
 import { handler as manageUazapiLabel } from './functions/manage-uazapi-label';
@@ -125,6 +126,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'extract-conversation-data': extractConversationData,
   'manage-whatsapp-group-participants': manageWhatsappGroupParticipants,
   'get-group-participants': getGroupParticipants,
+  'sync-group-contacts': syncGroupContacts,
   'get-whatsapp-avatars': getWhatsappAvatars,
   'list-uazapi-labels': listUazapiLabels,
   'manage-uazapi-label': manageUazapiLabel,
