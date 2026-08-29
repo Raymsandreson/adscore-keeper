@@ -27,6 +27,8 @@ import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
 import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
 import { VincularLeadAoProcesso, ImportarDoDriveButton } from './ProcessoLeadVinculo';
+import { useConferenciaProcesso } from '@/hooks/useConferenciaProcesso';
+import { MudancasDaPecaDialog } from '@/components/workflow/MudancasDaPecaDialog';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -222,6 +224,32 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   'certidao': 'Certidão',
   'outro': 'Outro',
 };
+
+/** Leitura por IA de uma peça do acervo — o que interessa à jurimetria. */
+interface LeituraAcervo {
+  leituraId: number;
+  resumo: string | null;
+  valorCondenacao: number;
+  partes: { nome?: string; verbas?: { valor?: number }[] }[];
+  /** Leitura crua, no formato que o MudancasDaPecaDialog espera. */
+  raw: Record<string, unknown>;
+}
+
+function montaLeituraAcervo(r: Record<string, unknown>): LeituraAcervo {
+  return {
+    leituraId: Number(r.id),
+    resumo: (r.resumo as string) ?? null,
+    valorCondenacao: Number(r.valor_condenacao ?? 0) || 0,
+    partes: Array.isArray(r.partes) ? (r.partes as LeituraAcervo['partes']) : [],
+    raw: r,
+  };
+}
+
+const somaPartesDaLeitura = (l: LeituraAcervo) =>
+  l.partes.reduce((s, p) => s + (p.verbas ?? []).reduce((sv, v) => sv + (Number(v.valor) || 0), 0), 0);
+
+const brlCurto = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 
 function classifyDocumentType(text: string): string {
   const t = text.toLowerCase();
@@ -600,7 +628,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // A aba Documentos só mostrava process_documents (uploads/ZapSign/importados) e
   // escondia as peças que o Escavador já baixou; o caso 46 tinha 20 PDFs
   // invisíveis aqui (29/08/2026). O hook só liga com a aba aberta.
-  const { pecas: acervo, assinar: assinarPeca, lerPeca: lerPecaAcervo } = usePecasDoProcesso(
+  const { pecas: acervo, assinar: assinarPeca, lerPeca: lerPecaAcervo, corrigirValores: corrigirValoresAcervo } = usePecasDoProcesso(
     activeTab === 'documentos' ? (form.process_number ?? null) : null,
   );
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
@@ -611,10 +639,10 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setPecaAberta({ url, titulo: p.titulo || 'Peça dos autos' });
   };
 
-  // Resumo por IA de cada peça do acervo (jm_documento_leitura.resumo) — só o
-  // que JÁ foi lido; o botão "resumir" dispara a leitura sob demanda, porque
-  // cada leitura custa tokens de LLM (não faz sentido resumir 20 de uma vez).
-  const [resumosAcervo, setResumosAcervo] = useState<Record<number, string>>({});
+  // Leitura por IA de cada peça do acervo (jm_documento_leitura): resumo + os
+  // valores que a peça carrega. A esteira de leitura roda no banco (tick a cada
+  // 2 min); o botão "resumir" só cobre o intervalo até ela passar.
+  const [leiturasAcervo, setLeiturasAcervo] = useState<Record<number, LeituraAcervo>>({});
   const [resumindo, setResumindo] = useState<number | null>(null);
   useEffect(() => {
     if (activeTab !== 'documentos' || acervo.length === 0) return;
@@ -623,12 +651,12 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       await ensureExternalSession().catch(() => {});
       const { data } = await (externalSupabase
         .from('jm_documento_leitura')
-        .select('documento_id, resumo')
-        .in('documento_id', acervo.map(p => p.id)) as unknown as Promise<{ data: { documento_id: number; resumo: string | null }[] | null }>);
+        .select('id, documento_id, resumo, valor_condenacao, partes, cronograma, especie, processo')
+        .in('documento_id', acervo.map(p => p.id)) as unknown as Promise<{ data: Record<string, unknown>[] | null }>);
       if (cancelado || !data) return;
-      const mapa: Record<number, string> = {};
-      for (const r of data) if (r.resumo) mapa[r.documento_id] = r.resumo;
-      setResumosAcervo(prev => ({ ...mapa, ...prev }));
+      const mapa: Record<number, LeituraAcervo> = {};
+      for (const r of data) mapa[Number(r.documento_id)] = montaLeituraAcervo(r);
+      setLeiturasAcervo(prev => ({ ...mapa, ...prev }));
     })();
     return () => { cancelado = true; };
   }, [activeTab, acervo]);
@@ -637,13 +665,23 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setResumindo(p.id);
     try {
       const r = await lerPecaAcervo(p.id);
-      const resumo = (r.leitura?.resumo as string) || null;
-      if (r.ok && resumo) setResumosAcervo(prev => ({ ...prev, [p.id]: resumo }));
+      if (r.ok && r.leitura) setLeiturasAcervo(prev => ({ ...prev, [p.id]: montaLeituraAcervo(r.leitura!) }));
       else toast.info(r.erro || 'A leitura ainda não voltou — tente de novo em um minuto.');
     } finally {
       setResumindo(null);
     }
   };
+
+  // Jurimetria do processo — os valores que a carteira usa hoje, para o acervo
+  // poder SINALIZAR qual peça mexe neles (pedido do Raym, 29/08/2026). É o
+  // mesmo hook da Conferência; só liga com a aba Documentos aberta.
+  const conferencia = useConferenciaProcesso(
+    activeTab === 'documentos' && process?.id && form.workflow_id && form.process_number
+      ? { processId: process.id, boardId: form.workflow_id, cnj: form.process_number }
+      : null,
+  );
+  const totalCarteira = conferencia.clientes.reduce((s, c) => s + c.valor, 0);
+  const [mudancaAcervo, setMudancaAcervo] = useState<{ leitura: Record<string, unknown>; titulo: string } | null>(null);
 
   const fetchEscavadorDocuments = async () => {
     if (!form.process_number) {
@@ -1281,7 +1319,16 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     <div className="max-h-96 space-y-0.5 overflow-y-auto rounded-md border p-1.5">
                       {[...acervo]
                         .sort((a, b) => (b.dataDocumento ?? '').localeCompare(a.dataDocumento ?? ''))
-                        .map(p => (
+                        .map(p => {
+                          const leitura = leiturasAcervo[p.id];
+                          // A peça carrega dinheiro? Compara com o que a carteira
+                          // usa hoje — é a sinalização de "isto mexe na jurimetria".
+                          const valorDaPeca = leitura ? (somaPartesDaLeitura(leitura) || leitura.valorCondenacao) : 0;
+                          const temValorPorParte = !!leitura && leitura.partes.length > 0;
+                          const bateComCarteira = temValorPorParte
+                            && totalCarteira > 0
+                            && Math.abs(somaPartesDaLeitura(leitura) - totalCarteira) <= 0.01;
+                          return (
                           <div key={p.id} className="rounded px-1.5 py-1 text-xs hover:bg-muted/40">
                             <div className="flex items-center gap-2">
                               <span className="w-16 shrink-0 text-[10px] text-muted-foreground">
@@ -1303,7 +1350,23 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                               {p.origem === 'manual' && (
                                 <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
                               )}
-                              {!resumosAcervo[p.id] && (
+                              {valorDaPeca > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setMudancaAcervo({ leitura: leitura!.raw, titulo: p.titulo || 'Peça dos autos' })}
+                                  className={`shrink-0 rounded border px-1 py-0 text-[9px] font-medium ${
+                                    bateComCarteira
+                                      ? 'border-emerald-500/50 text-emerald-600 dark:text-emerald-400'
+                                      : 'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                                  }`}
+                                  title={bateComCarteira
+                                    ? 'Os valores desta peça batem com os que a carteira usa hoje — clique para ver o lado a lado'
+                                    : 'Esta peça carrega valores DIFERENTES dos que a carteira usa hoje — clique para ver o que muda na jurimetria'}
+                                >
+                                  {brlCurto(valorDaPeca)} {bateComCarteira ? '= carteira' : '≠ carteira'}
+                                </button>
+                              )}
+                              {!leitura && (
                                 <button
                                   type="button"
                                   disabled={resumindo !== null}
@@ -1315,13 +1378,14 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                                 </button>
                               )}
                             </div>
-                            {resumosAcervo[p.id] && (
-                              <p className="mt-0.5 pl-[4.5rem] text-[10px] leading-snug text-muted-foreground" title={resumosAcervo[p.id]}>
-                                {resumosAcervo[p.id]}
+                            {leitura?.resumo && (
+                              <p className="mt-0.5 pl-[4.5rem] text-[10px] leading-snug text-muted-foreground" title={leitura.resumo}>
+                                {leitura.resumo}
                               </p>
                             )}
                           </div>
-                        ))}
+                          );
+                        })}
                     </div>
                   </div>
                 )}
@@ -2088,6 +2152,24 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         url={pecaAberta?.url ?? null}
         title={pecaAberta?.titulo ?? 'Peça dos autos'}
         onClose={() => setPecaAberta(null)}
+      />
+
+      {/* "O que muda com esta peça" — o MESMO diálogo da Conferência: valores da
+          peça lado a lado com os da carteira, e o corrigir quando há decisão. */}
+      <MudancasDaPecaDialog
+        aberto={!!mudancaAcervo}
+        onClose={() => setMudancaAcervo(null)}
+        carregando={false}
+        erro={null}
+        leitura={mudancaAcervo?.leitura ?? null}
+        tituloPeca={mudancaAcervo?.titulo ?? ''}
+        atuais={conferencia.clientes.map(c => ({ cliente: c.cliente, valor: c.valor }))}
+        decId={conferencia.clientes.find(c => c.decisaoUsada?.dec_id)?.decisaoUsada?.dec_id ?? null}
+        onAplicar={async (leituraId, decId) => {
+          const r = await corrigirValoresAcervo(leituraId, decId, false);
+          if (r.ok) await conferencia.recarregar();
+          return r;
+        }}
       />
     </div>
   );
