@@ -3,10 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { Bot, BotOff, ChevronDown, Loader2 } from 'lucide-react';
+import { Bot, BotOff, ChevronDown, Loader2, Settings2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { dispararPrimeiraMensagemProativa } from '@/lib/agentePrimeiraMensagem';
+import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
 
 interface Agent {
   id: string;
@@ -107,6 +109,15 @@ export function WhatsAppAgentToggle({ phone, instanceName, label }: Props) {
       setActiveAgentName(agent?.name || null);
       setAgentEnabled(true);
       toast.success(`🤖 Agente "${agent?.name}" ativado nesta conversa`);
+
+      // Se o agente tem "1ª mensagem proativa" ligada, ele abre a conversa em
+      // vez de esperar o cliente falar — igual à ativação por etiqueta.
+      void dispararPrimeiraMensagemProativa({
+        phone,
+        instanceName,
+        agentId,
+        agentName: agent?.name,
+      });
 
       // Trigger on_activation automations
       try {
@@ -218,6 +229,14 @@ export function WhatsAppAgentToggle({ phone, instanceName, label }: Props) {
               )}
             </DropdownMenuItem>
           ))}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onClick={() => abrirConfigDoAgente({ agentId: activeAgentId })}
+            className="gap-2"
+          >
+            <Settings2 className="h-3.5 w-3.5" />
+            Configurar agente
+          </DropdownMenuItem>
           {activeAgentId && (
             <>
               <DropdownMenuSeparator />

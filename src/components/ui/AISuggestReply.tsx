@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Sparkles, MessageSquarePlus, RefreshCw, ClipboardList, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
@@ -52,6 +52,17 @@ interface Props {
    */
   mode?: 'client' | 'team';
   /**
+   * O que o CLIENTE ficou de fazer e continua em aberto. Vai junto no prompt
+   * para a IA saber de que lado está a obrigação (quem cobra quem) antes de
+   * escrever a resposta. Só faz sentido no modo 'client'.
+   */
+  pendenciasDoCliente?: string[];
+  /**
+   * Quem é essa pessoa para nós — Relacionamento Conosco, caso ligado e dinheiro
+   * registrado entre as partes (`useRelacionamentoDoContato`). Só no modo 'client'.
+   */
+  contextoDaRelacao?: string[];
+  /**
    * Abre acima da pilha de avisos (z-120 do sonner). Usado quando a sugestão é
    * pedida de dentro de um popup de notificação — sem isto o diálogo abria
    * atrás do próprio popup que o chamou.
@@ -70,6 +81,8 @@ export function AISuggestReply({
   onOpenChange,
   hideTrigger,
   mode = 'client',
+  pendenciasDoCliente,
+  contextoDaRelacao,
   elevated,
 }: Props) {
   const isTeam = mode === 'team';
@@ -96,6 +109,12 @@ export function AISuggestReply({
   // Pendências da conversa (para nada se perder).
   const [pendencias, setPendencias] = useState('');
   const [loadingPend, setLoadingPend] = useState(false);
+  // `generate` é memoizado sem deps; sem o ref ele congelaria a lista da
+  // primeira renderização e mandaria pendência velha para a IA.
+  const pendClienteRef = useRef<string[] | undefined>(pendenciasDoCliente);
+  pendClienteRef.current = pendenciasDoCliente;
+  const relacaoRef = useRef<string[] | undefined>(contextoDaRelacao);
+  relacaoRef.current = contextoDaRelacao;
 
   const generate = useCallback(async (ctx: string, toneKey: string, extra: string, target?: string, already?: string, clientMsg?: string) => {
     if (!ctx.trim()) {
@@ -112,6 +131,8 @@ export function AISuggestReply({
         alvo: target,
         jaEnviado: already,
         ultimaDoInterlocutor: clientMsg,
+        pendenciasDoCliente: pendClienteRef.current,
+        contextoDaRelacao: relacaoRef.current,
       });
       if (!opts.length) {
         toast.error('Nenhuma sugestão retornada. Tente novamente.');

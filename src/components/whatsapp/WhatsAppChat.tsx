@@ -15,9 +15,10 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, ChevronsUp, ChevronsDown } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown } from 'lucide-react';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
-import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
+import { useWhatsAppInternalNotes, type InternalNote } from '@/hooks/useWhatsAppInternalNotes';
+import { resolverAtividadeDaNota } from '@/lib/whatsappActivityNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { bindDownload } from '@/lib/downloadFile';
@@ -63,9 +64,13 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useWhatsAppTimeTracker } from '@/hooks/useWhatsAppTimeTracker';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { dispararPrimeiraMensagemProativa } from '@/lib/agentePrimeiraMensagem';
+import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
+import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
+import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
 import { StageLabelSelect } from '@/components/kanban/StageLabelSelect';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import {
@@ -703,6 +708,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
     };
   };
+  /**
+   * O que o CLIENTE ficou de fazer, do jeito que a IA da sugestão lê. É isso que
+   * diz de que lado está a obrigação: numa cobrança nossa ("pagar as parcelas
+   * atrasadas"), sem essa linha a IA lia o áudio dele sobre "documentação do
+   * pagamento" e respondia como se o escritório é que fosse pagar.
+   */
+  const pendenciasDoClienteParaIA = useMemo((): string[] => {
+    const atrasadas = new Set((commitments.overdue || []).map((c: any) => c.id));
+    return (commitments.open || []).map((c: any) => {
+      // due_date vem 'YYYY-MM-DD'; virar Date aqui só traria erro de fuso.
+      const prazo = c.due_date ? ` — prazo ${String(c.due_date).slice(0, 10).split('-').reverse().join('/')}` : '';
+      return `${c.title}${prazo}${atrasadas.has(c.id) ? ' (ATRASADA)' : ''}`;
+    });
+  }, [commitments.open, commitments.overdue]);
   /** Manda mensagem(ns) do cliente para o chat interno como citação. */
   const commentInTeamChat = useCallback((msgs: any[]) => {
     const quote = formatQuotedMessages(
@@ -1142,6 +1161,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [adOrigin, setAdOrigin] = useState<{ adset_name: string | null; ad_name: string | null; campaign_name: string | null } | null>(null);
   const [leadStageInfo, setLeadStageInfo] = useState<{ boardId: string; stageId: string | null } | null>(null);
   const { notes, addNote, deleteNote } = useWhatsAppInternalNotes(conversation.phone);
+  /** Nota de atividade cujo id ainda está sendo descoberto pelo texto (notas antigas). */
+  const [openingNoteActivity, setOpeningNoteActivity] = useState<string | null>(null);
+
+  /**
+   * Card "Atividade Criada" da conversa abre a ficha no painel lateral, por cima
+   * da conversa (skill `ui-sem-redirecionar`). Notas gravadas antes da coluna
+   * `activity_id` não têm o id: aí ele é reconstruído pelo texto da nota.
+   */
+  const openNoteActivity = useCallback(async (note: InternalNote) => {
+    if (note.activity_id) { setOpenActivityId(note.activity_id); return; }
+    setOpeningNoteActivity(note.id);
+    try {
+      const activityId = await resolverAtividadeDaNota(note);
+      if (activityId) setOpenActivityId(activityId);
+      else toast.error('Não encontrei a ficha desta atividade — ela pode ter sido excluída.');
+    } finally {
+      setOpeningNoteActivity(null);
+    }
+  }, []);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const MESSAGES_PAGE_SIZE = 50;
@@ -1185,6 +1223,27 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
   );
 
+  /**
+   * Quem é essa pessoa para nós — resolvido ao abrir a conversa e entregue à IA
+   * antes de qualquer sugestão. É o que faltava para a IA não ler uma cobrança
+   * nossa como se o escritório fosse pagar.
+   */
+  const relacionamento = useRelacionamentoDoContato({
+    ativo: true,
+    contactId: conversation.contact_id,
+    contactName: conversation.contact_name,
+    leadId: conversation.lead_id,
+    getMensagens: () =>
+      messages
+        .filter((m: any) => m?.message_text && String(m.message_text).trim())
+        .slice(-40)
+        .map((m: any) => ({
+          direction: m.direction === 'outbound' ? ('out' as const) : ('in' as const),
+          text: String(m.message_text).trim(),
+          at: String(m.created_at || '').slice(0, 10),
+        })),
+  });
+
   // Sugestão da IA já escrita no campo: aparece apagada dentro do "Digite uma
   // mensagem" e vira texto de verdade com a seta para a direita (→) ou o botão
   // ao lado. Enquanto não for aceita, não é o valor do campo — nada é enviado.
@@ -1207,6 +1266,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     ancora: ancoraDaSugestao,
     buildContext: buildReplyContext,
     getState: buildReplyState,
+    getPendenciasDoCliente: () => pendenciasDoClienteParaIA,
+    getContextoDaRelacao: () => relacionamento.linhas,
   });
   /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
   const usarSugestao = () => {
@@ -1603,6 +1664,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       setActiveAgentName(agent?.name || null);
       setAgentEnabled(true);
       toast.success(`🤖 Agente "${agent?.name}" ativado`);
+      // Agente com "1ª mensagem proativa" abre a conversa sozinho, sem esperar
+      // o cliente — antes só a etiqueta do WhatsApp fazia isso acontecer.
+      void dispararPrimeiraMensagemProativa({
+        phone: conversation.phone,
+        instanceName: conversation.instance_name,
+        agentId,
+        agentName: agent?.name,
+      });
     } catch (e: any) { toast.error('Erro: ' + e.message); }
     finally { setAgentLoading(false); }
   };
@@ -3745,6 +3814,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                       )}
                     </DropdownMenuSubContent>
                   </DropdownMenuSub>
+                  {/* Ajustar o agente sem sair da conversa: abre o painel lateral
+                      com a mesma tela de Configurações → Agentes IA. */}
+                  <DropdownMenuItem onClick={() => abrirConfigDoAgente({ agentId: activeAgentId })} className="gap-2">
+                    <Settings2 className="h-4 w-4" /> Configurar Agente IA
+                  </DropdownMenuItem>
                 </>
               )}
               <DropdownMenuSeparator />
@@ -3912,6 +3986,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           onClick={() => setShowLeadPanel(true)}
         />
       )}
+
+      {/* Quem é essa pessoa para nós. Só aparece quando o relacionamento é
+          indício (lido do nome ou pela IA) e ninguém confirmou ainda —
+          confirmar grava na ficha e a barra some. */}
+      <RelacionamentoBar
+        rotulos={relacionamento.rotulos}
+        slugs={relacionamento.slugs}
+        origem={relacionamento.origem}
+        motivo={relacionamento.motivo}
+        lendo={relacionamento.lendo}
+        opcoes={relacionamento.opcoes}
+        onConfirmar={relacionamento.confirmar}
+        onDefinir={relacionamento.definir}
+      />
 
       {/* Pendências do cliente — o que ele ficou de fazer. Quem lê a conversa e
           monta a lista é a IA (`detect-client-commitments`); o assessor só marca
@@ -4511,12 +4599,27 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <div key={`note-${note.id}`}>
                 {dateSeparator}
                 <div className="flex justify-center">
-                  <div className={cn(
-                    "max-w-[85%] rounded-xl px-4 py-2 text-xs border group",
-                    colorClasses.border
-                  )}>
+                  <div
+                    className={cn(
+                      "max-w-[85%] rounded-xl px-4 py-2 text-xs border group",
+                      colorClasses.border,
+                      // O card da atividade é a porta da ficha: clique abre no painel lateral.
+                      isActivity && "cursor-pointer hover:brightness-95 dark:hover:brightness-125 transition"
+                    )}
+                    {...(isActivity ? {
+                      role: 'button' as const,
+                      tabIndex: 0,
+                      title: 'Abrir a ficha desta atividade aqui do lado',
+                      onClick: () => openNoteActivity(note),
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openNoteActivity(note); }
+                      },
+                    } : {})}
+                  >
                     <div className="flex items-center gap-1.5 mb-1">
-                      {noteIcon}
+                      {openingNoteActivity === note.id
+                        ? <Loader2 className="h-3 w-3 animate-spin text-green-600 dark:text-green-400 shrink-0" />
+                        : noteIcon}
                       <span className={cn("font-semibold", colorClasses.title)}>
                         {noteLabel}
                       </span>
@@ -4526,14 +4629,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         variant="ghost"
                         size="icon"
                         className="h-5 w-5 ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteNote(note.id)}
+                        onClick={(e) => { e.stopPropagation(); deleteNote(note.id); }}
                       >
                         <Trash2 className="h-3 w-3" />
                       </Button>
                     </div>
                     <p className={cn("whitespace-pre-wrap text-[13px]", colorClasses.body)}>{note.content}</p>
-                    <p className={cn("text-[10px] mt-1", colorClasses.time)}>
+                    <p className={cn("text-[10px] mt-1 flex items-center gap-1", colorClasses.time)}>
                       {format(new Date(note.created_at), "HH:mm", { locale: ptBR })}
+                      {isActivity && (
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5">
+                          • <ExternalLink className="h-2.5 w-2.5" /> abrir a ficha
+                        </span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -5629,12 +5737,20 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               <AITextActions value={newMessage} onChange={setNewMessage} />
             )}
             {inputMode === 'message' && (
-              <AISuggestReply buildContext={buildReplyContext} getState={buildReplyState} onApply={setNewMessage} />
+              <AISuggestReply
+                buildContext={buildReplyContext}
+                getState={buildReplyState}
+                pendenciasDoCliente={pendenciasDoClienteParaIA}
+                contextoDaRelacao={relacionamento.linhas}
+                onApply={setNewMessage}
+              />
             )}
             {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
             <AISuggestReply
               buildContext={buildReplyContext}
               getState={buildReplyState}
+              pendenciasDoCliente={pendenciasDoClienteParaIA}
+              contextoDaRelacao={relacionamento.linhas}
               onApply={(t) => { setInputMode('message'); setNewMessage(t); }}
               open={replySuggestOpen}
               onOpenChange={setReplySuggestOpen}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PromptVariableSelector } from './PromptVariableSelector';
 import { PromptBuilderChat } from './PromptBuilderChat';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -189,7 +189,16 @@ const ASSISTANT_TYPES = [
 ];
 
 // ==================== COMPONENT ====================
-export function WhatsAppCommandConfig() {
+interface WhatsAppCommandConfigProps {
+  /**
+   * Abre já editando este agente. Usado pelo painel lateral chamado de dentro da
+   * conversa (AgentConfigSheetHost): quem clicou em "Configurar agente" quer o
+   * agente daquela conversa, não a lista inteira para procurar de novo.
+   */
+  focusAgentId?: string | null;
+}
+
+export function WhatsAppCommandConfig({ focusAgentId }: WhatsAppCommandConfigProps = {}) {
   const [activeTab, setActiveTab] = useState('shortcuts');
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -271,6 +280,7 @@ export function WhatsAppCommandConfig() {
             profiles={profiles}
             onReload={loadData}
             commandScope="client"
+            focusAgentId={focusAgentId}
           />
         </TabsContent>
 
@@ -287,7 +297,7 @@ export function WhatsAppCommandConfig() {
 }
 
 // ==================== SHORTCUTS TAB (UNIFIED ASSISTANT + DOCUMENT) ====================
-function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void; commandScope?: string }) {
+function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client', focusAgentId }: { shortcuts: Shortcut[]; profiles: Profile[]; onReload: () => void; commandScope?: string; focusAgentId?: string | null }) {
   const [showForm, setShowForm] = useState(false);
   const [showAI, setShowAI] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -561,6 +571,19 @@ function ShortcutsTab({ shortcuts, profiles, onReload, commandScope = 'client' }
     setShowForm(true);
     setFormSection('general');
   };
+
+  // Chamado pelo painel lateral da conversa: abre direto o agente pedido.
+  // Uma vez por agente — reabrir o painel no mesmo agente não descarta o que a
+  // pessoa já estava editando.
+  const focoAplicado = useRef<string | null>(null);
+  useEffect(() => {
+    if (!focusAgentId || focoAplicado.current === focusAgentId) return;
+    const alvo = shortcuts.find(s => s.id === focusAgentId);
+    if (!alvo) return;
+    focoAplicado.current = focusAgentId;
+    startEdit(alvo);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusAgentId, shortcuts]);
 
   const addStep = () => {
     setFollowupSteps(prev => [...prev, { action_type: 'whatsapp_message', delay_minutes: 60 }]);

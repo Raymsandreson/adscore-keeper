@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -13,6 +13,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { invalidateLeadLinkedContactsCache } from '@/components/leads/LeadLinkedContacts';
+import { VincularParteContatoDialog } from './VincularParteContatoDialog';
+import { CriarCasoDoProcessoDialog } from './CriarCasoDoProcessoDialog';
+import { notaDeCadastro, soDigitos, tipoDeDocumento } from '@/lib/parteContato';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
@@ -28,6 +31,7 @@ import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
+import { useFichaDoBanco } from '@/hooks/useFichaDoBanco';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFieldsForm';
 import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
@@ -259,17 +263,43 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     });
   }, [isMobile]);
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
+
+  // O que o banco já sabe sobre este processo, sem gastar consulta externa.
+  // Vale para toda ficha, mas foi criado para as do inventário por OAB: elas
+  // nascem com título e número e nada mais, enquanto a publicação guardada em
+  // process_movements já diz autor, classe, vara, tribunal e cidade.
+  const fichaBanco = useFichaDoBanco(
+    open ? process?.id : null,
+    form.process_number || process?.process_number || null,
+    form.notes ?? null,
+    marcosRefreshKey,
+  );
+  // Só interessa o que a ficha ainda NÃO tem: completar nunca sobrescreve o que
+  // alguém digitou nem o que o Escavador trouxe.
+  const camposDoBancoFaltando = useMemo(
+    () => fichaBanco.campos.filter((c) => {
+      const atual = form[c.campo];
+      return atual == null || String(atual).trim() === '';
+    }),
+    [fichaBanco.campos, form],
+  );
+  const [completandoDoBanco, setCompletandoDoBanco] = useState(false);
+  // Diálogo que cria lead + caso + contato + grupo para o processo sem dono.
+  const [criandoCaso, setCriandoCaso] = useState(false);
+
   const [addingContacts, setAddingContacts] = useState(false);
   const [addedContactNames, setAddedContactNames] = useState<Set<string>>(new Set());
+  // Parte cujo botão "Contato" foi clicado: o vínculo passa pelo diálogo de
+  // sugestões, para não criar um contato repetido de quem já está na base.
+  const [parteEmVinculo, setParteEmVinculo] = useState<ParteProcesso | null>(null);
   // Cria/vincula as partes do processo como contatos do lead (contacts + contact_leads no Externo).
-  // Dedup por nome; ignora vínculo duplicado (23505). Não toca no campo Polo Ativo/Passivo.
+  // Dedup por documento e por nome; ignora vínculo duplicado (23505). Não toca no
+  // campo Polo Ativo/Passivo.
+  // Sem lead o contato é criado do mesmo jeito, só não ganha o vínculo — antes a
+  // função desistia aqui e o botão da parte não fazia nada.
   // `auto`: chamada pelo vínculo automático ao abrir o processo — erro não vira toast
   // de erro na cara do usuário e o sucesso avisa que foi automático.
   const addPartesAsContacts = useCallback(async (partes: ParteProcesso[], opts?: { auto?: boolean }) => {
-    if (!process?.lead_id) {
-      if (!opts?.auto) toast.error('Vincule o processo a um lead antes de adicionar as partes como contatos');
-      return 0;
-    }
     if (!partes.length) return 0;
     setAddingContacts(true);
     try {
@@ -278,27 +308,37 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       const externalUserId = await remapToExternal(currentUser?.id).catch(() => null);
       let vinculados = 0;
       for (const p of partes) {
-        // Dedup: reaproveita contato existente com o mesmo nome.
-        const { data: existing } = await externalSupabase
-          .from('contacts').select('id').ilike('full_name', p.nome).limit(1);
-        let contactId: string | undefined = existing?.[0]?.id;
+        // Dedup: documento primeiro (não erra), nome igual depois.
+        const cpf = tipoDeDocumento(p.doc) === 'cpf' ? soDigitos(p.doc) : null;
+        let contactId: string | undefined;
+        if (cpf) {
+          const { data: porDoc } = await externalSupabase
+            .from('contacts').select('id').in('cpf', [cpf, String(p.doc)]).is('deleted_at', null).limit(1);
+          contactId = porDoc?.[0]?.id;
+        }
         if (!contactId) {
-          const notes = [
-            `Cadastrado via processo ${form.process_number || ''}`.trim(),
-            p.tipo ? `Participação: ${p.tipo}` : null,
-            `Polo: ${p.polo}`,
-            p.doc ? `Doc: ${p.doc}` : null,
-          ].filter(Boolean).join(' | ');
+          const { data: existing } = await externalSupabase
+            .from('contacts').select('id').ilike('full_name', p.nome).limit(1);
+          contactId = existing?.[0]?.id;
+        }
+        if (!contactId) {
           const { data: novo, error: cErr } = await externalSupabase
             .from('contacts')
-            .insert({ full_name: p.nome, notes, created_by: externalUserId } as any)
+            .insert({
+              full_name: p.nome,
+              cpf,
+              notes: notaDeCadastro(p, form.process_number),
+              created_by: externalUserId,
+            } as any)
             .select('id').single();
           if (cErr || !novo) { console.error('Erro ao criar contato de parte:', cErr); continue; }
           contactId = novo.id;
         }
-        const { error: linkErr } = await (externalSupabase as any)
-          .from('contact_leads').insert({ contact_id: contactId, lead_id: process.lead_id });
-        if (linkErr && linkErr.code !== '23505') { console.error('Erro ao vincular parte ao lead:', linkErr); continue; }
+        if (process?.lead_id) {
+          const { error: linkErr } = await (externalSupabase as any)
+            .from('contact_leads').insert({ contact_id: contactId, lead_id: process.lead_id });
+          if (linkErr && linkErr.code !== '23505') { console.error('Erro ao vincular parte ao lead:', linkErr); continue; }
+        }
         vinculados++;
       }
       setAddedContactNames(prev => {
@@ -306,12 +346,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         partes.forEach(p => next.add(p.nome.toLowerCase()));
         return next;
       });
-      invalidateLeadLinkedContactsCache(process.lead_id);
+      if (process?.lead_id) invalidateLeadLinkedContactsCache(process.lead_id);
       if (vinculados > 0) {
         const sufixo = opts?.auto ? ' (automático)' : '';
+        const destino = process?.lead_id ? 'aos contatos do lead' : 'aos contatos (processo sem lead)';
         toast.success(vinculados === 1
-          ? `1 parte adicionada aos contatos do lead${sufixo}`
-          : `${vinculados} partes adicionadas aos contatos do lead${sufixo}`);
+          ? `1 parte adicionada ${destino}${sufixo}`
+          : `${vinculados} partes adicionadas ${destino}${sufixo}`);
       }
       return vinculados;
     } catch (e) {
@@ -633,6 +674,42 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setForm(prev => ({ ...prev, [key]: value }));
     setDirty(true);
   }, []);
+
+  /**
+   * Preenche a ficha com o que o banco já tem — publicações, jurimetria,
+   * DataJud, nota de cadastro. Nenhuma consulta externa, nenhum crédito.
+   *
+   * Só toca em campo VAZIO. O que veio do Escavador ou foi digitado por alguém
+   * é dado com dono; sobrescrever por dedução de texto seria degradar a ficha.
+   * O polo do cliente entra junto quando a publicação nomeia advogado do
+   * escritório — é o que define a saudação da mensagem que vai para o cliente.
+   */
+  const handleCompletarDoBanco = async () => {
+    if (!process?.id || camposDoBancoFaltando.length === 0) return;
+    const updates: Record<string, any> = {};
+    for (const c of camposDoBancoFaltando) updates[c.campo] = c.valor;
+
+    const polo = fichaBanco.nossoPolo;
+    const marcaPolo = !!polo && !form.cliente_polo;
+    if (marcaPolo) updates.cliente_polo = polo!.polo;
+
+    setCompletandoDoBanco(true);
+    try {
+      const { error } = await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
+      if (error) throw error;
+      setForm(prev => ({ ...prev, ...updates }));
+      const nomes = camposDoBancoFaltando.map(c => c.rotulo).join(', ');
+      toast.success(
+        `${camposDoBancoFaltando.length} campo(s) preenchido(s) do banco, sem consultar o Escavador`,
+        { description: marcaPolo ? `${nomes} · nosso polo: ${polo!.polo}` : nomes, duration: 7000 },
+      );
+      onUpdated?.();
+    } catch (err: any) {
+      toast.error('Não consegui gravar os campos', { description: err?.message });
+    } finally {
+      setCompletandoDoBanco(false);
+    }
+  };
 
   const handleReExtract = async (rawOverride?: any) => {
     const raw = rawOverride ?? form.escavador_raw;
@@ -1041,7 +1118,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                       </label>
                       <Button
                         type="button" variant="outline" size="sm" className="h-7 text-xs"
-                        disabled={!process?.lead_id || addingContacts || partesPendentes.length === 0}
+                        disabled={addingContacts || partesPendentes.length === 0}
                         onClick={() => addPartesAsContacts(partesPendentes)}
                       >
                         {addingContacts
@@ -1054,12 +1131,24 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     </div>
                     <p className="text-[10px] text-muted-foreground">
                       Nomes completos das partes (o campo acima traz só as iniciais abreviadas da API).
-                      As partes viram contatos do lead automaticamente ao abrir o processo.
+                      Com lead vinculado, as partes viram contatos do lead automaticamente ao abrir o processo.
+                      O botão de cada parte procura antes quem já está na base — inclusive o telefone das
+                      conversas do WhatsApp — para não criar contato repetido.
                     </p>
                     {!process?.lead_id && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400">
-                        Processo sem lead vinculado — vincule a um lead para adicionar as partes como contatos.
-                      </p>
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 space-y-1.5">
+                        <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                          Processo sem lead vinculado — as partes viram contatos assim mesmo, só não ficam
+                          ligadas a um lead.
+                        </p>
+                        <Button
+                          type="button" size="sm" variant="outline" className="h-7 w-full text-xs"
+                          onClick={() => setCriandoCaso(true)}
+                        >
+                          <UserPlus className="h-3 w-3 mr-1" />
+                          Criar caso, lead e grupo deste processo
+                        </Button>
+                      </div>
                     )}
                     <div className="space-y-1.5">
                       {partesProcesso.map((p, i) => {
@@ -1077,8 +1166,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                             <Button
                               type="button" variant={added ? 'ghost' : 'outline'} size="sm"
                               className="h-7 text-xs flex-shrink-0"
-                              disabled={!process?.lead_id || addingContacts || added}
-                              onClick={() => addPartesAsContacts([p])}
+                              disabled={addingContacts || added}
+                              onClick={() => setParteEmVinculo(p)}
                             >
                               {added
                                 ? <><CheckCircle2 className="h-3 w-3 mr-1 text-green-600" /> Contato</>
@@ -1573,6 +1662,22 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
             <div className="flex items-center gap-1">
+              {/* O banco antes da API: enquanto houver campo que a publicação já
+                  responde, consultar o Escavador é gastar crédito por dado que
+                  está em casa. O botão só aparece quando há o que preencher. */}
+              {camposDoBancoFaltando.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleCompletarDoBanco}
+                  disabled={completandoDoBanco || saving}
+                  className="h-7 text-xs gap-1"
+                  title={`Preenche ${camposDoBancoFaltando.length} campo(s) com o que já está no banco (publicações, jurimetria, DataJud) — sem consultar o Escavador:\n${camposDoBancoFaltando.map(c => `• ${c.rotulo}: ${c.valor} (${c.origem})`).join('\n')}`}
+                >
+                  {completandoDoBanco ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  Completar do banco ({camposDoBancoFaltando.length})
+                </Button>
+              )}
               {form.escavador_raw && (
                 <Button size="sm" variant="ghost" onClick={() => handleReExtract()} disabled={saving} className="h-7 text-xs gap-1" title="Reprocessa o dado já salvo, sem consultar o Escavador (sem custo)">
                   <RefreshCw className="h-3 w-3" />
@@ -1676,6 +1781,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             <p className="text-[10px] text-muted-foreground pt-1">
               A barra de progresso aparece quando o processo está vinculado a um lead.
             </p>
+          )}
+          {/* Processo sem lead nem caso — o estado em que nascem as fichas do
+              inventário por OAB. Sem lead ele não entra no funil, não tem grupo
+              e não aparece para quem cuida do cliente. */}
+          {!process?.lead_id && (
+            <Button
+              type="button" size="sm" variant="outline"
+              className="mt-1.5 h-7 w-full text-xs border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+              onClick={() => setCriandoCaso(true)}
+            >
+              <UserPlus className="h-3 w-3 mr-1" />
+              Sem lead e sem caso — criar agora (com grupo)
+            </Button>
           )}
 
           <div className="pt-2 space-y-1">
@@ -1791,6 +1909,41 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         onCreated={fetchActivities}
         onUpdated={fetchActivities}
       />
+
+      {/* Parte → contato: mostra quem já existe na base antes de cadastrar outro. */}
+      <VincularParteContatoDialog
+        open={!!parteEmVinculo}
+        onOpenChange={(o) => { if (!o) setParteEmVinculo(null); }}
+        parte={parteEmVinculo}
+        processoNumero={form.process_number}
+        leadId={process?.lead_id || null}
+        onVinculado={(nome) => {
+          setAddedContactNames(prev => new Set(prev).add(nome.toLowerCase()));
+          if (process?.lead_id) invalidateLeadLinkedContactsCache(process.lead_id);
+        }}
+      />
+
+      {/* Processo órfão → caso com dono: lead, caso, contato e grupo de uma vez. */}
+      {process?.id && (
+        <CriarCasoDoProcessoDialog
+          open={criandoCaso}
+          onOpenChange={setCriandoCaso}
+          processo={{
+            id: process.id,
+            numero: form.process_number || process.process_number || null,
+            titulo: form.title || process.title || null,
+            poloAtivo: form.polo_ativo || null,
+            poloPassivo: form.polo_passivo || null,
+            clientePolo: effectiveClientePolo || null,
+            cidade: form.unidade_origem_cidade || null,
+            uf: form.estado_origem_sigla || null,
+          }}
+          onCriado={({ leadId, caseId }) => {
+            setForm(prev => ({ ...prev, lead_id: leadId, case_id: caseId }));
+            onUpdated?.();
+          }}
+        />
+      )}
     </div>
   );
 

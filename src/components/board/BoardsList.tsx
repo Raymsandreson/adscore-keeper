@@ -21,6 +21,13 @@ import { FunnelTeamDialog } from "@/components/funnel/FunnelTeamDialog";
 import { BoardCard, type BoardType } from "@/components/board/BoardCard";
 import type { BoardViewMode } from "@/components/kanban/StageFunnelChart";
 import type { LeadProcess } from "@/hooks/useLeadProcesses";
+import { parseCnj } from "@/lib/cnj";
+import { filtrarProcessos } from "@/lib/buscaProcesso";
+import {
+  ramoDoProcesso, ramoPrometidoPeloNome, ufDoProcesso,
+  RAMO_BADGE, type RamoDoProcesso,
+} from "@/lib/ramoDoProcesso";
+import { resumirProcessos, type ResumoDeProcessos } from "@/lib/resumoDeProcessos";
 import { toast } from "sonner";
 
 // Ficha completa do processo — lazy para não pesar o bundle da listagem
@@ -111,6 +118,10 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
   const [selectedProcess, setSelectedProcess] = useState<LeadProcess | null>(null);
   // Nome do cliente por lead_id dos processos abertos na aba (query única).
   const [processLeadNames, setProcessLeadNames] = useState<Record<string, string>>({});
+  // Busca da aba: número, nome da parte ou qualquer texto da ficha.
+  const [processSearch, setProcessSearch] = useState("");
+  // null = todos os ramos; do contrário, só o ramo escolhido.
+  const [ramoFiltro, setRamoFiltro] = useState<RamoDoProcesso | null>(null);
 
   const typedBoards = useMemo(
     () => boards.filter(b => b.board_type === boardType),
@@ -161,25 +172,34 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
   // Processos vinculados por quadro — query única (evita N+1), paginada porque
   // o PostgREST corta em 1000 linhas e já passamos disso (1.6k processos): sem
   // paginar, a contagem vinha truncada (612 virava 270).
-  const { data: processCounts } = useQuery({
-    queryKey: ["boards-process-counts", boardType],
+  //
+  // Traz o NÚMERO junto porque contar linha é contar ficha, e ficha não é
+  // processo: o mesmo CNJ tem ficha repetida (48 CNJs na base) e ficha sem
+  // número não identifica processo nenhum. `resumirProcessos` devolve os dois
+  // números e a abertura por ramo — é o que faz o card parar de anunciar 1289
+  // num POP que tem 786 trabalhistas.
+  const { data: resumoPorQuadro } = useQuery({
+    queryKey: ["boards-process-summary", boardType],
     queryFn: async () => {
       const PAGE = 1000;
-      const counts: Record<string, number> = {};
+      const fichasPorQuadro: Record<string, Array<{ process_number: string | null }>> = {};
       for (let from = 0; ; from += PAGE) {
         const { data, error } = await db
           .from("lead_processes")
-          .select("workflow_id")
+          .select("workflow_id, process_number")
           .is("deleted_at", null)
           .range(from, from + PAGE - 1);
         if (error) throw error;
-        const rows = (data || []) as Array<{ workflow_id: string | null }>;
+        const rows = (data || []) as Array<{ workflow_id: string | null; process_number: string | null }>;
         for (const row of rows) {
-          if (row.workflow_id) counts[row.workflow_id] = (counts[row.workflow_id] || 0) + 1;
+          if (!row.workflow_id) continue;
+          (fichasPorQuadro[row.workflow_id] ||= []).push({ process_number: row.process_number });
         }
         if (rows.length < PAGE) break;
       }
-      return counts;
+      return Object.fromEntries(
+        Object.entries(fichasPorQuadro).map(([id, fichas]) => [id, resumirProcessos(fichas)]),
+      ) as Record<string, ResumoDeProcessos>;
     },
   });
 
@@ -193,20 +213,52 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
     [activeBoards, totalsByBoard]
   );
 
+  // A abertura por ramo do que está NA ABA — recalculada do que foi carregado,
+  // não da contagem global, para os dois números não poderem divergir.
+  const resumoDaAba = useMemo(() => resumirProcessos(boardProcesses), [boardProcesses]);
+
+  // O ramo que o nome do quadro promete. Serve para a aba apontar o que entrou
+  // fora do lugar sem chamar de erro o que não dá para afirmar.
+  const ramoPrometido = useMemo(
+    () => ramoPrometidoPeloNome(processesBoard?.name),
+    [processesBoard?.name],
+  );
+
+  // Ramo primeiro, busca depois. A busca varre a ficha inteira e também o nome
+  // do lead, que na prática carrega a cidade ("Caso 88 - Mauro- Ererê/CE").
+  const processosVisiveis = useMemo(() => {
+    const doRamo = ramoFiltro
+      ? boardProcesses.filter(p => ramoDoProcesso(p.process_number) === ramoFiltro)
+      : boardProcesses;
+    return filtrarProcessos(doRamo, processSearch, p =>
+      [p.lead_id ? processLeadNames[p.lead_id] : null]);
+  }, [boardProcesses, ramoFiltro, processSearch, processLeadNames]);
+
   const openProcessesSheet = async (board: { id: string; name: string }) => {
     setProcessesBoard(board);
+    setProcessSearch("");
+    setRamoFiltro(null);
     setLoadingProcesses(true);
     setBoardProcesses([]);
     setProcessLeadNames({});
     try {
-      const { data, error } = await db
-        .from("lead_processes")
-        .select("*")
-        .eq("workflow_id", board.id)
-        .is("deleted_at", null)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      const rows = (data || []) as unknown as LeadProcess[];
+      // Paginado pelo mesmo motivo da contagem: o PostgREST corta em 1000, e o
+      // POP trabalhista tem 1289 fichas — a aba mostrava 1000 e calava as 289.
+      const PAGE = 1000;
+      const rows: LeadProcess[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await db
+          .from("lead_processes")
+          .select("*")
+          .eq("workflow_id", board.id)
+          .is("deleted_at", null)
+          .order("created_at", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const lote = (data || []) as unknown as LeadProcess[];
+        rows.push(...lote);
+        if (lote.length < PAGE) break;
+      }
       setBoardProcesses(rows);
 
       // Nomes dos clientes numa query só (evita N+1).
@@ -356,7 +408,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 boardType={boardType}
                 variant={viewMode}
                 totalOverride={boardType === "workflow"
-                  ? (processCounts?.[board.id] || 0)
+                  ? (resumoPorQuadro?.[board.id]?.processos || 0)
                   : (totalsByBoard?.[board.id] || 0)}
                 expanded={expandedId === board.id}
                 onToggleExpand={() => setExpandedId(expandedId === board.id ? null : board.id)}
@@ -367,7 +419,8 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 onOpenCarteira={boardType === "workflow"
                   ? () => setCarteiraBoard({ id: board.id, name: board.name })
                   : undefined}
-                processCount={processCounts?.[board.id] || 0}
+                processCount={resumoPorQuadro?.[board.id]?.processos || 0}
+                processSummary={resumoPorQuadro?.[board.id]}
                 onDelete={() => handleDelete({ id: board.id, name: board.name })}
                 archived={isBoardArchived(board)}
                 onToggleArchive={() =>
@@ -467,6 +520,20 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
               Processos do {copy.singular}
             </SheetTitle>
             <SheetDescription className="truncate">{processesBoard?.name}</SheetDescription>
+            {/* O número honesto: processos distintos, não linhas de cadastro.
+                Só aparece a diferença quando ela existe — POP sem ficha
+                repetida não precisa ver a palavra "ficha". */}
+            {!loadingProcesses && resumoDaAba.fichas > 0 && (
+              <p className="text-xs text-muted-foreground">
+                {resumoDaAba.processos.toLocaleString("pt-BR")} processos
+                {resumoDaAba.excedentes > 0 && (
+                  <span title="Fichas a mais do que processos: o mesmo CNJ cadastrado mais de uma vez.">
+                    {" "}· {resumoDaAba.fichas.toLocaleString("pt-BR")} fichas
+                    {" "}({resumoDaAba.excedentes} repetida{resumoDaAba.excedentes > 1 ? "s" : ""})
+                  </span>
+                )}
+              </p>
+            )}
           </SheetHeader>
 
           {/* Atalho para a visão geral da carteira — a lista abaixo é o detalhe
@@ -484,6 +551,58 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
             </Button>
           )}
 
+          {/* Busca: número (com ou sem pontuação), nome da parte, advogado,
+              cliente, ou qualquer texto da ficha. Termos somam. */}
+          {boardProcesses.length > 0 && (
+            <div className="relative mt-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={processSearch}
+                onChange={(e) => setProcessSearch(e.target.value)}
+                placeholder="Número, parte, advogado ou qualquer texto"
+                className="pl-9 h-9"
+              />
+            </div>
+          )}
+
+          {/* Filtro por ramo, lido do próprio CNJ. Só aparece quando há mais de
+              um ramo no quadro — se o POP é homogêneo, não há o que separar. */}
+          {resumoDaAba.porRamo.length > 1 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              <button
+                type="button"
+                onClick={() => setRamoFiltro(null)}
+                className={`text-[11px] rounded-full border px-2 py-0.5 transition-colors ${
+                  ramoFiltro === null ? "bg-primary text-primary-foreground border-primary" : "hover:bg-accent"
+                }`}
+              >
+                Todos {resumoDaAba.processos}
+              </button>
+              {resumoDaAba.porRamo.map(r => {
+                const foraDoLugar = ramoPrometido !== null && r.ramo !== ramoPrometido;
+                return (
+                  <button
+                    key={r.ramo}
+                    type="button"
+                    onClick={() => setRamoFiltro(ramoFiltro === r.ramo ? null : r.ramo)}
+                    title={foraDoLugar
+                      ? `${r.processos} processos que não são do ramo que este ${copy.singular} promete`
+                      : `${r.processos} processos${r.excedentes > 0 ? ` em ${r.fichas} fichas` : ""}`}
+                    className={`text-[11px] rounded-full border px-2 py-0.5 transition-colors ${
+                      ramoFiltro === r.ramo
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : foraDoLugar
+                          ? "border-amber-500/50 text-amber-600 dark:text-amber-400 hover:bg-accent"
+                          : "hover:bg-accent"
+                    }`}
+                  >
+                    {RAMO_BADGE[r.ramo]} {r.processos}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="flex-1 overflow-y-auto mt-4">
             {loadingProcesses ? (
               <div className="flex items-center justify-center py-16">
@@ -493,10 +612,26 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
               <p className="text-center text-sm text-muted-foreground py-16">
                 Nenhum processo vinculado a este {copy.singular}.
               </p>
+            ) : processosVisiveis.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-16">
+                Nada encontrado entre as {resumoDaAba.fichas.toLocaleString("pt-BR")} fichas deste {copy.singular}.
+              </p>
             ) : (
               <div className="space-y-2">
-                {boardProcesses.map(p => {
+                {(processSearch.trim() || ramoFiltro) && (
+                  <p className="text-[11px] text-muted-foreground px-0.5">
+                    {processosVisiveis.length.toLocaleString("pt-BR")} de{" "}
+                    {resumoDaAba.fichas.toLocaleString("pt-BR")} fichas
+                  </p>
+                )}
+                {processosVisiveis.map(p => {
                   const clientName = p.lead_id ? processLeadNames[p.lead_id] : null;
+                  const ramo = ramoDoProcesso(p.process_number);
+                  const uf = ufDoProcesso(p);
+                  const tribunal = parseCnj(p.process_number)?.courtCode ?? null;
+                  // Só destaca o que o nome do quadro permite afirmar que está
+                  // fora do lugar; POP de nome ambíguo não acusa ninguém.
+                  const foraDoLugar = ramoPrometido !== null && ramo !== ramoPrometido;
                   const statusLabel =
                     p.status === "concluido" ? "Concluído" :
                     p.status === "arquivado" ? "Arquivado" : "Em andamento";
@@ -521,6 +656,22 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                         <p className="text-xs text-muted-foreground mt-1 font-mono">{p.process_number}</p>
                       )}
                       <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {/* O ramo vem do dígito J do CNJ, não de `area` — que
+                            está vazia em 94% das fichas. */}
+                        <Badge
+                          variant={foraDoLugar ? "destructive" : "secondary"}
+                          className="text-[10px]"
+                          title={foraDoLugar
+                            ? `Este processo não é do ramo que "${processesBoard?.name}" promete`
+                            : tribunal ?? undefined}
+                        >
+                          {RAMO_BADGE[ramo]}
+                        </Badge>
+                        {tribunal && (
+                          <span className="text-[11px] text-muted-foreground">
+                            {tribunal}{uf ? ` · ${uf}` : ""}
+                          </span>
+                        )}
                         <Badge variant="secondary" className="text-[10px] capitalize">{p.process_type}</Badge>
                         {clientName && (
                           <span className="text-[11px] text-muted-foreground">Cliente: {clientName}</span>

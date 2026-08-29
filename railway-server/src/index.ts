@@ -102,6 +102,7 @@ import { handler as jmDocumentoUrl } from './functions/jm-documento-url';
 import { handler as telaoNarrar } from './functions/telao-narrar';
 import { handler as celcoinOpenFinance } from './functions/celcoin-open-finance';
 import { handler as updateProfileAvatar } from './functions/update-profile-avatar';
+import { handler as agentProactiveFirstMessage } from './functions/agent-proactive-first-message';
 
 
 
@@ -127,6 +128,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'get-pending-review': getPendingReview,
   'submit-document-review': submitDocumentReview,
   'sync-agent-labels': syncAgentLabels,
+  'agent-proactive-first-message': agentProactiveFirstMessage,
   'sync-result-labels': syncResultLabels,
   'sync-stage-labels': syncStageLabels,
   'apply-stage-label': applyStageLabel,

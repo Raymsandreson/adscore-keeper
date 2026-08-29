@@ -16,6 +16,8 @@ import { StageFunnelChart, type BoardViewMode } from "@/components/kanban/StageF
 import { useBpcFormLeads } from "@/hooks/useBpcFormLeads";
 import { buildBpcAcolhedorFilter, leadMatchesFilter } from "@/lib/bpcPhoneMatch";
 import { getFunnelSheetConfig } from "@/lib/funnelSheetConfig";
+import { RAMO_ROTULO } from "@/lib/ramoDoProcesso";
+import type { ResumoDeProcessos } from "@/lib/resumoDeProcessos";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -75,6 +77,9 @@ interface BoardCardProps {
   /** Carteira do POP (marcos × dinheiro × tempo) — só faz sentido em POP. */
   onOpenCarteira?: () => void;
   processCount?: number;
+  /** Abertura por ramo do CNJ — vira o title do botão, para o número não
+   *  precisar de explicação em outro lugar. */
+  processSummary?: ResumoDeProcessos;
   onDelete?: () => void;
   /** Quadro arquivado: card esmaecido, badge "Arquivado" e ação de desarquivar. */
   archived?: boolean;
@@ -94,6 +99,7 @@ export function BoardCard({
   onOpenProcesses,
   onOpenCarteira,
   processCount = 0,
+  processSummary,
   onDelete,
   archived = false,
   onToggleArchive,
@@ -287,7 +293,19 @@ export function BoardCard({
           size="sm"
           className="text-xs"
           onClick={onOpenProcesses}
-          title={`Ver processos vinculados a este ${typeLabel}`}
+          title={
+            processSummary && processSummary.fichas > 0
+              // O número é de PROCESSOS distintos; o title abre em ramo e diz
+              // quantas fichas repetidas existem por trás dele.
+              ? [
+                  `${processSummary.processos} processos em ${processSummary.fichas} fichas`,
+                  ...processSummary.porRamo.map(r => `  ${RAMO_ROTULO[r.ramo]}: ${r.processos}`),
+                  processSummary.excedentes > 0
+                    ? `  ${processSummary.excedentes} ficha(s) com CNJ repetido`
+                    : null,
+                ].filter(Boolean).join("\n")
+              : `Ver processos vinculados a este ${typeLabel}`
+          }
         >
           <Scale className="h-3.5 w-3.5 mr-1.5" />
           Processos

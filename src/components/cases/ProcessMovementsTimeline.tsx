@@ -1,10 +1,17 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge } from 'lucide-react';
+import { ExternalLink, Loader2, Milestone, Filter, TrainFront, GitMerge, Paperclip, Plus } from 'lucide-react';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
+import { useAnexosDeMarco } from '@/hooks/useAnexosDeMarco';
+import { melhorPeca, rotuloDaPeca } from '@/lib/pecasDoProcesso';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
 import { estacoesDoProcesso } from '@/lib/processStations';
+import { useEstacaoEvidencia } from '@/hooks/useEstacaoEvidencia';
+import EstacaoEvidencia from '@/components/cases/EstacaoEvidencia';
 import InssMarcosProcesso from '@/components/cases/InssMarcosProcesso';
 import { ehNumeroCnj } from '@/lib/inssRegua';
 import {
@@ -31,6 +38,19 @@ const MARCO_LABEL: Record<MarcoTipo, string> = {
   cumprimento_sentenca: 'Cumprimento de Sentença',
   precatorio_rpv: 'Precatório / RPV',
   pagamento: 'Pagamento',
+};
+
+/**
+ * De onde o marco veio, em português. São as fontes que process_movements tem
+ * hoje (medido em 26/08/2026: escavador 1002, compromissos 251, audiências 55).
+ * Fonte desconhecida aparece crua — inventar rótulo esconde origem nova.
+ */
+const FONTE_MARCO_LABEL: Record<string, string> = {
+  escavador: 'Escavador',
+  escavador_compromissos: 'intimação',
+  escavador_audiencias: 'pauta de audiência',
+  datajud: 'DataJud',
+  documento: 'documento do processo',
 };
 
 const MARCO_COLOR: Record<MarcoTipo, string> = {
@@ -103,12 +123,22 @@ function MarcosTrainLine({
   currentProcessId,
   estacoesLista,
   onEstacaoClick,
+  resumoProva,
+  acoesDaEstacao,
 }: {
   movements: ReturnType<typeof useProcessMovements>['movements'];
   currentProcessId?: string;
   estacoesLista: MarcoTipo[];
   /** Abre o detalhe da estação. Só recebe estação já alcançada. */
   onEstacaoClick?: (tipo: MarcoTipo) => void;
+  /** Códigos TPU e nº de peças que sustentam a estação (null = sem prova). */
+  resumoProva?: (tipo: MarcoTipo, data: Date | null) => { codigos: number[]; docs: number } | null;
+  /**
+   * Linha de ações da estação: de que fonte veio o marco, a peça que o sustenta
+   * e o botão de anexar. Montada pelo pai porque depende de estado que a linha
+   * do trem não tem (peças dos autos, upload, visualizador).
+   */
+  acoesDaEstacao?: (tipo: MarcoTipo, data: Date | null, status: Estacao['status']) => React.ReactNode;
 }) {
   const estacoes = useMemo<Estacao[]>(() => {
     // Primeira data e valor de cada marco alcançado (+ processo de origem).
@@ -227,6 +257,28 @@ function MarcosTrainLine({
                     <span className="block text-[8px] font-mono text-muted-foreground/80">via {shortCnj(e.origemCnj)}</span>
                   )}
                   {e.valor && <span className="block text-[10px] font-medium text-green-700 dark:text-green-400">{e.valor}</span>}
+                  {(() => {
+                    // Prova resumida: o que sustenta a estação sem precisar abrir.
+                    if (e.status !== 'atual' && e.status !== 'concluida') return null;
+                    const p = resumoProva?.(e.tipo, e.data);
+                    if (!p || (!p.codigos.length && !p.docs)) return null;
+                    return (
+                      <span className="block text-[9px] font-normal text-muted-foreground">
+                        {p.codigos.length > 0 && (
+                          <span className="font-mono">TPU {p.codigos.slice(0, 3).join(', ')}</span>
+                        )}
+                        {p.codigos.length > 0 && p.docs > 0 && ' · '}
+                        {p.docs > 0 && `${p.docs} peça${p.docs > 1 ? 's' : ''}`}
+                      </span>
+                    );
+                  })()}
+                  {/* Fonte do marco + a peça que o sustenta. O clique aqui não
+                      pode abrir o detalhe da estação — cada botão para o evento. */}
+                  {acoesDaEstacao && (
+                    <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                      {acoesDaEstacao(e.tipo, e.data, e.status)}
+                    </span>
+                  )}
                 </span>
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                   {e.data ? e.data.toLocaleDateString('pt-BR') : e.status === 'futura' ? 'falta' : ''}
@@ -291,6 +343,136 @@ export function ProcessMovementsTimeline({
       .filter((m) => m.tipo_movimentacao === estacaoDetalhe)
       .sort((a, b) => (b.data_movimentacao || '').localeCompare(a.data_movimentacao || ''));
   }, [movements, estacaoDetalhe]);
+
+  // A prova de cada estação: código TPU do DataJud e peça publicada no processo.
+  // A régua dizia "houve Sentença" sem deixar conferir de onde isso saiu.
+  const cnjsDaLinha = useMemo(
+    () => Array.from(new Set(movements.map((m) => m.numero_cnj).filter(Boolean))) as string[],
+    [movements],
+  );
+  const evidencia = useEstacaoEvidencia(cnjsDaLinha);
+
+  // Data do marco = a PRIMEIRA publicação da estação (mesma regra da linha do
+  // trem); é ela que define a janela em que uma peça prova aquele marco.
+  const dataDoMarco = useCallback((tipo: MarcoTipo): string | null => {
+    const datas = movements
+      .filter((m) => m.tipo_movimentacao === tipo)
+      .map((m) => m.data_movimentacao)
+      .filter(Boolean)
+      .sort();
+    return datas[0] ?? null;
+  }, [movements]);
+
+  const resumoProva = useCallback((tipo: MarcoTipo, data: Date | null) => {
+    const p = evidencia.provaDaEstacao(tipo, data ? data.toISOString() : dataDoMarco(tipo));
+    const codigos = Array.from(new Set(p.datajud.map((m) => m.codigo)));
+    return { codigos, docs: p.documentos.length };
+  }, [evidencia, dataDoMarco]);
+
+  // ---------------------------------------------------------------------------
+  // A peça que sustenta cada marco — ver e anexar, sem sair da tela.
+  //
+  // Duas origens: os autos baixados (jm_documentos, casados por data) e o que
+  // alguém do escritório anexou à mão. O anexo ganha do casamento por data:
+  // quem anexou disse QUAL é a peça, o casamento só deduziu.
+  // ---------------------------------------------------------------------------
+  const { pecas, assinar: assinarPeca } = usePecasDoProcesso(processNumber);
+  const { anexos, anexar, assinar: assinarAnexo, enviando } = useAnexosDeMarco(processId, refreshKey);
+  const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
+  const inputAnexo = useRef<HTMLInputElement | null>(null);
+  const alvoDoAnexo = useRef<{ tipo: MarcoTipo; data: string | null } | null>(null);
+
+  /** De onde veio o marco desta estação — a primeira publicação que o produziu. */
+  const fonteDoMarco = useCallback((tipo: MarcoTipo): string | null => {
+    const m = movements
+      .filter((x) => x.tipo_movimentacao === tipo)
+      .sort((a, b) => (a.data_movimentacao || '').localeCompare(b.data_movimentacao || ''))[0];
+    if (!m?.fonte) return null;
+    return FONTE_MARCO_LABEL[m.fonte] || m.fonte;
+  }, [movements]);
+
+  const abrirPeca = useCallback(async (path: string | null, titulo: string, anexada: boolean) => {
+    const url = anexada ? await assinarAnexo(path) : await assinarPeca(path);
+    if (!url) { toast.error(`Não consegui abrir "${titulo}"`); return; }
+    setPecaAberta({ url, titulo });
+  }, [assinarAnexo, assinarPeca]);
+
+  const escolherArquivo = useCallback((tipo: MarcoTipo, data: Date | null) => {
+    alvoDoAnexo.current = { tipo, data: data ? data.toISOString().slice(0, 10) : dataDoMarco(tipo) };
+    inputAnexo.current?.click();
+  }, [dataDoMarco]);
+
+  const receberArquivo = useCallback(async (arquivo: File | null) => {
+    const alvo = alvoDoAnexo.current;
+    if (!arquivo || !alvo) return;
+    try {
+      await anexar(arquivo, {
+        marcoTipo: alvo.tipo,
+        dataMarco: alvo.data,
+        caseId: caseId || null,
+      });
+      toast.success(`Peça anexada a ${MARCO_LABEL[alvo.tipo]}`);
+    } catch (e) {
+      toast.error('Não consegui anexar a peça', { description: String((e as Error)?.message || e) });
+    } finally {
+      alvoDoAnexo.current = null;
+      if (inputAnexo.current) inputAnexo.current.value = '';
+    }
+  }, [anexar, caseId]);
+
+  /** Linha de fonte + peça de cada estação alcançada. Estação futura não tem prova a mostrar. */
+  const acoesDaEstacao = useCallback((tipo: MarcoTipo, data: Date | null, status: string) => {
+    if (status !== 'atual' && status !== 'concluida') return null;
+    const fonte = fonteDoMarco(tipo);
+    const anexo = anexos.find((a) => a.marcoTipo === tipo) || null;
+    const dosAutos = anexo ? null : melhorPeca(pecas, data ? data.toISOString() : dataDoMarco(tipo), { assunto: 'MARCO' });
+    const parar = (ev: React.MouseEvent) => { ev.preventDefault(); ev.stopPropagation(); };
+
+    return (
+      <>
+        {fonte && (
+          <Badge variant="outline" className="h-4 px-1 text-[9px] font-normal text-muted-foreground">
+            {fonte}
+          </Badge>
+        )}
+        {anexo ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-0.5 text-[9px] underline underline-offset-2 hover:text-foreground"
+            onClick={(ev) => { parar(ev); void abrirPeca(anexo.storagePath, anexo.titulo, true); }}
+            title={`${anexo.titulo} — anexada por alguém do escritório`}
+          >
+            <Paperclip className="h-2.5 w-2.5" /> ver a peça
+            <Badge variant="outline" className="ml-0.5 h-3 px-0.5 text-[8px]">anexada</Badge>
+          </button>
+        ) : dosAutos ? (
+          <button
+            type="button"
+            className="inline-flex items-center gap-0.5 text-[9px] underline underline-offset-2 hover:text-foreground"
+            onClick={(ev) => { parar(ev); void abrirPeca(dosAutos.storagePath, rotuloDaPeca(dosAutos), false); }}
+            title={rotuloDaPeca(dosAutos)}
+          >
+            <Paperclip className="h-2.5 w-2.5" /> ver a peça
+            {dosAutos.tipo === 'RESTRITO' && (
+              <Badge variant="outline" className="ml-0.5 h-3 px-0.5 text-[8px]">restrita</Badge>
+            )}
+            {!dosAutos.exata && <span className="text-muted-foreground">(+{dosAutos.distanciaDias}d)</span>}
+          </button>
+        ) : (
+          <button
+            type="button"
+            disabled={enviando}
+            className="inline-flex items-center gap-0.5 text-[9px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+            onClick={(ev) => { parar(ev); escolherArquivo(tipo, data); }}
+            title="Sem peça casada nos autos — anexe o documento que prova este marco"
+          >
+            {enviando ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Plus className="h-2.5 w-2.5" />}
+            anexar peça
+          </button>
+        )}
+      </>
+    );
+  }, [anexos, pecas, dataDoMarco, fonteDoMarco, abrirPeca, escolherArquivo, enviando]);
 
   // Estações a exibir: ordem canônica com as intermediárias (conciliação/
   // perícia/instrução) entrando por evidência (marco existe) ou previsão (perfil).
@@ -371,6 +553,25 @@ export function ProcessMovementsTimeline({
         currentProcessId={processId}
         estacoesLista={estacoesLista}
         onEstacaoClick={setEstacaoDetalhe}
+        resumoProva={resumoProva}
+        acoesDaEstacao={acoesDaEstacao}
+      />
+
+      {/* Um input para todas as estações: o alvo do anexo fica na ref. */}
+      <input
+        ref={inputAnexo}
+        type="file"
+        accept="application/pdf,image/*,.doc,.docx"
+        className="hidden"
+        onChange={(ev) => void receberArquivo(ev.target.files?.[0] || null)}
+      />
+
+      {/* Peça sempre por cima da tela, nunca em aba nova — mesmo visualizador
+          do WhatsApp, com o mesmo botão de baixar. */}
+      <MediaLightbox
+        url={pecaAberta?.url ?? null}
+        title={pecaAberta?.titulo ?? 'Peça do processo'}
+        onClose={() => setPecaAberta(null)}
       />
 
       {/* Detalhe da estação: o teor publicado que produziu o marco. Sem isto,
@@ -391,6 +592,9 @@ export function ProcessMovementsTimeline({
           </DialogHeader>
 
           <div className="overflow-y-auto space-y-3 pr-1">
+            <h5 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide">
+              Publicação que gerou o marco
+            </h5>
             {detalheMovs.map((m) => (
               <div key={m.id} className="border rounded-lg p-3 space-y-1.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -437,6 +641,19 @@ export function ProcessMovementsTimeline({
               <p className="text-sm text-muted-foreground text-center py-6">
                 Nenhuma publicação registrada nesta estação.
               </p>
+            )}
+
+            {estacaoDetalhe && (
+              <div className="border-t pt-3">
+                <EstacaoEvidencia
+                  prova={evidencia.provaDaEstacao(estacaoDetalhe, dataDoMarco(estacaoDetalhe))}
+                  dataMarco={dataDoMarco(estacaoDetalhe)}
+                  loading={evidencia.loading}
+                  semDatajud={evidencia.semDatajud}
+                  semAcervo={evidencia.semAcervo}
+                  onAbrirPeca={(url, titulo) => setPecaAberta({ url, titulo })}
+                />
+              </div>
             )}
           </div>
         </DialogContent>

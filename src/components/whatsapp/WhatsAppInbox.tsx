@@ -1635,14 +1635,24 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     const typeLabel = type.charAt(0).toUpperCase() + type.slice(1);
     const content = `📋 Atividade criada: "${title}" (${typeLabel})${leadName ? ` — Lead: ${leadName}` : ''}`;
     
-    await supabase.from('whatsapp_internal_notes').insert({
+    const notaBase = {
       phone: selectedConversation.phone,
       instance_name: selectedConversation.instance_name || '',
       content,
       note_type: 'activity',
       sender_id: currentUser?.id || null,
       sender_name: senderName,
-    });
+    };
+    // `activity_id` é o que torna o card da conversa clicável (abre a ficha) e
+    // dá o caminho de volta da ficha pra conversa. Se a coluna ainda não existir
+    // no banco, a nota é gravada sem ela em vez de sumir do histórico.
+    const { error: notaErro } = await supabase
+      .from('whatsapp_internal_notes')
+      .insert({ ...notaBase, activity_id: activityId || null });
+    if (notaErro) {
+      console.warn('[WhatsAppInbox] nota de atividade sem activity_id:', notaErro);
+      await supabase.from('whatsapp_internal_notes').insert(notaBase);
+    }
   };
 
   const handleNavigateToLead = async (leadId: string) => {

@@ -26,6 +26,7 @@ import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Bell, Trash2, FastForward, Mic, Copy, Download, ClipboardList, MessageSquare} from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
+import { Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { mediaPreview, handleMediaThumbError } from '@/lib/whatsappMediaTransform';
@@ -41,6 +42,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { escolherInstanciaDeGrupo } from '@/lib/whatsappQuickReply';
+import { dispararPrimeiraMensagemProativa } from '@/lib/agentePrimeiraMensagem';
+import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
 import { dedupeMirroredMessages } from '@/lib/whatsappGroupMirror';
 import { getOurInstancePhones, getOurInstancePhonesSync } from '@/integrations/supabase/external-rpc';
 import { withTimeout } from '@/lib/promiseTimeout';
@@ -49,6 +52,8 @@ import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrati
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
+import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { WhatsAppMediaGallery } from '@/components/whatsapp/WhatsAppMediaGallery';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
@@ -760,6 +765,33 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       lastClientText: lastClient ? String(lastClient.message_text).trim() : '',
     };
   };
+  /**
+   * Quem é essa pessoa para nós — mesma cascata da conversa completa
+   * (campo salvo → nome → IA lendo a conversa). Entra no prompt da sugestão.
+   */
+  const relacionamento = useRelacionamentoDoContato({
+    ativo: open,
+    contactId: linkedContact?.id || null,
+    contactName: contactName || linkedLead?.lead_name || null,
+    leadId: linkedLead?.id || null,
+    getMensagens: () =>
+      (messages || [])
+        .filter((m: any) => m?.message_text && String(m.message_text).trim())
+        .slice(-40)
+        .map((m: any) => ({
+          direction: m.direction === 'outbound' ? ('out' as const) : ('in' as const),
+          text: String(m.message_text).trim(),
+          at: String(m.created_at || '').slice(0, 10),
+        })),
+  });
+  /** O que o CLIENTE ficou de fazer — diz à IA de que lado está a obrigação. */
+  const pendenciasDoClienteParaIA = useMemo((): string[] => {
+    const atrasadas = new Set((commitments.overdue || []).map((c: any) => c.id));
+    return (commitments.open || []).map((c: any) => {
+      const prazo = c.due_date ? ` — prazo ${String(c.due_date).slice(0, 10).split('-').reverse().join('/')}` : '';
+      return `${c.title}${prazo}${atrasadas.has(c.id) ? ' (ATRASADA)' : ''}`;
+    });
+  }, [commitments.open, commitments.overdue]);
 
   /**
    * "Atividade" na bolha: mesmo caminho da caixa de entrada. A IA lê a mensagem
@@ -1553,6 +1585,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       setAgentInfo({ name: agentName, activated_by: 'Manual', is_active: true, agent_id: agentId });
       onConversationUpdated?.();
       toast.success(`🤖 Agente "${agentName}" ativado!`);
+      // Agente com "1ª mensagem proativa" abre a conversa sozinho, sem esperar
+      // o cliente — antes só a etiqueta do WhatsApp fazia isso acontecer.
+      void dispararPrimeiraMensagemProativa({ phone: normalizedPhone, instanceName, agentId, agentName });
     } catch (e) {
       toast.error('Erro ao selecionar agente');
     }
@@ -2069,6 +2104,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                       <Bot className="h-4 w-4 mr-2" /> Reativar Agente ({agentInfo.name})
                     </DropdownMenuItem>
                   )}
+                  {/* Ajustar o agente sem sair da conversa: abre o painel lateral
+                      com a mesma tela de Configurações → Agentes IA. */}
+                  <DropdownMenuItem onClick={() => abrirConfigDoAgente({ agentId: agentInfo?.agent_id || null })}>
+                    <Settings2 className="h-4 w-4 mr-2" /> Configurar Agente IA
+                  </DropdownMenuItem>
                   {availableAgents.length > 0 && (
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
@@ -2152,6 +2192,20 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
         {linkedLead?.id && (
           <div className="shrink-0">
             <WhatsAppLeadProgressBar leadId={linkedLead.id} onClick={() => setShowLeadEdit(true)} />
+          </div>
+        )}
+        {phone && (
+          <div className="shrink-0">
+            <RelacionamentoBar
+              rotulos={relacionamento.rotulos}
+              slugs={relacionamento.slugs}
+              origem={relacionamento.origem}
+              motivo={relacionamento.motivo}
+              lendo={relacionamento.lendo}
+              opcoes={relacionamento.opcoes}
+              onConfirmar={relacionamento.confirmar}
+              onDefinir={relacionamento.definir}
+            />
           </div>
         )}
         {phone && (
@@ -2671,11 +2725,19 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
               </DropdownMenu>
               <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
               <AITextActions value={newMessage} onChange={setNewMessage} />
-              <AISuggestReply buildContext={buildReplyContext} getState={buildReplyState} onApply={setNewMessage} />
+              <AISuggestReply
+                buildContext={buildReplyContext}
+                getState={buildReplyState}
+                pendenciasDoCliente={pendenciasDoClienteParaIA}
+                contextoDaRelacao={relacionamento.linhas}
+                onApply={setNewMessage}
+              />
               {/* Instância controlada: sugestão focada numa mensagem específica (botão por bolha). */}
               <AISuggestReply
                 buildContext={buildReplyContext}
                 getState={buildReplyState}
+                pendenciasDoCliente={pendenciasDoClienteParaIA}
+                contextoDaRelacao={relacionamento.linhas}
                 onApply={setNewMessage}
                 open={replySuggestOpen}
                 onOpenChange={setReplySuggestOpen}

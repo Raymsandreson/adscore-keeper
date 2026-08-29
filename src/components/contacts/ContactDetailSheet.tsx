@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react'; // force rebuild
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'; // force rebuild
 import {
   Sheet,
   SheetContent,
@@ -54,7 +54,8 @@ import {
 } from 'lucide-react';
 import { WhatsAppCallRecorder } from '@/components/whatsapp/WhatsAppCallRecorder';
 import { Contact } from '@/hooks/useContacts';
-import { useContactClassifications } from '@/hooks/useContactClassifications';
+import { useContactClassifications, classificationLabel } from '@/hooks/useContactClassifications';
+import { useContactClassificationSuggestion } from '@/hooks/useContactClassificationSuggestion';
 import { ContactRelationshipsPanel } from '@/components/contacts/ContactRelationshipsPanel';
 import { useContactLeads, useSearchLeads, ContactLead, CONTACT_LEAD_RELATIONSHIP_OPTIONS } from '@/hooks/useContactLeads';
 import { useBrazilianLocations } from '@/hooks/useBrazilianLocations';
@@ -314,6 +315,47 @@ export function ContactDetailSheet({
       }
     }
   }, [contact, open]);
+
+  // "Relacionamento Conosco" em branco: o sistema identifica sozinho — primeiro
+  // pelo que está escrito no nome ("... parceiro Ibirarema/SP"), depois com IA
+  // lendo o resto da ficha. Preenche o formulário e para por aí: quem confirma
+  // é o botão Salvar, igual à cidade detectada pelo nome.
+  //
+  // Lê do `contact`, não do formulário: este bloco roda no mesmo ciclo do efeito
+  // que carrega a ficha, quando os campos ainda são do contato anterior.
+  const classificationOptions = useMemo(
+    () => availableClassifications.map(c => ({ name: c.name, label: classificationLabel(c.name) })),
+    [availableClassifications],
+  );
+  const suggestionContext = useMemo(
+    () => ({
+      notes: contact?.notes,
+      profession: (contact as any)?.profession,
+      city: contact?.city,
+      state: contact?.state,
+      leads: contactLeads.map(l => l.lead?.lead_name || '').filter(Boolean),
+    }),
+    [contact, contactLeads],
+  );
+  const applySuggestedClassifications = useCallback((slugs: string[]) => {
+    setClassifications(slugs);
+    // Direto no estado, sem passar por handleClassificationsChange: um 'client'
+    // sugerido não pode abrir sozinho o diálogo de criar negócio.
+    previousClassificationsRef.current = slugs;
+  }, []);
+  const {
+    suggestion: classificationSuggestion,
+    suggesting: suggestingClassification,
+    dismiss: dismissClassificationSuggestion,
+  } = useContactClassificationSuggestion({
+    enabled: open,
+    contactId: contact?.id,
+    name: contact?.full_name || '',
+    current: contact?.classifications || [],
+    available: classificationOptions,
+    context: suggestionContext,
+    onApply: applySuggestedClassifications,
+  });
 
   // Fetch linked cases/processes
   useEffect(() => {
@@ -990,6 +1032,31 @@ export function ContactDetailSheet({
                       onUpdate={updateClassification}
                       onDelete={deleteClassification}
                     />
+                    {suggestingClassification && (
+                      <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <Sparkles className="h-3 w-3 animate-pulse text-primary" />
+                        Identificando o relacionamento...
+                      </p>
+                    )}
+                    {classificationSuggestion && (
+                      <div className="mt-1 flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2">
+                        <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-primary" />
+                        <p className="text-xs text-muted-foreground">
+                          Preenchido {classificationSuggestion.source === 'nome' ? 'a partir do nome' : 'pela IA'}:{' '}
+                          <span className="font-medium text-foreground">
+                            {classificationSuggestion.slugs.map(getClassificationLabel).join(', ')}
+                          </span>
+                          {classificationSuggestion.reason ? ` — ${classificationSuggestion.reason}` : ''}. Confira e salve.{' '}
+                          <button
+                            type="button"
+                            className="underline underline-offset-2 hover:text-foreground"
+                            onClick={() => { handleClassificationsChange([]); dismissClassificationSuggestion(); }}
+                          >
+                            Desfazer
+                          </button>
+                        </p>
+                      </div>
+                    )}
                   </div>
                   )}
 

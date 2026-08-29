@@ -250,7 +250,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
 
               {marcos.length > 0 && (
                 <div className="space-y-1 pt-1">
-                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Trilha detectada</div>
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos</div>
                   {marcos.map(m => (
                     <div
                       key={`${m.chave}-${m.dataDetectada}`}

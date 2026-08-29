@@ -57,6 +57,7 @@ import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { useActivitySpentSeconds, useEstimateSuggestion, formatEstimate, formatSpent } from '@/hooks/useActivityTimeEstimate';
 import { cloudFunctions as routedFunctions } from '@/lib/functionRouter';
 import { loadActivityMessageOrigin, type ActivityMessageOrigin } from '@/lib/whatsappMessageActivities';
+import { carregarConversaDaNotaDaAtividade } from '@/lib/whatsappActivityNotes';
 import { MessageSquare } from 'lucide-react';
 
 // Conversa do WhatsApp em painel de baixo pra cima — mesmo componente que a
@@ -171,6 +172,15 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     if (!open || !activityId) { setMessageOrigin(null); return; }
     let cancelled = false;
     loadActivityMessageOrigin(activityId)
+      // Sem vínculo de mensagem, a atividade ainda pode ter nascido da conversa
+      // (menu do topo): o registro é a nota "Atividade Criada" no chat.
+      .then(async origin => {
+        if (origin) return origin;
+        const conversa = await carregarConversaDaNotaDaAtividade(activityId);
+        return conversa
+          ? { message_id: null, phone: conversa.phone, instance_name: conversa.instance_name, total: 0 }
+          : null;
+      })
       .then(origin => { if (!cancelled) setMessageOrigin(origin); })
       // Ficha funciona sem isso — só perde o atalho pra conversa.
       .catch(e => console.warn('[ActivityFullSheet] origem da atividade indisponível:', e));
@@ -1753,9 +1763,12 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 size="sm"
                 className="h-6 px-2 text-[10px] gap-1 border-green-600/40 text-green-700 dark:text-green-400 hover:bg-green-600/10"
                 onClick={handleOpenOriginMessage}
-                title={`Abrir aqui a conversa do WhatsApp na mensagem que gerou esta atividade${messageOrigin.total > 1 ? ` (${messageOrigin.total} mensagens de origem)` : ''}`}
+                title={messageOrigin.message_id
+                  ? `Abrir aqui a conversa do WhatsApp na mensagem que gerou esta atividade${messageOrigin.total > 1 ? ` (${messageOrigin.total} mensagens de origem)` : ''}`
+                  : 'Abrir aqui a conversa do WhatsApp em que esta atividade foi criada'}
               >
-                <MessageSquare className="h-3 w-3" /> Ver mensagem de origem
+                <MessageSquare className="h-3 w-3" />
+                {messageOrigin.message_id ? 'Ver mensagem de origem' : 'Ver conversa de origem'}
               </Button>
             )}
           </div>
