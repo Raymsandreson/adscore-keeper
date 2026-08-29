@@ -49,11 +49,28 @@ export interface PedidoDeSugestao {
   jaEnviado?: string;
   /** Última mensagem do interlocutor — é a ela que a resposta reage. */
   ultimaDoInterlocutor?: string;
+  /**
+   * O que o CLIENTE ficou de fazer e ainda está em aberto (`useClientCommitments`).
+   * Sem isso a IA lia "tô mandando a documentação do pagamento" numa cobrança de
+   * empréstimo e respondia "daremos andamento ao pagamento" — invertendo quem
+   * deve a quem. Só vale no modo 'client'.
+   */
+  pendenciasDoCliente?: string[];
+  /**
+   * Quem é essa pessoa para nós, já em linhas prontas: Relacionamento Conosco,
+   * caso ligado à conversa e dinheiro registrado entre as duas partes
+   * (`montarLinhasDoRelacionamento`). Vem antes de tudo no prompt porque define
+   * o papel de cada lado — o que a transcrição sozinha não diz. Só no modo 'client'.
+   */
+  contextoDaRelacao?: string[];
 }
 
 /** Monta o prompt da sugestão. Exportado para teste. */
 export function montarPromptDeSugestao(pedido: PedidoDeSugestao): string {
-  const { modo = 'client', tom = 'cordial', instrucao, alvo, jaEnviado, ultimaDoInterlocutor } = pedido;
+  const {
+    modo = 'client', tom = 'cordial', instrucao, alvo, jaEnviado, ultimaDoInterlocutor,
+    pendenciasDoCliente, contextoDaRelacao,
+  } = pedido;
   const isTeam = modo === 'team';
   // Palavras conforme a persona: quem é o interlocutor e quem sou "Eu".
   const counterpart = isTeam ? 'colega' : 'cliente';
@@ -74,6 +91,19 @@ export function montarPromptDeSugestao(pedido: PedidoDeSugestao): string {
   const extraLine = instrucao?.trim()
     ? ` Instrução adicional do ${me}: ${instrucao.trim()}.`
     : '';
+  // Quem é a pessoa para nós, antes de qualquer palavra da conversa: papel,
+  // caso ligado e dinheiro entre as duas partes.
+  const relacao = (contextoDaRelacao || []).map((l) => String(l || '').trim()).filter(Boolean);
+  const relacaoLine = !isTeam && relacao.length
+    ? ` ANTES DE ESCREVER, leia o que já sabemos desta pessoa (vem do cadastro do escritório, não da conversa): ${relacao.join(' ')}`
+    : '';
+  // O que o cliente ficou de fazer e não fez. Diz de que lado está a obrigação —
+  // sem isso a IA presume que quem providencia é sempre o escritório.
+  const pendencias = (pendenciasDoCliente || []).map((p) => String(p || '').trim()).filter(Boolean);
+  const pendenciasLine = !isTeam && pendencias.length
+    ? ` CONTEXTO DA RELAÇÃO: o CLIENTE tem compromisso(s) em aberto COM o escritório — é ELE quem deve cumprir, não nós: ${pendencias.map((p) => `"${p}"`).join('; ')}. ` +
+      `Leia a fala dele à luz disso: se ele fala de documento, pagamento ou prazo ligado a esse compromisso, quem cumpre é ele — não escreva como se o escritório fosse pagar, providenciar ou dar andamento.`
+    : '';
 
   const base = isTeam
     ? (
@@ -86,15 +116,22 @@ export function montarPromptDeSugestao(pedido: PedidoDeSugestao): string {
       `Responda só com o texto da mensagem, sem aspas.`
     )
     : (
-      `Você é o atendente de um escritório de advocacia previdenciário respondendo um cliente pelo WhatsApp. ` +
+      `Você é o atendente de um escritório de advocacia respondendo um contato pelo WhatsApp. ` +
       `Abaixo está o histórico da conversa (Eu = atendente, Cliente = a pessoa atendida). ` +
       `Escreva APENAS a próxima mensagem que o atendente deve enviar como resposta, em ${tonePrompt}, ` +
       `em português brasileiro, natural e claro. Responda ao que o CLIENTE falou por último e ainda não foi respondido. ` +
+      // O escritório não faz só previdenciário: a mesma conversa pode ser cobrança
+      // de empréstimo adiantado ao cliente, acordo, documento ou audiência. Assumir
+      // o assunto (e o papel de cada lado) já fez a IA responder o contrário do que
+      // estava sendo dito — por isso a instrução é ler, não presumir.
+      `O ASSUNTO e o PAPEL de cada lado saem da conversa, nunca de suposição: pode ser atendimento, cobrança de valor que o CLIENTE deve ao escritório, ` +
+      `empréstimo/adiantamento feito a ele, documento pendente ou audiência. Antes de escrever, identifique quem está cobrando quem e quem ficou de fazer o quê. ` +
+      `Se é o escritório que está cobrando, a resposta NÃO pode soar como se nós fôssemos pagar ou dar andamento a um pagamento nosso. ` +
       `Não escreva saudações repetidas se a conversa já começou, ` +
       `não invente fatos jurídicos nem prometa prazos ou valores. Responda só com o texto da mensagem, sem aspas.`
     );
 
-  return `${base}${anchorLine}${targetLine}${alreadyLine}${extraLine}`;
+  return `${base}${relacaoLine}${pendenciasLine}${anchorLine}${targetLine}${alreadyLine}${extraLine}`;
 }
 
 /**

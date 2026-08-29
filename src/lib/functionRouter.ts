@@ -36,6 +36,8 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'list-uazapi-labels': 'railway',
   'manage-uazapi-label': 'railway',
   'sync-agent-labels': 'railway',
+  // Ativar o agente pela tela também manda a 1ª mensagem proativa (antes só a etiqueta mandava)
+  'agent-proactive-first-message': 'railway',
   'sync-result-labels': 'railway',
   'sync-stage-labels': 'railway',
   'apply-stage-label': 'railway',

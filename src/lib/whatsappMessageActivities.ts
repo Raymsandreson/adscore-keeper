@@ -33,9 +33,13 @@ interface LinkRow {
   activity_title: string | null;
 }
 
-/** Mensagem do WhatsApp que originou uma atividade (caminho inverso do selo). */
+/** Conversa do WhatsApp que originou uma atividade (caminho inverso do selo). */
 export interface ActivityMessageOrigin {
-  message_id: string;
+  /**
+   * Bolha exata de origem. Nulo quando a atividade nasceu da conversa mas não de
+   * uma mensagem específica (menu do topo): aí o atalho abre a conversa no fim.
+   */
+  message_id: string | null;
   phone: string | null;
   instance_name: string | null;
   /** Quantas mensagens originaram a atividade (o atalho leva à primeira). */

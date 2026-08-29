@@ -40,10 +40,24 @@ interface Params {
   buildContext: () => string;
   /** Estado da conversa (há resposta pendente? o que já foi dito?). */
   getState: () => EstadoDaResposta;
+  /**
+   * O que o CLIENTE ficou de fazer e segue em aberto. Diz à IA de que lado
+   * está a obrigação — sem isso ela lê uma cobrança como se nós é que
+   * fôssemos pagar. Getter porque a lista chega depois (a IA lê a conversa).
+   */
+  getPendenciasDoCliente?: () => string[];
+  /**
+   * Quem é essa pessoa para nós — papel, caso ligado e dinheiro entre as partes
+   * (`useRelacionamentoDoContato`). Getter porque a leitura da IA chega depois
+   * de a conversa abrir.
+   */
+  getContextoDaRelacao?: () => string[];
   modo?: ModoDaSugestao;
 }
 
-export function useSugestaoAutomatica({ ativa, ancora, buildContext, getState, modo = 'client' }: Params) {
+export function useSugestaoAutomatica({
+  ativa, ancora, buildContext, getState, getPendenciasDoCliente, getContextoDaRelacao, modo = 'client',
+}: Params) {
   const [ligada, setLigadaState] = useState(sugestaoAutomaticaLigada);
   const [sugestao, setSugestao] = useState('');
   const [carregando, setCarregando] = useState(false);
@@ -52,8 +66,12 @@ export function useSugestaoAutomatica({ ativa, ancora, buildContext, getState, m
   // para o efeito depender só da âncora, e não redisparar a cada digitação.
   const contextRef = useRef(buildContext);
   const stateRef = useRef(getState);
+  const pendenciasRef = useRef(getPendenciasDoCliente);
+  const relacaoRef = useRef(getContextoDaRelacao);
   contextRef.current = buildContext;
   stateRef.current = getState;
+  pendenciasRef.current = getPendenciasDoCliente;
+  relacaoRef.current = getContextoDaRelacao;
 
   // Âncora já atendida (gerada ou dispensada): impede pedir a mesma coisa de novo.
   const atendidaRef = useRef<string>('');
@@ -75,6 +93,8 @@ export function useSugestaoAutomatica({ ativa, ancora, buildContext, getState, m
         modo,
         jaEnviado: st.lastOutboundText,
         ultimaDoInterlocutor: st.lastClientText,
+        pendenciasDoCliente: pendenciasRef.current?.() || undefined,
+        contextoDaRelacao: relacaoRef.current?.() || undefined,
       });
       if (emVooRef.current !== chave) return; // conversa já mudou
       setSugestao((opts[0] || '').trim());

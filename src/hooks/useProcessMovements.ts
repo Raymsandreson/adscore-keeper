@@ -16,7 +16,8 @@ export type MarcoTipo =
   | 'pagamento';
 
 /**
- * Linha do histórico append-only (tabela process_movements no Supabase externo).
+ * Linha do histórico append-only (process_movements no Supabase externo, lida
+ * pela view process_movements_validos, que exclui as descartadas).
  * Cada marco relevante é uma linha independente — o mais recente por
  * data_movimentacao representa o status atual do processo.
  */
@@ -64,7 +65,14 @@ export function useProcessMovements(
       // (mesmo padrão do escavadorMovementUtils até regenerar os tipos).
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const client = db as any;
-      let query = client.from('process_movements').select('*');
+      // process_movements_validos, não a tabela crua: a linha descartada pela
+      // revisão por IA (descartado_em preenchido) tem que sair de TODAS as
+      // leituras — é o que a migração 20260805190000 estabeleceu, e a régua era
+      // a única leitura que ainda lia a tabela direto. Efeito visível: o
+      // 0016527-69.2021.5.16.0018 mostrava "Sentença em 14/04/2026", que é uma
+      // alteração de classe processual descartada em 06/08/2026; a sentença de
+      // verdade é 11/06/2026 (e a peça publicada nessa data comprova).
+      let query = client.from('process_movements_validos').select('*');
       if (escopo === 'caso' && caseId) query = query.eq('case_id', caseId);
       else query = query.eq('process_id', processId);
       const { data, error } = await query

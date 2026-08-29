@@ -15,4 +15,4 @@
  */
 
 export { supabase as authClient, supabase } from './client';
-export { externalSupabase as db, externalSupabase, ensureExternalSession } from './external-client';
+export { externalSupabase as db, externalSupabase, ensureExternalSession, externalFunctionUrl } from './external-client';
