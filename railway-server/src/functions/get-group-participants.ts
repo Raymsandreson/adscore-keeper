@@ -32,7 +32,7 @@ interface Extracted {
   is_admin: boolean;
 }
 
-function digits(s: unknown): string {
+export function digits(s: unknown): string {
   return String(s || '').replace(/\D/g, '');
 }
 
@@ -63,7 +63,7 @@ function phoneFromJid(value: unknown): string {
   return '';
 }
 
-function extractParticipant(p: any): Extracted {
+export function extractParticipant(p: any): Extracted {
   // `id` pode ser objeto ({_serialized, user}) — por isso não entra direto no
   // firstText, que espera string/número.
   const jid = firstText(
@@ -172,7 +172,7 @@ async function fetchGroupInfo(baseUrl: string, token: string, groupJid: string) 
 // recover-leads-phone-55 e sync-whatsapp-group-description já tratavam isso
 // varrendo as instâncias ativas; este handler não, e uma instância fora do
 // grupo bastava para o roster vir vazio.
-async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any | null, groupJid: string) {
+export async function fetchGroupInfoAcrossInstances(instances: any[], preferred: any | null, groupJid: string) {
   const others = instances
     .filter((i) => i.instance_name !== preferred?.instance_name && i.is_active !== false)
     .slice(0, MAX_INSTANCE_PROBES);
@@ -251,7 +251,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (t: T) =>
 // A UazAPI manda `sender_lid` junto de `sender_pn` e `senderName`, então o
 // histórico já resolve o telefone real de quem o /group/info só identifica por
 // LID — sem gastar chamada de API.
-async function buildLidMapFromMessages(groupJid: string) {
+export async function buildLidMapFromMessages(groupJid: string) {
   const chatId = groupJid.replace('@g.us', '');
   const map = new Map<string, { phone: string; name: string | null }>();
   try {
