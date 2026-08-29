@@ -23,6 +23,7 @@ import {
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
 import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
+import { VincularLeadAoProcesso, ImportarDoDriveButton } from './ProcessoLeadVinculo';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -530,30 +531,35 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // Fetch documents when tab is activated.
   // process_documents vive no Externo e a RLS exige `authenticated` — sem a sessão
   // anônima pronta o select volta 0 linhas em silêncio.
+  const loadDocuments = useCallback(async () => {
+    if (!process?.id) return;
+    setLoadingDocuments(true);
+    await ensureExternalSession().catch(() => {});
+    const { data, error } = await externalSupabase
+      .from('process_documents')
+      .select('*')
+      .eq('process_id', process.id)
+      .order('document_date', { ascending: false, nullsFirst: false });
+    if (error) console.error('Error loading process documents:', error);
+    setDocuments((data || []) as unknown as ProcessDocument[]);
+    setLoadingDocuments(false);
+  }, [process?.id]);
+
   useEffect(() => {
     if (activeTab !== 'documentos' || !process?.id) return;
-    let cancelled = false;
-    setLoadingDocuments(true);
-    (async () => {
-      await ensureExternalSession().catch(() => {});
-      const { data, error } = await externalSupabase
-        .from('process_documents')
-        .select('*')
-        .eq('process_id', process.id)
-        .order('document_date', { ascending: false, nullsFirst: false });
-      if (cancelled) return;
-      if (error) console.error('Error loading process documents:', error);
-      setDocuments((data || []) as unknown as ProcessDocument[]);
-      setLoadingDocuments(false);
-    })();
-    return () => { cancelled = true; };
-  }, [activeTab, process?.id]);
+    void loadDocuments();
+  }, [activeTab, process?.id, loadDocuments]);
+
+  // Vínculo com lead pode nascer AQUI (aba Documentos) — o prop `process` é do
+  // pai e não muda até reabrir; este estado dá o efeito imediato na aba.
+  const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
+  useEffect(() => { setLinkedLeadId(process?.lead_id ?? null); }, [process?.id, process?.lead_id]);
 
   // Acervo dos autos (jm_documentos, por CNJ) — a MESMA fonte da Conferência.
   // A aba Documentos só mostrava process_documents (uploads/ZapSign/importados) e
   // escondia as peças que o Escavador já baixou; o caso 46 tinha 20 PDFs
   // invisíveis aqui (29/08/2026). O hook só liga com a aba aberta.
-  const { pecas: acervo, assinar: assinarPeca } = usePecasDoProcesso(
+  const { pecas: acervo, assinar: assinarPeca, lerPeca: lerPecaAcervo } = usePecasDoProcesso(
     activeTab === 'documentos' ? (form.process_number ?? null) : null,
   );
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
@@ -562,6 +568,40 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     const url = await assinarPeca(p.storagePath);
     if (!url) { toast.error('Não consegui abrir a peça.'); return; }
     setPecaAberta({ url, titulo: p.titulo || 'Peça dos autos' });
+  };
+
+  // Resumo por IA de cada peça do acervo (jm_documento_leitura.resumo) — só o
+  // que JÁ foi lido; o botão "resumir" dispara a leitura sob demanda, porque
+  // cada leitura custa tokens de LLM (não faz sentido resumir 20 de uma vez).
+  const [resumosAcervo, setResumosAcervo] = useState<Record<number, string>>({});
+  const [resumindo, setResumindo] = useState<number | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'documentos' || acervo.length === 0) return;
+    let cancelado = false;
+    (async () => {
+      await ensureExternalSession().catch(() => {});
+      const { data } = await (externalSupabase
+        .from('jm_documento_leitura')
+        .select('documento_id, resumo')
+        .in('documento_id', acervo.map(p => p.id)) as unknown as Promise<{ data: { documento_id: number; resumo: string | null }[] | null }>);
+      if (cancelado || !data) return;
+      const mapa: Record<number, string> = {};
+      for (const r of data) if (r.resumo) mapa[r.documento_id] = r.resumo;
+      setResumosAcervo(prev => ({ ...mapa, ...prev }));
+    })();
+    return () => { cancelado = true; };
+  }, [activeTab, acervo]);
+
+  const resumirPeca = async (p: PecaDoProcesso) => {
+    setResumindo(p.id);
+    try {
+      const r = await lerPecaAcervo(p.id);
+      const resumo = (r.leitura?.resumo as string) || null;
+      if (r.ok && resumo) setResumosAcervo(prev => ({ ...prev, [p.id]: resumo }));
+      else toast.info(r.erro || 'A leitura ainda não voltou — tente de novo em um minuto.');
+    } finally {
+      setResumindo(null);
+    }
   };
 
   const fetchEscavadorDocuments = async () => {
@@ -1129,37 +1169,67 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'documentos' && (
               <div className="space-y-3">
+                {/* Sem lead não há Drive: o vínculo (por nome, por grupo de
+                    WhatsApp ou criando lead novo) é a porta de entrada. */}
+                {process?.id && !linkedLeadId && (
+                  <VincularLeadAoProcesso
+                    processId={process.id}
+                    sugestaoNome={form.title || ''}
+                    onVinculado={(id) => { setLinkedLeadId(id); onUpdated?.(); }}
+                  />
+                )}
+
                 {/* Acervo dos autos — as peças que o Escavador baixou (jm-autos),
-                    em ordem cronológica. É o mesmo acervo da Conferência. */}
+                    do mais recente para o mais antigo, com o resumo por IA da
+                    leitura (jm_documento_leitura) ao lado. É o mesmo acervo da
+                    Conferência. */}
                 {acervo.length > 0 && (
                   <div className="space-y-1">
                     <h4 className="text-xs font-semibold flex items-center gap-1.5">
                       <Paperclip className="h-3.5 w-3.5 text-primary" />
                       Acervo dos autos — Escavador ({acervo.length})
                     </h4>
-                    <div className="max-h-72 space-y-0.5 overflow-y-auto rounded-md border p-1.5">
+                    <div className="max-h-96 space-y-0.5 overflow-y-auto rounded-md border p-1.5">
                       {[...acervo]
-                        .sort((a, b) => (a.dataDocumento ?? '').localeCompare(b.dataDocumento ?? ''))
+                        .sort((a, b) => (b.dataDocumento ?? '').localeCompare(a.dataDocumento ?? ''))
                         .map(p => (
-                          <div key={p.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
-                            <span className="w-16 shrink-0 text-[10px] text-muted-foreground">
-                              {p.dataDocumento
-                                ? new Date(`${p.dataDocumento.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
-                                : '—'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => void abrirPecaAcervo(p)}
-                              className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline"
-                              title="Abrir a peça"
-                            >
-                              {p.titulo || 'Peça dos autos'}
-                            </button>
-                            {p.tipo === 'RESTRITO' && (
-                              <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">restrita</Badge>
-                            )}
-                            {p.origem === 'manual' && (
-                              <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
+                          <div key={p.id} className="rounded px-1.5 py-1 text-xs hover:bg-muted/40">
+                            <div className="flex items-center gap-2">
+                              <span className="w-16 shrink-0 text-[10px] text-muted-foreground">
+                                {p.dataDocumento
+                                  ? new Date(`${p.dataDocumento.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
+                                  : '—'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void abrirPecaAcervo(p)}
+                                className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline"
+                                title="Abrir a peça"
+                              >
+                                {p.titulo || 'Peça dos autos'}
+                              </button>
+                              {p.tipo === 'RESTRITO' && (
+                                <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">restrita</Badge>
+                              )}
+                              {p.origem === 'manual' && (
+                                <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
+                              )}
+                              {!resumosAcervo[p.id] && (
+                                <button
+                                  type="button"
+                                  disabled={resumindo !== null}
+                                  onClick={() => void resumirPeca(p)}
+                                  className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground disabled:opacity-50"
+                                  title="Lê a peça com IA e guarda o resumo (consome tokens; ~1 min)"
+                                >
+                                  {resumindo === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'resumir'}
+                                </button>
+                              )}
+                            </div>
+                            {resumosAcervo[p.id] && (
+                              <p className="mt-0.5 pl-[4.5rem] text-[10px] leading-snug text-muted-foreground" title={resumosAcervo[p.id]}>
+                                {resumosAcervo[p.id]}
+                              </p>
                             )}
                           </div>
                         ))}
@@ -1172,16 +1242,28 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     <FolderOpen className="h-3.5 w-3.5 text-primary" />
                     Documentos ({documents.length})
                   </h4>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={fetchEscavadorDocuments}
-                    disabled={fetchingEscavadorDocs || !form.process_number}
-                    className="h-7 text-xs gap-1"
-                  >
-                    {fetchingEscavadorDocs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                    Importar do Escavador
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    {process?.id && linkedLeadId && (
+                      <ImportarDoDriveButton
+                        processId={process.id}
+                        caseId={process.case_id || null}
+                        leadId={linkedLeadId}
+                        jaImportados={documents as unknown as { original_url: string | null; metadata?: Record<string, unknown> | null }[]}
+                        classificar={classifyDocumentType}
+                        onImportado={() => void loadDocuments()}
+                      />
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={fetchEscavadorDocuments}
+                      disabled={fetchingEscavadorDocs || !form.process_number}
+                      className="h-7 text-xs gap-1"
+                    >
+                      {fetchingEscavadorDocs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                      Importar do Escavador
+                    </Button>
+                  </div>
                 </div>
                 
                 {loadingDocuments ? (
@@ -1199,7 +1281,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                   <div className="space-y-2">
                     {documents.map(doc => {
                       const typeLabel = DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type;
-                      const sourceLabel = doc.source === 'escavador' ? '📋 Escavador' : doc.source === 'zapsign' ? '✍️ ZapSign' : '📎 Upload';
+                      const sourceLabel = doc.source === 'escavador' ? '📋 Escavador' : doc.source === 'zapsign' ? '✍️ ZapSign' : doc.source === 'drive' ? '🗂️ Drive' : '📎 Upload';
                       const isProcuracao = doc.document_type === 'procuracao';
                       return (
                         <div key={doc.id} className={`border rounded-lg p-3 space-y-1 ${isProcuracao ? 'border-primary/50 bg-primary/5' : ''}`}>
