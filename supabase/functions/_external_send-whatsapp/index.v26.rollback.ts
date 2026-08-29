@@ -1,10 +1,4 @@
-// send-whatsapp v27 (projeto externo kmedldlepwiityjsdahz)
-//
-// v27: actions send_contact (UazAPI /send/contact, vCard clicável) e send_poll
-// (UazAPI /send/menu type=poll — não existe /send/poll). As duas entram no
-// gate de opt-out e gravam com storagePhone, como as demais. Alimentam os
-// itens "Contato" e "Enquete" do menu de anexo dos chats.
-// ROLLBACK: index.v26.rollback.ts (espelho fiel da v26 deployada).
+// send-whatsapp v26 (projeto externo kmedldlepwiityjsdahz)
 //
 // v26: GATE DE OPT-OUT. Envio 1:1 para número com opt-out ativo em
 // `whatsapp_optouts` é recusado com error_code RECIPIENT_OPTED_OUT (não
@@ -295,9 +289,7 @@ Deno.serve(async (req)=>{
     const useTarget = action === undefined || [
       'send_media',
       'send_location',
-      'send_text',
-      'send_contact',
-      'send_poll'
+      'send_text'
     ].includes(action);
     const tgt = getTarget(body.phone, body.chat_id);
     if (useTarget && isInviteLink(tgt)) {
@@ -611,141 +603,6 @@ Deno.serve(async (req)=>{
       return jsonResp({
         success: true,
         message_id: sm?.id,
-        instance_name: inst.instance_name
-      });
-    }
-    if (action === 'send_contact') {
-      // v27: vCard clicável — o "Contato" do menu de anexo.
-      const target = getTarget(body.phone, body.chat_id);
-      const fullName = typeof body.full_name === 'string' ? body.full_name.trim() : '';
-      const phoneNumber = typeof body.phone_number === 'string' ? body.phone_number.trim() : '';
-      if (!target || !fullName || !phoneNumber) return jsonResp({
-        success: false,
-        error: 'phone/chat_id, full_name and phone_number required'
-      });
-      const inst = await getInstance(cloudClient, extClient, body.instance_id, target, body.instance_name);
-      if (!inst) return jsonResp({
-        success: false,
-        error: 'No active instance'
-      });
-      const base = inst.base_url || 'https://abraci.uazapi.com';
-      const sb = {
-        number: target,
-        fullName,
-        phoneNumber
-      };
-      if (body.organization) sb.organization = String(body.organization);
-      if (body.email) sb.email = String(body.email);
-      const ur = await fetch(`${base}/send/contact`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          token: inst.instance_token
-        },
-        body: JSON.stringify(sb)
-      });
-      if (!ur.ok) {
-        const et = await readSafe(ur);
-        if (isDisc(ur.status, et)) return jsonResp(discPayload(inst.instance_name, et));
-        return jsonResp({
-          success: false,
-          error: `Erro contato: ${et || ur.status}`,
-          error_code: /not participating/i.test(et) ? 'NOT_IN_GROUP' : 'SEND_FAILED',
-          instance_name: inst.instance_name
-        });
-      }
-      const ud = await ur.json().catch(()=>({}));
-      const eid = ud?.key?.id || ud?.id || null;
-      const row = {
-        phone: storagePhone(target),
-        message_text: `👤 ${fullName}\n${phoneNumber}`,
-        message_type: 'contact',
-        direction: 'outbound',
-        status: 'sent',
-        contact_id: body.contact_id || null,
-        lead_id: body.lead_id || null,
-        instance_name: inst.instance_name,
-        instance_token: inst.instance_token,
-        external_message_id: eid,
-        metadata: {
-          contact_full_name: fullName,
-          contact_phone_number: phoneNumber,
-          contact_organization: body.organization || null,
-          contact_email: body.email || null
-        }
-      };
-      const sm = await saveMsg(cloudClient, extClient, row);
-      return jsonResp({
-        success: true,
-        message_id: sm?.id,
-        external_message_id: eid,
-        instance_name: inst.instance_name
-      });
-    }
-    if (action === 'send_poll') {
-      // v27: enquete nativa do WhatsApp — o "Enquete" do menu de anexo.
-      const target = getTarget(body.phone, body.chat_id);
-      const question = typeof body.question === 'string' ? body.question.trim() : '';
-      const choices = Array.isArray(body.choices) ? body.choices.map((c)=>String(c).trim()).filter(Boolean) : [];
-      if (!target || !question || choices.length < 2) return jsonResp({
-        success: false,
-        error: 'phone/chat_id, question and at least 2 choices required'
-      });
-      const inst = await getInstance(cloudClient, extClient, body.instance_id, target, body.instance_name);
-      if (!inst) return jsonResp({
-        success: false,
-        error: 'No active instance'
-      });
-      const base = inst.base_url || 'https://abraci.uazapi.com';
-      const selectableCount = Math.max(1, Math.min(Number(body.selectable_count) || 1, choices.length));
-      const ur = await fetch(`${base}/send/menu`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          token: inst.instance_token
-        },
-        body: JSON.stringify({
-          number: target,
-          type: 'poll',
-          text: question,
-          choices,
-          selectableCount
-        })
-      });
-      if (!ur.ok) {
-        const et = await readSafe(ur);
-        if (isDisc(ur.status, et)) return jsonResp(discPayload(inst.instance_name, et));
-        return jsonResp({
-          success: false,
-          error: `Erro enquete: ${et || ur.status}`,
-          error_code: /not participating/i.test(et) ? 'NOT_IN_GROUP' : 'SEND_FAILED',
-          instance_name: inst.instance_name
-        });
-      }
-      const ud = await ur.json().catch(()=>({}));
-      const eid = ud?.key?.id || ud?.id || null;
-      const row = {
-        phone: storagePhone(target),
-        message_text: `📊 ${question}\n${choices.map((c)=>`▢ ${c}`).join('\n')}`,
-        message_type: 'poll',
-        direction: 'outbound',
-        status: 'sent',
-        contact_id: body.contact_id || null,
-        lead_id: body.lead_id || null,
-        instance_name: inst.instance_name,
-        instance_token: inst.instance_token,
-        external_message_id: eid,
-        metadata: {
-          poll_question: question,
-          poll_choices: choices,
-          poll_selectable_count: selectableCount
-        }
-      };
-      const sm = await saveMsg(cloudClient, extClient, row);
-      return jsonResp({
-        success: true,
-        message_id: sm?.id,
-        external_message_id: eid,
         instance_name: inst.instance_name
       });
     }
