@@ -39,7 +39,7 @@ import {
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { duracaoLegivel } from '@/lib/duracaoLegivel';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
-import { ConferenciaSubsecao } from './PopConferenciaSheet';
+import { ConferenciaConteudo } from './PopConferenciaSheet';
 import { CarteiraTitularPainel } from './CarteiraTitularPainel';
 import { CarteiraRelacaoSheet, type AlvoRelacao } from './CarteiraRelacaoSheet';
 import type { ModoCarteira } from '@/lib/carteiraPorTitular';
@@ -54,8 +54,8 @@ interface Props {
   boardName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Abrir já com a subseção de conferência expandida — o atalho "Conferência"
-   *  do card de POP cai aqui dentro em vez de abrir um sheet separado. */
+  /** Abrir já na aba "Conferência" do seletor — o atalho "Conferência" do
+   *  card de POP cai aqui dentro em vez de abrir um sheet separado. */
   conferenciaInicial?: boolean;
 }
 
@@ -291,6 +291,8 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange, confe
   const [leadAberto, setLeadAberto] = useState<string | null>(null);
   /** Qual titular a tela está mostrando: tudo, só a cota, só o honorário. */
   const [modo, setModo] = useState<ModoCarteira>('JUNTOS');
+  /** A quarta aba do seletor: conferência de valores no lugar do dinheiro. */
+  const [abaConferencia, setAbaConferencia] = useState(conferenciaInicial);
   const [relacao, setRelacao] = useState<AlvoRelacao | null>(null);
 
   const abrirFicha = async (processId: string) => {
@@ -377,18 +379,18 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange, confe
               onAbrirConferencia={() => setRelacao({ modo: 'JUNTOS', estagio: null, soCotaZerada: true })}
               mesAno={mesAno}
               indiceCurto={INDICE_CURTO}
+              conferencia={{
+                ativa: abaConferencia,
+                onSelecionar: setAbaConferencia,
+                conteudo: <ConferenciaConteudo boardId={boardId} onConferir={setConferindo} />,
+              }}
             />
 
-            {/* A conferência mora DENTRO da carteira (Raym, 28/08): subseção
-                recolhida logo abaixo do dinheiro, para qualificar o número de
-                cima sem poluir — aberta, é a mesma tela completa de sempre.
-                Quem conserta é o ProcessoConferenciaSheet, irmão deste sheet. */}
-            <ConferenciaSubsecao
-              boardId={boardId}
-              abertaInicial={conferenciaInicial}
-              onConferir={setConferindo}
-            />
-
+            {/* Na aba Conferência o resto da carteira sai de cena — é a régua
+                de "um assunto por vez" do seletor, não conteúdo perdido: voltar
+                para Tudo/Do cliente/Honorários traz tudo de volta. */}
+            {abaConferencia ? null : (
+            <>
             {/* Operação: tempo, sucesso e custo. Fica embaixo do dinheiro. */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
               <div className="rounded-lg border p-2.5">
@@ -651,6 +653,8 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange, confe
                 <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} abrirSempre={filtrando} />
               ))}
             </div>
+            </>
+            )}
           </>
         )}
       </SheetContent>
