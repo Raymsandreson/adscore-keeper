@@ -15,7 +15,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Instagram } from 'lucide-react';
+import { TestimonialPostSheet } from './TestimonialPostSheet';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes } from '@/hooks/useWhatsAppInternalNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
@@ -1090,6 +1091,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Sugestão de resposta da IA focada numa mensagem específica.
   const [replySuggestOpen, setReplySuggestOpen] = useState(false);
   const [replySuggestTarget, setReplySuggestTarget] = useState<string | undefined>(undefined);
+  // Testemunho → post de Instagram (Sheet de revisão; key remonta por mensagem)
+  const [testimonialMsg, setTestimonialMsg] = useState<{ id: string; text: string } | null>(null);
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
@@ -5081,6 +5084,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           <Sparkles className="h-3 w-3" /> Responder c/ IA
                         </button>
                       )}
+                      {!textSelectionMode && msg.message_text && msg.direction === 'inbound' && (
+                        <button
+                          type="button"
+                          title="Transformar este testemunho em post de Instagram (com revisão antes de publicar)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTestimonialMsg({ id: msg.id, text: msg.message_text || '' });
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
+                        >
+                          <Instagram className="h-3 w-3" /> Post IG
+                        </button>
+                      )}
                       {!textSelectionMode && msg.message_text && (
                         <button
                           type="button"
@@ -5703,6 +5719,22 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               targetMessage={replySuggestTarget}
               hideTrigger
             />
+            {/* Testemunho vira post de Instagram — Sheet por cima da conversa,
+                remontado por mensagem (key) pra não vazar rascunho de outra bolha. */}
+            {testimonialMsg && (
+              <TestimonialPostSheet
+                key={testimonialMsg.id}
+                open={!!testimonialMsg}
+                onOpenChange={(o) => { if (!o) setTestimonialMsg(null); }}
+                messageId={testimonialMsg.id}
+                messageText={testimonialMsg.text}
+                clientName={conversation.contact_name || null}
+                phone={conversation.phone || null}
+                instanceName={conversation.instance_name || null}
+                leadId={conversation.lead_id || null}
+                contactId={conversation.contact_id || null}
+              />
+            )}
             {/* O campo e, por baixo dele, a sugestão apagada. O texto sugerido NÃO é
                 o valor do campo — só entra quando o usuário aceita, com → ou no botão. */}
             <div className="relative flex-1">
