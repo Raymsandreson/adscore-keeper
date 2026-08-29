@@ -61,10 +61,29 @@ interface Props {
   onAbrirConferencia?: () => void;
   mesAno: (iso: string) => string;
   indiceCurto: Record<string, string>;
+  /**
+   * A conferência de valores como QUARTA ABA do seletor (Raym, 29/08 — o card
+   * de subseção poluía). Ativa, o `conteudo` toma o lugar de tudo abaixo do
+   * seletor; o seletor fica no topo para voltar ao dinheiro.
+   */
+  conferencia?: {
+    ativa: boolean;
+    onSelecionar: (ativa: boolean) => void;
+    conteudo: React.ReactNode;
+  };
 }
 
-/** Seletor em pílula, como o do extrato do Inter. Três botões, um ativo. */
-function SeletorModo({ modo, onModo }: { modo: ModoCarteira; onModo: (m: ModoCarteira) => void }) {
+/** Seletor em pílula, como o do extrato do Inter. Um botão ativo por vez —
+ *  os três modos de dinheiro e, quando oferecida, a aba de conferência. */
+function SeletorModo({ modo, onModo, conferencia }: {
+  modo: ModoCarteira;
+  onModo: (m: ModoCarteira) => void;
+  conferencia?: { ativa: boolean; onSelecionar: (ativa: boolean) => void };
+}) {
+  const classe = (ativo: boolean) =>
+    `flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+      ativo ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+    }`;
   return (
     <div role="tablist" aria-label="Modo de visualização da carteira"
          className="inline-flex w-full rounded-full bg-muted p-0.5">
@@ -72,18 +91,25 @@ function SeletorModo({ modo, onModo }: { modo: ModoCarteira; onModo: (m: ModoCar
         <button
           key={m}
           role="tab"
-          aria-selected={modo === m}
+          aria-selected={!conferencia?.ativa && modo === m}
           type="button"
-          onClick={() => onModo(m)}
-          className={`flex-1 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-            modo === m
-              ? 'bg-background text-foreground shadow-sm'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
+          onClick={() => { conferencia?.onSelecionar(false); onModo(m); }}
+          className={classe(!conferencia?.ativa && modo === m)}
         >
           {MODO_LABEL[m]}
         </button>
       ))}
+      {conferencia && (
+        <button
+          role="tab"
+          aria-selected={conferencia.ativa}
+          type="button"
+          onClick={() => conferencia.onSelecionar(true)}
+          className={classe(conferencia.ativa)}
+        >
+          Conferência
+        </button>
+      )}
     </div>
   );
 }
@@ -124,7 +150,7 @@ function BarraComposicao({ c }: { c: CarteiraPorTitular }) {
 export function CarteiraTitularPainel({
   porTitular, modo, onModo, valorAtualizado, corrigidoAte, referenciasPorIndice,
   processos, pago, partesSemCorrecao, cnjsComFichaRepetida,
-  onAbrirRelacao, onAbrirConferencia, mesAno, indiceCurto,
+  onAbrirRelacao, onAbrirConferencia, mesAno, indiceCurto, conferencia,
 }: Props) {
   const f = fatiaDoModo(porTitular, modo);
   const cob = porTitular.cobertura;
@@ -136,10 +162,23 @@ export function CarteiraTitularPainel({
     .filter((e): e is NonNullable<typeof e> => !!e)
     .concat(f.porEstagio.filter(e => !ESTAGIO_ORDEM.includes(e.estagio)));
 
+  // Aba de conferência ativa: o seletor fica, o resto do painel dá lugar ao
+  // corpo da conferência — mesma moldura, outra tela, sem empilhar card.
+  if (conferencia?.ativa) {
+    return (
+      <div className="rounded-xl border bg-card">
+        <div className="p-4 pb-3">
+          <SeletorModo modo={modo} onModo={onModo} conferencia={conferencia} />
+        </div>
+        <div className="border-t p-4">{conferencia.conteudo}</div>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border bg-card">
       <div className="space-y-3 p-4">
-        <SeletorModo modo={modo} onModo={onModo} />
+        <SeletorModo modo={modo} onModo={onModo} conferencia={conferencia} />
 
         {/* O número grande. Um por vez. */}
         <div>

@@ -1,7 +1,9 @@
 // =============================================================================
 // Conferência dos acordos do POP — "o que foi lançado bate com o acordo?".
 //
-// Abre por cima da lista de POPs (Sheet lateral; fechar devolve onde estava).
+// Duas portas para o MESMO corpo (ConferenciaCorpo): a aba "Conferência" no
+// seletor da carteira (ConferenciaConteudo — o caminho principal desde 29/08)
+// e o Sheet próprio (PopConferenciaSheet), por cima do que estiver aberto.
 //
 // A régua: o contratual é SEMPRE 30% do bruto, então HC esperado = cota × 3/7.
 // O SUCUMBENCIAL NÃO ENTRA na régua — varia de 5% a 15% conforme o juiz, pode
@@ -140,45 +142,49 @@ function Secao({ titulo, itens, render, aberta, setAberta, buscando = false }: {
   );
 }
 
-interface Props {
-  board: { id: string; name: string } | null;
-  onOpenChange: (aberto: boolean) => void;
+// Três trabalhos diferentes, três seções. Misturados, os "sem cota" — que são
+// maioria e mostram R$ 0,00 de diferença — empurram para baixo justamente os
+// que pedem ação.
+//
+// O sucumbencial maior que a cota da parte entra aqui junto com a divergência
+// de contratual: é um dado impossível, e o lugar dele é a fila de conserto —
+// não um filtro que sumiria com o valor da carteira.
+const precisaConferir = (a: AcordoConferido) =>
+  a.conferencia.situacao === 'HC_FALTANDO' || a.conferencia.situacao === 'HC_SOBRANDO'
+  || a.hsSuspeito > 0;
+const peso = (a: AcordoConferido) => Math.max(Math.abs(a.conferencia.faltaHc), a.hsSuspeito);
+
+function agruparConferencia(acordos: AcordoConferido[]) {
+  return {
+    divergentes: [...acordos.filter(precisaConferir)].sort((a, b) => peso(b) - peso(a)),
+    semCota: acordos.filter(a => a.conferencia.situacao === 'SEM_CLIENTE' && !precisaConferir(a)),
+    conferem: acordos.filter(a => a.conferencia.situacao === 'OK' && !precisaConferir(a)),
+  };
 }
 
-export function PopConferenciaSheet({ board, onOpenChange }: Props) {
-  const { acordos, loading, erro, recarregar } = useConferenciaAcordos(board?.id ?? null);
-  // Conferência e ficha são IRMÃS deste sheet, não filhas: empilhar por cima é o
-  // padrão da casa, e o fechar devolve exatamente para a conferência.
-  const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
-  const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
+/** O que o hook devolve — o corpo recebe pronto para quem monta poder mostrar
+ *  o resumo (progresso) sem renderizar a fila inteira. */
+interface DadosConferencia {
+  acordos: AcordoConferido[];
+  loading: boolean;
+  erro: string | null;
+  recarregar: () => void | Promise<void>;
+}
 
-  const abrirFicha = async (processId: string) => {
-    try {
-      await ensureExternalSession();
-      const { data, error } = await db.from('lead_processes').select('*').eq('id', processId).maybeSingle();
-      if (error) throw error;
-      if (!data) { toast.error('Processo não encontrado'); return; }
-      setFicha(data as Record<string, unknown>);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
-    }
-  };
+/**
+ * O CONTEÚDO da conferência, sem Sheet em volta: busca, progresso, cards e a
+ * fila em três seções. Vive tanto no sheet próprio (PopConferenciaSheet)
+ * quanto como subseção dentro da carteira (ConferenciaSubsecao) — um corpo só,
+ * para as duas portas mostrarem sempre a mesma conta.
+ */
+function ConferenciaCorpo({ boardId, dados, onConferir }: {
+  boardId: string | null;
+  dados: DadosConferencia;
+  onConferir: (alvo: AlvoConferencia) => void;
+}) {
+  const { acordos, loading, erro, recarregar } = dados;
   const t = totalizarConferencia(acordos.map(a => a.conferencia));
-
-  // Três trabalhos diferentes, três seções. Misturados, os "sem cota" — que são
-  // maioria e mostram R$ 0,00 de diferença — empurram para baixo justamente os
-  // que pedem ação.
-  //
-  // O sucumbencial maior que a cota da parte entra aqui junto com a divergência
-  // de contratual: é um dado impossível, e o lugar dele é a fila de conserto —
-  // não um filtro que sumiria com o valor da carteira.
-  const precisaConferir = (a: AcordoConferido) =>
-    a.conferencia.situacao === 'HC_FALTANDO' || a.conferencia.situacao === 'HC_SOBRANDO'
-    || a.hsSuspeito > 0;
-  const peso = (a: AcordoConferido) => Math.max(Math.abs(a.conferencia.faltaHc), a.hsSuspeito);
-  const divergentes = [...acordos.filter(precisaConferir)].sort((a, b) => peso(b) - peso(a));
-  const semCota = acordos.filter(a => a.conferencia.situacao === 'SEM_CLIENTE' && !precisaConferir(a));
-  const conferem = acordos.filter(a => a.conferencia.situacao === 'OK' && !precisaConferir(a));
+  const { divergentes, semCota, conferem } = agruparConferencia(acordos);
   const hsSuspeitoTotal = acordos.reduce((soma, a) => soma + a.hsSuspeito, 0);
   const processosSuspeitos = acordos.filter(a => a.hsSuspeito > 0).length;
   const [abrirSemCota, setAbrirSemCota] = useState(false);
@@ -215,8 +221,8 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
       <button
         key={a.processId}
         type="button"
-        onClick={() => board && setConferindo({
-          processId: a.processId, boardId: board.id, cnj: a.cnj,
+        onClick={() => boardId && onConferir({
+          processId: a.processId, boardId, cnj: a.cnj,
           titulo: a.titulo, foco: 'valores',
         })}
         className="w-full rounded-2xl border p-3 text-left transition-colors hover:border-orange-500/40 hover:bg-orange-500/[0.04]"
@@ -296,25 +302,21 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
     );
   };
 
+  if (loading) {
+    return <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>;
+  }
+  if (erro) {
+    return (
+      <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+        {erro}
+      </p>
+    );
+  }
+  if (acordos.length === 0) {
+    return <p className="text-xs text-muted-foreground">Nenhum processo com valor a conferir neste POP.</p>;
+  }
   return (
-    <>
-    <Sheet open={!!board} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
-        <SheetHeader className="space-y-1">
-          <SheetTitle className="text-lg font-bold tracking-tight">Conferência de valores</SheetTitle>
-          <p className="text-xs text-muted-foreground">{board?.name}</p>
-        </SheetHeader>
-
-        {loading ? (
-          <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}</div>
-        ) : erro ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-            {erro}
-          </p>
-        ) : acordos.length === 0 ? (
-          <p className="text-xs text-muted-foreground">Nenhum processo com valor a conferir neste POP.</p>
-        ) : (
-          <>
+    <div className="flex flex-col gap-3">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
@@ -394,8 +396,59 @@ export function PopConferenciaSheet({ board, onOpenChange }: Props) {
                 <RefreshCw className="h-3 w-3" /> Recarregar
               </Button>
             </div>
-          </>
-        )}
+    </div>
+  );
+}
+
+/**
+ * A conferência como ABA da carteira (Raym, 29/08: "quarta aba, assim fica
+ * poluído" — a subseção-card durou um dia). O conteúdo puro, sem Sheet nem
+ * moldura: o seletor da carteira decide quando isto aparece, e o hook só
+ * busca quando a aba abre. Quem conserta (ProcessoConferenciaSheet) é irmão
+ * do sheet da carteira — chega pelo onConferir, nunca aninhado aqui dentro.
+ */
+export function ConferenciaConteudo({ boardId, onConferir }: {
+  boardId: string | null;
+  onConferir: (alvo: AlvoConferencia) => void;
+}) {
+  const dados = useConferenciaAcordos(boardId);
+  return <ConferenciaCorpo boardId={boardId} dados={dados} onConferir={onConferir} />;
+}
+
+interface Props {
+  board: { id: string; name: string } | null;
+  onOpenChange: (aberto: boolean) => void;
+}
+
+/** O sheet próprio da conferência — mesma tela, aberta de fora da carteira. */
+export function PopConferenciaSheet({ board, onOpenChange }: Props) {
+  const dados = useConferenciaAcordos(board?.id ?? null);
+  // Conferência e ficha são IRMÃS deste sheet, não filhas: empilhar por cima é o
+  // padrão da casa, e o fechar devolve exatamente para a conferência.
+  const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+  const [ficha, setFicha] = useState<Record<string, unknown> | null>(null);
+
+  const abrirFicha = async (processId: string) => {
+    try {
+      await ensureExternalSession();
+      const { data, error } = await db.from('lead_processes').select('*').eq('id', processId).maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Processo não encontrado'); return; }
+      setFicha(data as Record<string, unknown>);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao abrir o processo');
+    }
+  };
+
+  return (
+    <>
+    <Sheet open={!!board} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-full flex-col gap-3 overflow-y-auto sm:max-w-2xl">
+        <SheetHeader className="space-y-1">
+          <SheetTitle className="text-lg font-bold tracking-tight">Conferência de valores</SheetTitle>
+          <p className="text-xs text-muted-foreground">{board?.name}</p>
+        </SheetHeader>
+        <ConferenciaCorpo boardId={board?.id ?? null} dados={dados} onConferir={setConferindo} />
       </SheetContent>
     </Sheet>
 

@@ -104,6 +104,8 @@ import { handler as jmDocumentoUrl } from './functions/jm-documento-url';
 import { handler as telaoNarrar } from './functions/telao-narrar';
 import { handler as celcoinOpenFinance } from './functions/celcoin-open-finance';
 import { handler as updateProfileAvatar } from './functions/update-profile-avatar';
+import { handler as testimonialToInstagramPost } from './functions/testimonial-to-instagram-post';
+import { handler as publishInstagramTestimonial } from './functions/publish-instagram-testimonial';
 
 
 
@@ -186,6 +188,8 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'telao-narrar': telaoNarrar,
   'celcoin-open-finance': celcoinOpenFinance, // Open Finance/Celcoin — aqui e não em edge por causa do mTLS
   'update-profile-avatar': updateProfileAvatar, // foto de perfil — RLS do Externo barra o navegador, precisa de service role
+  'testimonial-to-instagram-post': testimonialToInstagramPost, // testemunho do WhatsApp vira rascunho de post (sharp + fonte embutida)
+  'publish-instagram-testimonial': publishInstagramTestimonial, // publica rascunho aprovado via Graph API (só por clique humano)
 };
 
 const app = express();
