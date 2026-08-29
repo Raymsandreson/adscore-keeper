@@ -64,6 +64,11 @@ export interface ValorJm {
   dano_estetico: number | null;
   base_calculo: number | null;
   flag_correcao: string | null;
+  /** Auditoria da correção automática (jm_corrigir_valores_da_leitura). */
+  dano_moral_anterior: number | null;
+  dano_estetico_anterior: number | null;
+  corrigido_em: string | null;
+  corrigido_por_leitura: number | null;
 }
 
 export interface PagamentoJm {
@@ -199,7 +204,7 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
           .select('dec_id, processo_cnj, data_decisao, termo_inicial_jcm, tipo_evento, instancia, abrangencia, rotulo_original, titulo, orgao, relator, link, flag_revisar')
           .in('processo_cnj', variantes) as unknown as Promise<Consulta>,
         externo.from('jm_valores')
-          .select('id, dec_id, cliente, dano_moral, dano_estetico, base_calculo, flag_correcao')
+          .select('id, dec_id, cliente, dano_moral, dano_estetico, base_calculo, flag_correcao, dano_moral_anterior, dano_estetico_anterior, corrigido_em, corrigido_por_leitura')
           .in('processo_cnj', variantes) as unknown as Promise<Consulta>,
         externo.from('jm_pagamentos')
           .select('id, cliente, n_parcela, data_prevista, data_recebida, status, forma, valor_pago, valor_previsto')

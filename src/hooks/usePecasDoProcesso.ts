@@ -9,7 +9,7 @@
 // `authenticated`) mais a assinatura de URL do bucket privado `jm-autos`. A URL
 // assinada vale 10 minutos: tempo de abrir e baixar, não de vazar em histórico.
 // =============================================================================
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { cnjVariantes } from '@/lib/cnj';
 import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
@@ -195,8 +195,13 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
 
   // A peça oculta não some do hook: ela sai do casamento e continua alcançável
   // para desfazer. Sumir de vez tornaria o erro irreversível pela tela.
-  const pecas = todas.filter(p => !p.ocultaEm);
-  const ocultas = todas.filter(p => p.ocultaEm);
+  //
+  // useMemo é FUNCIONAL aqui, não estética (29/08/2026): sem ele, `pecas` nasce
+  // com identidade nova a cada render, e todo useEffect que dependa da lista
+  // dispara de novo — combinado com outro hook que re-renderiza, o efeito era
+  // cancelado antes da resposta chegar e os resumos do acervo nunca apareciam.
+  const pecas = useMemo(() => todas.filter(p => !p.ocultaEm), [todas]);
+  const ocultas = useMemo(() => todas.filter(p => p.ocultaEm), [todas]);
 
   /**
    * Manda ler a peça e espera o resultado, para a tela poder mostrar O QUE MUDA.

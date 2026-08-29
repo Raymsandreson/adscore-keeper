@@ -21,7 +21,7 @@ import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
   Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target,
-  DollarSign, Paperclip
+  DollarSign, Paperclip, Calculator
 } from 'lucide-react';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
@@ -29,6 +29,7 @@ import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
 import { VincularLeadAoProcesso, ImportarDoDriveButton } from './ProcessoLeadVinculo';
 import { useConferenciaProcesso } from '@/hooks/useConferenciaProcesso';
 import { MudancasDaPecaDialog } from '@/components/workflow/MudancasDaPecaDialog';
+import { JurimetriaValoresDrawer } from './JurimetriaValoresDrawer';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -675,13 +676,20 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // Jurimetria do processo — os valores que a carteira usa hoje, para o acervo
   // poder SINALIZAR qual peça mexe neles (pedido do Raym, 29/08/2026). É o
   // mesmo hook da Conferência; só liga com a aba Documentos aberta.
-  const conferencia = useConferenciaProcesso(
-    activeTab === 'documentos' && process?.id && form.workflow_id && form.process_number
-      ? { processId: process.id, boardId: form.workflow_id, cnj: form.process_number }
-      : null,
+  //
+  // O useMemo do alvo é obrigatório: objeto novo a cada render fazia o hook
+  // recarregar sem parar, e a re-renderização contínua cancelava a busca dos
+  // resumos do acervo antes de ela voltar — os resumos sumiam da tela.
+  const alvoConferencia = useMemo(
+    () => (activeTab === 'documentos' && process?.id && form.workflow_id && form.process_number
+      ? { processId: process.id as string, boardId: form.workflow_id as string, cnj: form.process_number as string }
+      : null),
+    [activeTab, process?.id, form.workflow_id, form.process_number],
   );
+  const conferencia = useConferenciaProcesso(alvoConferencia);
   const totalCarteira = conferencia.clientes.reduce((s, c) => s + c.valor, 0);
   const [mudancaAcervo, setMudancaAcervo] = useState<{ leitura: Record<string, unknown>; titulo: string } | null>(null);
+  const [jurimetriaAberta, setJurimetriaAberta] = useState(false);
 
   const fetchEscavadorDocuments = async () => {
     if (!form.process_number) {
@@ -1312,10 +1320,21 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     Conferência. */}
                 {acervo.length > 0 && (
                   <div className="space-y-1">
-                    <h4 className="text-xs font-semibold flex items-center gap-1.5">
-                      <Paperclip className="h-3.5 w-3.5 text-primary" />
-                      Acervo dos autos — Escavador ({acervo.length})
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                        <Paperclip className="h-3.5 w-3.5 text-primary" />
+                        Acervo dos autos — Escavador ({acervo.length})
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setJurimetriaAberta(true)}
+                        className="text-[10px] text-primary underline decoration-dotted underline-offset-2 hover:text-primary/80"
+                        title="Abre a tabela dos valores que a carteira usa, com a auditoria do que foi corrigido automaticamente"
+                      >
+                        <Calculator className="mr-0.5 inline h-3 w-3" />
+                        valores da jurimetria{totalCarteira > 0 ? ` · ${brlCurto(totalCarteira)}` : ''}
+                      </button>
+                    </div>
                     <div className="max-h-96 space-y-0.5 overflow-y-auto rounded-md border p-1.5">
                       {[...acervo]
                         .sort((a, b) => (b.dataDocumento ?? '').localeCompare(a.dataDocumento ?? ''))
@@ -2170,6 +2189,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           if (r.ok) await conferencia.recarregar();
           return r;
         }}
+      />
+
+      {/* Tabela dos valores da jurimetria — Drawer de baixo pra cima, com a
+          auditoria do que a correção automática mudou (valor anterior → atual,
+          quando e por qual peça). */}
+      <JurimetriaValoresDrawer
+        aberto={jurimetriaAberta}
+        onOpenChange={setJurimetriaAberta}
+        cnj={form.process_number || ''}
+        carregando={conferencia.loading}
+        clientes={conferencia.clientes}
+        valores={conferencia.valores}
+        decisoes={conferencia.decisoes}
       />
     </div>
   );
