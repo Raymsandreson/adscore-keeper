@@ -258,6 +258,79 @@ function BotaoDesvincular({ peca, onDesvincular }: {
 }
 
 /**
+ * "vincular a marco" — peça que JÁ está no acervo comprova um marco.
+ *
+ * O acervo do Escavador costuma ter a peça da passagem (acórdão, alvará,
+ * comprovante) — pedir upload de novo seria retrabalho. O clique abre a lista
+ * de fases da régua; escolher grava jm_documentos.marco_chave e o marco vira
+ * atingido com a data da peça. Peça sem data não vincula: a detecção exige
+ * data, e vínculo que não gera marco seria botão que não faz nada.
+ */
+function BotaoVincularMarco({ peca, fases, onVincular }: {
+  peca: PecaDoProcesso;
+  fases: MarcoDaRegua[];
+  onVincular: (p: PecaDoProcesso, marcoChave: string | null) => Promise<void>;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [indo, setIndo] = useState(false);
+  if (fases.length === 0) return null;
+
+  const escolher = async (chave: string | null) => {
+    setAberto(false);
+    setIndo(true);
+    await onVincular(peca, chave);
+    setIndo(false);
+  };
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={indo}
+          className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground disabled:opacity-50"
+          title="Esta peça comprova qual marco?"
+        >
+          {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : peca.marcoChave ? 'trocar marco' : 'vincular a marco'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-2">
+        <div className="mb-1 text-xs font-medium">Esta peça comprova…</div>
+        {!peca.dataDocumento ? (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Peça sem data de documento — sem data, o vínculo não gera marco. Anexe pela linha do
+            marco informando a data.
+          </p>
+        ) : (
+          <div className="max-h-56 space-y-0.5 overflow-y-auto">
+            {fases.map(f => (
+              <button
+                key={f.chave}
+                type="button"
+                onClick={() => void escolher(f.chave)}
+                className={`block w-full rounded px-1.5 py-1 text-left text-[11px] hover:bg-muted ${peca.marcoChave === f.chave ? 'bg-muted font-medium' : ''}`}
+              >
+                {f.rotulo}
+                {f.estado === 'atingido' && <span className="text-muted-foreground"> · já detectado</span>}
+              </button>
+            ))}
+            {peca.marcoChave && (
+              <button
+                type="button"
+                onClick={() => void escolher(null)}
+                className="block w-full rounded px-1.5 py-1 text-left text-[11px] text-destructive hover:bg-muted"
+              >
+                tirar o vínculo
+              </button>
+            )}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
  * "o que esta peça muda" — para peça que JÁ está no marco.
  *
  * O diálogo de mudanças só abria depois de anexar, e isso deixava de fora o caso
@@ -326,7 +399,7 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirL
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, vincularAMarco, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
 
   // A régua completa do POP (mesma RPC da ficha e da fase automática): a seção
   // "Marcos" desenha a linha inteira — prevista + detectada — e não só a trilha
@@ -384,6 +457,12 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirL
       erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
     }));
   }, [lerPeca]);
+
+  /** Vincula/desvincula peça↔marco e rematerializa a régua na sequência. */
+  const vincularEAtualizar = useCallback(async (peca: PecaDoProcesso, marcoChave: string | null) => {
+    const r = await vincularAMarco(peca, marcoChave);
+    if (r.ok) await regua.rematerializar();
+  }, [vincularAMarco, regua.rematerializar]);
 
   const abrirPeca = useCallback(async (peca: PecaDoProcesso, rotulo: string) => {
     setErroPeca(null);
@@ -697,6 +776,55 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirL
                 </div>
               )}
             </Secao>
+
+            {/* 2b. Peças do processo — o acervo INTEIRO, não só as casadas.
+                Pedido do Raym (29/08/2026): "traga todos os documentos que o
+                escavador pegou". Antes, peça só aparecia quando casava por data
+                com um marco/valor — o resto do acervo ficava invisível. Aqui dá
+                para abrir cada uma e vincular ao marco que ela comprova. */}
+            {pecas.length > 0 && (
+              <Secao titulo={`Peças do processo (${pecas.length})`}>
+                <div className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
+                  {[...pecas]
+                    .sort((a, b) => (b.dataDocumento ?? '').localeCompare(a.dataDocumento ?? ''))
+                    .map(p => {
+                      const marcoDaPeca = p.marcoChave
+                        ? reguaItens.find(m => m.chave === p.marcoChave) ?? null
+                        : null;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground">{dataBR(p.dataDocumento)}</span>
+                          <button
+                            type="button"
+                            onClick={() => void abrirPeca(p, p.titulo || 'Peça dos autos')}
+                            className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline"
+                            title="Abrir a peça"
+                          >
+                            <Paperclip className="mr-1 inline h-3 w-3 text-muted-foreground" />
+                            {p.titulo || 'Peça dos autos'}
+                          </button>
+                          {p.tipo === 'RESTRITO' && (
+                            <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">restrita</Badge>
+                          )}
+                          {p.origem === 'manual' && (
+                            <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
+                          )}
+                          {marcoDaPeca && (
+                            <Badge variant="secondary" className="max-w-36 shrink-0 truncate px-1 py-0 text-[9px]" title={`Comprova o marco "${marcoDaPeca.rotulo}"`}>
+                              comprova: {marcoDaPeca.rotulo}
+                            </Badge>
+                          )}
+                          <BotaoVincularMarco
+                            peca={p}
+                            fases={reguaItens.filter(m => !m.atravessaFases)}
+                            onVincular={vincularEAtualizar}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </Secao>
+            )}
 
             {/* 3. Valor — a abertura por parte */}
             <Secao

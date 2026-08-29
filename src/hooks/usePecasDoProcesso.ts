@@ -36,7 +36,7 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
       try {
         await ensureExternalSession();
         const r = await (externo.from('jm_documentos')
-          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem, oculta_em, oculta_motivo')
+          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem, oculta_em, oculta_motivo, marco_chave')
           .in('processo_cnj', cnjVariantes(cnj)) as Promise<Consulta>);
         if (r.error) throw new Error(r.error.message || 'Falha ao carregar as peças');
         setTodas(((r.data || []) as Record<string, unknown>[]).map(d => ({
@@ -49,6 +49,7 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
           origem: (d.origem as string) ?? null,
           ocultaEm: (d.oculta_em as string) ?? null,
           ocultaMotivo: (d.oculta_motivo as string) ?? null,
+          marcoChave: (d.marco_chave as string) ?? null,
         })));
       } catch (e) {
         setErro(String((e as Error)?.message || e));
@@ -152,6 +153,30 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, [recarregar]);
 
+  /**
+   * Vincula uma peça JÁ EXISTENTE a um marco (ou tira o vínculo, com null).
+   *
+   * É o irmão do anexar-com-marco (29/08/2026): o acervo do Escavador já tem a
+   * peça que comprova a passagem — não faz sentido pedir upload de novo. O
+   * vínculo grava jm_documentos.marco_chave; a detecção por documento lê e o
+   * marco vira atingido com a data da peça. Precisa de data_documento: sem
+   * data, o vínculo não gera marco (a view exige data).
+   */
+  const vincularAMarco = useCallback(async (peca: PecaDoProcesso, marcoChave: string | null) => {
+    try {
+      await ensureExternalSession();
+      const r = await (db as unknown as { from: (t: string) => { update: (v: unknown) => { eq: (c: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
+        .from('jm_documentos')
+        .update({ marco_chave: marcoChave })
+        .eq('id', peca.id);
+      if (r.error) return { ok: false, erro: r.error.message };
+      await recarregar();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, [recarregar]);
+
   /** Desfaz o ocultar. Errar a correção tem que custar um clique, não um chamado. */
   const reexibir = useCallback(async (peca: PecaDoProcesso) => {
     try {
@@ -245,5 +270,5 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, []);
 
-  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores, recarregar };
+  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, vincularAMarco, lerPeca, corrigirValores, recarregar };
 }
