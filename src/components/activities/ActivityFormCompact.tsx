@@ -853,7 +853,6 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [newLeadPhone, setNewLeadPhone] = useState('');
   const [creatingLead, setCreatingLead] = useState(false);
   const [newCaseOpen, setNewCaseOpen] = useState(false);
-  const [newCaseTitle, setNewCaseTitle] = useState('');
   const [newCaseNumber, setNewCaseNumber] = useState('');
   const [newCaseNucleusId, setNewCaseNucleusId] = useState<string>('none');
   const [creatingCase, setCreatingCase] = useState(false);
@@ -878,13 +877,12 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   };
 
   const handleCreateCase = async () => {
-    if (!newCaseTitle.trim()) { toast.error('Título do caso obrigatório'); return; }
     if (!props.formLeadId) { toast.error('Selecione um lead primeiro'); return; }
     setCreatingCase(true);
     try {
+      // Sem title: createCase deriva do nome do lead (ou do número gerado).
       const c: any = await createCase({
         lead_id: props.formLeadId,
-        title: newCaseTitle.trim(),
         case_number: newCaseNumber.trim() || undefined,
         nucleus_id: newCaseNucleusId !== 'none' ? newCaseNucleusId : null,
       });
@@ -894,7 +892,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         props.setFormProcessId(''); props.setFormProcessTitle('');
         props.setCaseProcesses([]);
         setNewCaseOpen(false);
-        setNewCaseTitle(''); setNewCaseNumber(''); setNewCaseNucleusId('none');
+        setNewCaseNumber(''); setNewCaseNucleusId('none');
         // trigger upstream lead-cases refresh by reselecting the lead
         props.handleSelectLead(props.formLeadId);
       }
@@ -2275,8 +2273,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
         <DialogContent className="sm:max-w-sm">
           <DialogHeader><DialogTitle>Novo caso</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-2">
-            <div><Label>Título *</Label><Input value={newCaseTitle} onChange={e => setNewCaseTitle(e.target.value)} autoFocus /></div>
-            <div><Label>Número (opcional)</Label><Input value={newCaseNumber} onChange={e => setNewCaseNumber(e.target.value)} placeholder="auto-gerado se vazio" /></div>
+            <div><Label>Número (opcional)</Label><Input value={newCaseNumber} onChange={e => setNewCaseNumber(e.target.value)} placeholder="auto-gerado se vazio" autoFocus /></div>
             <div>
               <Label>Núcleo Especializado</Label>
               <Select value={newCaseNucleusId} onValueChange={setNewCaseNucleusId}>
@@ -2299,7 +2296,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setNewCaseOpen(false)}>Cancelar</Button>
-            <Button onClick={handleCreateCase} disabled={creatingCase || !newCaseTitle.trim()}>
+            <Button onClick={handleCreateCase} disabled={creatingCase}>
               {creatingCase ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Criar'}
             </Button>
           </DialogFooter>

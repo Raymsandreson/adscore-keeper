@@ -76,6 +76,8 @@ interface BoardCardProps {
   onOpenProcesses?: () => void;
   /** Carteira do POP (marcos × dinheiro × tempo) — só faz sentido em POP. */
   onOpenCarteira?: () => void;
+  /** Conferência dos acordos do POP. Ausente = o tipo de quadro não tem acordo. */
+  onOpenConferencia?: () => void;
   processCount?: number;
   /** Abertura por ramo do CNJ — vira o title do botão, para o número não
    *  precisar de explicação em outro lugar. */
@@ -98,6 +100,7 @@ export function BoardCard({
   onEdit,
   onOpenProcesses,
   onOpenCarteira,
+  onOpenConferencia,
   processCount = 0,
   processSummary,
   onDelete,
@@ -326,6 +329,18 @@ export function BoardCard({
         >
           <Wallet className="h-3.5 w-3.5 mr-1.5" />
           Carteira
+        </Button>
+      )}
+      {onOpenConferencia && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="text-xs"
+          onClick={onOpenConferencia}
+          title="Conferir se o honorário lançado bate com os 30% do contrato em cada acordo homologado"
+        >
+          <Scale className="h-3.5 w-3.5 mr-1.5" />
+          Conferir
         </Button>
       )}
       <Button variant="outline" size="sm" className="text-xs" onClick={onOpenTeam}>

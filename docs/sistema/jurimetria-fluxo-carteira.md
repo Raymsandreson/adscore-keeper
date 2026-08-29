@@ -891,3 +891,286 @@ o problema é do Escavador — abrir chamado citando as solicitações `54945127
 Não existe cron que reabra processos em modo `AUTOS`: a reabertura é sempre
 manual, e é ela que define a conta. Enquanto a fila não tiver linha em
 `A_ENVIAR`, a rotina roda de graça.
+
+## 15. 25/08/2026 — o certificado funciona em UM tribunal, não em todos
+
+O passo 1 do plano de varredura (processos com pagamento já lançado à mão, para
+conferir a planilha de cálculo do processo contra o lançamento do Raym) foi
+disparado em 25/08 às 02:16 UTC: cinco processos, cinco tribunais diferentes,
+escolhidos pelo maior valor pago.
+
+### 15.1 Placar: 0 de 5
+
+| processo | tribunal | pago lançado | resultado | tempo |
+|---|---|---|---|---|
+| 0000084-44.2020.5.08.0101 | TRT8 | R$ 1.005.658,51 | `SECRET_ERROR` | 13,8 min |
+| 0000672-06.2023.5.09.0655 | TRT9 | R$ 561.875,00 | `INTERNAL_ERROR` | 54,4 min |
+| 0000407-35.2023.5.23.0066 | TRT23 | R$ 594.999,96 | `SECRET_ERROR` | 84,6 min |
+| 0000453-61.2023.5.20.0016 | TRT20 | R$ 645.000,00 | `INTERNAL_ERROR` | 96,2 min |
+| 0000407-37.2017.5.22.0110 | TRT22 | R$ 540.000,00 | **travado** | >183 min |
+
+O TRT22 nunca concluiu. Ficou `PENDENTE` por mais de três horas — contra 49 min
+do único sucesso e 96 min da falha mais lenta — e foi tratado como travado, sem
+novo disparo. Não há status terminal para ele na API; é um sexto desfecho, nem
+sucesso nem erro, e vale registrar porque uma fila em massa precisa de um teto de
+espera: solicitação que não fecha ocupa vaga para sempre.
+
+**Placar final do passo 1: 0 de 5.**
+
+### 15.2 O mapa de cobertura, com tudo que já foi testado
+
+| tribunal | resultado |
+|---|---|
+| **TRT15** | **SUCESSO** — 140 peças, 118 restritas (caso 88, 24/08) |
+| TRT3 | `SECRET_ERROR` |
+| TRT8 | `SECRET_ERROR` (21/08 e 25/08) |
+| TRT9 | `INTERNAL_ERROR` (21/08 e 25/08) |
+| TRT20 | `INTERNAL_ERROR` |
+| TRT22 | `SECRET_ERROR` (23/08) |
+| TRT23 | `SECRET_ERROR` |
+| TJMT | `SECRET_ERROR` |
+
+**Um sucesso em oito tribunais.** O "PDPJ (válido para todos os sistemas PJE)"
+do painel do Escavador é uma lista de 165 sistemas, não um passe universal: o
+TRT15 está nela e os demais testados, aparentemente, não — ou estão com um
+segredo que o tribunal recusa.
+
+### 15.3 A régua dos 25 minutos era artefato de lote — não use
+
+A seção 14 registrou que as 13 falhas de 21/08 concluíram todas em 25,0–25,1
+minutos, e daí se concluiu que passar de 25 min era sinal de sucesso. **Isso não
+se sustenta.** As 13 foram disparadas no mesmo segundo e concluíram juntas
+porque estavam na mesma leva de processamento do Escavador, não porque 25 min
+seja limite de nada.
+
+Medido em 25/08, com disparos igualmente simultâneos mas conclusões espalhadas:
+`SECRET_ERROR` em 13,8 min e em 84,6 min; `INTERNAL_ERROR` em 54,4 e 96,2. O
+único sucesso levou 49 min. **Tempo decorrido não prevê resultado.** Só o status
+final conta.
+
+### 15.4 O que isso faz com a conta da varredura
+
+A conta deixa de ser "446 × R$ 1,50 = R$ 669" e passa a ser "quantos processos
+estão em tribunal que o certificado alcança". Pelo que há hoje, pode ser fração
+pequena da carteira.
+
+Antes de gastar, o passo barato é **um processo por tribunal**, para levantar o
+mapa de cobertura. Falha de autos é estornada (seção 14.2), então o mapeamento
+custa zero e responde de vez.
+
+Em paralelo, vale chamado no Escavador: oito tribunais, um único sucesso, mesmo
+certificado e mesmo TOTP é argumento forte de problema do lado deles. Citar as
+solicitações 55039016 (o sucesso, TRT15) e 55116672 / 55116673 / 55116674 /
+55116675 / 55116676 (as falhas de 25/08).
+
+Nenhuma planilha de cálculo foi lida ainda — a comparação entre o valor do
+processo e o lançamento manual do Raym continua sem resposta.
+
+---
+
+## 16. 27/08/2026 — a carteira por dono do dinheiro, e a cota que veio zerada
+
+Raym pediu a carteira separada por titular: "dizer o que é do cliente, o que é
+honorários e o estágio de cada uma separada e somados... modo de visualização
+tipo só honorários, só parte líquida do cliente, juntos... se inspire no design
+do Banco Inter". Ao medir o dado para desenhar a tela, apareceu um buraco maior
+que a tela.
+
+### 16.1 O que a RPC entrega hoje
+
+`pop_carteira_marcos` tem duas fontes de valor, e só uma sabe de quem é o
+dinheiro. Medido no POP Trabalhistas judicial (`0bcd8be6…`), 1.660 linhas:
+
+| Fonte | Partes | Condenação | Separa titular? |
+| --- | ---: | ---: | --- |
+| `decisao` (`jm_valores`) | 563 | R$ 31.992.263,78 | **não** — `cota_cliente` e `honorario_parte` voltam nulos |
+| `tab_aux` (`jm_partes`) | 262 | R$ 60.149.473,03 | sim |
+| sem valor | 835 | R$ 0,00 | — |
+
+A decisão fixa **quanto o processo vale**, não quanto é de quem — isso está no
+contrato e na conta de liquidação. Então 35% da carteira com valor não tem como
+responder a pergunta do Raym, e nenhuma tela conserta isso: é peça que falta.
+
+### 16.2 O "sucumbencial impossível" era a cota zerada
+
+Na sessão anterior eu tinha classificado 258 partes com `hs > cota_parte_cjcm`
+como sucumbencial inflado. Estava errado na causa:
+
+```sql
+select count(*) filter (where cota_parte_cjcm is null) cota_null,
+       count(*) filter (where cota_parte_cjcm = 0)    cota_zero
+from jm_partes where condenacao_cjcm is not null;
+-- cota_null = 0 | cota_zero = 262   (de 688 partes)
+```
+
+**Zero importado, não nulo.** 262 das 688 partes com condenação vieram da
+Tab. Aux. com `cota_parte_cjcm = 0`. No recorte do POP são **251 partes**,
+R$ 59,7 mi de condenação e **R$ 30,2 mi sem dono** (`valor − cota − honorário`).
+
+> **CORREÇÃO (§18, mesmo dia):** eu concluí aqui que era erro de importação e
+> que o conserto era anexar a peça. **Está errado.** As 251 partes estão todas
+> marcadas `status_pagamento = 'PROJETADO'`: são processos sem decisão, e a cota
+> é zero porque ainda não há o que repartir. Ver § 18.
+
+### 16.3 O que a tela passou a fazer
+
+`CarteiraTitularPainel` (topo do sheet da carteira) e `CarteiraRelacaoSheet`:
+
+- Seletor em pílula de três posições — **Tudo / Do cliente / Honorários**. Troca
+  o número grande em vez de somar mais um card.
+- `juntos` soma a **condenação**, que é o total que a carteira sempre mostrou.
+  Não é `cliente + escritório` — se fosse, o total cairia de R$ 92,1 mi para
+  R$ 30,0 mi sem um centavo ter saído do banco.
+- A diferença vira `Cobertura.semDono`, escrita na dobra: separação conhecida,
+  a decisão não separa, sem dono atribuído.
+- Estágios na ordem da régua (PROJETADO → PAGO), cada um clicável, abrindo a
+  relação linha a linha — uma linha por **parte** (processo × cliente), com soma
+  no rodapé que bate com o card de origem.
+- O aviso da cota zerada abre a relação **dessas** partes, e cada linha vai para
+  a conferência anexar a peça. Aviso que não leva a lugar nenhum não é entrega.
+
+Correção monetária aparece só no modo **Tudo**: o coeficiente é calculado sobre
+a condenação da parte e ninguém repartiu ele entre cota e honorário — repartir
+por regra de três seria dedução, não dado.
+
+### 16.4 O que ainda falta
+
+- Trazer a separação para as 563 partes de origem `decisao` — depende de ler a
+  conta de liquidação, não de código.
+- Corrigir as 251 partes de cota zerada pela esteira da conferência.
+- `honorario_parte` soma HC (à vista + parcelado) e HS numa coluna só; separar
+  os dois exige mexer na RPC.
+
+---
+
+## 17. 27/08/2026 — a carteira inteira estava truncada em 1.000 linhas
+
+O Raym olhou a tela e perguntou por que "pago R$ 5.611.786,85" em cima e
+"Pago R$ 4.667.733,79" três linhas abaixo. Ao rastrear as duas somas, apareceu
+um problema maior: **todos os números da tela estavam calculados sobre 1.000 das
+1.660 linhas da RPC.**
+
+### 17.1 A prova
+
+```sql
+-- o que a tela via
+with c as (select * from pop_carteira_marcos('0bcd8be6…'::uuid) limit 1000) …
+-- carteira 76.407.190,83 · 433 processos · 656 partes · pago 5.611.786,85
+-- separação conhecida 44.434.927,05 (193) · não separa 31.972.263,78 (463)
+-- sem dono 21.949.033,69 · cota zerada 188 · honorário 8.662.504,84 / 452 / 76
+
+-- o que o banco tem
+with c as (select * from pop_carteira_marcos('0bcd8be6…'::uuid)) …
+-- carteira 92.141.736,81 · 1.050 processos · 720 partes · pago 5.667.786,85
+```
+
+Cada número da tela bateu com o `limit 1000`, na casa dos centavos. Faltavam
+**R$ 15.734.545,98**, e o estágio **PROJETADO inteiro** — 23 partes,
+R$ 5.549.368,42 — não existia na tela.
+
+Efeito colateral nos honorários: `cnjsDaCarteira` era montado a partir das
+linhas truncadas, então **12 CNJs apareciam como "fora desta carteira"**
+(R$ 210.432,16) só por estarem depois da milésima linha. Na carteira completa
+esse número é **R$ 0,00**.
+
+### 17.2 A causa
+
+`db.rpc('pop_carteira_marcos', …)` sem `.range()`. O teto de 1.000 linhas do
+PostgREST vale para RPC igual, e sem erro nenhum: chega menos linha e a conta
+sai menor. Mesmo bug da `vw_jm_conferencia_acordos` (§ conciliação, 41 acordos
+de 91) e do `process_pop_marcos`.
+
+**Regra da casa, agora com três ocorrências:** consulta que pode passar de 1.000
+linhas se pagina. Não existe "essa aqui é pequena" — a carteira tinha 475
+processos quando o laço não foi escrito.
+
+Corrigido com laço `.range(inicio, inicio + 999)` e teste de regressão que
+clona 2.500 linhas e exige as três páginas (`[0,999] [1000,1999] [2000,2999]`).
+
+### 17.3 "Pago" era duas coisas com o mesmo nome
+
+A pergunta original tinha razão de ser, e a culpa é do redesenho:
+
+| Onde | Rótulo antigo | O que é | Coluna |
+| --- | --- | --- | --- |
+| topo | `pago R$ 5.611.786,85` | dinheiro que caiu na conta, de qualquer estágio | `jm_pagamentos.valor_pago` |
+| régua | `Pago R$ 4.667.733,79` | condenação das partes já quitadas | `valor_condenacao` onde `estagio_financeiro = 'PAGO'` |
+
+Os dois estavam certos e mediam coisas diferentes, a três linhas de distância.
+O topo passou a dizer **recebido**, a linha PAGO ganhou a legenda "condenação das
+partes já quitadas, não o dinheiro que entrou", e a régua ganhou o rodapé que
+explica qual coluna é qual.
+
+---
+
+## 18. 27/08/2026 — "A receber" não tem uma data sequer, e a cota zerada não era erro
+
+O Raym olhou o **A receber de R$ 15.270.402,28** e disse que estava errado. Está.
+
+### 18.1 A régua que a RPC usa
+
+```sql
+case
+  when pago > 0 …                                 then 'PAGO'
+  when pp.tem_acordo                              then 'A_RECEBER'   -- ← aqui
+  when pp.estagio_financeiro_sugerido is not null then …sugerido
+  when coalesce(vv.valor, 0) > 0                  then 'CONDENACAO'
+  else 'PROJETADO'
+end
+```
+
+A segunda linha carimba **A_RECEBER em qualquer processo com marco de acordo**,
+antes de perguntar se existe data. Pelo vocabulário (skill
+`whatsjud-fluxo-vocabulario`), A RECEBER exige **valor certo E data certa** — é o
+único estágio que a gestora antecipa. Sem data, é CONDENAÇÃO.
+
+### 18.2 A medida
+
+| | Partes | Valor |
+| --- | ---: | ---: |
+| A_RECEBER hoje | 183 | R$ 15.270.402,28 |
+| …só por `tem_acordo` | 156 | R$ 13.951.326,88 |
+| …sem leitura de decisão nenhuma | 94 | R$ 7.924.656,10 |
+| **…com parcela datada em `jm_pagamentos`** | **0** | **R$ 0,00** |
+
+**Nenhuma das 183.** E não é falha de junção: `jm_pagamentos` cobre 39 CNJs no
+banco inteiro (16 com cronograma) contra 433 processos do POP. O cronograma
+quase não existe, então o A RECEBER não podia mesmo sair dele.
+
+O caso que o Raym abriu, `0001529-83.2024.5.08.0125` (CASO 219): 11 partes,
+R$ 2.010.774,78, marco "Acordo homologado" detectado pelo DataJud **sem prova
+documental**, `jm_valores` vazio, `jm_decisoes` vazio, `jm_pagamentos` vazio, e
+as 11 partes marcadas `PROJETADO` / `Conhecimento` na Tab. Aux. A tela chamava
+isso de "a receber".
+
+### 18.3 A cota zerada NÃO era erro de importação (correção da § 16.2)
+
+```sql
+select status_pagamento, count(*)
+from jm_partes
+where condenacao_cjcm is not null and coalesce(cota_parte_cjcm,0) = 0
+group by 1;
+-- PROJETADO 251 (R$ 59.677.802,03) | os demais status: 11 partes, R$ 0,00
+```
+
+**251 de 251.** Nenhuma parte `A RECEBER` ou `PAGO` tem cota zerada. A cota está
+em zero porque o processo não tem decisão — não há o que repartir. Zero é a
+resposta certa.
+
+O que sobra de estranho é outra coisa, e menor: a Tab. Aux. **projeta o
+honorário** (R$ 29,5 mi nessas mesmas partes) e deixa a cota em zero. Projeção
+pela metade, que joga tudo para `semDono`. O detector continua, com o nome e a
+causa certos: "projeção sem cota", e sai quando a decisão sair — não é peça que
+falta, é decisão.
+
+### 18.4 Duas telas, duas fontes, o mesmo processo
+
+A **conferência** lê `jm_valores`; a **carteira** cai em `jm_partes` quando
+`jm_valores` não cobre o CNJ. No CASO 219 isso dá:
+
+- conferência: "VALOR LÍQUIDO DAS PARTES (0) · R$ 0,00 · nenhum valor lançado"
+- carteira: R$ 2.010.774,78 em 11 partes
+
+Os dois números saem do banco, de tabelas diferentes, e se contradizem na cara
+do usuário. A conferência precisa ler a mesma fonte que a carteira usou, e dizer
+qual é.

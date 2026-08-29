@@ -1,6 +1,21 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { geminiChat } from '../lib/gemini';
+import { classifyResultado, extrairPontosPendentes, separarPendencias } from '../lib/inss-despacho';
+import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
+import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
+import {
+  classificarMensagemCliente,
+  dentroDaJanela,
+  eventoElegivelParaZap,
+  exigenciaDeAgendamentoDePericia,
+} from '../lib/inss-mensagem-cliente';
+import {
+  descreverErro,
+  enviarTextoAoGrupo,
+  jaAvisouEsseTipo,
+  montarTextoMensagemCliente,
+  resolverGrupoDoLead,
+} from '../lib/inss-zap';
 
 /**
  * Quando chega um update do INSS para processo já vinculado:
@@ -9,32 +24,6 @@ import { geminiChat } from '../lib/gemini';
  *
  * Body: { process_id: string, force_history_id?: string }
  */
-
-async function humanizeStatusChange(input: {
-  from?: string | null;
-  to: string;
-  nome?: string | null;
-  beneficio?: string | null;
-}): Promise<string> {
-  const key = process.env.GOOGLE_AI_API_KEY;
-  if (!key) {
-    return `Olá! 👋 Temos uma atualização do seu pedido junto ao INSS.\n\nO status mudou para *${input.to}*.\n\nVamos verificar o que isso significa e te retornar em seguida. 🙏`;
-  }
-  try {
-    const prompt = `Você é uma atendente jurídica gentil. Escreva uma mensagem de WhatsApp CURTA (máx 4 linhas), em português brasileiro simples — entendível por alguém com baixa escolaridade — informando que o pedido do INSS teve uma atualização.\n\nDe: ${input.from || 'sem status anterior'}\nPara: ${input.to}\nNome do cliente (se houver): ${input.nome || ''}\nBenefício (se houver): ${input.beneficio || ''}\n\nRegras:\n- Sem termos técnicos jurídicos.\n- Sem citar "requerimento", use "pedido".\n- Explique em 1 linha o que esse status significa na prática.\n- Termine com algo tipo "vamos te orientar" ou "te avisaremos os próximos passos".\n- Use 1 ou 2 emojis no total, no máximo.\n- Não use saudações como "Bom dia" (não sabemos a hora).`;
-    const j = await geminiChat({
-      model: 'google/gemini-3.6-flash',
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 200,
-    });
-    const txt = j?.choices?.[0]?.message?.content?.trim();
-    if (txt) return txt;
-  } catch (e) {
-    console.warn('[notify-inss-update] AI humanize failed, using fallback', e);
-  }
-  return `Olá! 👋 Atualização do seu pedido no INSS: agora ele está como *${input.to}*. Vamos verificar e te dizer o próximo passo.`;
-}
-
 
 /**
  * Rótulo canônico de caso/processo em atividade: "<número> - <título>".
@@ -58,44 +47,52 @@ const onlyDigits = (v?: string | null) => (v || '').replace(/\D/g, '');
  * de outro caso do mesmo cliente.
  */
 async function findLeadProcess(
-  caseId: string,
+  caseId: string | null,
   leadId: string | null,
   requerimento?: string | null,
 ): Promise<{ id: string; title: string | null; process_number: string | null } | null> {
   const alvo = onlyDigits(requerimento);
   if (!alvo) return null;
-  const cols = 'id, title, process_number';
-  const { data: doCaso } = await supabase.from('lead_processes').select(cols).eq('case_id', caseId);
-  const noCaso = (doCaso || []).find((p: any) => onlyDigits(p.process_number) === alvo);
-  if (noCaso) return noCaso as any;
+  // Duas colunas guardam o requerimento: `process_number` (cadastro antigo, que
+  // mistura CNJ e requerimento) e `protocolo_administrativo` (a coluna própria,
+  // preenchida em 275 processos no backfill de 25/08/2026). Conferir só a
+  // primeira deixava 106 das 399 atividades sem processo vinculado.
+  const cols = 'id, title, process_number, protocolo_administrativo';
+  const casa = (p: any) =>
+    onlyDigits(p.process_number) === alvo || onlyDigits(p.protocolo_administrativo) === alvo;
+
+  if (caseId) {
+    const { data: doCaso } = await supabase.from('lead_processes').select(cols).eq('case_id', caseId);
+    const noCaso = (doCaso || []).find(casa);
+    if (noCaso) return noCaso as any;
+  }
   if (!leadId) return null;
   const { data: doLead } = await supabase.from('lead_processes').select(cols).eq('lead_id', leadId);
-  return ((doLead || []).find((p: any) => onlyDigits(p.process_number) === alvo) as any) || null;
+  return ((doLead || []).find(casa) as any) || null;
 }
 
-async function sendUazapiText(args: {
-  group_jid: string;
-  text: string;
-  instance_name?: string | null;
-}): Promise<{ ok: boolean; status: number; body?: any }> {
-  // Pega 1ª instância ativa (preferindo a do grupo se vier)
-  let instanceQuery = supabase
-    .from('whatsapp_instances')
-    .select('id, instance_name, instance_token, base_url')
-    .eq('is_active', true);
-  if (args.instance_name) instanceQuery = instanceQuery.eq('instance_name', args.instance_name);
-  const { data: instances } = await instanceQuery.limit(1);
-  const inst = instances?.[0];
-  if (!inst) return { ok: false, status: 0, body: 'no active instance' };
-  const base = (inst.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
-  const resp = await fetch(`${base}/send/text`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', token: inst.instance_token },
-    body: JSON.stringify({ number: args.group_jid, text: args.text }),
-  });
-  let body: any = null;
-  try { body = await resp.json(); } catch { body = await resp.text().catch(() => null); }
-  return { ok: resp.ok, status: resp.status, body };
+/**
+ * Marca o evento como notificado. As colunas `zap_*` chegaram na migration
+ * 20260826120000 — se o código subir antes dela, o UPDATE inteiro falharia e o
+ * evento voltaria à fila a cada rodada, duplicando atividade. Aqui a marcação
+ * é o que não pode falhar: se o patch de zap for recusado, grava só o notified
+ * e deixa o motivo no log.
+ */
+async function marcarNotificado(
+  ids: string[],
+  quando: string,
+  zapPatch: Record<string, any>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('inss_status_history')
+    .update({ notified: true, notified_at: quando, ...zapPatch })
+    .in('id', ids);
+  if (!error) return;
+  console.warn('[notify-inss-update] update com zap_* falhou, gravando só notified:', error.message);
+  await supabase
+    .from('inss_status_history')
+    .update({ notified: true, notified_at: quando })
+    .in('id', ids);
 }
 
 export const handler: RequestHandler = async (req, res) => {
@@ -114,17 +111,23 @@ export const handler: RequestHandler = async (req, res) => {
     if (procErr || !proc) {
       return res.status(200).json({ success: false, error: procErr?.message || 'process not found' });
     }
-    if (!proc.case_id) {
-      return res.status(200).json({ success: false, error: 'process not linked to a case' });
-    }
-
     const caseInfo: any = proc.legal_cases;
     const leadId: string | null = proc.lead_id || caseInfo?.lead_id || null;
+
+    // Até 25/08/2026 requerimento sem caso saía daqui sem atividade nenhuma —
+    // 546 dos 986 estão nesse estado, ou seja, mais da metade dos e-mails do
+    // INSS não virava tarefa de ninguém. Agora basta ter LEAD: a atividade
+    // nasce ligada a ele e o caso entra depois, quando o vínculo for feito.
+    // Sem lead e sem caso não há onde pendurar, e a fila de vínculo
+    // (match-inss-orphans) é quem resolve.
+    if (!proc.case_id && !leadId) {
+      return res.status(200).json({ success: false, error: 'process without case and without lead' });
+    }
 
     // Pega updates não notificados (último primeiro), até 5
     const { data: pending } = await supabase
       .from('inss_status_history')
-      .select('id, from_status, to_status, email_subject, email_received_at')
+      .select('id, from_status, to_status, email_subject, email_received_at, despacho')
       .eq('process_id', processId)
       .eq('notified', false)
       .order('email_received_at', { ascending: false })
@@ -139,26 +142,95 @@ export const handler: RequestHandler = async (req, res) => {
     // 1) Cria atividade no Externo
     // "Concluída" sozinho não diz o desfecho: o INSS só manda o veredito no
     // Despacho do corpo, que o sync já classificou em proc.resultado.
+    // O veredito não vem do INSS pronto: "Concluída" é tudo que o assunto diz, e
+    // deferido/indeferido está no texto do Despacho. `proc.resultado` guarda o
+    // que o sync classificou, mas ficou nulo em 21 das 111 conclusões — daí a
+    // segunda tentativa, classificando o despacho deste evento na hora.
     const RESULTADO_LABELS: Record<string, string> = {
-      deferido: 'deferida',
-      indeferido: 'indeferida',
-      arquivado_decurso: 'arquivada por exigência não cumprida',
+      deferido: 'DEFERIDO',
+      indeferido: 'INDEFERIDO',
+      arquivado_decurso: 'arquivado por exigência não cumprida',
     };
-    const resultadoLabel = /conclu[íi]d/i.test(latest.to_status || '') && proc.resultado
-      ? RESULTADO_LABELS[proc.resultado]
-      : undefined;
-    const statusLabel = resultadoLabel ? `${latest.to_status} (${resultadoLabel})` : latest.to_status;
-    const activityTitle = `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
-    const activityDesc = `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".\n\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}\n\nCaso: ${caseInfo?.case_number || ''} — ${caseInfo?.title || ''}`;
-    let assignedTo: string | null = null;
+    const ehConclusao = /conclu[íi]d/i.test(latest.to_status || '');
+    const resultado = ehConclusao
+      ? (proc.resultado || classifyResultado(latest.despacho) || null)
+      : null;
+    const statusLabel = ehConclusao
+      ? `Conclusão — ${resultado ? RESULTADO_LABELS[resultado] : 'sem veredito no despacho'}`
+      : latest.to_status;
+    // Exigência sem o texto vira "vá ver no Meu INSS". Os pontos pendentes saem
+    // do próprio despacho (preenchido em 552 das 592 exigências).
+    const ehExigencia = /exig[êe]nc/i.test(latest.to_status || '');
+    const pontosPendentes = ehExigencia ? extrairPontosPendentes(latest.despacho) : null;
+
+    // Duas separações antes de escrever qualquer coisa:
+    //  - agendamento de perícia é tarefa NOSSA (ligar no 135 / Meu INSS), então
+    //    a atividade nasce como tarefa e o cliente não recebe nada;
+    //  - o que é pendência de procuração sai da mensagem e fica só na atividade.
+    // Ver lib/inss-mensagem-cliente e lib/inss-despacho.
+    const agendarPericia =
+      ehExigencia && exigenciaDeAgendamentoDePericia({ pontosPendentes, despacho: latest.despacho });
+    const pendencias = separarPendencias(pontosPendentes);
+
+    const activityTitle = agendarPericia
+      ? `Agendar perícia no INSS — requerimento ${proc.requerimento_number}`
+      : `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
+    // O nome do lead é o que diz a matéria ("Família 400" e "CASO 146" são
+    // trabalhistas; "PREV 1800" é previdenciário) — ver lib/inss-roteamento.
+    let leadName: string | null = null;
+    let victimName: string | null = null;
+    let groupName: string | null = null;
     if (leadId) {
       const { data: lead } = await supabase
-        .from('leads')
-        .select('assigned_to')
-        .eq('id', leadId)
-        .maybeSingle();
-      assignedTo = lead?.assigned_to || null;
+        .from('leads').select('lead_name, victim_name').eq('id', leadId).maybeSingle();
+      leadName = lead?.lead_name || null;
+      victimName = (lead as any)?.victim_name || null;
+      const { data: grupos } = await supabase
+        .from('lead_whatsapp_groups').select('group_name').eq('lead_id', leadId);
+      groupName = (grupos || []).map((g: any) => g.group_name).filter(Boolean).join(' ') || null;
     }
+
+    // O vínculo protocolo→lead é palpite de robô. Antes de escrever qualquer
+    // coisa, confere se o segurado do e-mail é mesmo a pessoa desse lead — ver
+    // lib/inss-nome-confere.
+    const conferencia = conferirNomeDoSegurado(proc.nome_segurado, {
+      victimName,
+      leadName,
+      groupName,
+    });
+    if (conferencia.veredito === 'conflito') {
+      console.warn(
+        `[notify-inss-update] vinculo suspeito req=${proc.requerimento_number}: ${conferencia.motivo}`,
+      );
+    }
+    const dono = donoDaAtualizacaoInss({ status: latest.to_status, leadName });
+
+    // Quando não há pendência nossa no meio, o bloco sai igual ao de sempre —
+    // 485 das 557 exigências com despacho (medido em 27/08/2026).
+    const blocoPendencias = !pontosPendentes
+      ? ''
+      : pendencias.escritorio
+        ? [
+            pendencias.cliente ? `\n📋 O CLIENTE PRECISA MANDAR:\n${pendencias.cliente}` : '',
+            `\n🏢 PENDÊNCIA DO ESCRITÓRIO (não foi para o grupo do cliente):\n${pendencias.escritorio}`,
+            pendencias.cliente
+              ? ''
+              : '\nNada sobrou para o cliente providenciar, então nenhuma mensagem foi enviada ao grupo.',
+          ].filter(Boolean).join('\n')
+        : `\n📋 PENDÊNCIAS APONTADAS PELO INSS:\n${pontosPendentes}`;
+
+    const activityDesc = [
+      agendarPericia
+        ? '📞 TAREFA DO ESCRITÓRIO: o INSS mandou AGENDAR a perícia. Ligue no 135 ou agende pelo Meu INSS. O cliente não foi avisado — quem marca somos nós; avise a data a ele depois de marcada.'
+        : '',
+      `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".`,
+      blocoPendencias,
+      `\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}`,
+      caseInfo ? `\nCaso: ${caseInfo.case_number || ''} — ${caseInfo.title || ''}` : '',
+      conferencia.veredito === 'conflito'
+        ? `\n⚠️ VÍNCULO SUSPEITO — a mensagem ao cliente foi BLOQUEADA.\n${conferencia.motivo}.\nConfira se este requerimento é mesmo deste lead antes de responder. Se não for, desvincule o protocolo na tela de Protocolos.`
+        : '',
+    ].filter(Boolean).join('\n');
 
     // Vínculo com caso e processo: até 17/08/2026 o insert levava só `lead_id`,
     // e 205 das 252 atividades nasceram órfãs — todas com caso disponível (o
@@ -174,7 +246,8 @@ export const handler: RequestHandler = async (req, res) => {
       activity_type: 'notificacao',
       status: 'pendente',
       priority: 'normal',
-      assigned_to: assignedTo,
+      assigned_to: dono.id,
+      assigned_to_name: dono.name,
       deadline: new Date().toISOString().slice(0, 10),
       case_id: proc.case_id,
       case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
@@ -182,38 +255,99 @@ export const handler: RequestHandler = async (req, res) => {
       process_title: process ? formatLabel(process.process_number, process.title) || null : null,
     } as any);
 
-    // 2) Acha o grupo do lead e manda zap humanizado
+    // 2) Mensagem para o grupo do cliente
+    //
+    // O grupo tem o cliente e a equipe. Nem todo evento vira mensagem, e o que
+    // vira só sai entre 8h e 20h — ver lib/inss-mensagem-cliente. O que não pode
+    // sair agora fica gravado como 'agendado' e o cron dispatch-inss-zap manda
+    // quando a janela abrir; nada se perde e nada chega de madrugada.
+    const entrada = {
+      status: latest.to_status,
+      resultado,
+      despacho: latest.despacho,
+      // Só o lado do cliente vai para a IA e para o texto fixo; o que é nosso
+      // ficou na atividade.
+      pontosPendentes: pendencias.cliente,
+      nome: proc.nome_segurado,
+      beneficio: proc.benefit_type,
+      requerimento: proc.requerimento_number,
+    };
+    const tipoMensagem = classificarMensagemCliente(entrada);
+    let zapPatch: Record<string, any> = { zap_status: 'silencio' };
     let sentToGroup = false;
     let humanText: string | null = null;
-    if (leadId) {
-      const { data: groups } = await supabase
-        .from('lead_whatsapp_groups')
-        .select('group_jid, instance_name')
-        .eq('lead_id', leadId)
-        .limit(1);
-      const group = groups?.[0];
-      if (group) {
-        humanText = await humanizeStatusChange({
-          from: latest.from_status,
-          to: latest.to_status,
-          nome: proc.nome_segurado,
-          beneficio: proc.benefit_type,
-        });
-        const sent = await sendUazapiText({
-          group_jid: group.group_jid,
-          text: humanText,
-          instance_name: group.instance_name,
-        });
-        sentToGroup = sent.ok;
+
+    if (tipoMensagem) {
+      if (conferencia.veredito === 'conflito') {
+        // Nome do segurado briga com o do lead: a mensagem iria para o grupo de
+        // outro cliente. Fica registrada para conferência humana, não sai.
+        zapPatch = {
+          zap_status: 'suspeito',
+          zap_tipo: tipoMensagem,
+          zap_erro: conferencia.motivo,
+        };
+      } else if (agendarPericia) {
+        // Quem liga para o 135 é o escritório (pedido do usuário, 27/08/2026).
+        // A tarefa está na atividade; o cliente só é avisado da data depois de
+        // marcada, por uma pessoa.
+        zapPatch = { zap_status: 'pericia_escritorio', zap_tipo: tipoMensagem };
+      } else if (pendencias.escritorio && !pendencias.cliente) {
+        // A exigência inteira era pendência nossa (17 das 557 no histórico):
+        // mandar "o INSS pediu documentos" sem dizer quais só assusta.
+        zapPatch = { zap_status: 'so_escritorio', zap_tipo: tipoMensagem };
+      } else if (!eventoElegivelParaZap(latest.email_received_at)) {
+        // Ativação sem retroatividade (pedido do usuário, 26/08/2026): evento
+        // anterior ao corte nunca vira mensagem, mesmo que só agora tenha sido
+        // processado. São 1.480 eventos antigos nunca notificados no histórico.
+        zapPatch = { zap_status: 'retroativo', zap_tipo: tipoMensagem };
+      } else if (await jaAvisouEsseTipo(processId, tipoMensagem)) {
+        zapPatch = { zap_status: 'repetido', zap_tipo: tipoMensagem };
+      } else {
+        const destino = await resolverGrupoDoLead(leadId);
+        if (destino.erro) {
+          zapPatch = { zap_status: 'sem_grupo', zap_tipo: tipoMensagem, zap_erro: destino.erro };
+        } else {
+          const { texto, via } = await montarTextoMensagemCliente(tipoMensagem, entrada);
+          humanText = texto;
+          if (!dentroDaJanela(new Date())) {
+            zapPatch = { zap_status: 'agendado', zap_tipo: tipoMensagem, zap_texto: texto };
+          } else {
+            const sent = await enviarTextoAoGrupo({
+              group_jid: destino.grupo.group_jid,
+              text: texto,
+              instance_name: destino.grupo.instance_name,
+            });
+            sentToGroup = sent.ok;
+            zapPatch = sent.ok
+              ? {
+                  zap_status: 'enviado',
+                  zap_tipo: tipoMensagem,
+                  zap_texto: texto,
+                  zap_enviado_at: new Date().toISOString(),
+                }
+              : {
+                  zap_status: 'erro',
+                  zap_tipo: tipoMensagem,
+                  zap_texto: texto,
+                  zap_erro: descreverErro(sent),
+                };
+          }
+          console.log(
+            `[notify-inss-update] zap tipo=${tipoMensagem} via=${via} status=${zapPatch.zap_status}`,
+          );
+        }
       }
     }
 
-    // 3) Marca como notificado
+    // 3) Marca como notificado. Só o evento mais recente pode virar mensagem;
+    // os outros do lote entram como 'suprimido' pra ninguém achar que sumiram.
+    const agora = new Date().toISOString();
+    await marcarNotificado([latest.id], agora, zapPatch);
+    const antigos = pending.slice(1).map((p) => p.id);
+    if (antigos.length > 0) {
+      await marcarNotificado(antigos, agora, { zap_status: 'suprimido' });
+    }
     const ids = pending.map((p) => p.id);
-    await supabase
-      .from('inss_status_history')
-      .update({ notified: true, notified_at: new Date().toISOString() })
-      .in('id', ids);
 
     return res.status(200).json({
       success: true,

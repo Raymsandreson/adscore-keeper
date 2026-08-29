@@ -10,6 +10,7 @@ import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { generateLeadName } from '@/utils/generateLeadName';
 import { findClosedStageId, findRefusedStageId } from '@/utils/kanbanStageTypes';
 import { CampaignPicker } from '@/components/leads/CampaignPicker';
+import { WhatsAppAvatar } from '@/components/whatsapp/WhatsAppAvatar';
 const LeadLinkedContacts = lazy(() => import('@/components/leads/LeadLinkedContacts').then(m => ({ default: m.LeadLinkedContacts })));
 const LeadLinkedComments = lazy(() => import('@/components/leads/LeadLinkedComments').then(m => ({ default: m.LeadLinkedComments })));
 const LeadNewsLinksManager = lazy(() => import('@/components/leads/LeadNewsLinksManager').then(m => ({ default: m.LeadNewsLinksManager })));
@@ -2220,8 +2221,18 @@ ${scrapeData.content || ''}
         {/* Resumo fixo: Lead + Casos vinculados */}
         <div className="flex-shrink-0 rounded-md border bg-muted/40 px-3 py-2 space-y-1.5">
           <div className="flex items-start gap-2">
-            <User className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
-            <div className="text-sm font-medium leading-tight break-words">
+            {/* Foto do WhatsApp de quem é o lead. Sem telefone ou sem foto,
+                fica o ícone de sempre — o resumo nunca perde a linha do nome. */}
+            {(currentLead as any).lead_phone ? (
+              <WhatsAppAvatar
+                phone={(currentLead as any).lead_phone}
+                className="h-8 w-8"
+                iconClassName="h-4 w-4"
+              />
+            ) : (
+              <User className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" />
+            )}
+            <div className="text-sm font-medium leading-tight break-words self-center">
               {currentLead.lead_name || 'Lead sem nome'}
             </div>
           </div>

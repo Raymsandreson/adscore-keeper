@@ -54,17 +54,27 @@ const corsHeaders = {
 
 const ACTION_SOURCE = 'escavador_compromissos';
 
-// UUIDs do Supabase Externo (profiles) — conferidos no banco em 10/07/2026.
+// UUIDs do Supabase Externo. São `profiles.user_id` (o uuid do auth), NÃO
+// `profiles.id` — os dois são diferentes para estas três pessoas.
+//
+// Estavam com o `profiles.id` desde 10/07/2026, e o efeito era silencioso: a
+// atividade nascia, o nome aparecia certo em `assigned_to_name`, mas o filtro
+// da tela remapeia e casa por auth uuid, então 92 tarefas (64 do Felipe, 19 da
+// Luana, 9 da Gisele) nunca apareceram para quem deveria fazê-las. Corrigido
+// em 25/08/2026, conferido contra profiles do Externo.
+//
+// O caminho de fallback nunca teve o problema: `lead_processes.responsible_user_id`
+// já guarda user_id em 363 dos 364 processos.
 const ASSIGNEE_BY_RAMO: Record<string, { id: string; name: string }> = {
   // J=5 — Justiça do Trabalho
-  '5': { id: '8fc1df70-2592-419c-ba72-14f2cc9765b7', name: 'Felipe Estefânio Cardoso Lopes de Sousa' },
+  '5': { id: 'f8862a68-887b-4cd1-bb42-6c3e533bdf1f', name: 'Felipe Estefânio Cardoso Lopes de Sousa' },
   // J=4 — Justiça Federal
-  '4': { id: '81fc8558-7b52-4a24-9871-73958472fb9f', name: 'Gisele Borges dos Santos' },
+  '4': { id: '74207dc6-af1a-4eda-a715-efd718749a9c', name: 'Gisele Borges dos Santos' },
 };
 
 // Audiências têm responsável fixo, independente do ramo — regra do usuário
-// (29/07/2026). UUID conferido em profiles do Externo na mesma data.
-const ASSIGNEE_AUDIENCIA = { id: 'c5284e57-b0f4-4075-b61c-a46f6fa87b16', name: 'Luana Barros' };
+// (29/07/2026).
+const ASSIGNEE_AUDIENCIA = { id: '1589c873-0550-418b-b828-f290e852d5d5', name: 'Luana Barros' };
 
 // Só considera movimentações recentes ao ligar num processo com histórico longo
 // (evita criar tarefa de intimação de meses atrás no primeiro sync).

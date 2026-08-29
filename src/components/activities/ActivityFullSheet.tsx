@@ -28,6 +28,7 @@ import ProcessMarcosInline from '@/components/cases/ProcessMarcosInline';
 import PericiaInssChips from '@/components/activities/PericiaInssChips';
 import { ActivityCallRecorder, type ActivityCallFields } from '@/components/activities/ActivityCallRecorder';
 import { callFieldTextToHtml, stripHtmlToText, draftRichText } from '@/components/activities/richTextFields';
+import { useInssDesfechoCaso } from '@/hooks/useInssDesfechoCaso';
 import { buildActivityMessage } from '@/components/activities/buildActivityMessage';
 import { buildNotificationAt, hydrateNotificationTime } from '@/lib/notificationDateTime';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
@@ -1346,6 +1347,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     setOriginChatOpen(true);
   };
 
+  // O POP não sabe o que o INSS decidiu: sem isto a mensagem anuncia
+  // "Progresso do caso: X%" para quem já teve o pedido negado.
+  const inssDesfecho = useInssDesfechoCaso(
+    selectedActivity?.case_id || null,
+    selectedActivity?.lead_id || formLeadId || null,
+  );
+
   /** Mensagem da atividade — idêntica à da tela de Atividades (função compartilhada). */
   const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
     buildActivityMessage({
@@ -1354,7 +1362,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
-      currentUserId: user?.id || null, resolveUserName, getTemplateForContext,
+      currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
   return (

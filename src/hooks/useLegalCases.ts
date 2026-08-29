@@ -102,7 +102,7 @@ export function useLegalCases(leadId?: string) {
     }
   }, [leadId]);
 
-  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title: string; description?: string; notes?: string; case_number?: string; acolhedor?: string; closed_at?: string; product_service_id?: string | null }) => {
+  const createCase = useCallback(async (caseData: { lead_id?: string | null; nucleus_id?: string | null; title?: string; description?: string; notes?: string; case_number?: string; acolhedor?: string; closed_at?: string; product_service_id?: string | null }) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -143,16 +143,30 @@ export function useLegalCases(leadId?: string) {
       }
 
 
+      // O título saiu dos formulários (ago/2026): o caso é identificado pelo
+      // número sequenciado por núcleo. A coluna segue NOT NULL e aparece nos
+      // cards, então quando não vier, deriva do nome do lead (ou do número).
+      let tituloDoCaso = caseData.title?.trim() || '';
+      if (!tituloDoCaso && caseData.lead_id) {
+        const { data: leadTitleRow } = await externalSupabase
+          .from('leads')
+          .select('lead_name')
+          .eq('id', caseData.lead_id)
+          .maybeSingle();
+        tituloDoCaso = String((leadTitleRow as any)?.lead_name || '').trim();
+      }
+      if (!tituloDoCaso) tituloDoCaso = caseNumber;
+
       // Caso PREV tem um único responsável, escolhido aqui e gravado no caso.
       // Os processos e atividades do caso herdam sem perguntar de novo — só
       // processo judicial reabre a escolha (ver resolveProcessAssignment).
       // Cancelar deixa assigned_to nulo: o primeiro processo volta a perguntar.
-      const prevAssignee = await pickCaseAssigneeForNewCase(caseNumber, caseData.title);
+      const prevAssignee = await pickCaseAssigneeForNewCase(caseNumber, tituloDoCaso);
 
       const extCreatedByCase = await remapToExternal(user?.id);
       const { leadId: externalLeadId, leadData: externalLeadData } = await ensureExternalLeadForCase(
         caseData.lead_id,
-        caseData.title,
+        tituloDoCaso,
         user?.id,
       );
       const { data, error } = await externalSupabase
@@ -161,7 +175,7 @@ export function useLegalCases(leadId?: string) {
           lead_id: externalLeadId,
           nucleus_id: caseData.nucleus_id || null,
           case_number: caseNumber,
-          title: caseData.title,
+          title: tituloDoCaso,
           description: caseData.description || null,
           notes: caseData.notes || null,
           acolhedor: caseData.acolhedor || null,
@@ -198,8 +212,8 @@ export function useLegalCases(leadId?: string) {
         await externalSupabase.from('case_process_tracking').insert({
           case_id: enriched.id,
           lead_id: externalLeadId,
-          cliente: leadData?.lead_name || caseData.title,
-          caso: caseData.title,
+          cliente: leadData?.lead_name || tituloDoCaso,
+          caso: tituloDoCaso,
           tipo: leadData?.case_type || enriched.benefit_type || null,
           acolhedor: leadData?.acolhedor || enriched.acolhedor || null,
           data_criacao: new Date().toISOString().split('T')[0],
@@ -218,7 +232,7 @@ export function useLegalCases(leadId?: string) {
           const extCreatedBy = await remapToExternal(user?.id);
           await externalSupabase.from('lead_activities').insert({
             lead_id: externalLeadId,
-            lead_name: caseData.title,
+            lead_name: tituloDoCaso,
             title: 'ONBOARDING CLIENTE',
             description: `Atividade de onboarding criada automaticamente para o caso ${caseNumber}`,
             activity_type: 'tarefa',
@@ -231,7 +245,7 @@ export function useLegalCases(leadId?: string) {
             // Sem case_id a atividade nasce órfã do caso que a gerou; sem
             // notification_date, o Salvar do editor reprova qualquer edição.
             case_id: enriched.id,
-            case_title: `${caseNumber} - ${caseData.title}`,
+            case_title: `${caseNumber} - ${tituloDoCaso}`,
             notification_date: new Date().toISOString().split('T')[0],
           } as never);
         } catch (onboardingError) {

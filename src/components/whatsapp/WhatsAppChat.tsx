@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect, lazy, Suspense } from 'react';
 import { hrefTel } from '@/lib/dial';
-import { WhatsAppConversation } from '@/hooks/useWhatsAppMessages';
+import { WhatsAppConversation, type WhatsAppMessage } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -15,7 +15,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram } from 'lucide-react';
+import { TestimonialPostSheet } from './TestimonialPostSheet';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes, type InternalNote } from '@/hooks/useWhatsAppInternalNotes';
 import { resolverAtividadeDaNota } from '@/lib/whatsappActivityNotes';
@@ -50,6 +51,13 @@ import { WhatsAppMediaGallery } from './WhatsAppMediaGallery';
 import { WhatsAppChatSearchPanel, HighlightedText, type ChatSearchHit } from './WhatsAppChatSearchPanel';
 import { cn } from '@/lib/utils';
 import { canonicalizeChatTarget } from '@/lib/whatsappPhone';
+import {
+  extractQuotedMessage,
+  getWhatsAppMessageId,
+  type QuotedMessageInfo,
+} from '@/lib/whatsappQuotedMessage';
+import { QuotedMessagePreview } from './QuotedMessagePreview';
+import { findMessageByWhatsAppId } from '@/integrations/supabase/external-rpc';
 import { supabase } from '@/integrations/supabase/client';
 import { db } from '@/integrations/supabase';
 import { externalSupabase } from '@/integrations/supabase/external-client';
@@ -66,6 +74,7 @@ import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
 import { dispararPrimeiraMensagemProativa } from '@/lib/agentePrimeiraMensagem';
 import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
+import { WhatsAppAvatar } from './WhatsAppAvatar';
 import { AITextActions } from '@/components/ui/AITextActions';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
@@ -1101,6 +1110,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   // Sugestão de resposta da IA focada numa mensagem específica.
   const [replySuggestOpen, setReplySuggestOpen] = useState(false);
   const [replySuggestTarget, setReplySuggestTarget] = useState<string | undefined>(undefined);
+  // Testemunho → post de Instagram (Sheet de revisão; key remonta por mensagem)
+  const [testimonialMsg, setTestimonialMsg] = useState<{ id: string; text: string; hasAudio: boolean } | null>(null);
   const [mentionUserId, setMentionUserId] = useState<string | null>(null);
   const [mentionUserName, setMentionUserName] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<Array<{ user_id: string; full_name: string | null }>>([]);
@@ -1243,6 +1254,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           at: String(m.created_at || '').slice(0, 10),
         })),
   });
+
+  /**
+   * Id do WhatsApp -> bolha carregada. É por aqui que a citação ("responder")
+   * acha a mensagem original: o `stanzaID` que vem na resposta é o mesmo em
+   * todas as cópias espelhadas do grupo, o uuid da linha não. Map em vez de
+   * varredura por bolha — a conversa passa de mil mensagens sem esforço.
+   */
+  const mensagensPorIdDoWhatsApp = useMemo(() => {
+    const map = new Map<string, WhatsAppMessage>();
+    for (const m of conversation.messages || []) {
+      const waId = getWhatsAppMessageId(m);
+      if (waId && !map.has(waId)) map.set(waId, m);
+    }
+    return map;
+  }, [conversation.messages]);
 
   // Sugestão da IA já escrita no campo: aparece apagada dentro do "Digite uma
   // mensagem" e vira texto de verdade com a seta para a direita (→) ou o botão
@@ -2523,6 +2549,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     setAnchor(null);
     setSearchOpen(false);
     setSearchTerm('');
+    setCitadaPendente(null);
   }, [conversation.phone, conversation.instance_name]);
 
   // Volta pro fim da conversa (sai do modo âncora).
@@ -2617,6 +2644,73 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     pendingAnchorScrollRef.current = hit.id;
     setAnchor({ msgId: hit.id, created_at: hit.created_at, before: 25, after: 40 });
   }, [conversation.messages, conversation.phone, conversation.instance_name, onLoadMessagesAround]);
+
+  /**
+   * Citação clicada: pula até a mensagem original, igual ao WhatsApp.
+   * Quando ela está fora do que já foi carregado, o id do WhatsApp vira
+   * `created_at` no banco (índice de `external_message_id`) e o trecho é
+   * baixado em volta dele. `citadaPendente` marca a espera — a bolha visível
+   * pode ser a cópia de OUTRA instância do grupo, então quem fecha o pulo é o
+   * efeito abaixo, quando a lista chega.
+   */
+  const [citadaPendente, setCitadaPendente] = useState<{ stanzaId: string } | null>(null);
+
+  const pularParaMensagem = useCallback((alvo: WhatsAppMessage) => {
+    void jumpToSearchHit({
+      id: alvo.id,
+      created_at: alvo.created_at,
+      message_text: alvo.message_text,
+      message_type: alvo.message_type || 'text',
+      direction: alvo.direction,
+    });
+  }, [jumpToSearchHit]);
+
+  const abrirMensagemCitada = useCallback(async (stanzaId: string) => {
+    const emMemoria = mensagensPorIdDoWhatsApp.get(stanzaId);
+    if (emMemoria) {
+      pularParaMensagem(emMemoria);
+      return;
+    }
+    if (!onLoadMessagesAround) {
+      toast.error('Não consigo abrir esse trecho da conversa aqui.');
+      return;
+    }
+    setCitadaPendente({ stanzaId });
+    try {
+      const original = await findMessageByWhatsAppId(
+        conversation.phone,
+        conversation.instance_name || '',
+        stanzaId,
+      );
+      if (!original) {
+        setCitadaPendente(null);
+        toast.error('A mensagem citada não está no histórico salvo aqui.');
+        return;
+      }
+      await onLoadMessagesAround(conversation.phone, conversation.instance_name, original.created_at);
+    } catch (e) {
+      console.warn('[citacao] falha ao abrir a mensagem citada:', e);
+      setCitadaPendente(null);
+      toast.error('Falha ao abrir a mensagem citada.');
+    }
+  }, [mensagensPorIdDoWhatsApp, pularParaMensagem, onLoadMessagesAround, conversation.phone, conversation.instance_name]);
+
+  // Chegou o trecho pedido: acha a cópia visível da citada e pula. Se nem
+  // depois do carregamento ela aparecer, avisa em vez de ficar girando.
+  useEffect(() => {
+    if (!citadaPendente) return;
+    const alvo = mensagensPorIdDoWhatsApp.get(citadaPendente.stanzaId);
+    if (alvo) {
+      setCitadaPendente(null);
+      pularParaMensagem(alvo);
+      return;
+    }
+    const t = setTimeout(() => {
+      setCitadaPendente(null);
+      toast.error('Não consegui abrir a mensagem citada.');
+    }, 10_000);
+    return () => clearTimeout(t);
+  }, [citadaPendente, mensagensPorIdDoWhatsApp, pularParaMensagem]);
 
   /**
    * "Cobrar" na pendência: escreve o texto no campo e deixa o envio armado para
@@ -3502,6 +3596,33 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return phone;
   };
 
+  /**
+   * Quem escreveu a mensagem citada. Com a original em memória o remetente sai
+   * dela (é o mesmo caminho do nome em cima da bolha); sem ela, resta o
+   * `participant` do payload — que em grupo é @lid e só vira nome pelo roster.
+   */
+  const resolverAutorCitado = (quoted: QuotedMessageInfo, original: WhatsAppMessage | null): string | null => {
+    if (original) {
+      if (original.direction === 'outbound') return 'Você';
+      if (isGroup) {
+        const s = getGroupSenderInfo(original);
+        return s.name || (s.phone ? formatPhone(s.phone) : null);
+      }
+      return conversation.contact_name || formatPhone(conversation.phone);
+    }
+    if (quoted.participantLid) {
+      const info = groupLidMap[quoted.participantLid];
+      if (info) return info.name || (info.phone ? formatPhone(info.phone) : null);
+      return null;
+    }
+    if (quoted.participantPhone) {
+      return groupPhoneNameMap[quoted.participantPhone]
+        || groupPhoneNameMap[quoted.participantPhone.slice(-8)]
+        || formatPhone(quoted.participantPhone);
+    }
+    return null;
+  };
+
   const phoneDigits = conversation.phone.replace(/\D/g, '');
   const whatsappPhone = phoneDigits.startsWith('55') ? phoneDigits : `55${phoneDigits}`;
   const pwaDialPhone = whatsappPhone.startsWith('55') ? whatsappPhone.slice(2) : phoneDigits;
@@ -3517,9 +3638,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             <ArrowLeft className="h-4 w-4" />
           </Button>
         )}
-        <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
-          <User className="h-5 w-5 text-green-600" />
-        </div>
+        <WhatsAppAvatar
+          phone={conversation.phone}
+          instanceName={conversation.instance_name}
+          isGroup={isGroup}
+          className="shrink-0"
+        />
         <div className="flex-1 min-w-0 basis-[220px]">
           <CopyableText copyValue={conversation.contact_name || formatPhone(conversation.phone)} label="Nome" className="font-medium text-sm max-w-full" as="p" truncate>
             {conversation.contact_name || formatPhone(conversation.phone)}
@@ -4694,6 +4818,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
 
           // Regular message
           const msg = item.data;
+          // Quem falou no grupo. Calculado uma vez: a foto e o nome usam o mesmo.
+          const groupSender = isGroup && msg.direction === 'inbound' ? getGroupSenderInfo(msg) : null;
           return (
             <div key={msg.id} data-msg-id={msg.id}>
               {dateSeparator}
@@ -4706,6 +4832,25 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   {deletingMessageId === msg.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />}
                 </Button>
               )}
+              {/* Foto de quem falou, fora da bolha e alinhada ao nome — como no
+                  WhatsApp. Sem telefone identificado, fica o circulo com icone:
+                  o alinhamento das bolhas nao pode depender de ter foto. */}
+              {groupSender && (groupSender.phone || groupSender.name) && (
+                <button
+                  type="button"
+                  className="self-start mr-1.5 mt-0.5 shrink-0 rounded-full disabled:cursor-default"
+                  disabled={!groupSender.phone}
+                  title={groupSender.phone ? `Abrir ${groupSender.name || formatPhone(groupSender.phone)}` : undefined}
+                  onClick={() => { if (groupSender.phone) void openContactForPhone(groupSender.phone, groupSender.name); }}
+                >
+                  <WhatsAppAvatar
+                    phone={groupSender.phone || ''}
+                    instanceName={conversation.instance_name}
+                    className="h-8 w-8"
+                    iconClassName="h-4 w-4"
+                  />
+                </button>
+              )}
               <div
                 className={cn(
                   "max-w-[70%] rounded-2xl px-4 py-2 text-sm relative",
@@ -4716,8 +4861,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 )}
               >
                 {/* Group sender name */}
-                {isGroup && msg.direction === 'inbound' && (() => {
-                  const sender = getGroupSenderInfo(msg);
+                {groupSender && (() => {
+                  const sender = groupSender;
                   if (!sender.phone && !sender.name) return null;
                   const handleSenderClick = async () => {
                     if (!sender.phone) return;
@@ -4740,6 +4885,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                         <span className="font-normal text-muted-foreground ml-1">~{formatPhone(sender.phone)}</span>
                       )}
                     </p>
+                  );
+                })()}
+                {/* Citação: o "responder" do WhatsApp. Clicar leva até a original. */}
+                {(() => {
+                  const quoted = extractQuotedMessage(msg.metadata);
+                  if (!quoted) return null;
+                  const original = mensagensPorIdDoWhatsApp.get(quoted.stanzaId) || null;
+                  return (
+                    <QuotedMessagePreview
+                      quoted={quoted}
+                      autor={resolverAutorCitado(quoted, original)}
+                      outbound={msg.direction === 'outbound'}
+                      carregando={citadaPendente?.stanzaId === quoted.stanzaId}
+                      onClick={() => { void abrirMensagemCitada(quoted.stanzaId); }}
+                    />
                   );
                 })()}
                 {/* CTWA Ad Creative Card */}
@@ -5088,6 +5248,19 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                           )}
                         >
                           <Sparkles className="h-3 w-3" /> Responder c/ IA
+                        </button>
+                      )}
+                      {!textSelectionMode && msg.message_text && msg.direction === 'inbound' && (
+                        <button
+                          type="button"
+                          title="Transformar este testemunho em post de Instagram (com revisão antes de publicar)"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTestimonialMsg({ id: msg.id, text: msg.message_text || '', hasAudio: msg.message_type === 'audio' && !!msg.media_url });
+                          }}
+                          className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 transition-colors text-muted-foreground"
+                        >
+                          <Instagram className="h-3 w-3" /> Post IG
                         </button>
                       )}
                       {!textSelectionMode && msg.message_text && (
@@ -5757,6 +5930,23 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               targetMessage={replySuggestTarget}
               hideTrigger
             />
+            {/* Testemunho vira post de Instagram — Sheet por cima da conversa,
+                remontado por mensagem (key) pra não vazar rascunho de outra bolha. */}
+            {testimonialMsg && (
+              <TestimonialPostSheet
+                key={testimonialMsg.id}
+                open={!!testimonialMsg}
+                onOpenChange={(o) => { if (!o) setTestimonialMsg(null); }}
+                messageId={testimonialMsg.id}
+                messageText={testimonialMsg.text}
+                hasAudio={testimonialMsg.hasAudio}
+                clientName={conversation.contact_name || null}
+                phone={conversation.phone || null}
+                instanceName={conversation.instance_name || null}
+                leadId={conversation.lead_id || null}
+                contactId={conversation.contact_id || null}
+              />
+            )}
             {/* O campo e, por baixo dele, a sugestão apagada. O texto sugerido NÃO é
                 o valor do campo — só entra quando o usuário aceita, com → ou no botão. */}
             <div className="relative flex-1">

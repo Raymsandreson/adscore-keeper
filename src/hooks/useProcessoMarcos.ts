@@ -27,6 +27,8 @@ export interface MarcoReguaRow {
   stage_nome: string | null;
   eventual: boolean;
   terminal: boolean;
+  /** Estado (acordo, suspensão…): não disputa posição na régua. A RPC devolve desde 27/08/2026. */
+  atravessa_fases: boolean;
   estado: MarcoEstado;
   data_detectada: string | null;
   /** movimento | documento | escavador_texto | escavador_grau | campo_processo | email */
@@ -61,6 +63,12 @@ export interface ReguaDoProcesso {
   /** RPC respondeu (mesmo que sem marco). Evita piscar régua vazia no load. */
   pronto: boolean;
   recarregar: () => Promise<void>;
+  /**
+   * Rematerializa process_pop_marcos deste processo e recarrega a régua.
+   * Para quando a evidência acabou de mudar (peça anexada a um marco) e esperar
+   * o tick do cron deixaria a tela mentindo por minutos.
+   */
+  rematerializar: () => Promise<void>;
 }
 
 export function useProcessoMarcos(processId?: string | null): ReguaDoProcesso {
@@ -100,10 +108,28 @@ export function useProcessoMarcos(processId?: string | null): ReguaDoProcesso {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
+  const rematerializar = useCallback(async () => {
+    if (!processId) return;
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase.rpc as unknown as (
+        f: string,
+        a: Record<string, unknown>,
+      ) => PromiseLike<{ error?: { message?: string } | null }>)(
+        'refresh_process_pop_marcos',
+        { p_process_id: processId },
+      );
+      if (error) console.warn('[useProcessoMarcos] refresh_process_pop_marcos:', error.message);
+    } finally {
+      // Recarrega mesmo se o refresh falhar: o tick pode já ter passado.
+      await carregar();
+    }
+  }, [processId, carregar]);
+
   const atual = marcos.find(m => m.atual) || null;
   const percentual = marcos.length > 0 ? marcos[0].percentual : null;
   const previstos = marcos.length > 0 ? marcos[0].previstos : 0;
   const cumpridos = marcos.length > 0 ? marcos[0].cumpridos : 0;
 
-  return { marcos, atual, percentual, previstos, cumpridos, loading, pronto, recarregar: carregar };
+  return { marcos, atual, percentual, previstos, cumpridos, loading, pronto, recarregar: carregar, rematerializar };
 }

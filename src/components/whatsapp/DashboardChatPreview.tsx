@@ -38,6 +38,7 @@ import { ContactDetailSheet } from '@/components/contacts/ContactDetailSheet';
 import { ZapSignDocumentDialog } from '@/components/whatsapp/ZapSignDocumentDialog';
 import { GroupMembersDialog } from '@/components/whatsapp/GroupMembersDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { WhatsAppAvatar } from '@/components/whatsapp/WhatsAppAvatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { Lead } from '@/hooks/useLeads';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
@@ -2414,6 +2415,16 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                         </div>
                       )}
                       <div className={cn("flex", isInbound ? "justify-start" : "justify-end")}>
+                        {/* Em grupo, a foto de quem falou fica fora da bolha — mesma
+                            leitura da aba WhatsApp, só que no tamanho da prévia. */}
+                        {isGroupChat && isInbound && (msg.group_sender_name || msg.group_sender_phone) && (
+                          <WhatsAppAvatar
+                            phone={msg.group_sender_phone || ''}
+                            instanceName={msg.instance_name}
+                            className="h-6 w-6 mr-1.5 mt-0.5 self-start"
+                            iconClassName="h-3 w-3"
+                          />
+                        )}
                         <div
                           className={cn(
                             "max-w-[80%] rounded-lg px-3 py-1.5 text-xs select-text transition-all",

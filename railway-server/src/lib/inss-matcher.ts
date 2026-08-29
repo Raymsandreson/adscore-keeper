@@ -201,9 +201,13 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
     if (tokens.length >= 2) {
       const first = tokens[0];
       const last = tokens[tokens.length - 1];
+      // Token inteiro, nunca substring: até 27/08/2026 isso era `includes`, e
+      // `FRANCA` casava dentro de `FRANCAVILLA` — foi assim que o requerimento
+      // de VALENTINA ARAUJO FRANCA foi parar num lead de notícia sobre a
+      // Valentina Francavilla. Mesmo defeito ligou ELOA VITORIA a ELOANE.
       const containsBoth = (s: string) => {
-        const n = normalize(s);
-        return n.includes(first) && n.includes(last);
+        const t = new Set(normalize(s).split(' '));
+        return t.has(first) && t.has(last);
       };
       const candidates = new Set<string>();
 

@@ -11,10 +11,10 @@
  *     outro lead (medido: 6 dos 17 grupos duplicados) — perder esse lead
  *     subestimaria o CAC e faria a rentabilidade mentir para cima.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 
-const { dbMock, authMock } = vi.hoisted(() => {
+const { dbMock, authMock, linhaBase } = vi.hoisted(() => {
   // Um CNJ com 2 partes e 2 fichas (leads diferentes), outro com 1 parte.
   const linhas = [
     {
@@ -105,8 +105,33 @@ const { dbMock, authMock } = vi.hoisted(() => {
   ];
 
   return {
+    /** Molde de linha da RPC — o teste de paginação clona isto 2.500 vezes. */
+    linhaBase: linhas[0],
     dbMock: {
-      rpc: () => Promise.resolve({ data: linhas, error: null }),
+      // A RPC tambem passa pelo teto de 1.000 do PostgREST, entao o hook a
+      // pagina. O mock devolve tudo na primeira pagina: com menos de 1.000
+      // linhas o laco para na primeira volta.
+      // `_rest` existe para o mock QUEBRAR do mesmo jeito que o supabase-js
+      // quebra quando alguém faz `const rpc = db.rpc` e perde o `this`:
+      // "Cannot read properties of undefined (reading 'rest')". Sem isto o
+      // teste passa com o hook derrubando a carteira em produção — foi o que
+      // aconteceu em 27/08/2026.
+      _rest: true,
+      rpc(this: { _rest: boolean } | undefined) {
+        if (!this?._rest) throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+        return {
+          range: (de: number, ate: number) =>
+            Promise.resolve({ data: linhas.slice(de, ate + 1), error: null }),
+        };
+      },
+      /** Devolve a rpc ao padrão — o teste de paginação a substitui. */
+      _rpcPadrao(this: { _rest: boolean } | undefined) {
+        if (!this?._rest) throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+        return {
+          range: (de: number, ate: number) =>
+            Promise.resolve({ data: linhas.slice(de, ate + 1), error: null }),
+        };
+      },
       from: (tabela: string) => {
         const q: Record<string, unknown> = {};
         q.select = () => q;
@@ -144,6 +169,10 @@ vi.mock('@/integrations/supabase', () => ({
 import { useCarteiraDoPop } from '../useCarteiraDoPop';
 
 describe('useCarteiraDoPop', () => {
+  // O teste de paginação troca a rpc do mock; devolver o padrão evita que a
+  // ordem dos testes vire dependência escondida.
+  afterEach(() => { dbMock.rpc = dbMock._rpcPadrao; });
+
   it('soma o valor das partes e guarda a abertura de cada uma', async () => {
     const { result } = renderHook(() => useCarteiraDoPop('board-1'));
     await waitFor(() => expect(result.current.loading).toBe(false));
@@ -345,5 +374,47 @@ describe('useCarteiraDoPop', () => {
     expect(result.current.totais.honorarioCnjs).toBe(1);
     // A carteira inteira continua ao lado, para a tela dizer "N de 2".
     expect(result.current.totaisCarteira.honorarioRecebido).toBe(17000);
+  });
+
+  // ── REGRESSAO: a RPC tem que ser PAGINADA (27/08/2026)
+  //
+  //    A chamada nascera sem `.range()`. O PostgREST corta em 1.000 linhas e
+  //    `pop_carteira_marcos` devolve 1.660 no POP Trabalhistas judicial: a
+  //    carteira mostrava R$ 76.407.190,83 em vez de R$ 92.141.736,81, 433
+  //    processos em vez de 1.050, e o estagio PROJETADO inteiro (23 partes,
+  //    R$ 5.549.368,42) simplesmente nao existia na tela. Nenhum erro, nenhum
+  //    aviso — so um numero menor.
+  it('pagina a RPC ate a ultima linha, em vez de parar na milesima', async () => {
+    // 2.500 linhas de R$ 1.000: uma carteira de R$ 2,5 mi que o teto cortaria
+    // em R$ 1 mi. Cada uma e um processo/parte propria, para nada deduplicar.
+    const muitas = Array.from({ length: 2500 }, (_, i) => ({
+      ...linhaBase,
+      process_id: `big-${i}`,
+      process_number: `000${String(i).padStart(4, '0')}-00.2020.5.05.0101`,
+      cnj_num: `0000000000020205050${String(i).padStart(3, '0')}`.slice(0, 20),
+      cliente: `CLIENTE ${i}`,
+      valor_condenacao: 1000,
+      cadastros_do_cnj: 1,
+      leads_do_cnj: [`lead-${i}`],
+      custo_lead: null,
+    }));
+    const paginas: Array<[number, number]> = [];
+    dbMock.rpc = function (this: { _rest: boolean } | undefined) {
+      if (!this?._rest) throw new TypeError("Cannot read properties of undefined (reading 'rest')");
+      return {
+        range: (de: number, ate: number) => {
+          paginas.push([de, ate]);
+          return Promise.resolve({ data: muitas.slice(de, ate + 1), error: null });
+        },
+      };
+    };
+
+    const { result } = renderHook(() => useCarteiraDoPop('board-1'));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.totais.valor).toBe(2_500_000);
+    expect(result.current.totais.processos).toBe(2500);
+    // Tres voltas: 0-999, 1000-1999, 2000-2999 (esta volta menor encerra o laco).
+    expect(paginas).toEqual([[0, 999], [1000, 1999], [2000, 2999]]);
   });
 });

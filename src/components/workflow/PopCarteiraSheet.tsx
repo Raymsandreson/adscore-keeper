@@ -11,6 +11,11 @@
 // PROCESSO (última decisão por cliente), não o caixa do escritório — o aviso
 // fica visível na tela, não em tooltip.
 //
+// O topo é o painel por titular (CarteiraTitularPainel): um número grande por
+// vez, trocado por um seletor de três posições — tudo, só a cota do cliente, só
+// honorários. Cada estágio abre a relação clicável (CarteiraRelacaoSheet), e
+// dali cada linha vai para a conferência.
+//
 // Clicar na linha abre a FICHA do processo (ProcessDetailSheet); o botão de
 // escudo abre a CONFERÊNCIA — de onde saiu aquele valor e aquele marco. Os dois
 // sheets são IRMÃOS deste, nunca filhos: dois Dialogs do Radix aninhados brigam
@@ -32,23 +37,36 @@ import {
   type GrupoMarco, type ProcessoDoMarco,
 } from '@/hooks/useCarteiraDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
+import { duracaoLegivel } from '@/lib/duracaoLegivel';
 import { ProcessoConferenciaSheet } from './ProcessoConferenciaSheet';
+import { ConferenciaConteudo } from './PopConferenciaSheet';
+import { CarteiraTitularPainel } from './CarteiraTitularPainel';
+import { CarteiraRelacaoSheet, type AlvoRelacao } from './CarteiraRelacaoSheet';
+import type { ModoCarteira } from '@/lib/carteiraPorTitular';
 import type { AlvoConferencia } from '@/hooks/useConferenciaProcesso';
 
 // A ficha do processo é pesada: entra sob demanda, como no TeamMarcoProcessosSheet.
 const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
+const LeadPainelPorId = lazy(() => import('@/components/leads/LeadPainelPorId'));
 
 interface Props {
   boardId: string | null;
   boardName: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Abrir já na aba "Conferência" do seletor — o atalho "Conferência" do
+   *  card de POP cai aqui dentro em vez de abrir um sheet separado. */
+  conferenciaInicial?: boolean;
 }
 
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const dias = (d: number | null) => (d == null ? '—' : d === 0 ? 'hoje' : `${d} d`);
+/** Ano/mês/dia com o total de meses entre parênteses — "782 d" não dá noção a
+ *  ninguém, e quem negocia deságio raciocina em meses. Ver duracaoLegivel.ts. */
+const dias = (d: number | null) => duracaoLegivel(d);
+/** Nas linhas estreitas os parênteses não cabem; a decomposição basta. */
+const diasCurto = (d: number | null) => duracaoLegivel(d, { comTotal: false });
 
 /** "2026-07-01" -> "jul/2026". A data limite da correção vai sempre junto do número. */
 const INDICE_CURTO: Record<string, string> = {
@@ -141,7 +159,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
         <span className="min-w-0 flex-1 truncate text-sm font-medium">{grupo.rotulo}</span>
         <Badge variant="secondary" className="shrink-0">{grupo.processos.length}</Badge>
         {grupo.diasMedio != null && (
-          <span className="shrink-0 text-xs text-muted-foreground">média {dias(grupo.diasMedio)}</span>
+          <span className="shrink-0 text-xs text-muted-foreground">média {diasCurto(grupo.diasMedio)}</span>
         )}
         {grupo.valor > 0 && (
           <span className="flex shrink-0 flex-col items-end leading-tight">
@@ -227,7 +245,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
                 onClick={() => acoes.onAbrirFicha(p.processId)}
                 title="tempo neste marco"
               >
-                {dias(p.diasNoMarco)}
+                {diasCurto(p.diasNoMarco)}
               </button>
               <button
                 type="button"
@@ -248,7 +266,7 @@ function GrupoDoMarco({ grupo, acoes, abrirSempre }: {
   );
 }
 
-export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Props) {
+export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange, conferenciaInicial = false }: Props) {
   const [busca, setBusca] = useState('');
   const [campoData, setCampoData] = useState<string>('ajuizamento');
   const [periodo, setPeriodo] = useState<string>('tudo');
@@ -269,6 +287,13 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
   const [fichaAberta, setFichaAberta] = useState<Record<string, unknown> | null>(null);
   const [abrindoId, setAbrindoId] = useState<string | null>(null);
   const [conferindo, setConferindo] = useState<AlvoConferencia | null>(null);
+  /** O caso aberto a partir da conferência — irmão da ficha, não filho dela. */
+  const [leadAberto, setLeadAberto] = useState<string | null>(null);
+  /** Qual titular a tela está mostrando: tudo, só a cota, só o honorário. */
+  const [modo, setModo] = useState<ModoCarteira>('JUNTOS');
+  /** A quarta aba do seletor: conferência de valores no lugar do dinheiro. */
+  const [abaConferencia, setAbaConferencia] = useState(conferenciaInicial);
+  const [relacao, setRelacao] = useState<AlvoRelacao | null>(null);
 
   const abrirFicha = async (processId: string) => {
     setAbrindoId(processId);
@@ -337,54 +362,42 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
           </p>
         ) : (
           <>
-            {/* Agregados da carteira */}
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <div className="rounded-lg border p-2.5">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Carteira</div>
-                <div className="text-lg font-semibold">{brl(totais.valor)}</div>
-                {totais.valorAtualizado > totais.valor + 0.01 && (
-                  <div className="text-xs">
-                    <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                      {brl(totais.valorAtualizado)}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {' '}com juros e correção{totais.corrigidoAte ? ` (até ${mesAno(totais.corrigidoAte)})` : ''}
-                    </span>
-                  </div>
-                )}
-                {/* Índices com cadências diferentes: a SELIC vem do Bacen todo dia,
-                    a TCM ainda é manual. Dizer só a mais nova enganaria. */}
-                {Object.keys(totais.referenciasPorIndice).length > 1 && (
-                  <div className="text-[11px] text-muted-foreground">
-                    {Object.entries(totais.referenciasPorIndice)
-                      .map(([i, r]) => `${INDICE_CURTO[i] || i} até ${mesAno(r)}`)
-                      .join(' · ')}
-                  </div>
-                )}
-                <div className="text-xs text-muted-foreground">
-                  {totais.processos} processos · {totais.partes} partes · pago {brl(totais.pago)}
-                </div>
-                {totais.partesSemCorrecao > 0 && (
-                  <div className="mt-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                    {totais.partesSemCorrecao} parte(s) sem índice para o ramo — entram no atualizado
-                    pelo valor nominal, então o corrigido está subestimado.
-                  </div>
-                )}
-                {totais.cnjsComFichaRepetida > 0 && (
-                  <div className="mt-1 flex items-start gap-1 text-[11px] leading-snug text-amber-600 dark:text-amber-400">
-                    <Copy className="mt-0.5 h-3 w-3 shrink-0" />
-                    <span>
-                      {totais.cnjsComFichaRepetida} CNJ(s) com ficha repetida. O total acima já conta
-                      cada um uma vez só — mas vale limpar o cadastro duplicado.
-                    </span>
-                  </div>
-                )}
-              </div>
+            {/* O dinheiro, aberto por dono. Um número grande por vez — o
+                seletor troca o número em vez de somar outro card na tela. */}
+            <CarteiraTitularPainel
+              porTitular={totais.porTitular}
+              modo={modo}
+              onModo={setModo}
+              valorAtualizado={totais.valorAtualizado}
+              corrigidoAte={totais.corrigidoAte}
+              referenciasPorIndice={totais.referenciasPorIndice}
+              processos={totais.processos}
+              pago={totais.pago}
+              partesSemCorrecao={totais.partesSemCorrecao}
+              cnjsComFichaRepetida={totais.cnjsComFichaRepetida}
+              onAbrirRelacao={estagio => setRelacao({ modo, estagio })}
+              onAbrirConferencia={() => setRelacao({ modo: 'JUNTOS', estagio: null, soCotaZerada: true })}
+              mesAno={mesAno}
+              indiceCurto={INDICE_CURTO}
+              conferencia={{
+                ativa: abaConferencia,
+                onSelecionar: setAbaConferencia,
+                conteudo: <ConferenciaConteudo boardId={boardId} onConferir={setConferindo} />,
+              }}
+            />
+
+            {/* Na aba Conferência o resto da carteira sai de cena — é a régua
+                de "um assunto por vez" do seletor, não conteúdo perdido: voltar
+                para Tudo/Do cliente/Honorários traz tudo de volta. */}
+            {abaConferencia ? null : (
+            <>
+            {/* Operação: tempo, sucesso e custo. Fica embaixo do dinheiro. */}
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-2">
               <div className="rounded-lg border p-2.5">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Tempo médio</div>
                 <div className="text-lg font-semibold">{dias(totais.mediaDiasNoMarco)}</div>
                 <div className="text-xs text-muted-foreground">
-                  no marco atual · idade média {totais.mediaIdadeDias != null ? `${Math.round(totais.mediaIdadeDias / 30)} meses` : '—'}
+                  no marco atual · idade média {dias(totais.mediaIdadeDias)}
                 </div>
               </div>
               <div className="rounded-lg border p-2.5">
@@ -398,8 +411,17 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                     : 'nenhum decidido com leitura de decisão ainda'}
                   {totais.semLeitura > 0 ? ` · ${totais.semLeitura} sem leitura de decisão` : ''}
                 </div>
+                {/* A perda é o complemento do sucesso, mas ler "88%" e calcular
+                    "12%" de cabeça é trabalho que a tela pode poupar — e é a
+                    perda, não o acerto, que dimensiona risco de carteira. */}
+                {totais.avaliaveis > 0 && totais.indiceSucesso != null && (
+                  <div className="mt-0.5 text-xs text-destructive">
+                    {100 - totais.indiceSucesso}% de perdas ·{' '}
+                    {totais.avaliaveis - totais.sucessos} de {totais.avaliaveis}
+                  </div>
+                )}
               </div>
-              <div className="rounded-lg border p-2.5 sm:col-span-3">
+              <div className="rounded-lg border p-2.5 col-span-2">
                 <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Custo e rentabilidade</div>
                 {totais.custo > 0 ? (
                   <div className="text-sm">
@@ -417,14 +439,6 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Carteira toda por estágio financeiro */}
-            <div className="rounded-lg border p-2.5">
-              <div className="mb-1.5 text-[11px] uppercase tracking-wide text-muted-foreground">
-                Carteira por estágio financeiro
-              </div>
-              <EstagioChips porEstagio={totais.porEstagio} />
             </div>
 
             {/* Honorário que ENTROU — a planilha, não a carteira. Fica FORA dos
@@ -516,7 +530,9 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
 
             <p className="text-[11px] leading-snug text-muted-foreground">
               Valores = quanto o processo vale (última decisão de cada PARTE, somadas), não o caixa
-              do escritório — cota do cliente e honorário ainda não são separados. Clique no valor
+              do escritório. A separação entre cota do cliente e honorário existe só nas partes
+              cuja fonte a traz — o painel do topo diz quanto da carteira é isso e quanto ainda não
+              tem dono atribuído. Clique no valor
               de um processo para ver quanto é de cada parte. O valor CORRIGIDO (em verde) aplica
               juros e correção do termo inicial de cada decisão até a data da tabela de índices —
               SELIC simples nos trabalhistas (buscada no Bacen todo dia), TCM nos estaduais (ainda
@@ -637,16 +653,32 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
                 <GrupoDoMarco key={g.chave} grupo={g} acoes={acoes} abrirSempre={filtrando} />
               ))}
             </div>
+            </>
+            )}
           </>
         )}
       </SheetContent>
     </Sheet>
 
-    {/* Conferência e ficha: irmãs do sheet da carteira, não filhas. */}
+    {/* Relação, conferência e ficha: irmãs do sheet da carteira, não filhas. */}
+    <CarteiraRelacaoSheet
+      alvo={relacao}
+      grupos={grupos}
+      onClose={() => setRelacao(null)}
+      onConferir={p => {
+        if (!boardId) return;
+        setConferindo({
+          processId: p.processId, boardId, cnj: p.cnj,
+          titulo: p.titulo, leadNome: p.leadNome, foco: 'valores',
+        });
+      }}
+    />
+
     <ProcessoConferenciaSheet
       alvo={conferindo}
       onClose={() => setConferindo(null)}
       onAbrirFicha={id => void abrirFicha(id)}
+      onAbrirLead={id => setLeadAberto(id)}
     />
 
     <Suspense fallback={null}>
@@ -657,6 +689,9 @@ export function PopCarteiraSheet({ boardId, boardName, open, onOpenChange }: Pro
           process={fichaAberta}
           mode="sheet"
         />
+      )}
+      {leadAberto && (
+        <LeadPainelPorId leadId={leadAberto} onClose={() => setLeadAberto(null)} />
       )}
     </Suspense>
     </>

@@ -232,12 +232,93 @@ Os gráficos plotam **por data de protocolo**, não por chegada: por chegada apa
 
 **Alerta de sync parado**: se o `gmail-inss-sync` não roda há mais de 2h, as telas avisam. Sem isso, sync parado exibe 0 e parece que ninguém protocolou.
 
+**Responsável da atividade "INSS atualizou …"** (25/08/2026): o `notify-inss-update` grava dono fixo por status — `Protocolado` → **Luana Barros**, todo o resto (Exigência, Em Análise, Concluída, Pendente, Cancelada) → **Jose Francisco Campos de Oliveira**. Antes herdava `leads.assigned_to`, e o lead do requerimento quase nunca tem alguém: 340 das 381 atividades (89%) nasciam sem dono e só andavam quando alguém tropeçava nelas. Backfill aplicado no mesmo dia nas pendentes dos últimos 32 dias; as anteriores ficaram sem dono de propósito.
+
+- O UUID da Luana ali é o `profiles.user_id` (`1589c873…`), **não** o `profiles.id` (`c5284e57…`). O filtro de "minhas atividades" remapeia e casa por `user_id` — o `sync-process-compromissos` grava o `profiles.id` nas audiências, e por isso as 19 criadas por ele não aparecem para ela.
+- Essas atividades **não carimbam `action_source`**: entram como `manual`. Medir "quanto o robô cria" por `action_source` deixa as 400 de fora — o que identifica é o título `INSS atualizou %`.
+
+**Mensagem automática no grupo do cliente** (26/08/2026): quando o e-mail do INSS chega, além da atividade sai uma mensagem no grupo do lead. O grupo tem cliente **e** equipe, então o texto fala com o cliente. `railway-server/src/lib/inss-mensagem-cliente.ts` decide o quê; `inss-zap.ts` redige e entrega.
+
+| Status | Mensagem | Por quê |
+|---|---|---|
+| Protocolado | Template fixo, **sem IA** | Os 296 eventos de protocolo têm zero despacho — não há texto pra reescrever |
+| Exigência | Pendências em linguagem simples + prazo | 553 dos 593 têm despacho; a lista sai do `extrairPontosPendentes` |
+| Concluída **com** veredito | Deferido / indeferido / arquivado por prazo | O veredito vem de `inss_admin_processes.resultado` ou do despacho |
+| Concluída **sem** veredito | Silêncio | 193 de 643. "Seu pedido foi concluído", sem dizer se ganhou, é pior que nada |
+| Em Análise, Pendente | Silêncio | O despacho ali é texto **do próprio escritório** no Meu INSS ("Segue procuração assinada em anexo") |
+| Cancelada | Silêncio | Dos 25 cancelamentos com despacho, todos são pedido nosso ou do cliente ("DESEJO CANCELAR ESSE REQUERIMENTO") |
+| PARSE_FAILED | Silêncio | 1.969 eventos em que nem o status foi lido |
+
+- **Janela 8h–20h de Brasília**: 28% dos e-mails do INSS chegam entre 20h e 8h (572 de 2.039). Fora da janela o texto é redigido na hora e gravado como `zap_status = 'agendado'`; quem entrega é o cron `dispatch-inss-zap` (10 em 10 min, devolve `skipped` fora do horário). O Railway roda em UTC — a hora sai de `Intl` com `timeZone: America/Sao_Paulo`, nunca de `getHours()`.
+- **Sem retroatividade**: só evento cujo e-mail chegou depois de `ZAP_CLIENTE_DESDE` (env `INSS_ZAP_CLIENTE_DESDE`). Há 1.480 eventos antigos nunca notificados; sem esse corte, ligar o envio despejaria notícia velha em grupo de cliente.
+- **Trava de repetição** por (processo, tipo): 108 pares (processo, status) se repetem no histórico, um deles 7 vezes, e 164 eventos repetem status já visto.
+- **Grupo determinístico**: mesma política do `src/lib/leadWhatsAppTarget.ts` — um grupo manda; vários, só se `leads.whatsapp_group_id` desempatar; sem desempate, **recusa**. Antes era `.limit(1)` sem ordenação e 36 leads têm mais de um grupo. Mensagem no grupo errado é dado de cliente vazando para outro cliente.
+- **`benefit_type` nunca é ecoado**: de 988 processos, 441 estão vazios e ~55 guardam fragmento do corpo do e-mail — alguns com o número do benefício dentro (`"(NB) 2466847943. Aguarde correspondência..."`). O rótulo sai por whitelist (`beneficioLegivel`) e a saída da IA ainda passa por `mascararDocumentos` (CPF e NB viram `***`).
+- **A IA nunca é o único caminho**: sem chave, timeout ou resposta vazia, sai o texto determinístico do `fallbackMensagemCliente`, que já é uma mensagem correta. Modelo: `google/gemini-3.6-flash`, ~19 chamadas/dia.
+- Fila e auditoria em `inss_status_history`: `zap_status` (enviado|agendado|silencio|sem_grupo|repetido|retroativo|suprimido|expirado|suspeito|pericia_escritorio|so_escritorio|erro), `zap_tipo`, `zap_texto` (o texto exato que foi ao grupo), `zap_enviado_at`, `zap_erro`. A coluna **não tem CHECK**, valor novo entra sem migration.
+
+**Duas exigências que o cliente não recebe** (27/08/2026, pedido do usuário). Medido sobre as 559 exigências com despacho: 255 viram `pericia_escritorio`, 17 viram `so_escritorio`, 53 saem filtradas e 234 saem iguais a hoje.
+
+1. **Agendamento de perícia é tarefa nossa** — `exigenciaDeAgendamentoDePericia` (`lib/inss-mensagem-cliente.ts`). Quando o INSS manda marcar a perícia, quem liga no 135 ou agenda no Meu INSS é o escritório; o cliente só é avisado da data depois de marcada, por uma pessoa. A atividade muda de cara: título vira `Agendar perícia no INSS — requerimento N` e a descrição abre com `📞 TAREFA DO ESCRITÓRIO`. O evento fica como `zap_status = 'pericia_escritorio'`, e como não conta na trava de repetição (`jaAvisouEsseTipo` só olha enviado/agendado), uma exigência posterior ainda avisa normalmente.
+   - O corte é em **"agendar"**, nunca em "135": 495 das 597 exigências citam o 135, mas na maioria ele é só o telefone do rodapé de um pedido de documentos. O gatilho é o imperativo (`Agende`) ou a necessidade (`é preciso/é necessário/deverá agendar`), sempre junto de perícia ou avaliação social — pega os três textos (BPC, Benefício por Incapacidade via Meu INSS, auxílio-acidente pelo 135).
+   - **Convocação não é agendamento**: "sua perícia foi remarcada… compareça no dia X" e "COMPARECER NO DIA 02/06/2026… (COMPROVANTE EM ANEXO)" continuam indo para o cliente — faltar à perícia derruba o pedido. Das 9 convocações com data e hora no histórico, o detector não pega nenhuma.
+
+2. **Pendência do escritório sai da mensagem** — `separarPendencias` (`lib/inss-despacho.ts`). Procuração sem assinatura válida, documento do procurador, termo de responsabilidade: o cliente lê como cobrança e não tem o que fazer. Vai só para a atividade, no bloco `🏢 PENDÊNCIA DO ESCRITÓRIO`; o que sobra para o cliente vai no bloco `📋 O CLIENTE PRECISA MANDAR` e é **o único texto** que a IA e o `fallbackMensagemCliente` enxergam. Quando não sobra nada, a mensagem não sai (`zap_status = 'so_escritorio'`) — mandar "o INSS pediu documentos" sem dizer quais só assusta.
+   - O corte é **pelo contexto, nunca pelo nome do documento**: CNH e OAB aparecem como identidade **do cliente** na exigência de biometria ("Documento de Identificação (RG, Carteira de Trabalho, CNH, Passaporte, Carteira de Profissão - OAB…)"). O que marca pendência nossa é a palavra da representação — procuração, procurador, advogado, outorgante, termo de responsabilidade, documento/vício/poderes de representação, ZapSign — mais o parágrafo padrão sobre validade de assinatura digital.
+   - Duas armadilhas do corpus, ambas com teste: **"procuração ou fiança reciprocamente outorgada"** é prova de união estável do art. 22 §3º do Dec. 3.048/99, papel do casal, fica com o cliente; e **"representante legal"** ficou de fora da lista porque nas exigências de biometria de BPC e nas de guarda de menor ele é a mãe ou o tutor, não o advogado.
+   - Quando não há pendência nossa, o texto sai **byte a byte igual** ao de hoje (485 das 557) — nenhuma exigência muda de forma sem motivo. Rótulo curto que só abria o item removido (`"Assinado por:`, `1)-.`) sai junto, senão fica órfão na mensagem.
+   - Segunda barreira: `REGRAS_COMUNS` do prompt proíbe pedir procuração, termo de responsabilidade ou documento do advogado, para o caso raro (2 de 559) em que a exigência não tem miolo extraível e o despacho cru chega à IA.
+   - Testes: `src/lib/__tests__/inssPendenciaEscritorio.test.ts` (11 casos, todos com texto real de `inss_status_history`).
+
+**Progresso do caso não sai depois do desfecho** (26/08/2026): a mensagem de conclusão de atividade ("Enviar ao grupo") anexa `📊 Progresso do caso: X%`, calculado pelos checklists do POP em `buildActivityMessage.ts`. O POP mede execução **interna** e continua andando depois de o INSS decidir.
+
+- Medido em 30 dias: **139** requerimentos receberam mensagem de progresso no grupo; em **36** a mensagem saiu depois de o INSS concluir, **33** deles indeferidos, com atraso de 0 a 26 dias. Nada disso era automático — `action_source = manual` nas 1.091 mensagens do período.
+- A causa raiz não é a tela: em **31 dos 33** não existia sequer a atividade "INSS atualizou … INDEFERIDO". Quem concluiu a atividade não tinha como saber. É o buraco fechado em 25–26/08 (atividade para requerimento com lead + dono por status).
+- Defesa aplicada: `useInssDesfechoCaso(caseId, leadId)` lê `inss_admin_processes` e, quando **todos** os requerimentos do caso têm desfecho (nenhum em andamento), `buildActivityMessage` **omite o percentual na mensagem do cliente** e troca o detalhe do assessor por `⚠️ Requerimento N está INDEFERIDO no INSS`. Caso com um pedido negado e outro em análise continua mostrando progresso — ali ele é real.
+- A notícia do desfecho **não** entra nessa mensagem: quem dá é a mensagem automática do INSS, acima. Dar a negativa de esguelha no meio de uma atividade é pior que não dar.
+- **Lacuna conhecida**: `ProcessUpdatesBell` monta a mensagem dentro de um `useCallback` por movimentação e não recebe o desfecho — ali o progresso ainda pode sair. É o fluxo de movimentação judicial (CNJ), não o do requerimento administrativo.
+- Estoque a tratar: **350** requerimentos indeferidos em **171** casos, e **160 desses casos têm atividade pendente** hoje.
+
 **Cron**: `railway-server/src/index.ts` chama o sync a cada `INSS_SYNC_INTERVAL_MIN` (padrão 20), janela de 6h. Até 03/08/2026 esse sync só rodava por clique — a última execução tinha 3 dias.
 
 **Vínculo automático — duas passadas** (`match-inss-orphans`, cron de 15 min):
 
 1. Protocolo sem lead e sem caso (292 em 17/08/2026) → `findInssOrphanMatch` tenta nº do requerimento, NB, custom field "Nº Requerimento INSS", título de atividade, CPF e nome. Órfão com CPF é raro (16 de 292); o caminho real é o nome.
 2. Protocolo **com lead e sem caso** (277) → assume o caso mais recente daquele lead. Antes ninguém religava: o lead ganhava `legal_case` depois do vínculo e o protocolo ficava parado; 30 estavam nesse estado. Não dispara `notify-inss-update` de propósito — notificar manda WhatsApp pro cliente, e aqui não houve novidade do INSS, só arrumamos vínculo interno.
+
+**Gate do `notify-inss-update` — bastava caso, agora basta lead** (27/08/2026): o `gmail-inss-sync` só chamava o notify em `if (caseId && allowNotify)`. O `notify-inss-update` aceita lead sem caso desde 25/08 e o `match-inss-orphans` foi corrigido em 26/08 — o sync do Gmail ficou sendo o último a exigir caso. Resultado: requerimento que o auto-match casa **só com lead** (cliente sem `legal_case` aberto) não virava atividade nem mensagem. Medido no dia da correção: **524 eventos em 244 processos** nunca notificados nesse estado, 53 deles em agosto/2026 — por status, 174 Concluída, 166 Exigência, 91 Pendente, 30 Em Análise, 29 Cancelada, 27 Protocolado. Testemunha: ESTER (req. 477357453), e-mail 27/08 00:26 BRT, lead casado às 00:43, zero atividade. Corrigido para `if ((caseId || leadId) && allowNotify)`, com `leadId` vindo de `existingProc.lead_id` ou do retorno de `applyInssMatch`.
+
+Backfill de agosto executado em 27/08/2026: **33 processos, 33 atividades, 0 mensagens**. Rodou em duas levas — 12 depois da auditoria de nome, e os 21 restantes só depois que a guarda subiu, para que vínculo errado fosse barrado pela máquina e não por planilha. Saldo do dia em `inss_status_history`: 25 `retroativo`, 46 `suprimido`, **10 `suspeito`** e 1 `enviado` (Ellena, PREV 1404). Os 6 vínculos errados foram desfeitos apagando junto o custom field envenenado — sem isso a passada 1 do matcher religa em 15 min. Rollback em `scratchpad/rollback-vinculos-errados.json`.
+
+Backfill dos atrasados é seguro quanto a WhatsApp: `eventoElegivelParaZap` barra tudo anterior a `INSS_ZAP_CLIENTE_DESDE` e marca `retroativo`, então reprocessar histórico **cria atividade sem mandar mensagem nenhuma**. O risco do backfill é outro: 500+ atividades pendentes de uma vez no colo do Jose Francisco.
+
+**Vínculo errado vira mensagem no grupo do cliente errado** (27/08/2026): enquanto o e-mail do INSS só virava atividade interna, um vínculo errado era sujeira. Desde que a atualização virou mensagem no grupo, virou risco de vazar o processo de um cliente para outro. Varredura dos **687 protocolos vinculados**: 67 com nome completo batendo, 399 parciais, 65 sem nome nenhum no lead para comparar, 144 com nome inútil no e-mail e **11 em conflito** — destes, 6 confirmados errados (ESTER no lead da ANA FLÁVIA, VALENTINA ARAUJO FRANCA numa notícia sobre "Valentina Francavilla", ELOA VITORIA no lead de ELOANE, LUIZ EDUARDO no de LUCAS DAVI, SARA RAYANE no de Ana Maria/João Manoel, FRANCISCO JAMES num caso trabalhista) e 1 a conferir (NIVIA × Nívea).
+
+Três defesas, aplicadas juntas:
+
+1. **`lib/inss-nome-confere.ts`** — `conferirNomeDoSegurado` compara o nome do e-mail com `victim_name`, `lead_name` e o nome do grupo. `victim_name` com 2+ tokens é nome estruturado e vale como confronto (um contém o outro, ou são pessoas diferentes); rótulo de funil só carrega o primeiro nome, então ali basta o primeiro nome do segurado aparecer inteiro. Rótulo só com palavra de processo ("✅PREV 1144 - ( ) Acd- -") dá `sem_base`, nunca `conflito` — não há nome ali para contradizer nada. Conflito ⇒ `zap_status = 'suspeito'`, a mensagem **não sai** e a atividade nasce com o aviso `⚠️ VÍNCULO SUSPEITO` dizendo qual nome brigou com qual.
+2. **Substring no matcher** — a passada 5 do `findInssOrphanMatch` usava `includes(primeiro) && includes(ultimo)`, e `FRANCA` casa dentro de `FRANCAVILLA`. Passou a comparar **token inteiro**.
+3. **A prova do requerimento pode ser circular** — o `applyInssMatch` grava o requerimento no custom field depois de casar por nome, então "o lead já tinha esse número" não prova nada se o campo nasceu junto com o protocolo. No caso da ESTER, protocolo criado 05/08 19:17:04 e custom field 19:17:07: três segundos. Só vale como evidência independente o campo **anterior ao e-mail** — e o campo envenenado ainda faz a passada 1 (`custom_field`) religar no mesmo lead errado, então desvincular sem apagá-lo não adianta.
+
+**Fila de conciliação e vínculo do protocolo ao lead** (26/08/2026): 989 requerimentos, **685 com lead (69%)** e **304 órfãos** — e `linked_by` é nulo nos 685, ou seja, todo vínculo que existe foi feito pelo robô; ninguém nunca usou a tela.
+
+O que o e-mail do INSS oferece como pista, medido nos 304 órfãos: **nome do segurado em 302**, **CPF em 18** (59 na base inteira, 6%), **NB em zero**. A única chave exata é o nº do requerimento anotado no lead antes do e-mail chegar — 158 dos 989.
+
+Por que o nome não fecha sozinho — o INSS identifica pelo **beneficiário** e a base pelo rótulo do funil e pelo **responsável** (`PREV 1630 - EVELYN/BERNARDO` é mãe e criança):
+
+| critério | acha candidato | resolve p/ 1 lead | conflito | nada |
+|---|---|---|---|---|
+| nome + sobrenome | 82 | 31 | 51 | **220** |
+| só primeiro nome | 264 | 34 | **230** | 38 |
+
+Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, grupos vinculados e os 29.185 registros de `whatsapp_groups_index`. Exigir nome completo devolve lista vazia; aceitar primeiro nome devolve trinta "Maria". Por isso o desenho é **lista ordenada para uma pessoa escolher**, nunca vínculo automático nessa faixa.
+
+- **`ProtocolosListaSheet` → botão "Sem dono (N)"**: fila dos requerimentos sem caso E sem lead, do mais recente para o mais antigo por `created_at` (não por `protocol_date`, que é justamente o que falta neles). Ligar força "Qualquer data". São ~3 por dia (88 em 30 dias); o acervo parado é 304.
+- **`src/lib/inssVinculoScore.ts`**: peso por pista (requerimento 1000 → CPF 900 → nome forte 500 → nome fraco 100) mais desempate por benefício igual (+40) / diferente (−60), lead que entrou perto do protocolo (+30) e lead de outra época (−25). Nenhum bônus faz palpite ultrapassar CPF.
+- **`buscarSugestoesDeCaso`** passou a: sugerir **lead sem caso** (`lead:<id>`, "(criar caso)") — antes só entrava lead que já tivesse `legal_case`, e o protocolo previdenciário quase nunca tem; procurar o número também em `protocolo_administrativo` e no campo "Nº Requerimento INSS"; e fazer uma passada **fraca** por primeiro nome **só quando nada forte apareceu**, rotulada "confira".
+- **`vincularProtocoloAoCaso`** agora grava `leads.victim_name` com o nome do segurado quando o campo está vazio (fecha o buraco para o próximo requerimento do mesmo cliente) e chama `notify-inss-update` — o e-mail que ficou parado por falta de vínculo vira atividade na hora, e mensagem ao cliente se for posterior ao corte.
+- **Caso ilustrativo — PREV 1404** (27/08/2026): lead, caso **e** grupo existiam, e mesmo assim o protocolo ficou órfão. O e-mail do INSS traz só requerimento e nome ("ELLENA DA SILVA MOREIRA"); o lead não tinha nenhuma das chaves — `cpf` nulo, `victim_name` nulo, sem campo "Nº Requerimento INSS", sem `lead_processes` com o número, e o único contato cadastrado era "Nayra" (a responsável). O nome da beneficiária só existia como "Ellena" dentro do `lead_name`, que o matcher ignora de propósito — e `%ELLENA%` casa com 4 leads (duas "Hellena" e a duplicata "Naira - Ellena / 1.404"). Vínculo feito à mão gravando as três coisas que faltavam: `case_id`/`lead_id` no protocolo, `victim_name` no lead e o requerimento no custom field. São essas duas últimas que fazem o **próximo** e-mail do mesmo cliente casar sozinho.
+- O que **não** adianta perseguir: extrair CPF do e-mail (54 de 928 despachos), usar NB (nunca vem) ou apertar o matcher automático por nome — cada ponto forçado ali vira risco de mandar mensagem de um cliente no grupo de outro.
 
 **O que NÃO existe** (pedido, mas sem dado): ranking de quem protocolou. Nenhuma fonte identifica o operador — `linked_by` é 0% preenchido, responsável do caso cobre 9%, atividade "PROTOCOLAR" casada cobre 24%. Só uma captura no ato do protocolo resolve, e ela não teria histórico.
 

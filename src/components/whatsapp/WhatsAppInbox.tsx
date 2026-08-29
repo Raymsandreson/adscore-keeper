@@ -50,6 +50,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { MessageSquare, Settings, RefreshCw, Smartphone, BarChart3, Chrome, ListChecks, AlertTriangle, WifiOff, X, Sparkles, Check, Loader2, Download, Users, List, Contact2, Share2, QrCode, ArrowLeft } from 'lucide-react';
+import { useUserRole } from '@/hooks/useUserRole';
 import { SharedConversationsPanel } from './SharedConversationsPanel';
 import { useSharedWithMe } from '@/hooks/useSharedWithMe';
 import { FocusDashboard } from './FocusDashboard/FocusDashboard';
@@ -195,7 +196,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     loading, instanceSwitching, switchProgress,
     instances: _allInstances,
     instanceStats: _allInstanceStats,
-    statsLoading, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, claimConversation, transferConversation, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
+    statsLoading, instancesLoaded, hasLoaded, sendMessage, sendMedia, sendLocation, deleteMessage, clearConversation, markAsRead, claimConversation, transferConversation, linkToLead, linkToContact, refetch, refetchStats, refetchInstances, fetchFullConversation, searchConversations,
     loadMoreConversations, hasMoreConversations, loadOlderConversationMessages,
     loadConversationMessagesAround, loadConversationMessagesForward,
   } = useWhatsAppMessages(selectedInstanceId, lockInstanceName);
@@ -257,6 +258,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const { boards } = useKanbanBoards();
   const { canView } = useModulePermissions();
   const { user } = useAuthContext();
+  const { isAdmin } = useUserRole();
   const { isConnected: googleConnected, importContacts: googleImportContacts } = useGoogleIntegration();
   const [importingGoogle, setImportingGoogle] = useState(false);
   const [importingWhatsApp, setImportingWhatsApp] = useState(false);
@@ -1716,6 +1718,36 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
         }} 
         initialTab={settingsTab}
       />
+    );
+  }
+
+  // Sem NENHUMA instância liberada (nem UazAPI nem Cloud API): a inbox inteira não tem o
+  // que mostrar — o seletor some, "Carregar Conversas" não traz nada e a pessoa fica sem
+  // saber o que fazer. Troca por um aviso único dizendo o próximo passo.
+  // Usa `_allInstances` (não `instances`) de propósito: `instances` já vem filtrado pela
+  // aba, e estar sem instância da Cloud API não significa estar sem instância nenhuma.
+  if (instancesLoaded && _allInstances.length === 0 && !lockInstanceName) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full min-h-[60vh] p-6">
+        <div className="text-center space-y-4 max-w-md">
+          <Smartphone className="h-16 w-16 mx-auto text-muted-foreground/30" />
+          <h2 className="text-lg font-semibold">Nenhuma instância de WhatsApp conectada</h2>
+          <p className="text-sm text-muted-foreground">
+            Conecte a instância do seu número profissional/comercial para começar a atender.
+            Enquanto isso, esta caixa de entrada fica vazia.
+          </p>
+          {isAdmin && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => { setSettingsTab('instances'); setShowSetup(true); }}
+            >
+              <QrCode className="h-4 w-4" />
+              Configurar instâncias
+            </Button>
+          )}
+        </div>
+      </div>
     );
   }
 

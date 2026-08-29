@@ -57,6 +57,39 @@ Em grupo, **cada instância-membro grava a sua própria cópia de cada mensagem*
 
 **Mensagem enviada para o JID sumia do menu** (corrigido na edge `send-whatsapp` v25, deployada no Externo em 18/08/2026): o alvo do envio pode ser `120…@g.us`, mas a coluna `phone` tem de guardar só dígitos — é assim que o webhook grava e é por essa forma que o menu procura a conversa. Eram 1.505 linhas entre 09/04 e 18/08, todas outbound nossas (~300/mês), vindas de `sendActivityGroupNotification` e `sendVoiceToWa`. `storagePhone` separa o alvo do envio da forma gravada; backfill de 1.548 linhas aplicado (inclui 43 com `@s.whatsapp.net`, de abril).
 
+### Mensagem citada — o "responder" do WhatsApp na bolha (26/08/2026)
+
+Quando alguém responde citando uma mensagem, a UazAPI entrega a resposta com o id da citada em `metadata.message.quoted` (= `content.contextInfo.stanzaID`) e uma **cópia do conteúdo citado** em `content.contextInfo.quotedMessage`. Nada disso era lido: a bolha mostrava só o texto da resposta — que muitas vezes é um "." solto, porque quem responde um PDF ou um áudio escreve só um ponto para apontar o arquivo. Sem o bloco de citação, a mensagem chegava sem contexto e não havia nada para clicar (relato de 21/08/2026 no grupo FAMÍLIA 345, respondendo um PDF de 30/06).
+
+- **A bolha mostra a citação** (`QuotedMessagePreview`): autor, ícone do tipo e prévia — texto, legenda, nome do arquivo, "Mensagem de voz", "Foto", "Localização", "Enquete". A prévia sai do próprio payload, sem ida ao banco. Tipos e desembrulho (efêmera, ver-uma-vez, documento com legenda) em `src/lib/whatsappQuotedMessage.ts`.
+- **Clicar leva até a original**, com o mesmo pulo da busca da conversa (`jumpToSearchHit`): rola até a bolha e pisca por 2s. Se a citada está fora do trecho carregado — o normal, porque se cita mensagem de meses atrás —, o id vira `created_at` em `findMessageByWhatsAppId` (`external-rpc.ts`) e o trecho é baixado em volta dela.
+- **O id do WhatsApp é a chave, não o uuid da linha.** Em grupo cada instância grava a sua cópia, com uuid próprio; o `stanzaID` é o mesmo em todas. Por isso o alvo do pulo é reprocurado depois do carregamento (a cópia visível pode ser a de outra instância) e a busca no banco monta valores exatos `<owner>:<id>` para `external_message_id` — que tem índice btree —, em vez de um `LIKE '%:id'` que varreria a tabela.
+- **Escala e cobertura**: 2.497 de 28.684 mensagens (8,7%) em 24–26/08 são respostas citando alguma coisa; numa amostra de 200, **200 tinham a mensagem original salva no banco** — o clique quase sempre encontra alvo. Quando não encontra, avisa em vez de ficar girando.
+- **Não confundir com o anúncio Click-to-WhatsApp**, que também usa `contextInfo` (via `externalAdReply`) mas não cita mensagem nenhuma — segue caindo no card de anúncio.
+
+### Foto de perfil do WhatsApp — conversa, ficha do lead e contatos (26/08/2026)
+
+A **foto de perfil do WhatsApp** aparece na lista de conversas, no cabeçalho do chat, no resumo da **ficha do lead**, na **ficha do contato** e na **lista de contatos**, no lugar do ícone. Quem não tem foto (ou não a expõe) continua no ícone de sempre — nunca fica espaço vazio.
+
+- **A UazAPI entrega a foto em `/chat/details`**: `imagePreview` (96px) com `preview: true`, `image` (original) com `preview: false`.
+- **A URL dela NÃO serve para exibir.** O link aponta para `pps.whatsapp.net` com validade assinada no próprio endereço (`oe=<epoch em hex>`). Medido em 26/08/2026 sobre `whatsapp_chat_details_cache`: **9 das 25 fotos mais recentes já respondiam 403** — inclusive linhas gravadas no mesmo dia, porque a UazAPI guarda a URL dela e devolve vencida. Colocar esse link num `<img>` dá foto que quebra em dias, calada.
+- **Por isso a imagem é nossa**: `get-whatsapp-avatars` (Railway) baixa o binário, converte para webp 256px (~10 KB) e guarda no bucket **privado** `wa-avatars` do Externo. O front recebe **signed URL de 7 dias**. Bucket público foi descartado de propósito: o caminho seria adivinhável pelo telefone, e foto de cliente é dado pessoal (LGPD).
+- **Cache em `whatsapp_avatars`** (Externo, RLS ligada e sem policy — só service role): 7 dias para quem tem foto, 3 dias para quem não tem (o que muda aí é a configuração de privacidade, não a foto). `source_key` é o nome do arquivo na URL do WhatsApp: se não mudou, a imagem não é reprocessada.
+- **Instância fora do ar ≠ sem foto.** A `WHATSJUD IA` respondia 503 na medição; se isso virasse `has_photo = false`, a foto de quem tem sumiria da tela por três dias. Falha de consulta não grava nada e volta a ser tentada.
+- **Grupo é o ID de 18 dígitos sem `@g.us`** — é assim que o webhook grava `whatsapp_messages.phone`. A chave do cache e da resposta é sempre só dígitos; o `@g.us` é acrescentado apenas na hora de perguntar à UazAPI, que só reconhece grupo pelo JID completo.
+- **Custo controlado**: a foto só é pedida quando o avatar entra na tela (IntersectionObserver único), em lotes de até 40 conversas por chamada, com cache em memória + `localStorage`. Sem isso, abrir o inbox com 400 conversas seriam 400 consultas à UazAPI de uma vez.
+- **A chave do cache normaliza a instância** (`avatarKey`). Até 27/08/2026 não normalizava na volta: o lote gravava `Raym|55…` e a tela lia `raym|55…`, então **nenhuma foto aparecia na aba do WhatsApp** — e o telefone ficava preso em `inFlight`, sem nova tentativa até recarregar. Ficha do lead e contatos escapavam porque mandam a instância vazia. Travado por teste em `src/hooks/__tests__/useWhatsAppAvatars.test.ts` (com o código antigo, os 4 casos falham).
+- **A foto fica salva entre sessões**: `localStorage` (chave `wa_avatars_v2`, TTL 6 dias) em vez de `sessionStorage`, e o arquivo sobe ao bucket com `cacheControl: '604800'` (7 dias). Antes ia sem isso e valia o default de 1 hora do Storage, então o navegador rebaixava a mesma imagem quase toda abertura. **A signed URL não devolve `Cache-Control`** — o gateway traduz o prazo em `Expires` (+7 dias) com `ETag` e `Last-Modified`; para conferir se um objeto tem o prazo certo, olhe `metadata.cacheControl` no `storage/v1/object/list`, não o header.
+  - `refresh: true` reenvia a imagem mesmo quando a foto não mudou — é o único jeito de corrigir arquivo antigo. Usado em 27/08/2026 para refazer as **73 fotos** que já estavam no bucket sem prazo de cache (`fetched: 73`, `failed: 0`).
+- **A instância é opcional.** A aba do WhatsApp sabe de qual instância é a conversa; a ficha do lead e a lista de contatos só têm o telefone. Sem ela, o servidor pergunta a quem já trocou mensagem com aquele número (`whatsapp_messages.phone`, que tem índice) e lê o cache por telefone em qualquer instância — assim a foto que a aba do WhatsApp já baixou serve para a ficha sem gastar chamada nova.
+- **Só instância conectada é consultada.** `whatsapp_instances.is_active` é `true` nas 26 cadastradas, inclusive nas desligadas: medido em 26/08/2026, **8 respondiam `connected`, 14 `disconnected` e 4 devolviam 401**. Antes desse filtro, pedir a foto sem instância caía em instância morta e voltava "sem foto" para todo mundo. O estado é sondado (`/instance/status`) no máximo a cada 5 minutos, e a busca tenta até 3 instâncias por telefone.
+- **Link vencido na origem** (a UazAPI às vezes devolve URL já expirada) mantém a foto anterior e reagenda a tentativa para **1 hora**, não para o TTL cheio.
+- **Teto na lista de contatos**: abaixo de `ENRICH_LIMIT` (300 linhas, o mesmo teto das etiquetas) a foto só aparece se já estiver em cache — rolar 36 mil contatos buscando foto seria uma consulta por linha.
+- **Dentro do grupo, cada mensagem mostra a foto de quem falou** (27/08/2026), fora da bolha e alinhada ao nome, como no WhatsApp. Clicar na foto abre a ficha do participante no painel lateral — o mesmo destino do nome. Participante ainda não identificado (só `@lid`, sem telefone no roster) fica no círculo com ícone: o alinhamento das bolhas não depende de ter foto. Vale na aba WhatsApp (`WhatsAppChat`) e na prévia do dashboard/ficha (`DashboardChatPreview`, avatar menor).
+  - Medido em 27/08/2026 num grupo de 18 remetentes: **3 de 8 participantes consultados tinham foto**, `failed: 0` e `unreachable: 0` — quem aparece sem foto é privacidade do próprio contato, não falha nossa.
+  - Custo: os participantes entram no mesmo lote de 40 e no mesmo cache de 7 dias dos contatos, então a foto do cliente que já apareceu na lista de conversas não é buscada de novo dentro do grupo.
+- Arquivos: `railway-server/src/functions/get-whatsapp-avatars.ts`, `src/hooks/useWhatsAppAvatars.ts`, `src/components/whatsapp/WhatsAppAvatar.tsx`.
+
 ### Chat interno da equipe dentro da conversa (botão "Equipe")
 - Botão **"Equipe"** no topo da conversa abre/fecha o chat interno sobre aquele cliente — coluna própria no desktop, painel deslizante em tela estreita. O cliente não vê nada do que é escrito ali. O estado (aberto/fechado) fica salvo por navegador; ao fechar, um aviso lembra que a reabertura é nesse mesmo botão.
 - `@` no campo lista os membros e traz **"@todos"** no topo (avisa a equipe inteira). Escrever `@todos`, `@equipe` ou `@todas` na mão tem o mesmo efeito.
@@ -376,6 +409,14 @@ Tocar no popup abre a conversa no mesmo drawer do resto do app (`WhatsAppChatShe
 - Falha de rede aparecia como "Nenhuma mensagem encontrada", que é mentira e não oferece saída.
 
 O que passou a valer: página de mensagens com teto de **12 s** e `getOurInstancePhones` com teto de **8 s** (`withTimeout`, `src/lib/promiseTimeout.ts`), falha não fica cacheada, a lista entra pelo cache síncrono e refina a autoria de grupo depois, e o que falha vira **"Tentar de novo"** na tela — nunca spinner eterno nem "conversa vazia".
+
+#### A sugestão da IA já chega escrita no popup (28/08/2026)
+
+O popup de mensagem de WhatsApp responde sem abrir o chat — e agora a resposta sugerida **nasce pronta**, como no campo do chat: assim que o aviso aparece, uma faixa acima do campo mostra o que a IA responderia. Tocar no texto leva pro campo (revisar e enviar — nada sai sozinho); "Outra" pede de novo; X dispensa. O botão de ✨ continua para quem quer o diálogo completo (tom, reformular).
+
+- **Mesmo cérebro do chat**: `useSugestaoAutomatica` + `gerarSugestaoDeResposta` — e a **mesma preferência** (`wa-sugestao-automatica`): desligar "Sugerir resposta" no chat desliga no popup também. Só pede à IA quando a última fala é do cliente.
+- **Custo**: cada popup passa a buscar o histórico (20 msgs) e, havendo pendência, faz **1 chamada** ao `ai-text-editor`. O botão de ✨ seguia o caminho barato (só no clique); a sugestão pronta é o preço de não precisar pedir.
+- Código: `WhatsAppSugestaoAutomatica` em `src/components/notifications/WhatsAppToastActions.tsx`, slot `composerHint` em `TeamNotificationToast`, ligado em `PushNotificationBridge`. Testes: `WhatsAppSugestaoAutomatica.test.tsx` (3) e `TeamNotificationToast.popup-actions.test.tsx`.
 
 ---
 

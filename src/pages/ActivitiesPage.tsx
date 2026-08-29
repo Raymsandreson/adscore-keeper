@@ -33,6 +33,7 @@ import { sendActivityGroupNotification, type GroupNotifyOptions } from '@/lib/ac
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
+import { useInssDesfechoCaso } from '@/hooks/useInssDesfechoCaso';
 import { buildActivityMessage, extractClientFirstName, stripHtmlForMessage } from "@/components/activities/buildActivityMessage";
 import { buildNotificationAt, hydrateNotificationTime } from "@/lib/notificationDateTime";
 import { ActivityNextStepsAgent } from '@/components/activities/ActivityNextStepsAgent';
@@ -3451,6 +3452,13 @@ const ActivitiesPage = () => {
   // Strip HTML tags from Lexical editor content, preserving line breaks
   const stripHtml = stripHtmlForMessage;
 
+  // O POP não sabe o que o INSS decidiu: sem isto a mensagem anuncia
+  // "Progresso do caso: X%" para quem já teve o pedido negado.
+  const inssDesfecho = useInssDesfechoCaso(
+    selectedActivity?.case_id || null,
+    selectedActivity?.lead_id || formLeadId || null,
+  );
+
   // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
   // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
   const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
@@ -3460,7 +3468,7 @@ const ActivitiesPage = () => {
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
-      currentUserId: user?.id || null, resolveUserName, getTemplateForContext,
+      currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
   // Active step context — process workflow > lead's funnel board.

@@ -38,6 +38,13 @@ export interface PecaDoProcesso {
   dataDocumento: string | null;
   storagePath: string | null;
   paginas: number | null;
+  /** `manual` = anexada por alguém e, só por isso, apagável. */
+  origem?: string | null;
+  /** Vínculo explícito com um marco (pop_marcos.chave): a peça o comprova. */
+  marcoChave?: string | null;
+  /** Preenchido = fora do casamento e da tela; o arquivo continua no bucket. */
+  ocultaEm?: string | null;
+  ocultaMotivo?: string | null;
 }
 
 /** Para que número a peça está sendo procurada — muda o desempate por título. */

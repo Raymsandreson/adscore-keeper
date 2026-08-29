@@ -46,6 +46,8 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'set-stage-result-key': 'railway',
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
+  'sync-group-contacts': 'railway', // blocklist de equipe lia instances/profiles do Cloud; ilike não casava telefone formatado (criava contato duplicado); @lid descartado e nome do roster ignorado
+  'get-whatsapp-avatars': 'railway', // foto de perfil do WhatsApp: só existe no Railway (usa sharp + bucket privado)
   'scan-duplicate-contacts': 'railway',
   'recover-leads-phone-55': 'railway',
   'transcribe-activity-call': 'railway',
@@ -79,6 +81,9 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // São Paulo e passa. Some a isso a LGPD — o tráfego carrega CPF/CNPJ e extrato.
   'celcoin-open-finance': 'external',
   'update-profile-avatar': 'railway', // foto de perfil: a policy de UPDATE de profiles barra a sessão anônima do Externo — só service role grava
+  // Testemunho → Instagram: só existem no Railway (sharp + fonte embutida; token Meta no env do servidor)
+  'testimonial-to-instagram-post': 'railway',
+  'publish-instagram-testimonial': 'railway',
 
   // --- INSS administrativo / e-mails processuais ---
   // Só existem no Railway. Estavam FORA deste mapa e os componentes chamavam

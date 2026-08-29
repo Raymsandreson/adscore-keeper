@@ -27,13 +27,17 @@
 // inteira, para a tela dizer "N de 475 processos" sem refazer a conta.
 //
 // AVISO QUE A TELA REPETE: valor é "quanto o processo vale" (última decisão por
-// cliente), não caixa do escritório — cota do cliente e honorário ainda não são
-// separados. Rentabilidade aqui compara custo de aquisição com esse valor e com
-// o PAGO realizado; leia com essa régua.
+// cliente), não caixa do escritório. `totais.porTitular` separa cota do cliente
+// e honorário nas partes cuja fonte permite — 262 das 1.660 hoje, porque a
+// decisão fixa quanto o processo vale sem dizer de quem é cada pedaço. O que
+// não separa continua somando na carteira e sai medido em `Cobertura`.
+// Rentabilidade aqui compara custo de aquisição com esse valor e com o PAGO
+// realizado; leia com essa régua.
 // =============================================================================
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, authClient, ensureExternalSession } from '@/integrations/supabase';
 import { estagioDoLancamento } from '@/lib/lancamentoCategorias';
+import { separarPorTitular, type ParteDaCarteira } from '@/lib/carteiraPorTitular';
 
 export interface CarteiraPopLinha {
   process_id: string;
@@ -165,6 +169,13 @@ export interface ParteDoProcesso {
   coeficiente: number | null;
   pago: number;
   estagio: string;
+  /**
+   * Cota do cliente nesta parte. `null` = a fonte do valor não separa titular
+   * (veio da decisão, que fixa quanto o processo vale sem dizer de quem é).
+   */
+  cota: number | null;
+  /** Honorário do escritório: contratual à vista + parcelado + sucumbencial. */
+  honorario: number | null;
 }
 
 export interface ProcessoDoMarco {
@@ -180,6 +191,14 @@ export interface ProcessoDoMarco {
   suspenso: boolean;
   /** O valor do processo é a SOMA das partes — aqui está a abertura. */
   partes: ParteDoProcesso[];
+  /** Soma das cotas das partes que separam titular. */
+  cota: number;
+  /** Soma dos honorários das partes que separam titular. */
+  honorario: number;
+  /** Alguma parte deste processo não diz de quem é o dinheiro. */
+  temParteSemTitular: boolean;
+  /** Alguma parte veio com a cota zerada e honorário lançado — vai à conferência. */
+  temCotaZerada: boolean;
   /** > 1 = o CNJ tem ficha repetida neste POP (a dedup já protegeu o total). */
   cadastros: number;
   /** De quem é o processo: o lead (caso) da ficha canônica. */
@@ -274,13 +293,66 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
     setErro(null);
     try {
       await ensureExternalSession();
-      const { data, error } = await (db.rpc as unknown as (
+      // ── PAGINAR A RPC, SEMPRE
+      //
+      //    O PostgREST devolve no MÁXIMO 1.000 linhas por requisição, e a RPC
+      //    não é exceção. `pop_carteira_marcos` devolve 1.660 linhas neste POP:
+      //    a chamada sem `.range()` trazia 1.000 e a carteira inteira era
+      //    calculada em cima do pedaço, SEM erro nenhum na tela.
+      //
+      //    O estrago medido em 27/08/2026, com o Raym olhando a tela:
+      //    carteira R$ 76.407.190,83 em vez de R$ 92.141.736,81 (faltavam
+      //    R$ 15.734.545,98), 433 processos em vez de 1.050, e o estágio
+      //    PROJETADO inteiro invisível — 23 partes, R$ 5.549.368,42, zero
+      //    linhas na tela. Os honorários herdavam o mesmo buraco: 12 CNJs
+      //    apareciam como "fora desta carteira" só porque estavam depois da
+      //    milésima linha.
+      //
+      //    Mesmo teto, mesma cura do laço de `jm_lancamentos` logo abaixo e da
+      //    `vw_jm_conferencia_acordos`. Regra da casa: consulta que pode passar
+      //    de 1.000 linhas se pagina — não existe "essa aqui é pequena".
+      //
+      // ── NUNCA GUARDE `db.rpc` NUMA VARIÁVEL
+      //
+      //    `const rpc = db.rpc` DESVINCULA o método do objeto. O supabase-js
+      //    implementa `rpc(fn, args) { return this.rest.rpc(...) }`; chamado
+      //    solto, `this` vem `undefined` e a carteira inteira morre com
+      //    "Cannot read properties of undefined (reading 'rest')".
+      //
+      //    Aconteceu em 27/08/2026 e derrubou a tela em produção. `.bind(db)`
+      //    conserta, mas continua sendo uma linha que alguém apaga sem
+      //    perceber. Aqui a chamada é sempre `db.rpc(...)` — acesso à
+      //    propriedade e chamada na mesma expressão, que preserva o `this` por
+      //    construção. Não há o que desvincular.
+      const pagina = (de: number) => (db.rpc as unknown as (
         f: string, a: Record<string, unknown>,
-      ) => PromiseLike<{ data?: CarteiraPopLinha[] | null; error?: { message?: string } | null }>)(
-        'pop_carteira_marcos', { p_board_id: boardId },
-      );
-      if (error) throw new Error(error.message || 'pop_carteira_marcos falhou');
-      const rows = data || [];
+      ) => {
+        range: (de: number, ate: number) => PromiseLike<{
+          data?: CarteiraPopLinha[] | null; error?: { message?: string } | null;
+        }>;
+      })('pop_carteira_marcos', { p_board_id: boardId }).range(de, de + 999);
+
+      const rows: CarteiraPopLinha[] = [];
+      for (let inicio = 0; ; inicio += 1000) {
+        // O erro precisa dizer ONDE quebrou. Sem isto, uma mensagem crua do
+        // supabase-js chega na tela sem dizer de qual das seis consultas do
+        // `carregar` ela veio, e a sessão inteira vira adivinhação.
+        let data: CarteiraPopLinha[] | null | undefined;
+        try {
+          const r = await pagina(inicio);
+          if (r.error) throw new Error(r.error.message || 'sem mensagem');
+          data = r.data;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          throw new Error(`pop_carteira_marcos falhou na página ${inicio / 1000 + 1}: ${msg}`);
+        }
+        const lote = data || [];
+        rows.push(...lote);
+        if (lote.length < 1000) break;
+        // Trava de segurança: 50 mil linhas é ordem de grandeza acima de
+        // qualquer POP real. Se chegar aqui, é laço infinito, não carteira.
+        if (rows.length >= 50000) break;
+      }
       setLinhas(rows);
 
       // CAC vivo no Cloud, em lotes — o snapshot do Externo é o fallback.
@@ -529,6 +601,10 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
         leadsNomes: l.leads_nomes ?? [],
         valorAtualizado: 0,
         temParteSemCorrecao: false,
+        cota: 0,
+        honorario: 0,
+        temParteSemTitular: false,
+        temCotaZerada: false,
         ajuizamentoEm: l.ajuizamento_em ?? null,
         marcoEm: l.marco_em ?? null,
         datas: datasPorProcesso[l.process_id] || {},
@@ -563,9 +639,23 @@ export function useCarteiraDoPop(boardId: string | null, filtro: FiltroCarteira 
           coeficiente: corrigido ? coef : null,
           pago: pagoDaParte,
           estagio: l.estagio_financeiro,
+          cota: l.cota_cliente == null ? null : Number(l.cota_cliente),
+          honorario: l.honorario_parte == null ? null : Number(l.honorario_parte),
         });
         // PAGO não corrige por decisão, não por falta de índice — não é buraco.
         if (!corrigido && !jaPago && valorDaParte > 0) p.temParteSemCorrecao = true;
+
+        // De quem é o dinheiro. `null` nas duas colunas = a decisão não separa;
+        // some no processo mesmo assim, porque a carteira soma a condenação.
+        const cotaDaParte = l.cota_cliente == null ? null : Number(l.cota_cliente);
+        const honDaParte = l.honorario_parte == null ? null : Number(l.honorario_parte);
+        if (cotaDaParte == null && honDaParte == null) {
+          if (valorDaParte > 0) p.temParteSemTitular = true;
+        } else {
+          p.cota += cotaDaParte || 0;
+          p.honorario += honDaParte || 0;
+          if (cotaDaParte === 0 && (honDaParte || 0) > 0) p.temCotaZerada = true;
+        }
       }
       p.valor += valorDaParte;
       p.valorAtualizado += atualizadoDaParte;
@@ -758,6 +848,17 @@ function calcularTotais(
       porEstagio[l.estagio_financeiro] = (porEstagio[l.estagio_financeiro] || 0) + v;
     }
 
+    // Quem é o dono do dinheiro, do mesmo recorte. Sai daqui e não da lista por
+    // marco para o número grande do topo nunca divergir do que está listado.
+    const porTitular = separarPorTitular(linhas.map((l): ParteDaCarteira => ({
+      processoCnj: l.cnj_num,
+      cliente: l.cliente,
+      valor: Number(l.valor_condenacao || 0),
+      cota: l.cota_cliente == null ? null : Number(l.cota_cliente),
+      honorario: l.honorario_parte == null ? null : Number(l.honorario_parte),
+      estagio: l.estagio_financeiro,
+    })));
+
     const procs = [...processos.values()];
     const dias = procs.map(p => p.dias_no_marco).filter((d): d is number => d != null);
     const idades = procs.map(p => p.idade_dias).filter((d): d is number => d != null);
@@ -853,6 +954,9 @@ function calcularTotais(
       honorarioCnjsVencidos,
       honorarioVencidoMaisAntigo,
       porEstagio,
+      /** A carteira aberta por dono: cota do cliente, honorário, e os dois
+       *  juntos — mais a medida de quanto dela sabe responder isso. */
+      porTitular,
       mediaDiasNoMarco: dias.length ? Math.round(dias.reduce((s, d) => s + d, 0) / dias.length) : null,
       mediaIdadeDias: idades.length ? Math.round(idades.reduce((s, d) => s + d, 0) / idades.length) : null,
       decididos: decididos.length,
@@ -870,3 +974,7 @@ function calcularTotais(
     };
   }
 }
+
+/** Os agregados do recorte — o que o topo da carteira mostra. Tipado a partir
+ *  da função para nunca sair do lugar quando um número novo entra na conta. */
+export type TotaisCarteira = ReturnType<typeof calcularTotais>;

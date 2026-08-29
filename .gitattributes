@@ -1,0 +1,6 @@
+# Scripts .mjs têm shebang (#!/usr/bin/env node). Com core.autocrlf=true o
+# checkout Windows vira CRLF, e o ssrTransform do Vite (hashbangRE = /^#!.*\n/,
+# onde "." não casa \r) deixa de reconhecer o shebang — o import içado entra
+# antes dele e o vitest falha na coleta com "Invalid or unexpected token".
+# LF forçado resolve isso e também mantém o shebang executável em Unix.
+*.mjs text eol=lf

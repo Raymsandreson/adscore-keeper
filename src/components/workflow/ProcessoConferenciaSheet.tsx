@@ -12,18 +12,22 @@
 //      (somar todas infla ~2,6x; a tela mostra a soma ingênua para comparação).
 //   4. Pagamentos — o que virou caixa de verdade.
 // =============================================================================
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
-  AlertTriangle, CheckCircle2, FileText, Info, Milestone, Paperclip, RefreshCw, ShieldAlert, XCircle,
+  AlertTriangle, Calculator, CheckCircle2, FileText, Info, Loader2, Milestone, Paperclip, Plus, RefreshCw, ShieldAlert, Undo2, Unlink, UserRound, XCircle,
 } from 'lucide-react';
 import { useConferenciaProcesso, type AlvoConferencia, type NivelAlerta } from '@/hooks/useConferenciaProcesso';
-import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
+import { FONTE_LABEL, useProcessoMarcos } from '@/hooks/useProcessoMarcos';
+import { ReguaMarcosDoPop, type MarcoDaRegua } from '@/components/cases/ReguaMarcosDoPop';
 import { ESTAGIO_LABEL } from '@/hooks/usePopMarcos';
 import { formatCnj, onlyDigits } from '@/lib/cnj';
+import { MudancasDaPecaDialog } from './MudancasDaPecaDialog';
+import { MarcoEvidenciaDialog, type AlvoEvidencia } from './MarcoEvidenciaDialog';
 import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
 import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
 import { melhorPeca, rotuloDaPeca, type AssuntoPeca, type PecaDoProcesso } from '@/lib/pecasDoProcesso';
@@ -99,12 +103,15 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
   const peca = melhorPeca(pecas, data, { assunto, janelaDias });
   if (!peca) return null;
   const rotulo = rotuloDaPeca(peca);
+  // De onde a peça veio: quem confere precisa saber se está lendo o que o
+  // tribunal juntou ou o que alguém do escritório subiu à mão.
+  const procedencia = peca.origem === 'manual' ? 'anexada à mão' : 'peça do tribunal';
   return (
     <button
       type="button"
       onClick={() => onAbrir(peca, rotulo)}
       className="inline-flex items-center gap-1 text-[11px] underline underline-offset-2 hover:text-foreground"
-      title={rotulo}
+      title={`${rotulo} · ${procedencia}`}
     >
       <Paperclip className="h-3 w-3 shrink-0" />
       ver a peça
@@ -116,24 +123,346 @@ function BotaoPeca({ pecas, data, assunto, janelaDias, onAbrir }: {
   );
 }
 
+/**
+ * "anexar peça" — o caminho manual, que existe porque o automático não basta.
+ *
+ * O certificado digital abre um tribunal em oito, e a peça que decide dinheiro
+ * (termo de acordo, planilha homologada) é quase sempre restrita. Sem isto, a
+ * carteira ficaria esperando um certificado que pode nunca funcionar.
+ *
+ * A peça entra amarrada à DATA DO MARCO — é o que faz o casamento por data
+ * encontrá-la depois, sem nenhuma chave nova.
+ *
+ * Marco ainda NÃO detectado não tem data — aí a data vem da pessoa (29/08/2026,
+ * pedido do Raym: "faltou as peças para subsidiar a passagem pelo marco"). O
+ * clique abre um popover pedindo a data do documento antes do PDF, e a peça
+ * sobe com `marcoChave`: é o vínculo explícito que a detecção lê, já que a
+ * maioria dos marcos não tem sinal de documento cadastrado no POP.
+ */
+function BotaoAnexar({ rotulo, data, marcoChave, pedirData, onAnexar }: {
+  rotulo: string;
+  data: string | null;
+  /** Chave do marco para vincular explicitamente (jm_documentos.marco_chave). */
+  marcoChave?: string;
+  /** true = marco sem data detectada: pedir a data do documento antes do PDF. */
+  pedirData?: boolean;
+  onAnexar: (a: File, d: { titulo: string; dataDocumento: string | null; marcoChave?: string | null }) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const input = useRef<HTMLInputElement | null>(null);
+  const [subindo, setSubindo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [pedindo, setPedindo] = useState(false);
+  const [dataEscolhida, setDataEscolhida] = useState('');
+
+  return (
+    <>
+      <input
+        ref={input} type="file" accept="application/pdf" className="hidden"
+        onChange={async (e) => {
+          const a = e.target.files?.[0];
+          e.target.value = ''; // permite reanexar o mesmo arquivo depois de um erro
+          if (!a) return;
+          setSubindo(true); setErro(null);
+          const r = await onAnexar(a, {
+            titulo: rotulo,
+            dataDocumento: pedirData ? (dataEscolhida || null) : data,
+            marcoChave: marcoChave ?? null,
+          });
+          setSubindo(false);
+          if (!r.ok) setErro(r.erro ?? 'falha ao anexar');
+        }}
+      />
+      {pedirData ? (
+        <Popover open={pedindo} onOpenChange={setPedindo}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              disabled={subindo}
+              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+              title={`Anexar a peça que comprova "${rotulo}"`}
+            >
+              {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+              {subindo ? 'anexando…' : 'anexar peça'}
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-64 space-y-2 p-3">
+            <div className="text-xs font-medium">Peça que comprova “{rotulo}”</div>
+            <p className="text-[11px] leading-snug text-muted-foreground">
+              Este marco ainda não tem data detectada. Informe a data do documento — é ela que
+              vai datar o marco na régua.
+            </p>
+            <input
+              type="date"
+              value={dataEscolhida}
+              onChange={(e) => setDataEscolhida(e.target.value)}
+              className="w-full rounded-md border bg-background px-2 py-1 text-xs"
+            />
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={!dataEscolhida}
+              onClick={() => { setPedindo(false); input.current?.click(); }}
+            >
+              Escolher o PDF
+            </Button>
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <button
+          type="button"
+          disabled={subindo}
+          onClick={() => input.current?.click()}
+          className="inline-flex items-center gap-1 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          title={`Anexar a peça que comprova "${rotulo}"`}
+        >
+          {subindo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+          {subindo ? 'anexando…' : 'anexar peça'}
+        </button>
+      )}
+      {erro && <span className="text-[10px] text-destructive">{erro}</span>}
+    </>
+  );
+}
+
+/**
+ * "desvincular" — a peça errada sai de cena, e nada se apaga.
+ *
+ * Vale igual para peça do tribunal e para upload manual: o Escavador baixa
+ * trocado, o tribunal junta no lugar errado, o casamento por data pega a peça de
+ * outro ato, ou alguém sobe o arquivo errado. Em todos, o que se quer é que ela
+ * pare de aparecer aqui — não que ela deixe de existir.
+ *
+ * Apagar não traria nada que isto não traga, e traria risco: o que veio do
+ * tribunal custou uma solicitação, e ela funciona em um tribunal de oito.
+ */
+function BotaoDesvincular({ peca, onDesvincular }: {
+  peca: PecaDoProcesso;
+  onDesvincular: (p: PecaDoProcesso, motivo: string) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const [indo, setIndo] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => {
+        setIndo(true);
+        await onDesvincular(peca, 'peça errada para este marco');
+        setIndo(false);
+      }}
+      className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
+      title="Desvincular: a peça deixa de aparecer neste marco. O arquivo continua no acervo e dá para desfazer."
+    >
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Unlink className="h-3 w-3" />}
+    </button>
+  );
+}
+
+/**
+ * "vincular a marco" — peça que JÁ está no acervo comprova um marco.
+ *
+ * O acervo do Escavador costuma ter a peça da passagem (acórdão, alvará,
+ * comprovante) — pedir upload de novo seria retrabalho. O clique abre a lista
+ * de fases da régua; escolher grava jm_documentos.marco_chave e o marco vira
+ * atingido com a data da peça. Peça sem data não vincula: a detecção exige
+ * data, e vínculo que não gera marco seria botão que não faz nada.
+ */
+function BotaoVincularMarco({ peca, fases, onVincular }: {
+  peca: PecaDoProcesso;
+  fases: MarcoDaRegua[];
+  onVincular: (p: PecaDoProcesso, marcoChave: string | null) => Promise<void>;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [indo, setIndo] = useState(false);
+  if (fases.length === 0) return null;
+
+  const escolher = async (chave: string | null) => {
+    setAberto(false);
+    setIndo(true);
+    await onVincular(peca, chave);
+    setIndo(false);
+  };
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          disabled={indo}
+          className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground disabled:opacity-50"
+          title="Esta peça comprova qual marco?"
+        >
+          {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : peca.marcoChave ? 'trocar marco' : 'vincular a marco'}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-64 p-2">
+        <div className="mb-1 text-xs font-medium">Esta peça comprova…</div>
+        {!peca.dataDocumento ? (
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Peça sem data de documento — sem data, o vínculo não gera marco. Anexe pela linha do
+            marco informando a data.
+          </p>
+        ) : (
+          <div className="max-h-56 space-y-0.5 overflow-y-auto">
+            {fases.map(f => (
+              <button
+                key={f.chave}
+                type="button"
+                onClick={() => void escolher(f.chave)}
+                className={`block w-full rounded px-1.5 py-1 text-left text-[11px] hover:bg-muted ${peca.marcoChave === f.chave ? 'bg-muted font-medium' : ''}`}
+              >
+                {f.rotulo}
+                {f.estado === 'atingido' && <span className="text-muted-foreground"> · já detectado</span>}
+              </button>
+            ))}
+            {peca.marcoChave && (
+              <button
+                type="button"
+                onClick={() => void escolher(null)}
+                className="block w-full rounded px-1.5 py-1 text-left text-[11px] text-destructive hover:bg-muted"
+              >
+                tirar o vínculo
+              </button>
+            )}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * "o que esta peça muda" — para peça que JÁ está no marco.
+ *
+ * O diálogo de mudanças só abria depois de anexar, e isso deixava de fora o caso
+ * mais comum: a peça certa já veio nos autos e ninguém nunca a leu. Foi o que
+ * aconteceu no caso 88 — o termo de acordo estava no bucket desde 24/08 e a
+ * carteira seguia com o valor errado, sem caminho na tela para descobrir.
+ */
+function BotaoOQueMuda({ peca, onVer }: {
+  peca: PecaDoProcesso;
+  onVer: (p: PecaDoProcesso) => Promise<void>;
+}) {
+  const [indo, setIndo] = useState(false);
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => { setIndo(true); await onVer(peca); setIndo(false); }}
+      className="shrink-0 text-muted-foreground hover:text-foreground disabled:opacity-50"
+      title="Ver o que esta peça muda nos valores"
+    >
+      {indo ? <Loader2 className="h-3 w-3 animate-spin" /> : <Calculator className="h-3 w-3" />}
+    </button>
+  );
+}
+
+/** Uma peça foi desvinculada aqui — o caminho de volta fica à vista. */
+function AvisoOculta({ pecas, data, onReexibir }: {
+  pecas: PecaDoProcesso[]; data: string | null;
+  onReexibir: (p: PecaDoProcesso) => Promise<{ ok: boolean; erro?: string }>;
+}) {
+  const [indo, setIndo] = useState(false);
+  const p = pecas.find(x => (x.dataDocumento ?? '') === (data ?? '') && data);
+  if (!p) return null;
+  return (
+    <button
+      type="button"
+      disabled={indo}
+      onClick={async () => { setIndo(true); await onReexibir(p); setIndo(false); }}
+      className="inline-flex shrink-0 items-center gap-1 text-[10px] text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+      title={`"${p.titulo ?? 'peça'}" foi desvinculada — clique para trazer de volta`}
+    >
+      <Undo2 className="h-3 w-3" /> desfazer
+    </button>
+  );
+}
+
 interface Props {
   alvo: AlvoConferencia | null;
   onClose: () => void;
   /** Abre a ficha completa do processo — o pai monta o sheet, para não aninhar. */
   onAbrirFicha: (processId: string) => void;
+  /**
+   * Abre a ficha do CASO (o lead). Mesma razão do `onAbrirFicha`: quem monta o
+   * painel é o pai. O processo é metade da história — a outra metade (contato,
+   * atividades, financeiro do cliente) mora no lead, e até aqui a única forma de
+   * chegar nele a partir da carteira era fechar tudo e procurar pelo nome.
+   */
+  onAbrirLead?: (leadId: string) => void;
 }
 
-export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props) {
+export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha, onAbrirLead }: Props) {
   const {
     marcos, marcoAtual, temAcordo, suspenso, clientes, pagamentos, duplicatas,
     totalConferido, totalAtualizado, totalPago, somaIngenua, alertas, loading, erro,
-    recarregar, leadDoProcesso, jcmIndice, jcmReferencia,
+    recarregar, leadDoProcesso, leadIdDoProcesso, jcmIndice, jcmReferencia,
   } = useConferenciaProcesso(alvo);
 
   // As peças dos autos deste CNJ, para poder abrir a prova ao lado do número.
-  const { pecas, assinar } = usePecasDoProcesso(alvo?.cnj ?? null);
+  const { pecas, ocultas, assinar, anexar, ocultar, reexibir, vincularAMarco, lerPeca, corrigirValores } = usePecasDoProcesso(alvo?.cnj ?? null);
+
+  // A régua completa do POP (mesma RPC da ficha e da fase automática): a seção
+  // "Marcos" desenha a linha inteira — prevista + detectada — e não só a trilha
+  // do que foi visto. A conta local do hook segue valendo como AUDITORIA do
+  // marco atual; a régua da RPC é o retrato oficial.
+  const regua = useProcessoMarcos(alvo?.processId ?? null);
+
+  // O que muda com a peça recém-anexada. Sem este retorno, trocar documento é um
+  // clique que não produz efeito visível — e o Raym leu isso como tela quebrada.
+  const [mudancas, setMudancas] = useState<{
+    aberto: boolean; carregando: boolean; erro: string | null;
+    leitura: Record<string, unknown> | null; titulo: string;
+  }>({ aberto: false, carregando: false, erro: null, leitura: null, titulo: '' });
   const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
   const [erroPeca, setErroPeca] = useState<string | null>(null);
+  // Qual marco está sendo auditado — "por que este marco?" abre a evidência crua.
+  const [evidenciaDe, setEvidenciaDe] = useState<AlvoEvidencia | null>(null);
+  // O `anexar` recarrega a lista; a ref dá acesso ao valor JÁ atualizado sem
+  // esperar o próximo render.
+  const pecasRef = useRef<PecaDoProcesso[]>([]);
+
+  /** Anexa e, na sequência, mostra o efeito nos números. */
+  const anexarEMostrar = useCallback(async (
+    arquivo: File, dados: { titulo: string; dataDocumento: string | null; marcoChave?: string | null },
+  ) => {
+    const r = await anexar(arquivo, dados);
+    if (!r.ok) return r;
+    // Peça vinculada a marco: rematerializa a régua na hora, senão a linha
+    // continua "não houve" até o próximo tick e o anexo parece não ter feito nada.
+    if (dados.marcoChave) void regua.rematerializar();
+    // A peça acabou de nascer: acha o id dela pela data e pelo título que demos.
+    const nova = pecasRef.current.find(
+      p => p.origem === 'manual' && p.titulo === dados.titulo
+        && (p.dataDocumento ?? null) === (dados.dataDocumento ?? null),
+    );
+    if (!nova) return r; // anexou, mas não deu para localizar — melhor calar que errar
+    setMudancas({ aberto: true, carregando: true, erro: null, leitura: null, titulo: dados.titulo });
+    const lida = await lerPeca(nova.id);
+    setMudancas(m => ({
+      ...m, carregando: false,
+      leitura: lida.leitura ?? null,
+      erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
+    }));
+    return r;
+  }, [anexar, lerPeca, regua.rematerializar]);
+
+  /** Lê uma peça que já está no marco e mostra o efeito dela nos números. */
+  const verOQueMuda = useCallback(async (peca: PecaDoProcesso) => {
+    const titulo = peca.titulo ?? 'Peça dos autos';
+    setMudancas({ aberto: true, carregando: true, erro: null, leitura: null, titulo });
+    const lida = await lerPeca(peca.id);
+    setMudancas(m => ({
+      ...m, carregando: false,
+      leitura: lida.leitura ?? null,
+      erro: lida.ok ? null : (lida.erro ?? 'a leitura não voltou'),
+    }));
+  }, [lerPeca]);
+
+  /** Vincula/desvincula peça↔marco e rematerializa a régua na sequência. */
+  const vincularEAtualizar = useCallback(async (peca: PecaDoProcesso, marcoChave: string | null) => {
+    const r = await vincularAMarco(peca, marcoChave);
+    if (r.ok) await regua.rematerializar();
+  }, [vincularAMarco, regua.rematerializar]);
 
   const abrirPeca = useCallback(async (peca: PecaDoProcesso, rotulo: string) => {
     setErroPeca(null);
@@ -143,6 +472,27 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
     if (!url) { setErroPeca(`Não consegui abrir "${rotulo}".`); return; }
     setPecaAberta({ url, titulo: rotulo });
   }, [assinar]);
+
+  pecasRef.current = pecas;
+
+  /** A régua da RPC no formato do componente unificado. */
+  const reguaItens = useMemo<MarcoDaRegua[]>(
+    () => regua.marcos.map(m => ({
+      chave: m.marco_chave,
+      rotulo: m.rotulo,
+      ordem: m.ordem,
+      estado: m.estado,
+      eventual: m.eventual,
+      terminal: m.terminal,
+      atravessaFases: m.atravessa_fases,
+      data: m.data_detectada,
+      fonte: m.fonte,
+      temProvaDocumental: m.tem_prova_documental,
+      atual: m.atual,
+      stageNome: m.stage_nome,
+    })),
+    [regua.marcos],
+  );
 
   const recebidos = pagamentos.filter(p => p.data_recebida);
   const previstos = pagamentos.filter(p => !p.data_recebida);
@@ -177,9 +527,25 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
             className="gap-1.5"
             onClick={() => alvo && onAbrirFicha(alvo.processId)}
           >
-            <FileText className="h-3.5 w-3.5" /> Abrir ficha completa
+            <FileText className="h-3.5 w-3.5" /> Abrir ficha do processo
           </Button>
-          <Button size="sm" variant="ghost" className="gap-1.5" onClick={() => void recarregar()} disabled={loading}>
+          {/* O caso, não o processo. Só aparece quando existe lead vinculado e
+              quem montou a conferência sabe abrir um — botão morto seria pior. */}
+          {onAbrirLead && leadIdDoProcesso && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={() => onAbrirLead(leadIdDoProcesso)}
+            >
+              <UserRound className="h-3.5 w-3.5" /> Abrir o caso
+            </Button>
+          )}
+          <Button
+            size="sm" variant="ghost" className="gap-1.5"
+            onClick={() => { void recarregar(); void regua.recarregar(); }}
+            disabled={loading}
+          >
             <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} /> Recarregar
           </Button>
         </div>
@@ -239,6 +605,15 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                       : <> · <span className="text-amber-600 dark:text-amber-400">sem prova documental</span></>}
                     {marcoAtual.estagioSugerido && <> · sugere estágio <span className="font-medium text-foreground">{ESTAGIO_LABEL[marcoAtual.estagioSugerido] || marcoAtual.estagioSugerido}</span></>}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setEvidenciaDe({
+                      processId: alvo!.processId, marcoChave: marcoAtual.chave, rotulo: marcoAtual.rotulo,
+                    })}
+                    className="mt-1 text-[11px] underline underline-offset-2 hover:text-foreground"
+                  >
+                    Por que este marco?
+                  </button>
                   <p className="mt-1.5 text-[11px] leading-snug text-muted-foreground">
                     É o marco atual por ser o de maior ordem entre os que são FASE. Acordo e suspensão são
                     estado — atravessam fases e não disputam esta posição.
@@ -248,16 +623,107 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                 <p className="text-xs text-muted-foreground">Nenhum marco de fase detectado neste processo.</p>
               )}
 
-              {marcos.length > 0 && (
+              {regua.marcos.length > 0 && (
                 <div className="space-y-1 pt-1">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos</div>
-                  {marcos.map(m => (
+                  {/* A régua INTEIRA do POP — prevista + detectada — no mesmo
+                      layout e com a mesma fonte da aba Marcos da ficha e da
+                      fase automática (unificação de 27/08/2026). Degrau
+                      eventual só aparece se aconteceu; acordo e suspensão são
+                      estado e viram badge no topo. */}
+                  <ReguaMarcosDoPop
+                    marcos={reguaItens}
+                    onVerFonte={(m) => setEvidenciaDe({
+                      processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
+                    })}
+                    renderDireita={(m) => {
+                      if (m.estado !== 'atingido') {
+                        // Marco sem detecção ("não houve"/presumido/falta): o
+                        // caminho é trazer a peça que comprova a passagem. Ela
+                        // sobe com o marco_chave e a data informada — vira a
+                        // evidência que a detecção por documento lê.
+                        return (
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            <BotaoAnexar
+                              rotulo={m.rotulo}
+                              data={null}
+                              pedirData
+                              marcoChave={m.chave}
+                              onAnexar={anexarEMostrar}
+                            />
+                          </span>
+                        );
+                      }
+                      const p = melhorPeca(pecas, m.data, { assunto: 'MARCO' });
+                      // Sem peça casada, o que a linha precisa não é de um botão
+                      // morto: é do caminho para trazer a prova que falta.
+                      return (
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          {p ? (
+                            <>
+                              <BotaoPeca pecas={pecas} data={m.data} assunto="MARCO" onAbrir={abrirPeca} />
+                              <BotaoOQueMuda peca={p} onVer={verOQueMuda} />
+                              <BotaoDesvincular peca={p} onDesvincular={ocultar} />
+                            </>
+                          ) : (
+                            <BotaoAnexar rotulo={m.rotulo} data={m.data} onAnexar={anexarEMostrar} />
+                          )}
+                          <AvisoOculta pecas={ocultas} data={m.data} onReexibir={reexibir} />
+                        </span>
+                      );
+                    }}
+                  />
+                  {marcos.some(m => m.semCadastroNoPop) && (
+                    <div className="space-y-0.5 pt-1">
+                      {/* Marco gravado no processo cuja chave não existe mais na
+                          régua deste POP: a carteira o ignora, mas escondê-lo
+                          apagaria evidência. */}
+                      {marcos.filter(m => m.semCadastroNoPop).map(m => (
+                        <div key={m.chave} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs">
+                          <Badge variant="outline" className="shrink-0 border-amber-500/50 text-[9px] text-amber-600 dark:text-amber-400">
+                            fora do POP
+                          </Badge>
+                          <span className="min-w-0 flex-1 truncate">{m.rotulo}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEvidenciaDe({
+                              processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
+                            })}
+                            className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                            title="Ver a evidência que gerou este marco"
+                          >
+                            {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
+                          </button>
+                          <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {marcos.length > 0 && regua.marcos.length === 0 && (
+                <div className="space-y-1 pt-1">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Marcos detectados</div>
+                  {/* Fallback: POP sem régua cadastrada (a RPC volta vazia) — a
+                      lista antiga, do mais antigo para o mais novo. */}
+                  {[...marcos]
+                    .sort((a, b) => (a.dataDetectada ?? '').localeCompare(b.dataDetectada ?? ''))
+                    .map((m, i, todos) => (
                     <div
                       key={`${m.chave}-${m.dataDetectada}`}
-                      className={`flex items-center gap-2 rounded px-1.5 py-1 text-xs ${m.atual ? 'bg-muted/60 font-medium' : ''}`}
+                      className={`flex items-start gap-2 rounded px-1.5 py-1 text-xs ${m.atual ? 'bg-muted/60 font-medium' : ''}`}
                     >
-                      <span className="w-8 shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                        {m.ordem ?? '—'}
+                      {/* Fio da linha do tempo: bolinha cheia no marco atual, e o
+                          traço só até o penúltimo, para a linha não sobrar solta. */}
+                      <span className="relative flex w-3 shrink-0 justify-center self-stretch">
+                        <span
+                          className={`z-10 mt-1 h-2 w-2 shrink-0 rounded-full ${
+                            m.atual ? 'bg-primary ring-2 ring-primary/30' : 'bg-muted-foreground/40'}`}
+                        />
+                        {i < todos.length - 1 && (
+                          <span className="absolute left-1/2 top-2 h-full w-px -translate-x-1/2 bg-border" />
+                        )}
                       </span>
                       <span className="min-w-0 flex-1 truncate">{m.rotulo}</span>
                       {m.atravessaFases && (
@@ -268,13 +734,42 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
                           fora do POP
                         </Badge>
                       )}
-                      <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {/* A fonte deixa de ser rótulo e vira porta: clicar abre a
+                          linha que gerou o marco — o movimento do DataJud, a
+                          peça, a publicação. Era a única afirmação da tela que
+                          ninguém podia conferir. */}
+                      <button
+                        type="button"
+                        onClick={() => setEvidenciaDe({
+                          processId: alvo!.processId, marcoChave: m.chave, rotulo: m.rotulo,
+                        })}
+                        className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground"
+                        title="Ver a evidência que gerou este marco"
+                      >
                         {m.fonte ? FONTE_LABEL[m.fonte] || m.fonte : 'sem fonte'}
-                      </span>
-                      <BotaoPeca
-                        pecas={pecas} data={m.dataDetectada} assunto="MARCO"
-                        onAbrir={abrirPeca}
-                      />
+                      </button>
+                      {(() => {
+                        const p = melhorPeca(pecas, m.dataDetectada, { assunto: 'MARCO' });
+                        // Sem peça casada, o que a linha precisa não é de um botão
+                        // morto: é do caminho para trazer a prova que falta.
+                        return (
+                          <span className="flex shrink-0 items-center gap-1.5">
+                            {p ? (
+                              <>
+                                <BotaoPeca
+                                  pecas={pecas} data={m.dataDetectada} assunto="MARCO"
+                                  onAbrir={abrirPeca}
+                                />
+                                <BotaoOQueMuda peca={p} onVer={verOQueMuda} />
+                                <BotaoDesvincular peca={p} onDesvincular={ocultar} />
+                              </>
+                            ) : (
+                              <BotaoAnexar rotulo={m.rotulo} data={m.dataDetectada} onAnexar={anexarEMostrar} />
+                            )}
+                            <AvisoOculta pecas={ocultas} data={m.dataDetectada} onReexibir={reexibir} />
+                          </span>
+                        );
+                      })()}
                       <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.dataDetectada)}</span>
                     </div>
                   ))}
@@ -282,12 +777,71 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
               )}
             </Secao>
 
+            {/* 2b. Peças do processo — o acervo INTEIRO, não só as casadas.
+                Pedido do Raym (29/08/2026): "traga todos os documentos que o
+                escavador pegou". Antes, peça só aparecia quando casava por data
+                com um marco/valor — o resto do acervo ficava invisível. Aqui dá
+                para abrir cada uma e vincular ao marco que ela comprova. */}
+            {pecas.length > 0 && (
+              <Secao titulo={`Peças do processo (${pecas.length})`}>
+                <div className="max-h-72 space-y-0.5 overflow-y-auto pr-1">
+                  {[...pecas]
+                    .sort((a, b) => (b.dataDocumento ?? '').localeCompare(a.dataDocumento ?? ''))
+                    .map(p => {
+                      const marcoDaPeca = p.marcoChave
+                        ? reguaItens.find(m => m.chave === p.marcoChave) ?? null
+                        : null;
+                      return (
+                        <div key={p.id} className="flex items-center gap-2 rounded px-1.5 py-1 text-xs hover:bg-muted/40">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground">{dataBR(p.dataDocumento)}</span>
+                          <button
+                            type="button"
+                            onClick={() => void abrirPeca(p, p.titulo || 'Peça dos autos')}
+                            className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline"
+                            title="Abrir a peça"
+                          >
+                            <Paperclip className="mr-1 inline h-3 w-3 text-muted-foreground" />
+                            {p.titulo || 'Peça dos autos'}
+                          </button>
+                          {p.tipo === 'RESTRITO' && (
+                            <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">restrita</Badge>
+                          )}
+                          {p.origem === 'manual' && (
+                            <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
+                          )}
+                          {marcoDaPeca && (
+                            <Badge variant="secondary" className="max-w-36 shrink-0 truncate px-1 py-0 text-[9px]" title={`Comprova o marco "${marcoDaPeca.rotulo}"`}>
+                              comprova: {marcoDaPeca.rotulo}
+                            </Badge>
+                          )}
+                          <BotaoVincularMarco
+                            peca={p}
+                            fases={reguaItens.filter(m => !m.atravessaFases)}
+                            onVincular={vincularEAtualizar}
+                          />
+                        </div>
+                      );
+                    })}
+                </div>
+              </Secao>
+            )}
+
             {/* 3. Valor — a abertura por parte */}
             <Secao
               refSecao={secaoValores}
-              titulo={clientes.length === 1 ? 'Valor da parte' : `Valor por parte (${clientes.length})`}
+              /* "líquido" no nome, não em nota de rodapé: este número é a cota do
+                 cliente JÁ descontado o honorário contratual — o termo do caso 88
+                 diz isso com todas as letras ("já descontados os honorários
+                 contratuais"). Sem o rótulo, ele passa por valor do processo, e o
+                 processo vale mais. */
+              titulo={clientes.length === 1
+                ? 'Valor líquido da parte'
+                : `Valor líquido das partes (${clientes.length})`}
               acao={
                 <span className="flex flex-col items-end leading-tight">
+                  <span className="text-[9px] uppercase tracking-wide text-muted-foreground">
+                    líquido total das partes
+                  </span>
                   <span className="text-xs font-semibold">{brl(totalConferido)}</span>
                   {totalAtualizado > totalConferido + 0.01 && (
                     <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
@@ -304,8 +858,10 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
               ) : (
                 <>
                   <p className="text-[11px] leading-snug text-muted-foreground">
-                    O valor é de cada PARTE, não do processo. O que a carteira mostra é a soma
-                    das {clientes.length} {clientes.length === 1 ? 'parte' : 'partes'} abaixo.
+                    Valor LÍQUIDO de cada parte — já sem o honorário contratual. Não é o valor do
+                    processo: a condenação inteira é maior, porque inclui o que é do escritório. O que
+                    a carteira mostra é a soma das {clientes.length}{' '}
+                    {clientes.length === 1 ? 'parte' : 'partes'} abaixo.
                   </p>
                   {clientes.map(c => (
                     <div key={c.cliente} className="rounded-md border p-2">
@@ -507,6 +1063,37 @@ export function ProcessoConferenciaSheet({ alvo, onClose, onAbrirFicha }: Props)
       {/* Empilha por cima do próprio Sheet: telão -> conferência -> peça, e o
           fechar devolve à conferência, não à carteira. Mesmo visualizador do
           WhatsApp, com o mesmo botão de baixar. */}
+      <MudancasDaPecaDialog
+        aberto={mudancas.aberto}
+        onClose={() => setMudancas(m => ({ ...m, aberto: false }))}
+        carregando={mudancas.carregando}
+        erro={mudancas.erro}
+        leitura={mudancas.leitura}
+        tituloPeca={mudancas.titulo}
+        atuais={clientes.map(c => ({ cliente: c.cliente, valor: c.valor }))}
+        /* A decisão que a peça corrige é a que a carteira está usando hoje —
+           todas as partes apontam para a mesma, por isso basta a primeira. */
+        decId={clientes.find(c => c.decisaoUsada?.dec_id)?.decisaoUsada?.dec_id ?? null}
+        onAplicar={async (leituraId, decId) => {
+          const r = await corrigirValores(leituraId, decId, false);
+          if (r.ok) await recarregar();
+          return r;
+        }}
+      />
+
+      {/* A evidência do marco. Recebe as peças já carregadas para poder abrir a
+          prova no mesmo visualizador, sem uma segunda ida ao banco. */}
+      <MarcoEvidenciaDialog
+        alvo={evidenciaDe}
+        onClose={() => setEvidenciaDe(null)}
+        pecas={pecas}
+        onAbrirPeca={abrirPeca}
+        pecaDoMarco={evidenciaDe
+          ? melhorPeca(pecas, marcos.find(m => m.chave === evidenciaDe.marcoChave)?.dataDetectada ?? null,
+              { assunto: 'MARCO' })
+          : null}
+      />
+
       <MediaLightbox
         url={pecaAberta?.url ?? null}
         title={pecaAberta?.titulo ?? 'Peça dos autos'}

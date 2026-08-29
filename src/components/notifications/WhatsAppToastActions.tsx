@@ -1,8 +1,9 @@
-import { useRef, useState } from 'react';
-import { Loader2, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Loader2, Sparkles, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
 import { WhatsAppAgentToggle } from '@/components/whatsapp/WhatsAppAgentToggle';
+import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import {
   historicoDaConversa,
   pendenciaDaConversa,
@@ -82,6 +83,77 @@ export function WhatsAppSuggestReplyButton({ phone, instanceName, contactName, o
         elevated
       />
     </>
+  );
+}
+
+/**
+ * Sugestão automática no popup: a resposta da IA já chega escrita, sem ninguém
+ * pedir — o mesmo comportamento do campo do chat, com o mesmo hook e a mesma
+ * preferência (`wa-sugestao-automatica`; desligou lá, desliga aqui). Um toque
+ * no texto leva a sugestão para o campo de resposta; nada é enviado sozinho.
+ *
+ * Diferente do botão de ✨ (que busca o histórico só no clique), aqui o
+ * histórico é buscado assim que o popup aparece — é o preço de a sugestão
+ * nascer pronta. A chamada à IA continua condicionada: só quando a última fala
+ * é do cliente e a preferência está ligada.
+ */
+export function WhatsAppSugestaoAutomatica({ phone, instanceName, contactName, onApply }: SuggestProps) {
+  const [historico, setHistorico] = useState<MensagemDaConversa[]>([]);
+
+  useEffect(() => {
+    let vivo = true;
+    historicoDaConversa(phone, instanceName)
+      .then((msgs) => { if (vivo) setHistorico(msgs); })
+      // Falha em silêncio: ninguém pediu nada — o botão de ✨ continua lá.
+      .catch((e) => console.warn('[WhatsAppSugestaoAutomatica] sem histórico:', e));
+    return () => { vivo = false; };
+  }, [phone, instanceName]);
+
+  const ultima = historico[historico.length - 1];
+  const ancora = ultima ? `${phone}|${instanceName || ''}|${ultima.created_at}` : '';
+
+  const { sugestao, carregando, aceitar, dispensar, regenerar } = useSugestaoAutomatica({
+    ativa: historico.length > 0,
+    ancora,
+    buildContext: () => transcricaoDaConversa(historico, contactName),
+    getState: () => pendenciaDaConversa(historico),
+  });
+
+  if (!carregando && !sugestao) return null;
+
+  return (
+    <div className="flex items-start gap-2 rounded-md border border-primary/20 bg-primary/5 px-2 py-1.5">
+      <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+      {carregando ? (
+        <span className="text-xs text-muted-foreground">A IA está escrevendo uma sugestão de resposta...</span>
+      ) : (
+        <>
+          <button
+            type="button"
+            onClick={() => onApply(aceitar())}
+            title="Usar esta sugestão (cai no campo de resposta para revisar e enviar)"
+            className="min-w-0 flex-1 text-left text-xs leading-snug text-foreground/90 line-clamp-3 hover:text-foreground"
+          >
+            {sugestao}
+          </button>
+          <button
+            type="button"
+            onClick={regenerar}
+            className="shrink-0 text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Outra
+          </button>
+          <button
+            type="button"
+            onClick={dispensar}
+            aria-label="Dispensar sugestão"
+            className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </>
+      )}
+    </div>
   );
 }
 

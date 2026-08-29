@@ -177,6 +177,8 @@ Regras de conduta obrigatórias durante qualquer execução:
 
 7. **Registrar o que foi entregue quando "deu certo"**: ao confirmar que uma feature/mudança funciona (verificada com evidência), gravar o que passou a existir nos arquivos-fonte de verdade — a skill relevante em `.agents/skills/`, a doc em `docs/sistema/*.md`, e (se for regra permanente) aqui no CLAUDE.md. Objetivo: a próxima sessão saber o que já temos sem depender da memória do usuário. Documentar faz parte do "deu certo" — não é opcional nem posterior.
 
+8. **Solução estrutural, nunca band-aid na tela**: quando um valor do banco parecer errado, absurdo ou impossível, é **proibido** filtrar, zerar, capar ou esconder ele na renderização. A tela soma o que está no banco, sem exceção — filtrar troca um número errado por outro número errado e ainda esconde o processo que precisa de conserto. A heurística que reconhece o valor improvável é **detector, não filtro**: classifica a linha, roteia o registro para a esteira de conserto que já existe (conferência → anexar/substituir a peça → `jm_ler_documento` → `corrigirValores`) e diz qual peça traz o valor certo. Badge/alerta sozinho não é entrega. Se a peça não existe, a solução é conseguir a peça (fila AUTOS do Escavador ou o responsável pelo processo), nunca adivinhar o valor. Vale para qualquer dado, não só dinheiro. Detalhes e o caminho clicável: skill `conserto-estrutural-nao-pontual`.
+
 ---
 
 ## Contexto do projeto

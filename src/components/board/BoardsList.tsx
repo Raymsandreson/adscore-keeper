@@ -111,8 +111,11 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
 
   // Aba lateral com a relação de processos vinculados ao quadro
   const [processesBoard, setProcessesBoard] = useState<{ id: string; name: string } | null>(null);
-  // Carteira do POP: visão geral (marcos × dinheiro × tempo) em Sheet.
-  const [carteiraBoard, setCarteiraBoard] = useState<{ id: string; name: string } | null>(null);
+  // Carteira do POP: visão geral (marcos × dinheiro × tempo) em Sheet. A
+  // conferência mora dentro dela como subseção — `conferencia: true` abre a
+  // carteira já com a subseção expandida (atalho "Conferência" do card).
+  const [carteiraBoard, setCarteiraBoard] =
+    useState<{ id: string; name: string; conferencia?: boolean } | null>(null);
   const [boardProcesses, setBoardProcesses] = useState<LeadProcess[]>([]);
   const [loadingProcesses, setLoadingProcesses] = useState(false);
   const [selectedProcess, setSelectedProcess] = useState<LeadProcess | null>(null);
@@ -419,6 +422,9 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
                 onOpenCarteira={boardType === "workflow"
                   ? () => setCarteiraBoard({ id: board.id, name: board.name })
                   : undefined}
+                onOpenConferencia={boardType === "workflow"
+                  ? () => setCarteiraBoard({ id: board.id, name: board.name, conferencia: true })
+                  : undefined}
                 processCount={resumoPorQuadro?.[board.id]?.processos || 0}
                 processSummary={resumoPorQuadro?.[board.id]}
                 onDelete={() => handleDelete({ id: board.id, name: board.name })}
@@ -505,6 +511,7 @@ export function BoardsList({ boardType, headerExtra }: BoardsListProps) {
         boardName={carteiraBoard?.name || ''}
         open={!!carteiraBoard}
         onOpenChange={(o) => { if (!o) setCarteiraBoard(null); }}
+        conferenciaInicial={!!carteiraBoard?.conferencia}
       />
 
 

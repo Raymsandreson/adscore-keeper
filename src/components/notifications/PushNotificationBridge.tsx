@@ -15,6 +15,9 @@ const WhatsAppSuggestReplyButton = lazy(() =>
 const WhatsAppToastAgentToggle = lazy(() =>
   import('@/components/notifications/WhatsAppToastActions').then((m) => ({ default: m.WhatsAppToastAgentToggle }))
 );
+const WhatsAppSugestaoAutomatica = lazy(() =>
+  import('@/components/notifications/WhatsAppToastActions').then((m) => ({ default: m.WhatsAppSugestaoAutomatica }))
+);
 
 /**
  * Ponte entre o service worker de push e o app.
@@ -159,6 +162,20 @@ export function PushNotificationBridge() {
                       instanceName: conversa.instanceName,
                       message: text,
                     })
+                : undefined
+            }
+            composerHint={
+              conversa
+                ? ({ setReply }) => (
+                    <Suspense fallback={null}>
+                      <WhatsAppSugestaoAutomatica
+                        phone={conversa.phone}
+                        instanceName={conversa.instanceName}
+                        contactName={contato}
+                        onApply={setReply}
+                      />
+                    </Suspense>
+                  )
                 : undefined
             }
             composerActions={
