@@ -15,7 +15,11 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
-import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram } from 'lucide-react';
+import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram, Camera, UserRound, BarChart3, FileAudio } from 'lucide-react';
+import { CameraCaptureDialog } from './CameraCaptureDialog';
+import { SendContactDialog } from './SendContactDialog';
+import { SendPollDialog } from './SendPollDialog';
+import { ShareActivityDialog } from './ShareActivityDialog';
 import { TestimonialPostSheet } from './TestimonialPostSheet';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes, type InternalNote } from '@/hooks/useWhatsAppInternalNotes';
@@ -329,6 +333,11 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [linkedGroupId, setLinkedGroupId] = useState<string | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  // Anexos com paridade ao app do WhatsApp (Evento → Compartilhar ATV)
+  const [showCameraDialog, setShowCameraDialog] = useState(false);
+  const [showContactDialog, setShowContactDialog] = useState(false);
+  const [showPollDialog, setShowPollDialog] = useState(false);
+  const [showShareActivityDialog, setShowShareActivityDialog] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showLocationDialog, setShowLocationDialog] = useState(false);
@@ -3239,10 +3248,8 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     conversation.messages.find((msg) => typeof msg.metadata?.message?.chatid === 'string')?.metadata?.message?.chatid;
   const conversationChatId = canonicalizeChatTarget(rawChatId);
 
-  // Media upload handler
-  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Media upload — miolo compartilhado entre o input de arquivo e a câmera
+  const uploadAndSendFile = async (file: File) => {
     setUploadingMedia(true);
     setShowAttachMenu(false);
     try {
@@ -3263,6 +3270,12 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       setUploadingMedia(false);
       if (mediaInputRef.current) mediaInputRef.current.value = '';
     }
+  };
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadAndSendFile(file);
   };
 
   // Audio recording
@@ -5877,6 +5890,27 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                 }} className="gap-2">
                   <FileUp className="h-4 w-4" /> Documento
                 </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowCameraDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                  <Camera className="h-4 w-4" /> Câmera
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => {
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'audio/*';
+                  input.onchange = (e: any) => handleMediaUpload(e);
+                  input.click();
+                }} className="gap-2">
+                  <FileAudio className="h-4 w-4" /> Áudio
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowContactDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                  <UserRound className="h-4 w-4" /> Contato
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowPollDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                  <BarChart3 className="h-4 w-4" /> Enquete
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => { setShowShareActivityDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                  <ClipboardList className="h-4 w-4" /> Compartilhar ATV
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={() => { setShowLocationDialog(true); setShowAttachMenu(false); }} className="gap-2">
                   <MapPin className="h-4 w-4" /> Localização
                 </DropdownMenuItem>
@@ -6076,6 +6110,44 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
             </div>
           </DialogContent>
         </Dialog>
+        <CameraCaptureDialog
+          open={showCameraDialog}
+          onOpenChange={setShowCameraDialog}
+          onCapture={(file) => { void uploadAndSendFile(file); }}
+        />
+        <SendContactDialog
+          open={showContactDialog}
+          onOpenChange={setShowContactDialog}
+          target={{
+            phone: conversation.phone,
+            chatId: conversationChatId,
+            instanceName: effectiveInstanceName,
+            contactId: conversation.contact_id,
+            leadId: conversation.lead_id,
+          }}
+        />
+        <SendPollDialog
+          open={showPollDialog}
+          onOpenChange={setShowPollDialog}
+          target={{
+            phone: conversation.phone,
+            chatId: conversationChatId,
+            instanceName: effectiveInstanceName,
+            contactId: conversation.contact_id,
+            leadId: conversation.lead_id,
+          }}
+        />
+        <ShareActivityDialog
+          open={showShareActivityDialog}
+          onOpenChange={setShowShareActivityDialog}
+          target={{
+            phone: conversation.phone,
+            chatId: conversationChatId,
+            instanceName: effectiveInstanceName,
+            contactId: conversation.contact_id,
+            leadId: conversation.lead_id,
+          }}
+        />
       </div>
       <SessionFieldEditor
         open={showSessionEditor}

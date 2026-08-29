@@ -25,7 +25,11 @@ import { externalSupabase } from '@/integrations/supabase/external-client';
 import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Bell, Trash2, FastForward, Mic, Copy, Download, ClipboardList, MessageSquare} from 'lucide-react';
-import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
+import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed, Camera, UserRound, BarChart3, FileAudio } from 'lucide-react';
+import { CameraCaptureDialog } from './CameraCaptureDialog';
+import { SendContactDialog } from './SendContactDialog';
+import { SendPollDialog } from './SendPollDialog';
+import { ShareActivityDialog } from './ShareActivityDialog';
 import { Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
@@ -283,6 +287,11 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const [newNickname, setNewNickname] = useState('');
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  // Anexos com paridade ao app do WhatsApp (Evento → Compartilhar ATV)
+  const [showCameraDialog, setShowCameraDialog] = useState(false);
+  const [showContactDialog, setShowContactDialog] = useState(false);
+  const [showPollDialog, setShowPollDialog] = useState(false);
+  const [showShareActivityDialog, setShowShareActivityDialog] = useState(false);
   const [linkedLead, setLinkedLead] = useState<Lead | null>(null);
   const [linkedContact, setLinkedContact] = useState<Contact | null>(null);
 
@@ -1021,9 +1030,9 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
     }
   };
 
-  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !phone) return;
+  // Miolo compartilhado entre o input de arquivo e a câmera
+  const uploadAndSendFile = async (file: File) => {
+    if (!phone) return;
     setUploadingMedia(true);
     setShowAttachMenu(false);
     try {
@@ -1068,8 +1077,14 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       toast.error('Erro ao enviar mídia');
     } finally {
       setUploadingMedia(false);
-      if (e.target) e.target.value = '';
     }
+  };
+
+  const handleMediaUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    await uploadAndSendFile(file);
+    if (e.target) e.target.value = '';
   };
 
   // Audio recording — envia como áudio do WhatsApp via send-whatsapp
@@ -2732,6 +2747,28 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                   }} className="gap-2">
                     <FileUp className="h-4 w-4" /> Documento
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setShowCameraDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                    <Camera className="h-4 w-4" /> Câmera
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = 'audio/*';
+                    input.onchange = (e: any) => handleMediaUpload(e);
+                    input.click();
+                    setShowAttachMenu(false);
+                  }} className="gap-2">
+                    <FileAudio className="h-4 w-4" /> Áudio
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setShowContactDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                    <UserRound className="h-4 w-4" /> Contato
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setShowPollDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                    <BarChart3 className="h-4 w-4" /> Enquete
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { setShowShareActivityDialog(true); setShowAttachMenu(false); }} className="gap-2">
+                    <ClipboardList className="h-4 w-4" /> Compartilhar ATV
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <input ref={mediaInputRef} type="file" accept="image/*,video/*" className="hidden" onChange={handleMediaUpload} />
@@ -2866,6 +2903,86 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
       />
     )}
     <MediaLightbox url={lightboxUrl} title="Documento" onClose={() => setLightboxUrl(null)} />
+
+    {/* Anexos com paridade ao app do WhatsApp (Evento → Compartilhar ATV) */}
+    <CameraCaptureDialog
+      open={showCameraDialog}
+      onOpenChange={setShowCameraDialog}
+      onCapture={(file) => { void uploadAndSendFile(file); }}
+    />
+    {phone && (
+      <>
+        <SendContactDialog
+          open={showContactDialog}
+          onOpenChange={setShowContactDialog}
+          target={{
+            phone,
+            instanceName: resolveSendInstanceName() || null,
+            contactId: linkedContact?.id || null,
+            leadId: linkedLead?.id || null,
+          }}
+          onSent={({ messageText, messageType }) => {
+            setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
+              message_text: messageText,
+              direction: 'outbound',
+              created_at: new Date().toISOString(),
+              message_type: messageType,
+              media_url: null,
+              media_type: null,
+              instance_name: resolveSendInstanceName() || null,
+            }]);
+            setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+          }}
+        />
+        <SendPollDialog
+          open={showPollDialog}
+          onOpenChange={setShowPollDialog}
+          target={{
+            phone,
+            instanceName: resolveSendInstanceName() || null,
+            contactId: linkedContact?.id || null,
+            leadId: linkedLead?.id || null,
+          }}
+          onSent={({ messageText, messageType }) => {
+            setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
+              message_text: messageText,
+              direction: 'outbound',
+              created_at: new Date().toISOString(),
+              message_type: messageType,
+              media_url: null,
+              media_type: null,
+              instance_name: resolveSendInstanceName() || null,
+            }]);
+            setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+          }}
+        />
+        <ShareActivityDialog
+          open={showShareActivityDialog}
+          onOpenChange={setShowShareActivityDialog}
+          target={{
+            phone,
+            instanceName: resolveSendInstanceName() || null,
+            contactId: linkedContact?.id || null,
+            leadId: linkedLead?.id || null,
+          }}
+          onSent={({ messageText }) => {
+            setMessages(prev => [...prev, {
+              id: crypto.randomUUID(),
+              message_text: messageText,
+              direction: 'outbound',
+              created_at: new Date().toISOString(),
+              message_type: 'text',
+              media_url: null,
+              media_type: null,
+              instance_name: resolveSendInstanceName() || null,
+            }]);
+            setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+          }}
+        />
+      </>
+    )}
 
     {/* Criar atividade (mesmo formulário da aba WhatsApp) */}
     <WhatsAppActivitySheet
