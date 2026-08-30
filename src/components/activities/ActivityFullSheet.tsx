@@ -53,7 +53,7 @@ import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
-import { useProcessoMarcos } from '@/hooks/useProcessoMarcos';
+import { useProcessoMarcos, resumirRegua } from '@/hooks/useProcessoMarcos';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { useActivitySpentSeconds, useEstimateSuggestion, formatEstimate, formatSpent } from '@/hooks/useActivityTimeEstimate';
@@ -1366,13 +1366,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
-      regua: {
-        percentual: reguaDoProcesso.percentual,
-        atualRotulo: reguaDoProcesso.atual?.rotulo || null,
-        atualData: reguaDoProcesso.atual?.data_detectada || null,
-        previstos: reguaDoProcesso.previstos,
-        cumpridos: reguaDoProcesso.cumpridos,
-      },
+      regua: resumirRegua(reguaDoProcesso.marcos),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 

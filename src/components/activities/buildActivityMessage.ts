@@ -82,7 +82,14 @@ export interface ActivityMessageContext {
    * andamento — foi a decisão de 12/08/2026 para a ficha, e a mensagem tinha
    * ficado de fora dela, anunciando percentual de passo marcado à mão.
    */
-  regua?: { percentual: number | null; atualRotulo: string | null; atualData: string | null; previstos: number; cumpridos: number } | null;
+  regua?: {
+    percentual: number | null; atualRotulo: string | null; atualData: string | null;
+    previstos: number; cumpridos: number;
+    /** Marcos já atingidos, na ordem da régua — vira o "O que foi feito" quando o campo está vazio. */
+    atingidos?: { rotulo: string; data: string | null }[];
+    /** Próximo marco obrigatório pendente — vira o "Próximo passo" quando o campo está vazio. */
+    proximoRotulo?: string | null;
+  } | null;
   leadPreview: { board_id?: string | null } | null;
   systemOabs: any;
   currentUserId: string | null;
@@ -193,6 +200,31 @@ export function buildActivityMessage(
       ? (notifHora ? `${notifDateOnly}, às ${notifHora}` : notifDateOnly)
       : '';
     const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
+    // Campo vazio não vira seção sumida: quando há régua, "Como está?",
+    // "O que foi feito?" e "Próximo passo" saem dos MARCOS detectados
+    // (movimentações e documentos reais — nada inventado). Texto digitado pelo
+    // assessor sempre vence; isto só cobre o vazio (pedido do usuário, 30/08:
+    // atividade automática saía sem nenhuma das três seções).
+    if (regua && regua.percentual != null) {
+      const dataBR = (d?: string | null) => (d ? format(parseISO(d.slice(0, 10)), 'dd/MM/yyyy') : '');
+      const marcoAtualTxt = regua.atualRotulo
+        ? `"${regua.atualRotulo}"${regua.atualData ? ` em ${dataBR(regua.atualData)}` : ''}`
+        : '';
+      if (!valueMap.current_status.trim() && marcoAtualTxt) {
+        valueMap.current_status = `O processo segue em andamento — último marco registrado: ${marcoAtualTxt}.`;
+      }
+      if (!valueMap.what_was_done.trim() && (regua.atingidos?.length || 0) > 0) {
+        const lista = (regua.atingidos || [])
+          .map(a => `${a.rotulo}${a.data ? ` (${dataBR(a.data)})` : ''}`)
+          .join(', ');
+        valueMap.what_was_done = `Acompanhamos as movimentações do processo. Marcos já cumpridos: ${lista}.`;
+      }
+      if (!valueMap.next_steps.trim()) {
+        valueMap.next_steps = regua.proximoRotulo
+          ? `Aguardar o próximo marco do processo: ${regua.proximoRotulo}. Seguimos acompanhando as movimentações.`
+          : 'Seguir acompanhando as movimentações do processo.';
+      }
+    }
     // Campos que NUNCA vão pra mensagem copiada/enviada, mesmo que o usuário marque include_in_message.
     // resposta_juizo é conteúdo interno (uso da equipe), não deve ir pro cliente.
     const EXCLUDED_FROM_MESSAGE = new Set(['resposta_juizo']);

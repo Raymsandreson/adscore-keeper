@@ -13,7 +13,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
-import { useProcessoMarcos } from '@/hooks/useProcessoMarcos';
+import { useProcessoMarcos, resumirRegua } from '@/hooks/useProcessoMarcos';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
@@ -3473,13 +3473,7 @@ const ActivitiesPage = () => {
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
       // Andamento pela régua de marcos — a mesma medida da ficha do processo.
-      regua: {
-        percentual: reguaDoProcesso.percentual,
-        atualRotulo: reguaDoProcesso.atual?.rotulo || null,
-        atualData: reguaDoProcesso.atual?.data_detectada || null,
-        previstos: reguaDoProcesso.previstos,
-        cumpridos: reguaDoProcesso.cumpridos,
-      },
+      regua: resumirRegua(reguaDoProcesso.marcos),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 

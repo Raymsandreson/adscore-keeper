@@ -125,6 +125,48 @@ describe('andamento pela régua de marcos', () => {
   });
 });
 
+describe('campos vazios preenchidos pela régua', () => {
+  const REGUA_CHEIA = {
+    percentual: 50, atualRotulo: 'Contestação do INSS', atualData: '2026-06-17',
+    previstos: 6, cumpridos: 3,
+    atingidos: [
+      { rotulo: 'Estudo social', data: '2026-04-28' },
+      { rotulo: 'Contestação do INSS', data: '2026-06-17' },
+    ],
+    proximoRotulo: 'Sentença',
+  };
+  const semCampos = {
+    formCurrentStatus: '', formWhatWasDone: '', formNextSteps: '',
+    fieldSettings: [
+      { field_key: 'current_status', label: 'Como está?', include_in_message: true },
+      { field_key: 'what_was_done', label: 'O que foi feito?', include_in_message: true },
+      { field_key: 'next_steps', label: 'Próximo passo', include_in_message: true },
+    ],
+  };
+
+  it('atividade sem texto ganha as três seções a partir dos marcos', () => {
+    const msg = buildActivityMessage(ctx({ ...semCampos, regua: REGUA_CHEIA }), 'client');
+    expect(msg).toContain('*Como está?:* O processo segue em andamento — último marco registrado: "Contestação do INSS" em 17/06/2026.');
+    expect(msg).toContain('*O que foi feito?:* Acompanhamos as movimentações do processo. Marcos já cumpridos: Estudo social (28/04/2026), Contestação do INSS (17/06/2026).');
+    expect(msg).toContain('*Próximo passo:* Aguardar o próximo marco do processo: Sentença.');
+  });
+
+  it('texto digitado pelo assessor sempre vence o automático', () => {
+    const msg = buildActivityMessage(
+      ctx({ ...semCampos, formCurrentStatus: 'Réplica protocolada, aguardando sentença.', regua: REGUA_CHEIA }),
+      'client',
+    );
+    expect(msg).toContain('*Como está?:* Réplica protocolada, aguardando sentença.');
+    expect(msg).not.toContain('último marco registrado');
+  });
+
+  it('sem régua, campo vazio continua vazio — nada é inventado', () => {
+    const msg = buildActivityMessage(ctx({ ...semCampos, regua: null }), 'client');
+    expect(msg).not.toContain('*Como está?:*');
+    expect(msg).not.toContain('Acompanhamos as movimentações');
+  });
+});
+
 describe('progresso da mensagem = progresso da barra', () => {
   it('caso na fase de contestação não sai como "comecinho"', () => {
     const msg = buildActivityMessage(ctx(), 'client');

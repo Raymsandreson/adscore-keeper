@@ -1107,10 +1107,31 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
     return mapa;
   }, [porMarco, regua.marcos, regua.atual, stages]);
 
+  // Marcos PREVISTOS na ordem da régua (obrigatório sempre; eventual só quando
+  // aconteceu; estado que atravessa fora) — os segmentos da barra por marco.
+  const marcosPrevistos = useMemo(
+    () => regua.marcos.filter(m => !m.atravessa_fases && (!m.eventual || m.estado !== 'pendente')),
+    [regua.marcos],
+  );
+
   // Determine current stage index
   const currentIdx = stages.findIndex(s => s.id === currentStageId);
 
   const activeViewStageId = viewingStageId || currentStageId;
+
+  /**
+   * Rola até o PASSO ATUAL (1º não-marcado da fase em vista) ao expandir.
+   * Depois da unificação do BPC a fase judicial tem 13+ objetivos num painel
+   * só — sem a rolagem, achar o passo era caçada (pedido do usuário, 30/08).
+   */
+  const passoAtualRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!expanded) return;
+    const t = setTimeout(() => {
+      passoAtualRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [expanded, activeViewStageId, instances.length]);
 
   // Get instances for the viewed stage, na ordem projetada do fluxo (display_order),
   // não na ordem de criação. Órfãos (template sem link na fase) vão pro fim.
@@ -1126,6 +1147,15 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
         return ((a as any).created_at || '').localeCompare((b as any).created_at || '');
       });
   }, [liveInstances, activeViewStageId, linkOrder]);
+
+  // 1º passo vivo não-marcado da fase em vista — o alvo da rolagem.
+  const primeiroPendenteId = useMemo(() => {
+    for (const inst of currentStageInstances) {
+      const it = inst.items.find(i => !i.supersededBy && !i.checked);
+      if (it) return `${inst.id}|${it.id}`;
+    }
+    return null;
+  }, [currentStageInstances]);
 
   // Cardápio do "Atualizar passos com IA": TODOS os passos do POP (todas as
   // fases), com fase e objetivo pra IA se localizar. Passo-pergunta e passo com
@@ -1165,7 +1195,39 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
           <div
             className="flex items-center gap-1 flex-1 min-w-0"
           >
-            {stages.map((stage, idx) => {
+            {porMarco ? marcosPrevistos.map((m) => {
+              // Segmentos por MARCO quando a régua manda (pedido do usuário,
+              // 30/08): com o BPC unificado a fase judicial virou UM segmento
+              // e escondia a caminhada — os marcos são a medida fina, e são
+              // eles que preenchem o percentual. Clique navega para a fase do
+              // marco no painel de passos.
+              const cheio = m.estado !== 'pendente';
+              const ehAtual = !!m.atual;
+              return (
+                <button
+                  key={m.marco_chave}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!expanded) setExpanded(true);
+                    if (m.stage_id && stages.some(st => st.id === m.stage_id)) {
+                      setViewingStageId(m.stage_id === currentStageId ? null : m.stage_id);
+                    }
+                  }}
+                  className="flex items-center flex-1 relative group/seg"
+                  title={`${m.rotulo}${m.data_detectada ? ` · ${formatBRShort(m.data_detectada)}` : ''}${m.estado === 'presumido' ? ' · presumido' : ''}`}
+                >
+                  <div className={cn(
+                    "h-2 w-full rounded-full transition-all",
+                    cheio ? (ehAtual ? "bg-primary" : "bg-emerald-500") : "bg-muted-foreground/20",
+                    "group-hover/seg:opacity-80"
+                  )} />
+                  {ehAtual && (
+                    <div className="absolute inset-0 rounded-full pointer-events-none ring-2 ring-primary/40" />
+                  )}
+                </button>
+              );
+            }) : stages.map((stage, idx) => {
               const stageDetail = hierarchicalProgress.stageDetails.find(d => d.stageId === stage.id);
               const stageWeight = stageDetail?.stagePercent || 0;
               const stageCompleted = stageDetail?.completedPercent || 0;
@@ -1248,8 +1310,9 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
           </button>
         </div>
 
-        {/* Single label line — current stage only when collapsed */}
-        {!expanded && currentStageId && (
+        {/* Linha de rótulo: fase + marco atual. SEMPRE visível — recolhida ou
+            expandida — para o nome do marco nunca sumir (pedido de 30/08). */}
+        {currentStageId && (
           <div className="mt-1.5 text-[11px] text-muted-foreground truncate">
             <span className="font-medium text-foreground">
               {stages.find(s => s.id === currentStageId)?.name}
@@ -1440,7 +1503,11 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
                       const isHistory = !!item.supersededBy;
 
                       return (
-                        <div key={item.id} className="space-y-0.5">
+                        <div
+                          key={item.id}
+                          className="space-y-0.5"
+                          ref={`${instance.id}|${item.id}` === primeiroPendenteId ? passoAtualRef : undefined}
+                        >
                           <label
                             className={cn(
                               "flex items-start gap-2 py-0.5 text-xs rounded px-1 -mx-1",

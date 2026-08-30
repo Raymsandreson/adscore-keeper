@@ -78,6 +78,27 @@ export interface ReguaResumo {
   atualData: string | null;
   previstos: number;
   cumpridos: number;
+  /** Marcos já atingidos, na ordem da régua. */
+  atingidos: { rotulo: string; data: string | null }[];
+  /** Próximo marco obrigatório ainda pendente. */
+  proximoRotulo: string | null;
+}
+
+/** Monta o resumo a partir das linhas da régua — a MESMA conta em hook e sino. */
+export function resumirRegua(rows: MarcoReguaRow[]): ReguaResumo | null {
+  if (rows.length === 0) return null;
+  const atual = rows.find(m => m.atual) || null;
+  return {
+    percentual: rows[0].percentual,
+    atualRotulo: atual?.rotulo || null,
+    atualData: atual?.data_detectada || null,
+    previstos: rows[0].previstos,
+    cumpridos: rows[0].cumpridos,
+    atingidos: rows
+      .filter(m => !m.atravessa_fases && m.estado === 'atingido')
+      .map(m => ({ rotulo: m.rotulo, data: m.data_detectada })),
+    proximoRotulo: rows.find(m => !m.atravessa_fases && !m.eventual && m.estado === 'pendente')?.rotulo || null,
+  };
 }
 
 /**
@@ -100,16 +121,7 @@ export async function fetchProcessoRegua(processId?: string | null): Promise<Reg
     console.warn('[fetchProcessoRegua]', error.message);
     return null;
   }
-  const rows = data || [];
-  if (rows.length === 0) return null;
-  const atual = rows.find(m => m.atual) || null;
-  return {
-    percentual: rows[0].percentual,
-    atualRotulo: atual?.rotulo || null,
-    atualData: atual?.data_detectada || null,
-    previstos: rows[0].previstos,
-    cumpridos: rows[0].cumpridos,
-  };
+  return resumirRegua(data || []);
 }
 
 export function useProcessoMarcos(processId?: string | null): ReguaDoProcesso {
