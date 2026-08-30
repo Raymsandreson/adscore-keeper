@@ -377,3 +377,21 @@ Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, gru
 - Lápis — edita; lixeira — exclui (casos já vinculados não são afetados).
 
 **Fluxo recomendado**: "Novo" → nome + prefixo + cor → salvar. O prefixo passa a valer na numeração automática de casos novos.
+
+---
+
+## Pipeline de atualizações por e-mail — sync-email-push v13 (30/08/2026)
+
+**Estado**: código na branch `claude/whatsjud-pipeline-updates-bhuoeu`, aguardando aprovação fase a fase do Raym para ativar (migrations → deploy edge → merge Railway). Nada roda em produção ainda.
+
+**O que muda quando ativar**:
+
+1. **Índice paginado** — o select de `lead_processes` era cortado em 1.000 linhas pelo PostgREST; a base tem 1.645 ativos com número. ~39% da carteira nunca casava. Agora pagina com `.range()` e devolve `indice_processos_carregados` no retorno.
+2. **Identificador tipado** (`_shared/identificadorProcessual.ts`) — CNJ exige 20 dígitos + DV módulo 97 (ISO 7064); SEI/demanda SIT/ordem de serviço/protocolo INSS têm tipo próprio pela máscara, nunca por comprimento. Tipo do e-mail tem que bater com o tipo do cadastro. Não-CNJ exige palavra-âncora a ≤40 caracteres.
+3. **Parsers novos derivados de e-mails reais** — PJe Push TRF1 (tabela Data/Movimento/Documento, 461 e-mails) e TRF3 (mesmo layout achatado, 93), EPROC em linha corrida TRF6/TJMG/JFs (a movimentação na mesma linha do `Num. Processo:` era pulada), PROJUDI TJAM (prosa com data por extenso), e-SAJ com `Incidente Processual:` e teor curto como complemento. Link do documento vai dentro de `eventos`.
+4. **Fallback não inventa data** — layout desconhecido grava `data_movimentacao` nula + `data_presumida = true` (migration `20260830120000`); o card mostra "sem data no e-mail".
+5. **Órfãos persistidos** — identificador sem cadastro vira linha em `email_identificadores_orfaos` (RPC `jm_email_orfaos_upsert`); aba **Sem vínculo** no painel do sino ordena por última ocorrência com ações Vincular (busca nº/nome) / Criar processo / Ignorar; ao vincular, a função reprocessa os e-mails daquele identificador (`{ reprocessar: { identificador } }`) para os cards retroativos.
+6. **Anexos MTE** (migration `20260830121000`) — `gmail-processual-sync` salva anexos de remetentes de governo no bucket privado `processual-anexos`; `jm-ler-peca` ganhou modo `{ anexo_id }` que extrai o texto (mesma função, mesmo Gemini); a varredura de identificadores roda também sobre o texto extraído.
+7. **Backfill restrito do inbox#3** — `gmail-processual-sync` aceita `inbox` + `q` (filtro Gmail) e, em `dry_run`, devolve `por_ano`/`por_remetente` — o relatório que aprova o backfill do adm@ até 01/01/2024 sem despejar a caixa inteira.
+
+**Proveniência**: toda linha nova do feed grava `email_message_id` + `email_recebido_em` — é o que torna o reprocessamento limpo (`apagar_cards` só alcança cards do mesmo e-mail).

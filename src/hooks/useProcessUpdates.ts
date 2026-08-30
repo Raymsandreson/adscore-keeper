@@ -36,6 +36,13 @@ export interface ProcessUpdate {
   titulo: string;
   descricao: string | null;
   data_movimentacao: string | null;
+  /**
+   * true = o e-mail do tribunal não trouxe a data do ato (layout desconhecido)
+   * e data_movimentacao ficou nula DE PROPÓSITO (migration 20260830120000).
+   * O card mostra "sem data no e-mail" — nunca a data do e-mail como se fosse
+   * a do ato, que foi o bug dos 9 cards de 29/08/2026.
+   */
+  data_presumida: boolean;
   created_at: string;
   /**
    * Eventos do push agrupado (migration 20260812150000). Null nas linhas do
@@ -136,14 +143,16 @@ const ordemDoFeed = (a: ProcessUpdate, b: ProcessUpdate): number => {
   return a.id < b.id ? 1 : -1;
 };
 
-const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, created_at, eventos, resumo_ia';
+const COLUNAS = 'id, process_id, lead_id, case_id, numero_cnj, processo_titulo, esfera, categoria, titulo, descricao, data_movimentacao, data_presumida, created_at, eventos, resumo_ia';
 // Coluna que falta derruba o select INTEIRO e o sino fica vazio em silêncio —
 // já aconteceu com callback_at em lead_activities. Então cada coluna nova entra
-// com degrau de recuo próprio: sem resumo_ia o card cai no texto cru, sem
-// eventos ainda dá para ler o feed, e sem esfera dá para ler sem o filtro por
-// ramo. O degrau do resumo é o primeiro porque é a coluna mais nova — enquanto
-// a migration não roda no Externo, é ela que derrubaria o feed inteiro.
-const COLUNAS_SEM_RESUMO = COLUNAS.replace(', resumo_ia', '');
+// com degrau de recuo próprio: sem data_presumida o card só perde o aviso "sem
+// data no e-mail", sem resumo_ia cai no texto cru, sem eventos ainda dá para
+// ler o feed, e sem esfera dá para ler sem o filtro por ramo. O degrau da
+// data_presumida é o primeiro porque é a coluna mais nova — enquanto a
+// migration 20260830120000 não roda no Externo, é ela que derrubaria o feed.
+const COLUNAS_SEM_PRESUMIDA = COLUNAS.replace(', data_presumida', '');
+const COLUNAS_SEM_RESUMO = COLUNAS_SEM_PRESUMIDA.replace(', resumo_ia', '');
 const COLUNAS_SEM_EVENTOS = COLUNAS_SEM_RESUMO.replace(', eventos', '');
 const COLUNAS_SEM_ESFERA = COLUNAS_SEM_EVENTOS.replace(', esfera', '');
 
@@ -221,7 +230,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
       // repetiria as quatro tentativas.
       let colunas = COLUNAS;
       let pagina = await buscar(colunas, 0, PAGINA_BUSCA - 1);
-      for (const alternativa of [COLUNAS_SEM_RESUMO, COLUNAS_SEM_EVENTOS, COLUNAS_SEM_ESFERA]) {
+      for (const alternativa of [COLUNAS_SEM_PRESUMIDA, COLUNAS_SEM_RESUMO, COLUNAS_SEM_EVENTOS, COLUNAS_SEM_ESFERA]) {
         if (!pagina.error) break;
         colunas = alternativa;
         pagina = await buscar(colunas, 0, PAGINA_BUSCA - 1);
@@ -271,6 +280,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
         // Degrau sem a coluna devolve linha sem o campo — `undefined` no card
         // seria "carregando", e o que vale dizer é "ainda não resumido".
         resumo_ia: r.resumo_ia ?? null,
+        data_presumida: r.data_presumida === true,
         vinculos: null,
       }));
       setUpdates(rows);
@@ -454,6 +464,7 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
             // Chegou agora: o resumo é escrito minutos depois, pelo cron do
             // Railway. Até lá o card mostra o texto cru — nunca "undefined".
             resumo_ia: bruto.resumo_ia ?? null,
+            data_presumida: bruto.data_presumida === true,
             // Lead e caso vêm de outras tabelas; a próxima busca os resolve.
             vinculos: null,
           };
