@@ -396,6 +396,27 @@ Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, gru
 
 **Proveniência**: toda linha nova do feed grava `email_message_id` + `email_recebido_em` — é o que torna o reprocessamento limpo (`apagar_cards` só alcança cards do mesmo e-mail).
 
+### Parser versionado — e-mail lido por parser velho volta para a fila (30/08/2026)
+
+**O furo**: a ficha do processo `1017247-47.2025.4.01.3100` dizia "Nenhuma movimentação capturada neste processo ainda" com **três pushes do TRF1 na base** (17/06, 30/06 e 09/07/2026, `has_movimentacao = true`, `process_number` preenchido). Os três foram lidos em 11-12/08 pelo parser da época — que só copiava o assunto —, e os cards genéricos que ele gerou foram apagados na limpeza de ruído do dia 12 (`zz_process_updates_ruido_bkp_20260812` guarda os 3). Como `vw_email_push_pendentes` era anti-join contra `email_push_processados`, o e-mail ficou marcado como lido para sempre: nenhuma rodada do cron voltava nele, e o parser v13 — que extrai a tabela Data/Movimento do TRF1 — nunca chegou a vê-lo.
+
+**Tamanho**: 155 dos 615 processos com push na base estavam sem um único card; 559 e-mails deles marcados como processados, 462 nos dias 11-12/08. Por layout, 520 desses 559 (93%) têm marcador que o parser corrente sabe ler (303 tabela Data/Movimento, 212 bloco "Eventos:", 5 e-SAJ).
+
+**A correção** (migration `20260830210000_reler_push_apos_parser_novo.sql`): "processado" deixa de ser sim/não e passa a ser **por qual parser**.
+
+- `email_push_processados.parser_versao` guarda a versão que leu o e-mail (linhas antigas ficam em `0`);
+- `jm_email_parser_versao()` é a versão corrente — **fonte única**, lida pela edge e pelas views (nasce em `1` = sync-email-push v13);
+- `vw_email_push_pendentes` = nunca lido **ou** lido por versão anterior. O `0` das linhas antigas é o que devolve a caixa inteira (9.495 e-mails em 30/08) para a fila uma vez;
+- `vw_jm_captura_status` conta "concluído" como "lido pelo parser corrente" — senão o painel diria 0 na fila enquanto a edge relê 9 mil e-mails.
+
+**Reprocessar é seguro e não custa**: a gravação do feed é upsert por `(process_id, conteudo_hash)` com `ignoreDuplicates`, então e-mail relido não duplica card; e a reabertura paga do Escavador (`jm_esc_reabrir_por_cnj`, R$ 0,20/processo) só alcança e-mail recebido dentro de `reabrir_desde_dias` (3), então o passivo antigo passa de graça. Ritmo: cron de hora em hora com `limite: 200` ≈ 48 h para drenar; chamadas manuais com `limite: 1000` encurtam.
+
+**Ordem de aplicação**: deploy da `sync-email-push` primeiro, migration depois. Invertido, a edge antiga marca sem `parser_versao`, as linhas de backfill continuam em `0` e o cron relê o mesmo lote a cada hora até o deploy chegar (não corrompe nada — só desperdício).
+
+**O RITUAL**: mexeu em `_shared/emailPushParser.ts` de um jeito que muda o que ele extrai? Sobe `jm_email_parser_versao()` em +1 numa migration. É isso que faz a melhoria valer para a caixa inteira, e não só para o e-mail que chegar depois dela.
+
+**Na tela** (`SemMovimentacaoNoProcesso.tsx`): o vazio do painel de um processo deixou de ser ponto final e virou detector com caminho clicável — se há e-mail de push na base sem card, diz quantos e oferece "Ler o(s) e-mail(s) agora" (chama `sync-email-push` no modo `reprocessar` por identificador, sem sair do painel); se não há nenhum, diz que o furo é a montante (processo fora do push do tribunal, ou número cadastrado diferente do que o tribunal usa).
+
 ---
 
 ## Ficha do processo: de onde vem a capa (30/08/2026)
