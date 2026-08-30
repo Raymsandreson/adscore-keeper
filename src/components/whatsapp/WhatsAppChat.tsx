@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useReducer, useCallback, useLayoutEffect, lazy, Suspense } from 'react';
+import { useConversationHydration } from '@/hooks/useConversationHydration';
 import { hrefTel } from '@/lib/dial';
 import { WhatsAppConversation, type WhatsAppMessage } from '@/hooks/useWhatsAppMessages';
 import { Button } from '@/components/ui/button';
@@ -2480,28 +2481,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
     return () => { supabase.removeChannel(channel); };
   }, [conversation.phone, conversation.instance_name]);
 
-  // Detecta hidratação da conversa: ao clicar, o pai passa a conversa contendo
-  // apenas a mensagem-resumo (length <= 1) e dispara fetchFullConversation em
-  // seguida. Sem este guard a UI pisca com a última mensagem + log de chamadas
-  // antes do histórico chegar. Mostramos um skeleton até a hidratação concluir
-  // (mais mensagens chegarem) ou um timeout de segurança expirar.
-  const [isHydratingConversation, setIsHydratingConversation] = useState(false);
-  const hydrationKeyRef = useRef<string>('');
-  useEffect(() => {
-    const key = `${conversation.phone}__${(conversation.instance_name || '').toLowerCase()}`;
-    const msgCount = conversation.messages.length;
-    if (hydrationKeyRef.current !== key) {
-      hydrationKeyRef.current = key;
-      if (msgCount <= 1) {
-        setIsHydratingConversation(true);
-        const t = setTimeout(() => setIsHydratingConversation(false), 2000);
-        return () => clearTimeout(t);
-      }
-      setIsHydratingConversation(false);
-    } else if (msgCount > 1 && isHydratingConversation) {
-      setIsHydratingConversation(false);
-    }
-  }, [conversation.phone, conversation.instance_name, conversation.messages.length, isHydratingConversation]);
+  // Enquanto o pai só tem a mensagem-resumo, mostramos skeleton em vez de piscar
+  // a última mensagem + log de chamadas. Detalhes e o timeout de segurança:
+  // src/hooks/useConversationHydration.ts
+  const isHydratingConversation = useConversationHydration({
+    phone: conversation.phone,
+    instanceName: conversation.instance_name,
+    messageCount: conversation.messages.length,
+  });
 
   // Merge messages, call records and internal notes into a unified timeline
   const allTimelineItems = (() => {

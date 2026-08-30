@@ -179,6 +179,13 @@ export const handler: RequestHandler = async (req, res) => {
   // inbox#3 restrito em vez de "a caixa inteira desde 2024".
   const qExtra: string | null = (body.q ?? query.q ?? null) || null;
   const inboxFilter: string | null = (body.inbox ?? query.inbox ?? null) || null;
+  // Fase 2, pendência (a): os e-mails do HISTÓRICO já estão no banco, mas os
+  // anexos deles não — o backfill normal pula e-mail existente antes de olhar
+  // anexo. Neste modo o "já visto" passa a ser "já tem anexo capturado": o
+  // e-mail existente é rebaixado só para pescar o PDF (o upsert do corpo é
+  // ignoreDuplicates, não regrava nada). Usar com q contendo has:attachment,
+  // senão e-mail sem anexo é rebaixado a cada varredura sem nunca sair da lista.
+  const anexosRetroativos: boolean = Boolean(body.anexos_retroativos ?? query.anexos_retroativos);
 
   const allInboxes = getInboxKeys();
   const inboxes = inboxFilter
@@ -260,10 +267,12 @@ export const handler: RequestHandler = async (req, res) => {
           const nextToken = list.nextPageToken;
 
           if (items.length > 0) {
-            // Skip os que já temos (por gmail_message_id)
+            // Skip os que já temos (por gmail_message_id). No modo retroativo
+            // de anexos, "ter" significa ter ANEXO capturado — o e-mail em si
+            // já está no banco e é exatamente por isso que ele seria pulado.
             const ids = items.map((i) => i.id);
             const { data: existing } = await ext
-              .from('processual_emails')
+              .from(anexosRetroativos ? 'processual_email_anexos' : 'processual_emails')
               .select('gmail_message_id')
               .in('gmail_message_id', ids);
             const seen = new Set((existing || []).map((r: any) => r.gmail_message_id));
