@@ -2,6 +2,7 @@ import { createPortal } from 'react-dom';
 import { Download, FileText, X, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import { bindDownload } from '@/lib/downloadFile';
+import { PdfCanvasViewer } from './PdfCanvasViewer';
 
 interface MediaLightboxProps {
   url: string | null;
@@ -18,11 +19,16 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const draggingRef = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
   const movedRef = useRef(false);
+  // Renderizamos o PDF em canvas (pdf.js). O iframe só volta como rede de
+  // segurança, porque em Android ele não mostra nada — foi o que motivou a
+  // troca.
+  const [pdfEmIframe, setPdfEmIframe] = useState(false);
 
   // reset state when url changes / closes
   useEffect(() => {
     setZoom(1);
     setOffset({ x: 0, y: 0 });
+    setPdfEmIframe(false);
   }, [url]);
 
   // ESC to close, wheel to zoom
@@ -230,7 +236,11 @@ export function MediaLightbox({ url, title = 'Visualização', onClose }: MediaL
               <X className="h-4 w-4" />
             </button>
           </div>
-          <iframe src={url} title={title} className="min-h-0 flex-1 bg-muted" />
+          {pdfEmIframe ? (
+            <iframe src={url} title={title} className="min-h-0 flex-1 bg-muted" />
+          ) : (
+            <PdfCanvasViewer url={url} onFalha={() => setPdfEmIframe(true)} />
+          )}
         </div>
       ) : (
         <img
