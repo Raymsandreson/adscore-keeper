@@ -72,6 +72,20 @@ describe('extrairIdentificadoresAdministrativos — âncora obrigatória', () =>
     expect(ids).toHaveLength(1);
     expect(ids[0].tipo).toBe('sei');
   });
+  it('a sigla "OS:" dos PDFs do SFIT ancora ordem de serviço; "os" minúsculo (artigo) não', () => {
+    const sigla = extrairIdentificadoresAdministrativos({
+      assunto: null,
+      corpo: 'OS:11388013-8 RI:31505445-0 Projeto:(A) Análise de Acidentes e Doenças do Trabalho',
+    });
+    expect(sigla.map((i) => i.valorNormalizado)).toEqual(['113880138']); // o RI fica de fora
+
+    const artigo = extrairIdentificadoresAdministrativos({
+      assunto: null,
+      corpo: 'entre os 11471427-4 itens listados',
+    });
+    expect(artigo).toHaveLength(0);
+  });
+
   it('demanda e ordem de serviço exigem a palavra por perto; número solto é descartado', () => {
     const com = extrairIdentificadoresAdministrativos({
       assunto: null,

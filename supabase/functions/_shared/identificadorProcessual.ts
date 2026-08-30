@@ -136,6 +136,12 @@ function ancoraAntes(texto: string, inicio: number, re: RegExp, janela = 40): st
 const ANCORA_SEI_RE = /\b(?:processo|sei|requeriment\w*|relat[óo]rio|protocolo|procediment\w*)\b/i;
 const ANCORA_DEMANDA_RE = /\b(?:demanda|den[úu]ncia)\b/i;
 const ANCORA_OS_RE = /ordem\s+de\s+servi[çc]o/i;
+/**
+ * Nos PDFs do SFIT o número vem abreviado e colado: "OS:11388013-8" (real,
+ * extraído em 30/08/2026). SEM flag i de propósito: "OS" maiúsculo seguido de
+ * ":" ou "nº" é sigla; "os 11471427-4" minúsculo é artigo e não ancora nada.
+ */
+const ANCORA_OS_SIGLA_RE = /\bOS\s*[:nN]?[ºo°.]?\s*$/;
 const ANCORA_CNJ_SEM_MASCARA_RE = /\b(?:processo|autos)\b/i;
 
 /**
@@ -195,7 +201,12 @@ export function extrairIdentificadoresAdministrativos(input: {
   coletar(texto, SEI_G, 'sei', ANCORA_SEI_RE, out);
   coletar(texto, MPT_PROCEDIMENTO_G, 'outro', ANCORA_SEI_RE, out);
   coletar(texto, DEMANDA_G, 'demanda_sit', ANCORA_DEMANDA_RE, out);
-  coletar(texto, OS_G, 'ordem_servico', ANCORA_OS_RE, out);
+  // OS aceita duas âncoras: a frase por extenso em qualquer lugar da janela,
+  // ou a sigla "OS:" colada imediatamente antes (formato dos PDFs do SFIT).
+  coletar(texto, OS_G, 'ordem_servico', null, out, (_valor, inicio) => {
+    const antes = texto.slice(Math.max(0, inicio - 40), inicio);
+    return ANCORA_OS_RE.test(antes) || ANCORA_OS_SIGLA_RE.test(antes);
+  });
   // CNJ sem máscara: 20 dígitos lisos, DV válido, âncora "processo"/"autos".
   coletar(texto, CNJ_SEM_MASCARA_G, 'cnj', ANCORA_CNJ_SEM_MASCARA_RE, out,
     (valor) => cnjDvValido(valor));
