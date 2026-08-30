@@ -1746,9 +1746,17 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               activityTitle={formTitle}
               activityTypeLabel={activityTypes.find(t => t.key === formType)?.label || null}
             />
-            {/* Em que altura está o processo desta atividade. Antes era preciso
-                sair da tela pra saber se já tinha sentença. */}
-            {formProcessId && (
+            {/* Em que altura está o processo desta atividade. Só quando a
+                LeadFunnelProgressBar (logo abaixo, no mesmo cabeçalho) NÃO vai
+                renderizar — desde que a faixa passou a ler a régua do POP
+                (30/08/2026), as duas mostravam a MESMA régua, duas barras com o
+                mesmo 50% na mesma tela. Uma medida, uma barra. */}
+            {formProcessId
+              && !(formLeadId && (formWorkflowId
+                   // espelha a cascata da barra: com processo, só o POP do
+                   // processo conta; o board do lead não renderiza barra ali.
+                   || (formProcessId ? !!linkedProcess?.workflow_id
+                       : (leadPreview?.lead_status !== 'closed' && !!leadPreview?.board_id)))) && (
               <div className="w-full mt-1">
                 <ProcessMarcosInline
                   processId={formProcessId}
