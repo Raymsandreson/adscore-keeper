@@ -41,6 +41,7 @@ import {
   camposConsolidados, camposDeUmaMovimentacao, movimentacaoPrincipal, type CamposDaMensagem,
 } from './notificacaoEmLote';
 import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPanel';
+import { OrfaosSemVinculo } from '@/components/notifications/OrfaosSemVinculo';
 import { notificationsSupported, requestNotificationPermission } from '@/lib/nativeNotification';
 
 const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
@@ -242,6 +243,16 @@ function UpdateRow({
               {style.label}
             </Badge>
             {dataMov && <span className="text-[10px] text-muted-foreground">{dataMov}</span>}
+            {/* O e-mail não trouxe a data do ato: dizer "sem data" é honesto;
+                mostrar a data do e-mail era o bug dos cards de 29/08/2026. */}
+            {!dataMov && update.data_presumida && (
+              <span
+                className="text-[10px] text-amber-600 dark:text-amber-500"
+                title="O e-mail do tribunal não informou a data do ato — o card mostra quando a notícia chegou, não quando aconteceu."
+              >
+                sem data no e-mail
+              </span>
+            )}
             {unread && <span className="text-[9px] font-semibold text-primary uppercase">novo</span>}
             {update.esfera && update.esfera !== 'outros' && (
               <span className="text-[9px] text-muted-foreground uppercase tracking-wide">
@@ -443,6 +454,9 @@ export function ProcessUpdatesBell({
     useProcessUpdates({ processId, desde });
 
   const [open, setOpen] = useState(false);
+  // Aba do painel: o feed de sempre, ou os identificadores que os e-mails
+  // citaram e o cadastro não conhece (email_identificadores_orfaos).
+  const [aba, setAba] = useState<'feed' | 'sem_vinculo'>('feed');
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
   // ---- Lote ----
@@ -1390,6 +1404,32 @@ export function ProcessUpdatesBell({
             </div>
           </div>
         </SheetHeader>
+        {/* Feed | Sem vínculo. A segunda aba é a fila do que o e-mail citou e
+            o cadastro não conhece — antes era um array jogado fora na resposta
+            da sync-email-push. Só no painel global: na ficha de UM processo,
+            órfão por definição não é dele. */}
+        {!escopado && (
+          <div className="flex gap-1 px-2 py-1.5 border-b shrink-0">
+            {([['feed', 'Feed'], ['sem_vinculo', 'Sem vínculo']] as const).map(([valor, rotulo]) => (
+              <button
+                key={valor}
+                onClick={() => setAba(valor)}
+                className={cn(
+                  'text-[11px] px-2.5 py-1 rounded-full border whitespace-nowrap transition-colors',
+                  aba === valor
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background hover:bg-accent',
+                )}
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
+        )}
+        {aba === 'sem_vinculo' && !escopado ? (
+          <OrfaosSemVinculo aberto={open} />
+        ) : (
+        <>
         {/* Só aparece enquanto ninguém decidiu: concedida some, negada some
             (insistir não reabre o prompt — o navegador bloqueia). */}
         {permissao === 'default' && !escopado && (
@@ -1645,6 +1685,8 @@ export function ProcessUpdatesBell({
               </p>
             )}
           </div>
+        )}
+        </>
         )}
       </SheetContent>
     </Sheet>
