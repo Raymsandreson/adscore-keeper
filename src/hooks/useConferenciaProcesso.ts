@@ -523,6 +523,28 @@ export function useConferenciaProcesso(alvo: AlvoConferencia | null) {
       });
     }
 
+    // Execução rodando sem trânsito: ou é execução PROVISÓRIA de verdade (art.
+    // 899 da CLT — recurso só devolutivo), ou a certidão de trânsito existe e
+    // ninguém capturou. Nos dois casos o caminho é a peça, nunca esconder o
+    // número. Medido em 30/08/2026: 70 dos 126 processos com marco de execução
+    // do POP trabalhista estão nesta situação.
+    const execProvisoria = marcos.find(m => m.chave === 'execucao_provisoria');
+    if (execProvisoria) {
+      const doApartado = execProvisoria.fonte === 'derivado_apartado';
+      out.push({
+        nivel: 'info',
+        titulo: doApartado
+          ? 'Execução provisória em autos apartados'
+          : 'Execução correndo sem trânsito em julgado',
+        detalhe: doApartado
+          ? 'A execução corre em autos próprios, vinculados a este processo. Os marcos de lá ficam na '
+            + 'ficha do apartado — aqui eles não movem a fase, de propósito.'
+          : 'Pode ser execução provisória (recurso sem efeito suspensivo) ou certidão de trânsito ainda '
+            + 'não capturada. Se o trânsito já ocorreu, anexe a certidão: ela é a peça que fecha a fase '
+            + 'cognitiva e tira este aviso.',
+      });
+    }
+
     const semCadastro = marcos.filter(m => m.semCadastroNoPop);
     if (semCadastro.length) {
       out.push({

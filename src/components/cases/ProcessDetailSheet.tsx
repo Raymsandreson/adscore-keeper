@@ -267,6 +267,28 @@ function classifyDocumentType(text: string): string {
 }
 
 export default function ProcessDetailSheet({ open, onOpenChange, process, onUpdated, mode = 'sheet', defaultTab, highlightMessageId }: ProcessDetailSheetProps) {
+  // Autos apartados (execução provisória, carta de sentença): a ficha deles abre
+  // POR CIMA desta, empilhada, e o fechar devolve exatamente aqui. Sheet irmão,
+  // nunca filho — dois Dialogs do Radix aninhados brigam por foco (mesma
+  // solução do PopCarteiraSheet).
+  const [apartadoAberto, setApartadoAberto] = useState<Record<string, unknown> | null>(null);
+  const abrirApartado = useCallback(async (apartadoId: string) => {
+    // Guarda contra vínculo circular (A aponta B e B aponta A): abrir a si mesmo
+    // empilharia fichas até travar a tela.
+    if (!apartadoId || apartadoId === (process as { id?: string } | null)?.id) return;
+    try {
+      // A ficha espera o registro inteiro de lead_processes — o mesmo caminho
+      // que a Carteira do POP usa para abrir um processo pelo id.
+      await ensureExternalSession();
+      const { data, error } = await externalSupabase
+        .from('lead_processes').select('*').eq('id', apartadoId).maybeSingle();
+      if (error) throw error;
+      if (!data) { toast.error('Autos apartados não encontrados'); return; }
+      setApartadoAberto(data as Record<string, unknown>);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao abrir os autos apartados');
+    }
+  }, []);
   const navFn = useNavigate();
   const [form, setForm] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
@@ -1585,6 +1607,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                 processNumber={form.process_number || process.process_number || null}
                 caseType={leadCaseType}
                 periciaPrevista={form.pericia_prevista ?? null}
+                onAbrirApartado={abrirApartado}
               />
             )}
 
@@ -2206,23 +2229,40 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     </div>
   );
 
+  // A ficha dos autos apartados: mesma ficha, outro processo, por cima desta.
+  // Abre já na aba Marcos — quem clica quer ver onde a execução provisória está.
+  const fichaDoApartado = apartadoAberto ? (
+    <ProcessDetailSheet
+      open
+      onOpenChange={(v) => { if (!v) setApartadoAberto(null); }}
+      process={apartadoAberto}
+      defaultTab="marcos"
+    />
+  ) : null;
+
   if (mode === 'dialog') {
     return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
-          <div className="sr-only"><DialogHeader><DialogTitle>Detalhes do Processo</DialogTitle></DialogHeader></div>
-          {innerContent}
-        </DialogContent>
-      </Dialog>
+      <>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden flex flex-col">
+            <div className="sr-only"><DialogHeader><DialogTitle>Detalhes do Processo</DialogTitle></DialogHeader></div>
+            {innerContent}
+          </DialogContent>
+        </Dialog>
+        {fichaDoApartado}
+      </>
     );
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col md:top-4 md:bottom-auto md:h-auto md:max-h-[92vh] md:overflow-hidden md:rounded-l-xl">
-        <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
-        {innerContent}
-      </SheetContent>
-    </Sheet>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
+        <SheetContent className="w-full sm:max-w-2xl p-0 flex flex-col md:top-4 md:bottom-auto md:h-auto md:max-h-[92vh] md:overflow-hidden md:rounded-l-xl">
+          <div className="sr-only"><SheetHeader><SheetTitle>Detalhes do Processo</SheetTitle></SheetHeader></div>
+          {innerContent}
+        </SheetContent>
+      </Sheet>
+      {fichaDoApartado}
+    </>
   );
 }

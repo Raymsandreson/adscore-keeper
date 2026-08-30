@@ -11,6 +11,7 @@ import { melhorPeca, rotuloDaPeca } from '@/lib/pecasDoProcesso';
 import { useProcessMovements, type MarcoTipo } from '@/hooks/useProcessMovements';
 import { useProcessoMarcos } from '@/hooks/useProcessoMarcos';
 import { ReguaMarcosDoPop, type MarcoDaRegua } from '@/components/cases/ReguaMarcosDoPop';
+import { ApartadosDoProcesso } from '@/components/cases/ApartadosDoProcesso';
 import { estacoesDoProcesso } from '@/lib/processStations';
 import { useEstacaoEvidencia } from '@/hooks/useEstacaoEvidencia';
 import EstacaoEvidencia from '@/components/cases/EstacaoEvidencia';
@@ -320,6 +321,7 @@ export function ProcessMovementsTimeline({
   processNumber,
   caseType,
   periciaPrevista,
+  onAbrirApartado,
 }: {
   processId: string;
   refreshKey?: number;
@@ -331,6 +333,8 @@ export function ProcessMovementsTimeline({
   caseType?: string | null;
   /** Override manual da perícia (null = automático). */
   periciaPrevista?: boolean | null;
+  /** Abre a ficha dos autos apartados por cima (quem monta o Sheet é a ficha). */
+  onAbrirApartado?: (apartadoId: string) => void;
 }) {
   const [escopo, setEscopo] = useState<'processo' | 'caso'>('processo');
   const { movements, loading, refetch } = useProcessMovements(processId, { escopo, caseId });
@@ -509,8 +513,10 @@ export function ProcessMovementsTimeline({
       eventual: m.eventual,
       terminal: m.terminal,
       atravessaFases: m.atravessa_fases,
+      presumivel: m.presumivel,
       data: m.data_detectada,
       fonte: m.fonte,
+      origemCnj: m.origem_cnj,
       temProvaDocumental: m.tem_prova_documental,
       atual: m.atual,
       stageNome: m.stage_nome,
@@ -580,6 +586,12 @@ export function ProcessMovementsTimeline({
           </Button>
         </div>
       )}
+      {/* A execução provisória corre em autos próprios: eles aparecem ao lado da
+          régua, não dentro dela — estação do apartado moveria a fase da mãe. */}
+      {escopo === 'processo' && (
+        <ApartadosDoProcesso processId={processId} onAbrir={onAbrirApartado} />
+      )}
+
       {usaReguaDoPop ? (
         <ReguaMarcosDoPop marcos={marcosDoPop} />
       ) : (

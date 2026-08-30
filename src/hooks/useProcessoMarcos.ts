@@ -29,10 +29,19 @@ export interface MarcoReguaRow {
   terminal: boolean;
   /** Estado (acordo, suspensão…): não disputa posição na régua. A RPC devolve desde 27/08/2026. */
   atravessa_fases: boolean;
+  /**
+   * Obrigatório anterior ao atual pode ser dado como cumprido sem prova?
+   * false só no trânsito em julgado (30/08/2026): na execução provisória ele
+   * ainda NÃO ocorreu, e presumi-lo carimbava 122 processos do POP trabalhista
+   * com uma prova que não existe. Ver a migration 20260830120000.
+   */
+  presumivel: boolean;
   estado: MarcoEstado;
   data_detectada: string | null;
-  /** movimento | documento | escavador_texto | escavador_grau | campo_processo | email */
+  /** movimento | documento | escavador_texto | escavador_grau | campo_processo | email | derivado_* */
   fonte: string | null;
+  /** CNJ dos autos APARTADOS que originaram o marco; null = nos próprios autos. */
+  origem_cnj: string | null;
   tem_prova_documental: boolean;
   atual: boolean;
   percentual: number | null;
@@ -49,6 +58,11 @@ export const FONTE_LABEL: Record<string, string> = {
   // Quinta fonte (24/08/2026): e-mail do INSS, ligado pelo protocolo
   // administrativo. É a única que alcança requerimento sem CNJ.
   email: 'e-mail do INSS',
+  // Derivadas (30/08/2026): não vêm de movimentação nenhuma — são conclusão da
+  // régua sobre o que já foi detectado. Dizer "DataJud" nelas seria mentir sobre
+  // a origem.
+  derivado_mesmos_autos: 'execução sem trânsito',
+  derivado_apartado: 'autos apartados',
 };
 
 export interface ReguaDoProcesso {

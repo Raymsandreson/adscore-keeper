@@ -16,8 +16,14 @@
 //     por posição é só o rótulo do pendente: "falta" quando a estação ainda
 //     está à frente do marco atual, "não houve" quando o trem já passou por
 //     ela sem parar (recurso que não aconteceu, penhora que não precisou).
-//   - ESTADO (atravessa_fases: acordo, suspensão, inadimplência…) não é
-//     posição: vira badge no topo, com a data.
+//   - ESTADO (atravessa_fases: acordo, suspensão, inadimplência, execução
+//     provisória…) não é posição: vira badge no topo, com a data. A execução
+//     provisória (30/08/2026) é estado por natureza — corre AO LADO do recurso
+//     que ainda está em curso, não depois dele. Quando ela vem de autos
+//     apartados, o badge carrega o CNJ de lá.
+//   - "não houve" é só para degrau EVENTUAL já ultrapassado. Obrigatório
+//     pendente é "falta", mesmo com o trem adiante: é o trânsito em julgado
+//     durante a execução provisória.
 //   - presumido = obrigatório anterior ao marco atual que a janela de
 //     movimentações não mostrou; aparece atenuado, sem fingir prova.
 // =============================================================================
@@ -35,9 +41,13 @@ export interface MarcoDaRegua {
   eventual: boolean;
   terminal: boolean;
   atravessaFases: boolean;
+  /** Pode ser dado como cumprido sem prova quando o trem já passou? */
+  presumivel?: boolean;
   /** 'YYYY-MM-DD' da detecção; null em pendente/presumido. */
   data: string | null;
   fonte: string | null;
+  /** CNJ dos autos apartados que originaram o marco (execução provisória). */
+  origemCnj?: string | null;
   temProvaDocumental: boolean;
   atual: boolean;
   /** Nome da fase do POP ligada ao marco (stage do board). */
@@ -47,6 +57,7 @@ export interface MarcoDaRegua {
 /** Cor do badge de estado por chave — o resto cai no neutro. */
 const ESTADO_BADGE: Record<string, string> = {
   acordo_homologado: 'bg-emerald-600 hover:bg-emerald-600',
+  execucao_provisoria: 'bg-blue-600 hover:bg-blue-600',
   suspensao: 'bg-amber-500 hover:bg-amber-500',
   inadimplencia: 'bg-red-600 hover:bg-red-600',
   recuperacao_judicial: 'bg-red-600 hover:bg-red-600',
@@ -72,6 +83,21 @@ function humanizeDias(dias: number): string {
   return mesesResto > 0
     ? `${anos} ano${anos > 1 ? 's' : ''} e ${mesesResto} ${mesesResto > 1 ? 'meses' : 'mês'}`
     : `${anos} ano${anos > 1 ? 's' : ''}`;
+}
+
+/**
+ * O que a coluna da direita escreve numa estação.
+ *
+ * "Não houve" é só para degrau EVENTUAL que o trem já passou sem parar (recurso
+ * que não aconteceu, penhora que não precisou). Obrigatório pendente é sempre
+ * "falta", mesmo com o trem adiante — desde 30/08/2026 o trânsito em julgado
+ * cai aqui quando a execução é provisória, e escrever "não houve" daria o caso
+ * por encerrado sem trânsito nenhum.
+ */
+export function rotuloDaData(m: MarcoDaRegua, trechoJaPercorrido: boolean): string {
+  if (m.data) return dataBR(m.data);
+  if (m.estado !== 'pendente') return '';
+  return trechoJaPercorrido && m.eventual ? 'não houve' : 'falta';
 }
 
 /** Fases que a linha exibe: todas, em ordem. Só ESTADO (badge) fica de fora. */
@@ -130,11 +156,16 @@ export function ReguaMarcosDoPop({
                 ESTADO_BADGE[e.chave] || 'bg-slate-500 hover:bg-slate-500',
                 onVerFonte && 'cursor-pointer',
               )}
-              title={e.fonte
-                ? `Detectado por ${FONTE_LABEL[e.fonte] || e.fonte}${onVerFonte ? ' — clique para ver a evidência' : ''}`
-                : undefined}
+              title={[
+                e.fonte ? `Detectado por ${FONTE_LABEL[e.fonte] || e.fonte}` : null,
+                e.origemCnj ? `Corre nos autos apartados ${e.origemCnj}` : null,
+                onVerFonte ? 'Clique para ver a evidência' : null,
+              ].filter(Boolean).join(' — ') || undefined}
             >
               {e.rotulo}{e.data ? ` · ${dataBR(e.data)}` : ''}
+              {/* O CNJ do apartado viaja no badge: sem ele ninguém sabe se a
+                  penhora foi nestes autos ou nos de lá. */}
+              {e.origemCnj ? ` · autos ${e.origemCnj}` : ''}
             </Badge>
           ))}
           <span className="text-[9px] text-muted-foreground">
@@ -211,14 +242,12 @@ export function ReguaMarcosDoPop({
                   <span
                     className="w-16 text-right text-[10px] text-muted-foreground whitespace-nowrap"
                     title={m.estado === 'pendente' && idxAtual >= 0 && i < idxAtual
-                      ? 'Fase eventual que o processo atravessou sem registrar — não é atraso.'
+                      ? (m.eventual
+                        ? 'Fase eventual que o processo atravessou sem registrar — não é atraso.'
+                        : 'Etapa obrigatória que ainda não aconteceu, mesmo o processo estando adiante — é o caso do trânsito em julgado durante a execução provisória.')
                       : undefined}
                   >
-                    {m.data
-                      ? dataBR(m.data)
-                      : m.estado === 'pendente'
-                        ? (idxAtual >= 0 && i < idxAtual ? 'não houve' : 'falta')
-                        : ''}
+                    {rotuloDaData(m, idxAtual >= 0 && i < idxAtual)}
                   </span>
                 </span>
               </div>
