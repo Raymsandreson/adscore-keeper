@@ -404,6 +404,22 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 ---
 
+## Uma medida só: progresso, etapa e passo atual da mensagem (30/08/2026)
+
+A mensagem gerada na atividade (`buildActivityMessage`) e a barra do POP na ficha (`LeadFunnelProgressBar`) leem o mesmo checklist e **têm que dizer o mesmo**. Caso que abriu a correção — processo `1017247-47.2025.4.01.3100`, POP "BPC JUDICIAL": a tela mostrava a fase de contestação com 16 dos 27 passos marcados e a mensagem ao cliente saiu com *"estamos no comecinho (0% concluído)"*, *Etapa: FASE 1*, *Passo atual: Análise do Indeferimento Administrativo*.
+
+Eram três divergências, todas estruturais:
+
+1. **Contexto congelado.** `useActivityStepContext` lia os passos uma vez, na montagem. Marcar passo acontece na barra, que é outro componente com estado próprio — nada avisava o contexto. A mensagem saía com a foto de quando a ficha abriu. Agora a barra emite `adscore:pop-steps-changed` (`src/lib/popStepsEvent.ts`) a cada gravação e o contexto recarrega.
+2. **Fase atual vinha do funil comercial.** `fetchLeadSteps` usava `leads.status` como fase atual. Em board de POP esse status nunca casa (era `procuracao_assinada`, fase do funil do lead), então a regra "1º não-concluído da fase atual" morria e caía no 1º não-concluído da lista inteira. A fase agora sai de `lead_processes.workflow_stage_id` (a mesma que a barra usa e que a régua de marcos escreve) e só vale se for fase **deste** board; `leads.status` é a segunda opção, sob a mesma condição.
+3. **Ordem dos passos era a de criação das instâncias.** Instâncias criadas no mesmo milissegundo saem em ordem arbitrária e objetivo adicionado depois ia para o fim. Agora vale a ordem projetada — fase (`kanban_boards.stages`) → objetivo (`checklist_stage_links.display_order`) → passo. Junto: instância de fase que não existe mais no board fica de fora, duplicata de (fase, objetivo) é resolvida pela mais avançada e passo `supersededBy` (histórico do POP antigo) não conta.
+
+**Percentual**: a mensagem contava passo no plano (16/27 = 59%) enquanto a barra pesa fase → objetivo → passo (61%). Agora as duas chamam `calculateHierarchicalProgress`, com o mesmo denominador — as fases do board, que passam a viajar no `stepContext.phases` (inclusive no aviso do sino, `ProcessUpdatesBell`). Fase sem objetivo instanciado continua pesando: sumir passo não pode subir percentual.
+
+Testes: `src/lib/__tests__/leadStepContext.ordem.test.ts` (ordem, dedupe, escolha do passo) e `src/components/activities/__tests__/buildActivityMessage.progresso.test.ts` (os passos reais do caso acima).
+
+---
+
 ## Campeonato de Engajamento — `/leaderboard`
 
 Ranking semanal de engajamento (Menção = 5 pts; Comentário = 2 pts). Página de consulta, sem ações.

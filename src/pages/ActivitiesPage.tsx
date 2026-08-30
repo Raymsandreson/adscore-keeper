@@ -3483,7 +3483,7 @@ const ActivitiesPage = () => {
     if (leadPreview?.board_id) return leadPreview.board_id;
     return null;
   })();
-  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardId);
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardId, formProcessId || null);
 
   const activityFormContent = (
     <ActivityFormCompact

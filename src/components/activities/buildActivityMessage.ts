@@ -9,6 +9,7 @@
  */
 import { format, parseISO } from 'date-fns';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
+import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
 
 type StepContextLike = {
   stageId?: string | null;
@@ -18,6 +19,8 @@ type StepContextLike = {
   phaseLabel?: string | null;
   objectiveLabel?: string | null;
   allSteps?: { stepId: string; phaseId: string; templateId: string; stepLabel: string; checked: boolean }[];
+  /** Fases do board na ordem projetada — denominador do progresso hierárquico. */
+  phases?: { id: string; name: string }[];
 } | null | undefined;
 
 /**
@@ -295,10 +298,32 @@ export function buildActivityMessage(
       }
       const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0);
 
-      const doneSteps = steps.filter((s) => s.checked).length;
-      const overallPct = pct(doneSteps, steps.length);
+      // MESMA CONTA DA BARRA da ficha (calculateHierarchicalProgress): cada
+      // fase pesa igual, dentro dela cada objetivo pesa igual, dentro dele cada
+      // passo pesa igual. Contar passo no plano dava outro número — fase com um
+      // objetivo de um passo valia o mesmo que fase com três objetivos de três
+      // passos — e o cliente lia um percentual que não batia com o da tela.
+      const instanciasDoProgresso = (() => {
+        const porObjetivo = new Map<string, { id: string; stage_id: string; items: { id: string; checked?: boolean }[] }>();
+        for (const s of steps) {
+          const chave = `${s.phaseId}|${s.templateId}`;
+          if (!porObjetivo.has(chave)) porObjetivo.set(chave, { id: chave, stage_id: s.phaseId, items: [] });
+          porObjetivo.get(chave)!.items.push({ id: s.stepId, checked: s.checked });
+        }
+        return Array.from(porObjetivo.values());
+      })();
+      // Fase sem objetivo instanciado também conta no denominador; sem a lista
+      // de fases do board sobra só o que tem passo (mensagem antiga/salva).
+      const phaseIdsDoBoard = stepContext?.phases?.length
+        ? stepContext.phases.map((f) => f.id)
+        : [...new Set(steps.map((s) => s.phaseId))];
+      const overallPct = Math.round(
+        calculateHierarchicalProgress(phaseIdsDoBoard, instanciasDoProgresso).globalPercent,
+      );
 
-      const phaseIds = [...new Set(steps.map((s) => s.phaseId))];
+      // Mesmo denominador do percentual: fase do board sem passo instanciado
+      // conta como fase não concluída, não como fase inexistente.
+      const phaseIds = phaseIdsDoBoard;
       const phasesDone = phaseIds.filter((pid) => {
         const ps = steps.filter((s) => s.phaseId === pid);
         return ps.length > 0 && ps.every((s) => s.checked);

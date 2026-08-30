@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -24,6 +24,7 @@ import {
 import { isStepBlockedBySubItems, pendingSubItems } from '@/lib/stepSubitems';
 import { PopCatchUpSheet, type PopCatchUpStep, type PopCatchUpMark } from '@/components/activities/PopCatchUpSheet';
 import { useProcessoMarcos, FONTE_LABEL } from '@/hooks/useProcessoMarcos';
+import { notifyPopStepsChanged } from '@/lib/popStepsEvent';
 
 interface Stage {
   id: string;
@@ -348,6 +349,21 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  /**
+   * Avisa o resto da tela que os passos deste lead mudaram.
+   *
+   * Todo caminho que grava passo (marcar um, marcar o objetivo em lote, item do
+   * checklist do passo, colocar o POP em dia) atualiza `instances` depois do
+   * update — então este efeito é o ponto único de saída, sem espalhar chamada
+   * por cada gravação. A primeira carga não avisa: ninguém mudou nada ainda.
+   */
+  const jaCarregou = useRef(false);
+  useEffect(() => {
+    if (!jaCarregou.current) { jaCarregou.current = true; return; }
+    if (!leadId) return;
+    notifyPopStepsChanged({ leadId, boardId: boardId || null });
+  }, [instances, leadId, boardId]);
 
   // Todo update de items passa por aqui: os selos popChange/popNewLabel são
   // calculados no load contra o template e NÃO podem ir para o banco.

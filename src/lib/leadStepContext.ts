@@ -47,19 +47,97 @@ export interface LeadStepsResult {
   steps: StepOption[];
   /** Passo padrão: 1º não-concluído da fase atual → 1º não-concluído geral → último. */
   defaultStepId: string | null;
-  /** status do lead = id da fase (stage) atual no board. */
+  /**
+   * Fase atual DENTRO deste board. Vem da fase do processo quando ela pertence
+   * ao board; senão do status do lead, e só quando esse status é uma fase do
+   * board. Fora disso é null — status de funil comercial não é fase de POP.
+   */
   currentStageId: string | null;
+  /**
+   * Todas as fases do board, na ordem projetada. É o denominador do progresso
+   * hierárquico (fase → objetivo → passo): fase sem objetivo instanciado
+   * também pesa, e sem essa lista o percentual da mensagem daria diferente do
+   * da barra.
+   */
+  phases: { id: string; name: string }[];
 }
 
-const VAZIO: LeadStepsResult = { steps: [], defaultStepId: null, currentStageId: null };
+const VAZIO: LeadStepsResult = { steps: [], defaultStepId: null, currentStageId: null, phases: [] };
+
+/**
+ * Uma instância por (fase, objetivo). Reinstanciação do POP deixa duplicatas na
+ * mesma fase+objetivo, e contar as duas infla o total de passos — a barra de
+ * progresso já resolvia isso na tela (liveInstances), a leitura dos passos não.
+ * Fica a mais avançada: quem tem mais passo marcado é a que foi trabalhada.
+ */
+export function dedupInstancias<T extends { id: string; stage_id: string; checklist_template_id: string; items: ChecklistItem[] | null }>(
+  instances: T[],
+): T[] {
+  const marcados = (i: T) => (i.items || []).filter((it) => !it.supersededBy && it.checked).length;
+  const porChave = new Map<string, T>();
+  for (const inst of instances) {
+    const chave = `${inst.stage_id}|${inst.checklist_template_id}`;
+    const atual = porChave.get(chave);
+    if (!atual || marcados(inst) > marcados(atual)) porChave.set(chave, inst);
+  }
+  return Array.from(porChave.values());
+}
+
+/**
+ * Ordem projetada do POP: fase na ordem do board → objetivo na ordem do link
+ * (checklist_stage_links.display_order) → passo na ordem em que está no
+ * objetivo.
+ *
+ * A ordem de criação das instâncias NÃO serve: instâncias criadas no mesmo
+ * milissegundo saem em ordem arbitrária, e objetivo adicionado depois no POP
+ * ia para o fim mesmo pertencendo à primeira fase. Como "passo atual" é o 1º
+ * não-marcado desta lista, a ordem errada apontava para o passo errado — foi
+ * assim que a mensagem anunciou "FASE 1 · Análise do Indeferimento" num caso
+ * que já estava na fase de contestação.
+ *
+ * O sort é estável, então passos do mesmo objetivo mantêm a ordem do array.
+ */
+export function ordenarPassos(
+  steps: StepOption[],
+  faseIndex: Record<string, number>,
+  objetivoOrdem: Record<string, number>,
+): StepOption[] {
+  const chave = (s: StepOption): [number, number] => [
+    faseIndex[s.phaseId] ?? Number.MAX_SAFE_INTEGER,
+    objetivoOrdem[`${s.phaseId}|${s.templateId}`] ?? Number.MAX_SAFE_INTEGER,
+  ];
+  return [...steps].sort((a, b) => {
+    const [fa, oa] = chave(a);
+    const [fb, ob] = chave(b);
+    return fa !== fb ? fa - fb : oa - ob;
+  });
+}
+
+/** 1º não-concluído da fase atual → 1º não-concluído geral → último. */
+export function escolherPassoAtual(steps: StepOption[], faseAtual: string | null): string | null {
+  if (steps.length === 0) return null;
+  if (faseAtual) {
+    const naFase = steps.find((s) => s.phaseId === faseAtual && !s.checked);
+    if (naFase) return naFase.stepId;
+  }
+  return steps.find((s) => !s.checked)?.stepId || steps[steps.length - 1].stepId;
+}
 
 export async function fetchLeadSteps(
   leadId: string | null | undefined,
   boardId: string | null | undefined,
+  /**
+   * Processo de onde a leitura parte. A fase de um processo mora em
+   * `lead_processes.workflow_stage_id` — é ela que a régua de marcos escreve e
+   * a ficha edita. `leads.status` é a fase do FUNIL COMERCIAL do lead: num
+   * board de POP ele nunca casa, e era por isso que a regra "1º não-concluído
+   * da fase atual" nunca valia aqui.
+   */
+  processId?: string | null,
 ): Promise<LeadStepsResult> {
   if (!leadId || !boardId) return VAZIO;
 
-  const [boardRes, instancesRes, leadRes, linksRes] = await Promise.all([
+  const [boardRes, instancesRes, leadRes, linksRes, procRes] = await Promise.all([
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any).from('kanban_boards').select('stages, notificacoes_assignee_id, settings').eq('id', boardId).maybeSingle(),
     db
@@ -75,8 +153,12 @@ export async function fetchLeadSteps(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (db as any)
       .from('checklist_stage_links')
-      .select('checklist_template_id, stage_id, assignee_id')
+      .select('checklist_template_id, stage_id, assignee_id, display_order')
       .eq('board_id', boardId),
+    processId
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (db as any).from('lead_processes').select('workflow_stage_id').eq('id', processId).maybeSingle()
+      : Promise.resolve({ data: null }),
   ]);
 
   const board = boardRes.data as {
@@ -101,17 +183,37 @@ export async function fetchLeadSteps(
   const cargoMap = await fetchCargoMap(board?.settings?.responsible_team_id || null);
   const objetivoCargos = board?.settings?.objetivo_cargos || {};
   const lead = leadRes.data as { status?: string; processual_responsible_id?: string | null } | null;
-  const currentStageId = lead?.status || null;
   const responsavelDoProcesso = lead?.processual_responsible_id || null;
 
-  // Chave (fase, objetivo) → dono do objetivo naquela fase deste POP.
-  const objetivoAssignee: Record<string, string | null> = {};
-  for (const l of ((linksRes as { data?: Array<{ checklist_template_id: string; stage_id: string; assignee_id: string | null }> })?.data || [])) {
-    objetivoAssignee[`${l.stage_id}|${l.checklist_template_id}`] = l.assignee_id;
-  }
+  // Fase atual DESTE board. Ordem de precedência igual à da barra de progresso
+  // (LeadFunnelProgressBar): fase do processo primeiro, status do lead só como
+  // segunda opção — e nenhuma das duas vale se não for uma fase deste board.
+  const phases = stages.map((s) => ({ id: s.id, name: s.name }));
+  const faseDoProcesso = (procRes?.data as { workflow_stage_id?: string | null } | null)?.workflow_stage_id || null;
+  const ehFaseDoBoard = (id: string | null) => !!id && stages.some((s) => s.id === id);
+  const currentStageId = ehFaseDoBoard(faseDoProcesso)
+    ? faseDoProcesso
+    : (ehFaseDoBoard(lead?.status || null) ? (lead?.status as string) : null);
 
-  const instances = (instancesRes.data || []) as unknown as InstanciaChecklist[];
-  if (instances.length === 0) return { ...VAZIO, currentStageId };
+  // Chave (fase, objetivo) → dono e ordem projetada do objetivo naquela fase.
+  const objetivoAssignee: Record<string, string | null> = {};
+  const objetivoOrdem: Record<string, number> = {};
+  for (const l of ((linksRes as { data?: Array<{ checklist_template_id: string; stage_id: string; assignee_id: string | null; display_order?: number | null }> })?.data || [])) {
+    objetivoAssignee[`${l.stage_id}|${l.checklist_template_id}`] = l.assignee_id;
+    objetivoOrdem[`${l.stage_id}|${l.checklist_template_id}`] = l.display_order ?? 0;
+  }
+  const faseIndex: Record<string, number> = {};
+  stages.forEach((s, i) => { faseIndex[s.id] = i; });
+
+  const instanciasCruas = (instancesRes.data || []) as unknown as InstanciaChecklist[];
+  // Instância de fase que não existe mais no board é órfã: a tela não a mostra
+  // em lugar nenhum e ela não entra no progresso. Ler daqui faria a mensagem
+  // apontar para passo que ninguém consegue ver. Board sem fases cadastradas
+  // não filtra nada — senão o POP inteiro sumiria.
+  const instances = dedupInstancias(
+    stages.length > 0 ? instanciasCruas.filter((i) => faseIndex[i.stage_id] !== undefined) : instanciasCruas,
+  );
+  if (instances.length === 0) return { ...VAZIO, currentStageId, phases };
 
   // Resolve nomes dos templates (objetivos)
   const templateIds = [...new Set(instances.map((i) => i.checklist_template_id).filter(Boolean))];
@@ -127,7 +229,9 @@ export async function fetchLeadSteps(
   // Achata todos os passos
   const steps: StepOption[] = [];
   for (const inst of instances) {
-    const items = inst.items || [];
+    // Passo com supersededBy é histórico do POP antigo: não é marcável e não
+    // entra em progresso (src/lib/syncChecklistInstances.ts).
+    const items = (inst.items || []).filter((it) => !it.supersededBy);
     for (const it of items) {
       const { assigneeId, origem } = resolverResponsavelComCargos(
         {
@@ -159,14 +263,13 @@ export async function fetchLeadSteps(
     }
   }
 
-  let defaultStepId: string | null = null;
-  if (currentStageId) {
-    defaultStepId = steps.find((s) => s.phaseId === currentStageId && !s.checked)?.stepId || null;
-  }
-  if (!defaultStepId) defaultStepId = steps.find((s) => !s.checked)?.stepId || null;
-  if (!defaultStepId && steps.length > 0) defaultStepId = steps[steps.length - 1].stepId;
-
-  return { steps, defaultStepId, currentStageId };
+  const passosOrdenados = ordenarPassos(steps, faseIndex, objetivoOrdem);
+  return {
+    steps: passosOrdenados,
+    defaultStepId: escolherPassoAtual(passosOrdenados, currentStageId),
+    currentStageId,
+    phases,
+  };
 }
 
 export interface PassoAberto {
@@ -216,7 +319,7 @@ export async function responsavelDoPassoAberto(
   const boardId = procRes?.data?.workflow_id || leadRes?.data?.board_id || null;
 
   if (boardId) {
-    const { steps, defaultStepId } = await fetchLeadSteps(leadId, boardId);
+    const { steps, defaultStepId } = await fetchLeadSteps(leadId, boardId, processId || null);
     const passo = steps.find((s) => s.stepId === defaultStepId);
     if (passo) {
       return {

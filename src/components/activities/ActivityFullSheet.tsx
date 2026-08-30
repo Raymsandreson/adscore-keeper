@@ -322,7 +322,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     caseId: formCaseId, processId: formProcessId, caseProcesses, leadCases,
   });
   const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
-  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId);
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId, formProcessId || null);
 
   // Herda o POP do processo vinculado quando a atividade não tem um próprio
   // (paridade com a ActivitiesPage). Sem isso o campo ficava vazio e vermelho

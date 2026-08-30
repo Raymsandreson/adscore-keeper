@@ -640,7 +640,7 @@ export function ProcessUpdatesBell({
     const processo = (procRes as any).data as Record<string, any> | null;
 
     const boardId = processo?.workflow_id || lead?.board_id || null;
-    const { steps, defaultStepId } = await fetchLeadSteps(u.lead_id, boardId);
+    const { steps, defaultStepId, phases } = await fetchLeadSteps(u.lead_id, boardId, u.process_id || null);
     const passoAtual = steps.find((s) => s.stepId === defaultStepId) || null;
 
     // Sem POP: cai na régua de marcos do processo. Com POP, nem consulta.
@@ -652,7 +652,7 @@ export function ProcessUpdatesBell({
         })
       : null;
 
-    return { lead, processo, boardId, steps, passoAtual, fase };
+    return { lead, processo, boardId, steps, phases, passoAtual, fase };
   }, []);
 
   type ContextoUpdate = Awaited<ReturnType<typeof carregarContexto>>;
@@ -791,6 +791,9 @@ export function ProcessUpdatesBell({
             phaseLabel: p.phaseLabel,
             objectiveLabel: p.objectiveLabel,
             allSteps: ctx.steps,
+            // Mesmo denominador da barra da ficha: sem as fases do board, o
+            // aviso do sino anunciaria outro percentual que a tela.
+            phases: ctx.phases,
           }
         : null,
       faseProcessual: ctx.fase,

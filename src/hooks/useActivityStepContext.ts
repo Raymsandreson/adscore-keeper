@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db as supabase } from '@/integrations/supabase';
 import { toast } from 'sonner';
 import { fetchLeadSteps, type StepOption } from '@/lib/leadStepContext';
+import { onPopStepsChanged } from '@/lib/popStepsEvent';
 import {
   ChecklistItem,
   DocChecklistItem,
@@ -21,6 +22,8 @@ export interface ActivityStepContext {
   messageTemplates: Record<string, TemplateVariation[]>;
   totalCount: number;
   completedCount: number;
+  /** Fases do board, na ordem projetada — denominador do progresso hierárquico. */
+  phases: { id: string; name: string }[];
   templateId: string | null;
   boardId: string | null;
   stageId: string | null;
@@ -31,8 +34,11 @@ export interface ActivityStepContext {
 export function useActivityStepContext(
   leadId: string | null | undefined,
   boardId: string | null | undefined,
+  /** Processo da atividade: é dele que sai a fase atual do POP. */
+  processId?: string | null,
 ) {
   const [allSteps, setAllSteps] = useState<StepOption[]>([]);
+  const [phases, setPhases] = useState<{ id: string; name: string }[]>([]);
   const [defaultStepId, setDefaultStepId] = useState<string | null>(null);
   const [selectedStepId, setSelectedStepId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -43,6 +49,7 @@ export function useActivityStepContext(
   useEffect(() => {
     if (!leadId || !boardId) {
       setAllSteps([]);
+      setPhases([]);
       setDefaultStepId(null);
       setSelectedStepId(null);
       return;
@@ -51,15 +58,17 @@ export function useActivityStepContext(
     (async () => {
       setLoading(true);
       try {
-        const { steps, defaultStepId: defId } = await fetchLeadSteps(leadId, boardId);
+        const { steps, defaultStepId: defId, phases: fases } = await fetchLeadSteps(leadId, boardId, processId || null);
         if (!cancelled) {
           setAllSteps(steps);
+          setPhases(fases);
           setDefaultStepId(defId);
         }
       } catch (err) {
         console.warn('[useActivityStepContext]', err);
         if (!cancelled) {
           setAllSteps([]);
+          setPhases([]);
           setDefaultStepId(null);
         }
       } finally {
@@ -67,7 +76,19 @@ export function useActivityStepContext(
       }
     })();
     return () => { cancelled = true; };
-  }, [leadId, boardId, reloadTick]);
+  }, [leadId, boardId, processId, reloadTick]);
+
+  // Marcar passo acontece na barra de progresso, que é outro componente com o
+  // próprio estado. Sem escutar a mudança, este contexto ficaria com a foto da
+  // montagem e a mensagem sairia com o progresso e o passo de antes.
+  useEffect(() => {
+    if (!leadId) return;
+    return onPopStepsChanged((d) => {
+      if (d.leadId !== leadId) return;
+      if (d.boardId && boardId && d.boardId !== boardId) return;
+      reload();
+    });
+  }, [leadId, boardId, reload]);
 
   // Reset seleção manual ao trocar de lead/board
   useEffect(() => { setSelectedStepId(null); }, [leadId, boardId]);
@@ -119,12 +140,13 @@ export function useActivityStepContext(
       messageTemplates: activeDetails.messageTemplates,
       totalCount: allSteps.length,
       completedCount: allSteps.filter(s => s.checked).length,
+      phases,
       templateId: activeStep.templateId,
       boardId: boardId || null,
       stageId: activeStep.phaseId,
       allSteps,
     };
-  }, [activeStep, activeDetails, allSteps, boardId]);
+  }, [activeStep, activeDetails, allSteps, phases, boardId]);
 
   /**
    * Persiste as variações de um campo do passo ATIVO no template e na instância.
