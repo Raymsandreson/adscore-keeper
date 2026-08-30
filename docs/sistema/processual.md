@@ -382,7 +382,7 @@ Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, gru
 
 ## Pipeline de atualizações por e-mail — sync-email-push v13 (30/08/2026)
 
-**Estado**: código na branch `claude/whatsjud-pipeline-updates-bhuoeu`, aguardando aprovação fase a fase do Raym para ativar (migrations → deploy edge → merge Railway). Nada roda em produção ainda.
+**Estado**: ATIVO em produção desde 30/08/2026 (migrations aplicadas, `sync-email-push` v13 deployada, Railway no ar). Resultados verificados no dia da ativação: casamento na janela de 7 dias foi de 41% (28/69) para 82% (513/625) — 100% nos e-mails cujo processo está cadastrado; 954 cards v13 em 423 processos; backfill do inbox#3 com filtro de órgãos (jus.br/mp.br/gov.br + assuntos SEI/OS/denúncia/demanda) trouxe 2.066 e-mails de 04/01/2024 até hoje; a aba "Sem vínculo" nasceu com 717 identificadores (567 protocolo INSS, 101 SEI, 47 CNJ, 1 demanda SIT — a 3747657-2 da SRTE/PB — e 1 ordem de serviço — a 11471427-4 do MTE). Pendências da Fase 2: anexos só são capturados para e-mails novos (backfill não baixa anexo retroativo) e a extração de texto (`jm-ler-peca` modo `{anexo_id}`) ainda não tem gatilho automático.
 
 **O que muda quando ativar**:
 
