@@ -522,8 +522,8 @@ para isso e está vazio.
 Até 30/08 as réguas dos POPs previdenciários eram cópias idênticas do trabalhista
 (migration 20260814130000) — nenhuma particularidade de produto. Aplicado com OK
 do usuário (PLANO_20260830_marcos_previdenciarios_por_produto.sql, correções no
-cabeçalho do arquivo): **222→258 marcos, 556→618 sinais**, 1337 processos com
-marco antes e depois (ninguém perdeu régua).
+cabeçalho do arquivo): **222→254 marcos, 556→622 sinais** (medidos, não
+estimados), 1337 processos com marco antes e depois (ninguém perdeu régua).
 
 Marcos novos nos 6 POPs prev (BPC JUDICIAL, POP-BPC-Adm, Auxílio Acidente,
 Aux. Doença Acidentário, Pensão por Morte, Salário Maternidade), todos
@@ -546,9 +546,21 @@ de pagamento → `pagamento`.
 Primeiro tick: `pericia_social` detectado em 8 processos, `contestacao` em 5.
 Caso `1017247-47.2025.4.01.3100`: o 28/04 era "juntada de laudo de perícia
 social" (reclassificado de Perícia para Estudo social) e o marco atual virou
-**Contestação do INSS em 17/06** — 40%→50%. Justiça Comum e Requerimento de
-Seguro ficaram FORA desta rodada (têm régua própria cível); estender é decisão
-separada.
+**Contestação do INSS em 17/06** — 40%→50%.
+
+**Justiça Comum e Requerimento de Seguro** entraram na mesma tarde (OK do
+usuário; 254→260 marcos, 622→642 sinais): `contestacao` (rótulo "Contestação do
+réu" — o réu não é o INSS), `replica` e `rpv_precatorio`. NÃO ganharam
+`implantacao_beneficio` (não há benefício a implantar) nem `pericia_social`
+(exclusiva do BPC), e NÃO ganharam `liquidacao_calculos` porque esses dois
+boards JÁ TÊM o marco `liquidacao` (ordem própria, antes da execução) — que
+estava **sem sinal nenhum**, junto com `pagamento`; os dois receberam os sinais
+(cálculos/CECALC + planilha de liquidação; pagamento efetuado + comprovante).
+Acórdão ganhou os dois vocabulários estaduais: apelação/TJ (rito comum) e
+recurso inominado/Turma Recursal (JEC estadual). Primeiro tick: contestacao,
+liquidacao e rpv_precatorio detectados 1× cada na Justiça Comum — a primeira
+detecção de RPV da base. Antes de criar marco em board novo, SEMPRE conferir as
+chaves que ele já tem: `liquidacao` vs `liquidacao_calculos` teria duplicado.
 
 Armadilhas para a próxima mudança de régua: `pop_marcos` tem UNIQUE
 (board_id, ordem) **deferred** e UNIQUE (board_id, chave); as ordens diferem por

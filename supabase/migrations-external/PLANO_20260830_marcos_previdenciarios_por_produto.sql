@@ -11,7 +11,13 @@
 --      'per[íi]cia social|estudo social|laudo social|assistente social', nunca
 --      'social' seco ("Instituto Nacional do Seguro Social" está em todo
 --      cabeçalho e mataria o marco).
--- Verificado após aplicar + pop_marcos_tick(): 222→258 marcos, 556→618 sinais,
+-- Estendido no mesmo dia, com OK, a Justiça Comum e Requerimento de Seguro:
+-- contestacao ("Contestação do réu"), replica e rpv_precatorio; SEM implantacao
+-- (não há benefício) e SEM liquidacao_calculos — esses boards já têm o marco
+-- `liquidacao`, que estava sem sinal e recebeu os padrões de cálculos + planilha
+-- (pagamento idem: efetuado + comprovante); acórdão com apelação/TJ e recurso
+-- inominado/TR. Totais finais medidos: 260 marcos, 642 sinais, 1338 processos.
+-- Verificado após aplicar + pop_marcos_tick(): 222→254 marcos, 556→622 sinais,
 -- 3804→3813 linhas materializadas, 1337 processos com marco (ninguém perdeu),
 -- 0 ordens duplicadas. Caso 1017247-47.2025.4.01.3100: 28/04 reclassificado de
 -- Perícia para Estudo social (a mov é "juntada de laudo de perícia social") e o
