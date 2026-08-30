@@ -12,7 +12,17 @@ import { createClient } from '@supabase/supabase-js';
  * POST /functions/gmail-processual-sync
  *   { lookback_hours?: number=168, max_messages?: number=100,
  *     backfill?: boolean=false, cursor?: { inbox, page_token } | null,
- *     after?: 'YYYY/MM/DD' (só backfill), dry_run?: boolean }
+ *     after?: 'YYYY/MM/DD' (só backfill), dry_run?: boolean,
+ *     inbox?: 'inbox#3' (restringe a UMA caixa),
+ *     q?: string (filtro Gmail extra, combinado com a janela de data) }
+ *
+ * BACKFILL RESTRITO (Fase 0 da tarefa de 30/08/2026): a ingestão não filtra
+ * nada — puxa a caixa inteira (por isso há LinkedIn, ChatGPT e ZapSign dentro
+ * de processual_emails). Retroagir o inbox#3 (adm@) até 2024 sem filtro
+ * despejaria anos de e-mail comum no banco. Daí `inbox` + `q`: o backfill do
+ * administrativo roda só na caixa certa e só com o filtro de remetentes de
+ * governo/assunto SEI. Em dry_run o retorno agrega por ANO e por REMETENTE —
+ * é o relatório que o Raym aprova antes de gravar qualquer coisa.
  *
  * Envs: LOVABLE_API_KEY, GOOGLE_MAIL_API_KEY_3 (caixa processual),
  *       PROCESSUAL_INBOXES (ex.: "inbox#4"),
@@ -87,6 +97,42 @@ function extractProcessNumber(text: string): string | null {
   return m ? m[0] : null;
 }
 
+/** "Fulano <a@b.com>" → "a@b.com" — a chave do relatório por remetente. */
+function enderecoDoFrom(fromAddr: string): string {
+  const m = fromAddr.match(/<([^<>\s]+@[^<>\s]+)>/) || fromAddr.match(/([^<>\s]+@[^<>\s]+)/);
+  return (m ? m[1] : fromAddr).toLowerCase();
+}
+
+// ---------------------------------------------------------------------------
+// Anexos (Fase 2 — MTE): o ato está no PDF, não no corpo. Só remetentes de
+// governo entram — anexo de ZapSign/marketing não é peça de processo.
+// ---------------------------------------------------------------------------
+const ANEXO_REMETENTES_RE = /trabalho\.gov\.br|economia\.gov\.br|mpt\.mp\.br|inss\.gov\.br|mps\.gov\.br|sit\.trabalho/i;
+const ANEXO_MIME_RE = /^(application\/pdf|image\/(png|jpe?g|tiff?))$/i;
+const ANEXO_MAX_BYTES = 15 * 1024 * 1024;
+
+interface AnexoInfo { filename: string; mimeType: string; attachmentId: string; size: number }
+
+function listarAnexos(msg: GmailMessage): AnexoInfo[] {
+  const out: AnexoInfo[] = [];
+  const walk = (parts?: any[]) => {
+    if (!parts) return;
+    for (const p of parts) {
+      if (p.filename && p.body?.attachmentId) {
+        out.push({
+          filename: String(p.filename),
+          mimeType: String(p.mimeType || 'application/octet-stream'),
+          attachmentId: String(p.body.attachmentId),
+          size: Number(p.body.size || 0),
+        });
+      }
+      if (p.parts) walk(p.parts);
+    }
+  };
+  walk(msg.payload?.parts);
+  return out;
+}
+
 async function gmailFetch<T = any>(path: string, key: string, params?: Record<string, string>): Promise<T> {
   const url = new URL(`${GATEWAY_BASE}${path}`);
   if (params) Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
@@ -128,12 +174,22 @@ export const handler: RequestHandler = async (req, res) => {
   const dryRun: boolean = Boolean(body.dry_run ?? query.dry_run);
   const inCursor: ProcessualCursor | null = body.cursor ?? null;
   const afterDate: string | null = backfill ? (body.after ?? query.after ?? null) : null;
+  // Filtro Gmail extra (combinado com a janela por AND implícito do Gmail) e
+  // restrição a uma caixa só — os dois juntos são o que torna o backfill do
+  // inbox#3 restrito em vez de "a caixa inteira desde 2024".
+  const qExtra: string | null = (body.q ?? query.q ?? null) || null;
+  const inboxFilter: string | null = (body.inbox ?? query.inbox ?? null) || null;
 
-  const inboxes = getInboxKeys();
+  const allInboxes = getInboxKeys();
+  const inboxes = inboxFilter
+    ? allInboxes.filter((i) => i.label === inboxFilter)
+    : allInboxes;
   if (inboxes.length === 0) {
     return res.status(200).json({
       success: false,
-      error: 'PROCESSUAL_INBOXES não configurada. Defina ex.: PROCESSUAL_INBOXES="inbox#4"',
+      error: inboxFilter
+        ? `Inbox "${inboxFilter}" não configurada em PROCESSUAL_INBOXES. Disponíveis: ${allInboxes.map((i) => i.label).join(', ') || 'nenhuma'}`
+        : 'PROCESSUAL_INBOXES não configurada. Defina ex.: PROCESSUAL_INBOXES="inbox#4"',
     });
   }
 
@@ -154,8 +210,15 @@ export const handler: RequestHandler = async (req, res) => {
       const afterTs = Math.floor((Date.now() - lookbackHours * 3600 * 1000) / 1000);
       q = `after:${afterTs}`;
     }
+    // O Gmail combina termos por AND; o filtro extra vem entre parênteses para
+    // o OR interno dele não vazar para a janela de data.
+    if (qExtra) q = q ? `${q} (${qExtra})` : `(${qExtra})`;
 
     const perInbox: Record<string, any> = {};
+    // Relatório do dry_run: quantos e-mails o filtro alcança por ano e por
+    // remetente — os números que decidem se o backfill grava ou não.
+    const porAno: Record<string, number> = {};
+    const porRemetente: Record<string, number> = {};
     let totalChecked = 0, totalInserted = 0, totalSkipped = 0, totalExisting = 0;
     // E-mails efetivamente BAIXADOS nesta chamada (format=full). É o custo real
     // e o que limita a rodada; listar id é barato e não entra na conta.
@@ -229,18 +292,29 @@ export const handler: RequestHandler = async (req, res) => {
                 break inboxLoop;
               }
               try {
+                // Em dry_run basta o cabeçalho (metadata) — o relatório por
+                // ano/remetente não precisa do corpo, e format=full custa caro
+                // num backfill de 2 anos.
                 const msg = await gmailFetch<GmailMessage>(
-                  `/users/me/messages/${it.id}`, inbox.key, { format: 'full' },
+                  `/users/me/messages/${it.id}`, inbox.key,
+                  dryRun ? { format: 'metadata' } : { format: 'full' },
                 );
                 const subject = getHeader(msg, 'Subject') || '';
                 const fromAddr = getHeader(msg, 'From') || '';
-                const text = extractPlainText(msg);
                 const receivedAt = msg.internalDate
                   ? new Date(Number(msg.internalDate)).toISOString()
                   : new Date().toISOString();
                 if (!oldestSeen || receivedAt < oldestSeen) oldestSeen = receivedAt;
                 if (!newestSeen || receivedAt > newestSeen) newestSeen = receivedAt;
-                if (dryRun) { ir.inserted++; totalInserted++; continue; }
+                if (dryRun) {
+                  const ano = receivedAt.slice(0, 4);
+                  porAno[ano] = (porAno[ano] || 0) + 1;
+                  const addr = enderecoDoFrom(fromAddr);
+                  porRemetente[addr] = (porRemetente[addr] || 0) + 1;
+                  ir.inserted++; totalInserted++;
+                  continue;
+                }
+                const text = extractPlainText(msg);
                 const { error } = await ext.from('processual_emails').upsert({
                   gmail_message_id: it.id,
                   inbox_label: inbox.label,
@@ -254,6 +328,38 @@ export const handler: RequestHandler = async (req, res) => {
                 } as any, { onConflict: 'gmail_message_id', ignoreDuplicates: true });
                 if (error) { ir.errors.push(`upsert ${it.id}: ${error.message}`); totalSkipped++; ir.skipped++; }
                 else { ir.inserted++; totalInserted++; }
+
+                // Anexos de remetente de governo → bucket privado. Falha de
+                // anexo não derruba o e-mail: o corpo já está no banco e a
+                // extração pode ser refeita depois.
+                if (!error && ANEXO_REMETENTES_RE.test(fromAddr)) {
+                  for (const anexo of listarAnexos(msg)) {
+                    if (!ANEXO_MIME_RE.test(anexo.mimeType) || anexo.size > ANEXO_MAX_BYTES) continue;
+                    try {
+                      const att = await gmailFetch<{ data?: string }>(
+                        `/users/me/messages/${it.id}/attachments/${anexo.attachmentId}`, inbox.key,
+                      );
+                      if (!att.data) continue;
+                      const bytes = Buffer.from(att.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
+                      const nomeSeguro = anexo.filename.replace(/[^\w.\-]+/g, '_').slice(0, 120) || 'anexo';
+                      const storagePath = `${it.id}/${nomeSeguro}`;
+                      const { error: upErr } = await ext.storage
+                        .from('processual-anexos')
+                        .upload(storagePath, bytes, { contentType: anexo.mimeType, upsert: true });
+                      if (upErr) { ir.errors.push(`anexo ${it.id}/${nomeSeguro}: ${upErr.message}`); continue; }
+                      await ext.from('processual_email_anexos').upsert({
+                        gmail_message_id: it.id,
+                        filename: anexo.filename,
+                        mime_type: anexo.mimeType,
+                        size_bytes: anexo.size || bytes.length,
+                        storage_path: storagePath,
+                      } as any, { onConflict: 'gmail_message_id,storage_path', ignoreDuplicates: true });
+                      ir.anexos = (ir.anexos || 0) + 1;
+                    } catch (ae: any) {
+                      ir.errors.push(`anexo ${it.id}: ${ae?.message || String(ae)}`);
+                    }
+                  }
+                }
               } catch (e: any) {
                 ir.errors.push(`${it.id}: ${e?.message || String(e)}`);
                 totalSkipped++; ir.skipped++;
@@ -276,18 +382,27 @@ export const handler: RequestHandler = async (req, res) => {
       // Inbox terminou. Se houver mais inbox, segue.
     }
 
+    // Top de remetentes ordenado: o relatório do dry_run é para ser LIDO, e
+    // 200 chaves fora de ordem não respondem "de quem vem isso?".
+    const remetentesOrdenados = Object.fromEntries(
+      Object.entries(porRemetente).sort((a, b) => b[1] - a[1]).slice(0, 40),
+    );
+
     const result = {
       success: true,
       dry_run: dryRun,
       backfill,
       done: !outCursor,
       cursor: outCursor,
+      gmail_query: q || null,
+      inbox_filter: inboxFilter,
       total_checked: totalChecked,
       total_inserted: totalInserted,
       total_skipped: totalSkipped,
       total_existing: totalExisting,
       oldest_email_at: oldestSeen,
       newest_email_at: newestSeen,
+      ...(dryRun ? { por_ano: porAno, por_remetente: remetentesOrdenados } : {}),
       per_inbox: perInbox,
     };
 
