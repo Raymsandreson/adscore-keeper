@@ -35,6 +35,9 @@ import { ActivityNotesField, type Attachment } from '@/components/activities/Act
 import { UserFieldTemplatesHub } from '@/components/activities/UserFieldTemplatesHub';
 import { StepChecklistButton } from '@/components/activities/StepChecklistButton';
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
+import { gerarCamposDoProcesso, rascunhoParaHtml, type CamposGerados } from '@/lib/gerarCamposDoProcesso';
+import { toast } from 'sonner';
+import { Sparkles } from 'lucide-react';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
 import { formatProcessLabel } from '@/lib/processLabel';
@@ -794,6 +797,61 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
   const [internalFlowKind, setInternalFlowKind] = useState<'none' | 'pop' | 'funnel'>('none');
   /** Nada vinculado ainda — só aí os atalhos de Lead/Caso/Contato fazem sentido. */
   const semVinculo = !props.formLeadId && !props.formCaseId && !props.formProcessId && !props.formContactId;
+
+  /**
+   * "Gerar do processo": UMA chamada por abertura do form (cache), quatro
+   * botões — cada campo aplica a parte dele do mesmo rascunho. A IA lê as
+   * movimentações do Escavador desde a CRIAÇÃO da atividade + os e-mails do
+   * push do CNJ (activity-from-movement com include_email_history).
+   */
+  const [draftProcesso, setDraftProcesso] = useState<CamposGerados | null>(null);
+  const [gerandoCampo, setGerandoCampo] = useState<string | null>(null);
+  const gerarCampoDoProcesso = async (fieldKey: string, valorAtual: string, aplicar: (v: string) => void) => {
+    if (!props.formProcessId || gerandoCampo) return;
+    setGerandoCampo(fieldKey);
+    try {
+      let draft = draftProcesso;
+      if (!draft) {
+        draft = await gerarCamposDoProcesso({
+          processId: props.formProcessId,
+          desdeISO: props.selectedActivity?.created_at || null,
+          leadName: props.formLeadName || null,
+          caseTitle: props.formCaseTitle || null,
+          workflowName: props.stepContext?.phaseLabel || null,
+        });
+        setDraftProcesso(draft);
+      }
+      const texto = (draft as Record<string, string | undefined>)[fieldKey]?.trim();
+      if (!texto) {
+        toast.info('A IA não sugeriu nada para este campo com as movimentações do período.');
+        return;
+      }
+      // Nunca apaga o que o assessor escreveu: com texto no campo, o rascunho
+      // entra ABAIXO, separado — apagar o que não servir é um gesto; recuperar
+      // texto perdido não tem gesto nenhum.
+      const html = rascunhoParaHtml(texto);
+      aplicar(valorAtual.trim() ? `${valorAtual}<p></p>${html}` : html);
+      toast.success('Rascunho gerado a partir das movimentações do processo. Revise antes de enviar.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao gerar o rascunho');
+    } finally {
+      setGerandoCampo(null);
+    }
+  };
+  const BotaoGerarDoProcesso = ({ fieldKey, value, setter }: { fieldKey: string; value: string; setter: (v: string) => void }) => (
+    props.formProcessId ? (
+      <button
+        type="button"
+        disabled={!!gerandoCampo}
+        onClick={() => void gerarCampoDoProcesso(fieldKey, value, setter)}
+        className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline disabled:opacity-50 shrink-0"
+        title="Gera o texto deste campo com base nas movimentações do Escavador e nos e-mails do processo desde a criação da atividade"
+      >
+        <Sparkles className="h-3 w-3" />
+        {gerandoCampo === fieldKey ? 'Gerando…' : 'Gerar do processo'}
+      </button>
+    ) : null
+  );
   // availableCases traz só os 500 casos mais recentes (há 1500+) — casos antigos
   // (ex.: CASO 225) não apareciam na busca. Ao digitar, busca também no servidor.
   const [remoteCases, setRemoteCases] = useState<{ id: string; case_number: string; title: string; lead_id: string | null }[]>([]);
@@ -1653,6 +1711,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               if (field.field_key === 'notes') {
                 return (
                   <div key={field.field_key} className="min-w-0">
+                    <BotaoGerarDoProcesso fieldKey="notes" value={value} setter={setter} />
                     <ActivityNotesField
                       value={value}
                       onChange={setter}
@@ -1671,7 +1730,10 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               return (
                 <div key={field.field_key} className="min-w-0 flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{field.label}</span>
-                  <UserFieldTemplatesHub {...hubProps} />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <UserFieldTemplatesHub {...hubProps} />
+                    <BotaoGerarDoProcesso fieldKey={field.field_key} value={value} setter={setter} />
+                  </div>
                   <div className={cn('flex-1 min-h-0', expandedFieldKey === field.field_key ? 'hidden' : '')}>
                     <RichTextEditor
                       value={value}
@@ -1694,6 +1756,7 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
               return (
                 <div key={key} className="min-w-0 flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase tracking-wider">{labelMap[key]}</span>
+                  <BotaoGerarDoProcesso fieldKey={key} value={value} setter={setter} />
                   <div className="flex-1 min-h-0">
                     <RichTextEditor
                       value={value}

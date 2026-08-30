@@ -118,12 +118,19 @@ export const handler: RequestHandler = async (req, res) => {
   const ok = (b: Record<string, unknown>) => res.status(200).json(b);
   try {
     const {
-      movement, recent_movements, activity_context, activity_types, include_email_history,
+      movement, recent_movements, activity_context, activity_types, include_email_history, instrucao_extra,
     } = (req.body || {}) as {
       movement?: MovementItem;
       recent_movements?: MovementItem[];
       activity_context?: ActivityContext;
       activity_types?: ActivityTypeOption[];
+      /**
+       * Instrução adicional do chamador, anexada ao fim do prompt do usuário.
+       * Usada pelo "Gerar do processo" do formulário da atividade para
+       * recortar o período: "considere só o que aconteceu a partir de <data
+       * de criação da atividade>". Vai truncada — instrução não é documento.
+       */
+      instrucao_extra?: string;
       /**
        * Puxa do Externo os e-mails do tribunal daquele CNJ e joga no prompt.
        *
@@ -168,7 +175,7 @@ MOVIMENTAÇÃO A PARTIR DA QUAL CRIAR A ATIVIDADE:
 ${fmtMovement(movement || {})}
 
 Tipos de atividade disponíveis (escolha UM pela chave, o mais adequado ao teor da movimentação):
-${typesList}`;
+${typesList}${typeof instrucao_extra === 'string' && instrucao_extra.trim() ? `\n\nINSTRUÇÃO ADICIONAL DO SOLICITANTE:\n${instrucao_extra.trim().slice(0, 500)}` : ''}`;
 
     const system = `Você é um assistente jurídico de um escritório de advocacia previdenciário/trabalhista. A partir de uma MOVIMENTAÇÃO PROCESSUAL (publicação, intimação, despacho, decisão, andamento) e do contexto do processo (fluxo de trabalho, movimentações recentes e atividades anteriores), crie o RASCUNHO de uma NOVA atividade de acompanhamento.
 
