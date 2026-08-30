@@ -147,7 +147,7 @@ describe('campos vazios preenchidos pela régua', () => {
 
   it('atividade sem texto ganha as três seções, em linguagem de leigo', () => {
     const msg = buildActivityMessage(ctx({ ...semCampos, regua: REGUA_CHEIA }), 'client');
-    expect(msg).toContain('*Como está?:* O processo está andando normalmente. A novidade mais recente: o INSS apresentou a defesa dele, em 17/06/2026.');
+    expect(msg).toContain('*Como está?:* Seguimos acompanhando o processo de perto — a movimentação mais recente: o INSS apresentou a defesa dele, em 17/06/2026.');
     expect(msg).toContain('*O que foi feito?:* Até aqui o processo já passou por: visita da assistente social da Justiça (28/04/2026); o INSS apresentou a defesa dele (17/06/2026).');
     expect(msg).toContain('*Próximo passo:* Agora aguardamos a próxima etapa: decisão do juiz (sentença). Estamos de olho em cada movimentação e avisamos assim que houver novidade.');
     // jargão técnico não vaza pro cliente
@@ -161,7 +161,7 @@ describe('campos vazios preenchidos pela régua', () => {
       'client',
     );
     expect(msg).toContain('*Como está?:* Réplica protocolada, aguardando sentença.');
-    expect(msg).not.toContain('A novidade mais recente');
+    expect(msg).not.toContain('a movimentação mais recente');
   });
 
   it('sem régua, campo vazio continua vazio — nada é inventado', () => {

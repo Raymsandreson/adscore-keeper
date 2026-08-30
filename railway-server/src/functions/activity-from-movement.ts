@@ -193,7 +193,8 @@ Sua tarefa: preencher os campos abaixo de forma FIEL ao teor da movimentação, 
 - Seja fiel: NÃO invente fatos, nomes, datas ou prazos que não estejam na movimentação ou no contexto. Mas INFERIR o encaminhamento natural (o que fazer em seguida) a partir do teor da movimentação e do histórico é esperado e desejado — isso não é "inventar".
 - NÃO SEJA REDUNDANTE: cada um dos três campos centrais tem função distinta (fato ocorrido ≠ situação atual ≠ ação seguinte); não repita a mesma frase nos três. Para solicitação/resposta do juízo/observações, deixar vazio é preferível a repetir.
 - Se a movimentação for realmente ambígua/insuficiente, preencha o que der (ainda assim os três campos centrais) e retorne "clarifying_question". Se estiver claro, OMITA clarifying_question.
-- Escreva em português do Brasil, linguagem simples e direta.`;
+- TOM DE CONTINUIDADE (o texto informa o CLIENTE): escreva cada campo como a continuação de um acompanhamento que nunca parou — conecte o que já tinha acontecido, o que aconteceu agora e o que vem em seguida ("depois de X, o processo agora...", "com isso, o próximo movimento é..."). A atuação proativa do escritório deve TRANSPARECER pelos fatos e pelo encadeamento (o que já foi verificado, o que já está preparado, o que será feito assim que Y sair) — NUNCA se autoelogie nem diga expressamente que o atendimento é proativo, atencioso ou dedicado; mostrar vale, dizer não.
+- Escreva em português do Brasil, linguagem simples e direta, que qualquer leigo entenda — explique termo técnico em meia frase quando for inevitável usá-lo.`;
 
     let fields = { ...EMPTY_FIELDS };
     let clarifyingQuestion: string | undefined;

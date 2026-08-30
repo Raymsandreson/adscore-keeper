@@ -75,9 +75,12 @@ export async function gerarCamposDoProcesso(ctx: ContextoAtividade): Promise<Cam
         case_title: ctx.caseTitle || null,
         workflow: ctx.workflowName ? { name: ctx.workflowName } : undefined,
       },
-      instrucao_extra: desde
-        ? `Esta atividade foi criada em ${desde}. Descreva o que aconteceu no processo A PARTIR dessa data; o que veio antes é só contexto. Se nada relevante aconteceu desde então, diga isso com clareza.`
-        : undefined,
+      instrucao_extra: [
+        desde
+          ? `Esta atividade foi criada em ${desde}. Descreva o que aconteceu no processo A PARTIR dessa data; o que veio antes é só contexto. Se nada relevante aconteceu desde então, diga isso com clareza — e reafirme o que continua sendo acompanhado.`
+          : null,
+        'O texto será lido pelo CLIENTE: dê sempre a ideia de continuidade do acompanhamento (o que vinha acontecendo → o que aconteceu agora → o que vem em seguida), de forma que a atuação constante do escritório transpareça pelos fatos, sem nunca dizer isso expressamente.',
+      ].filter(Boolean).join(' '),
     },
   });
   if (error) throw error;

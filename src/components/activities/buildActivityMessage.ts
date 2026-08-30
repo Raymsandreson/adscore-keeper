@@ -283,7 +283,7 @@ export function buildActivityMessage(
         ? `"${regua.atualRotulo}"${regua.atualData ? ` em ${dataBR(regua.atualData)}` : ''}`
         : '';
       if (!valueMap.current_status.trim() && regua.atualRotulo) {
-        valueMap.current_status = `O processo está andando normalmente. A novidade mais recente: ${humanizaMarco(regua.atualRotulo)}${regua.atualData ? `, em ${dataBR(regua.atualData)}` : ''}.`;
+        valueMap.current_status = `Seguimos acompanhando o processo de perto — a movimentação mais recente: ${humanizaMarco(regua.atualRotulo)}${regua.atualData ? `, em ${dataBR(regua.atualData)}` : ''}.`;
       }
       if (!valueMap.what_was_done.trim() && (regua.atingidos?.length || 0) > 0) {
         const lista = (regua.atingidos || [])
