@@ -41,6 +41,7 @@ import {
   camposConsolidados, camposDeUmaMovimentacao, movimentacaoPrincipal, type CamposDaMensagem,
 } from './notificacaoEmLote';
 import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPanel';
+import { SemMovimentacaoNoProcesso } from '@/components/notifications/SemMovimentacaoNoProcesso';
 import { OrfaosSemVinculo } from '@/components/notifications/OrfaosSemVinculo';
 import { notificationsSupported, requestNotificationPermission } from '@/lib/nativeNotification';
 
@@ -450,7 +451,7 @@ export function ProcessUpdatesBell({
     return diaLocal(d);
   }, [escopado, periodo]);
 
-  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified, totalNoBanco } =
+  const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified, totalNoBanco, refetch } =
     useProcessUpdates({ processId, desde });
 
   const [open, setOpen] = useState(false);
@@ -1590,13 +1591,17 @@ export function ProcessUpdatesBell({
           {loading ? (
             <p className="text-xs text-muted-foreground text-center py-8">Carregando...</p>
           ) : filtered.length === 0 ? (
-            <p className="text-xs text-muted-foreground text-center py-8">
-              {escopado && updates.length === 0
-                // Diferença que importa na ficha: "não caiu nada" é resposta;
-                // "seu filtro escondeu" é outra conversa.
-                ? 'Nenhuma movimentação capturada neste processo ainda.'
-                : `Nenhuma atualização nesse período${filtro !== 'todas' ? ' e categoria' : ''}.`}
-            </p>
+            // Diferença que importa na ficha: "não caiu nada" é resposta; "seu
+            // filtro escondeu" é outra conversa. E "não caiu nada" ainda se
+            // divide em duas — e-mail que chegou e não virou card (releitura
+            // pendente) ou e-mail que nunca chegou (furo no push do tribunal).
+            escopado && updates.length === 0 && processId ? (
+              <SemMovimentacaoNoProcesso processId={processId} onReprocessado={refetch} />
+            ) : (
+              <p className="text-xs text-muted-foreground text-center py-8">
+                {`Nenhuma atualização nesse período${filtro !== 'todas' ? ' e categoria' : ''}.`}
+              </p>
+            )
           ) : (
             <>
             {paginadas.map((u) => (

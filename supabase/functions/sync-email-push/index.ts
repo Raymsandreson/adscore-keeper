@@ -33,6 +33,15 @@
 //      aba "Sem vínculo" permite vincular/criar/ignorar;
 //   4. reabre no Escavador só os processos com push RECENTE.
 //
+// O PARSER É VERSIONADO (30/08/2026): a marca em email_push_processados guarda
+// QUAL parser leu cada e-mail (parser_versao, migration 20260830210000), e
+// vw_email_push_pendentes devolve para a fila quem foi lido por versão anterior.
+// Sem isso, melhoria de parser só valia para o e-mail que chegasse DEPOIS dela:
+// os três pushes do TRF1 do processo 1017247-47.2025.4.01.3100 estavam na base
+// desde junho, foram lidos em 11/08 pelo parser que só copiava o assunto, e a
+// ficha seguia dizendo "Nenhuma movimentação capturada" — 155 processos assim.
+// Mudou o que emailPushParser.ts extrai? sobe jm_email_parser_versao() em +1.
+//
 // O ÍNDICE DE PROCESSOS É PAGINADO (30/08/2026): o PostgREST corta qualquer
 // select em 1.000 linhas e a base tem 1.645 processos ativos com número. Sem
 // paginação, ~39% da carteira NUNCA casava — e era sempre o mesmo pedaço
@@ -124,6 +133,8 @@ interface Resultado {
   reabertos_escavador: number;
   pendentes_restantes: number | null;
   reprocessados: number | null;
+  /** Versão do parser desta rodada (null = migration 20260830210000 não aplicada). */
+  parser_versao: number | null;
   erros: string[];
 }
 
@@ -169,7 +180,7 @@ serve(async (req) => {
     indice_processos_carregados: 0,
     identificadores_por_tipo: {}, casados_por_tipo: {}, orfaos_gravados: 0,
     cnjs_sem_cadastro: [], reabertos_escavador: 0, pendentes_restantes: null,
-    reprocessados: null, erros: [],
+    reprocessados: null, parser_versao: null, erros: [],
   };
 
   const conta = (mapa: Record<string, number>, chave: string, n = 1) => {
@@ -186,6 +197,22 @@ serve(async (req) => {
       : null;
 
     const ext = getDbClient();
+
+    // Versão do parser desta rodada. Vem do banco (jm_email_parser_versao) para
+    // não haver dois números para a mesma coisa: a mesma função decide o que a
+    // fila devolve e o que a marca guarda.
+    //
+    // Erro aqui = migration 20260830210000 ainda não aplicada. Nesse caso a
+    // marca vai SEM a coluna (o upsert falharia e o e-mail nunca sairia da
+    // fila) e a rodada segue como antes — degrau, não parada.
+    let parserVersao: number | null = null;
+    {
+      const { data, error } = await ext.rpc('jm_email_parser_versao');
+      if (error) out.erros.push(`versao do parser indisponivel: ${error.message}`);
+      else if (data !== null && data !== undefined) parserVersao = Number(data);
+    }
+    out.parser_versao = parserVersao;
+    const marcaVersao = parserVersao === null ? {} : { parser_versao: parserVersao };
 
     const { porChave, total } = await carregarIndice(ext);
     out.indice_processos_carregados = total;
@@ -482,7 +509,7 @@ serve(async (req) => {
         if (!dryRun) {
           await ext.from('email_push_processados').upsert({
             message_id: email.gmail_message_id, assunto, remetente,
-            movimentacoes: movsAdmin, casados: casadosAdmin,
+            movimentacoes: movsAdmin, casados: casadosAdmin, ...marcaVersao,
           }, { onConflict: 'message_id' });
         }
         continue;
@@ -582,7 +609,7 @@ serve(async (req) => {
       if (!dryRun) {
         await ext.from('email_push_processados').upsert({
           message_id: email.gmail_message_id, assunto, remetente,
-          movimentacoes: movs.length, casados,
+          movimentacoes: movs.length, casados, ...marcaVersao,
         }, { onConflict: 'message_id' });
       }
     }
