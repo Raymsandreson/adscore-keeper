@@ -517,6 +517,48 @@ para isso e está vazio.
 
 ---
 
+## Régua previdenciária POR PRODUTO (30/08/2026)
+
+Até 30/08 as réguas dos POPs previdenciários eram cópias idênticas do trabalhista
+(migration 20260814130000) — nenhuma particularidade de produto. Aplicado com OK
+do usuário (PLANO_20260830_marcos_previdenciarios_por_produto.sql, correções no
+cabeçalho do arquivo): **222→258 marcos, 556→618 sinais**, 1337 processos com
+marco antes e depois (ninguém perdeu régua).
+
+Marcos novos nos 6 POPs prev (BPC JUDICIAL, POP-BPC-Adm, Auxílio Acidente,
+Aux. Doença Acidentário, Pensão por Morte, Salário Maternidade), todos
+eventuais/fase: `contestacao`, `replica` (antes da sentença),
+`liquidacao_calculos`, `implantacao_beneficio`, `rpv_precatorio` (entre execução
+e alvará; RPV sugere estágio `A_RECEBER`). Só nos dois BPC: `pericia_social`
+(estudo social — a segunda perícia que nenhum outro benefício tem; `pericia`
+virou "Perícia médica" com padrao_excluir dos termos sociais — NUNCA `social`
+seco, que casaria "Instituto Nacional do Seguro **Social**" em todo cabeçalho).
+
+Vocabulário recursal por competência: no JEF o acórdão sai por **recurso
+inominado/Turma Recursal** (o padrão antigo "recurso ordinário" é trabalhista e
+casava 0 de 17 processos com o termo); acidentários têm sinal extra de
+**apelação/TJ** porque acidente do trabalho corre na Justiça Estadual (art. 109
+I CF — confirmado nos CNJs 8.10/8.13/8.14/8.15/8.18 da base). Anexo manual tem
+porta em três marcos (sinal `documento`): planilha de liquidação →
+`liquidacao_calculos`, carta de concessão → `implantacao_beneficio`, comprovante
+de pagamento → `pagamento`.
+
+Primeiro tick: `pericia_social` detectado em 8 processos, `contestacao` em 5.
+Caso `1017247-47.2025.4.01.3100`: o 28/04 era "juntada de laudo de perícia
+social" (reclassificado de Perícia para Estudo social) e o marco atual virou
+**Contestação do INSS em 17/06** — 40%→50%. Justiça Comum e Requerimento de
+Seguro ficaram FORA desta rodada (têm régua própria cível); estender é decisão
+separada.
+
+Armadilhas para a próxima mudança de régua: `pop_marcos` tem UNIQUE
+(board_id, ordem) **deferred** e UNIQUE (board_id, chave); as ordens diferem por
+board (POP-BPC-Adm: adm 1..4, judicial 11+, estados 30..43) — shift de ordem é
+sempre relativo à âncora do board e move TODOS os marcos dali em diante, estados
+incluídos, senão colide. `estagio_financeiro_sugerido` usa underscore
+(`A_RECEBER`).
+
+---
+
 ## Checklist antes de entregar
 
 - [ ] Marco novo que é estado ganhou `atravessa_fases = true`?

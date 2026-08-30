@@ -1,6 +1,21 @@
 -- =============================================================================
 -- PLANO (não roda sozinho — prefixo PLANO_): marcos previdenciários POR PRODUTO
--- Levantado em 30/08/2026 contra o banco real. Aguardando OK do usuário.
+-- Levantado em 30/08/2026 contra o banco real. ✅ APLICADO em 30/08/2026 com OK
+-- do usuário, com DUAS correções sobre o texto abaixo (o aplicado é o que vale):
+--   1. Os shifts de ordem NÃO têm teto (`ordem < 20`) e movem TODOS os marcos a
+--      partir da âncora, estados incluídos — existe UNIQUE (board_id, ordem)
+--      (deferred) e o teto colidia no POP-BPC-Adm (judicial em 11..24, estados
+--      em 30..43).
+--   2. estagio_financeiro_sugerido é 'A_RECEBER' (underscore — CHECK da tabela),
+--      e o padrao_excluir da perícia médica nos boards BPC é
+--      'per[íi]cia social|estudo social|laudo social|assistente social', nunca
+--      'social' seco ("Instituto Nacional do Seguro Social" está em todo
+--      cabeçalho e mataria o marco).
+-- Verificado após aplicar + pop_marcos_tick(): 222→258 marcos, 556→618 sinais,
+-- 3804→3813 linhas materializadas, 1337 processos com marco (ninguém perdeu),
+-- 0 ordens duplicadas. Caso 1017247-47.2025.4.01.3100: 28/04 reclassificado de
+-- Perícia para Estudo social (a mov é "juntada de laudo de perícia social") e o
+-- marco atual virou Contestação do INSS em 17/06/2026 — 40%→50%.
 --
 -- CONTEXTO MEDIDO
 -- As réguas dos POPs previdenciários são hoje IDÊNTICAS entre si (cópia da
