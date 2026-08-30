@@ -312,6 +312,11 @@ export const handler: RequestHandler = async (req, res) => {
                   const addr = enderecoDoFrom(fromAddr);
                   porRemetente[addr] = (porRemetente[addr] || 0) + 1;
                   ir.inserted++; totalInserted++;
+                  // O `continue` pulava o fetchedThisCall++ do fim do laço e o
+                  // orçamento nunca incrementava: TODO dry_run virava varredura
+                  // da caixa inteira numa request só (defeito herdado do código
+                  // original, visível só agora que o dry_run é usado de verdade).
+                  fetchedThisCall++;
                   continue;
                 }
                 const text = extractPlainText(msg);
