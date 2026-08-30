@@ -571,6 +571,46 @@ incluídos, senão colide. `estagio_financeiro_sugerido` usa underscore
 
 ---
 
+## Unificação do BPC + trabalho espelhando os marcos (30/08/2026, noite)
+
+Três mudanças com OK do usuário, todas com backup em `zz_bpc_unificacao_bkp_20260830`:
+
+**1. Um POP só de BPC.** `BPC JUDICIAL` (cbaa0dfb) foi unificado no
+`POP - BPC (Administrativo e Judicial)` (8377ee1b — o antigo "POP - BPC -
+Administrativo", renomeado; a edge zapsign referencia por id, intacta). Movidos:
+1.154 instâncias de 109 leads (estado marcado preservado; as 6 fases judiciais
+colapsam em `stage_fase_judicial`, pós-decisão em `stage_pos_deferimento`), 35
+processos (workflow_id + workflow_stage_id + workflow_name), 52 atividades, e os
+16 objetivos judiciais viraram links no board unificado (display_order 200+ na
+sequência do fluxo original). O board antigo ficou vazio e renomeado
+"(desativado — unificado no POP BPC em 30/08/2026)" — é o rollback. Zero sobras
+conferidas; caso Sidiney revalidado no unificado (fase judicial, 50%,
+contestação atual). A fase-detalhe judicial agora é dada pela ORDEM DOS
+OBJETIVOS dentro de stage_fase_judicial, não por 6 stages — o percentual segue
+sendo da régua, que não mudou.
+
+**2. Concedido no adm não desce pro judicial — JÁ ERA ASSIM.** A RPC
+`pop_processo_regua` tem `bool_or(estado='atingido' and terminal)` → percentual
+100, e `concessao_administrativa` já é `terminal=true` com sinal de e-mail
+configurado. Pendência de calibragem: **0 processos** com essa detecção hoje
+(84 indeferimentos, 114 exigências) — quando o primeiro deferimento adm chegar,
+conferir se o padrão do despacho casa.
+
+**3. Trabalho espelhando os marcos nos 4 POPs com buraco.** Templates novos
+"Contestação e Réplica" e "Liquidação e Recebimento" em dois sabores (Prev/
+Cível), reuso dos genéricos do BPC ("Fase Recursal", "Elaboração e Propositura",
+"Sentença" — link carrega o dono, template é global) — 14 links: Aux. Doença
+Acidentário, Pensão por Morte, Seguro e Justiça Comum (que estava com ZERO
+objetivo). O passo de planilha/comprovante manda anexar a peça — é o anexo que
+move a régua, o passo é o lembrete.
+
+Nota de vocabulário (do usuário, 30/08): marco e fase são a MESMA coisa — o
+tick move a fase pelo marco, os dois são autodetectados. A única distinção real
+é marco/fase (autodetectado) × passo/objetivo (marcado à mão). Não descrever
+como três conceitos.
+
+---
+
 ## Checklist antes de entregar
 
 - [ ] Marco novo que é estado ganhou `atravessa_fases = true`?
