@@ -18,6 +18,22 @@ import { Loader2, Wand2 } from 'lucide-react';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import type { ClienteConferido, ValorJm, DecisaoJm } from '@/hooks/useConferenciaProcesso';
 
+/**
+ * `src/integrations/supabase/types.ts` é gerado pelo Lovable e não conhece as
+ * tabelas `jm_` do Externo — elas nasceram fora dele. Sem este destipado o
+ * `.from('jm_documento_leitura')` não compila (TS2769/TS2589) e o `tsc` do
+ * projeto fica vermelho; o cast de cada consulta, logo abaixo, é que diz o
+ * formato real de cada retorno.
+ */
+const externoJm = externalSupabase as unknown as {
+  from: (tabela: string) => {
+    select: (colunas: string) => {
+      in: (coluna: string, valores: unknown[]) => Promise<{ data: Record<string, unknown>[] | null }>;
+    };
+  };
+};
+
+
 const brl = (v: number) =>
   v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -67,12 +83,12 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
     let cancelado = false;
     (async () => {
       await ensureExternalSession().catch(() => {});
-      const { data: leituras } = await (externalSupabase
+      const { data: leituras } = await (externoJm
         .from('jm_documento_leitura')
         .select('id, documento_id')
         .in('id', leituraIds) as unknown as Promise<{ data: { id: number; documento_id: number }[] | null }>);
       if (cancelado || !leituras?.length) return;
-      const { data: docs } = await (externalSupabase
+      const { data: docs } = await (externoJm
         .from('jm_documentos')
         .select('id, titulo')
         .in('id', leituras.map(l => l.documento_id)) as unknown as Promise<{ data: { id: number; titulo: string | null }[] | null }>);

@@ -11,6 +11,22 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+
+/**
+ * `src/integrations/supabase/types.ts` é gerado pelo Lovable e não conhece as
+ * tabelas `jm_` do Externo — elas nasceram fora dele. Sem este destipado o
+ * `.from('jm_documento_leitura')` não compila (TS2769/TS2589) e o `tsc` do
+ * projeto fica vermelho; o cast de cada consulta, logo abaixo, é que diz o
+ * formato real de cada retorno.
+ */
+const externoJm = externalSupabase as unknown as {
+  from: (tabela: string) => {
+    select: (colunas: string) => {
+      in: (coluna: string, valores: unknown[]) => Promise<{ data: Record<string, unknown>[] | null }>;
+    };
+  };
+};
+
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { invalidateLeadLinkedContactsCache } from '@/components/leads/LeadLinkedContacts';
 import { VincularParteContatoDialog } from './VincularParteContatoDialog';
@@ -650,7 +666,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     let cancelado = false;
     (async () => {
       await ensureExternalSession().catch(() => {});
-      const { data } = await (externalSupabase
+      const { data } = await (externoJm
         .from('jm_documento_leitura')
         .select('id, documento_id, resumo, valor_condenacao, partes, cronograma, especie, processo')
         .in('documento_id', acervo.map(p => p.id)) as unknown as Promise<{ data: Record<string, unknown>[] | null }>);

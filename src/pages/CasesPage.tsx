@@ -651,7 +651,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
   const openEditDialog = () => {
     setEditCaseNumber(legalCase.case_number || '');
-    setEditTitle(legalCase.title || '');
+    // O título saiu do formulário em 33164db — o state também. Sem esta remoção
+    // abrir o dialog de edição estourava ReferenceError: setEditTitle.
     setEditDescription(legalCase.description || '');
     setEditNotes(legalCase.notes || '');
     setEditLeadId(legalCase.lead_id ?? null);

@@ -14,6 +14,7 @@ const base: ProcessUpdate = {
   titulo: 'Movimentação',
   descricao: 'Juntada de petição de embargos',
   data_movimentacao: '2026-08-10',
+  data_presumida: false,
   created_at: '2026-08-10T12:00:00Z',
   eventos: null,
   resumo_ia: null,
