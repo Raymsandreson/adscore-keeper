@@ -395,3 +395,25 @@ Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, gru
 7. **Backfill restrito do inbox#3** — `gmail-processual-sync` aceita `inbox` + `q` (filtro Gmail) e, em `dry_run`, devolve `por_ano`/`por_remetente` — o relatório que aprova o backfill do adm@ até 01/01/2024 sem despejar a caixa inteira.
 
 **Proveniência**: toda linha nova do feed grava `email_message_id` + `email_recebido_em` — é o que torna o reprocessamento limpo (`apagar_cards` só alcança cards do mesmo e-mail).
+
+---
+
+## Ficha do processo: de onde vem a capa (30/08/2026)
+
+**O problema**: 1.175 dos 1.291 processos judiciais estavam sem tribunal, 1.181 sem polo ativo e 896 sem nenhuma data de início — muitos deles com 20 movimentações e a aba "Documentos" cheia. Causa: o endpoint `/processos/{cnj}/movimentacoes` do Escavador **não devolve capa**, e era por ele que a edge `backfill-process-marcos` alimentava a base. Só o botão "Buscar no Escavador" da ficha (`buscar_completo` → `escavador_raw` → `handleReExtract`) traz capa, e ele nunca tinha rodado nesses processos.
+
+**Não afeta a jurimetria.** Conferido em 30/08/2026: nenhuma view `vw_jm_*` lê esses campos. A única que toca `lead_processes` é `vw_jm_conciliacao_acordos`, e só usa `process_number` e `title`. Os valores vêm de `jm_valores`/`jm_decisoes`/`jm_lancamentos`; os prazos, de `jm_processos.data_protocolo` e `jm_movimentos` (DataJud). O que a ficha vazia quebra é a **busca da carteira por UF/cidade/tribunal** (`useCarteiraDoPop.ts`) e o **marco de ajuizamento**, que a régua tira de `data_distribuicao`/`data_inicio`.
+
+**As três fontes, em ordem de precedência** (`src/lib/fichaDoBanco.ts`, botão "Completar do banco" da ficha):
+1. publicação guardada em `process_movements` (a capa está na primeira intimação);
+2. nota do cadastro (`lead_processes.notes`, do inventário por OAB);
+3. DataJud (`vw_estacao_evidencia_datajud`) → órgão julgador, grau, sigla do tribunal;
+4. jurimetria (`jm_processos`, `jm_partes`) → polo passivo, cidade, UF, data de protocolo, polo ativo.
+
+Custo zero de API — é tudo junção do que já está no banco.
+
+**Backfill em lote**: `scripts/completar-ficha-do-banco.sql` aplica isso a toda a base (backup → dry-run → update → rollback). Só grava em coluna NULL, é idempotente e não toca `data_ultima_verificacao`. Rodado em 30/08/2026: **1.027 processos preenchidos, 0 sobrescritos**; backup em `lead_processes_ficha_backfill_20260830` (RLS ligada, sem policy).
+
+**Furo fechado na origem**: `_shared/escavadorCapa.ts` (`mapearCapa` + `COLUNAS_DA_CAPA`) traduz a capa do Escavador para as colunas de `lead_processes`. A `backfill-process-marcos` já pagava uma consulta extra em `/processos/{cnj}` quando faltava data de início, mas guardava só três campos; desde a v16 grava a capa inteira e o `escavador_raw`, sem passar por cima de campo já preenchido. Deploy da função: `node _deploy_backfill_process_marcos.mjs` com `SUPABASE_PAT` (ela tem dependências em `_shared/`, então não dá para subir só o `index.ts`).
+
+**Dois defeitos de leitura da nota corrigidos junto**: o valor parava no primeiro ponto e cortava "Copel Distribuicao S.A" em "Copel Distribuicao S" (705 fichas); e parte anonimizada em iniciais ("R. G. M. P.") virava polo passivo "R" (35 fichas, todas desfeitas).
