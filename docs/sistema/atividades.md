@@ -420,6 +420,43 @@ Testes: `src/lib/__tests__/leadStepContext.ordem.test.ts` (ordem, dedupe, escolh
 
 ---
 
+## O percentual da mensagem é o da régua de marcos (30/08/2026)
+
+Correção da entrega anterior. A decisão de 12/08/2026 — *"o percentual do processo atualizar só pelos marcos, não depender de marcar os passos, pq isso pode ser falho"* — valia para a barra da ficha e **não** tinha alcançado a mensagem: ela anunciava progresso de passo marcado à mão. No caso `1017247-47.2025.4.01.3100` a barra mostrava **40%** (régua: 2 de 5 marcos previstos, atual = Perícia em 28/04/2026, fonte `escavador_texto`) e a mensagem, 61% pelos passos. Dois números certos que, juntos, fazem a tela mentir.
+
+Agora `buildActivityMessage` recebe `regua` (`useProcessoMarcos` / RPC `pop_processo_regua`) e a ordem é:
+
+1. Requerimento encerrado no INSS → nenhum percentual (regra de 26/08/2026, intacta);
+2. **Régua com marco** → `📊 Andamento do processo: N% concluído` + `Marco atual: <rótulo> em <data>`;
+3. Sem marco nenhum → progresso por passos, como antes.
+
+A linha `*Etapa:* / *Objetivo:* / *Passo atual:*` continua sendo a do POP: **andamento** (onde o processo está) e **trabalho** (o que a equipe executou) são duas medidas com dois nomes, e por isso a linha da régua se chama `Marco atual`, não `Etapa`. Vale nas três telas que montam mensagem: `ActivityFullSheet`, `ActivitiesPage` e o sino (`ProcessUpdatesBell`, via `fetchProcessoRegua`).
+
+### A faixa de marcos do cabeçalho lia a régua errada
+
+`ProcessMarcosInline` (só usado no cabeçalho da atividade) lia `process_movements` — as **12 estações**, a régua antiga, que na prática só cobre o trabalhista. Em previdenciário ela está vazia: o cabeçalho dizia *"Nenhum marco registrado neste processo ainda"* no mesmo lugar em que a barra logo abaixo mostrava 40% pela régua do POP. Passou a ler `useProcessoMarcos` primeiro (marcos previstos: obrigatório sempre, eventual só quando aconteceu, estado que `atravessa_fases` fora) e só cai nas 12 estações quando a régua do POP não tem nada.
+
+### O que a captura automática já cobre neste POP
+
+Conferido no banco em 30/08/2026 — a régua previdenciária **já é** preenchida sozinha, como no trabalhista (migration `20260814130000`):
+
+| sinal | BPC JUDICIAL | POP - BPC - Administrativo |
+|---|---|---|
+| `tpu` (DataJud) | 33 | 33 |
+| `texto` (Escavador) | 10 | 10 |
+| `documento` (título em `jm_documentos`) | 7 | 7 |
+| `grau` | 2 | 2 |
+| `email` (INSS) | — | 6 |
+
+O caminho do documento anexado à mão existe ponta a ponta: `usePecasDoProcesso.anexar` grava em `jm_documentos`, `vincularAMarco` escreve `marco_chave`, e `vw_pop_marcos_detectados` casa por `d.marco_chave = pm.chave` (ou pelo padrão do título quando `marco_chave` é null) — `useProcessoMarcos.rematerializar` atualiza a régua na hora, sem esperar o tick.
+
+**Limites medidos, não estimados** (30/08/2026):
+- `jm_documentos` tem 5.113 `escavador_publico` + 559 `escavador_autos` + **1 `manual`**, e **0 linhas com `marco_chave`** — o vínculo manual nunca foi usado em produção.
+- O processo acima tem **0 documentos** baixados: por isso só o sinal de texto disparou.
+- A régua previdenciária **não tem marco de contestação/réplica nem de liquidação** (planilha, comprovante). Os sinais de `documento` cobrem laudo pericial, sentença, acórdão, certidão de trânsito, IDPJ, recuperação judicial e penhora negativa. Enquanto não existir marco para elas, anexar a planilha de liquidação não move percentual nenhum — é configuração de POP a decidir, não código.
+
+---
+
 ## Campeonato de Engajamento — `/leaderboard`
 
 Ranking semanal de engajamento (Menção = 5 pts; Comentário = 2 pts). Página de consulta, sem ações.

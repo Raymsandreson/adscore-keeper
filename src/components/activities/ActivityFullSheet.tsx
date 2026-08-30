@@ -53,6 +53,7 @@ import { filterAssignableMembers } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
+import { useProcessoMarcos } from '@/hooks/useProcessoMarcos';
 import { useLeadActivities, type LeadActivity } from '@/hooks/useLeadActivities';
 import { useActivityTimer } from '@/contexts/ActivityTimerContext';
 import { useActivitySpentSeconds, useEstimateSuggestion, formatEstimate, formatSpent } from '@/hooks/useActivityTimeEstimate';
@@ -322,6 +323,9 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
     caseId: formCaseId, processId: formProcessId, caseProcesses, leadCases,
   });
   const stepBoardId = formWorkflowId || linkedProcess?.workflow_id || leadPreview?.board_id || null;
+  // Régua de marcos do processo: a mesma medida que a barra e a faixa do
+  // cabeçalho mostram. A mensagem ao cliente sai daqui, não do passo marcado.
+  const reguaDoProcesso = useProcessoMarcos(formProcessId || null);
   const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, stepBoardId, formProcessId || null);
 
   // Herda o POP do processo vinculado quando a atividade não tem um próprio
@@ -1362,6 +1366,13 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
+      regua: {
+        percentual: reguaDoProcesso.percentual,
+        atualRotulo: reguaDoProcesso.atual?.rotulo || null,
+        atualData: reguaDoProcesso.atual?.data_detectada || null,
+        previstos: reguaDoProcesso.previstos,
+        cumpridos: reguaDoProcesso.cumpridos,
+      },
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 

@@ -71,6 +71,47 @@ export interface ReguaDoProcesso {
   rematerializar: () => Promise<void>;
 }
 
+/** Resumo da régua para quem só precisa do número (mensagem da atividade, sino). */
+export interface ReguaResumo {
+  percentual: number | null;
+  atualRotulo: string | null;
+  atualData: string | null;
+  previstos: number;
+  cumpridos: number;
+}
+
+/**
+ * Lê a régua FORA de componente React — o sino monta a mesma mensagem da
+ * atividade e precisa do mesmo andamento. Devolve null quando a RPC falha;
+ * régua sem marco volta com `percentual: null`, que é o sinal para quem chama
+ * cair no progresso por passos.
+ */
+export async function fetchProcessoRegua(processId?: string | null): Promise<ReguaResumo | null> {
+  if (!processId) return null;
+  await ensureExternalSession();
+  const { data, error } = await (externalSupabase.rpc as unknown as (
+    f: string,
+    a: Record<string, unknown>,
+  ) => PromiseLike<{ data?: MarcoReguaRow[] | null; error?: { message?: string } | null }>)(
+    'pop_processo_regua',
+    { p_process_id: processId },
+  );
+  if (error) {
+    console.warn('[fetchProcessoRegua]', error.message);
+    return null;
+  }
+  const rows = data || [];
+  if (rows.length === 0) return null;
+  const atual = rows.find(m => m.atual) || null;
+  return {
+    percentual: rows[0].percentual,
+    atualRotulo: atual?.rotulo || null,
+    atualData: atual?.data_detectada || null,
+    previstos: rows[0].previstos,
+    cumpridos: rows[0].cumpridos,
+  };
+}
+
 export function useProcessoMarcos(processId?: string | null): ReguaDoProcesso {
   const [marcos, setMarcos] = useState<MarcoReguaRow[]>([]);
   const [loading, setLoading] = useState(false);

@@ -80,6 +80,51 @@ function ctx(over: Partial<ActivityMessageContext> = {}): ActivityMessageContext
   } as ActivityMessageContext;
 }
 
+describe('andamento pela régua de marcos', () => {
+  /** Régua real deste processo em 30/08/2026: 2 de 5 marcos, atual = Perícia. */
+  const REGUA = {
+    percentual: 40, atualRotulo: 'Perícia', atualData: '2026-04-28',
+    previstos: 5, cumpridos: 2,
+  };
+
+  it('havendo marco, o percentual é o da régua — não o dos passos', () => {
+    const msg = buildActivityMessage(ctx({ regua: REGUA }), 'client');
+    expect(msg).toContain('Andamento do processo: 40% concluído');
+    expect(msg).not.toContain('Progresso do caso');
+    expect(msg).not.toContain('61%');
+  });
+
+  it('anuncia o marco atual com a data em que foi detectado', () => {
+    const msg = buildActivityMessage(ctx({ regua: REGUA }), 'client');
+    expect(msg).toContain('*Marco atual:* Perícia em 28/04/2026');
+  });
+
+  it('o passo do POP continua sendo o do checklist — são duas medidas', () => {
+    const msg = buildActivityMessage(ctx({ regua: REGUA }), 'client');
+    expect(msg).toContain('*Passo atual:* Análise de Proposta de Acordo (se houver)');
+  });
+
+  it('sem marco detectado (percentual null), cai no progresso por passos', () => {
+    const semMarco = { ...REGUA, percentual: null, atualRotulo: null, atualData: null, previstos: 0, cumpridos: 0 };
+    const msg = buildActivityMessage(ctx({ regua: semMarco }), 'client');
+    expect(msg).toContain('Progresso do caso: 61% concluído');
+    expect(msg).not.toContain('Andamento do processo');
+  });
+
+  it('requerimento encerrado no INSS silencia a régua também', () => {
+    const msg = buildActivityMessage(
+      ctx({ regua: REGUA, inssDesfecho: { encerrado: true, resultado: 'indeferido', requerimento: '123', emAndamento: 0 } }),
+      'client',
+    );
+    expect(msg).not.toMatch(/\d+% concluído/);
+  });
+
+  it('o assessor recebe a contagem de marcos no detalhe', () => {
+    const msg = buildActivityMessage(ctx({ regua: REGUA }), 'assessor');
+    expect(msg).toContain('2/5 previstos');
+  });
+});
+
 describe('progresso da mensagem = progresso da barra', () => {
   it('caso na fase de contestação não sai como "comecinho"', () => {
     const msg = buildActivityMessage(ctx(), 'client');

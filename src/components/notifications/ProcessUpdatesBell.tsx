@@ -33,6 +33,7 @@ import { buildActivityMessage } from '@/components/activities/buildActivityMessa
 import { resumoMovimentacao } from './resumoMovimentacao';
 import { UpdateDetalhe, type PassoDoPop, type SugestaoIA } from './UpdateDetalhe';
 import { fetchLeadSteps } from '@/lib/leadStepContext';
+import { fetchProcessoRegua } from '@/hooks/useProcessoMarcos';
 import { fetchFaseProcessual } from '@/lib/processFaseAtual';
 import { ESFERAS, ESFERA_ORDER, type Esfera } from '@/lib/esferaJustica';
 import { ASSUNTO_SIMPLES } from '@/lib/linguagemSimples';
@@ -642,6 +643,10 @@ export function ProcessUpdatesBell({
 
     const boardId = processo?.workflow_id || lead?.board_id || null;
     const { steps, defaultStepId, phases } = await fetchLeadSteps(u.lead_id, boardId, u.process_id || null);
+    // Andamento do processo pela régua de marcos — a mesma medida da ficha.
+    // Sem isso o aviso ao cliente anunciava percentual de passo marcado à mão
+    // enquanto a ficha mostrava o da régua.
+    const reguaRows = await fetchProcessoRegua(u.process_id);
     const passoAtual = steps.find((s) => s.stepId === defaultStepId) || null;
 
     // Sem POP: cai na régua de marcos do processo. Com POP, nem consulta.
@@ -653,7 +658,7 @@ export function ProcessUpdatesBell({
         })
       : null;
 
-    return { lead, processo, boardId, steps, phases, passoAtual, fase };
+    return { lead, processo, boardId, steps, phases, passoAtual, fase, regua: reguaRows };
   }, []);
 
   type ContextoUpdate = Awaited<ReturnType<typeof carregarContexto>>;
@@ -798,6 +803,7 @@ export function ProcessUpdatesBell({
           }
         : null,
       faseProcessual: ctx.fase,
+      regua: ctx.regua,
       leadPreview: { board_id: ctx.boardId },
       systemOabs,
       currentUserId: user?.id || null,

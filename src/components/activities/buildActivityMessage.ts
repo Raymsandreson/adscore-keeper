@@ -72,6 +72,17 @@ export interface ActivityMessageContext {
    * etapa nem passos; nunca sobrepõe o POP.
    */
   faseProcessual?: { faseLabel: string | null; posicao: number; total: number } | null;
+  /**
+   * Régua de marcos do processo (hook useProcessoMarcos / RPC
+   * `pop_processo_regua`) — a MESMA que a barra da ficha mostra.
+   *
+   * Andamento e trabalho são duas medidas com donos diferentes: a régua diz
+   * onde o processo está, lida das movimentações, dos documentos e do e-mail;
+   * o checklist diz o que a equipe executou. Quem vai ao cliente é o
+   * andamento — foi a decisão de 12/08/2026 para a ficha, e a mensagem tinha
+   * ficado de fora dela, anunciando percentual de passo marcado à mão.
+   */
+  regua?: { percentual: number | null; atualRotulo: string | null; atualData: string | null; previstos: number; cumpridos: number } | null;
   leadPreview: { board_id?: string | null } | null;
   systemOabs: any;
   currentUserId: string | null;
@@ -159,7 +170,7 @@ export function buildActivityMessage(
     formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
-    fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, leadPreview, systemOabs,
+    fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, regua, leadPreview, systemOabs,
     currentUserId, resolveUserName, getTemplateForContext, inssDesfecho,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
@@ -286,6 +297,27 @@ export function buildActivityMessage(
           full: `*⚠️ Requerimento${req} está ${rotulo} no INSS* — progresso do POP omitido na mensagem ao cliente.`,
         };
       }
+      // ANDAMENTO vem primeiro: é a régua de marcos, a mesma medida da barra da
+      // ficha. Só quando ela não tem marco nenhum a mensagem cai no que a
+      // equipe executou. Nunca as duas — "40% pela régua" e "61% pelos passos"
+      // são dois números certos que, juntos, viram uma tela mentindo.
+      if (regua && regua.percentual != null) {
+        const marco = regua.atualRotulo
+          ? `${regua.atualRotulo}${regua.atualData ? ` em ${format(parseISO(regua.atualData.slice(0, 10)), 'dd/MM/yyyy')}` : ''}`
+          : null;
+        const linha = `*📊 Andamento do processo: ${Math.round(Number(regua.percentual))}% concluído*`;
+        return {
+          // "Marco atual", não "Etapa": a linha de *Etapa:* logo abaixo é a fase
+          // do POP (o que a equipe faz). São duas coisas e têm dois nomes.
+          headline: marco ? `${linha}\n*Marco atual:* ${marco}` : linha,
+          full: [
+            linha,
+            marco && `• Marco atual: ${marco}`,
+            `• Marcos: ${regua.cumpridos}/${regua.previstos} previstos para este processo`,
+          ].filter(Boolean).join('\n'),
+        };
+      }
+
       const steps = stepContext?.allSteps || [];
       if (steps.length === 0) {
         // Sem checklist: usa a régua de marcos do processo, com rótulo próprio —
