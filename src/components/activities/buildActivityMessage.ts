@@ -160,6 +160,78 @@ export function stripHtmlForMessage(html: string): string {
       .trim();
 }
 
+/**
+ * Marco → linguagem de gente. O rótulo do marco é vocabulário de advogado
+ * ("réplica", "trânsito em julgado", "RPV") e a mensagem do CLIENTE precisa
+ * ser entendida por qualquer leigo (pedido do usuário, 30/08). O assessor
+ * continua recebendo o rótulo técnico. Chave = rótulo normalizado (minúsculo);
+ * rótulo fora do mapa sai como está — nunca inventa tradução.
+ */
+const MARCO_HUMANO: Record<string, string> = {
+  'pré-processual': 'preparação do processo',
+  'ajuizamento': 'o processo deu entrada na Justiça',
+  'ajuizamento / distribuição': 'o processo deu entrada na Justiça',
+  'saneamento': 'o juiz organizou o processo para julgamento',
+  'audiência inicial': 'audiência de conciliação',
+  'audiência inicial / conciliação': 'audiência de conciliação',
+  'audiência de conciliação': 'audiência de conciliação',
+  'perícia': 'avaliação com o perito da Justiça',
+  'perícia médica': 'avaliação com o médico perito da Justiça',
+  'estudo social': 'visita da assistente social da Justiça',
+  'audiência de instrução': 'audiência com o juiz',
+  'contestação do inss': 'o INSS apresentou a defesa dele',
+  'contestação do réu': 'a outra parte apresentou a defesa dela',
+  'réplica à contestação': 'nossa resposta à defesa foi protocolada',
+  'sentença': 'decisão do juiz (sentença)',
+  'sentença (1º grau)': 'decisão do juiz (sentença)',
+  'embargos de declaração': 'pedido de esclarecimento da decisão',
+  'embargos de declaração (1º grau)': 'pedido de esclarecimento da decisão',
+  'embargos de declaração (2º grau)': 'pedido de esclarecimento da decisão',
+  'remessa ao 2º grau': 'o processo subiu para a 2ª instância',
+  'subida ao 2º grau': 'o processo subiu para a 2ª instância',
+  'acórdão (2º grau)': 'decisão da 2ª instância',
+  'remessa à instância superior': 'o processo subiu para um tribunal superior',
+  'subida ao tst / stj': 'o processo subiu para um tribunal superior',
+  'remetido ao tst': 'o processo subiu para o TST',
+  'remetido ao stj': 'o processo subiu para o STJ',
+  'remetido ao stf': 'o processo subiu para o STF',
+  'decisão superior (stj/tnu/stf)': 'decisão de tribunal superior',
+  'decisão tst / stj': 'decisão de tribunal superior',
+  'decisão do stj (resp)': 'decisão do STJ',
+  'decisão do stf': 'decisão do STF',
+  'acórdão do tst': 'decisão do TST',
+  'admissibilidade do recurso de revista': 'recurso em análise no tribunal',
+  'admissibilidade do rr': 'recurso em análise no tribunal',
+  'agravo de instrumento em rr': 'recurso em análise no tribunal',
+  'agravo interno': 'recurso em análise no tribunal',
+  'recurso extraordinário (stf)': 'recurso em análise no STF',
+  'trânsito em julgado': 'decisão final — não cabe mais recurso',
+  'execução / cumprimento': 'começou a fase de receber o que foi ganho',
+  'execução iniciada': 'começou a fase de receber o que foi ganho',
+  'execução / cumprimento iniciado': 'começou a fase de receber o que foi ganho',
+  'liquidação': 'cálculo dos valores a receber',
+  'liquidação / cálculos': 'cálculo dos valores a receber',
+  'liquidação iniciada': 'cálculo dos valores a receber',
+  'implantação do benefício': 'o benefício foi ativado pelo INSS',
+  'rpv / precatório expedido': 'o pagamento foi requisitado à Justiça',
+  'alvará expedido': 'a autorização de saque foi emitida',
+  'levantamento / pagamento': 'pagamento recebido',
+  'pagamento espontâneo': 'pagamento recebido',
+  'constrição / penhora': 'bloqueio de bens do devedor',
+  'arquivamento definitivo': 'processo encerrado e arquivado',
+  'requerimento protocolado (inss)': 'o pedido foi protocolado no INSS',
+  'em análise no inss': 'o pedido está em análise no INSS',
+  'benefício concedido pelo inss': 'o benefício foi aprovado pelo INSS',
+  'indeferimento do inss': 'o pedido foi negado pelo INSS',
+  'exigência do inss': 'o INSS pediu documentos complementares',
+};
+
+/** Versão leiga do marco para a mensagem do cliente. Fora do mapa, sai o rótulo. */
+export function humanizaMarco(rotulo: string | null | undefined): string {
+  if (!rotulo) return '';
+  return MARCO_HUMANO[rotulo.trim().toLowerCase()] || rotulo;
+}
+
 // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
 // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
 const RESULTADO_INSS_LABEL: Record<string, string> = {
@@ -210,19 +282,19 @@ export function buildActivityMessage(
       const marcoAtualTxt = regua.atualRotulo
         ? `"${regua.atualRotulo}"${regua.atualData ? ` em ${dataBR(regua.atualData)}` : ''}`
         : '';
-      if (!valueMap.current_status.trim() && marcoAtualTxt) {
-        valueMap.current_status = `O processo segue em andamento — último marco registrado: ${marcoAtualTxt}.`;
+      if (!valueMap.current_status.trim() && regua.atualRotulo) {
+        valueMap.current_status = `O processo está andando normalmente. A novidade mais recente: ${humanizaMarco(regua.atualRotulo)}${regua.atualData ? `, em ${dataBR(regua.atualData)}` : ''}.`;
       }
       if (!valueMap.what_was_done.trim() && (regua.atingidos?.length || 0) > 0) {
         const lista = (regua.atingidos || [])
-          .map(a => `${a.rotulo}${a.data ? ` (${dataBR(a.data)})` : ''}`)
-          .join(', ');
-        valueMap.what_was_done = `Acompanhamos as movimentações do processo. Marcos já cumpridos: ${lista}.`;
+          .map(a => `${humanizaMarco(a.rotulo)}${a.data ? ` (${dataBR(a.data)})` : ''}`)
+          .join('; ');
+        valueMap.what_was_done = `Até aqui o processo já passou por: ${lista}.`;
       }
       if (!valueMap.next_steps.trim()) {
         valueMap.next_steps = regua.proximoRotulo
-          ? `Aguardar o próximo marco do processo: ${regua.proximoRotulo}. Seguimos acompanhando as movimentações.`
-          : 'Seguir acompanhando as movimentações do processo.';
+          ? `Agora aguardamos a próxima etapa: ${humanizaMarco(regua.proximoRotulo)}. Estamos de olho em cada movimentação e avisamos assim que houver novidade.`
+          : 'Seguimos de olho em cada movimentação e avisamos assim que houver novidade.';
       }
     }
     // Campos que NUNCA vão pra mensagem copiada/enviada, mesmo que o usuário marque include_in_message.
@@ -334,14 +406,15 @@ export function buildActivityMessage(
       // equipe executou. Nunca as duas — "40% pela régua" e "61% pelos passos"
       // são dois números certos que, juntos, viram uma tela mentindo.
       if (regua && regua.percentual != null) {
-        const marco = regua.atualRotulo
-          ? `${regua.atualRotulo}${regua.atualData ? ` em ${format(parseISO(regua.atualData.slice(0, 10)), 'dd/MM/yyyy')}` : ''}`
-          : null;
+        const dataMarco = regua.atualData ? ` em ${format(parseISO(regua.atualData.slice(0, 10)), 'dd/MM/yyyy')}` : '';
+        // Cliente lê a versão leiga; o detalhe do assessor fica técnico.
+        const marcoCliente = regua.atualRotulo ? `${humanizaMarco(regua.atualRotulo)}${dataMarco}` : null;
+        const marco = regua.atualRotulo ? `${regua.atualRotulo}${dataMarco}` : null;
         const linha = `*📊 Andamento do processo: ${Math.round(Number(regua.percentual))}% concluído*`;
         return {
           // "Marco atual", não "Etapa": a linha de *Etapa:* logo abaixo é a fase
           // do POP (o que a equipe faz). São duas coisas e têm dois nomes.
-          headline: marco ? `${linha}\n*Marco atual:* ${marco}` : linha,
+          headline: marcoCliente ? `${linha}\n*Marco atual:* ${marcoCliente}` : linha,
           full: [
             linha,
             marco && `• Marco atual: ${marco}`,
