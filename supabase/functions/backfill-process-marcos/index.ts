@@ -29,6 +29,7 @@
 // =============================================================================
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { extractMarcos } from "../_shared/escavadorMarcos.ts";
+import { mapearCapa, COLUNAS_DA_CAPA } from "../_shared/escavadorCapa.ts";
 import { geminiChat } from "../_shared/gemini.ts";
 import { revisarMarcosComIA } from "../_shared/marcosIA.ts";
 
@@ -136,7 +137,7 @@ Deno.serve(async (req: Request) => {
 
     let query = supabase
       .from('lead_processes')
-      .select('id, process_number, case_id, lead_id, movimentacoes, data_distribuicao, data_inicio')
+      .select(['id', 'process_number', 'case_id', 'lead_id', 'movimentacoes', ...COLUNAS_DA_CAPA].join(', '))
       .is('deleted_at', null)
       .order('created_at', { ascending: true })
       .range(offset, offset + limit - 1);
@@ -196,7 +197,14 @@ Deno.serve(async (req: Request) => {
           // régua). O endpoint de movimentações não devolve capa, então quem
           // não a tem paga UMA consulta extra — uma vez só: salva, a condição
           // nunca mais dispara para o processo.
-          const capaExtra: Record<string, unknown> = {};
+          //
+          // A consulta é a mesma desde sempre; o que mudou em 30/08/2026 é o que
+          // se guarda dela. Antes ficavam só três campos e o resto da resposta
+          // era descartado — daí 1.175 processos sem tribunal, sem polo e sem
+          // órgão julgador, todos com a capa já paga. Agora grava a capa inteira
+          // (mapearCapa) e o `escavador_raw`, que é o que permite reprocessar
+          // depois sem gastar consulta nova.
+          let capaExtra: Record<string, unknown> = {};
           if (!p.data_distribuicao && !p.data_inicio) {
             try {
               const capaResp = await fetch(
@@ -205,11 +213,18 @@ Deno.serve(async (req: Request) => {
               );
               if (capaResp.ok) {
                 const raw = await capaResp.json();
-                const capa = raw?.fontes?.[0]?.capa ?? {};
-                if (capa.data_distribuicao) capaExtra.data_distribuicao = capa.data_distribuicao;
-                if (raw?.data_inicio) capaExtra.data_inicio = raw.data_inicio;
-                if (raw?.ano_inicio) capaExtra.ano_inicio = raw.ano_inicio;
-                if (Object.keys(capaExtra).length) capasSalvas++;
+                const capa = mapearCapa(raw);
+                // Nunca por cima do que já existe: a ficha pode ter sido
+                // corrigida à mão, e o campo preenchido vale mais que o da API.
+                for (const [chave, valor] of Object.entries(capa)) {
+                  if ((p as Record<string, unknown>)[chave] == null) capaExtra[chave] = valor;
+                }
+                if (Object.keys(capaExtra).length) {
+                  capaExtra.escavador_raw = raw;
+                  capasSalvas++;
+                } else {
+                  capaExtra = {};
+                }
               }
               await sleep(PAUSA_MS);
             } catch {

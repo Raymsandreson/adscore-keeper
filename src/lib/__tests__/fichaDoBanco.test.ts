@@ -76,6 +76,24 @@ describe('lerNotas', () => {
     expect(lido.polo_passivo).toBe('B e Q Energia Ltda');
     expect(lido.data_distribuicao).toBe('2016-10-10');
   });
+
+  it('não corta a razão social no ponto da abreviação', () => {
+    const nota =
+      'Ficha criada em 18/08/2026 a partir do inventário por OAB no Escavador. ' +
+      'Protocolo: 28/11/2024. Polo passivo: Copel Distribuicao S.A e outros. Sem nº de caso.';
+    expect(lerNotas(nota).polo_passivo).toBe('Copel Distribuicao S.A e outros');
+  });
+
+  it('ignora parte anonimizada em iniciais em vez de gravar a primeira letra', () => {
+    const nota = 'Protocolo: 10/10/2016. Polo passivo: R. G. M. P.. Sem nº de caso.';
+    expect(lerNotas(nota).polo_passivo).toBeUndefined();
+    expect(lerNotas(nota).data_distribuicao).toBe('2016-10-10');
+  });
+
+  it('lê o polo ativo quando a nota traz os dois polos separados por ponto e vírgula', () => {
+    expect(lerNotas('Polo ativo: Fulano de Tal; Polo passivo: Beltrano SA').polo_ativo)
+      .toBe('Fulano de Tal');
+  });
 });
 
 describe('fichaDoBanco', () => {

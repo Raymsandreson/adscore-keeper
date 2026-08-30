@@ -159,6 +159,16 @@ export function lerPublicacao(texto: string | null | undefined): Record<string, 
 }
 
 /**
+ * Só é nome quem tem ao menos uma palavra de verdade.
+ *
+ * A nota do inventário por OAB às vezes traz a parte anonimizada em iniciais
+ * ("Polo passivo: R. G. M. P."). Disso não sai polo passivo: gravar "R" —
+ * ou mesmo "R. G. M. P." — é pior que deixar o campo vazio, porque some com o
+ * aviso de que falta o dado. 35 fichas tinham exatamente isso (30/08/2026).
+ */
+const ehNome = (v: string): boolean => /[A-Za-zÀ-ÿ]{3,}/.test(v);
+
+/**
  * O que a nota do cadastro diz. O inventário por OAB grava em texto corrido o
  * que a API não devolveu — e é a única fonte do polo passivo em toda ficha
  * criada por ele.
@@ -168,11 +178,17 @@ export function lerNotas(notas: string | null | undefined): Record<string, strin
   if (!t) return {};
   const achado: Record<string, string> = {};
 
-  const passivo = t.match(/polo passivo\s*:\s*([^.;\n]+)/i);
-  if (passivo) achado.polo_passivo = limpar(passivo[1]);
+  // O valor vai até `;`, quebra de linha, ou ponto SEGUIDO DE ESPAÇO — nunca no
+  // ponto de uma abreviação. Parar em qualquer ponto cortava "Copel Distribuicao
+  // S.A e outros" em "Copel Distribuicao S" (conferido no banco em 30/08/2026:
+  // acontecia em 705 fichas do inventário por OAB).
+  const ATE_FIM_DA_FRASE = '((?:[^.;\\n]|\\.(?=\\S))+)';
 
-  const ativo = t.match(/polo ativo\s*:\s*([^.;\n]+)/i);
-  if (ativo) achado.polo_ativo = limpar(ativo[1]);
+  const passivo = t.match(new RegExp(`polo passivo\\s*:\\s*${ATE_FIM_DA_FRASE}`, 'i'));
+  if (passivo && ehNome(passivo[1])) achado.polo_passivo = limpar(passivo[1]);
+
+  const ativo = t.match(new RegExp(`polo ativo\\s*:\\s*${ATE_FIM_DA_FRASE}`, 'i'));
+  if (ativo && ehNome(ativo[1])) achado.polo_ativo = limpar(ativo[1]);
 
   const protocolo = t.match(/protocolo\s*:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
   if (protocolo) achado.data_distribuicao = `${protocolo[3]}-${protocolo[2]}-${protocolo[1]}`;
@@ -231,7 +247,9 @@ export function fichaDoBanco(entrada: EntradaDaFicha): CampoDaFicha[] {
   if (dj) {
     por('orgao_julgador', dj.orgao_julgador, 'DataJud');
     por('grau', dj.grau, 'DataJud');
-    por('tribunal_sigla', dj.tribunal_alias, 'DataJud');
+    // O alias do DataJud vem minúsculo ("tst", "trt22"); a ficha e a busca da
+    // carteira usam a sigla em caixa alta.
+    por('tribunal_sigla', dj.tribunal_alias?.toUpperCase(), 'DataJud');
   }
 
   // 4. Jurimetria da carteira.
