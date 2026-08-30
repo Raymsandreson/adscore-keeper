@@ -41,7 +41,10 @@ function ValorAuditado({ atual, anterior, corrigido }: {
   );
 }
 
-export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando, clientes, valores, decisoes }: {
+const semAcento = (v: string) =>
+  v.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+
+export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando, clientes, valores, decisoes, feePercentage, feeEstimado }: {
   aberto: boolean;
   onOpenChange: (v: boolean) => void;
   cnj: string;
@@ -49,6 +52,10 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
   clientes: ClienteConferido[];
   valores: ValorJm[];
   decisoes: DecisaoJm[];
+  /** Honorário contratual do processo (%), de lead_processes.fee_percentage. */
+  feePercentage: number | null;
+  /** Valor estimado do honorário contratual do processo (global — rateia). */
+  feeEstimado: number | null;
 }) {
   /** corrigido_por_leitura → título da peça que causou a correção. */
   const [pecaDaLeitura, setPecaDaLeitura] = useState<Record<number, string>>({});
@@ -83,6 +90,35 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
 
   const totalCarteira = clientes.reduce((s, c) => s + c.valor, 0);
 
+  // ── Honorários por cliente — SEMPRE em colunas separadas da cota, nunca
+  // somados (régua v4). São DERIVAÇÕES declaradas dos percentuais que o banco
+  // tem hoje, não o cálculo da planilha (Tab. Aux) — o rodapé avisa.
+  //
+  // Sucumbencial: hs_pct do lançamento da decisão USADA × condenação do
+  // cliente. Contratual: estimated_fee_value do processo rateado proporcional
+  // à cota (a conta de luz do prédio); sem ele, fee_percentage × condenação.
+  const hsPctDe = (c: ClienteConferido): number | null => {
+    const v = valores.find(x =>
+      x.dec_id != null && x.dec_id === c.decisaoUsada?.dec_id
+      && semAcento(x.cliente ?? '') === semAcento(c.cliente));
+    return v?.hs_pct ?? null;
+  };
+  const sucumbencialDe = (c: ClienteConferido): number | null => {
+    const pct = hsPctDe(c);
+    return pct != null && pct > 0 ? pct * c.valor : pct === 0 ? 0 : null;
+  };
+  const contratualDe = (c: ClienteConferido): number | null => {
+    if (feeEstimado != null && feeEstimado > 0 && totalCarteira > 0) {
+      return (c.valor / totalCarteira) * feeEstimado;
+    }
+    if (feePercentage != null && feePercentage > 0) return (feePercentage / 100) * c.valor;
+    return null;
+  };
+  const somaOuNull = (vals: (number | null)[]): number | null =>
+    vals.every(v => v == null) ? null : vals.reduce<number>((s, v) => s + num(v), 0);
+  const totalContratual = somaOuNull(clientes.map(contratualDe));
+  const totalSucumbencial = somaOuNull(clientes.map(sucumbencialDe));
+
   return (
     <Drawer open={aberto} onOpenChange={onOpenChange}>
       <DrawerContent className="max-h-[85vh]">
@@ -108,11 +144,20 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
               {/* 1. O que a carteira usa hoje, por cliente */}
               {clientes.length > 0 && (
                 <section className="rounded-lg border">
-                  <div className="flex items-center justify-between border-b px-3 py-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
                     <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                       O que a carteira usa hoje
                     </span>
-                    <span className="text-xs font-semibold">{brl(totalCarteira)}</span>
+                    {/* Cota e honorário lado a lado, NUNCA somados (régua v4). */}
+                    <span className="flex items-center gap-3 text-xs">
+                      <span className="font-semibold">{brl(totalCarteira)}</span>
+                      {totalContratual != null && (
+                        <span className="text-muted-foreground">contratual <span className="font-medium text-foreground">{brl(totalContratual)}</span></span>
+                      )}
+                      {totalSucumbencial != null && (
+                        <span className="text-muted-foreground">sucumbencial <span className="font-medium text-foreground">{brl(totalSucumbencial)}</span></span>
+                      )}
+                    </span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
@@ -123,27 +168,62 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
                           <th className="px-2 py-1.5 text-right">Dano estético</th>
                           <th className="px-2 py-1.5 text-right">Líquido</th>
                           <th className="px-2 py-1.5 text-right">Corrigido</th>
+                          <th className="px-2 py-1.5 text-right">Hon. contratual</th>
+                          <th className="px-2 py-1.5 text-right">Hon. sucumbencial</th>
                           <th className="px-2 py-1.5 text-left">Decisão usada</th>
                           <th className="px-2 py-1.5 text-left">Estágio</th>
                           <th className="px-3 py-1.5 text-right">Pago</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {clientes.map((c, i) => (
-                          <tr key={i}>
-                            <td className="max-w-40 truncate px-3 py-1.5 font-medium" title={c.cliente}>{c.cliente}</td>
-                            <td className="px-2 py-1.5 text-right">{brl(c.danoMoral)}</td>
-                            <td className="px-2 py-1.5 text-right">{brl(c.danoEstetico)}</td>
-                            <td className="px-2 py-1.5 text-right font-semibold">{brl(c.valor)}</td>
-                            <td className="px-2 py-1.5 text-right">{brl(c.valorAtualizado)}</td>
-                            <td className="whitespace-nowrap px-2 py-1.5">{dataBR(c.decisaoUsada?.data_decisao)}</td>
-                            <td className="px-2 py-1.5"><Badge variant="secondary" className="px-1 py-0 text-[9px]">{c.estagio}</Badge></td>
-                            <td className="px-3 py-1.5 text-right">{brl(c.pago)}</td>
-                          </tr>
-                        ))}
+                        {clientes.map((c, i) => {
+                          const contratual = contratualDe(c);
+                          const sucumb = sucumbencialDe(c);
+                          const hsPct = hsPctDe(c);
+                          return (
+                            <tr key={i}>
+                              <td className="max-w-40 truncate px-3 py-1.5 font-medium" title={c.cliente}>{c.cliente}</td>
+                              <td className="px-2 py-1.5 text-right">{brl(c.danoMoral)}</td>
+                              <td className="px-2 py-1.5 text-right">{brl(c.danoEstetico)}</td>
+                              <td className="px-2 py-1.5 text-right font-semibold">{brl(c.valor)}</td>
+                              <td className="px-2 py-1.5 text-right">{brl(c.valorAtualizado)}</td>
+                              <td className="whitespace-nowrap px-2 py-1.5 text-right">
+                                {contratual != null ? (
+                                  <span title={feeEstimado != null && feeEstimado > 0
+                                    ? 'estimated_fee_value do processo, rateado proporcional à cota'
+                                    : `${feePercentage}% (contrato do processo) × condenação`}>
+                                    {brl(contratual)}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground" title="Sem % de honorário contratual no cadastro — preencha 'Honorários (%)' na aba Dados.">
+                                    sem % no cadastro
+                                  </span>
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-2 py-1.5 text-right">
+                                {sucumb != null ? (
+                                  <span title={`hs_pct ${Math.round((hsPct ?? 0) * 100)}% da decisão usada × condenação`}>
+                                    {brl(sucumb)}
+                                    {hsPct != null && hsPct > 0 && <span className="ml-1 text-[9px] text-muted-foreground">({Math.round(hsPct * 100)}%)</span>}
+                                  </span>
+                                ) : (
+                                  <span className="text-muted-foreground" title="A decisão usada não tem hs_pct lançado na jurimetria.">—</span>
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-2 py-1.5">{dataBR(c.decisaoUsada?.data_decisao)}</td>
+                              <td className="px-2 py-1.5"><Badge variant="secondary" className="px-1 py-0 text-[9px]">{c.estagio}</Badge></td>
+                              <td className="px-3 py-1.5 text-right">{brl(c.pago)}</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
+                  <p className="border-t px-3 py-1.5 text-[10px] leading-snug text-muted-foreground">
+                    Honorários derivados dos percentuais do banco (contrato do processo e hs_pct da decisão) —
+                    estimativa de referência, em colunas separadas da cota do cliente e nunca somados a ela.
+                    O cálculo oficial (com materiais e parcelas) é o da planilha.
+                  </p>
                 </section>
               )}
 
@@ -161,6 +241,7 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
                           <th className="px-2 py-1.5 text-left">Decisão</th>
                           <th className="px-2 py-1.5 text-right">Dano moral</th>
                           <th className="px-2 py-1.5 text-right">Dano estético</th>
+                          <th className="px-2 py-1.5 text-right">HS %</th>
                           <th className="px-3 py-1.5 text-left">Correção automática</th>
                         </tr>
                       </thead>
@@ -177,6 +258,9 @@ export function JurimetriaValoresDrawer({ aberto, onOpenChange, cnj, carregando,
                               </td>
                               <td className="px-2 py-1.5 text-right">
                                 <ValorAuditado atual={v.dano_estetico} anterior={v.dano_estetico_anterior} corrigido={corrigido} />
+                              </td>
+                              <td className="px-2 py-1.5 text-right text-muted-foreground" title="Percentual de honorário sucumbencial deste lançamento">
+                                {v.hs_pct != null ? `${Math.round(v.hs_pct * 100)}%` : '—'}
                               </td>
                               <td className="px-3 py-1.5">
                                 {corrigido ? (

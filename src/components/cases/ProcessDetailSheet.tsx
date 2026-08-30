@@ -2202,6 +2202,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         clientes={conferencia.clientes}
         valores={conferencia.valores}
         decisoes={conferencia.decisoes}
+        feePercentage={form.fee_percentage != null && form.fee_percentage !== '' ? Number(form.fee_percentage) : null}
+        feeEstimado={form.estimated_fee_value != null && form.estimated_fee_value !== '' ? Number(form.estimated_fee_value) : null}
       />
     </div>
   );
