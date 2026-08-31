@@ -335,6 +335,27 @@ diz `· N na fila` ou, havendo falha, `⚠ N com erro` em âmbar — esse resumo
 o painel de virar decoração: fila parada não avisa sozinha, foi o que custou o mês entre
 09/07 e 11/08. Se um dia mexer nesse componente, mantenha o resumo da barra fechada.
 
+### O elo que faltava na cadeia: radar de processos quietos (31/08/2026)
+
+A cadeia acima só anda quando o **e-mail** dispara — e há movimentação que nunca gera
+e-mail: juntada de petição não sai no Diário. O caso `1017247-47.2025.4.01.3100` provou o
+custo: réplica juntada em 03/08, prazo automático nasceu **30/08** (53 dias). E o detalhe
+que engana qualquer diagnóstico: `data_ultima_verificacao` de 30/08 com movimentação
+parada em 08/07 **não** é bug nosso — a consulta aconteceu, mas ela lê o **cache do
+Escavador**, e o cache deles estava parado. Quem quer o tribunal de verdade paga
+`solicitar-atualizacao`.
+
+O elo agora existe: edge `radar-processos-quietos` (cron 09h/17h UTC). Três motivos, em
+ordem: `email_recente` (push chegou e o cache está mais velho que o e-mail),
+`prazo_proximo` (atividade aberta vence em ≤7d e movimentação >7d), `mov_estagnada`
+(≥20d parado com atividade aberta). Primeiro re-consulta **grátis** o cache
+(`backfill-process-marcos` + `process_ids`); só quem continua parado vira solicitação
+**paga** via `esc-autos acao=solicitar` corpo `{}` — cooldown 3/7/30 dias por motivo,
+teto 15/rodada, créditos gravados em `radar_atualizacoes`. Quem anda ganha prazo na hora
+(`sync-process-compromissos` por processo). Doc completa: `docs/sistema/processual.md`
+§ "Radar de processos quietos". `process_movement_monitors` segue vazia e agora é
+irrelevante: o radar é quem re-consulta sozinho.
+
 ### O que o card do sino escreve embaixo do processo
 
 `process_updates.descricao` mistura duas naturezas, e quem for mexer no card precisa saber

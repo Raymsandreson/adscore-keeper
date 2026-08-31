@@ -419,6 +419,18 @@ Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, gru
 
 ---
 
+## Radar de processos quietos — radar-processos-quietos (31/08/2026)
+
+**Estado**: ATIVO. Edge `radar-processos-quietos` (Externo) + tabela `radar_atualizacoes` + funções `radar_processos_quentes`/`radar_mov_mais_nova` + cron `radar-processos-quietos` 2×/dia (09h e 17h UTC). Migration `supabase/migrations-external/20260831120000_radar_processos_quietos.sql`.
+
+**O furo que ele fecha** (caso `1017247-47.2025.4.01.3100`, diagnosticado 31/08/2026): a juntada de réplica de 03/08 só chegou ao banco em **30/08** — 53 dias de atraso no prazo automático. As três fontes falharam juntas: juntada não sai no Diário (e-mail push estruturalmente cego), DataJud sem o processo, e o **cache do próprio Escavador** parado em 08/07 — a consulta de 30/08 aconteceu de verdade (`data_ultima_verificacao` só grava dentro do bloco que salvou o retorno da API) e mesmo assim veio velha, porque nossa consulta lê a cópia do Escavador, não o tribunal, e ninguém nunca pediu `solicitar-atualizacao` (0 linhas em `jm_esc_solicitacoes` para o CNJ). Medido no dia: 591 processos com atividade aberta, 335 com movimentação parada 20+ dias, 254 com prazo ≤7 dias e movimentação velha.
+
+**Como funciona por rodada**: (1) follow-up das solicitações pagas pendentes — re-consulta o cache, quem avançou vira `ATUALIZADO` + `sync-process-compromissos` na hora; (2) lista quente via `radar_processos_quentes`, por urgência: `email_recente` (push nos últimos 2 dias e movimentações salvas mais velhas que o e-mail — o caso Sidiney em 10/07), `prazo_proximo` (atividade vence em ≤7 dias, movimentação >7d), `mov_estagnada` (parada ≥20 dias); (3) re-consulta **gratuita** do cache (`backfill-process-marcos` com `process_ids`, lotes de 20, até 40/rodada); (4) só quem **continua** parado vira solicitação **paga** (`esc-autos` `acao=solicitar`, corpo `{}` = tribunal sem documentos, o modo mais barato), com cooldown por motivo (3/7/30 dias) e teto de 15/rodada. Créditos cobrados ficam na linha (`radar_atualizacoes.creditos`) — custo auditável por `select motivo, count(*), sum(creditos) from radar_atualizacoes group by 1`.
+
+**Knobs** (body do POST): `dry_run`, `max_refetch` (40), `max_solicitacoes` (15), `stale_dias` (20), `prazo_janela_dias` (7). **Rollback <5min**: `select cron.unschedule('radar-processos-quietos')` — nada mais depende da edge.
+
+---
+
 ## Ficha do processo: de onde vem a capa (30/08/2026)
 
 **O problema**: 1.175 dos 1.291 processos judiciais estavam sem tribunal, 1.181 sem polo ativo e 896 sem nenhuma data de início — muitos deles com 20 movimentações e a aba "Documentos" cheia. Causa: o endpoint `/processos/{cnj}/movimentacoes` do Escavador **não devolve capa**, e era por ele que a edge `backfill-process-marcos` alimentava a base. Só o botão "Buscar no Escavador" da ficha (`buscar_completo` → `escavador_raw` → `handleReExtract`) traz capa, e ele nunca tinha rodado nesses processos.
