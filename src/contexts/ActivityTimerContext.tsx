@@ -18,15 +18,19 @@ const dbAny = db as unknown as SupabaseClient;
  *   reabrir a mesma atv retoma a contagem de onde parou (mesma linha no banco).
  * - Enquanto a atv está aberta, quem decide cada segundo é activityTickMode:
  *   • FORA DA ABA (outro programa/aba — PJe, Word, e-mail): conta ATIVO por até
- *     AWAY_GRACE_MS (10 min). Passada a carência, notificação + dialog "ainda
+ *     AWAY_GRACE_MS (45 min). Passada a carência, notificação + dialog "ainda
  *     está nessa atividade?" e o tempo vira ocioso REATRIBUÍVEL — confirmar ao
  *     voltar devolve o período (até RECLAIM_MAX_SEC) pro tempo ativo.
  *   • NA ABA sem tocar em nada por IDLE_THRESHOLD: a pessoa saiu do computador.
  *     Conta OCIOSO e NÃO volta pro ativo nem confirmando.
- *   • Tela BLOQUEADA / PC SUSPENSO: ocioso de verdade, também sem volta.
+ *   • Tela BLOQUEADA: ocioso de verdade, sem volta.
+ *   • MÁQUINA SUSPENSA: ocioso. Só é declarada suspensão quando o relógio
+ *     MONOTÔNICO também parou (ver machineSuspended no loop) — aba estrangulada
+ *     pelo navegador não é. Se havia previsão em andamento ou o app estava fora
+ *     de foco, o tempo é REATRIBUÍVEL: confirmar devolve.
  *   • PREVISÃO declarada em andamento: enquanto ela cobrir, o trabalho fora da
- *     aba conta ativo além dos 10 min (teto = a previsão). Depois do estouro o
- *     ocioso segue reatribuível.
+ *     aba conta ativo além da carência (teto = a previsão). Estourar a
+ *     previsão só AVISA: o cronômetro não para de contar por causa disso.
  * - "Não, era outra" fecha/salva e abre o seletor "qual atividade agora?".
  * - Ao SAIR da atv (fechar) → dialog "Continuar contando ou pausar?".
  * - CONCLUIR encerra o cronômetro da atv (igual pausar).
@@ -43,21 +47,39 @@ const dbAny = db as unknown as SupabaseClient;
  * - Persiste no Externo (activity_time_entries), flush absoluto a cada 30s.
  */
 
-const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 min sem interação
+const IDLE_THRESHOLD_MS = 15 * 60 * 1000; // 15 min sem interação
 /**
  * Trabalho FORA DA ABA (PJe, Word, e-mail, telefone) com a atividade aberta:
- * conta ATIVO por até 10 min sem precisar confirmar nada. Passado esse teto o
+ * conta ATIVO por até 45 min sem precisar confirmar nada. Passado esse teto o
  * cronômetro pergunta "ainda está nessa atividade?" e o tempo vira ocioso
  * REATRIBUÍVEL — confirmar ao voltar devolve o período pro tempo ativo.
- * (Regra definida pelo usuário em 28/08/2026.)
+ * (Definida em 28/08/2026 com 10 min; ampliada em 31/08/2026 — redigir peça,
+ * manifestação ou inicial no PJe/Word é bloco contínuo de 30 a 90 min fora do
+ * sistema, e os 10 min transformavam trabalho real em ociosidade.)
  */
-const AWAY_GRACE_MS = 10 * 60 * 1000;
+const AWAY_GRACE_MS = 45 * 60 * 1000;
 /**
  * Teto do que uma ausência devolve ao ativo quando a pessoa confirma. Sem
  * teto, uma aba esquecida aberta a noite toda viraria 14h "produtivas" com
- * um clique. Acima disso o excedente fica como ocioso.
+ * um clique. Acima disso o excedente fica como ocioso. 4h = uma manhã inteira
+ * de PJe, que é o maior bloco legítimo que aparece nos dados.
  */
-const RECLAIM_MAX_SEC = 2 * 3600;
+const RECLAIM_MAX_SEC = 4 * 3600;
+/**
+ * Buraco entre ticks a partir do qual se cogita máquina suspensa. Era 2 min:
+ * qualquer estrangulamento de aba em segundo plano batia nele e o tempo virava
+ * "computador suspenso" — ocioso morto, sem volta nem confirmando (queixa de
+ * 31/08/2026, com print da notificação de "suspenso 6 min" enquanto a pessoa
+ * redigia no PJe). Cogitar não basta: o relógio monotônico precisa ter parado
+ * junto (ver machineSuspended no loop de contagem).
+ */
+const SUSPEND_JUMP_SEC = 10 * 60;
+/**
+ * Quanto o relógio de parede precisa ter andado A MAIS que o monotônico para a
+ * suspensão ser dada como real. Aba estrangulada/congelada: os dois andam
+ * igual (só o callback atrasou). Máquina dormindo: o monotônico congela.
+ */
+const SUSPEND_CLOCK_GAP_MS = 60 * 1000;
 const FLUSH_INTERVAL_MS = 30 * 1000;
 const GAP_TITLE = 'Ocioso (entre atividades)';
 /** Gravação do uso por área (upsert absoluto), mesma cadência do cronômetro. */
@@ -240,8 +262,15 @@ export function isGapWorking(opts: { idleFor: number; locked: boolean; deltaSec:
  * A regra de ouro: FORA DA ABA (outro programa, outra aba — PJe, Word, e-mail)
  * é trabalho até prova em contrário, com carência de AWAY_GRACE_MS contando
  * ativo direto; depois da carência o sistema pergunta, e o que confirmarem
- * volta pro ativo. Já ficar PARADO com o sistema na frente, tela bloqueada ou
- * PC suspenso é ociosidade de verdade: conta ocioso e não volta.
+ * volta pro ativo. Já ficar PARADO com o sistema na frente ou com a tela
+ * bloqueada é ociosidade de verdade: conta ocioso e não volta.
+ *
+ * Duas correções de 31/08/2026, das queixas de tempo produtivo virando ocioso:
+ * - a suspensão de máquina não passa mais por cima da previsão declarada nem
+ *   da ausência: nesses dois casos o tempo fica REATRIBUÍVEL;
+ * - a pergunta pendente (`awaitingConfirm`) não congela mais o cronômetro de
+ *   quem está com o dedo no teclado NESTA aba. Ela serve pra classificar o
+ *   tempo, não pra parar de contar enquanto ninguém clica no diálogo.
  */
 export function activityTickMode(opts: {
   /** ms desde que o app perdeu foco/visibilidade; null = app em foco. */
@@ -260,10 +289,19 @@ export function activityTickMode(opts: {
   const away = opts.awayFor !== null;
   // Tela bloqueada: ocioso puro. Não pergunta — desbloquear já religa a contagem.
   if (opts.locked) return { count: 'idle', ask: false, reclaimable: false };
-  // Máquina suspensa: ocioso puro, com uma pergunta ao voltar.
-  if (opts.machineSuspended) return { count: 'idle', ask: !opts.awaitingConfirm, reclaimable: false };
-  // Pergunta pendente: nada conta como ativo até responder.
-  if (opts.awaitingConfirm) return { count: 'idle', ask: false, reclaimable: away || opts.reclaimArmed };
+  // Máquina suspensa: ocioso, com uma pergunta ao voltar. Se havia previsão
+  // declarada em andamento ou o app estava fora de foco (trabalho no PJe/Word),
+  // o tempo é REATRIBUÍVEL — confirmar devolve. Sem isso, um falso positivo do
+  // detector destruía trabalho real sem nenhum caminho de volta.
+  if (opts.machineSuspended) {
+    return { count: 'idle', ask: !opts.awaitingConfirm, reclaimable: away || opts.withinEstimate };
+  }
+  // Pergunta pendente: quem está mexendo NESTA aba segue ativo — a pergunta
+  // classifica o tempo, não para o cronômetro. Parado ou fora da aba, ocioso.
+  if (opts.awaitingConfirm) {
+    if (!away && opts.idleFor < IDLE_THRESHOLD_MS) return { count: 'active', ask: false, reclaimable: false };
+    return { count: 'idle', ask: false, reclaimable: away || opts.reclaimArmed };
+  }
   if (away) {
     // Carência (ou previsão declarada cobrindo): trabalho fora da aba conta ativo.
     if ((opts.awayFor as number) < AWAY_GRACE_MS || opts.withinEstimate) {
@@ -706,12 +744,19 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
   // ---- Loop de contagem (usa delta de wall-clock p/ sobreviver a throttling em abas ocultas) ----
   useEffect(() => {
     let lastTick = Date.now();
+    // Relógio MONOTÔNICO em paralelo ao de parede: ele não anda enquanto a
+    // máquina dorme, mas anda normalmente quando o navegador só estrangula ou
+    // congela a aba. É o que separa suspensão real de aba em segundo plano.
+    let lastPerf = performance.now();
     const id = setInterval(() => {
       const e = entryRef.current;
       const now = Date.now();
+      const perfNow = performance.now();
       const prevTick = lastTick;
+      const perfDelta = perfNow - lastPerf;
       const deltaSec = Math.max(0, Math.round((now - prevTick) / 1000));
       lastTick = now;
+      lastPerf = perfNow;
       if (!e || e.status === 'paused' || deltaSec === 0) return;
 
       const idleFor = now - lastInteractionRef.current;
@@ -783,12 +828,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       }
 
       // kind === 'activity': segue contando com a aba oculta. Quem manda é
-      // activityTickMode — fora da aba conta ATIVO na carência de 10 min e vira
-      // ocioso REATRIBUÍVEL depois dela; parado na frente do sistema, tela
-      // bloqueada ou PC suspenso continuam sendo ocioso de verdade.
-      const bigJump = deltaSec >= 120;
+      // activityTickMode — fora da aba conta ATIVO na carência (AWAY_GRACE_MS)
+      // e vira ocioso REATRIBUÍVEL depois dela; parado na frente do sistema e
+      // tela bloqueada continuam sendo ocioso de verdade.
+      const bigJump = deltaSec >= SUSPEND_JUMP_SEC;
       // Salto grande com 'freeze' registrado no meio = a ABA foi congelada pelo
-      // navegador (pessoa em outra aba), não a máquina suspensa.
+      // navegador (pessoa em outra aba), não a máquina suspensa. O evento é
+      // Chrome/Edge e nem sempre dispara, por isso ele não é a única defesa.
       const tabFroze = bigJump && frozeAtRef.current !== null && frozeAtRef.current >= prevTick - 5000;
       // Consome o registro: no salto grande ele foi usado acima; fora disso, um
       // 'freeze' antigo (descongelou rápido) não pode contaminar uma suspensão
@@ -796,7 +842,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       if (frozeAtRef.current !== null && (bigJump || frozeAtRef.current < prevTick - 5000)) {
         frozeAtRef.current = null;
       }
-      const machineSuspended = bigJump && !tabFroze;
+      // Prova de que a MÁQUINA dormiu: o relógio de parede andou muito mais que
+      // o monotônico. Aba só estrangulada tem os dois andando junto — e aí isto
+      // dá false, que é o lado seguro (o tempo cai na regra de ausência, que
+      // devolve, em vez de virar ocioso morto).
+      const clockStopped =
+        now - prevTick - perfDelta >= SUSPEND_CLOCK_GAP_MS && perfDelta < (now - prevTick) / 2;
+      const machineSuspended = bigJump && !tabFroze && clockStopped;
       const estSec = next.estimateMinutes && next.estimateMinutes > 0 ? next.estimateMinutes * 60 : 0;
       // Com PREVISÃO definida e ainda dentro dela, não perturba: a pergunta
       // "ainda está fazendo?" só vem quando a previsão acaba.
@@ -823,7 +875,7 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
       let reclaimSec = mode.reclaimable ? idleSec : 0;
       // Aba congelada pelo navegador: o tick só volta lá na frente e o delta
       // inteiro chega de uma vez. O pedaço que caiu DENTRO da carência ainda é
-      // ativo — sem isso, sair da aba por 40 min zeraria os 10 min de carência.
+      // ativo — sem isso, sair da aba por 2h zeraria a carência inteira.
       if (idleSec > 0 && mode.reclaimable && awaySince !== null) {
         const inGraceMs = Math.min(now, awaySince + AWAY_GRACE_MS) - Math.max(prevTick, awaySince);
         const inGrace = Math.max(0, Math.min(idleSec, Math.round(inGraceMs / 1000)));
@@ -864,13 +916,13 @@ export function ActivityTimerProvider({ children }: { children: React.ReactNode 
             overNotifiedRef.current = true;
             nearNotifiedRef.current = true;
             if (isSoundEnabled('timerEstimateOverdue')) playAlarmSound();
-            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min. Ainda está nessa atividade?`);
-            // Fim do tempo previsto → pergunta se continua ou se já era.
-            // Daqui em diante o ocioso é reatribuível: "sim, continuei" no
-            // prompt devolve o período pro ativo.
-            awaitingConfirmRef.current = true;
-            setIdlePrompt(true);
-            next.reclaimableIdle = next.reclaimableIdle ?? 0;
+            notifyDesktop('⏰ Previsão estourada', `"${e.activityTitle}" passou da previsão de ${next.estimateMinutes} min.`);
+            // Estourar a previsão AVISA, não congela o cronômetro. Antes daqui
+            // saía `awaitingConfirm = true`, e como pergunta pendente jogava
+            // tudo em ocioso, quem levava mais tempo que o previsto parava de
+            // acumular ativo até clicar num diálogo que podia nem ver — 102h de
+            // ocioso em 3 semanas nasceram desse caminho. Previsão é estimativa,
+            // não teto: quem continua trabalhando continua contando ativo.
           }
         } else if (next.activeSeconds >= estSec * 0.8 && !nearNotifiedRef.current) {
           nearNotifiedRef.current = true;
