@@ -44,10 +44,15 @@ export const handler: RequestHandler = async (req, res) => {
     const processIds = [...new Set(fila.map((f: any) => f.process_id).filter(Boolean))];
     const { data: procs } = await supabase
       .from('inss_admin_processes')
-      .select('id, lead_id, case_id, legal_cases:case_id(lead_id)')
+      .select('id, lead_id, case_id, nome_segurado, legal_cases:case_id(lead_id)')
       .in('id', processIds);
     const leadPorProcesso = new Map<string, string | null>(
       (procs || []).map((p: any) => [p.id, p.lead_id || p.legal_cases?.lead_id || null]),
+    );
+    // O nome do segurado é uma das provas de que o grupo é mesmo desse cliente
+    // quando o vínculo vem do campo legado — ver lib/inss-grupo-certeza.
+    const seguradoPorProcesso = new Map<string, string | null>(
+      (procs || []).map((p: any) => [p.id, p.nome_segurado || null]),
     );
 
     const limite = Date.now() - VALIDADE_DIAS * 24 * 60 * 60 * 1000;
@@ -66,7 +71,9 @@ export const handler: RequestHandler = async (req, res) => {
         patch.zap_erro = `parado mais de ${VALIDADE_DIAS} dias na fila`;
         expirados++;
       } else {
-        const destino = await resolverGrupoDoLead(leadPorProcesso.get(item.process_id) || null);
+        const destino = await resolverGrupoDoLead(leadPorProcesso.get(item.process_id) || null, {
+          nomeSegurado: seguradoPorProcesso.get(item.process_id) || null,
+        });
         if (destino.erro) {
           patch.zap_status = 'sem_grupo';
           patch.zap_erro = destino.erro;
