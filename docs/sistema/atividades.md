@@ -457,6 +457,18 @@ O caminho do documento anexado à mão existe ponta a ponta: `usePecasDoProcesso
 
 ---
 
+## Prazo se cumpre, não se reagenda (31/08/2026)
+
+Três regras nascidas do caso `1017247-47.2025.4.01.3100` (prazo real 16/07 no título da atividade, deadline manual em 31/07, réplica protocolada 03/08 — e o prazo do robô criado 53 dias depois com título errado):
+
+1. **Detector de prazo consertado** (`_shared/escavadorCompromissos.ts`, testes em `src/lib/__tests__/escavadorCompromissos.test.ts`): reconhece o formato `Prazo: 5 dias` / `Prazo: 5 (cinco) dias úteis` dos atos ordinatórios do PJe (antes só "prazo **de** N dias"); e o alvo do título é o que a intimação **manda fazer** (o trecho após "manifestar/impugnar"), nunca a lista genérica "ato ordinatório / despacho / decisão / sentença" do cabeçalho da secretaria — era ela que rotulava intimação de contestação como "providência sobre sentença".
+2. **Deadline = compromisso − 3 dias** (`sync-process-compromissos` v24, substitui a regra de 29/07): a tarefa nasce datada três dias antes do fim do prazo (dias corridos — piso conservador) ou da audiência/perícia, nunca antes de hoje; `notification_date` continua hoje. **Prazo que chega já estourado (até 15 dias) vira tarefa urgente** com aviso 🚨, em vez de ser descartado — prazo vencido calado é o pior caso. Audiência/perícia passada segue descartada. Dedupe por hash não mudou: nada recriado retroativamente.
+3. **Trava no banco** (trigger `lead_activities_prazo_nao_reagenda`, migration `20260831130000`): atividade `activity_type='prazo'` (robô ou manual) só aceita deadline andando **para trás**; adiar ou apagar a data levanta exceção com a mensagem da regra. Prazo novo de verdade (nova intimação) = atividade nova. Rollback: drop do trigger.
+
+Junto com o radar de processos quietos (`docs/sistema/processual.md`), é a resposta ao "como não perder mais prazo": capturar cedo (radar), datar certo e cedo (−3 dias), nunca adiar (trigger), e nunca morrer calado (vencido vira urgente).
+
+---
+
 ## Campeonato de Engajamento — `/leaderboard`
 
 Ranking semanal de engajamento (Menção = 5 pts; Comentário = 2 pts). Página de consulta, sem ações.

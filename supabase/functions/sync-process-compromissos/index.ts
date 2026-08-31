@@ -10,10 +10,14 @@
 //       Justiça Federal    (dígito J=4 do CNJ) → Gisele
 //       Demais ramos → responsible_user_id do processo; sem ele, NÃO cria.
 //
-// Datas (29/07/2026): a atividade é criada PARA O DIA EM QUE A ATUALIZAÇÃO
-// CHEGA (deadline/notification_date = hoje), não mais para a data do
-// compromisso. A data real (audiência/fim do prazo) vai na descrição e segue
-// valendo pro descarte de vencidos e pra prioridade urgente.
+// Datas (31/08/2026, pedido do usuário — substitui a regra de 29/07): a
+// atividade nasce com deadline TRÊS DIAS ANTES do compromisso (fim do prazo em
+// dias CORRIDOS — piso conservador, úteis dão mais tempo, nunca menos — ou a
+// data da audiência/perícia), nunca antes de hoje. Sem data extraível,
+// deadline = hoje. notification_date continua hoje (aparece já na chegada).
+// PRAZO que chega já estourado (venceu há até 15 dias) VIRA tarefa urgente com
+// aviso, em vez de morrer descartado — a réplica do 1017247 entrou 18 dias
+// depois do decurso e ninguém soube. Audiência/perícia passada segue descartada.
 //
 // Idempotente: dedupe por action_source='escavador_compromissos' +
 // action_source_detail=<hash do compromisso> — sem migration nova.
@@ -216,10 +220,18 @@ function buildActivityRow(
   if (c.tipo === 'prazo' && !c.prazo_dias) {
     partes.push('⚠️ Intimação sem prazo em dias explícito — conferir o prazo aplicável.');
   }
+  if (c.tipo === 'prazo' && dataCompromisso && dataCompromisso < hoje) {
+    partes.push(`🚨 Este prazo pode JÁ TER VENCIDO em ${fmtBr(dataCompromisso)} — a captura chegou atrasada. Conferir os autos e agir imediatamente.`);
+  }
 
   // urgente quando o compromisso real está a <= 3 dias; alta no resto
   // (compromisso processual nunca é baixa)
   const priority = dataCompromisso && addDays(hoje, 3) >= dataCompromisso ? 'urgente' : 'alta';
+
+  // Regra 31/08/2026: cumprir 3 dias antes do fim, nunca datar no passado.
+  const deadline = dataCompromisso && addDays(dataCompromisso, -3) > hoje
+    ? addDays(dataCompromisso, -3)
+    : hoje;
 
   return {
     lead_id: process.lead_id,
@@ -235,9 +247,9 @@ function buildActivityRow(
     priority,
     assigned_to: assignee.id,
     assigned_to_name: assignee.name,
-    // A tarefa nasce datada pro dia da chegada da atualização — a data real do
-    // compromisso fica na descrição e no ai_generation_context.
-    deadline: hoje,
+    // deadline = compromisso − 3 dias (regra 31/08/2026); a data real do
+    // compromisso segue na descrição e no ai_generation_context.
+    deadline,
     notification_date: hoje,
     created_by: assignee.id,
     is_system: true,
@@ -449,11 +461,14 @@ async function syncProcess(
       counts.sem_responsavel++;
       continue;
     }
-    // Compromisso já vencido não vira tarefa (audiência passada, prazo estourado).
+    // Evento passado (audiência/perícia que já ocorreu) não vira tarefa.
+    // PRAZO estourado VIRA tarefa urgente (31/08/2026) se venceu há até 15
+    // dias — mais velho que isso é passivo histórico, não chamada à ação.
+    // `vencidos` continua contando todos, para o painel.
     const dataCompromisso = dataDoCompromisso(c);
     if (dataCompromisso && dataCompromisso < hoje) {
       counts.vencidos++;
-      continue;
+      if (c.tipo !== 'prazo' || dataCompromisso < addDays(hoje, -15)) continue;
     }
     rows.push(buildActivityRow(c, process, assignee, hoje));
   }

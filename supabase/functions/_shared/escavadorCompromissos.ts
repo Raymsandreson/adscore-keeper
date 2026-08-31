@@ -88,9 +88,14 @@ function extractEventTime(textNorm: string): string | null {
   return null;
 }
 
-/** Extrai "no prazo de N dias" / "prazo de N (quinze) dias" / "em N dias". */
+/** Extrai "no prazo de N dias" / "prazo de N (quinze) dias" / "Prazo: N dias" / "em N dias". */
 function extractPrazoDias(textNorm: string): number | null {
-  const m = textNorm.match(/prazo\s+(?:comum\s+|sucessivo\s+)?de\s+(\d{1,3})\s*\(?[a-z\s]*\)?\s*dias/)
+  // A forma com dois-pontos ("Prazo: 5 dias.", "Prazo: 5 (cinco) dias úteis")
+  // é o padrão dos atos ordinatórios do PJe/TRF1 e não casava com nenhum
+  // padrão — a intimação da contestação do 1017247-47.2025.4.01.3100 tinha o
+  // prazo escrito DUAS vezes e saiu como "sem prazo em dias explícito" (31/08/2026).
+  const m = textNorm.match(/prazo\s*:\s*(\d{1,3})\s*(?:\([a-z\s]+\)\s*)?dias?/)
+    || textNorm.match(/prazo\s+(?:comum\s+|sucessivo\s+)?de\s+(\d{1,3})\s*\(?[a-z\s]*\)?\s*dias/)
     || textNorm.match(/no\s+prazo\s+de\s+(\d{1,3})/)
     || textNorm.match(/\bem\s+(\d{1,3})\s+dias/);
   if (!m) return null;
@@ -155,12 +160,25 @@ function classify(mov: EscavadorMovimentacao): CompromissoExtraido | null {
     // OU uma providência clara (manifestar/impugnar/recorrer/contestar/cumprir).
     const temProvidencia = hasAny(t, ['manifest', 'impugn', 'contestar', 'recorr', 'recurso', 'cumprir', 'apresentar']);
     if (prazoDias || temProvidencia) {
-      const alvo = t.includes('sentenca') ? 'sentença'
-        : t.includes('acordao') ? 'acórdão'
-        : t.includes('despacho') ? 'despacho'
-        : t.includes('decisao') ? 'decisão'
-        : 'ato processual';
-      const titulo = prazoDias ? `Prazo de ${prazoDias} dias` : `Prazo — providência sobre ${alvo}`;
+      // O alvo é o que a intimação MANDA fazer — o trecho logo após o verbo
+      // (manifestar/impugnar) —, nunca uma palavra solta do texto: o cabeçalho
+      // da secretaria carrega a lista genérica "ato ordinatório / despacho /
+      // decisão / sentença proferido(a)", e era ela que fazia a intimação da
+      // contestação do 1017247-47.2025.4.01.3100 sair como "providência sobre
+      // sentença" (corrigido em 31/08/2026).
+      const zona = (t.match(/(?:manifest|impugn)[a-z]*(.{0,140})/) || [])[1] || '';
+      const listaGenerica = /despacho\s*\/\s*decisao\s*\/\s*sentenca/.test(t);
+      const alvo = zona.includes('contestacao') ? 'manifestação sobre a contestação'
+        : zona.includes('replica') ? 'manifestação sobre a réplica'
+        : zona.includes('laudo') ? 'manifestação sobre o laudo'
+        : zona.includes('calculo') ? 'manifestação sobre os cálculos'
+        : zona.includes('acordo') ? 'manifestação sobre a proposta de acordo'
+        : !listaGenerica && t.includes('sentenca') ? 'providência sobre a sentença'
+        : !listaGenerica && t.includes('acordao') ? 'providência sobre o acórdão'
+        : !listaGenerica && t.includes('despacho') ? 'providência sobre o despacho'
+        : !listaGenerica && t.includes('decisao') ? 'providência sobre a decisão'
+        : 'providência da intimação';
+      const titulo = prazoDias ? `Prazo de ${prazoDias} dias — ${alvo}` : `Prazo — ${alvo}`;
       return emit('prazo', titulo, prazoDias);
     }
   }
