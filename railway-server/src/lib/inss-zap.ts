@@ -11,6 +11,7 @@ import {
   jidDeGrupo,
   normalizarNome,
 } from './inss-zap-destino';
+import { conferirGrupoDoLead } from './inss-grupo-certeza';
 export { escolherCandidatas, jidDeGrupo, descreverErro } from './inss-zap-destino';
 import { descreverErro } from './inss-zap-destino';
 import {
@@ -36,9 +37,13 @@ export interface GrupoDestino {
  * grupo (35 com dois, 1 com quatro) e a linha que voltasse primeiro decidia.
  * Mensagem no grupo errado é vazamento de dado de cliente para outro cliente,
  * então na dúvida não se manda.
+ *
+ * Sem NENHUMA linha na tabela, cai no campo legado `leads.whatsapp_group_id` —
+ * ver `grupoDoCampoLegado`.
  */
 export async function resolverGrupoDoLead(
   leadId: string | null | undefined,
+  opcoes?: { nomeSegurado?: string | null },
 ): Promise<{ grupo: GrupoDestino; erro?: undefined } | { grupo?: undefined; erro: string }> {
   if (!leadId) return { erro: 'sem lead' };
   const { data, error } = await supabase
@@ -47,7 +52,7 @@ export async function resolverGrupoDoLead(
     .eq('lead_id', leadId);
   if (error) return { erro: `falha ao ler grupos: ${error.message}` };
   const grupos = (data || []).filter((g: any) => g.group_jid) as GrupoDestino[];
-  if (grupos.length === 0) return { erro: 'lead sem grupo vinculado' };
+  if (grupos.length === 0) return grupoDoCampoLegado(leadId, opcoes?.nomeSegurado);
   if (grupos.length === 1) return { grupo: grupos[0] };
 
   const { data: lead } = await supabase
@@ -59,6 +64,67 @@ export async function resolverGrupoDoLead(
   const escolhido = legado ? grupos.find((g) => g.group_jid === legado) : undefined;
   if (escolhido) return { grupo: escolhido };
   return { erro: `lead com ${grupos.length} grupos e sem desempate` };
+}
+
+/**
+ * Último recurso: o JID que mora em `leads.whatsapp_group_id`.
+ *
+ * 102 dos 623 leads com requerimento INSS não têm linha em
+ * `lead_whatsapp_groups` (a tabela nova só é preenchida por quem cria o grupo
+ * pelo app, pela tela do lead ou por backfill pontual), e em 23 deles o campo
+ * legado guarda o grupo certo, vivo e com instância nossa dentro. Era esse o
+ * buraco do PREV 584: indeferimento de 31/08/2026 que nunca chegou ao cliente.
+ *
+ * O campo sozinho não basta para mandar. Três exigências, todas obrigatórias:
+ *  - JID de grupo de verdade (`@g.us`; o campo também guarda "PENDING:...");
+ *  - o grupo tem que estar no `whatsapp_groups_index`, que é a varredura real
+ *    do WhatsApp — JID fóssil de grupo que não existe mais não vira mensagem;
+ *  - o nome do grupo tem que conferir com o lead e com o segurado do e-mail
+ *    (`conferirGrupoDoLead`).
+ *
+ * Falhou qualquer uma: devolve erro e o cliente NÃO recebe nada. Quem resolve é
+ * gente, pela atividade que o `notify-inss-update` deixa pedindo o vínculo.
+ */
+async function grupoDoCampoLegado(
+  leadId: string,
+  nomeSegurado?: string | null,
+): Promise<{ grupo: GrupoDestino; erro?: undefined } | { grupo?: undefined; erro: string }> {
+  const { data: lead } = await supabase
+    .from('leads')
+    .select('lead_name, whatsapp_group_id')
+    .eq('id', leadId)
+    .maybeSingle();
+  const legado = ((lead as any)?.whatsapp_group_id || '').trim();
+  if (!/@g\.us$/.test(legado)) return { erro: 'lead sem grupo vinculado' };
+
+  // A varredura grava uma linha por instância que enxerga o grupo; a mais
+  // recente é a que prova que o grupo ainda existe.
+  const { data: noIndice } = await supabase
+    .from('whatsapp_groups_index')
+    .select('contact_name, instance_name, updated_at')
+    .eq('group_jid', legado)
+    .order('updated_at', { ascending: false })
+    .limit(1);
+  const doIndice = noIndice?.[0] as any;
+  if (!doIndice) {
+    return { erro: 'grupo do cadastro antigo não aparece na varredura do WhatsApp' };
+  }
+
+  const confere = conferirGrupoDoLead({
+    leadName: (lead as any)?.lead_name,
+    groupName: doIndice.contact_name,
+    nomeSegurado,
+  });
+  if (!confere.ok) return { erro: `grupo do cadastro antigo não confere: ${confere.motivo}` };
+
+  console.log(`[inss-zap] grupo pelo campo legado (${confere.motivo})`);
+  return {
+    grupo: {
+      group_jid: legado,
+      group_name: doIndice.contact_name || null,
+      instance_name: doIndice.instance_name || null,
+    },
+  };
 }
 
 /**

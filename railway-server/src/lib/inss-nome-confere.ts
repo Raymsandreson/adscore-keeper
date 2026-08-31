@@ -30,7 +30,7 @@ const STOPWORDS = new Set([
  * nome de gente. Sem essa lista, "✅PREV 1144 - ( ) Acd- -" pareceria um nome
  * que contradiz o segurado — quando na verdade ali não há nome nenhum.
  */
-const RUIDO_DE_ROTULO = new Set([
+export const RUIDO_DE_ROTULO = new Set([
   'PREV', 'LEAD', 'CASO', 'FAMILIA', 'GRUPO', 'CLIENTE', 'INSS', 'ADV', 'DRA',
   'BPC', 'LOAS', 'ANUNCIO', 'AUX', 'AUXILIO', 'MATERNIDADE', 'ACIDENTE', 'ACD',
   'PROCESSUAL', 'MANUAL', 'ATENDIMENTO', 'WHATSAPP', 'PENSAO', 'APOSENTADORIA',

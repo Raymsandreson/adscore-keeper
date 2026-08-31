@@ -239,7 +239,7 @@ export const handler: RequestHandler = async (req, res) => {
     // O processo casa pelo número do requerimento, que já está no título.
     const process = await findLeadProcess(proc.case_id, leadId, proc.requerimento_number);
 
-    await supabase.from('lead_activities').insert({
+    const { data: atividade } = await supabase.from('lead_activities').insert({
       lead_id: leadId,
       title: activityTitle,
       description: activityDesc,
@@ -253,7 +253,7 @@ export const handler: RequestHandler = async (req, res) => {
       case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
       process_id: process?.id || null,
       process_title: process ? formatLabel(process.process_number, process.title) || null : null,
-    } as any);
+    } as any).select('id, description').maybeSingle();
 
     // 2) Mensagem para o grupo do cliente
     //
@@ -303,7 +303,7 @@ export const handler: RequestHandler = async (req, res) => {
       } else if (await jaAvisouEsseTipo(processId, tipoMensagem)) {
         zapPatch = { zap_status: 'repetido', zap_tipo: tipoMensagem };
       } else {
-        const destino = await resolverGrupoDoLead(leadId);
+        const destino = await resolverGrupoDoLead(leadId, { nomeSegurado: proc.nome_segurado });
         if (destino.erro) {
           zapPatch = { zap_status: 'sem_grupo', zap_tipo: tipoMensagem, zap_erro: destino.erro };
         } else {
@@ -337,6 +337,23 @@ export const handler: RequestHandler = async (req, res) => {
           );
         }
       }
+    }
+
+    // 2.1) Sem grupo confiável, quem precisa agir é gente: o aviso vai na
+    // atividade que acabou de nascer. Pedido do usuário (31/08/2026): na dúvida
+    // sobre qual é o grupo, não arrisca mandar — avisa para vincularem o grupo
+    // ao lead. São 102 dos 623 leads com requerimento INSS sem vínculo, e sem
+    // este aviso a falha só aparecia no `zap_erro`, que ninguém lê.
+    if (zapPatch.zap_status === 'sem_grupo' && atividade?.id) {
+      const aviso =
+        '\n\n📵 O CLIENTE NÃO FOI AVISADO — este lead não tem grupo de WhatsApp confiável ' +
+        `vinculado (${zapPatch.zap_erro}).\n` +
+        'Vincule o grupo certo ao lead (ficha do lead → WhatsApp → vincular grupo) e avise o ' +
+        'cliente desta atualização por aqui. Depois de vinculado, as próximas mensagens saem sozinhas.';
+      await supabase
+        .from('lead_activities')
+        .update({ description: `${atividade.description || activityDesc}${aviso}` })
+        .eq('id', atividade.id);
     }
 
     // 3) Marca como notificado. Só o evento mais recente pode virar mensagem;
