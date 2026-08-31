@@ -17,9 +17,12 @@ import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
  *      estado, 30 deles com caso já aberto esperando. Sem essa passada, esses
  *      30 nunca apareceriam na ficha do caso nem numa contagem por nº de caso.
  *
- * A promoção NÃO dispara notify-inss-update de propósito: notificar manda
- * WhatsApp para o cliente, e aqui não houve novidade do INSS — só arrumamos o
- * vínculo interno.
+ * O match dispara notify-inss-update com `sem_mensagem: true`: a atividade
+ * nasce (senão o e-mail continuaria sem dono), mas o cliente NÃO recebe zap. O
+ * e-mail pode ser de meses atrás e o casamento por nome ainda não passou por
+ * olho humano — avisar cliente com base em palpite de robô é o que não pode.
+ * Até 31/08/2026 este comentário dizia que nada era disparado, enquanto o
+ * código chamava o notify sem ressalva nenhuma.
  */
 
 export const handler: RequestHandler = async (_req, res) => {
@@ -65,7 +68,7 @@ export const handler: RequestHandler = async (_req, res) => {
         // sem atividade e sem mensagem — o e-mail do INSS já tinha chegado e
         // ninguém era avisado.
         if (caseId || leadId) {
-          selfPost('notify-inss-update', { process_id: o.id }).catch(() => {});
+          selfPost('notify-inss-update', { process_id: o.id, sem_mensagem: true }).catch(() => {});
           notify_fired++;
         }
       } catch (e: any) {

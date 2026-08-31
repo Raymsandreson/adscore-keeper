@@ -1,4 +1,6 @@
 import { supabase } from './supabase';
+import { alvosDeNome } from './inss-nome-indice';
+import { escolherPorNome } from './inss-nome-match';
 
 /**
  * Robô casamenteiro de processos INSS órfãos.
@@ -189,57 +191,26 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
     }
   }
 
-  // 5) nome do segurado — tokenizado: primeiro+último token significativo precisam
-  //    estar em victim_name OU em contacts.full_name (via contact_leads).
-  //    Não usa lead_name (apelido) como sinal primário pra evitar falsos positivos.
+  // 5) nome do segurado — prova de nome COMPLETO contra o cadastro inteiro.
+  //    Até 31/08/2026 aqui era primeiro+último token, buscado com
+  //    `ilike '%sobrenome%' limit 30` em victim_name e contacts: frouxo no
+  //    critério (casava "RITA MARIA FERREIRA DA SILVA" com o lead "Rita de
+  //    Cassia Silva martins") e curto no alcance (não olhava `lead_name`, não
+  //    achava "Antônio" procurando "ANTONIO", e escolhia 30 linhas quaisquer
+  //    quando o sobrenome era Silva). Ver lib/inss-nome-match e
+  //    lib/inss-nome-indice.
   if (!leadId && nome.length >= 6) {
-    const STOPWORDS = new Set(['DA','DE','DO','DAS','DOS','E','DI','DU','JR','JUNIOR','NETO','FILHO','FILHA']);
-    const normalize = (s: string) => String(s||'')
-      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-      .toUpperCase().replace(/[^A-Z0-9\s]/g,' ').replace(/\s+/g,' ').trim();
-    const tokens = normalize(nome).split(' ').filter((t) => t.length >= 3 && !STOPWORDS.has(t));
-    if (tokens.length >= 2) {
-      const first = tokens[0];
-      const last = tokens[tokens.length - 1];
-      // Token inteiro, nunca substring: até 27/08/2026 isso era `includes`, e
-      // `FRANCA` casava dentro de `FRANCAVILLA` — foi assim que o requerimento
-      // de VALENTINA ARAUJO FRANCA foi parar num lead de notícia sobre a
-      // Valentina Francavilla. Mesmo defeito ligou ELOA VITORIA a ELOANE.
-      const containsBoth = (s: string) => {
-        const t = new Set(normalize(s).split(' '));
-        return t.has(first) && t.has(last);
-      };
-      const candidates = new Set<string>();
-
-      const { data: byVictim } = await supabase
-        .from('leads')
-        .select('id, victim_name')
-        .ilike('victim_name', `%${last}%`)
-        .is('deleted_at', null)
-        .limit(30);
-      for (const l of (byVictim || []) as any[]) {
-        if (containsBoth(l.victim_name || '')) candidates.add(l.id);
-      }
-
-      const { data: byContact } = await supabase
-        .from('contacts')
-        .select('id, full_name, lead_id')
-        .ilike('full_name', `%${last}%`)
-        .limit(30);
-      for (const c of (byContact || []) as any[]) {
-        if (!containsBoth(c.full_name || '')) continue;
-        if (c.lead_id) candidates.add(c.lead_id);
-        const { data: cl } = await supabase
-          .from('contact_leads').select('lead_id').eq('contact_id', c.id);
-        for (const link of (cl || []) as any[]) {
-          if (link.lead_id) candidates.add(link.lead_id);
-        }
-      }
-
-      if (candidates.size === 1) {
-        leadId = Array.from(candidates)[0];
+    try {
+      const escolha = escolherPorNome(nome, await alvosDeNome());
+      if (escolha.leadId) {
+        leadId = escolha.leadId;
         source = 'name_lead';
+        console.log(`[inss-matcher] "${nome}" → ${escolha.motivo}`);
+      } else {
+        console.log(`[inss-matcher] "${nome}" sem dono por nome: ${escolha.motivo}`);
       }
+    } catch (e: any) {
+      console.warn('[inss-matcher] índice de nomes falhou:', e?.message || e);
     }
   }
 

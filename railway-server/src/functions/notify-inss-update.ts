@@ -97,6 +97,10 @@ async function marcarNotificado(
 
 export const handler: RequestHandler = async (req, res) => {
   const processId: string | undefined = req.body?.process_id;
+  // Vínculo recém-descoberto por robô (match-inss-orphans) não avisa cliente:
+  // o e-mail do INSS pode ser de meses atrás e ninguém revisou o casamento.
+  // A atividade nasce igual, com o aviso de que o cliente não foi avisado.
+  const semMensagem: boolean = req.body?.sem_mensagem === true;
   if (!processId) {
     return res.status(200).json({ success: false, error: 'process_id required' });
   }
@@ -295,6 +299,8 @@ export const handler: RequestHandler = async (req, res) => {
         // A exigência inteira era pendência nossa (17 das 557 no histórico):
         // mandar "o INSS pediu documentos" sem dizer quais só assusta.
         zapPatch = { zap_status: 'so_escritorio', zap_tipo: tipoMensagem };
+      } else if (semMensagem) {
+        zapPatch = { zap_status: 'vinculo_retroativo', zap_tipo: tipoMensagem };
       } else if (!eventoElegivelParaZap(latest.email_received_at)) {
         // Ativação sem retroatividade (pedido do usuário, 26/08/2026): evento
         // anterior ao corte nunca vira mensagem, mesmo que só agora tenha sido
@@ -344,6 +350,20 @@ export const handler: RequestHandler = async (req, res) => {
     // sobre qual é o grupo, não arrisca mandar — avisa para vincularem o grupo
     // ao lead. São 102 dos 623 leads com requerimento INSS sem vínculo, e sem
     // este aviso a falha só aparecia no `zap_erro`, que ninguém lê.
+    if (zapPatch.zap_status === 'vinculo_retroativo' && atividade?.id) {
+      await supabase
+        .from('lead_activities')
+        .update({
+          description:
+            `${atividade.description || activityDesc}\n\n` +
+            '🔗 ESTE REQUERIMENTO ACABOU DE GANHAR DONO. O robô ligou o requerimento a este lead pelo ' +
+            'nome do segurado — antes disso o e-mail do INSS não era tarefa de ninguém. O CLIENTE NÃO ' +
+            'FOI AVISADO: confira se o requerimento é mesmo deste lead e, se for, avise-o do que está ' +
+            'escrito acima. Daqui para frente as atualizações deste requerimento saem sozinhas.',
+        })
+        .eq('id', atividade.id);
+    }
+
     if (zapPatch.zap_status === 'sem_grupo' && atividade?.id) {
       const aviso =
         '\n\n📵 O CLIENTE NÃO FOI AVISADO — este lead não tem grupo de WhatsApp confiável ' +
