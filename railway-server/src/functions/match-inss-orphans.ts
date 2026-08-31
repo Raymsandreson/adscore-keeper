@@ -25,7 +25,22 @@ import { findInssOrphanMatch, applyInssMatch } from '../lib/inss-matcher';
  * código chamava o notify sem ressalva nenhuma.
  */
 
+/**
+ * Trava de execução única.
+ *
+ * A varredura leva ~4s por órfão (cada um passa por 6 pistas, com consultas ao
+ * banco) e são 312 — mais de 20 minutos, contra um cron de 15. Sem trava, a
+ * rodada seguinte entra por cima da anterior: o mesmo órfão é casado duas vezes
+ * e nascem duas atividades para a mesma novidade. Medido em 31/08/2026, no
+ * primeiro deploy do matcher por nome completo.
+ */
+let varreduraEmCurso = false;
+
 export const handler: RequestHandler = async (_req, res) => {
+  if (varreduraEmCurso) {
+    return res.json({ success: true, skipped: 'varredura anterior ainda rodando' });
+  }
+  varreduraEmCurso = true;
   const errors: string[] = [];
   let matched = 0;
   let scanned = 0;
@@ -117,5 +132,7 @@ export const handler: RequestHandler = async (_req, res) => {
     return res.json({ success: true, scanned, matched, promoted, notify_fired, errors });
   } catch (e: any) {
     return res.json({ success: false, error: e?.message || 'unknown' });
+  } finally {
+    varreduraEmCurso = false;
   }
 };

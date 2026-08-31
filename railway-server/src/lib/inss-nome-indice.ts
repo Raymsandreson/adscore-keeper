@@ -50,27 +50,33 @@ export async function alvosDeNome(): Promise<AlvoNome[]> {
   if (cache && Date.now() - cache.quando < TTL_MS) return cache.alvos;
 
   const alvos: AlvoNome[] = [];
-  const guardar = (leadId: string | null | undefined, nome: string | null | undefined) => {
+  const guardar = (
+    leadId: string | null | undefined,
+    nome: string | null | undefined,
+    fonte: 'lead' | 'contato',
+  ) => {
     if (!leadId || !nome) return;
     const tokens = tokensDePessoa(nome);
-    if (tokens.length >= 2) alvos.push({ leadId, nome, tokens });
+    if (tokens.length >= 2) alvos.push({ leadId, nome, tokens, fonte });
   };
 
   const leads = await paginar<any>('leads', 'id, lead_name, victim_name', (q) => q.is('deleted_at', null));
   for (const l of leads) {
-    guardar(l.id, l.lead_name);
-    guardar(l.id, l.victim_name);
+    guardar(l.id, l.lead_name, 'lead');
+    guardar(l.id, l.victim_name, 'lead');
   }
 
-  const contatos = await paginar<any>('contacts', 'id, full_name, lead_id');
+  // Contato apagado é quase sempre duplicata mesclada — o nome continua lá com
+  // `deleted_at` preenchido, e entrava no índice como se fosse gente viva.
+  const contatos = await paginar<any>('contacts', 'id, full_name, lead_id', (q) => q.is('deleted_at', null));
   const nomePorContato = new Map<string, string>();
   for (const c of contatos) {
     if (c.full_name) nomePorContato.set(c.id, c.full_name);
-    guardar(c.lead_id, c.full_name);
+    guardar(c.lead_id, c.full_name, 'contato');
   }
 
   const vinculos = await paginar<any>('contact_leads', 'contact_id, lead_id');
-  for (const v of vinculos) guardar(v.lead_id, nomePorContato.get(v.contact_id));
+  for (const v of vinculos) guardar(v.lead_id, nomePorContato.get(v.contact_id), 'contato');
 
   cache = { quando: Date.now(), alvos };
   console.log(`[inss-nome-indice] ${alvos.length} nomes de ${leads.length} leads e ${contatos.length} contatos`);

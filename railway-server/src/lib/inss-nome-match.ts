@@ -65,11 +65,20 @@ export interface AlvoNome {
   /** Texto que casou, para o log e para a conferência humana. */
   nome: string;
   tokens: string[];
+  /**
+   * De onde veio o nome. `lead` é o cadastro do próprio lead (nome do lead ou
+   * do beneficiário) e vale para vincular sozinho. `contato` é gente ligada ao
+   * lead — que pode ser o cliente, mas também testemunha, parente ou parte
+   * contrária: o requerimento de VANESSA LOPES DA SILVA foi parar no lead
+   * "PAMELA MARTINS ROSSNER LUCAS" assim, em 31/08/2026. Serve para sugerir a
+   * um humano, nunca para vincular calado.
+   */
+  fonte: 'lead' | 'contato';
 }
 
 export type EscolhaPorNome =
   | { leadId: string; alvo: AlvoNome; motivo: string }
-  | { leadId: null; motivo: string };
+  | { leadId: null; motivo: string; sugestao?: AlvoNome };
 
 /**
  * Escolhe o dono pelo nome — e só devolve lead quando ele é ÚNICO. Dois
@@ -83,9 +92,10 @@ export function escolherPorNome(nomeSegurado: string | null | undefined, alvos: 
 
   const porLead = new Map<string, AlvoNome>();
   for (const alvo of alvos) {
-    if (!porLead.has(alvo.leadId) && casaNomeCompleto(segurado, alvo.tokens)) {
-      porLead.set(alvo.leadId, alvo);
-    }
+    if (!casaNomeCompleto(segurado, alvo.tokens)) continue;
+    // O cadastro do lead manda sobre o contato quando os dois apontam o mesmo lead.
+    const jaTem = porLead.get(alvo.leadId);
+    if (!jaTem || (jaTem.fonte === 'contato' && alvo.fonte === 'lead')) porLead.set(alvo.leadId, alvo);
   }
   if (porLead.size === 0) return { leadId: null, motivo: 'nenhum lead com esse nome' };
   if (porLead.size > 1) {
@@ -93,5 +103,14 @@ export function escolherPorNome(nomeSegurado: string | null | undefined, alvos: 
     return { leadId: null, motivo: `${porLead.size} leads com esse nome (${nomes})` };
   }
   const [alvo] = [...porLead.values()];
+  // Contato sozinho não vincula: quem está na agenda de um lead não é
+  // necessariamente o dono dele. Vira sugestão para conferência humana.
+  if (alvo.fonte === 'contato') {
+    return {
+      leadId: null,
+      motivo: `só um contato do lead "${alvo.nome}" tem esse nome — precisa de conferência`,
+      sugestao: alvo,
+    };
+  }
   return { leadId: alvo.leadId, alvo, motivo: `nome completo confere com "${alvo.nome}"` };
 }

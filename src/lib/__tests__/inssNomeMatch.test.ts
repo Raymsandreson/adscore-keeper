@@ -7,7 +7,10 @@ import {
   type AlvoNome,
 } from '../../../railway-server/src/lib/inss-nome-match';
 
-const alvo = (leadId: string, nome: string): AlvoNome => ({ leadId, nome, tokens: tokensDePessoa(nome) });
+const alvo = (leadId: string, nome: string): AlvoNome =>
+  ({ leadId, nome, tokens: tokensDePessoa(nome), fonte: 'lead' });
+const contato = (leadId: string, nome: string): AlvoNome =>
+  ({ leadId, nome, tokens: tokensDePessoa(nome), fonte: 'contato' });
 
 describe('tokensDePessoa', () => {
   it('joga fora rótulo de funil, número e preposição', () => {
@@ -66,6 +69,24 @@ describe('escolherPorNome', () => {
     ]);
     expect(r.leadId).toBeNull();
     expect(r.motivo).toContain('2 leads');
+  });
+
+  it('contato sozinho vira sugestão, não vínculo', () => {
+    // O requerimento de VANESSA foi parar no lead da PAMELA porque ela era
+    // contato dele — 16 vínculos assim em 31/08/2026.
+    const r = escolherPorNome('VANESSA LOPES DA SILVA', [
+      contato('lead-pamela', 'Vanessa Lopes da Silva'),
+    ]);
+    expect(r.leadId).toBeNull();
+    expect('sugestao' in r && r.sugestao?.leadId).toBe('lead-pamela');
+  });
+
+  it('cadastro do lead vence o contato quando os dois apontam o mesmo lead', () => {
+    const r = escolherPorNome('ELTON DE LIMA SANTOS', [
+      contato('lead-1', 'Elton de Lima Santos'),
+      alvo('lead-1', 'Elton de Lima Santos'),
+    ]);
+    expect(r.leadId).toBe('lead-1');
   });
 
   it('cala quando o segurado tem um nome só', () => {
