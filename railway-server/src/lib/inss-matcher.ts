@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import { alvosDeNome } from './inss-nome-indice';
 import { escolherPorNome } from './inss-nome-match';
+import { conferirNomeDoSegurado } from './inss-nome-confere';
 
 /**
  * Robô casamenteiro de processos INSS órfãos.
@@ -206,6 +207,29 @@ export async function findInssOrphanMatch(input: MatchInput): Promise<MatchResul
         leadId = escolha.leadId;
         source = 'name_lead';
         console.log(`[inss-matcher] "${nome}" → ${escolha.motivo}`);
+      } else if ('sugestao' in escolha && escolha.sugestao) {
+        // O nome bateu com um CONTATO do lead. Isso sozinho não vincula (o
+        // contato pode ser testemunha ou parente), mas vale quando o cadastro
+        // do lead CONFIRMA o segurado — é o caso de "PREV 894 /ANDRIELE" com o
+        // contato "Andriele Gomes Ferreira". Cadastro que contradiz ("PAMELA
+        // MARTINS ROSSNER LUCAS" para a segurada VANESSA) ou que não diz nada
+        // ("CASO 319") deixa o requerimento órfão, para conferência humana.
+        const { data: doLead } = await supabase
+          .from('leads')
+          .select('lead_name, victim_name')
+          .eq('id', escolha.sugestao.leadId)
+          .maybeSingle();
+        const confere = conferirNomeDoSegurado(nome, {
+          leadName: (doLead as any)?.lead_name,
+          victimName: (doLead as any)?.victim_name,
+        });
+        if (confere.veredito === 'ok') {
+          leadId = escolha.sugestao.leadId;
+          source = 'name_lead';
+          console.log(`[inss-matcher] "${nome}" → contato do lead, ${confere.motivo}`);
+        } else {
+          console.log(`[inss-matcher] "${nome}" só bate com contato e ${confere.motivo}`);
+        }
       } else {
         console.log(`[inss-matcher] "${nome}" sem dono por nome: ${escolha.motivo}`);
       }
