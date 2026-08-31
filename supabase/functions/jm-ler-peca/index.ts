@@ -150,6 +150,31 @@ interface Documento {
   storage_path: string | null;
 }
 
+/** Base64 em blocos: btoa(String.fromCharCode(...bytes)) estoura a pilha em
+ * PDF de alguns MB (spread de centenas de milhares de argumentos). */
+function paraBase64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 8192) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
+  }
+  return btoa(bin);
+}
+
+/**
+ * MODO ANEXO (Fase 2 do pipeline de e-mail, 30/08/2026): extrai o TEXTO de um
+ * anexo de e-mail governamental (processual_email_anexos / bucket
+ * processual-anexos) para a sync-email-push varrer identificadores nele.
+ *
+ * Mora aqui, e não numa função nova, de propósito (regra da tarefa: "extrair
+ * texto reaproveitando a função jm-ler-peca, não criar outra"): mesma chave
+ * x-jm-key, mesmo Gemini, mesmo desenho de bucket privado lido com service
+ * role. O que muda é o prompt — aqui não há verba a classificar, é transcrição.
+ */
+const PROMPT_TEXTO_ANEXO =
+  'Transcreva o TEXTO INTEGRAL do documento anexo, em texto puro, sem markdown e sem comentários seus. '
+  + 'Preserve números de processo, protocolos e datas EXATAMENTE como escritos. '
+  + 'Se o documento for imagem escaneada, faça OCR. Limite-se ao conteúdo do documento.';
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
@@ -178,8 +203,64 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: 'não autorizado' }, 401);
     }
 
-    const { documento_id } = await req.json();
-    if (!documento_id) return json({ success: false, error: 'documento_id é obrigatório' });
+    const { documento_id, anexo_id } = await req.json();
+
+    // ---------------- MODO ANEXO: texto puro para a varredura ---------------
+    if (anexo_id) {
+      const { data: anexo, error: erroAnexo } = await sb
+        .from('processual_email_anexos')
+        .select('id, gmail_message_id, filename, mime_type, storage_path')
+        .eq('id', anexo_id)
+        .maybeSingle();
+      if (erroAnexo) return json({ success: false, error: `anexo: ${erroAnexo.message}` });
+      if (!anexo) return json({ success: false, error: 'anexo não encontrado' });
+
+      const { data: arquivoAnexo, error: erroArq } = await sb.storage
+        .from('processual-anexos')
+        .download(anexo.storage_path);
+      if (erroArq || !arquivoAnexo) {
+        return json({ success: false, anexo_id, error: `storage: ${erroArq?.message || 'sem arquivo'}` });
+      }
+
+      const chaveGoogle = Deno.env.get('GOOGLE_AI_API_KEY');
+      if (!chaveGoogle) return json({ success: false, error: 'GOOGLE_AI_API_KEY não configurada' });
+
+      const base64Anexo = paraBase64(new Uint8Array(await arquivoAnexo.arrayBuffer()));
+      const rTexto = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${encodeURIComponent(chaveGoogle)}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              role: 'user',
+              parts: [
+                { text: PROMPT_TEXTO_ANEXO },
+                { inline_data: { mime_type: anexo.mime_type || 'application/pdf', data: base64Anexo } },
+              ],
+            }],
+            generationConfig: { temperature: 0, maxOutputTokens: 8192 },
+          }),
+        },
+      );
+      if (!rTexto.ok) {
+        const detalhe = (await rTexto.text()).replace(/\s+/g, ' ').slice(0, 300);
+        return json({ success: false, anexo_id, error: `gemini ${rTexto.status}: ${detalhe}` });
+      }
+      const respTexto = await rTexto.json();
+      const texto = String(respTexto?.candidates?.[0]?.content?.parts?.[0]?.text ?? '').trim();
+      if (!texto) return json({ success: false, anexo_id, error: 'gemini devolveu vazio' });
+
+      const { error: erroGravaTexto } = await sb
+        .from('processual_email_anexos')
+        .update({ texto_extraido: texto.slice(0, 50000), texto_extraido_at: new Date().toISOString() })
+        .eq('id', anexo.id);
+      if (erroGravaTexto) return json({ success: false, anexo_id, error: `gravar: ${erroGravaTexto.message}` });
+
+      return json({ success: true, anexo_id, gmail_message_id: anexo.gmail_message_id, caracteres: texto.length });
+    }
+
+    if (!documento_id) return json({ success: false, error: 'documento_id ou anexo_id é obrigatório' });
 
     const { data: doc, error: erroDoc } = await sb
       .from('jm_documentos')
@@ -197,14 +278,7 @@ Deno.serve(async (req: Request) => {
       return json({ success: false, error: `storage: ${erroArquivo?.message || 'sem arquivo'}` });
     }
 
-    const bytes = new Uint8Array(await arquivo.arrayBuffer());
-    // Base64 em blocos: btoa(String.fromCharCode(...bytes)) estoura a pilha em
-    // PDF de alguns MB (spread de centenas de milhares de argumentos).
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 8192) {
-      bin += String.fromCharCode(...bytes.subarray(i, i + 8192));
-    }
-    const base64 = btoa(bin);
+    const base64 = paraBase64(new Uint8Array(await arquivo.arrayBuffer()));
 
     // API do Google no formato nativo, não pelo _shared/gemini.ts: aqui o PDF vai
     // como inline_data e `responseMimeType: application/json` obriga o modelo a

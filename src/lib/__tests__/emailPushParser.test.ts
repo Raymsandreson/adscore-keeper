@@ -216,7 +216,9 @@ describe('parseEmailPush — e-SAJ', () => {
     expect(movs).toHaveLength(3);
     expect(movs[0].cnj).toBe('1070860-05.2020.8.26.0100');
     expect(movs[1].cnj).toBe('1000139-66.2025.8.26.0354');
-    expect(movs[2].texto).toBe('Remetido ao DJE');
+    // Desde 30/08/2026 a primeira linha de teor vira complemento curto do
+    // movimento ("Remetido ao DJE — Relação: ..."), sem engolir a lista de OAB.
+    expect(movs[2].texto).toMatch(/^Remetido ao DJE/);
     expect(movs.some((m) => /OAB/.test(m.texto))).toBe(false);
   });
 });

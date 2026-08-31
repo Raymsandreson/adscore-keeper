@@ -574,7 +574,6 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
   const deepLinkAbertoRef = useRef(false);
   const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [editCaseNumber, setEditCaseNumber] = useState(legalCase.case_number || '');
-  const [editTitle, setEditTitle] = useState(legalCase.title || '');
   const [editDescription, setEditDescription] = useState(legalCase.description || '');
   const [editNotes, setEditNotes] = useState(legalCase.notes || '');
   const [selectedProcesses, setSelectedProcesses] = useState<Set<string>>(new Set());
@@ -652,7 +651,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
 
   const openEditDialog = () => {
     setEditCaseNumber(legalCase.case_number || '');
-    setEditTitle(legalCase.title || '');
+    // O título saiu do formulário em 33164db — o state também. Sem esta remoção
+    // abrir o dialog de edição estourava ReferenceError: setEditTitle.
     setEditDescription(legalCase.description || '');
     setEditNotes(legalCase.notes || '');
     setEditLeadId(legalCase.lead_id ?? null);
@@ -866,7 +866,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       }
       const { leadChanged, payload } = buildCaseUpdatePayload({
         caseNumber: trimmedNumber,
-        title: editTitle,
+        // O título saiu do formulário: o existente é reenviado como está.
+        title: legalCase.title || '',
         description: editDescription,
         notes: editNotes,
         editLeadId,
@@ -988,7 +989,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
             // Resolvido antes do insert para gravar o responsável no processo,
             // e não só na atividade "Dar andamento".
             // Estes processos nascem sempre administrativos (insert logo abaixo).
-            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, editTitle || legalCase.title, user?.id, legalCase.case_number, 'administrativo', legalCase.id);
+            const { extAssignedTo, assignedName } = await resolveProcessAssignment(title, legalCase.title, user?.id, legalCase.case_number, 'administrativo', legalCase.id);
 
             // O erro do insert era descartado: quando ele falhava, savedProcess
             // vinha undefined e a atividade nascia sem process_id, órfã e sem
@@ -1029,7 +1030,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               const result = await createOrAttachAndamentoActivity({
                 leadId: effectiveLeadId,
                 caseId: legalCase.id,
-                caseTitle: editTitle || legalCase.title,
+                caseTitle: legalCase.title,
                 processId: savedProcess?.id || null,
                 processTitle: title,
                 extAssignedTo,
@@ -1488,10 +1489,6 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
               <Label>Número do Caso *</Label>
               <Input value={editCaseNumber} onChange={e => setEditCaseNumber(e.target.value)} placeholder="Ex: 0001-2025" />
             </div>
-            <div>
-              <Label>Título *</Label>
-              <Input value={editTitle} onChange={e => setEditTitle(e.target.value)} />
-            </div>
             {casoEhPrev && (
               <div className="grid grid-cols-2 gap-3">
                 {([
@@ -1625,7 +1622,7 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowEditDialog(false)}>Cancelar</Button>
-            <Button onClick={handleEdit} disabled={!editTitle.trim() || savingEdit}>
+            <Button onClick={handleEdit} disabled={savingEdit}>
               {savingEdit && <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />}Salvar
             </Button>
           </DialogFooter>

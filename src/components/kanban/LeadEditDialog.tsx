@@ -344,6 +344,9 @@ export function LeadEditDialog({
   const [unifiedEditorOpen, setUnifiedEditorOpen] = useState(false);
   const [enrichReview, setEnrichReview] = useState<EnrichReviewData | null>(null);
   const [enrichApplying, setEnrichApplying] = useState(false);
+  // Revisão do "Extrair com IA (conversa WhatsApp)": nada é aplicado ao formulário
+  // antes do usuário conferir atual → novo e confirmar.
+  const [chatExtractReview, setChatExtractReview] = useState<EnrichReviewData | null>(null);
   
   // Accident fields
   const [victimName, setVictimName] = useState('');
@@ -1022,6 +1025,79 @@ export function LeadEditDialog({
     }
     
     toast.success('Dados extraídos aplicados ao formulário!');
+  };
+
+  // Chaves da extract-conversation-data (targetType lead) que têm campo neste formulário.
+  const CHAT_EXTRACT_KEYS = [
+    'lead_name', 'victim_name', 'victim_age', 'lead_email', 'notes', 'case_number',
+    'client_classification', 'expected_birth_date', 'accident_date', 'case_type',
+    'accident_address', 'damage_description', 'visit_city', 'visit_state', 'visit_address',
+    'contractor_company', 'main_company', 'sector', 'liability_type', 'news_link', 'legal_viability',
+  ] as const;
+
+  // Extração via conversa do WhatsApp: abre a revisão (atual → novo) em vez de aplicar direto.
+  const handleChatExtracted = (data: ExtractedAccidentData) => {
+    const d = data as Record<string, any>;
+    const extracted: Record<string, any> = {};
+    for (const k of CHAT_EXTRACT_KEYS) {
+      const v = d[k];
+      if (v !== undefined && v !== null && String(v).trim() !== '') extracted[k] = v;
+    }
+    // city/state genéricos do retorno viram cidade/UF da visita quando a IA não mandou os específicos
+    if (!extracted.visit_city && d.city) extracted.visit_city = d.city;
+    if (!extracted.visit_state && d.state) extracted.visit_state = d.state;
+    if (Object.keys(extracted).length === 0) {
+      toast.warning('A IA não encontrou nenhum campo aplicável nesta conversa');
+      return;
+    }
+    setChatExtractReview({
+      extracted,
+      current: {
+        lead_name: leadName, victim_name: victimName, victim_age: victimAge, lead_email: leadEmail,
+        notes, case_number: caseNumber, client_classification: clientClassification,
+        expected_birth_date: expectedBirthDate, accident_date: accidentDate, case_type: caseType,
+        accident_address: accidentAddress, damage_description: damageDescription,
+        visit_city: visitCity, visit_state: visitState, visit_address: visitAddress,
+        contractor_company: contractorCompany, main_company: mainCompany, sector,
+        liability_type: liabilityType, news_link: newsLink, legal_viability: legalViability,
+      },
+      customFields: [],
+      leadNameLocked: false,
+      groupJid: '',
+    });
+  };
+
+  // Aplica no formulário só os campos marcados na revisão. Não grava nada — o Salvar continua sendo o commit.
+  const handleChatExtractApply = (selected: Record<string, any>) => {
+    const s = (k: string) => String(selected[k]).trim();
+    if (selected.lead_name) setLeadName(s('lead_name'));
+    if (selected.victim_name) setVictimName(s('victim_name'));
+    if (selected.victim_age) setVictimAge(s('victim_age'));
+    if (selected.lead_email) setLeadEmail(s('lead_email'));
+    if (selected.notes) setNotes(prev => prev ? `${prev}\n\n${s('notes')}` : s('notes'));
+    if (selected.case_number) setCaseNumber(s('case_number'));
+    if (selected.client_classification) setClientClassification(s('client_classification'));
+    if (selected.expected_birth_date) { const nd = normalizeDateInput(s('expected_birth_date')); if (nd) setExpectedBirthDate(nd); }
+    if (selected.accident_date) { const nd = normalizeDateInput(s('accident_date')); if (nd) setAccidentDate(nd); }
+    if (selected.case_type) setCaseType(s('case_type'));
+    if (selected.accident_address) setAccidentAddress(s('accident_address'));
+    if (selected.damage_description) setDamageDescription(s('damage_description'));
+    if (selected.visit_city) setVisitCity(s('visit_city'));
+    if (selected.visit_state) {
+      const uf = s('visit_state');
+      setVisitState(uf);
+      setVisitRegion(stateToRegion[uf] || '');
+      fetchCities(uf);
+    }
+    if (selected.visit_address) setVisitAddress(s('visit_address'));
+    if (selected.contractor_company) setContractorCompany(s('contractor_company'));
+    if (selected.main_company) setMainCompany(s('main_company'));
+    if (selected.sector) setSector(s('sector'));
+    if (selected.liability_type) setLiabilityType(s('liability_type'));
+    if (selected.news_link) setNewsLink(s('news_link'));
+    if (selected.legal_viability) setLegalViability(s('legal_viability'));
+    toast.success(`${Object.keys(selected).length} campo(s) aplicado(s) ao formulário — confira e clique em Salvar.`);
+    setChatExtractReview(null);
   };
 
   // Aplica os campos confirmados no EnrichReviewDialog: grava via auto-enrich-lead
@@ -2199,7 +2275,7 @@ ${scrapeData.content || ''}
               leadId={currentLead.id}
               leadPhone={(currentLead as any).lead_phone}
               whatsappGroups={whatsappGroups}
-              onDataExtracted={handleExtractedData}
+              onDataExtracted={handleChatExtracted}
             />
           )}
         </div>
@@ -4166,6 +4242,17 @@ ${scrapeData.content || ''}
             data={enrichReview}
             applying={enrichApplying}
             onApply={handleEnrichApply}
+          />
+        </Suspense>
+      )}
+      {chatExtractReview && (
+        <Suspense fallback={null}>
+          <EnrichReviewDialog
+            open={!!chatExtractReview}
+            onOpenChange={(o) => { if (!o) setChatExtractReview(null); }}
+            data={chatExtractReview}
+            applying={false}
+            onApply={handleChatExtractApply}
           />
         </Suspense>
       )}

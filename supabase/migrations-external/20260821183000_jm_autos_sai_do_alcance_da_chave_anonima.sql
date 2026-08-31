@@ -1,0 +1,26 @@
+-- =============================================================================
+-- O BUCKET DOS AUTOS SAI DO ALCANCE DA CHAVE ANÔNIMA
+-- Banco alvo: Supabase EXTERNO kmedldlepwiityjsdahz.
+--
+-- Reverte a policy criada horas antes em 20260821150000. Ela liberava `select`
+-- em storage.objects do bucket jm-autos para o role `authenticated`, o que
+-- parecia razoável — até lembrar que o app entra no Externo com
+-- signInAnonymously e a chave anônima está no bundle publicado. "authenticated"
+-- ali é qualquer um que abra o JS do whatsjud.
+--
+-- Isso já vale para o resto da base e é uma decisão antiga do projeto. Mas
+-- desde 20260821170000 o acervo passa a receber peça RESTRITA (autos completos
+-- via certificado digital), e documento sob segredo de justiça atrás de uma
+-- chave pública é outra categoria de risco.
+--
+-- QUEM ASSINA AGORA: a edge function jm-doc-url (deployada neste projeto,
+-- verify_jwt=false por design). Ela valida o token do CLOUD — o login real da
+-- equipe, recusando sessão anônima — e só então assina com service role.
+--
+-- REVERSÃO (se a function cair e for preciso destravar a tela):
+--   create policy jm_autos_leitura on storage.objects
+--     for select to authenticated using (bucket_id = 'jm-autos');
+--   ...e o front volta a usar db.storage.createSignedUrl.
+-- =============================================================================
+
+drop policy if exists jm_autos_leitura on storage.objects;

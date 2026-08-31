@@ -417,6 +417,71 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 
 ---
 
+## Uma medida só: progresso, etapa e passo atual da mensagem (30/08/2026)
+
+A mensagem gerada na atividade (`buildActivityMessage`) e a barra do POP na ficha (`LeadFunnelProgressBar`) leem o mesmo checklist e **têm que dizer o mesmo**. Caso que abriu a correção — processo `1017247-47.2025.4.01.3100`, POP "BPC JUDICIAL": a tela mostrava a fase de contestação com 16 dos 27 passos marcados e a mensagem ao cliente saiu com *"estamos no comecinho (0% concluído)"*, *Etapa: FASE 1*, *Passo atual: Análise do Indeferimento Administrativo*.
+
+Eram três divergências, todas estruturais:
+
+1. **Contexto congelado.** `useActivityStepContext` lia os passos uma vez, na montagem. Marcar passo acontece na barra, que é outro componente com estado próprio — nada avisava o contexto. A mensagem saía com a foto de quando a ficha abriu. Agora a barra emite `adscore:pop-steps-changed` (`src/lib/popStepsEvent.ts`) a cada gravação e o contexto recarrega.
+2. **Fase atual vinha do funil comercial.** `fetchLeadSteps` usava `leads.status` como fase atual. Em board de POP esse status nunca casa (era `procuracao_assinada`, fase do funil do lead), então a regra "1º não-concluído da fase atual" morria e caía no 1º não-concluído da lista inteira. A fase agora sai de `lead_processes.workflow_stage_id` (a mesma que a barra usa e que a régua de marcos escreve) e só vale se for fase **deste** board; `leads.status` é a segunda opção, sob a mesma condição.
+3. **Ordem dos passos era a de criação das instâncias.** Instâncias criadas no mesmo milissegundo saem em ordem arbitrária e objetivo adicionado depois ia para o fim. Agora vale a ordem projetada — fase (`kanban_boards.stages`) → objetivo (`checklist_stage_links.display_order`) → passo. Junto: instância de fase que não existe mais no board fica de fora, duplicata de (fase, objetivo) é resolvida pela mais avançada e passo `supersededBy` (histórico do POP antigo) não conta.
+
+**Percentual**: a mensagem contava passo no plano (16/27 = 59%) enquanto a barra pesa fase → objetivo → passo (61%). Agora as duas chamam `calculateHierarchicalProgress`, com o mesmo denominador — as fases do board, que passam a viajar no `stepContext.phases` (inclusive no aviso do sino, `ProcessUpdatesBell`). Fase sem objetivo instanciado continua pesando: sumir passo não pode subir percentual.
+
+Testes: `src/lib/__tests__/leadStepContext.ordem.test.ts` (ordem, dedupe, escolha do passo) e `src/components/activities/__tests__/buildActivityMessage.progresso.test.ts` (os passos reais do caso acima).
+
+---
+
+## O percentual da mensagem é o da régua de marcos (30/08/2026)
+
+Correção da entrega anterior. A decisão de 12/08/2026 — *"o percentual do processo atualizar só pelos marcos, não depender de marcar os passos, pq isso pode ser falho"* — valia para a barra da ficha e **não** tinha alcançado a mensagem: ela anunciava progresso de passo marcado à mão. No caso `1017247-47.2025.4.01.3100` a barra mostrava **40%** (régua: 2 de 5 marcos previstos, atual = Perícia em 28/04/2026, fonte `escavador_texto`) e a mensagem, 61% pelos passos. Dois números certos que, juntos, fazem a tela mentir.
+
+Agora `buildActivityMessage` recebe `regua` (`useProcessoMarcos` / RPC `pop_processo_regua`) e a ordem é:
+
+1. Requerimento encerrado no INSS → nenhum percentual (regra de 26/08/2026, intacta);
+2. **Régua com marco** → `📊 Andamento do processo: N% concluído` + `Marco atual: <rótulo> em <data>`;
+3. Sem marco nenhum → progresso por passos, como antes.
+
+A linha `*Etapa:* / *Objetivo:* / *Passo atual:*` continua sendo a do POP: **andamento** (onde o processo está) e **trabalho** (o que a equipe executou) são duas medidas com dois nomes, e por isso a linha da régua se chama `Marco atual`, não `Etapa`. Vale nas três telas que montam mensagem: `ActivityFullSheet`, `ActivitiesPage` e o sino (`ProcessUpdatesBell`, via `fetchProcessoRegua`).
+
+### A faixa de marcos do cabeçalho lia a régua errada
+
+`ProcessMarcosInline` (só usado no cabeçalho da atividade) lia `process_movements` — as **12 estações**, a régua antiga, que na prática só cobre o trabalhista. Em previdenciário ela está vazia: o cabeçalho dizia *"Nenhum marco registrado neste processo ainda"* no mesmo lugar em que a barra logo abaixo mostrava 40% pela régua do POP. Passou a ler `useProcessoMarcos` primeiro (marcos previstos: obrigatório sempre, eventual só quando aconteceu, estado que `atravessa_fases` fora) e só cai nas 12 estações quando a régua do POP não tem nada.
+
+### O que a captura automática já cobre neste POP
+
+Conferido no banco em 30/08/2026 — a régua previdenciária **já é** preenchida sozinha, como no trabalhista (migration `20260814130000`):
+
+| sinal | BPC JUDICIAL | POP - BPC - Administrativo |
+|---|---|---|
+| `tpu` (DataJud) | 33 | 33 |
+| `texto` (Escavador) | 10 | 10 |
+| `documento` (título em `jm_documentos`) | 7 | 7 |
+| `grau` | 2 | 2 |
+| `email` (INSS) | — | 6 |
+
+O caminho do documento anexado à mão existe ponta a ponta: `usePecasDoProcesso.anexar` grava em `jm_documentos`, `vincularAMarco` escreve `marco_chave`, e `vw_pop_marcos_detectados` casa por `d.marco_chave = pm.chave` (ou pelo padrão do título quando `marco_chave` é null) — `useProcessoMarcos.rematerializar` atualiza a régua na hora, sem esperar o tick.
+
+**Limites medidos, não estimados** (30/08/2026):
+- `jm_documentos` tem 5.113 `escavador_publico` + 559 `escavador_autos` + **1 `manual`**, e **0 linhas com `marco_chave`** — o vínculo manual nunca foi usado em produção.
+- O processo acima tem **0 documentos** baixados: por isso só o sinal de texto disparou.
+- A régua previdenciária **não tem marco de contestação/réplica nem de liquidação** (planilha, comprovante). Os sinais de `documento` cobrem laudo pericial, sentença, acórdão, certidão de trânsito, IDPJ, recuperação judicial e penhora negativa. Enquanto não existir marco para elas, anexar a planilha de liquidação não move percentual nenhum — é configuração de POP a decidir, não código.
+
+---
+
+## Prazo se cumpre, não se reagenda (31/08/2026)
+
+Três regras nascidas do caso `1017247-47.2025.4.01.3100` (prazo real 16/07 no título da atividade, deadline manual em 31/07, réplica protocolada 03/08 — e o prazo do robô criado 53 dias depois com título errado):
+
+1. **Detector de prazo consertado** (`_shared/escavadorCompromissos.ts`, testes em `src/lib/__tests__/escavadorCompromissos.test.ts`): reconhece o formato `Prazo: 5 dias` / `Prazo: 5 (cinco) dias úteis` dos atos ordinatórios do PJe (antes só "prazo **de** N dias"); e o alvo do título é o que a intimação **manda fazer** (o trecho após "manifestar/impugnar"), nunca a lista genérica "ato ordinatório / despacho / decisão / sentença" do cabeçalho da secretaria — era ela que rotulava intimação de contestação como "providência sobre sentença".
+2. **Deadline = compromisso − 3 dias** (`sync-process-compromissos` v24, substitui a regra de 29/07): a tarefa nasce datada três dias antes do fim do prazo (dias corridos — piso conservador) ou da audiência/perícia, nunca antes de hoje; `notification_date` continua hoje. **Prazo que chega já estourado (até 15 dias) vira tarefa urgente** com aviso 🚨, em vez de ser descartado — prazo vencido calado é o pior caso. Audiência/perícia passada segue descartada. Dedupe por hash não mudou: nada recriado retroativamente.
+3. **Trava no banco** (trigger `lead_activities_prazo_nao_reagenda`, migration `20260831130000`): atividade `activity_type='prazo'` (robô ou manual) só aceita deadline andando **para trás**; adiar ou apagar a data levanta exceção com a mensagem da regra. Prazo novo de verdade (nova intimação) = atividade nova. Rollback: drop do trigger.
+
+Junto com o radar de processos quietos (`docs/sistema/processual.md`), é a resposta ao "como não perder mais prazo": capturar cedo (radar), datar certo e cedo (−3 dias), nunca adiar (trigger), e nunca morrer calado (vencido vira urgente).
+
+---
+
 ## Campeonato de Engajamento — `/leaderboard`
 
 Ranking semanal de engajamento (Menção = 5 pts; Comentário = 2 pts). Página de consulta, sem ações.

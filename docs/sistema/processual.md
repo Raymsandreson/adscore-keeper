@@ -377,3 +377,76 @@ Testado contra `leads.lead_name`, `leads.victim_name`, `contacts.full_name`, gru
 - Lápis — edita; lixeira — exclui (casos já vinculados não são afetados).
 
 **Fluxo recomendado**: "Novo" → nome + prefixo + cor → salvar. O prefixo passa a valer na numeração automática de casos novos.
+
+---
+
+## Pipeline de atualizações por e-mail — sync-email-push v13 (30/08/2026)
+
+**Estado**: ATIVO em produção desde 30/08/2026 (migrations aplicadas, `sync-email-push` v13 deployada, Railway no ar). Resultados verificados no dia da ativação: casamento na janela de 7 dias foi de 41% (28/69) para 82% (513/625) — 100% nos e-mails cujo processo está cadastrado; 954 cards v13 em 423 processos; backfill do inbox#3 com filtro de órgãos (jus.br/mp.br/gov.br + assuntos SEI/OS/denúncia/demanda) trouxe 2.066 e-mails de 04/01/2024 até hoje; a aba "Sem vínculo" nasceu com 717 identificadores (567 protocolo INSS, 101 SEI, 47 CNJ, 1 demanda SIT — a 3747657-2 da SRTE/PB — e 1 ordem de serviço — a 11471427-4 do MTE). Fase 2 fechada no mesmo dia: 1.727 anexos capturados (backfill + modo `anexos_retroativos` do gmail-processual-sync), cron `jm-anexos-extrair` (30 min, lote 12) dispara a `jm-ler-peca` modo `{anexo_id}` só para o que é peça (PDF ou imagem ≥100 KB; assinatura de e-mail fica fora) e re-enfileira o e-mail no parser quando o texto chega — foi assim que 8 ordens de serviço (formato "OS:11388013-8" dos PDFs do SFIT, âncora própria) e 2 demandas SIT saíram de dentro dos relatórios de acidente do MTE direto para a aba "Sem vínculo".
+
+**O que muda quando ativar**:
+
+1. **Índice paginado** — o select de `lead_processes` era cortado em 1.000 linhas pelo PostgREST; a base tem 1.645 ativos com número. ~39% da carteira nunca casava. Agora pagina com `.range()` e devolve `indice_processos_carregados` no retorno.
+2. **Identificador tipado** (`_shared/identificadorProcessual.ts`) — CNJ exige 20 dígitos + DV módulo 97 (ISO 7064); SEI/demanda SIT/ordem de serviço/protocolo INSS têm tipo próprio pela máscara, nunca por comprimento. Tipo do e-mail tem que bater com o tipo do cadastro. Não-CNJ exige palavra-âncora a ≤40 caracteres.
+3. **Parsers novos derivados de e-mails reais** — PJe Push TRF1 (tabela Data/Movimento/Documento, 461 e-mails) e TRF3 (mesmo layout achatado, 93), EPROC em linha corrida TRF6/TJMG/JFs (a movimentação na mesma linha do `Num. Processo:` era pulada), PROJUDI TJAM (prosa com data por extenso), e-SAJ com `Incidente Processual:` e teor curto como complemento. Link do documento vai dentro de `eventos`.
+4. **Fallback não inventa data** — layout desconhecido grava `data_movimentacao` nula + `data_presumida = true` (migration `20260830120000`); o card mostra "sem data no e-mail".
+5. **Órfãos persistidos** — identificador sem cadastro vira linha em `email_identificadores_orfaos` (RPC `jm_email_orfaos_upsert`); aba **Sem vínculo** no painel do sino ordena por última ocorrência com ações Vincular (busca nº/nome) / Criar processo / Ignorar; ao vincular, a função reprocessa os e-mails daquele identificador (`{ reprocessar: { identificador } }`) para os cards retroativos.
+6. **Anexos MTE** (migration `20260830121000`) — `gmail-processual-sync` salva anexos de remetentes de governo no bucket privado `processual-anexos`; `jm-ler-peca` ganhou modo `{ anexo_id }` que extrai o texto (mesma função, mesmo Gemini); a varredura de identificadores roda também sobre o texto extraído.
+7. **Backfill restrito do inbox#3** — `gmail-processual-sync` aceita `inbox` + `q` (filtro Gmail) e, em `dry_run`, devolve `por_ano`/`por_remetente` — o relatório que aprova o backfill do adm@ até 01/01/2024 sem despejar a caixa inteira.
+
+**Proveniência**: toda linha nova do feed grava `email_message_id` + `email_recebido_em` — é o que torna o reprocessamento limpo (`apagar_cards` só alcança cards do mesmo e-mail).
+
+### Parser versionado — e-mail lido por parser velho volta para a fila (30/08/2026)
+
+**O furo**: a ficha do processo `1017247-47.2025.4.01.3100` dizia "Nenhuma movimentação capturada neste processo ainda" com **três pushes do TRF1 na base** (17/06, 30/06 e 09/07/2026, `has_movimentacao = true`, `process_number` preenchido). Os três foram lidos em 11-12/08 pelo parser da época — que só copiava o assunto —, e os cards genéricos que ele gerou foram apagados na limpeza de ruído do dia 12 (`zz_process_updates_ruido_bkp_20260812` guarda os 3). Como `vw_email_push_pendentes` era anti-join contra `email_push_processados`, o e-mail ficou marcado como lido para sempre: nenhuma rodada do cron voltava nele, e o parser v13 — que extrai a tabela Data/Movimento do TRF1 — nunca chegou a vê-lo.
+
+**Tamanho**: 155 dos 615 processos com push na base estavam sem um único card; 559 e-mails deles marcados como processados, 462 nos dias 11-12/08. Por layout, 520 desses 559 (93%) têm marcador que o parser corrente sabe ler (303 tabela Data/Movimento, 212 bloco "Eventos:", 5 e-SAJ).
+
+**A correção** (migration `20260830210000_reler_push_apos_parser_novo.sql`): "processado" deixa de ser sim/não e passa a ser **por qual parser**.
+
+- `email_push_processados.parser_versao` guarda a versão que leu o e-mail (linhas antigas ficam em `0`);
+- `jm_email_parser_versao()` é a versão corrente — **fonte única**, lida pela edge e pelas views (nasce em `1` = sync-email-push v13);
+- `vw_email_push_pendentes` = nunca lido **ou** lido por versão anterior. O `0` das linhas antigas é o que devolve a caixa inteira (9.495 e-mails em 30/08) para a fila uma vez;
+- `vw_jm_captura_status` conta "concluído" como "lido pelo parser corrente" — senão o painel diria 0 na fila enquanto a edge relê 9 mil e-mails.
+
+**Reprocessar é seguro e não custa**: a gravação do feed é upsert por `(process_id, conteudo_hash)` com `ignoreDuplicates`, então e-mail relido não duplica card; e a reabertura paga do Escavador (`jm_esc_reabrir_por_cnj`, R$ 0,20/processo) só alcança e-mail recebido dentro de `reabrir_desde_dias` (3), então o passivo antigo passa de graça. Ritmo: cron de hora em hora com `limite: 200` ≈ 48 h para drenar; chamadas manuais com `limite: 1000` encurtam.
+
+**Ordem de aplicação**: deploy da `sync-email-push` primeiro, migration depois. Invertido, a edge antiga marca sem `parser_versao`, as linhas de backfill continuam em `0` e o cron relê o mesmo lote a cada hora até o deploy chegar (não corrompe nada — só desperdício).
+
+**O RITUAL**: mexeu em `_shared/emailPushParser.ts` de um jeito que muda o que ele extrai? Sobe `jm_email_parser_versao()` em +1 numa migration. É isso que faz a melhoria valer para a caixa inteira, e não só para o e-mail que chegar depois dela.
+
+**Na tela** (`SemMovimentacaoNoProcesso.tsx`): o vazio do painel de um processo deixou de ser ponto final e virou detector com caminho clicável — se há e-mail de push na base sem card, diz quantos e oferece "Ler o(s) e-mail(s) agora" (chama `sync-email-push` no modo `reprocessar` por identificador, sem sair do painel); se não há nenhum, diz que o furo é a montante (processo fora do push do tribunal, ou número cadastrado diferente do que o tribunal usa).
+
+---
+
+## Radar de processos quietos — radar-processos-quietos (31/08/2026)
+
+**Estado**: ATIVO. Edge `radar-processos-quietos` (Externo) + tabela `radar_atualizacoes` + funções `radar_processos_quentes`/`radar_mov_mais_nova` + cron `radar-processos-quietos` 2×/dia (09h e 17h UTC). Migration `supabase/migrations-external/20260831120000_radar_processos_quietos.sql`.
+
+**O furo que ele fecha** (caso `1017247-47.2025.4.01.3100`, diagnosticado 31/08/2026): a juntada de réplica de 03/08 só chegou ao banco em **30/08** — 53 dias de atraso no prazo automático. As três fontes falharam juntas: juntada não sai no Diário (e-mail push estruturalmente cego), DataJud sem o processo, e o **cache do próprio Escavador** parado em 08/07 — a consulta de 30/08 aconteceu de verdade (`data_ultima_verificacao` só grava dentro do bloco que salvou o retorno da API) e mesmo assim veio velha, porque nossa consulta lê a cópia do Escavador, não o tribunal, e ninguém nunca pediu `solicitar-atualizacao` (0 linhas em `jm_esc_solicitacoes` para o CNJ). Medido no dia: 591 processos com atividade aberta, 335 com movimentação parada 20+ dias, 254 com prazo ≤7 dias e movimentação velha.
+
+**Como funciona por rodada**: (1) follow-up das solicitações pagas pendentes — re-consulta o cache, quem avançou vira `ATUALIZADO` + `sync-process-compromissos` na hora; (2) lista quente via `radar_processos_quentes`, por urgência: `email_recente` (push nos últimos 2 dias e movimentações salvas mais velhas que o e-mail — o caso Sidiney em 10/07), `prazo_proximo` (atividade vence em ≤7 dias, movimentação >7d), `mov_estagnada` (parada ≥20 dias); (3) re-consulta **gratuita** do cache (`backfill-process-marcos` com `process_ids`, lotes de 20, até 40/rodada); (4) só quem **continua** parado vira solicitação **paga** (`esc-autos` `acao=solicitar`, corpo `{}` = tribunal sem documentos, o modo mais barato), com cooldown por motivo (3/7/30 dias) e teto de 15/rodada. Créditos cobrados ficam na linha (`radar_atualizacoes.creditos`) — custo auditável por `select motivo, count(*), sum(creditos) from radar_atualizacoes group by 1`.
+
+**Knobs** (body do POST): `dry_run`, `max_refetch` (40), `max_solicitacoes` (15), `stale_dias` (20), `prazo_janela_dias` (7). **Rollback <5min**: `select cron.unschedule('radar-processos-quietos')` — nada mais depende da edge.
+
+---
+
+## Ficha do processo: de onde vem a capa (30/08/2026)
+
+**O problema**: 1.175 dos 1.291 processos judiciais estavam sem tribunal, 1.181 sem polo ativo e 896 sem nenhuma data de início — muitos deles com 20 movimentações e a aba "Documentos" cheia. Causa: o endpoint `/processos/{cnj}/movimentacoes` do Escavador **não devolve capa**, e era por ele que a edge `backfill-process-marcos` alimentava a base. Só o botão "Buscar no Escavador" da ficha (`buscar_completo` → `escavador_raw` → `handleReExtract`) traz capa, e ele nunca tinha rodado nesses processos.
+
+**Não afeta a jurimetria.** Conferido em 30/08/2026: nenhuma view `vw_jm_*` lê esses campos. A única que toca `lead_processes` é `vw_jm_conciliacao_acordos`, e só usa `process_number` e `title`. Os valores vêm de `jm_valores`/`jm_decisoes`/`jm_lancamentos`; os prazos, de `jm_processos.data_protocolo` e `jm_movimentos` (DataJud). O que a ficha vazia quebra é a **busca da carteira por UF/cidade/tribunal** (`useCarteiraDoPop.ts`) e o **marco de ajuizamento**, que a régua tira de `data_distribuicao`/`data_inicio`.
+
+**As três fontes, em ordem de precedência** (`src/lib/fichaDoBanco.ts`, botão "Completar do banco" da ficha):
+1. publicação guardada em `process_movements` (a capa está na primeira intimação);
+2. nota do cadastro (`lead_processes.notes`, do inventário por OAB);
+3. DataJud (`vw_estacao_evidencia_datajud`) → órgão julgador, grau, sigla do tribunal;
+4. jurimetria (`jm_processos`, `jm_partes`) → polo passivo, cidade, UF, data de protocolo, polo ativo.
+
+Custo zero de API — é tudo junção do que já está no banco.
+
+**Backfill em lote**: `scripts/completar-ficha-do-banco.sql` aplica isso a toda a base (backup → dry-run → update → rollback). Só grava em coluna NULL, é idempotente e não toca `data_ultima_verificacao`. Rodado em 30/08/2026: **1.027 processos preenchidos, 0 sobrescritos**; backup em `lead_processes_ficha_backfill_20260830` (RLS ligada, sem policy).
+
+**Furo fechado na origem**: `_shared/escavadorCapa.ts` (`mapearCapa` + `COLUNAS_DA_CAPA`) traduz a capa do Escavador para as colunas de `lead_processes`. A `backfill-process-marcos` já pagava uma consulta extra em `/processos/{cnj}` quando faltava data de início, mas guardava só três campos; desde a v16 grava a capa inteira e o `escavador_raw`, sem passar por cima de campo já preenchido. Deploy da função: `node _deploy_backfill_process_marcos.mjs` com `SUPABASE_PAT` (ela tem dependências em `_shared/`, então não dá para subir só o `index.ts`).
+
+**Dois defeitos de leitura da nota corrigidos junto**: o valor parava no primeiro ponto e cortava "Copel Distribuicao S.A" em "Copel Distribuicao S" (705 fichas); e parte anonimizada em iniciais ("R. G. M. P.") virava polo passivo "R" (35 fichas, todas desfeitas).

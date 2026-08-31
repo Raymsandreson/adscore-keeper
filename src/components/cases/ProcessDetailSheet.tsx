@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -11,15 +11,41 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
+
+/**
+ * `src/integrations/supabase/types.ts` é gerado pelo Lovable e não conhece as
+ * tabelas `jm_` do Externo — elas nasceram fora dele. Sem este destipado o
+ * `.from('jm_documento_leitura')` não compila (TS2769/TS2589) e o `tsc` do
+ * projeto fica vermelho; o cast de cada consulta, logo abaixo, é que diz o
+ * formato real de cada retorno.
+ */
+const externoJm = externalSupabase as unknown as {
+  from: (tabela: string) => {
+    select: (colunas: string) => {
+      in: (coluna: string, valores: unknown[]) => Promise<{ data: Record<string, unknown>[] | null }>;
+    };
+  };
+};
+
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { invalidateLeadLinkedContactsCache } from '@/components/leads/LeadLinkedContacts';
+import { VincularParteContatoDialog } from './VincularParteContatoDialog';
+import { CriarCasoDoProcessoDialog } from './CriarCasoDoProcessoDialog';
+import { notaDeCadastro, soDigitos, tipoDeDocumento } from '@/lib/parteContato';
 import { toast } from 'sonner';
 import {
   FileText, MapPin, Building2, Scale, Users, Calendar, ExternalLink,
   Hash, Info, BookOpen, Landmark, Save, Loader2, Pencil, RefreshCw, ClipboardList, CheckCircle2, Clock,
   Download, Upload, File, Trash2, FolderOpen, Milestone, Newspaper, Plus, ChevronLeft, UserPlus, MessageSquare, Target,
-  DollarSign
+  DollarSign, Paperclip, Calculator
 } from 'lucide-react';
+import { MediaLightbox } from '@/components/whatsapp/MediaLightbox';
+import { usePecasDoProcesso } from '@/hooks/usePecasDoProcesso';
+import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
+import { VincularLeadAoProcesso, ImportarDoDriveButton } from './ProcessoLeadVinculo';
+import { useConferenciaProcesso } from '@/hooks/useConferenciaProcesso';
+import { MudancasDaPecaDialog } from '@/components/workflow/MudancasDaPecaDialog';
+import { JurimetriaValoresDrawer } from './JurimetriaValoresDrawer';
 import { ProcessMovimentacoesTab, type MovementForActivity } from './ProcessMovimentacoesTab';
 import { ProcessResultadoTab, type PopResultConfig } from './ProcessResultadoTab';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
@@ -28,6 +54,7 @@ import { ResponsibleUserSelect } from './ResponsibleUserSelect';
 import { useSystemOabs } from '@/hooks/useSystemOabs';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
 import { ProcessMovementsTimeline } from './ProcessMovementsTimeline';
+import { useFichaDoBanco } from '@/hooks/useFichaDoBanco';
 import { syncProcessMarcos, syncProcessCompromissos } from '@/utils/escavadorMovementUtils';
 import { ProcessCustomFieldsForm } from '@/components/processes/ProcessCustomFieldsForm';
 import { ActivityFullSheet, type ActivityDraft } from '@/components/activities/ActivityFullSheet';
@@ -215,6 +242,32 @@ const DOCUMENT_TYPE_LABELS: Record<string, string> = {
   'outro': 'Outro',
 };
 
+/** Leitura por IA de uma peça do acervo — o que interessa à jurimetria. */
+interface LeituraAcervo {
+  leituraId: number;
+  resumo: string | null;
+  valorCondenacao: number;
+  partes: { nome?: string; verbas?: { valor?: number }[] }[];
+  /** Leitura crua, no formato que o MudancasDaPecaDialog espera. */
+  raw: Record<string, unknown>;
+}
+
+function montaLeituraAcervo(r: Record<string, unknown>): LeituraAcervo {
+  return {
+    leituraId: Number(r.id),
+    resumo: (r.resumo as string) ?? null,
+    valorCondenacao: Number(r.valor_condenacao ?? 0) || 0,
+    partes: Array.isArray(r.partes) ? (r.partes as LeituraAcervo['partes']) : [],
+    raw: r,
+  };
+}
+
+const somaPartesDaLeitura = (l: LeituraAcervo) =>
+  l.partes.reduce((s, p) => s + (p.verbas ?? []).reduce((sv, v) => sv + (Number(v.valor) || 0), 0), 0);
+
+const brlCurto = (v: number) =>
+  v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+
 function classifyDocumentType(text: string): string {
   const t = text.toLowerCase();
   if (t.includes('procura')) return 'procuracao';
@@ -259,17 +312,43 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     });
   }, [isMobile]);
   const [marcosRefreshKey, setMarcosRefreshKey] = useState(0);
+
+  // O que o banco já sabe sobre este processo, sem gastar consulta externa.
+  // Vale para toda ficha, mas foi criado para as do inventário por OAB: elas
+  // nascem com título e número e nada mais, enquanto a publicação guardada em
+  // process_movements já diz autor, classe, vara, tribunal e cidade.
+  const fichaBanco = useFichaDoBanco(
+    open ? process?.id : null,
+    form.process_number || process?.process_number || null,
+    form.notes ?? null,
+    marcosRefreshKey,
+  );
+  // Só interessa o que a ficha ainda NÃO tem: completar nunca sobrescreve o que
+  // alguém digitou nem o que o Escavador trouxe.
+  const camposDoBancoFaltando = useMemo(
+    () => fichaBanco.campos.filter((c) => {
+      const atual = form[c.campo];
+      return atual == null || String(atual).trim() === '';
+    }),
+    [fichaBanco.campos, form],
+  );
+  const [completandoDoBanco, setCompletandoDoBanco] = useState(false);
+  // Diálogo que cria lead + caso + contato + grupo para o processo sem dono.
+  const [criandoCaso, setCriandoCaso] = useState(false);
+
   const [addingContacts, setAddingContacts] = useState(false);
   const [addedContactNames, setAddedContactNames] = useState<Set<string>>(new Set());
+  // Parte cujo botão "Contato" foi clicado: o vínculo passa pelo diálogo de
+  // sugestões, para não criar um contato repetido de quem já está na base.
+  const [parteEmVinculo, setParteEmVinculo] = useState<ParteProcesso | null>(null);
   // Cria/vincula as partes do processo como contatos do lead (contacts + contact_leads no Externo).
-  // Dedup por nome; ignora vínculo duplicado (23505). Não toca no campo Polo Ativo/Passivo.
+  // Dedup por documento e por nome; ignora vínculo duplicado (23505). Não toca no
+  // campo Polo Ativo/Passivo.
+  // Sem lead o contato é criado do mesmo jeito, só não ganha o vínculo — antes a
+  // função desistia aqui e o botão da parte não fazia nada.
   // `auto`: chamada pelo vínculo automático ao abrir o processo — erro não vira toast
   // de erro na cara do usuário e o sucesso avisa que foi automático.
   const addPartesAsContacts = useCallback(async (partes: ParteProcesso[], opts?: { auto?: boolean }) => {
-    if (!process?.lead_id) {
-      if (!opts?.auto) toast.error('Vincule o processo a um lead antes de adicionar as partes como contatos');
-      return 0;
-    }
     if (!partes.length) return 0;
     setAddingContacts(true);
     try {
@@ -278,27 +357,37 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
       const externalUserId = await remapToExternal(currentUser?.id).catch(() => null);
       let vinculados = 0;
       for (const p of partes) {
-        // Dedup: reaproveita contato existente com o mesmo nome.
-        const { data: existing } = await externalSupabase
-          .from('contacts').select('id').ilike('full_name', p.nome).limit(1);
-        let contactId: string | undefined = existing?.[0]?.id;
+        // Dedup: documento primeiro (não erra), nome igual depois.
+        const cpf = tipoDeDocumento(p.doc) === 'cpf' ? soDigitos(p.doc) : null;
+        let contactId: string | undefined;
+        if (cpf) {
+          const { data: porDoc } = await externalSupabase
+            .from('contacts').select('id').in('cpf', [cpf, String(p.doc)]).is('deleted_at', null).limit(1);
+          contactId = porDoc?.[0]?.id;
+        }
         if (!contactId) {
-          const notes = [
-            `Cadastrado via processo ${form.process_number || ''}`.trim(),
-            p.tipo ? `Participação: ${p.tipo}` : null,
-            `Polo: ${p.polo}`,
-            p.doc ? `Doc: ${p.doc}` : null,
-          ].filter(Boolean).join(' | ');
+          const { data: existing } = await externalSupabase
+            .from('contacts').select('id').ilike('full_name', p.nome).limit(1);
+          contactId = existing?.[0]?.id;
+        }
+        if (!contactId) {
           const { data: novo, error: cErr } = await externalSupabase
             .from('contacts')
-            .insert({ full_name: p.nome, notes, created_by: externalUserId } as any)
+            .insert({
+              full_name: p.nome,
+              cpf,
+              notes: notaDeCadastro(p, form.process_number),
+              created_by: externalUserId,
+            } as any)
             .select('id').single();
           if (cErr || !novo) { console.error('Erro ao criar contato de parte:', cErr); continue; }
           contactId = novo.id;
         }
-        const { error: linkErr } = await (externalSupabase as any)
-          .from('contact_leads').insert({ contact_id: contactId, lead_id: process.lead_id });
-        if (linkErr && linkErr.code !== '23505') { console.error('Erro ao vincular parte ao lead:', linkErr); continue; }
+        if (process?.lead_id) {
+          const { error: linkErr } = await (externalSupabase as any)
+            .from('contact_leads').insert({ contact_id: contactId, lead_id: process.lead_id });
+          if (linkErr && linkErr.code !== '23505') { console.error('Erro ao vincular parte ao lead:', linkErr); continue; }
+        }
         vinculados++;
       }
       setAddedContactNames(prev => {
@@ -306,12 +395,13 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         partes.forEach(p => next.add(p.nome.toLowerCase()));
         return next;
       });
-      invalidateLeadLinkedContactsCache(process.lead_id);
+      if (process?.lead_id) invalidateLeadLinkedContactsCache(process.lead_id);
       if (vinculados > 0) {
         const sufixo = opts?.auto ? ' (automático)' : '';
+        const destino = process?.lead_id ? 'aos contatos do lead' : 'aos contatos (processo sem lead)';
         toast.success(vinculados === 1
-          ? `1 parte adicionada aos contatos do lead${sufixo}`
-          : `${vinculados} partes adicionadas aos contatos do lead${sufixo}`);
+          ? `1 parte adicionada ${destino}${sufixo}`
+          : `${vinculados} partes adicionadas ${destino}${sufixo}`);
       }
       return vinculados;
     } catch (e) {
@@ -527,24 +617,95 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
   // Fetch documents when tab is activated.
   // process_documents vive no Externo e a RLS exige `authenticated` — sem a sessão
   // anônima pronta o select volta 0 linhas em silêncio.
+  const loadDocuments = useCallback(async () => {
+    if (!process?.id) return;
+    setLoadingDocuments(true);
+    await ensureExternalSession().catch(() => {});
+    const { data, error } = await externalSupabase
+      .from('process_documents')
+      .select('*')
+      .eq('process_id', process.id)
+      .order('document_date', { ascending: false, nullsFirst: false });
+    if (error) console.error('Error loading process documents:', error);
+    setDocuments((data || []) as unknown as ProcessDocument[]);
+    setLoadingDocuments(false);
+  }, [process?.id]);
+
   useEffect(() => {
     if (activeTab !== 'documentos' || !process?.id) return;
-    let cancelled = false;
-    setLoadingDocuments(true);
+    void loadDocuments();
+  }, [activeTab, process?.id, loadDocuments]);
+
+  // Vínculo com lead pode nascer AQUI (aba Documentos) — o prop `process` é do
+  // pai e não muda até reabrir; este estado dá o efeito imediato na aba.
+  const [linkedLeadId, setLinkedLeadId] = useState<string | null>(null);
+  useEffect(() => { setLinkedLeadId(process?.lead_id ?? null); }, [process?.id, process?.lead_id]);
+
+  // Acervo dos autos (jm_documentos, por CNJ) — a MESMA fonte da Conferência.
+  // A aba Documentos só mostrava process_documents (uploads/ZapSign/importados) e
+  // escondia as peças que o Escavador já baixou; o caso 46 tinha 20 PDFs
+  // invisíveis aqui (29/08/2026). O hook só liga com a aba aberta.
+  const { pecas: acervo, assinar: assinarPeca, lerPeca: lerPecaAcervo, corrigirValores: corrigirValoresAcervo } = usePecasDoProcesso(
+    activeTab === 'documentos' ? (form.process_number ?? null) : null,
+  );
+  const [pecaAberta, setPecaAberta] = useState<{ url: string; titulo: string } | null>(null);
+
+  const abrirPecaAcervo = async (p: PecaDoProcesso) => {
+    const url = await assinarPeca(p.storagePath);
+    if (!url) { toast.error('Não consegui abrir a peça.'); return; }
+    setPecaAberta({ url, titulo: p.titulo || 'Peça dos autos' });
+  };
+
+  // Leitura por IA de cada peça do acervo (jm_documento_leitura): resumo + os
+  // valores que a peça carrega. A esteira de leitura roda no banco (tick a cada
+  // 2 min); o botão "resumir" só cobre o intervalo até ela passar.
+  const [leiturasAcervo, setLeiturasAcervo] = useState<Record<number, LeituraAcervo>>({});
+  const [resumindo, setResumindo] = useState<number | null>(null);
+  useEffect(() => {
+    if (activeTab !== 'documentos' || acervo.length === 0) return;
+    let cancelado = false;
     (async () => {
       await ensureExternalSession().catch(() => {});
-      const { data, error } = await externalSupabase
-        .from('process_documents')
-        .select('*')
-        .eq('process_id', process.id)
-        .order('document_date', { ascending: false, nullsFirst: false });
-      if (cancelled) return;
-      if (error) console.error('Error loading process documents:', error);
-      setDocuments((data || []) as unknown as ProcessDocument[]);
-      setLoadingDocuments(false);
+      const { data } = await (externoJm
+        .from('jm_documento_leitura')
+        .select('id, documento_id, resumo, valor_condenacao, partes, cronograma, especie, processo')
+        .in('documento_id', acervo.map(p => p.id)) as unknown as Promise<{ data: Record<string, unknown>[] | null }>);
+      if (cancelado || !data) return;
+      const mapa: Record<number, LeituraAcervo> = {};
+      for (const r of data) mapa[Number(r.documento_id)] = montaLeituraAcervo(r);
+      setLeiturasAcervo(prev => ({ ...mapa, ...prev }));
     })();
-    return () => { cancelled = true; };
-  }, [activeTab, process?.id]);
+    return () => { cancelado = true; };
+  }, [activeTab, acervo]);
+
+  const resumirPeca = async (p: PecaDoProcesso) => {
+    setResumindo(p.id);
+    try {
+      const r = await lerPecaAcervo(p.id);
+      if (r.ok && r.leitura) setLeiturasAcervo(prev => ({ ...prev, [p.id]: montaLeituraAcervo(r.leitura!) }));
+      else toast.info(r.erro || 'A leitura ainda não voltou — tente de novo em um minuto.');
+    } finally {
+      setResumindo(null);
+    }
+  };
+
+  // Jurimetria do processo — os valores que a carteira usa hoje, para o acervo
+  // poder SINALIZAR qual peça mexe neles (pedido do Raym, 29/08/2026). É o
+  // mesmo hook da Conferência; só liga com a aba Documentos aberta.
+  //
+  // O useMemo do alvo é obrigatório: objeto novo a cada render fazia o hook
+  // recarregar sem parar, e a re-renderização contínua cancelava a busca dos
+  // resumos do acervo antes de ela voltar — os resumos sumiam da tela.
+  const alvoConferencia = useMemo(
+    () => (activeTab === 'documentos' && process?.id && form.workflow_id && form.process_number
+      ? { processId: process.id as string, boardId: form.workflow_id as string, cnj: form.process_number as string }
+      : null),
+    [activeTab, process?.id, form.workflow_id, form.process_number],
+  );
+  const conferencia = useConferenciaProcesso(alvoConferencia);
+  const totalCarteira = conferencia.clientes.reduce((s, c) => s + c.valor, 0);
+  const [mudancaAcervo, setMudancaAcervo] = useState<{ leitura: Record<string, unknown>; titulo: string } | null>(null);
+  const [jurimetriaAberta, setJurimetriaAberta] = useState(false);
 
   const fetchEscavadorDocuments = async () => {
     if (!form.process_number) {
@@ -633,6 +794,42 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setForm(prev => ({ ...prev, [key]: value }));
     setDirty(true);
   }, []);
+
+  /**
+   * Preenche a ficha com o que o banco já tem — publicações, jurimetria,
+   * DataJud, nota de cadastro. Nenhuma consulta externa, nenhum crédito.
+   *
+   * Só toca em campo VAZIO. O que veio do Escavador ou foi digitado por alguém
+   * é dado com dono; sobrescrever por dedução de texto seria degradar a ficha.
+   * O polo do cliente entra junto quando a publicação nomeia advogado do
+   * escritório — é o que define a saudação da mensagem que vai para o cliente.
+   */
+  const handleCompletarDoBanco = async () => {
+    if (!process?.id || camposDoBancoFaltando.length === 0) return;
+    const updates: Record<string, any> = {};
+    for (const c of camposDoBancoFaltando) updates[c.campo] = c.valor;
+
+    const polo = fichaBanco.nossoPolo;
+    const marcaPolo = !!polo && !form.cliente_polo;
+    if (marcaPolo) updates.cliente_polo = polo!.polo;
+
+    setCompletandoDoBanco(true);
+    try {
+      const { error } = await externalSupabase.from('lead_processes').update(updates).eq('id', process.id);
+      if (error) throw error;
+      setForm(prev => ({ ...prev, ...updates }));
+      const nomes = camposDoBancoFaltando.map(c => c.rotulo).join(', ');
+      toast.success(
+        `${camposDoBancoFaltando.length} campo(s) preenchido(s) do banco, sem consultar o Escavador`,
+        { description: marcaPolo ? `${nomes} · nosso polo: ${polo!.polo}` : nomes, duration: 7000 },
+      );
+      onUpdated?.();
+    } catch (err: any) {
+      toast.error('Não consegui gravar os campos', { description: err?.message });
+    } finally {
+      setCompletandoDoBanco(false);
+    }
+  };
 
   const handleReExtract = async (rawOverride?: any) => {
     const raw = rawOverride ?? form.escavador_raw;
@@ -1041,7 +1238,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                       </label>
                       <Button
                         type="button" variant="outline" size="sm" className="h-7 text-xs"
-                        disabled={!process?.lead_id || addingContacts || partesPendentes.length === 0}
+                        disabled={addingContacts || partesPendentes.length === 0}
                         onClick={() => addPartesAsContacts(partesPendentes)}
                       >
                         {addingContacts
@@ -1054,12 +1251,24 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                     </div>
                     <p className="text-[10px] text-muted-foreground">
                       Nomes completos das partes (o campo acima traz só as iniciais abreviadas da API).
-                      As partes viram contatos do lead automaticamente ao abrir o processo.
+                      Com lead vinculado, as partes viram contatos do lead automaticamente ao abrir o processo.
+                      O botão de cada parte procura antes quem já está na base — inclusive o telefone das
+                      conversas do WhatsApp — para não criar contato repetido.
                     </p>
                     {!process?.lead_id && (
-                      <p className="text-[10px] text-amber-600 dark:text-amber-400">
-                        Processo sem lead vinculado — vincule a um lead para adicionar as partes como contatos.
-                      </p>
+                      <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-2 space-y-1.5">
+                        <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                          Processo sem lead vinculado — as partes viram contatos assim mesmo, só não ficam
+                          ligadas a um lead.
+                        </p>
+                        <Button
+                          type="button" size="sm" variant="outline" className="h-7 w-full text-xs"
+                          onClick={() => setCriandoCaso(true)}
+                        >
+                          <UserPlus className="h-3 w-3 mr-1" />
+                          Criar caso, lead e grupo deste processo
+                        </Button>
+                      </div>
                     )}
                     <div className="space-y-1.5">
                       {partesProcesso.map((p, i) => {
@@ -1077,8 +1286,8 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                             <Button
                               type="button" variant={added ? 'ghost' : 'outline'} size="sm"
                               className="h-7 text-xs flex-shrink-0"
-                              disabled={!process?.lead_id || addingContacts || added}
-                              onClick={() => addPartesAsContacts([p])}
+                              disabled={addingContacts || added}
+                              onClick={() => setParteEmVinculo(p)}
                             >
                               {added
                                 ? <><CheckCircle2 className="h-3 w-3 mr-1 text-green-600" /> Contato</>
@@ -1111,21 +1320,138 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
             {activeTab === 'documentos' && (
               <div className="space-y-3">
+                {/* Sem lead não há Drive: o vínculo (por nome, por grupo de
+                    WhatsApp ou criando lead novo) é a porta de entrada. */}
+                {process?.id && !linkedLeadId && (
+                  <VincularLeadAoProcesso
+                    processId={process.id}
+                    sugestaoNome={form.title || ''}
+                    onVinculado={(id) => { setLinkedLeadId(id); onUpdated?.(); }}
+                  />
+                )}
+
+                {/* Acervo dos autos — as peças que o Escavador baixou (jm-autos),
+                    do mais recente para o mais antigo, com o resumo por IA da
+                    leitura (jm_documento_leitura) ao lado. É o mesmo acervo da
+                    Conferência. */}
+                {acervo.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold flex items-center gap-1.5">
+                        <Paperclip className="h-3.5 w-3.5 text-primary" />
+                        Acervo dos autos — Escavador ({acervo.length})
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setJurimetriaAberta(true)}
+                        className="text-[10px] text-primary underline decoration-dotted underline-offset-2 hover:text-primary/80"
+                        title="Abre a tabela dos valores que a carteira usa, com a auditoria do que foi corrigido automaticamente"
+                      >
+                        <Calculator className="mr-0.5 inline h-3 w-3" />
+                        valores da jurimetria{totalCarteira > 0 ? ` · ${brlCurto(totalCarteira)}` : ''}
+                      </button>
+                    </div>
+                    <div className="max-h-96 space-y-0.5 overflow-y-auto rounded-md border p-1.5">
+                      {[...acervo]
+                        .sort((a, b) => (b.dataDocumento ?? '').localeCompare(a.dataDocumento ?? ''))
+                        .map(p => {
+                          const leitura = leiturasAcervo[p.id];
+                          // A peça carrega dinheiro? Compara com o que a carteira
+                          // usa hoje — é a sinalização de "isto mexe na jurimetria".
+                          const valorDaPeca = leitura ? (somaPartesDaLeitura(leitura) || leitura.valorCondenacao) : 0;
+                          const temValorPorParte = !!leitura && leitura.partes.length > 0;
+                          const bateComCarteira = temValorPorParte
+                            && totalCarteira > 0
+                            && Math.abs(somaPartesDaLeitura(leitura) - totalCarteira) <= 0.01;
+                          return (
+                          <div key={p.id} className="rounded px-1.5 py-1 text-xs hover:bg-muted/40">
+                            <div className="flex items-center gap-2">
+                              <span className="w-16 shrink-0 text-[10px] text-muted-foreground">
+                                {p.dataDocumento
+                                  ? new Date(`${p.dataDocumento.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
+                                  : '—'}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void abrirPecaAcervo(p)}
+                                className="min-w-0 flex-1 truncate text-left underline-offset-2 hover:underline"
+                                title="Abrir a peça"
+                              >
+                                {p.titulo || 'Peça dos autos'}
+                              </button>
+                              {p.tipo === 'RESTRITO' && (
+                                <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">restrita</Badge>
+                              )}
+                              {p.origem === 'manual' && (
+                                <Badge variant="outline" className="shrink-0 px-1 py-0 text-[8px]">anexada à mão</Badge>
+                              )}
+                              {valorDaPeca > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setMudancaAcervo({ leitura: leitura!.raw, titulo: p.titulo || 'Peça dos autos' })}
+                                  className={`shrink-0 rounded border px-1 py-0 text-[9px] font-medium ${
+                                    bateComCarteira
+                                      ? 'border-emerald-500/50 text-emerald-600 dark:text-emerald-400'
+                                      : 'border-amber-500/60 bg-amber-500/10 text-amber-700 dark:text-amber-400'
+                                  }`}
+                                  title={bateComCarteira
+                                    ? 'Os valores desta peça batem com os que a carteira usa hoje — clique para ver o lado a lado'
+                                    : 'Esta peça carrega valores DIFERENTES dos que a carteira usa hoje — clique para ver o que muda na jurimetria'}
+                                >
+                                  {brlCurto(valorDaPeca)} {bateComCarteira ? '= carteira' : '≠ carteira'}
+                                </button>
+                              )}
+                              {!leitura && (
+                                <button
+                                  type="button"
+                                  disabled={resumindo !== null}
+                                  onClick={() => void resumirPeca(p)}
+                                  className="shrink-0 text-[10px] text-muted-foreground underline decoration-dotted underline-offset-2 hover:text-foreground disabled:opacity-50"
+                                  title="Lê a peça com IA e guarda o resumo (consome tokens; ~1 min)"
+                                >
+                                  {resumindo === p.id ? <Loader2 className="h-3 w-3 animate-spin" /> : 'resumir'}
+                                </button>
+                              )}
+                            </div>
+                            {leitura?.resumo && (
+                              <p className="mt-0.5 pl-[4.5rem] text-[10px] leading-snug text-muted-foreground" title={leitura.resumo}>
+                                {leitura.resumo}
+                              </p>
+                            )}
+                          </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <h4 className="text-xs font-semibold flex items-center gap-1.5">
                     <FolderOpen className="h-3.5 w-3.5 text-primary" />
                     Documentos ({documents.length})
                   </h4>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={fetchEscavadorDocuments}
-                    disabled={fetchingEscavadorDocs || !form.process_number}
-                    className="h-7 text-xs gap-1"
-                  >
-                    {fetchingEscavadorDocs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                    Importar do Escavador
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    {process?.id && linkedLeadId && (
+                      <ImportarDoDriveButton
+                        processId={process.id}
+                        caseId={process.case_id || null}
+                        leadId={linkedLeadId}
+                        jaImportados={documents as unknown as { original_url: string | null; metadata?: Record<string, unknown> | null }[]}
+                        classificar={classifyDocumentType}
+                        onImportado={() => void loadDocuments()}
+                      />
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={fetchEscavadorDocuments}
+                      disabled={fetchingEscavadorDocs || !form.process_number}
+                      className="h-7 text-xs gap-1"
+                    >
+                      {fetchingEscavadorDocs ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                      Importar do Escavador
+                    </Button>
+                  </div>
                 </div>
                 
                 {loadingDocuments ? (
@@ -1143,7 +1469,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                   <div className="space-y-2">
                     {documents.map(doc => {
                       const typeLabel = DOCUMENT_TYPE_LABELS[doc.document_type] || doc.document_type;
-                      const sourceLabel = doc.source === 'escavador' ? '📋 Escavador' : doc.source === 'zapsign' ? '✍️ ZapSign' : '📎 Upload';
+                      const sourceLabel = doc.source === 'escavador' ? '📋 Escavador' : doc.source === 'zapsign' ? '✍️ ZapSign' : doc.source === 'drive' ? '🗂️ Drive' : '📎 Upload';
                       const isProcuracao = doc.document_type === 'procuracao';
                       return (
                         <div key={doc.id} className={`border rounded-lg p-3 space-y-1 ${isProcuracao ? 'border-primary/50 bg-primary/5' : ''}`}>
@@ -1573,6 +1899,22 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         <div className="flex items-center gap-2">
           <div className="flex flex-col items-end">
             <div className="flex items-center gap-1">
+              {/* O banco antes da API: enquanto houver campo que a publicação já
+                  responde, consultar o Escavador é gastar crédito por dado que
+                  está em casa. O botão só aparece quando há o que preencher. */}
+              {camposDoBancoFaltando.length > 0 && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleCompletarDoBanco}
+                  disabled={completandoDoBanco || saving}
+                  className="h-7 text-xs gap-1"
+                  title={`Preenche ${camposDoBancoFaltando.length} campo(s) com o que já está no banco (publicações, jurimetria, DataJud) — sem consultar o Escavador:\n${camposDoBancoFaltando.map(c => `• ${c.rotulo}: ${c.valor} (${c.origem})`).join('\n')}`}
+                >
+                  {completandoDoBanco ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
+                  Completar do banco ({camposDoBancoFaltando.length})
+                </Button>
+              )}
               {form.escavador_raw && (
                 <Button size="sm" variant="ghost" onClick={() => handleReExtract()} disabled={saving} className="h-7 text-xs gap-1" title="Reprocessa o dado já salvo, sem consultar o Escavador (sem custo)">
                   <RefreshCw className="h-3 w-3" />
@@ -1676,6 +2018,19 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             <p className="text-[10px] text-muted-foreground pt-1">
               A barra de progresso aparece quando o processo está vinculado a um lead.
             </p>
+          )}
+          {/* Processo sem lead nem caso — o estado em que nascem as fichas do
+              inventário por OAB. Sem lead ele não entra no funil, não tem grupo
+              e não aparece para quem cuida do cliente. */}
+          {!process?.lead_id && (
+            <Button
+              type="button" size="sm" variant="outline"
+              className="mt-1.5 h-7 w-full text-xs border-amber-500/50 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+              onClick={() => setCriandoCaso(true)}
+            >
+              <UserPlus className="h-3 w-3 mr-1" />
+              Sem lead e sem caso — criar agora (com grupo)
+            </Button>
           )}
 
           <div className="pt-2 space-y-1">
@@ -1790,6 +2145,81 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
         onOpenChange={(o) => { if (!o) { setCreateSheetOpen(false); setCreateDraft(null); } }}
         onCreated={fetchActivities}
         onUpdated={fetchActivities}
+      />
+
+      {/* Parte → contato: mostra quem já existe na base antes de cadastrar outro. */}
+      <VincularParteContatoDialog
+        open={!!parteEmVinculo}
+        onOpenChange={(o) => { if (!o) setParteEmVinculo(null); }}
+        parte={parteEmVinculo}
+        processoNumero={form.process_number}
+        leadId={process?.lead_id || null}
+        onVinculado={(nome) => {
+          setAddedContactNames(prev => new Set(prev).add(nome.toLowerCase()));
+          if (process?.lead_id) invalidateLeadLinkedContactsCache(process.lead_id);
+        }}
+      />
+
+      {/* Processo órfão → caso com dono: lead, caso, contato e grupo de uma vez. */}
+      {process?.id && (
+        <CriarCasoDoProcessoDialog
+          open={criandoCaso}
+          onOpenChange={setCriandoCaso}
+          processo={{
+            id: process.id,
+            numero: form.process_number || process.process_number || null,
+            titulo: form.title || process.title || null,
+            poloAtivo: form.polo_ativo || null,
+            poloPassivo: form.polo_passivo || null,
+            clientePolo: effectiveClientePolo || null,
+            cidade: form.unidade_origem_cidade || null,
+            uf: form.estado_origem_sigla || null,
+          }}
+          onCriado={({ leadId, caseId }) => {
+            setForm(prev => ({ ...prev, lead_id: leadId, case_id: caseId }));
+            onUpdated?.();
+          }}
+        />
+      )}
+
+      {/* Peça do acervo aberta por cima da ficha — nunca em aba nova. */}
+      <MediaLightbox
+        url={pecaAberta?.url ?? null}
+        title={pecaAberta?.titulo ?? 'Peça dos autos'}
+        onClose={() => setPecaAberta(null)}
+      />
+
+      {/* "O que muda com esta peça" — o MESMO diálogo da Conferência: valores da
+          peça lado a lado com os da carteira, e o corrigir quando há decisão. */}
+      <MudancasDaPecaDialog
+        aberto={!!mudancaAcervo}
+        onClose={() => setMudancaAcervo(null)}
+        carregando={false}
+        erro={null}
+        leitura={mudancaAcervo?.leitura ?? null}
+        tituloPeca={mudancaAcervo?.titulo ?? ''}
+        atuais={conferencia.clientes.map(c => ({ cliente: c.cliente, valor: c.valor }))}
+        decId={conferencia.clientes.find(c => c.decisaoUsada?.dec_id)?.decisaoUsada?.dec_id ?? null}
+        onAplicar={async (leituraId, decId) => {
+          const r = await corrigirValoresAcervo(leituraId, decId, false);
+          if (r.ok) await conferencia.recarregar();
+          return r;
+        }}
+      />
+
+      {/* Tabela dos valores da jurimetria — Drawer de baixo pra cima, com a
+          auditoria do que a correção automática mudou (valor anterior → atual,
+          quando e por qual peça). */}
+      <JurimetriaValoresDrawer
+        aberto={jurimetriaAberta}
+        onOpenChange={setJurimetriaAberta}
+        cnj={form.process_number || ''}
+        carregando={conferencia.loading}
+        clientes={conferencia.clientes}
+        valores={conferencia.valores}
+        decisoes={conferencia.decisoes}
+        feePercentage={form.fee_percentage != null && form.fee_percentage !== '' ? Number(form.fee_percentage) : null}
+        feeEstimado={form.estimated_fee_value != null && form.estimated_fee_value !== '' ? Number(form.estimated_fee_value) : null}
       />
     </div>
   );

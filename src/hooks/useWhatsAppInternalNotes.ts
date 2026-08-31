@@ -12,6 +12,8 @@ export interface InternalNote {
   sender_id: string | null;
   sender_name: string | null;
   created_at: string;
+  /** Atividade criada a partir desta conversa — só em notas `note_type = 'activity'`. */
+  activity_id?: string | null;
 }
 
 export function useWhatsAppInternalNotes(phone: string | undefined) {

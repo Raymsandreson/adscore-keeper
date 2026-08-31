@@ -249,13 +249,20 @@ function hojeBrasilia(): string {
 
 /**
  * Dias corridos entre uma data e hoje, contando em dias de calendário. Aceita
- * DATE ('2026-08-20') e timestamp ISO — do timestamp interessa só a data.
+ * DATE ('2026-08-20') e timestamp ISO — do timestamp interessa só a data,
+ * lida no MESMO fuso do "hoje" (Brasília): o slice(0,10) pegava o dia UTC e,
+ * entre 21h e meia-noite BRT, todo timestamp recente contava um dia a menos.
  * Ancorar os dois lados em Date.UTC evita que horário de verão ou fuso do
  * navegador movam a diferença em um dia.
  */
 function diasDesde(quando: string | null | undefined): number | null {
   if (!quando) return null;
-  const dia = String(quando).slice(0, 10);
+  const s = String(quando);
+  const dia = /^\d{4}-\d{2}-\d{2}$/.test(s)
+    ? s
+    : Number.isNaN(Date.parse(s))
+      ? s.slice(0, 10)
+      : new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(s));
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) return null;
   const [ay, am, ad] = dia.split('-').map(Number);
   const [hy, hm, hd] = hojeBrasilia().split('-').map(Number);

@@ -9,7 +9,7 @@
 // `authenticated`) mais a assinatura de URL do bucket privado `jm-autos`. A URL
 // assinada vale 10 minutos: tempo de abrir e baixar, não de vazar em histórico.
 // =============================================================================
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { db, ensureExternalSession } from '@/integrations/supabase';
 import { cnjVariantes } from '@/lib/cnj';
 import type { PecaDoProcesso } from '@/lib/pecasDoProcesso';
@@ -36,7 +36,7 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
       try {
         await ensureExternalSession();
         const r = await (externo.from('jm_documentos')
-          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem, oculta_em, oculta_motivo')
+          .select('id, titulo, tipo, data_documento, storage_path, paginas, origem, oculta_em, oculta_motivo, marco_chave')
           .in('processo_cnj', cnjVariantes(cnj)) as Promise<Consulta>);
         if (r.error) throw new Error(r.error.message || 'Falha ao carregar as peças');
         setTodas(((r.data || []) as Record<string, unknown>[]).map(d => ({
@@ -49,6 +49,7 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
           origem: (d.origem as string) ?? null,
           ocultaEm: (d.oculta_em as string) ?? null,
           ocultaMotivo: (d.oculta_motivo as string) ?? null,
+          marcoChave: (d.marco_chave as string) ?? null,
         })));
       } catch (e) {
         setErro(String((e as Error)?.message || e));
@@ -82,7 +83,11 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
    */
   const anexar = useCallback(async (
     arquivo: File,
-    dados: { titulo: string; dataDocumento: string | null },
+    // marcoChave (29/08/2026): vínculo explícito peça→marco. É o que permite a
+    // peça sustentar um marco SEM sinal de documento cadastrado no POP — o
+    // casamento por título/regex não alcança a maioria dos marcos (agravo,
+    // constrição, levantamento…). A detecção lê jm_documentos.marco_chave.
+    dados: { titulo: string; dataDocumento: string | null; marcoChave?: string | null },
   ): Promise<{ ok: true } | { ok: false; erro: string }> => {
     if (!cnj) return { ok: false, erro: 'processo sem CNJ' };
     if (arquivo.type !== 'application/pdf') return { ok: false, erro: 'só PDF por enquanto' };
@@ -104,6 +109,7 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
           titulo: dados.titulo,
           tipo: 'RESTRITO',
           origem: 'manual',
+          marco_chave: dados.marcoChave ?? null,
           data_documento: dados.dataDocumento,
           storage_path: caminho,
           stored_at: new Date().toISOString(),
@@ -147,6 +153,30 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, [recarregar]);
 
+  /**
+   * Vincula uma peça JÁ EXISTENTE a um marco (ou tira o vínculo, com null).
+   *
+   * É o irmão do anexar-com-marco (29/08/2026): o acervo do Escavador já tem a
+   * peça que comprova a passagem — não faz sentido pedir upload de novo. O
+   * vínculo grava jm_documentos.marco_chave; a detecção por documento lê e o
+   * marco vira atingido com a data da peça. Precisa de data_documento: sem
+   * data, o vínculo não gera marco (a view exige data).
+   */
+  const vincularAMarco = useCallback(async (peca: PecaDoProcesso, marcoChave: string | null) => {
+    try {
+      await ensureExternalSession();
+      const r = await (db as unknown as { from: (t: string) => { update: (v: unknown) => { eq: (c: string, v: unknown) => Promise<{ error: { message?: string } | null }> } } })
+        .from('jm_documentos')
+        .update({ marco_chave: marcoChave })
+        .eq('id', peca.id);
+      if (r.error) return { ok: false, erro: r.error.message };
+      await recarregar();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, erro: String((e as Error)?.message || e) };
+    }
+  }, [recarregar]);
+
   /** Desfaz o ocultar. Errar a correção tem que custar um clique, não um chamado. */
   const reexibir = useCallback(async (peca: PecaDoProcesso) => {
     try {
@@ -165,8 +195,13 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
 
   // A peça oculta não some do hook: ela sai do casamento e continua alcançável
   // para desfazer. Sumir de vez tornaria o erro irreversível pela tela.
-  const pecas = todas.filter(p => !p.ocultaEm);
-  const ocultas = todas.filter(p => p.ocultaEm);
+  //
+  // useMemo é FUNCIONAL aqui, não estética (29/08/2026): sem ele, `pecas` nasce
+  // com identidade nova a cada render, e todo useEffect que dependa da lista
+  // dispara de novo — combinado com outro hook que re-renderiza, o efeito era
+  // cancelado antes da resposta chegar e os resumos do acervo nunca apareciam.
+  const pecas = useMemo(() => todas.filter(p => !p.ocultaEm), [todas]);
+  const ocultas = useMemo(() => todas.filter(p => p.ocultaEm), [todas]);
 
   /**
    * Manda ler a peça e espera o resultado, para a tela poder mostrar O QUE MUDA.
@@ -240,5 +275,5 @@ export function usePecasDoProcesso(cnj: string | null | undefined) {
     }
   }, []);
 
-  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, lerPeca, corrigirValores, recarregar };
+  return { pecas, ocultas, loading, erro, assinar, anexar, ocultar, reexibir, vincularAMarco, lerPeca, corrigirValores, recarregar };
 }

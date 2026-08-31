@@ -35,6 +35,12 @@ export interface EventoPush {
   /** HH:MM — o tribunal manda vários eventos no mesmo dia, a hora é o que os separa. */
   hora: string | null;
   texto: string;
+  /**
+   * Link do documento citado na linha (TRF1 manda o documentoHTML.seam de cada
+   * juntada; o e-SAJ manda o link do processo). Todo marco tem que apontar para
+   * a peça — é isto que o card consulta.
+   */
+  link?: string | null;
 }
 
 export interface MovimentacaoEmail {
@@ -53,6 +59,8 @@ export interface MovimentacaoEmail {
   eventos?: EventoPush[];
   /** Frase curta do evento principal — vira o título da linha do feed. */
   titulo?: string;
+  /** Link do documento/processo citado no e-mail, quando o tribunal manda. */
+  link?: string | null;
 }
 
 const CNJ_RE = /\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}/;
@@ -69,6 +77,16 @@ function isoDaData(br: string | null | undefined): string | null {
   const m = (br || '').match(DATA_RE);
   if (!m) return null;
   return `${m[3]}-${m[2]}-${m[1]}`;
+}
+
+/**
+ * Primeiro link http(s) do trecho, ANTES da limpeza — o `limpa` apaga URLs de
+ * propósito (elas não dizem nada ao leitor), então quem quer o link do
+ * documento extrai aqui primeiro.
+ */
+function extraiLink(texto: string): string | null {
+  const m = (texto || '').match(/https?:\/\/[^\s<>()\]"']+/);
+  return m ? m[0].replace(/[.,;>]+$/, '') : null;
 }
 
 function limpa(texto: string): string {
@@ -130,25 +148,39 @@ function parsePje(corpo: string, assunto: string): MovimentacaoEmail[] {
 }
 
 // ---------------------------------------------------------------------------
-// EPROC (TRF4 e seções judiciárias)
+// EPROC (TRF4/TRF6, TJMG, TJSP-eproc e seções judiciárias)
+//
+// Dois layouts do MESMO conteúdo, medidos na caixa em 30/08/2026:
+//   - em linhas (TRF4): "| Num. Processo: | 5006477-98... |" e a movimentação
+//     na linha de baixo;
+//   - em LINHA CORRIDA (TRF6/TJMG/JFs): "Num. Processo: 6070144-26...
+//     Movimentação: Confirmada a intimação eletrônica - Evento Número: 29
+//     Partes: ... Num. Processo: ..." — tudo num parágrafo só. O parser antigo
+//     achava o "Num. Processo" e dava `continue`, pulando a movimentação que
+//     estava NA MESMA linha: e-mail inteiro caía no fallback do assunto.
+//
+// Segmentar pelo "Num. Processo:" cobre os dois: cada segmento carrega as suas
+// movimentações, estejam na mesma linha ou nas de baixo.
 // ---------------------------------------------------------------------------
+const EPROC_SEGMENTO_RE = /num\.?\s*processo\s*:?\s*\|?\s*(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})([\s\S]*?)(?=num\.?\s*processo\s*:|$)/gi;
+// A movimentação do EPROC pode conter " - " no meio ("Expedida/certificada a
+// intimação eletrônica - Vista ao MP para Parecer"); quem a termina é o
+// "Evento Número", o campo seguinte ("Partes:"), o "|" da tabela ou a linha.
+const EPROC_MOV_RE = /movimenta(?:ç|c)(?:ã|a)o\s*:?\s*\|?\s*(.+?)(?=\s*[-–]?\s*Evento\s+N[úu]mero|\s+Partes\s*:|\s*\||$)/gim;
+
 function parseEproc(corpo: string): MovimentacaoEmail[] {
   const out: MovimentacaoEmail[] = [];
-  let atual: string | null = null;
-
-  for (const linhaRaw of corpo.split('\n')) {
-    const linha = linhaRaw.trim();
-    if (/num\.?\s*processo/i.test(linha)) {
-      atual = (linha.match(CNJ_RE) || [])[0] || atual;
-      continue;
-    }
-    if (!atual) continue;
-    const mov = linha.match(/movimenta(?:ç|c)(?:ã|a)o\s*:?\s*\|?\s*(.+?)\s*\|?\s*$/i);
-    if (mov) {
-      const texto = limpa(mov[1]);
-      if (texto) {
-        out.push({ cnj: atual, cnjDigitos: soDigitos(atual), data: null, texto, fonte: 'eproc' });
-      }
+  EPROC_SEGMENTO_RE.lastIndex = 0;
+  let seg: RegExpExecArray | null;
+  while ((seg = EPROC_SEGMENTO_RE.exec(corpo)) !== null) {
+    const cnj = seg[1];
+    const trecho = seg[2] || '';
+    EPROC_MOV_RE.lastIndex = 0;
+    let mov: RegExpExecArray | null;
+    while ((mov = EPROC_MOV_RE.exec(trecho)) !== null) {
+      const texto = limpa(mov[1]).replace(/\s*[-–]$/, '');
+      if (!texto) continue;
+      out.push({ cnj, cnjDigitos: soDigitos(cnj), data: null, texto, fonte: 'eproc' });
     }
   }
   return out;
@@ -160,14 +192,20 @@ function parseEproc(corpo: string): MovimentacaoEmail[] {
 function parseEsaj(corpo: string): MovimentacaoEmail[] {
   const out: MovimentacaoEmail[] = [];
   let atual: string | null = null;
+  let linkProcesso: string | null = null;
   let dentroDeMovimentacoes = false;
 
-  for (const linhaRaw of corpo.split('\n')) {
-    const linha = linhaRaw.trim();
+  const linhas = corpo.split('\n').map((l) => l.trim());
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = linhas[i];
 
-    const inicioProcesso = /^processo:/i.test(linha) && CNJ_RE.test(linha);
+    // "Processo: 1070860-05.2020..." e também "Incidente Processual: Exibição
+    // de Documento ou Coisa Cível (0037121-87.2022...)": o incidente é outro
+    // cabeçalho do MESMO e-mail e as movimentações dele ficavam órfãs.
+    const inicioProcesso = /^(processo|incidente processual|recurso)\b[^:]*:/i.test(linha) && CNJ_RE.test(linha);
     if (inicioProcesso) {
       atual = (linha.match(CNJ_RE) || [])[0];
+      linkProcesso = extraiLink(linha);
       dentroDeMovimentacoes = false;
       continue;
     }
@@ -177,16 +215,150 @@ function parseEsaj(corpo: string): MovimentacaoEmail[] {
     }
     if (!atual || !dentroDeMovimentacoes) continue;
 
-    // "10/08/2026 16:02 Petição Juntada" — as linhas de detalhe abaixo dela
-    // (protocolo, teor do ato, lista de advogados) ficam de fora de propósito:
-    // um único "Teor do ato" do e-SAJ tem 4 mil caracteres de OAB.
+    // "10/08/2026 16:02 Petição Juntada" — a PRIMEIRA linha de detalhe abaixo
+    // (o teor curto: "Relatório do Voto") entra como complemento; o resto
+    // (protocolo, lista de advogados) fica de fora de propósito: um único
+    // "Teor do ato" do e-SAJ tem 4 mil caracteres de OAB.
     const m = linha.match(/^(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}\s+(.+)$/);
     if (!m) continue;
-    const texto = limpa(m[2]);
+    let texto = limpa(m[2]);
     if (!texto) continue;
-    out.push({ cnj: atual, cnjDigitos: soDigitos(atual), data: isoDaData(m[1]), texto, fonte: 'esaj' });
+    const detalhe = linhas[i + 1] || '';
+    if (
+      detalhe
+      && !/^(\d{2}\/\d{2}\/\d{4})\s+\d{2}:\d{2}\s/.test(detalhe)
+      && !/^_{4,}|^avisos?\b|^novas movimenta/i.test(detalhe)
+    ) {
+      const complemento = limpa(detalhe).slice(0, 160);
+      if (complemento) texto = `${texto} — ${complemento}`.slice(0, MAX_TEXTO);
+    }
+    out.push({
+      cnj: atual, cnjDigitos: soDigitos(atual), data: isoDaData(m[1]),
+      texto, fonte: 'esaj', link: linkProcesso,
+    });
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// PJe Push da Justiça Federal — TRF1 e TRF3 ("Data / Movimento / Documento")
+//
+// Derivado dos e-mails reais de naoresponda.pje.push*@trf1.jus.br e
+// pje@trf3.jus.br (30/08/2026). O TRF1 manda em linhas:
+//
+//   Número do Processo: 1015006-55.2025.4.01.3600
+//   Data    Movimento       Documento
+//   28/08/2026 14:26        Arquivado Definitivamente
+//   28/08/2026 13:45        Juntada de informação ...  Informação<https://pje1g.trf1...>
+//
+// e o TRF3 manda o MESMO conteúdo achatado numa linha só:
+//
+//   ... Assunto: Pessoa com Deficiência Data - Movimento 29/08/2026 15:04 -
+//   Decisão Interlocutória de Mérito 29/08/2026 15:04 - Não Concedida ...
+//
+// Nenhum dos dois tem "|", "Num. Processo:" nem bloco "Eventos:" — por isso os
+// dois caíam no fallback genérico: card "Movimentação" vazio, sem data, e o
+// classificador carimbava a data do E-MAIL (9 cards assim só em 29/08/2026).
+// O cabeçalho "Data ... Movimento" é o gatilho; o rodapé "Caso não tenha mais
+// interesse" fecha o bloco.
+// ---------------------------------------------------------------------------
+const JF_CABECALHO_RE = /Data\s*[-–]?\s*[/|]?\s*Movimento(\s+Documento)?/i;
+
+/** Cada linha do bloco: data, hora, movimento e (às vezes) o documento com link. */
+const JF_EVENTO_RE = /(\d{2}\/\d{2}\/\d{4})\s+(\d{2}:\d{2})\s*[-–]?\s*([\s\S]*?)(?=\d{2}\/\d{2}\/\d{4}\s+\d{2}:\d{2}|$)/g;
+
+function parseJfDataMovimento(corpo: string, assunto: string, dataEmail?: string | null): MovimentacaoEmail[] {
+  const cnj = (corpo.match(CNJ_RE) || assunto.match(CNJ_RE) || [])[0];
+  if (!cnj) return [];
+  const cab = corpo.search(JF_CABECALHO_RE);
+  if (cab < 0) return [];
+
+  let bloco = corpo.slice(cab).replace(JF_CABECALHO_RE, '');
+  const fim = bloco.search(FIM_DO_BLOCO);
+  if (fim > 0) bloco = bloco.slice(0, fim);
+
+  const eventos: EventoPush[] = [];
+  JF_EVENTO_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = JF_EVENTO_RE.exec(bloco)) !== null) {
+    const link = extraiLink(m[3]);
+    const texto = limpa(m[3]);
+    if (!texto || ehCabecalho(texto)) continue;
+    eventos.push({ data: isoDaData(m[1]), hora: m[2], texto, link });
+  }
+  if (eventos.length === 0) return [];
+
+  const { titulo, resumo } = resumirEventos(eventos);
+  const data = dataDoLote(eventos, dataEmail);
+  const link = eventos.find((e) => e.link)?.link || null;
+  return [{ cnj, cnjDigitos: soDigitos(cnj), data, texto: resumo, fonte: 'pje', eventos, titulo, link }];
+}
+
+// ---------------------------------------------------------------------------
+// PROJUDI (TJAM) — prosa, sem tabela
+//
+// Derivado dos e-mails reais de projudi@tjam.jus.br (30/08/2026):
+//
+//   ESTADO DO AMAZONAS - Brasil, 29 de Agosto de 2026
+//   PROCESSO JUDICIAL Nº 0005779-05.2026.8.04.4700
+//   ... Uma intimação no processo acima citado, referente à movimentação
+//   NOMEADO PERITO , ocorrido em 27 de Julho de 2026, ... teve seu decurso de
+//   prazo sem o cumprimento (resposta) registrado no sistema.
+//
+// A data do FATO (o decurso) é a do cabeçalho da carta — "29 de Agosto de
+// 2026" — que vem no corpo, por extenso. A data "ocorrido em" é a da
+// movimentação original, mais antiga; usá-la afundaria o card no feed.
+// ---------------------------------------------------------------------------
+const MES_EXTENSO: Record<string, string> = {
+  janeiro: '01', fevereiro: '02', marco: '03', março: '03', abril: '04',
+  maio: '05', junho: '06', julho: '07', agosto: '08', setembro: '09',
+  outubro: '10', novembro: '11', dezembro: '12',
+};
+
+function isoDaDataExtensa(trecho: string | null | undefined): string | null {
+  const m = (trecho || '').match(/(\d{1,2})º?\s+de\s+([a-zçã]+)\s+de\s+(\d{4})/i);
+  if (!m) return null;
+  const mes = MES_EXTENSO[m[2].toLowerCase()];
+  if (!mes) return null;
+  return `${m[3]}-${mes}-${m[1].padStart(2, '0')}`;
+}
+
+function parseProjudi(corpo: string, assunto: string, dataEmail?: string | null): MovimentacaoEmail[] {
+  if (!/PROJUDI/i.test(corpo)) return [];
+  const cnj = (corpo.match(/PROCESSO\s+JUDICIAL\s+N[ºo°.]?\s*[:.]?\s*(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})/i)?.[1]
+    || corpo.match(CNJ_RE)?.[0]
+    || assunto.match(CNJ_RE)?.[0]);
+  if (!cnj) return [];
+
+  const mov = corpo.match(/referente\s+[àa]\s+movimenta(?:ç|c)(?:ã|a)o\s+(.+?)\s*,\s*ocorrid[oa] em\s+([^,]+?)(?:,|\se\s)/i);
+  // Data do fato = data da carta ("Brasil, 29 de Agosto de 2026"), que está no
+  // corpo — não é presumida do e-mail.
+  const dataCarta = isoDaDataExtensa((corpo.match(/Brasil\s*,\s*([^\n\r]+)/i) || [])[1]);
+  const teto = (dataEmail || '').slice(0, 10) || null;
+  const data = dataCarta && (!teto || dataCarta <= teto) ? dataCarta : (dataCarta ? teto : dataCarta);
+
+  const tituloAssunto = limpa(assunto);
+  if (mov) {
+    const nomeMov = limpa(mov[1]);
+    const dataMov = isoDaDataExtensa(mov[2]);
+    const texto = `${tituloAssunto || 'Aviso do PROJUDI'} — movimentação ${nomeMov}${dataMov ? ` de ${isoParaBr(dataMov)}` : ''}`;
+    return [{
+      cnj, cnjDigitos: soDigitos(cnj), data, texto: texto.slice(0, MAX_TEXTO),
+      fonte: 'pje', titulo: tituloAssunto || nomeMov,
+    }];
+  }
+  // Outro template do PROJUDI (intimação nova, citação): sem a frase da
+  // movimentação, o assunto ainda diz o que houve — e a data da carta vale.
+  if (!tituloAssunto) return [];
+  return [{
+    cnj, cnjDigitos: soDigitos(cnj), data, texto: tituloAssunto,
+    fonte: 'pje', titulo: tituloAssunto,
+  }];
+}
+
+function isoParaBr(iso: string): string {
+  const [a, m, d] = iso.split('-');
+  return `${d}/${m}/${a}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -282,6 +454,23 @@ export function resumirEventos(eventos: EventoPush[]): { titulo: string; resumo:
   return { titulo, resumo: partes.join(' · ').slice(0, MAX_TEXTO) };
 }
 
+/**
+ * Data da linha do feed = a do evento mais recente QUE JÁ ACONTECEU. O feed é
+ * ordenado por data_movimentacao, então a mais antiga do lote afundaria o
+ * card — mas a mais recente também mente quando o e-mail avisa de audiência
+ * designada: em 0000375-74.2026.5.08.0120 o bloco tinha dois eventos de
+ * 12/06/2026 e a sala da audiência de 16/09/2026, e o card foi para o topo
+ * carimbado com 16/09 — data que ainda não chegou, e que fazia a notícia de
+ * junho aparecer em "Hoje". O teto é o dia do e-mail: o tribunal não avisa
+ * antes de acontecer.
+ */
+function dataDoLote(eventos: EventoPush[], dataEmail?: string | null): string | null {
+  const teto = (dataEmail || '').slice(0, 10);
+  const datas = (eventos.map((e) => e.data).filter(Boolean) as string[]).sort();
+  const ocorridas = teto ? datas.filter((d) => d <= teto) : datas;
+  return ocorridas.length ? ocorridas[ocorridas.length - 1] : (teto || datas[datas.length - 1] || null);
+}
+
 /** O e-mail inteiro vira UMA movimentação por processo, com os eventos junto. */
 function parseEventosInline(corpo: string, assunto: string, dataEmail?: string | null): MovimentacaoEmail[] {
   const cnj = (corpo.match(CNJ_RE) || assunto.match(CNJ_RE) || [])[0];
@@ -290,18 +479,7 @@ function parseEventosInline(corpo: string, assunto: string, dataEmail?: string |
   if (eventos.length === 0) return [];
 
   const { titulo, resumo } = resumirEventos(eventos);
-  // Data da linha do feed = a do evento mais recente QUE JÁ ACONTECEU. O feed é
-  // ordenado por data_movimentacao, então a mais antiga do lote afundaria o
-  // card — mas a mais recente também mente quando o e-mail avisa de audiência
-  // designada: em 0000375-74.2026.5.08.0120 o bloco tinha dois eventos de
-  // 12/06/2026 e a sala da audiência de 16/09/2026, e o card foi para o topo
-  // carimbado com 16/09 — data que ainda não chegou, e que fazia a notícia de
-  // junho aparecer em "Hoje". O teto é o dia do e-mail: o tribunal não avisa
-  // antes de acontecer.
-  const teto = (dataEmail || '').slice(0, 10);
-  const datas = (eventos.map((e) => e.data).filter(Boolean) as string[]).sort();
-  const ocorridas = teto ? datas.filter((d) => d <= teto) : datas;
-  const data = ocorridas.length ? ocorridas[ocorridas.length - 1] : (teto || datas[datas.length - 1] || null);
+  const data = dataDoLote(eventos, dataEmail);
 
   return [{ cnj, cnjDigitos: soDigitos(cnj), data, texto: resumo, fonte: 'pje', eventos, titulo }];
 }
@@ -328,8 +506,17 @@ export function parseEmailPush(
   // (na caixa real os dois nunca aparecem no mesmo e-mail — 0 de 4.203).
   if (movs.length === 0) movs = parseEventosInline(corpo, assunto, input.dataEmail);
 
+  // PJe Push da Justiça Federal (TRF1 em linhas, TRF3 achatado): cabeçalho
+  // "Data / Movimento / Documento", sem "|" nem bloco "Eventos:".
+  if (movs.length === 0) movs = parseJfDataMovimento(corpo, assunto, input.dataEmail);
+
+  // PROJUDI (TJAM): prosa com "PROCESSO JUDICIAL Nº" e data por extenso.
+  if (movs.length === 0) movs = parseProjudi(corpo, assunto, input.dataEmail);
+
   // Push sem nenhuma linha reconhecida (tribunal mudou o layout): salva o
   // assunto para o processo aparecer no sino em vez de sumir calado.
+  // A data fica NULA de propósito — a do e-mail é quando soubemos, não quando
+  // aconteceu; quem grava marca data_presumida e o front mostra "sem data".
   if (movs.length === 0) {
     const cnj = (corpo.match(CNJ_RE) || assunto.match(CNJ_RE) || [])[0];
     if (cnj && /movimenta|atualiza|intima|andamento/i.test(`${assunto} ${corpo.slice(0, 400)}`)) {

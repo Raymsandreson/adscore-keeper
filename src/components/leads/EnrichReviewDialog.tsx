@@ -39,16 +39,28 @@ interface EnrichReviewDialogProps {
 
 const FIELD_LABELS: Record<string, string> = {
   full_name: 'Nome do lead',
+  lead_name: 'Nome do lead',
   email: 'E-mail',
+  lead_email: 'E-mail',
   city: 'Cidade',
   state: 'Estado (UF)',
   neighborhood: 'Bairro',
   notes: 'Anotações (resumo da IA)',
   victim_name: 'Nome da vítima',
+  victim_age: 'Idade da vítima',
   main_company: 'Empresa principal',
+  contractor_company: 'Empresa terceirizada',
+  sector: 'Setor',
   damage_description: 'Dano/lesão',
   accident_date: 'Data do acidente',
+  accident_address: 'Endereço do acidente',
   case_type: 'Tipo do caso',
+  case_number: 'Número do processo',
+  liability_type: 'Tipo de responsabilidade',
+  news_link: 'Link da notícia',
+  legal_viability: 'Viabilidade jurídica',
+  expected_birth_date: 'Previsão de parto',
+  client_classification: 'Classificação do cliente',
   visit_city: 'Cidade da visita',
   visit_state: 'UF da visita',
   visit_address: 'Endereço da visita',
@@ -133,7 +145,7 @@ export function EnrichReviewDialog({ open, onOpenChange, data, applying, onApply
           <DialogDescription>
             {data.alreadyApplied
               ? 'A versão atual da função aplicou os campos abaixo diretamente no lead (sem etapa de revisão).'
-              : 'Extraído da conversa do grupo. Nada foi gravado ainda — marque o que deseja aplicar.'}
+              : 'Extraído da conversa do WhatsApp. Nada foi gravado ainda — marque o que deseja aplicar.'}
           </DialogDescription>
         </DialogHeader>
 

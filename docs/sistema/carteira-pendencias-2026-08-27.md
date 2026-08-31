@@ -24,7 +24,15 @@ partes · recebido R$ 5.667.786,85** — bate com o banco no centavo.
 
 ## 1. Esperando decisão do Raym — nada anda sem isso
 
-### 1.1 A régua dos estágios (a maior)
+### 1.1 A régua dos estágios — **DECIDIDA em 27/08**, ver `carteira-regua-de-estagios.md`
+
+O Raym deu a régua: PAGO vem de `jm_lancamentos`; só tem valor real quem tem
+decisão de mérito ou acordo (`jm_partes.decisao_merito`); o resto é projeção
+calculada por parentesco. Falta decidir **média × mediana** (R$ 31,68 mi de
+diferença) e aplicar a migration. O texto abaixo é o diagnóstico que levou até
+lá — fica como histórico.
+
+### 1.1-antigo O diagnóstico da régua
 
 `pop_carteira_marcos` carimba `A_RECEBER` em qualquer processo com marco de
 acordo, **antes de perguntar se existe data**:

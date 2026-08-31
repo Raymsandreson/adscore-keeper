@@ -49,12 +49,19 @@ const sheetVariants = cva(
 
 interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
-    VariantProps<typeof sheetVariants> {}
+    VariantProps<typeof sheetVariants> {
+  /**
+   * Classe do fundo escuro. Serve para subir o painel acima de coisas com
+   * z-index próprio — a pilha de avisos do sonner (z-120) fica por cima de um
+   * painel aberto a partir de um popup de notificação.
+   */
+  overlayClassName?: string;
+}
 
 const SheetContent = React.forwardRef<React.ElementRef<typeof SheetPrimitive.Content>, SheetContentProps>(
-  ({ side = "right", className, children, onInteractOutside, ...props }, ref) => (
+  ({ side = "right", className, overlayClassName, children, onInteractOutside, ...props }, ref) => (
     <SheetPortal>
-      <SheetOverlay />
+      <SheetOverlay className={overlayClassName} />
       <SheetPrimitive.Content
         ref={ref}
         className={cn(sheetVariants({ side }), "overflow-y-auto", className)}

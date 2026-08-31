@@ -1,9 +1,9 @@
 // =============================================================================
 // Conferência dos acordos do POP — "o que foi lançado bate com o acordo?".
 //
-// Duas portas para o MESMO corpo (ConferenciaCorpo): a subseção recolhível
-// dentro da carteira (ConferenciaSubsecao — o caminho principal desde 28/08) e
-// o Sheet próprio (PopConferenciaSheet), por cima do que estiver aberto.
+// Duas portas para o MESMO corpo (ConferenciaCorpo): a aba "Conferência" no
+// seletor da carteira (ConferenciaConteudo — o caminho principal desde 29/08)
+// e o Sheet próprio (PopConferenciaSheet), por cima do que estiver aberto.
 //
 // A régua: o contratual é SEMPRE 30% do bruto, então HC esperado = cota × 3/7.
 // O SUCUMBENCIAL NÃO ENTRA na régua — varia de 5% a 15% conforme o juiz, pode
@@ -22,7 +22,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, Loader2, RefreshCw, Search, TrendingDown, TrendingUp, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, HelpCircle, RefreshCw, Search, TrendingDown, TrendingUp, X } from 'lucide-react';
 import { useConferenciaAcordos, ESTAGIO_LABEL } from '@/hooks/useConferenciaAcordos';
 import type { AcordoConferido } from '@/hooks/useConferenciaAcordos';
 import { totalizarConferencia } from '@/lib/conferenciaAcordo';
@@ -401,58 +401,18 @@ function ConferenciaCorpo({ boardId, dados, onConferir }: {
 }
 
 /**
- * A conferência como SUBSEÇÃO da carteira (pedido do Raym, 28/08): uma linha
- * recolhida com o progresso à vista; abrir revela o corpo inteiro, sem sair da
- * carteira. Quem conserta (ProcessoConferenciaSheet) é irmão do sheet da
- * carteira — chega pelo onConferir, nunca aninhado aqui dentro.
+ * A conferência como ABA da carteira (Raym, 29/08: "quarta aba, assim fica
+ * poluído" — a subseção-card durou um dia). O conteúdo puro, sem Sheet nem
+ * moldura: o seletor da carteira decide quando isto aparece, e o hook só
+ * busca quando a aba abre. Quem conserta (ProcessoConferenciaSheet) é irmão
+ * do sheet da carteira — chega pelo onConferir, nunca aninhado aqui dentro.
  */
-export function ConferenciaSubsecao({ boardId, abertaInicial = false, onConferir }: {
+export function ConferenciaConteudo({ boardId, onConferir }: {
   boardId: string | null;
-  abertaInicial?: boolean;
   onConferir: (alvo: AlvoConferencia) => void;
 }) {
   const dados = useConferenciaAcordos(boardId);
-  const [aberta, setAberta] = useState(abertaInicial);
-  const { divergentes, semCota, conferem } = agruparConferencia(dados.acordos);
-  const total = dados.acordos.length;
-  const pct = total > 0 ? Math.round((conferem.length / total) * 100) : 0;
-  return (
-    <div className="rounded-2xl border">
-      <button
-        type="button"
-        onClick={() => setAberta(v => !v)}
-        className="flex w-full items-center gap-2 p-3 text-left"
-      >
-        {aberta ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-          : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
-        <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold">Conferência de valores</span>
-          {!aberta && total > 0 && (
-            <span className="block text-[11px] text-muted-foreground">
-              {divergentes.length} divergem · {semCota.length} sem cota
-            </span>
-          )}
-        </span>
-        {dados.loading ? (
-          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-        ) : total > 0 ? (
-          <span className="flex shrink-0 items-center gap-2">
-            <span className="rounded-full bg-orange-500/10 px-2 py-0.5 text-xs font-bold text-orange-600 dark:text-orange-400">
-              {pct}%
-            </span>
-            <span className="text-[11px] text-muted-foreground">{conferem.length} de {total} conferem</span>
-          </span>
-        ) : (
-          <span className="shrink-0 text-[11px] text-muted-foreground">nada a conferir</span>
-        )}
-      </button>
-      {aberta && (
-        <div className="border-t p-3">
-          <ConferenciaCorpo boardId={boardId} dados={dados} onConferir={onConferir} />
-        </div>
-      )}
-    </div>
-  );
+  return <ConferenciaCorpo boardId={boardId} dados={dados} onConferir={onConferir} />;
 }
 
 interface Props {

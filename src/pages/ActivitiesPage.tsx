@@ -13,6 +13,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { useActivityFieldSettings } from '@/hooks/useActivityFieldSettings';
 import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates';
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
+import { useProcessoMarcos, resumirRegua } from '@/hooks/useProcessoMarcos';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
@@ -62,7 +63,7 @@ import {
   FileText, Loader2, Trash2, Search, X, ChevronLeft, ChevronRight, MessageCircle, Copy, ChevronsUpDown, Check,
   Play, ArrowRight, Trophy, SkipForward, Timer, Share2, User, ExternalLink, RotateCcw, LayoutGrid, List, Layers, Settings2, Sparkles, TrendingUp, Briefcase, MoreVertical,
   Users, Pin, PinOff, Pencil, UserPlus, Mic, ChevronDown, Link, Landmark, DollarSign,
-  ArrowRightLeft, CheckSquare, CalendarClock,
+  ArrowRightLeft, CheckSquare, CalendarClock, Bot,
 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { BulkReassignSheet } from '@/components/activities/BulkReassignSheet';
@@ -268,6 +269,8 @@ const ActivitiesPage = () => {
   // para o UUID do Externo é feito no hook e nas contagens.
   const [filterCreatedBy, setFilterCreatedBy] = usePageState<string[]>('activities_filterCreatedBy', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
+  // Só as criadas pelo sistema (is_system): prazos/audiências do robô, INSS, etc.
+  const [filterSystem, setFilterSystem] = usePageState<boolean>('activities_filterSystem', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
   // Atividades com cronômetro ATIVO AGORA (heartbeat fresco): id -> { secs, userName }
   const [filterInExecution, setFilterInExecution] = usePageState<boolean>('activities_filterInExecution', false);
@@ -2696,6 +2699,9 @@ const ActivitiesPage = () => {
     if (filterInExecution) {
       list = list.filter(a => execTodayMap.has(a.id));
     }
+    if (filterSystem) {
+      list = list.filter(a => !!(a as any).is_system);
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
@@ -2749,7 +2755,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, searchText, availableCases]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, filterSystem, searchText, availableCases]);
 
   // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
   // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
@@ -3461,6 +3467,9 @@ const ActivitiesPage = () => {
 
   // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
   // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
+  // Régua de marcos do processo da atividade: o ANDAMENTO que vai na mensagem.
+  const reguaDoProcesso = useProcessoMarcos(formProcessId || null);
+
   const buildMsg = (audience: 'client' | 'assessor' = 'client') =>
     buildActivityMessage({
       formTitle, formDeadline, formNotificationDate, formNotificationTime,
@@ -3468,6 +3477,8 @@ const ActivitiesPage = () => {
       formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
       formCaseTitle, formProcessId, formProcessTitle,
       fieldSettings, selectedActivity, caseProcesses, stepContext, leadPreview, systemOabs,
+      // Andamento pela régua de marcos — a mesma medida da ficha do processo.
+      regua: resumirRegua(reguaDoProcesso.marcos),
       currentUserId: user?.id || null, resolveUserName, getTemplateForContext, inssDesfecho,
     }, audience);
 
@@ -3483,7 +3494,7 @@ const ActivitiesPage = () => {
     if (leadPreview?.board_id) return leadPreview.board_id;
     return null;
   })();
-  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardId);
+  const { stepContext, saveStepFieldTemplates, selectedStepId, setSelectedStepId } = useActivityStepContext(formLeadId || null, activeStepBoardId, formProcessId || null);
 
   const activityFormContent = (
     <ActivityFormCompact
@@ -4562,6 +4573,18 @@ const ActivitiesPage = () => {
             <Badge variant="secondary" className="ml-0.5 h-4 px-1 text-[10px] tabular-nums">{execTodayMap.size}</Badge>
           )}
         </Button>
+
+        {/* Só as criadas pelo sistema (prazos/audiências do robô, push do INSS...) */}
+        <Button
+          variant={filterSystem ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shrink-0 gap-1"
+          onClick={() => setFilterSystem(v => !v)}
+          title="Mostrar só as atividades criadas automaticamente pelo sistema"
+        >
+          <Bot className="h-3 w-3" />
+          Do sistema
+        </Button>
         </>)}
 
         {/* Busca por texto dentro das atividades já filtradas */}
@@ -4585,8 +4608,8 @@ const ActivitiesPage = () => {
           )}
         </div>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterCreatedBy.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || searchText) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setSearchText(''); }}>
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterCreatedBy.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || filterSystem || searchText) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setFilterSystem(false); setSearchText(''); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}

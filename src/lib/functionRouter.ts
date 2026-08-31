@@ -36,6 +36,8 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'list-uazapi-labels': 'railway',
   'manage-uazapi-label': 'railway',
   'sync-agent-labels': 'railway',
+  // Ativar o agente pela tela também manda a 1ª mensagem proativa (antes só a etiqueta mandava)
+  'agent-proactive-first-message': 'railway',
   'sync-result-labels': 'railway',
   'sync-stage-labels': 'railway',
   'apply-stage-label': 'railway',
@@ -44,6 +46,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'set-stage-result-key': 'railway',
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
+  'sync-group-contacts': 'railway', // blocklist de equipe lia instances/profiles do Cloud; ilike não casava telefone formatado (criava contato duplicado); @lid descartado e nome do roster ignorado
   'get-whatsapp-avatars': 'railway', // foto de perfil do WhatsApp: só existe no Railway (usa sharp + bucket privado)
   'scan-duplicate-contacts': 'railway',
   'recover-leads-phone-55': 'railway',
@@ -78,6 +81,9 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   // São Paulo e passa. Some a isso a LGPD — o tráfego carrega CPF/CNPJ e extrato.
   'celcoin-open-finance': 'external',
   'update-profile-avatar': 'railway', // foto de perfil: a policy de UPDATE de profiles barra a sessão anônima do Externo — só service role grava
+  // Testemunho → Instagram: só existem no Railway (sharp + fonte embutida; token Meta no env do servidor)
+  'testimonial-to-instagram-post': 'railway',
+  'publish-instagram-testimonial': 'railway',
 
   // --- INSS administrativo / e-mails processuais ---
   // Só existem no Railway. Estavam FORA deste mapa e os componentes chamavam
@@ -99,6 +105,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'scrape-news': 'external', // fix anti-bot (proxy stealth + detecção de página de bloqueio); Cloud mantém versão legada como fallback
   'enrich-news-leads': 'external', // enriquecimento de manchetes (vítima/cidade/estrangeira) — só existe no externo
   'sync-process-compromissos': 'external', // detector de compromissos + feed do sino (dados 100% no Externo)
+  'sync-email-push': 'external', // parser do push por e-mail; a aba "Sem vínculo" chama o modo reprocessar ao vincular identificador
   'facebook-capi': 'external', // CAPI Purchase/Lead — migrada do Cloud (Lovable) p/ controle total de deploy+secrets; fallback → Cloud
   'create-whatsapp-group': 'external', // v12 com tokens de nome (lead_name_upper etc.); cópia do Cloud está desatualizada e criava grupo sem template
   'find-contact-groups': 'external', // instance_name deixou de ser obrigatório na busca por nome; lê instâncias/cache no Externo (onde de fato moram). Fallback → Cloud mantém a versão antiga.

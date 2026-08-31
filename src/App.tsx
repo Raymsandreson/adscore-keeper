@@ -17,6 +17,7 @@ import { TeamChatDeepLink } from "@/components/chat/TeamChatDeepLink";
 import { PushNotificationBridge } from "@/components/notifications/PushNotificationBridge";
 import { AppNavigationBridge } from "@/components/AppNavigationBridge";
 import { WhatsAppChatSheetHost } from "@/components/whatsapp/WhatsAppChatSheetHost";
+import { AgentConfigSheetHost } from "@/components/whatsapp/AgentConfigSheetHost";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
 import { PageTracker } from "@/components/PageTracker";
@@ -341,6 +342,7 @@ function SidebarLayout() {
                 recarga apagava todos os popups que ainda estavam na tela. */}
             <AppNavigationBridge />
             <WhatsAppChatSheetHost />
+            <AgentConfigSheetHost />
             <ActivityTimerOverlay />
             {/* Sem expediente aberto, aviso em tela cheia com o POP de início de
                 expediente — fechável no X. Diretoria e rotas públicas nem veem. */}

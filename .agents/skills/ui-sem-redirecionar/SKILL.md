@@ -36,9 +36,31 @@ atividade. A pessoa fecha e volta exatamente de onde saiu.
 | Processo (ficha completa) | `src/components/cases/ProcessDetailSheet.tsx` | |
 | Lead | `LeadEditDialog` | Ver skill/memória de formulários únicos. |
 | Imagem / PDF / mídia | `MediaLightbox` | Imagem **nunca** abre página nem aba — regra própria. |
+| Página de PDF em canvas | `src/components/whatsapp/PdfCanvasViewer.tsx` | Usado por dentro do `MediaLightbox`; raramente precisa ser chamado direto. |
 
 Carregue com `lazy()` + `<Suspense>` quando o painel for pesado e a tela de
 origem for leve (ex.: telão da TV).
+
+### PDF: nunca `<iframe src="....pdf">` (30/08/2026)
+
+O Chrome e o WebView do **Android não têm visualizador de PDF embutido**. Um
+iframe apontando para um PDF vira um retângulo cinza com "PDF / arquivo.pdf /
+Abrir" — e aquele "Abrir" é do sistema, tira a pessoa do app. Foi o que
+acontecia ao abrir peça do acervo na aba Documentos do processo.
+
+Por isso o `MediaLightbox` desenha as páginas por conta própria, com o pdf.js
+(`PdfCanvasViewer`). Pontos que **não** podem ser desfeitos por engano:
+
+- **build `legacy`** do `pdfjs-dist` (`pdfjs-dist/legacy/build/pdf.mjs`). O build
+  moderno usa APIs de JS recém-lançadas (`Map.getOrInsertComputed` na v6) que
+  nem o Chrome atual tem — verificado: página em branco e `TypeError` no
+  console. Legacy é transpilado e roda no WebView do Android.
+- **import dinâmico**: o pdf.js (≈123 kB gzip + worker) só baixa quando alguém
+  abre um PDF, nunca no bundle inicial.
+- **render por proximidade**: peça de autos tem centenas de páginas; só desenha
+  o que está perto da viewport e libera o canvas de quem saiu (uma A4 em 2x são
+  ~5 MB de bitmap).
+- o iframe continua no código **só como rede de segurança** se o pdf.js falhar.
 
 ## Checklist antes de entregar
 

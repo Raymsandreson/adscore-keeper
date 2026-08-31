@@ -9,6 +9,7 @@
  */
 import { format, parseISO } from 'date-fns';
 import { detectClientPolo } from '@/utils/clientPoloDetection';
+import { calculateHierarchicalProgress } from './progress/calculateHierarchicalProgress';
 
 type StepContextLike = {
   stageId?: string | null;
@@ -18,6 +19,8 @@ type StepContextLike = {
   phaseLabel?: string | null;
   objectiveLabel?: string | null;
   allSteps?: { stepId: string; phaseId: string; templateId: string; stepLabel: string; checked: boolean }[];
+  /** Fases do board na ordem projetada — denominador do progresso hierárquico. */
+  phases?: { id: string; name: string }[];
 } | null | undefined;
 
 /**
@@ -69,6 +72,24 @@ export interface ActivityMessageContext {
    * etapa nem passos; nunca sobrepõe o POP.
    */
   faseProcessual?: { faseLabel: string | null; posicao: number; total: number } | null;
+  /**
+   * Régua de marcos do processo (hook useProcessoMarcos / RPC
+   * `pop_processo_regua`) — a MESMA que a barra da ficha mostra.
+   *
+   * Andamento e trabalho são duas medidas com donos diferentes: a régua diz
+   * onde o processo está, lida das movimentações, dos documentos e do e-mail;
+   * o checklist diz o que a equipe executou. Quem vai ao cliente é o
+   * andamento — foi a decisão de 12/08/2026 para a ficha, e a mensagem tinha
+   * ficado de fora dela, anunciando percentual de passo marcado à mão.
+   */
+  regua?: {
+    percentual: number | null; atualRotulo: string | null; atualData: string | null;
+    previstos: number; cumpridos: number;
+    /** Marcos já atingidos, na ordem da régua — vira o "O que foi feito" quando o campo está vazio. */
+    atingidos?: { rotulo: string; data: string | null }[];
+    /** Próximo marco obrigatório pendente — vira o "Próximo passo" quando o campo está vazio. */
+    proximoRotulo?: string | null;
+  } | null;
   leadPreview: { board_id?: string | null } | null;
   systemOabs: any;
   currentUserId: string | null;
@@ -139,6 +160,78 @@ export function stripHtmlForMessage(html: string): string {
       .trim();
 }
 
+/**
+ * Marco → linguagem de gente. O rótulo do marco é vocabulário de advogado
+ * ("réplica", "trânsito em julgado", "RPV") e a mensagem do CLIENTE precisa
+ * ser entendida por qualquer leigo (pedido do usuário, 30/08). O assessor
+ * continua recebendo o rótulo técnico. Chave = rótulo normalizado (minúsculo);
+ * rótulo fora do mapa sai como está — nunca inventa tradução.
+ */
+const MARCO_HUMANO: Record<string, string> = {
+  'pré-processual': 'preparação do processo',
+  'ajuizamento': 'o processo deu entrada na Justiça',
+  'ajuizamento / distribuição': 'o processo deu entrada na Justiça',
+  'saneamento': 'o juiz organizou o processo para julgamento',
+  'audiência inicial': 'audiência de conciliação',
+  'audiência inicial / conciliação': 'audiência de conciliação',
+  'audiência de conciliação': 'audiência de conciliação',
+  'perícia': 'avaliação com o perito da Justiça',
+  'perícia médica': 'avaliação com o médico perito da Justiça',
+  'estudo social': 'visita da assistente social da Justiça',
+  'audiência de instrução': 'audiência com o juiz',
+  'contestação do inss': 'o INSS apresentou a defesa dele',
+  'contestação do réu': 'a outra parte apresentou a defesa dela',
+  'réplica à contestação': 'nossa resposta à defesa foi protocolada',
+  'sentença': 'decisão do juiz (sentença)',
+  'sentença (1º grau)': 'decisão do juiz (sentença)',
+  'embargos de declaração': 'pedido de esclarecimento da decisão',
+  'embargos de declaração (1º grau)': 'pedido de esclarecimento da decisão',
+  'embargos de declaração (2º grau)': 'pedido de esclarecimento da decisão',
+  'remessa ao 2º grau': 'o processo subiu para a 2ª instância',
+  'subida ao 2º grau': 'o processo subiu para a 2ª instância',
+  'acórdão (2º grau)': 'decisão da 2ª instância',
+  'remessa à instância superior': 'o processo subiu para um tribunal superior',
+  'subida ao tst / stj': 'o processo subiu para um tribunal superior',
+  'remetido ao tst': 'o processo subiu para o TST',
+  'remetido ao stj': 'o processo subiu para o STJ',
+  'remetido ao stf': 'o processo subiu para o STF',
+  'decisão superior (stj/tnu/stf)': 'decisão de tribunal superior',
+  'decisão tst / stj': 'decisão de tribunal superior',
+  'decisão do stj (resp)': 'decisão do STJ',
+  'decisão do stf': 'decisão do STF',
+  'acórdão do tst': 'decisão do TST',
+  'admissibilidade do recurso de revista': 'recurso em análise no tribunal',
+  'admissibilidade do rr': 'recurso em análise no tribunal',
+  'agravo de instrumento em rr': 'recurso em análise no tribunal',
+  'agravo interno': 'recurso em análise no tribunal',
+  'recurso extraordinário (stf)': 'recurso em análise no STF',
+  'trânsito em julgado': 'decisão final — não cabe mais recurso',
+  'execução / cumprimento': 'começou a fase de receber o que foi ganho',
+  'execução iniciada': 'começou a fase de receber o que foi ganho',
+  'execução / cumprimento iniciado': 'começou a fase de receber o que foi ganho',
+  'liquidação': 'cálculo dos valores a receber',
+  'liquidação / cálculos': 'cálculo dos valores a receber',
+  'liquidação iniciada': 'cálculo dos valores a receber',
+  'implantação do benefício': 'o benefício foi ativado pelo INSS',
+  'rpv / precatório expedido': 'o pagamento foi requisitado à Justiça',
+  'alvará expedido': 'a autorização de saque foi emitida',
+  'levantamento / pagamento': 'pagamento recebido',
+  'pagamento espontâneo': 'pagamento recebido',
+  'constrição / penhora': 'bloqueio de bens do devedor',
+  'arquivamento definitivo': 'processo encerrado e arquivado',
+  'requerimento protocolado (inss)': 'o pedido foi protocolado no INSS',
+  'em análise no inss': 'o pedido está em análise no INSS',
+  'benefício concedido pelo inss': 'o benefício foi aprovado pelo INSS',
+  'indeferimento do inss': 'o pedido foi negado pelo INSS',
+  'exigência do inss': 'o INSS pediu documentos complementares',
+};
+
+/** Versão leiga do marco para a mensagem do cliente. Fora do mapa, sai o rótulo. */
+export function humanizaMarco(rotulo: string | null | undefined): string {
+  if (!rotulo) return '';
+  return MARCO_HUMANO[rotulo.trim().toLowerCase()] || rotulo;
+}
+
 // audience: 'client' (grupo do lead — padrão) ou 'assessor' (mensagem interna,
 // endereçada ao(s) assessor(es) responsável(is) — usado quando não há lead).
 const RESULTADO_INSS_LABEL: Record<string, string> = {
@@ -156,7 +249,7 @@ export function buildActivityMessage(
     formWhatWasDone, formCurrentStatus, formNextSteps, formSolicitacao, formRespostaJuizo, formNotes,
     formAssignedToName, formCoAssignees, formIsSystem, formClientNameOverride, formLeadName,
     formCaseTitle, formProcessId, formProcessTitle,
-    fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, leadPreview, systemOabs,
+    fieldSettings, selectedActivity, caseProcesses, stepContext, faseProcessual, regua, leadPreview, systemOabs,
     currentUserId, resolveUserName, getTemplateForContext, inssDesfecho,
   } = ctx;
   const stripHtml = stripHtmlForMessage;
@@ -179,6 +272,31 @@ export function buildActivityMessage(
       ? (notifHora ? `${notifDateOnly}, às ${notifHora}` : notifDateOnly)
       : '';
     const valueMap: Record<string, string> = { what_was_done: stripHtml(formWhatWasDone), current_status: stripHtml(formCurrentStatus), next_steps: stripHtml(formNextSteps), solicitacao: stripHtml(formSolicitacao), resposta_juizo: stripHtml(formRespostaJuizo), notes: stripHtml(formNotes) };
+    // Campo vazio não vira seção sumida: quando há régua, "Como está?",
+    // "O que foi feito?" e "Próximo passo" saem dos MARCOS detectados
+    // (movimentações e documentos reais — nada inventado). Texto digitado pelo
+    // assessor sempre vence; isto só cobre o vazio (pedido do usuário, 30/08:
+    // atividade automática saía sem nenhuma das três seções).
+    if (regua && regua.percentual != null) {
+      const dataBR = (d?: string | null) => (d ? format(parseISO(d.slice(0, 10)), 'dd/MM/yyyy') : '');
+      const marcoAtualTxt = regua.atualRotulo
+        ? `"${regua.atualRotulo}"${regua.atualData ? ` em ${dataBR(regua.atualData)}` : ''}`
+        : '';
+      if (!valueMap.current_status.trim() && regua.atualRotulo) {
+        valueMap.current_status = `Seguimos acompanhando o processo de perto — a movimentação mais recente: ${humanizaMarco(regua.atualRotulo)}${regua.atualData ? `, em ${dataBR(regua.atualData)}` : ''}.`;
+      }
+      if (!valueMap.what_was_done.trim() && (regua.atingidos?.length || 0) > 0) {
+        const lista = (regua.atingidos || [])
+          .map(a => `${humanizaMarco(a.rotulo)}${a.data ? ` (${dataBR(a.data)})` : ''}`)
+          .join('; ');
+        valueMap.what_was_done = `Até aqui o processo já passou por: ${lista}.`;
+      }
+      if (!valueMap.next_steps.trim()) {
+        valueMap.next_steps = regua.proximoRotulo
+          ? `Agora aguardamos a próxima etapa: ${humanizaMarco(regua.proximoRotulo)}. Estamos de olho em cada movimentação e avisamos assim que houver novidade.`
+          : 'Seguimos de olho em cada movimentação e avisamos assim que houver novidade.';
+      }
+    }
     // Campos que NUNCA vão pra mensagem copiada/enviada, mesmo que o usuário marque include_in_message.
     // resposta_juizo é conteúdo interno (uso da equipe), não deve ir pro cliente.
     const EXCLUDED_FROM_MESSAGE = new Set(['resposta_juizo']);
@@ -283,6 +401,28 @@ export function buildActivityMessage(
           full: `*⚠️ Requerimento${req} está ${rotulo} no INSS* — progresso do POP omitido na mensagem ao cliente.`,
         };
       }
+      // ANDAMENTO vem primeiro: é a régua de marcos, a mesma medida da barra da
+      // ficha. Só quando ela não tem marco nenhum a mensagem cai no que a
+      // equipe executou. Nunca as duas — "40% pela régua" e "61% pelos passos"
+      // são dois números certos que, juntos, viram uma tela mentindo.
+      if (regua && regua.percentual != null) {
+        const dataMarco = regua.atualData ? ` em ${format(parseISO(regua.atualData.slice(0, 10)), 'dd/MM/yyyy')}` : '';
+        // Cliente lê a versão leiga; o detalhe do assessor fica técnico.
+        const marcoCliente = regua.atualRotulo ? `${humanizaMarco(regua.atualRotulo)}${dataMarco}` : null;
+        const marco = regua.atualRotulo ? `${regua.atualRotulo}${dataMarco}` : null;
+        const linha = `*📊 Andamento do processo: ${Math.round(Number(regua.percentual))}% concluído*`;
+        return {
+          // "Marco atual", não "Etapa": a linha de *Etapa:* logo abaixo é a fase
+          // do POP (o que a equipe faz). São duas coisas e têm dois nomes.
+          headline: marcoCliente ? `${linha}\n*Marco atual:* ${marcoCliente}` : linha,
+          full: [
+            linha,
+            marco && `• Marco atual: ${marco}`,
+            `• Marcos: ${regua.cumpridos}/${regua.previstos} previstos para este processo`,
+          ].filter(Boolean).join('\n'),
+        };
+      }
+
       const steps = stepContext?.allSteps || [];
       if (steps.length === 0) {
         // Sem checklist: usa a régua de marcos do processo, com rótulo próprio —
@@ -295,10 +435,32 @@ export function buildActivityMessage(
       }
       const pct = (done: number, total: number) => (total > 0 ? Math.round((done / total) * 100) : 0);
 
-      const doneSteps = steps.filter((s) => s.checked).length;
-      const overallPct = pct(doneSteps, steps.length);
+      // MESMA CONTA DA BARRA da ficha (calculateHierarchicalProgress): cada
+      // fase pesa igual, dentro dela cada objetivo pesa igual, dentro dele cada
+      // passo pesa igual. Contar passo no plano dava outro número — fase com um
+      // objetivo de um passo valia o mesmo que fase com três objetivos de três
+      // passos — e o cliente lia um percentual que não batia com o da tela.
+      const instanciasDoProgresso = (() => {
+        const porObjetivo = new Map<string, { id: string; stage_id: string; items: { id: string; checked?: boolean }[] }>();
+        for (const s of steps) {
+          const chave = `${s.phaseId}|${s.templateId}`;
+          if (!porObjetivo.has(chave)) porObjetivo.set(chave, { id: chave, stage_id: s.phaseId, items: [] });
+          porObjetivo.get(chave)!.items.push({ id: s.stepId, checked: s.checked });
+        }
+        return Array.from(porObjetivo.values());
+      })();
+      // Fase sem objetivo instanciado também conta no denominador; sem a lista
+      // de fases do board sobra só o que tem passo (mensagem antiga/salva).
+      const phaseIdsDoBoard = stepContext?.phases?.length
+        ? stepContext.phases.map((f) => f.id)
+        : [...new Set(steps.map((s) => s.phaseId))];
+      const overallPct = Math.round(
+        calculateHierarchicalProgress(phaseIdsDoBoard, instanciasDoProgresso).globalPercent,
+      );
 
-      const phaseIds = [...new Set(steps.map((s) => s.phaseId))];
+      // Mesmo denominador do percentual: fase do board sem passo instanciado
+      // conta como fase não concluída, não como fase inexistente.
+      const phaseIds = phaseIdsDoBoard;
       const phasesDone = phaseIds.filter((pid) => {
         const ps = steps.filter((s) => s.phaseId === pid);
         return ps.length > 0 && ps.every((s) => s.checked);

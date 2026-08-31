@@ -5,8 +5,17 @@ import { useProfilesList } from '@/hooks/useProfilesList';
 import { TeamChatPanel } from '@/components/chat/TeamChatPanel';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Users, X } from 'lucide-react';
+import { Lock, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
+
+/** Linha de `whatsapp_conversation_shares` — quem enxerga esta conversa. */
+interface ConversationShare {
+  id: string;
+  shared_with: string;
+  shared_by: string;
+  identify_sender: boolean;
+  can_reshare: boolean;
+}
 
 interface Props {
   phone: string;
@@ -28,16 +37,17 @@ interface Props {
 export function WhatsAppConversationTeamChat({ phone, instanceName, contactName, onClose, className }: Props) {
   const { user } = useAuthContext();
   const profiles = useProfilesList();
-  const [sharedWith, setSharedWith] = useState<string[]>([]);
+  const [shares, setShares] = useState<ConversationShare[]>([]);
+  const sharedWith = shares.map(s => s.shared_with);
 
   const loadShares = useCallback(async () => {
     if (!instanceName) return;
     const { data } = await supabase
       .from('whatsapp_conversation_shares')
-      .select('shared_with')
+      .select('id, shared_with, shared_by, identify_sender, can_reshare')
       .eq('phone', phone)
       .eq('instance_name', instanceName);
-    setSharedWith((data || []).map((s: { shared_with: string }) => s.shared_with));
+    setShares((data || []) as ConversationShare[]);
   }, [phone, instanceName]);
 
   useEffect(() => { loadShares(); }, [loadShares]);
@@ -76,7 +86,8 @@ export function WhatsAppConversationTeamChat({ phone, instanceName, contactName,
     }
 
     if (granted.length === 0) return;
-    setSharedWith(prev => [...prev, ...granted]);
+    // Recarrega para ter o id de cada acesso — é ele que permite revogar no chip.
+    await loadShares();
     toast.success(
       granted.length === 1
         ? `${nameOf(granted[0])} agora tem acesso a esta conversa`
@@ -95,9 +106,52 @@ export function WhatsAppConversationTeamChat({ phone, instanceName, contactName,
         },
       }).catch(err => console.error('notify-conversation-share failed:', err));
     }
-  }, [user, instanceName, phone, contactName, sharedWith, nameOf]);
+  }, [user, instanceName, phone, contactName, sharedWith, nameOf, loadShares]);
 
-  const others = sharedWith.filter(uid => uid !== user?.id);
+  /**
+   * Tira o acesso de alguém direto pelo chip — a mesma revogação do diálogo de
+   * compartilhamento, sem sair da conversa. A RLS só deixa quem liberou remover,
+   * então o "x" só aparece para quem concedeu. O toast oferece desfazer: um
+   * clique errado aqui tiraria a pessoa de uma conversa que ela acompanha.
+   */
+  const revokeAccess = useCallback(async (share: ConversationShare) => {
+    if (!user || !instanceName) return;
+    const { error } = await supabase
+      .from('whatsapp_conversation_shares')
+      .delete()
+      .eq('id', share.id);
+    if (error) {
+      console.error('[WhatsAppConversationTeamChat] falha ao revogar acesso:', error);
+      toast.error(`Não consegui tirar o acesso de ${nameOf(share.shared_with)}`);
+      return;
+    }
+    setShares(prev => prev.filter(s => s.id !== share.id));
+    toast.success(`${nameOf(share.shared_with)} não vê mais esta conversa`, {
+      action: {
+        label: 'Desfazer',
+        onClick: async () => {
+          const { error: undoError } = await supabase
+            .from('whatsapp_conversation_shares')
+            .insert({
+              phone,
+              instance_name: instanceName,
+              shared_by: user.id,
+              shared_with: share.shared_with,
+              identify_sender: share.identify_sender,
+              can_reshare: share.can_reshare,
+            });
+          if (undoError && undoError.code !== '23505') {
+            toast.error('Não consegui devolver o acesso');
+            return;
+          }
+          await loadShares();
+          toast.success(`Acesso de ${nameOf(share.shared_with)} devolvido`);
+        },
+      },
+    });
+  }, [user, instanceName, phone, nameOf, loadShares]);
+
+  const others = shares.filter(s => s.shared_with !== user?.id);
 
   return (
     <div className={className}>
@@ -120,9 +174,32 @@ export function WhatsAppConversationTeamChat({ phone, instanceName, contactName,
           {others.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-1.5">
               <span className="text-[10px] text-muted-foreground">Com acesso:</span>
-              {others.map(uid => (
-                <Badge key={uid} variant="outline" className="text-[9px] h-4 px-1.5">{nameOf(uid)}</Badge>
-              ))}
+              {others.map(share => {
+                const podeRevogar = share.shared_by === user?.id;
+                return (
+                  <Badge key={share.id} variant="outline" className="text-[9px] h-4 pl-1.5 pr-1 gap-0.5">
+                    <span className="truncate max-w-[160px]">{nameOf(share.shared_with)}</span>
+                    {podeRevogar ? (
+                      <button
+                        type="button"
+                        className="shrink-0 rounded-sm p-0.5 -mr-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                        onClick={() => revokeAccess(share)}
+                        title={`Tirar o acesso de ${nameOf(share.shared_with)} a esta conversa`}
+                        aria-label={`Tirar o acesso de ${nameOf(share.shared_with)}`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    ) : (
+                      <span
+                        className="shrink-0 text-muted-foreground/60 px-0.5"
+                        title={`Acesso liberado por ${nameOf(share.shared_by)} — só quem liberou pode tirar`}
+                      >
+                        <Lock className="h-2.5 w-2.5" />
+                      </span>
+                    )}
+                  </Badge>
+                );
+              })}
             </div>
           )}
         </div>

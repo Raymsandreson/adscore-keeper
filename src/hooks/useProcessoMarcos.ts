@@ -63,6 +63,65 @@ export interface ReguaDoProcesso {
   /** RPC respondeu (mesmo que sem marco). Evita piscar régua vazia no load. */
   pronto: boolean;
   recarregar: () => Promise<void>;
+  /**
+   * Rematerializa process_pop_marcos deste processo e recarrega a régua.
+   * Para quando a evidência acabou de mudar (peça anexada a um marco) e esperar
+   * o tick do cron deixaria a tela mentindo por minutos.
+   */
+  rematerializar: () => Promise<void>;
+}
+
+/** Resumo da régua para quem só precisa do número (mensagem da atividade, sino). */
+export interface ReguaResumo {
+  percentual: number | null;
+  atualRotulo: string | null;
+  atualData: string | null;
+  previstos: number;
+  cumpridos: number;
+  /** Marcos já atingidos, na ordem da régua. */
+  atingidos: { rotulo: string; data: string | null }[];
+  /** Próximo marco obrigatório ainda pendente. */
+  proximoRotulo: string | null;
+}
+
+/** Monta o resumo a partir das linhas da régua — a MESMA conta em hook e sino. */
+export function resumirRegua(rows: MarcoReguaRow[]): ReguaResumo | null {
+  if (rows.length === 0) return null;
+  const atual = rows.find(m => m.atual) || null;
+  return {
+    percentual: rows[0].percentual,
+    atualRotulo: atual?.rotulo || null,
+    atualData: atual?.data_detectada || null,
+    previstos: rows[0].previstos,
+    cumpridos: rows[0].cumpridos,
+    atingidos: rows
+      .filter(m => !m.atravessa_fases && m.estado === 'atingido')
+      .map(m => ({ rotulo: m.rotulo, data: m.data_detectada })),
+    proximoRotulo: rows.find(m => !m.atravessa_fases && !m.eventual && m.estado === 'pendente')?.rotulo || null,
+  };
+}
+
+/**
+ * Lê a régua FORA de componente React — o sino monta a mesma mensagem da
+ * atividade e precisa do mesmo andamento. Devolve null quando a RPC falha;
+ * régua sem marco volta com `percentual: null`, que é o sinal para quem chama
+ * cair no progresso por passos.
+ */
+export async function fetchProcessoRegua(processId?: string | null): Promise<ReguaResumo | null> {
+  if (!processId) return null;
+  await ensureExternalSession();
+  const { data, error } = await (externalSupabase.rpc as unknown as (
+    f: string,
+    a: Record<string, unknown>,
+  ) => PromiseLike<{ data?: MarcoReguaRow[] | null; error?: { message?: string } | null }>)(
+    'pop_processo_regua',
+    { p_process_id: processId },
+  );
+  if (error) {
+    console.warn('[fetchProcessoRegua]', error.message);
+    return null;
+  }
+  return resumirRegua(data || []);
 }
 
 export function useProcessoMarcos(processId?: string | null): ReguaDoProcesso {
@@ -102,10 +161,28 @@ export function useProcessoMarcos(processId?: string | null): ReguaDoProcesso {
 
   useEffect(() => { void carregar(); }, [carregar]);
 
+  const rematerializar = useCallback(async () => {
+    if (!processId) return;
+    try {
+      await ensureExternalSession();
+      const { error } = await (externalSupabase.rpc as unknown as (
+        f: string,
+        a: Record<string, unknown>,
+      ) => PromiseLike<{ error?: { message?: string } | null }>)(
+        'refresh_process_pop_marcos',
+        { p_process_id: processId },
+      );
+      if (error) console.warn('[useProcessoMarcos] refresh_process_pop_marcos:', error.message);
+    } finally {
+      // Recarrega mesmo se o refresh falhar: o tick pode já ter passado.
+      await carregar();
+    }
+  }, [processId, carregar]);
+
   const atual = marcos.find(m => m.atual) || null;
   const percentual = marcos.length > 0 ? marcos[0].percentual : null;
   const previstos = marcos.length > 0 ? marcos[0].previstos : 0;
   const cumpridos = marcos.length > 0 ? marcos[0].cumpridos : 0;
 
-  return { marcos, atual, percentual, previstos, cumpridos, loading, pronto, recarregar: carregar };
+  return { marcos, atual, percentual, previstos, cumpridos, loading, pronto, recarregar: carregar, rematerializar };
 }

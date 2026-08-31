@@ -66,7 +66,6 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
   const [showCaseDialog, setShowCaseDialog] = useState(false);
   const [editingCase, setEditingCase] = useState<LegalCase | null>(null);
-  const [caseTitle, setCaseTitle] = useState('');
   const [caseCaseNumber, setCaseCaseNumber] = useState('');
   const [caseDescription, setCaseDescription] = useState('');
   const [caseNucleusId, setCaseNucleusId] = useState('');
@@ -115,7 +114,6 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
   };
 
   const resetCaseForm = () => {
-    setCaseTitle('');
     setCaseCaseNumber('');
     setCaseDescription('');
     setCaseNucleusId('');
@@ -135,10 +133,9 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
     });
   };
 
-  const autoCreateProcesses = async (caseId: string, caseLeadId: string, caseNumber?: string) => {
+  const autoCreateProcesses = async (caseId: string, caseLeadId: string, titulo: string, caseNumber?: string) => {
     if (selectedProcesses.size === 0) return;
     const { data: { user } } = await supabase.auth.getUser();
-    const titulo = caseTitle?.trim() || editingCase?.title || '';
     const extCreatedBy = await remapToExternal(user?.id);
 
     // Herda o fluxo de trabalho do caso, para o processo automático nascer com
@@ -240,14 +237,13 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
 
   const handleSaveCase = async () => {
-    if (!caseTitle.trim()) return;
     if (!editingCase && !caseClosedAt) {
       toast.error('A data de fechamento é obrigatória');
       return;
     }
     if (editingCase) {
+      // O título saiu do formulário: na edição o existente fica como está.
       await updateCase(editingCase.id, {
-        title: caseTitle.trim(),
         description: caseDescription || null,
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
         notes: caseNotes || null,
@@ -255,13 +251,13 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       } as Partial<LegalCase>);
       // Auto-create selected processes on edit too
       if (selectedProcesses.size > 0) {
-        await autoCreateProcesses(editingCase.id, leadId, editingCase.case_number);
+        await autoCreateProcesses(editingCase.id, leadId, editingCase.title, editingCase.case_number);
       }
     } else {
+      // Sem title: createCase deriva do nome do lead (ou do número gerado).
       const newCase = await createCase({
         lead_id: leadId,
         nucleus_id: caseNucleusId && caseNucleusId !== '__none__' ? caseNucleusId : null,
-        title: caseTitle.trim(),
         description: caseDescription,
         notes: caseNotes,
         case_number: caseCaseNumber || undefined,
@@ -271,7 +267,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
       setExpandedCaseId(newCase.id);
       // Auto-create selected processes
       if (selectedProcesses.size > 0) {
-        await autoCreateProcesses(newCase.id, leadId, newCase.case_number);
+        await autoCreateProcesses(newCase.id, leadId, newCase.title, newCase.case_number);
       }
     }
     setShowCaseDialog(false);
@@ -283,7 +279,6 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
 
   const openEditCase = (c: LegalCase) => {
     setEditingCase(c);
-    setCaseTitle(c.title);
     setCaseCaseNumber(c.case_number || '');
     setCaseDescription(c.description || '');
     setCaseNucleusId(c.nucleus_id || '');
@@ -369,10 +364,6 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
             <div>
               <Label>Número do Caso</Label>
               <Input value={caseCaseNumber} onChange={e => setCaseCaseNumber(e.target.value)} placeholder="Ex: CASO-0001 (deixe vazio para gerar automaticamente)" />
-            </div>
-            <div>
-              <Label>Título *</Label>
-              <Input value={caseTitle} onChange={e => setCaseTitle(e.target.value)} placeholder="Ex: Acidente de trabalho - João Silva" />
             </div>
             {nuclei.length > 0 && (
               <div>
@@ -466,7 +457,7 @@ export function LegalCasesTab({ leadId, boards, onViewContact }: LegalCasesTabPr
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowCaseDialog(false); resetCaseForm(); }}>Cancelar</Button>
-            <Button onClick={handleSaveCase} disabled={!caseTitle.trim()}>Salvar</Button>
+            <Button onClick={handleSaveCase}>Salvar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -173,6 +173,34 @@ Método:
 
 Regra dura do Modo Leopardo (do vocabulário): nenhuma migração física sem aval explícito do Raym, sem a conciliação fechar, e fora do horário do cron `esc_colher`. Migrações são aditivas.
 
+### 8b. Resultado do piloto (30/08/2026) — a conciliação FECHOU
+
+Pilotos: `0000453-61.2023.5.20.0016` (13 clientes), `0000330-97.2021.5.08.0103`,
+`0000249-26.2020.5.14.0004`, `0000411-13.2022.5.21.0018`, `0100440-70.2022.5.01.0263`
+— todos com litisconsórcio + parcelas + cliente menor + execução. Fechamento
+célula a célula contra a `Tab. Aux` (export CSV da planilha Jurimetria/indenização),
+**26/26 pares**:
+
+- **K = L + N + O + P** em 26/26 (condenação CJCM = parte + contratual à vista +
+  contratual parcelado + sucumbencial);
+- **P = hs_pct × (L+N+O)** em 26/26 — o `jm_valores.hs_pct` bate com a planilha;
+- **(N+O) = 30% × (L+N+O)** em 26/26 — o contratual implícito é 30% em todos
+  (coerente com a média de 29,98% do `fee_percentage`).
+
+Regra de derivação validada: `bruto = cota + contratual`; `contratual = fee × bruto`
+(fee do processo, senão 0,30); `cota_liquida = (1−fee) × bruto`;
+`sucumbencial = hs_pct × bruto`; `condenação = bruto + sucumbencial`. Vale sobre
+base nominal ou corrigida (é percentual).
+
+Migração preparada (NÃO aplicada):
+`supabase/migrations-external/20260830190000_jm_recebiveis_por_cliente_PREPARADA_NAO_APLICADA.sql`
+— tabela `jm_recebiveis` por (processo × cliente) com cota/honorários separados,
+cessível/cedido, estágio da régua de 7, menor + data_liberacao, e a função
+`jm_recebiveis_derivar()` que materializa a regra. Aplicar só com aval do Raym,
+entre ticks do `jm-esc-rotina` (a cada 20min), e rodar a conciliação pós-derivação
+comentada no fim do arquivo (âncora do bruto total ≈ R$ 113,75M, NUNCA os 41,7M
+que ignoram pensionamento).
+
 O que a tela precisa entregar, quando chegar a hora: filtro **carteira / todas** e **POP**; dinheiro agrupado pelos **7 estágios**; **cota do cliente e honorário em colunas separadas, nunca somadas**; honorário aberto em **à vista × parcelado**.
 
 ---

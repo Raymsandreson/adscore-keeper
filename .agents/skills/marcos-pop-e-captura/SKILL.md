@@ -335,6 +335,27 @@ diz `· N na fila` ou, havendo falha, `⚠ N com erro` em âmbar — esse resumo
 o painel de virar decoração: fila parada não avisa sozinha, foi o que custou o mês entre
 09/07 e 11/08. Se um dia mexer nesse componente, mantenha o resumo da barra fechada.
 
+### O elo que faltava na cadeia: radar de processos quietos (31/08/2026)
+
+A cadeia acima só anda quando o **e-mail** dispara — e há movimentação que nunca gera
+e-mail: juntada de petição não sai no Diário. O caso `1017247-47.2025.4.01.3100` provou o
+custo: réplica juntada em 03/08, prazo automático nasceu **30/08** (53 dias). E o detalhe
+que engana qualquer diagnóstico: `data_ultima_verificacao` de 30/08 com movimentação
+parada em 08/07 **não** é bug nosso — a consulta aconteceu, mas ela lê o **cache do
+Escavador**, e o cache deles estava parado. Quem quer o tribunal de verdade paga
+`solicitar-atualizacao`.
+
+O elo agora existe: edge `radar-processos-quietos` (cron 09h/17h UTC). Três motivos, em
+ordem: `email_recente` (push chegou e o cache está mais velho que o e-mail),
+`prazo_proximo` (atividade aberta vence em ≤7d e movimentação >7d), `mov_estagnada`
+(≥20d parado com atividade aberta). Primeiro re-consulta **grátis** o cache
+(`backfill-process-marcos` + `process_ids`); só quem continua parado vira solicitação
+**paga** via `esc-autos acao=solicitar` corpo `{}` — cooldown 3/7/30 dias por motivo,
+teto 15/rodada, créditos gravados em `radar_atualizacoes`. Quem anda ganha prazo na hora
+(`sync-process-compromissos` por processo). Doc completa: `docs/sistema/processual.md`
+§ "Radar de processos quietos". `process_movement_monitors` segue vazia e agora é
+irrelevante: o radar é quem re-consulta sozinho.
+
 ### O que o card do sino escreve embaixo do processo
 
 `process_updates.descricao` mistura duas naturezas, e quem for mexer no card precisa saber
@@ -514,6 +535,100 @@ push por dia. Antes de suspeitar de token vencido ou edge não deployada, cheque
 acidente) tem `body_text` preenchido, mas nenhuma IA lê esse texto. Nenhum POP
 administrativo tem marco cadastrado; o tipo `'texto'` em `pop_marco_sinais` foi criado
 para isso e está vazio.
+
+---
+
+## Régua previdenciária POR PRODUTO (30/08/2026)
+
+Até 30/08 as réguas dos POPs previdenciários eram cópias idênticas do trabalhista
+(migration 20260814130000) — nenhuma particularidade de produto. Aplicado com OK
+do usuário (PLANO_20260830_marcos_previdenciarios_por_produto.sql, correções no
+cabeçalho do arquivo): **222→254 marcos, 556→622 sinais** (medidos, não
+estimados), 1337 processos com marco antes e depois (ninguém perdeu régua).
+
+Marcos novos nos 6 POPs prev (BPC JUDICIAL, POP-BPC-Adm, Auxílio Acidente,
+Aux. Doença Acidentário, Pensão por Morte, Salário Maternidade), todos
+eventuais/fase: `contestacao`, `replica` (antes da sentença),
+`liquidacao_calculos`, `implantacao_beneficio`, `rpv_precatorio` (entre execução
+e alvará; RPV sugere estágio `A_RECEBER`). Só nos dois BPC: `pericia_social`
+(estudo social — a segunda perícia que nenhum outro benefício tem; `pericia`
+virou "Perícia médica" com padrao_excluir dos termos sociais — NUNCA `social`
+seco, que casaria "Instituto Nacional do Seguro **Social**" em todo cabeçalho).
+
+Vocabulário recursal por competência: no JEF o acórdão sai por **recurso
+inominado/Turma Recursal** (o padrão antigo "recurso ordinário" é trabalhista e
+casava 0 de 17 processos com o termo); acidentários têm sinal extra de
+**apelação/TJ** porque acidente do trabalho corre na Justiça Estadual (art. 109
+I CF — confirmado nos CNJs 8.10/8.13/8.14/8.15/8.18 da base). Anexo manual tem
+porta em três marcos (sinal `documento`): planilha de liquidação →
+`liquidacao_calculos`, carta de concessão → `implantacao_beneficio`, comprovante
+de pagamento → `pagamento`.
+
+Primeiro tick: `pericia_social` detectado em 8 processos, `contestacao` em 5.
+Caso `1017247-47.2025.4.01.3100`: o 28/04 era "juntada de laudo de perícia
+social" (reclassificado de Perícia para Estudo social) e o marco atual virou
+**Contestação do INSS em 17/06** — 40%→50%.
+
+**Justiça Comum e Requerimento de Seguro** entraram na mesma tarde (OK do
+usuário; 254→260 marcos, 622→642 sinais): `contestacao` (rótulo "Contestação do
+réu" — o réu não é o INSS), `replica` e `rpv_precatorio`. NÃO ganharam
+`implantacao_beneficio` (não há benefício a implantar) nem `pericia_social`
+(exclusiva do BPC), e NÃO ganharam `liquidacao_calculos` porque esses dois
+boards JÁ TÊM o marco `liquidacao` (ordem própria, antes da execução) — que
+estava **sem sinal nenhum**, junto com `pagamento`; os dois receberam os sinais
+(cálculos/CECALC + planilha de liquidação; pagamento efetuado + comprovante).
+Acórdão ganhou os dois vocabulários estaduais: apelação/TJ (rito comum) e
+recurso inominado/Turma Recursal (JEC estadual). Primeiro tick: contestacao,
+liquidacao e rpv_precatorio detectados 1× cada na Justiça Comum — a primeira
+detecção de RPV da base. Antes de criar marco em board novo, SEMPRE conferir as
+chaves que ele já tem: `liquidacao` vs `liquidacao_calculos` teria duplicado.
+
+Armadilhas para a próxima mudança de régua: `pop_marcos` tem UNIQUE
+(board_id, ordem) **deferred** e UNIQUE (board_id, chave); as ordens diferem por
+board (POP-BPC-Adm: adm 1..4, judicial 11+, estados 30..43) — shift de ordem é
+sempre relativo à âncora do board e move TODOS os marcos dali em diante, estados
+incluídos, senão colide. `estagio_financeiro_sugerido` usa underscore
+(`A_RECEBER`).
+
+---
+
+## Unificação do BPC + trabalho espelhando os marcos (30/08/2026, noite)
+
+Três mudanças com OK do usuário, todas com backup em `zz_bpc_unificacao_bkp_20260830`:
+
+**1. Um POP só de BPC.** `BPC JUDICIAL` (cbaa0dfb) foi unificado no
+`POP - BPC (Administrativo e Judicial)` (8377ee1b — o antigo "POP - BPC -
+Administrativo", renomeado; a edge zapsign referencia por id, intacta). Movidos:
+1.154 instâncias de 109 leads (estado marcado preservado; as 6 fases judiciais
+colapsam em `stage_fase_judicial`, pós-decisão em `stage_pos_deferimento`), 35
+processos (workflow_id + workflow_stage_id + workflow_name), 52 atividades, e os
+16 objetivos judiciais viraram links no board unificado (display_order 200+ na
+sequência do fluxo original). O board antigo ficou vazio e renomeado
+"(desativado — unificado no POP BPC em 30/08/2026)" — é o rollback. Zero sobras
+conferidas; caso Sidiney revalidado no unificado (fase judicial, 50%,
+contestação atual). A fase-detalhe judicial agora é dada pela ORDEM DOS
+OBJETIVOS dentro de stage_fase_judicial, não por 6 stages — o percentual segue
+sendo da régua, que não mudou.
+
+**2. Concedido no adm não desce pro judicial — JÁ ERA ASSIM.** A RPC
+`pop_processo_regua` tem `bool_or(estado='atingido' and terminal)` → percentual
+100, e `concessao_administrativa` já é `terminal=true` com sinal de e-mail
+configurado. Pendência de calibragem: **0 processos** com essa detecção hoje
+(84 indeferimentos, 114 exigências) — quando o primeiro deferimento adm chegar,
+conferir se o padrão do despacho casa.
+
+**3. Trabalho espelhando os marcos nos 4 POPs com buraco.** Templates novos
+"Contestação e Réplica" e "Liquidação e Recebimento" em dois sabores (Prev/
+Cível), reuso dos genéricos do BPC ("Fase Recursal", "Elaboração e Propositura",
+"Sentença" — link carrega o dono, template é global) — 14 links: Aux. Doença
+Acidentário, Pensão por Morte, Seguro e Justiça Comum (que estava com ZERO
+objetivo). O passo de planilha/comprovante manda anexar a peça — é o anexo que
+move a régua, o passo é o lembrete.
+
+Nota de vocabulário (do usuário, 30/08): marco e fase são a MESMA coisa — o
+tick move a fase pelo marco, os dois são autodetectados. A única distinção real
+é marco/fase (autodetectado) × passo/objetivo (marcado à mão). Não descrever
+como três conceitos.
 
 ---
 
