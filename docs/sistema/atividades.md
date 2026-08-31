@@ -206,22 +206,35 @@ Arquivos: `CourtContactsSheet.tsx`, `CourtContactsForProcess.tsx`, `src/lib/cnj.
 
 **Fluxo recomendado**: "Iniciar expediente" → abrir a atividade (cronômetro liga sozinho) → nos vazios, usar o microfone "O que faço?" pra documentar por voz → registrar pausas pelo menu → "Encerrar expediente" ao sair.
 
-### Ativo x ocioso com a atividade aberta (28/08/2026)
+### Ativo x ocioso com a atividade aberta (28/08/2026, revisto em 31/08/2026)
 
 Quem decide cada segundo é `activityTickMode()` em `src/contexts/ActivityTimerContext.tsx` (função pura, testada em `__tests__/ActivityTimerContext.away.test.ts`):
 
 | Situação | Conta como | Pergunta | Volta pro ativo se confirmar? |
 |---|---|---|---|
 | Na aba, mexendo no sistema | **Ativo** | — | — |
-| **Fora da aba** (PJe, Word, e-mail, telefone) até 10 min | **Ativo** | — | — |
-| Fora da aba passando de 10 min | Ocioso | "Ainda está nessa atividade?" | **Sim** — até 2h por ausência |
+| **Fora da aba** (PJe, Word, e-mail, telefone) até 45 min | **Ativo** | — | — |
+| Fora da aba passando de 45 min | Ocioso | "Ainda está nessa atividade?" | **Sim** — até 4h por ausência |
 | Fora da aba com **previsão** declarada ainda cobrindo | **Ativo** até o teto da previsão | no estouro | **Sim** |
-| Na aba, sem tocar em nada por 5 min (saiu do computador) | Ocioso | "Ainda está nessa atividade?" | **Não** |
-| Tela bloqueada / PC suspenso | Ocioso | só no PC suspenso | **Não** |
+| Na aba, sem tocar em nada por 15 min (saiu do computador) | Ocioso | "Ainda está nessa atividade?" | **Não** |
+| Tela bloqueada | Ocioso | — | **Não** |
+| Máquina suspensa, sem previsão e com o app em foco | Ocioso | uma vez, ao voltar | **Não** |
+| Máquina suspensa **com previsão em andamento ou app fora de foco** | Ocioso | uma vez, ao voltar | **Sim** |
+| Pergunta pendente, mas a pessoa mexendo na aba | **Ativo** | — | — |
 
-"Fora da aba" = `document.visibilityState !== 'visible' || !document.hasFocus()` — vale para outra aba, outro programa e janela minimizada. A carência é `AWAY_GRACE_MS` (10 min); o teto do que uma ausência devolve ao ativo é `RECLAIM_MAX_SEC` (2h), para aba esquecida aberta a noite toda não virar jornada produtiva com um clique. O que é reatribuível fica em `TimerEntry.reclaimableIdle` (só na memória da aba; o banco guarda o resultado já em `active_seconds`/`idle_seconds`) e o "Sim, continuar contando" faz a transferência em `confirmStillWorking()`.
+"Fora da aba" = `document.visibilityState !== 'visible' || !document.hasFocus()` — vale para outra aba, outro programa e janela minimizada. A carência é `AWAY_GRACE_MS` (45 min); o teto do que uma ausência devolve ao ativo é `RECLAIM_MAX_SEC` (4h), para aba esquecida aberta a noite toda não virar jornada produtiva com um clique. O que é reatribuível fica em `TimerEntry.reclaimableIdle` (só na memória da aba; o banco guarda o resultado já em `active_seconds`/`idle_seconds`) e o "Sim, continuar contando" faz a transferência em `confirmStillWorking()`.
 
-Motivo: até 27/08/2026 bastavam 5 min sem tocar na aba para **tudo** virar ocioso, e o "Sim" não devolvia nada — o resgate só existia depois do estouro de uma previsão, e só 11,7% das sessões tinham previsão. Placar de 01/08 a 28/08: 1.642h ativas contra **690h ociosas**, 97% delas concentradas em 807 sessões com 5 min ou mais de ocioso (uma delas com 23,8h).
+Motivo da primeira rodada (28/08/2026): até 27/08 bastavam 5 min sem tocar na aba para **tudo** virar ocioso, e o "Sim" não devolvia nada — o resgate só existia depois do estouro de uma previsão, e só 11,7% das sessões tinham previsão. Placar de 01/08 a 28/08: 1.642h ativas contra **690h ociosas**, 97% delas concentradas em 807 sessões com 5 min ou mais de ocioso (uma delas com 23,8h).
+
+#### O falso "computador suspenso" (31/08/2026)
+
+A carência de 10 min não resolveu: em 31/08 o dia ainda fechou com 19,8% de ocioso e as queixas continuaram, com print da notificação **"O computador ficou suspenso 6 min (contado como ocioso)"** aparecendo enquanto a pessoa redigia no PJe, com os minutos já declarados na atividade. Três defeitos, todos corrigidos:
+
+1. **O detector de suspensão era só um buraco de tempo.** `machineSuspended` era `deltaSec >= 120` (2 min entre ticks), e a única defesa contra falso positivo era o evento `freeze` da Page Lifecycle API — que é Chrome/Edge e nem sempre dispara. Aba estrangulada em segundo plano (o que acontece com a janela minimizada enquanto se redige no PJe/Word) batia no detector. Agora só é declarada suspensão quando o **relógio monotônico parou junto**: `performance.now()` não anda com a máquina dormindo, mas anda normalmente com a aba só estrangulada. O salto mínimo para cogitar subiu de 2 para 10 min (`SUSPEND_JUMP_SEC`), e a diferença exigida entre os dois relógios é `SUSPEND_CLOCK_GAP_MS` (60s). Se a heurística errar, erra para o lado seguro: cai na regra de ausência, que devolve o tempo.
+2. **A suspensão passava por cima da previsão.** `machineSuspended` é testado antes dos ramos de ausência e de previsão, então declarar os minutos não protegia — e o tempo era `reclaimable: false`, ou seja, não voltava nem confirmando. Agora, suspensão com previsão em andamento **ou** com o app fora de foco vira ocioso **reatribuível**.
+3. **Estourar a previsão congelava o cronômetro.** Ao bater a previsão o código armava `awaitingConfirm`, e pergunta pendente jogava tudo em ocioso — inclusive de quem seguia digitando na tela, até alguém clicar num diálogo que podia nem estar visível. Em 11–31/08 foram **102h de ocioso** (16% do total do período) em sessões que bateram a previsão, com o ativo grudado no valor declarado: 45,4 min de ativo para 45 de previsão e 189,8 de ocioso; 90,0 para 90 e 72,2 de ocioso. Agora o estouro **só notifica**, e a pergunta pendente não congela quem está com o dedo no teclado nesta aba — ela classifica o tempo, não para a contagem.
+
+**Pendência conhecida**: a previsão ainda funciona como **teto** do tempo fora da aba (`over` no loop de contagem subtrai do ativo o que passar dela). O excedente vira ocioso reatribuível, não some, mas cria o incentivo torto de declarar previsão curta e ficar pior do que quem não declarou nada (que tem 45 min de carência cheios). Não foi mexido nesta rodada.
 
 ### Trabalho sem atividade aberta — guarda-chuvas do dia
 
