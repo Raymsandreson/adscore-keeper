@@ -14,13 +14,16 @@ describe('isGapWorking — trabalho avulso x ociosidade real', () => {
     expect(isGapWorking(base)).toBe(true);
   });
 
-  it('segue contando como trabalho dentro da janela de 5 min', () => {
+  // A janela é o IDLE_THRESHOLD_MS, compartilhado com o ramo de atividade —
+  // subiu de 5 para 15 min em 31/08/2026: ler um PDF longo sem tocar no mouse
+  // é trabalho, e o limite de 5 min carimbava isso como ociosidade.
+  it('segue contando como trabalho dentro da janela de 15 min', () => {
     expect(isGapWorking({ ...base, idleFor: 4 * 60 * 1000 })).toBe(true);
-    expect(isGapWorking({ ...base, idleFor: 5 * 60 * 1000 - 1 })).toBe(true);
+    expect(isGapWorking({ ...base, idleFor: 15 * 60 * 1000 - 1 })).toBe(true);
   });
 
-  it('vira ocioso ao completar 5 min sem interação', () => {
-    expect(isGapWorking({ ...base, idleFor: 5 * 60 * 1000 })).toBe(false);
+  it('vira ocioso ao completar 15 min sem interação', () => {
+    expect(isGapWorking({ ...base, idleFor: 15 * 60 * 1000 })).toBe(false);
     expect(isGapWorking({ ...base, idleFor: 30 * 60 * 1000 })).toBe(false);
   });
 
