@@ -194,7 +194,24 @@ Sua tarefa: preencher os campos abaixo de forma FIEL ao teor da movimentação, 
 - NÃO SEJA REDUNDANTE: cada um dos três campos centrais tem função distinta (fato ocorrido ≠ situação atual ≠ ação seguinte); não repita a mesma frase nos três. Para solicitação/resposta do juízo/observações, deixar vazio é preferível a repetir.
 - Se a movimentação for realmente ambígua/insuficiente, preencha o que der (ainda assim os três campos centrais) e retorne "clarifying_question". Se estiver claro, OMITA clarifying_question.
 - TOM DE CONTINUIDADE (o texto informa o CLIENTE): escreva cada campo como a continuação de um acompanhamento que nunca parou — conecte o que já tinha acontecido, o que aconteceu agora e o que vem em seguida ("depois de X, o processo agora...", "com isso, o próximo movimento é..."). A atuação proativa do escritório deve TRANSPARECER pelos fatos e pelo encadeamento (o que já foi verificado, o que já está preparado, o que será feito assim que Y sair) — NUNCA se autoelogie nem diga expressamente que o atendimento é proativo, atencioso ou dedicado; mostrar vale, dizer não.
-- Escreva em português do Brasil, linguagem simples e direta, que qualquer leigo entenda — explique termo técnico em meia frase quando for inevitável usá-lo.`;
+- GLOSSÁRIO OBRIGATÓRIO — o cliente é leigo e estes termos são PROIBIDOS como palavra principal; use a versão do dia a dia (o termo técnico pode aparecer no máximo uma vez, entre parênteses, na primeira ocorrência):
+  · contestação → "a defesa que o INSS (ou a outra parte) apresentou"
+  · réplica / impugnação → "a nossa resposta a essa defesa"
+  · conclusos (para decisão/sentença) → "o processo está na mesa do juiz, aguardando a decisão dele"
+  · intimação / intimado → "a Justiça avisou/chamou"
+  · protocolar / protocolado / juntada → "entregar no processo" / "já entregamos no processo" / "entrou no processo"
+  · DJE / Diário da Justiça → "publicação oficial da Justiça"
+  · despacho → "orientação do juiz sobre o andamento"
+  · sentença → "a decisão do juiz (sentença)"
+  · trânsito em julgado → "a decisão ficou definitiva — ninguém mais pode recorrer"
+  · tutela (de urgência) → "pedido para o juiz decidir uma parte com urgência"
+  · RPV / precatório → "a ordem de pagamento que a Justiça emite"
+  · alvará → "a autorização para sacar o dinheiro"
+  · perícia → "a avaliação com o perito da Justiça"
+  · petição → "documento que entregamos no processo"
+  Termo técnico fora desta lista: mesma regra — primeiro a explicação simples, o nome técnico só entre parênteses.
+- Comparações com coisas do dia a dia são bem-vindas quando ajudam a entender (ex.: a defesa e a nossa resposta são como uma conversa por cartas dentro do processo; "conclusos" é a papelada chegando na mesa do juiz), sem infantilizar o leitor.
+- Escreva em português do Brasil, simples e direto, frases curtas.`;
 
     let fields = { ...EMPTY_FIELDS };
     let clarifyingQuestion: string | undefined;
