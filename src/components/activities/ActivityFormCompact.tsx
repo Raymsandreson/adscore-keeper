@@ -37,7 +37,6 @@ import { StepChecklistButton } from '@/components/activities/StepChecklistButton
 import type { ActivityStepContext } from '@/hooks/useActivityStepContext';
 import { gerarCamposDoProcesso, rascunhoParaHtml, type CamposGerados } from '@/lib/gerarCamposDoProcesso';
 import { toast } from 'sonner';
-import { Sparkles } from 'lucide-react';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
 import { formatProcessLabel } from '@/lib/processLabel';
@@ -54,7 +53,6 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { useLeads } from '@/hooks/useLeads';
 import { useLegalCases } from '@/hooks/useLegalCases';
 import { useSpecializedNuclei } from '@/hooks/useSpecializedNuclei';
-import { toast } from 'sonner';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { ESTIMATE_OPTIONS, formatEstimate, formatSpent } from '@/hooks/useActivityTimeEstimate';
 
