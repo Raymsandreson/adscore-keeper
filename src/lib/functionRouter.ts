@@ -103,6 +103,7 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'create-whatsapp-group': 'external', // v12 com tokens de nome (lead_name_upper etc.); cópia do Cloud está desatualizada e criava grupo sem template
   'find-contact-groups': 'external', // instance_name deixou de ser obrigatório na busca por nome; lê instâncias/cache no Externo (onde de fato moram). Fallback → Cloud mantém a versão antiga.
   'sugerir-lancamento': 'external', // lê comprovante/ditado e propõe o lançamento; só existe no Externo
+  'whatsapp-cloud-admin': 'external', // config/regras do canal Cloud API: dado e token passam a morar no Externo (o Cloud fica de fallback)
 
   // --- Todas as demais ficam no Cloud por padrão ---
 };

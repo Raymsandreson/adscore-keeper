@@ -10,8 +10,10 @@ const corsHeaders = {
 };
 
 function ext() {
-  const url = (Deno.env.get('EXTERNAL_SUPABASE_URL') || 'https://kmedldlepwiityjsdahz.supabase.co').trim();
-  const key = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || '').trim();
+  // Rodando NO Externo, SUPABASE_URL/SERVICE_ROLE_KEY já vêm injetados.
+  // Os EXTERNAL_* continuam primeiro pra cópia do Cloud seguir funcionando como fallback.
+  const url = (Deno.env.get('EXTERNAL_SUPABASE_URL') || Deno.env.get('SUPABASE_URL') || 'https://kmedldlepwiityjsdahz.supabase.co').trim();
+  const key = (Deno.env.get('EXTERNAL_SUPABASE_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '').trim();
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
@@ -105,8 +107,10 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'check_meta_status' || action === 'validate_phone_number_id') {
-      const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || Deno.env.get('META_ACCESS_TOKEN') || '').trim();
-      if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN_or_META_ACCESS_TOKEN');
+      // WHATSAPP_CLOUD_ACCESS_TOKEN primeiro: é o nome que já existe nos secrets do
+      // Externo. WHATSAPP_CLOUD_TOKEN entra como alias (é o nome usado no Railway).
+      const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || Deno.env.get('WHATSAPP_CLOUD_TOKEN') || Deno.env.get('META_ACCESS_TOKEN') || '').trim();
+      if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN');
       const { data: cfg } = await db
         .from('whatsapp_cloud_config')
         .select('*')
