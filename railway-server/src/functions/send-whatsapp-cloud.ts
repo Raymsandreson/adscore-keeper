@@ -123,6 +123,13 @@ interface SendBody {
   media_type?: string; // MIME (image/png, audio/ogg, application/pdf, ...)
   caption?: string;
   file_name?: string;
+  // Template (obrigatorio pra INICIAR conversa: fora da janela de 24h a Meta
+  // recusa texto livre com 131047 "Re-engagement message" — e recusa no RECIBO,
+  // nao na resposta da chamada, que devolve wamid normalmente).
+  template_name?: string;
+  template_language?: string; // ex: pt_BR
+  template_params?: string[]; // preenchem {{1}}, {{2}}... do corpo, em ordem
+  template_components?: unknown[]; // escape: components crus da Graph
 }
 
 function mediaKindFromMime(mime: string | undefined): 'image' | 'audio' | 'video' | 'document' {
@@ -178,7 +185,8 @@ export const handler: RequestHandler = async (req, res) => {
   }
 
   const body: SendBody = req.body || {};
-  const isMedia = body.action === 'send_media' || !!body.media_url;
+  const isTemplate = body.action === 'send_template' || !!body.template_name;
+  const isMedia = !isTemplate && (body.action === 'send_media' || !!body.media_url);
   const sendPhone = normalizePhone(body.phone || ''); // E.164 com o 9 — entrega via Graph
   const phone = toThreadPhone(body.phone || '');      // SEM o 9 — chave de thread do webhook
   const text = (body.message || '').trim();
@@ -188,8 +196,12 @@ export const handler: RequestHandler = async (req, res) => {
     res.status(400).json({ success: false, error: 'phone obrigatório', error_code: 'MISSING_PHONE' });
     return;
   }
-  if (!isMedia && !text) {
+  if (!isMedia && !isTemplate && !text) {
     res.status(400).json({ success: false, error: 'message obrigatório', error_code: 'MISSING_MESSAGE' });
+    return;
+  }
+  if (isTemplate && !body.template_name) {
+    res.status(400).json({ success: false, error: 'template_name obrigatório', error_code: 'MISSING_TEMPLATE_NAME' });
     return;
   }
   if (isMedia && !body.media_url) {
@@ -228,7 +240,28 @@ export const handler: RequestHandler = async (req, res) => {
   let payload: Record<string, unknown>;
   let mediaKind: 'image' | 'audio' | 'video' | 'document' | null = null;
   let dbMessageType = 'text';
-  if (isMedia) {
+  if (isTemplate) {
+    // components crus vencem; senao monta o body a partir de template_params.
+    const components = Array.isArray(body.template_components)
+      ? body.template_components
+      : (body.template_params && body.template_params.length
+          ? [{
+              type: 'body',
+              parameters: body.template_params.map((t) => ({ type: 'text', text: String(t) })),
+            }]
+          : []);
+    dbMessageType = 'template';
+    payload = {
+      messaging_product: 'whatsapp',
+      to: sendPhone,
+      type: 'template',
+      template: {
+        name: body.template_name,
+        language: { code: body.template_language || 'pt_BR' },
+        ...(components.length ? { components } : {}),
+      },
+    };
+  } else if (isMedia) {
     mediaKind = mediaKindFromMime(body.media_type);
     dbMessageType = mediaKind;
     let link = String(body.media_url);
@@ -273,7 +306,7 @@ export const handler: RequestHandler = async (req, res) => {
   }
 
   const url = `${GRAPH}/${API_VERSION}/${phoneNumberId}/messages`;
-  console.log(`[send-cloud ${rid}] → Graph to=***${phone.slice(-4)} type=${isMedia ? mediaKind : 'text'} pnid=${phoneNumberId}`);
+  console.log(`[send-cloud ${rid}] → Graph to=***${phone.slice(-4)} type=${isTemplate ? `template:${body.template_name}` : (isMedia ? mediaKind : 'text')} pnid=${phoneNumberId}`);
 
   let httpStatus = 0;
   let graphResp: any = null;
@@ -320,7 +353,11 @@ export const handler: RequestHandler = async (req, res) => {
       .insert({
         phone,
         instance_name: INSTANCE_NAME,
-        message_text: isMedia ? (caption || null) : text,
+        // Template nao tem texto livre: guarda nome + parametros pra conversa nao
+        // aparecer vazia na tela enquanto o corpo real vive no WhatsApp Manager.
+        message_text: isTemplate
+          ? `[template: ${body.template_name}]${(body.template_params || []).length ? ' ' + (body.template_params || []).join(' | ') : ''}`
+          : (isMedia ? (caption || null) : text),
         message_type: dbMessageType,
         direction: 'outbound',
         status: 'sent',

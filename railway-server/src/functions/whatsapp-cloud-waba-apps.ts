@@ -11,6 +11,7 @@
  *  - list        : lista os Apps inscritos na WABA (não muda nada)
  *  - subscribe   : inscreve o App do token na WABA
  *  - unsubscribe : desfaz — é o rollback do subscribe
+ *  - templates   : lista os templates da WABA e o status de aprovação de cada um
  *  - users       : lista os usuários atribuídos e as TASKS de cada um
  *  - assign_user : grava as tasks de um usuário na WABA
  *
@@ -83,6 +84,35 @@ export const handler: RequestHandler = async (req, res) => {
         graph: out,
         apps_antes: before,
         apps_depois: after,
+      });
+      return;
+    }
+
+    if (action === 'templates') {
+      // So template APPROVED pode ser enviado. Fora da janela de 24h e o unico
+      // caminho — texto livre volta 131047 no recibo de entrega.
+      const r = await fetch(
+        `${GRAPH}/${API_VERSION}/${wabaId}/message_templates?fields=name,status,language,category,components&limit=100`,
+        { headers: auth },
+      );
+      const out: any = await r.json();
+      if (out?.error) {
+        res.status(200).json({ success: false, action, error: out.error.message, code: out.error.code });
+        return;
+      }
+      res.status(200).json({
+        success: true,
+        action,
+        waba_id: wabaId,
+        templates: (out?.data || []).map((t: any) => ({
+          name: t.name,
+          status: t.status,
+          language: t.language,
+          category: t.category,
+          // quantos {{n}} o corpo espera — e o tamanho de template_params no envio
+          body_params: (((t.components || []).find((c: any) => c.type === 'BODY')?.text || '')
+            .match(/\{\{\d+\}\}/g) || []).length,
+        })),
       });
       return;
     }
