@@ -17,6 +17,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sh
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone, PhoneIncoming, PhoneOutgoing, PhoneMissed, Clock, X, Lock, LockOpen, Share2, Sparkles, Scale, MoreVertical, FileSignature, Download, Paperclip, Mic, MapPin, Image, FileUp, Trash2, StopCircle, StickyNote, MessageSquare, AtSign, MessageCircle, ClipboardList, Search, ArrowLeft, Bot, BotOff, VolumeX, Volume2, BellOff, Bell, Pencil, RefreshCw, Copy, CalendarPlus } from 'lucide-react';
 import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram } from 'lucide-react';
+import { Check, CheckCheck, AlertTriangle } from 'lucide-react';
+import { deliveryBadge } from '@/lib/whatsappDeliveryStatus';
 import { TestimonialPostSheet } from './TestimonialPostSheet';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes, type InternalNote } from '@/hooks/useWhatsAppInternalNotes';
@@ -5401,10 +5403,30 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
                   </button>
                 )}
                 <p className={cn(
-                  "text-[10px] mt-1",
+                  "text-[10px] mt-1 flex items-center gap-1",
                   msg.direction === 'outbound' ? "text-green-200" : "text-muted-foreground"
                 )}>
                   {format(new Date(msg.created_at), "HH:mm", { locale: ptBR })}
+                  {(() => {
+                    // Recibo real da Cloud API. Sem ele "enviada" era lido como
+                    // "chegou", e mensagem recusada passava despercebida.
+                    const selo = deliveryBadge(msg.direction, (msg as any).status, (msg as any).metadata);
+                    if (!selo) return null;
+                    const Icone = selo.icon === 'alert' ? AlertTriangle : selo.icon === 'check-double' ? CheckCheck : Check;
+                    return (
+                      <span
+                        title={selo.title}
+                        className={cn(
+                          "inline-flex items-center gap-0.5",
+                          selo.tone === 'error' && "text-red-200 font-medium",
+                          selo.tone === 'read' && "text-sky-200",
+                        )}
+                      >
+                        <Icone className="h-3 w-3 shrink-0" />
+                        {selo.tone === 'error' && <span>{selo.label}</span>}
+                      </span>
+                    );
+                  })()}
                 </p>
               </div>
               {msg.direction === 'inbound' && (
