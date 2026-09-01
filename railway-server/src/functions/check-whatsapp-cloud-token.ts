@@ -113,6 +113,14 @@ export const handler: RequestHandler = async (_req, res) => {
     app_id: dataNode?.app_id || null,
     application: dataNode?.application || null,
     type: dataNode?.type || null,
+    // user_id + granular_scopes vêm do /debug_token e são o que distingue UM system
+    // user do outro quando dois tokens do mesmo app têm a mesma lista de escopos.
+    // `target_ids` do whatsapp_business_messaging diz em NOME DE QUAIS WABAs o token
+    // pode enviar — é o que separa um (#200) de permissão de um (#200) de propriedade.
+    user_id: dataNode?.user_id || null,
+    granular_scopes: (dataNode?.granular_scopes || []).filter(
+      (g: any) => typeof g?.scope === 'string' && g.scope.includes('whatsapp'),
+    ),
     scopes: dataNode?.scopes || [],
     expires_at: expiresAt,
     seconds_left: secondsLeft,
