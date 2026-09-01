@@ -34,6 +34,7 @@ atividade. A pessoa fecha e volta exatamente de onde saiu.
 | Atividade | `src/components/activities/ActivityFullSheet.tsx` | Formulário único do sistema. Props: `open`, `onOpenChange`, `activityId`, `side`. |
 | Processo (leve, dentro do telão) | `src/components/tv/ProcessQuickSheet.tsx` | `processId` + `onClose`. |
 | Processo (ficha completa) | `src/components/cases/ProcessDetailSheet.tsx` | |
+| Movimentação processual (aviso do sino / notificação do sistema) | `abrirMovimentacaoSheet()` de `src/lib/movimentacaoSheet.ts` | Intent global; quem escuta é o `MovimentacaoSheetHost` (montado no `App.tsx`). Abre o `ProcessUpdatesBell` escopado **de baixo pra cima** (`side="bottom"`), com a movimentação destacada, a etiqueta "Notificado" e o botão da ficha do processo. Aceita só `updateId` — o host resolve o processo. |
 | Lead | `LeadEditDialog` | Ver skill/memória de formulários únicos. |
 | Imagem / PDF / mídia | `MediaLightbox` | Imagem **nunca** abre página nem aba — regra própria. |
 | Página de PDF em canvas | `src/components/whatsapp/PdfCanvasViewer.tsx` | Usado por dentro do `MediaLightbox`; raramente precisa ser chamado direto. |

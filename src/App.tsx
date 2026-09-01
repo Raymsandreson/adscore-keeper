@@ -17,6 +17,7 @@ import { TeamChatDeepLink } from "@/components/chat/TeamChatDeepLink";
 import { PushNotificationBridge } from "@/components/notifications/PushNotificationBridge";
 import { AppNavigationBridge } from "@/components/AppNavigationBridge";
 import { WhatsAppChatSheetHost } from "@/components/whatsapp/WhatsAppChatSheetHost";
+import { MovimentacaoSheetHost } from "@/components/notifications/MovimentacaoSheetHost";
 import { AgentConfigSheetHost } from "@/components/whatsapp/AgentConfigSheetHost";
 import { ActivityNotificationsListener } from "@/components/activities/ActivityNotificationsListener";
 import { UserStatusGuard } from "@/components/auth/UserStatusGuard";
@@ -342,6 +343,11 @@ function SidebarLayout() {
                 recarga apagava todos os popups que ainda estavam na tela. */}
             <AppNavigationBridge />
             <WhatsAppChatSheetHost />
+            {/* Clique no aviso de movimentação processual: painel de baixo pra
+                cima com a movimentação, o passo do POP e se o cliente já foi
+                notificado — no lugar do kanban do lead, que era o destino
+                antigo e não respondia nada disso. */}
+            <MovimentacaoSheetHost />
             <AgentConfigSheetHost />
             <ActivityTimerOverlay />
             {/* Sem expediente aberto, aviso em tela cheia com o POP de início de

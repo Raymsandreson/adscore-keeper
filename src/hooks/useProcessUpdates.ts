@@ -6,6 +6,7 @@ import { useAuthContext } from '@/contexts/AuthContext';
 import { classificarEsfera, type Esfera } from '@/lib/esferaJustica';
 import { responsavelDoPassoAberto } from '@/lib/leadStepContext';
 import { showNativeNotification } from '@/lib/nativeNotification';
+import { abrirMovimentacaoSheet } from '@/lib/movimentacaoSheet';
 import { ASSIGNEE_BLOCKLIST } from '@/lib/assigneeBlocklist';
 
 export type UpdateCategoria =
@@ -419,7 +420,13 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
         // Uma notificação por movimentação: reenvio do mesmo id substitui em vez
         // de empilhar quatro avisos do mesmo fato.
         tag: `process-update-${u.id}`,
-        url: u.lead_id ? `/leads?openLead=${u.lead_id}` : '/',
+        // O aviso é DA MOVIMENTAÇÃO: abre a movimentação, não o kanban do lead
+        // (que era o destino até 01/09/2026 e não mostra nem o que caiu nem se
+        // o cliente foi avisado). Com o app aberto, o PushNotificationBridge
+        // intercepta estes parâmetros e sobe o painel de baixo pra cima sem
+        // navegar; com o app fechado, o MovimentacaoSheetHost consome os mesmos
+        // parâmetros no boot.
+        url: `/?openUpdate=${u.id}&processo=${u.process_id}`,
       });
 
       // Sem permissão do navegador o aviso não pode simplesmente sumir — quem
@@ -430,6 +437,16 @@ export const useProcessUpdates = (opts?: { processId?: string | null; desde?: st
             ? 'Sem responsável definido — avisando a equipe'
             : (passo.stepLabel ? `Seu passo: ${passo.stepLabel}` : undefined),
           duration: 10000,
+          // Mesmo destino do balão do sistema: aviso sem para onde ir obriga a
+          // procurar a movimentação no sino depois de já ter lido qual é.
+          action: {
+            label: 'Abrir',
+            onClick: () => abrirMovimentacaoSheet({
+              processId: u.process_id,
+              updateId: u.id,
+              processLabel: u.processo_titulo || u.numero_cnj || null,
+            }),
+          },
         });
       }
     } catch (err) {
