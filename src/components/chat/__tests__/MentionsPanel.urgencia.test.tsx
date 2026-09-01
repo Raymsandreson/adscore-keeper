@@ -133,12 +133,11 @@ vi.mock('@/lib/teamChatPanelEvents', () => ({
 
 import { MentionsPanel } from '../MentionsPanel';
 
-/** O painel abre na aba Chat — as menções ficam atrás do primeiro clique. */
+/** O painel abre direto nas menções — a aba "Chat" não existe mais. */
 function renderMentionsTab(list: any[], seguindo: string[] = []) {
   mentions = list;
   followedThreads = new Set(seguindo);
   render(<MentionsPanel open onOpenChange={() => {}} />);
-  fireEvent.click(screen.getByRole('button', { name: /^Menções/ }));
 }
 
 describe('MentionsPanel — cobrar resposta urgente', () => {
