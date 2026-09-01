@@ -95,6 +95,15 @@ export function contarPorAssessor(late: LateLike[], feedback: FeedbackLike[]): A
   );
 }
 
+/**
+ * Concluídas = tudo que já voltou com retorno, avaliado ou não.
+ * Fica aqui, e não na tela, porque é a mesma soma que o chip do topo mostra —
+ * dois lugares calculando na mão é como um deles fica errado.
+ */
+export function concluidasDe(l: Omit<AssessorStatusCount, 'assessor'>): number {
+  return l.a_avaliar + l.satisfeito + l.incompleto + l.insatisfeito;
+}
+
 /** Rodapé da tabela — soma de todas as linhas. */
 export function totalGeral(linhas: AssessorStatusCount[]): Omit<AssessorStatusCount, 'assessor'> {
   return linhas.reduce((acc, l) => {

@@ -18,7 +18,7 @@ import { useNavigate } from 'react-router-dom';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { validarAvaliacao, salvarAvaliacao, type FeedbackOutcome } from '@/lib/feedbackEvaluation';
-import { contarPorAssessor, totalGeral, type FeedbackStatusKey } from '@/lib/feedbackFunnelStats';
+import { contarPorAssessor, totalGeral, concluidasDe, type FeedbackStatusKey } from '@/lib/feedbackFunnelStats';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
 export interface FeedbackRow {
@@ -108,6 +108,12 @@ const CHIP_CONCLUIDAS: ChipDef = {
 const CHIPS_DETALHE: ChipDef[] = [
   chipDe('satisfeito'), chipDe('incompleto'), chipDe('insatisfeito'), chipDe('a_avaliar'),
 ];
+// A tabela "Por assessor" segue a mesma leitura do cabeçalho: em aberto, depois
+// a soma das concluídas e só então o detalhamento dela.
+const COLUNAS_ASSESSOR: ChipDef[] = [...CHIPS_ABERTO, CHIP_CONCLUIDAS, ...CHIPS_DETALHE];
+const rotuloDe = (k: FocusKey) => (k === 'concluidas' ? 'Concluídas' : COLUMNS.find(c => c.key === k)!.label);
+// A coluna da soma é a divisa entre o que está em aberto e o detalhamento.
+const CLASSE_COLUNA_SOMA = 'border-l bg-muted/30';
 
 // Estilo dos chips no calendário, por categoria.
 const CAT_STYLE: Record<string, { chip: string; label: string }> = {
@@ -960,49 +966,58 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
                   <thead className="bg-muted/50">
                     <tr>
                       <th className="text-left font-semibold px-2 py-1.5">Assessor</th>
-                      {CHIPS.map(c => (
-                        <th key={c.key} className="px-2 py-1.5 text-center font-semibold whitespace-nowrap" title={COLUMNS.find(col => col.key === c.key)?.label}>
-                          {c.icon} <span className="hidden md:inline">{COLUMNS.find(col => col.key === c.key)?.label}</span>
+                      {COLUNAS_ASSESSOR.map(c => (
+                        <th
+                          key={c.key}
+                          className={cn('px-2 py-1.5 text-center font-semibold whitespace-nowrap', c.key === 'concluidas' && CLASSE_COLUNA_SOMA)}
+                          title={rotuloDe(c.key)}
+                        >
+                          {c.icon} <span className="hidden md:inline">{rotuloDe(c.key)}</span>
                         </th>
                       ))}
-                      <th className="px-2 py-1.5 text-center font-semibold">Total</th>
+                      <th className="px-2 py-1.5 text-center font-semibold border-l">Total</th>
                     </tr>
                   </thead>
                   <tbody>
                     {porAssessor.map(l => (
                       <tr key={l.assessor} className="border-t hover:bg-muted/30">
                         <td className="px-2 py-1.5 font-medium max-w-[220px] truncate" title={l.assessor}>{l.assessor}</td>
-                        {CHIPS.map(c => (
-                          <td key={c.key} className="px-2 py-1.5 text-center tabular-nums">
-                            {l[c.key] === 0 ? (
-                              <span className="text-muted-foreground/40">—</span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => { setFilterAssessor(l.assessor); setFocusStatus(c.key); }}
-                                className={cn('rounded px-1.5 py-0.5 font-semibold hover:underline', c.key === 'atrasada' && 'text-red-700 dark:text-red-400')}
-                                title={`Ver as ${l[c.key]} de ${l.assessor}`}
-                              >
-                                {l[c.key]}
-                              </button>
-                            )}
-                          </td>
-                        ))}
-                        <td className="px-2 py-1.5 text-center font-semibold tabular-nums">{l.total}</td>
+                        {COLUNAS_ASSESSOR.map(c => {
+                          const n = c.key === 'concluidas' ? concluidasDe(l) : l[c.key as FeedbackStatusKey];
+                          return (
+                            <td key={c.key} className={cn('px-2 py-1.5 text-center tabular-nums', c.key === 'concluidas' && CLASSE_COLUNA_SOMA)}>
+                              {n === 0 ? (
+                                <span className="text-muted-foreground/40">—</span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => { setFilterAssessor(l.assessor); setFocusStatus(c.key); }}
+                                  className={cn('rounded px-1.5 py-0.5 font-semibold hover:underline', c.key === 'atrasada' && 'text-red-700 dark:text-red-400')}
+                                  title={`Ver as ${n} ${rotuloDe(c.key).toLowerCase()} de ${l.assessor}`}
+                                >
+                                  {n}
+                                </button>
+                              )}
+                            </td>
+                          );
+                        })}
+                        <td className="px-2 py-1.5 text-center font-semibold tabular-nums border-l">{l.total}</td>
                       </tr>
                     ))}
                     {porAssessor.length === 0 && (
-                      <tr><td colSpan={8} className="px-2 py-6 text-center text-muted-foreground">Nenhuma atividade no período.</td></tr>
+                      <tr><td colSpan={COLUNAS_ASSESSOR.length + 2} className="px-2 py-6 text-center text-muted-foreground">Nenhuma atividade no período.</td></tr>
                     )}
                   </tbody>
                   {porAssessor.length > 0 && (
                     <tfoot className="border-t bg-muted/40 font-semibold">
                       <tr>
                         <td className="px-2 py-1.5">Total</td>
-                        {CHIPS.map(c => (
-                          <td key={c.key} className="px-2 py-1.5 text-center tabular-nums">{totais[c.key]}</td>
+                        {COLUNAS_ASSESSOR.map(c => (
+                          <td key={c.key} className={cn('px-2 py-1.5 text-center tabular-nums', c.key === 'concluidas' && CLASSE_COLUNA_SOMA)}>
+                            {c.key === 'concluidas' ? concluidasDe(totais) : totais[c.key as FeedbackStatusKey]}
+                          </td>
                         ))}
-                        <td className="px-2 py-1.5 text-center tabular-nums">{totais.total}</td>
+                        <td className="px-2 py-1.5 text-center tabular-nums border-l">{totais.total}</td>
                       </tr>
                     </tfoot>
                   )}

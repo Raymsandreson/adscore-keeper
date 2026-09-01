@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   contarPorAssessor,
   totalGeral,
+  concluidasDe,
   statusDeLate,
   statusDeFeedback,
   SEM_RESPONSAVEL,
@@ -79,6 +80,26 @@ describe('feedbackFunnelStats', () => {
     expect(totalGeral(linhas)).toEqual({
       atrasada: 1, reagendada: 1, a_avaliar: 1, satisfeito: 1, incompleto: 0, insatisfeito: 0, total: 4,
     });
+  });
+
+  it('concluídas somam os quatro desfechos e ignoram atrasada/reagendada', () => {
+    const linhas = contarPorAssessor(
+      [
+        { assigned_to_name: 'Joao', status: 'pendente' },
+        { assigned_to_name: 'Joao', status: 'reagendada' },
+      ],
+      [
+        { assigned_to_name: 'Joao', feedback_outcome: null },
+        { assigned_to_name: 'Joao', feedback_outcome: 'satisfeito' },
+        { assigned_to_name: 'Joao', feedback_outcome: 'incompleto' },
+        { assigned_to_name: 'Joao', feedback_outcome: 'insatisfeito' },
+      ],
+    );
+    const joao = linhas[0];
+    expect(concluidasDe(joao)).toBe(4);          // total 6 — as 2 em aberto ficam de fora
+    expect(joao.total).toBe(6);
+    expect(concluidasDe(totalGeral(linhas))).toBe(4);
+    expect(concluidasDe(totalGeral([]))).toBe(0);
   });
 
   it('lista vazia devolve zero sem quebrar', () => {

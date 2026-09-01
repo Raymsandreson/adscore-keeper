@@ -147,14 +147,29 @@ describe('FeedbackFunnel — chips e quebra por assessor', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Por assessor/i }));
 
     const linhaJoao = (await screen.findByText('Joao')).closest('tr')!;
-    // Joao: 2 atrasadas, 0 reagendadas, 0 a avaliar, 1 satisfeito → total 3
+    // Colunas: assessor · ⏰ · 🔁 · 🏁 concluídas · ✅ · ⚠️ · ❌ · 📥 · total
+    // Joao: 2 atrasadas + 1 satisfeito → 1 concluída, total 3
     expect(linhaJoao.textContent).toContain('Joao');
     const numerosJoao = Array.from(linhaJoao.querySelectorAll('td')).map(td => td.textContent?.trim());
-    expect(numerosJoao).toEqual(['Joao', '2', '—', '—', '1', '—', '—', '3']);
+    expect(numerosJoao).toEqual(['Joao', '2', '—', '1', '1', '—', '—', '—', '3']);
 
+    // Andressa: 1 atrasada + 1 a avaliar → 1 concluída, total 2
     const linhaAndressa = screen.getByText('Andressa').closest('tr')!;
     const numerosAndressa = Array.from(linhaAndressa.querySelectorAll('td')).map(td => td.textContent?.trim());
-    expect(numerosAndressa).toEqual(['Andressa', '1', '—', '1', '—', '—', '—', '2']);
+    expect(numerosAndressa).toEqual(['Andressa', '1', '—', '1', '—', '—', '—', '1', '2']);
+  });
+
+  it('clicar na coluna de concluídas abre as concluídas só daquele assessor', async () => {
+    montar();
+    fireEvent.click(await screen.findByRole('button', { name: /Por assessor/i }));
+
+    const linhaJoao = (await screen.findByText('Joao')).closest('tr')!;
+    const celulas = Array.from(linhaJoao.querySelectorAll('td'));
+    fireEvent.click(celulas[3].querySelector('button')!);   // 🏁 concluídas do Joao
+
+    expect(await screen.findByText('Retorno do site')).toBeTruthy();
+    expect(screen.queryByText('Retorno da campanha')).toBeNull();  // concluída da Andressa
+    expect(screen.queryByText('Fazer tráfego')).toBeNull();        // atrasada do Joao
   });
 
   it('clicar no número da tabela abre as atividades daquele assessor naquele status', async () => {
