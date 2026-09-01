@@ -16,6 +16,7 @@
  */
 
 import { RequestHandler } from 'express';
+import { createHash } from 'crypto';
 import { supabase } from '../lib/supabase';
 
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
@@ -118,6 +119,12 @@ export const handler: RequestHandler = async (_req, res) => {
     // `target_ids` do whatsapp_business_messaging diz em NOME DE QUAIS WABAs o token
     // pode enviar — é o que separa um (#200) de permissão de um (#200) de propriedade.
     user_id: dataNode?.user_id || null,
+    // issued_at = quando a Meta emitiu ESTE token; token_fingerprint = sha256 dos
+    // 12 primeiros hex do token. Nenhum dos dois revela o segredo, e juntos provam
+    // se o valor da env var trocou de verdade — o `user_id` sozinho não prova, porque
+    // o mesmo system user gerando um token novo repete o user_id.
+    issued_at: dataNode?.issued_at ?? null,
+    token_fingerprint: createHash('sha256').update(TOKEN).digest('hex').slice(0, 12),
     granular_scopes: (dataNode?.granular_scopes || []).filter(
       (g: any) => typeof g?.scope === 'string' && g.scope.includes('whatsapp'),
     ),
