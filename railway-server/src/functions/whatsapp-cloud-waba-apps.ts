@@ -26,6 +26,11 @@
 import { RequestHandler } from 'express';
 
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
+// Token de ADMIN humano, opcional e temporario. Conceder DEVELOP e escalada de
+// privilegio: a Meta responde 403 quando o proprio System User tenta se elevar.
+// Usado EXCLUSIVAMENTE em assign_user - nunca para enviar, listar ou inscrever.
+// Deve ser removido do Railway assim que a atribuicao estiver feita.
+const ADMIN_TOKEN = process.env.META_ADMIN_TOKEN || '';
 const API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
 const GRAPH = 'https://graph.facebook.com';
 
@@ -105,9 +110,11 @@ export const handler: RequestHandler = async (req, res) => {
       }
       const before = await listUsers();
       const params = new URLSearchParams({ user, tasks: JSON.stringify(tasks) });
+      // So aqui o ADMIN_TOKEN entra, e so se existir.
+      const writeToken = ADMIN_TOKEN || TOKEN;
       const r = await fetch(`${GRAPH}/${API_VERSION}/${wabaId}/assigned_users?${params}`, {
         method: 'POST',
-        headers: auth,
+        headers: { Authorization: `Bearer ${writeToken}` },
       });
       const out: any = await r.json();
       const after = await listUsers();
@@ -119,6 +126,8 @@ export const handler: RequestHandler = async (req, res) => {
         tasks,
         graph_status: r.status,
         graph: out,
+        // Qual token assinou a escrita, sem revelar nenhum dos dois.
+        usou_admin_token: Boolean(ADMIN_TOKEN),
         users_antes: before,
         users_depois: after,
       });
