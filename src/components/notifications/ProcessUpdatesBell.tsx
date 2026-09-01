@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bell, BellRing, CheckCheck, ExternalLink, ClipboardPlus, MessageCircle, Loader2, BadgeCheck, AlertTriangle,
-  ListChecks, X, ChevronDown, ChevronRight, Users, Sparkles,
+  ListChecks, X, ChevronDown, ChevronRight, Users, Sparkles, PanelRightOpen,
 } from 'lucide-react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import {
@@ -45,6 +45,13 @@ import { CapturaStatusPanel } from '@/components/notifications/CapturaStatusPane
 import { SemMovimentacaoNoProcesso } from '@/components/notifications/SemMovimentacaoNoProcesso';
 import { OrfaosSemVinculo } from '@/components/notifications/OrfaosSemVinculo';
 import { notificationsSupported, requestNotificationPermission } from '@/lib/nativeNotification';
+
+/**
+ * Ficha completa do processo (mesma da tela de Processos), aberta por cima do
+ * painel. Sob demanda: são ~2.200 linhas de formulário que o sino da barra
+ * lateral não pode arrastar para o bundle inicial.
+ */
+const ProcessQuickSheet = lazy(() => import('@/components/tv/ProcessQuickSheet'));
 
 const FILTER_ORDER: Array<UpdateCategoria | 'todas'> = [
   'todas', 'decisao_merito', 'audiencia', 'pericia', 'prazo', 'despacho', 'movimentacao',
@@ -180,7 +187,7 @@ function UpdateRow({
   update, unread, notificacao, onOpenLead, onCreateActivity, onSendGroup, onMarkRead, sending,
   carregarPasso, sugerirComIA, criarAtividadeDoPasso,
   showOpenLead = true, showProcesso = true,
-  selecionavel = false, selecionado = false, onToggleSelecao,
+  selecionavel = false, selecionado = false, onToggleSelecao, destacado = false,
 }: {
   update: ProcessUpdate;
   unread: boolean;
@@ -201,6 +208,8 @@ function UpdateRow({
   selecionavel?: boolean;
   selecionado?: boolean;
   onToggleSelecao?: (u: ProcessUpdate) => void;
+  /** É a movimentação que gerou o aviso: entra marcada e rolada para a vista. */
+  destacado?: boolean;
 }) {
   const style = CATEGORIAS[update.categoria] || CATEGORIAS.movimentacao;
   const Icon = style.icon;
@@ -208,9 +217,19 @@ function UpdateRow({
   const { assunto, origem } = useMemo(() => resumoMovimentacao(update.descricao), [update.descricao]);
   const titulo = tituloUtil(update);
   const [detalheAberto, setDetalheAberto] = useState(false);
+  const linhaRef = useRef<HTMLDivElement | null>(null);
+
+  // Chegou pela notificação: a linha do aviso pode não ser a primeira da lista
+  // (audiência designada entra com data futura). Rolar até ela é o que evita
+  // abrir o painel e a pessoa procurar de novo o que já tinha lido no balão.
+  useEffect(() => {
+    if (!destacado) return;
+    linhaRef.current?.scrollIntoView({ block: 'center' });
+  }, [destacado]);
 
   return (
     <div
+      ref={linhaRef}
       className={cn(
         'px-3 py-2.5 border-b last:border-b-0',
         unread && 'bg-accent/40',
@@ -218,6 +237,9 @@ function UpdateRow({
         selecionavel && 'cursor-pointer',
         style.borda && 'border-l-2',
         style.borda,
+        // Marca por dentro (anel interno): borda por fora empurraria a linha e
+        // brigaria com a barra de categoria da esquerda.
+        destacado && 'bg-primary/5 ring-2 ring-inset ring-primary/50',
       )}
       onClick={() => {
         // Em modo lote a linha inteira é alvo de marcação: caixinha de 16px é
@@ -414,12 +436,29 @@ const LOTE_GRANDE = 25;
  */
 export function ProcessUpdatesBell({
   compact = false, processId = null, processLabel = null,
+  side = 'right', hideTrigger = false, destaqueUpdateId = null, mostrarFichaProcesso = false,
+  open: openProp, onOpenChange,
 }: {
   compact?: boolean;
   /** Escopo: só as movimentações deste processo (lead_processes.id). */
   processId?: string | null;
   /** Rótulo do processo no cabeçalho do painel escopado. */
   processLabel?: string | null;
+  /**
+   * De onde o painel entra. `bottom` é o de baixo pra cima, usado por quem abre
+   * a partir de uma notificação: ali não há barra lateral de origem para o
+   * painel nascer ao lado, e a tela de trás continua visível por cima.
+   */
+  side?: 'right' | 'bottom';
+  /** Sem o sino: quem abre por intent não tem botão para mostrar. */
+  hideTrigger?: boolean;
+  /** A movimentação do aviso — entra destacada e rolada para a vista. */
+  destaqueUpdateId?: string | null;
+  /** Botão "Abrir ficha do processo" no cabeçalho (empilha por cima). */
+  mostrarFichaProcesso?: boolean;
+  /** Controlado de fora (host da notificação). Sem isto, o sino se controla. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const escopado = !!processId;
   const { createActivity } = useLeadActivities();
@@ -455,10 +494,21 @@ export function ProcessUpdatesBell({
   const { updates, loading, unreadCount, readIds, markRead, markAllRead, notificadas, markNotified, totalNoBanco, refetch } =
     useProcessUpdates({ processId, desde });
 
-  const [open, setOpen] = useState(false);
   // Aba do painel: o feed de sempre, ou os identificadores que os e-mails
   // citaram e o cadastro não conhece (email_identificadores_orfaos).
   const [aba, setAba] = useState<'feed' | 'sem_vinculo'>('feed');
+  // Aberto por dentro (clique no sino) ou por fora (host da notificação). Um
+  // estado só continuaria valendo para o caso não controlado — trocar por
+  // `openProp ?? interno` faria o sino comum parar de abrir.
+  const [openInterno, setOpenInterno] = useState(false);
+  const controlado = openProp !== undefined;
+  const open = controlado ? openProp : openInterno;
+  const setOpen = useCallback((o: boolean) => {
+    if (!controlado) setOpenInterno(o);
+    onOpenChange?.(o);
+  }, [controlado, onOpenChange]);
+  /** Ficha completa do processo, empilhada por cima do painel. */
+  const [fichaAberta, setFichaAberta] = useState(false);
   const [envioPendente, setEnvioPendente] = useState<EnvioPendente | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
   // ---- Lote ----
@@ -1307,6 +1357,9 @@ export function ProcessUpdatesBell({
         if (!o) sairDaSelecao();
       }}
     >
+      {/* Quem abre por notificação não tem sino para mostrar — e um gatilho
+          solto no layout apareceria em toda página. */}
+      {!hideTrigger && (
       <SheetTrigger asChild>
         {escopado ? (
           // Na barra da ficha o gatilho é botão com rótulo, não ícone: ali ele
@@ -1379,7 +1432,18 @@ export function ProcessUpdatesBell({
         </Button>
         )}
       </SheetTrigger>
-      <SheetContent side="right" className="w-full sm:w-[440px] sm:max-w-[440px] p-0 flex flex-col">
+      )}
+      <SheetContent
+        side={side}
+        className={cn(
+          'p-0 flex flex-col',
+          // De baixo pra cima o painel não toma a tela inteira: o que ficou
+          // atrás é exatamente de onde a pessoa veio, e ela volta pra lá.
+          side === 'bottom'
+            ? 'h-[88vh] max-h-[88vh] w-full rounded-t-2xl'
+            : 'w-full sm:w-[440px] sm:max-w-[440px]',
+        )}
+      >
         <SheetHeader className="px-4 py-3 border-b space-y-0">
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -1393,6 +1457,21 @@ export function ProcessUpdatesBell({
               )}
             </div>
             <div className="flex items-center gap-1 mr-6 shrink-0">
+              {/* Quem chegou pela notificação veio pelo processo, não pelo
+                  lead: a ficha completa abre AQUI, empilhada por cima, e o
+                  fechar devolve a pessoa a esta lista. */}
+              {mostrarFichaProcesso && processId && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs gap-1"
+                  onClick={() => setFichaAberta(true)}
+                  title="Abrir a ficha do processo aqui do lado, sem sair desta lista"
+                >
+                  <PanelRightOpen className="h-3.5 w-3.5" />
+                  Ficha do processo
+                </Button>
+              )}
               {unreadCount > 0 && !modoSelecao && (
                 <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={markAllRead}>
                   <CheckCheck className="h-3.5 w-3.5" />
@@ -1629,6 +1708,7 @@ export function ProcessUpdatesBell({
                 selecionavel={modoSelecao}
                 selecionado={selecionados.has(u.id)}
                 onToggleSelecao={(upd) => alternarSelecao(upd.id)}
+                destacado={!!destaqueUpdateId && u.id === destaqueUpdateId}
               />
             ))}
             {/* Quantas ficaram de fora da tela — e o botão para trazê-las. Sem
@@ -1897,6 +1977,13 @@ export function ProcessUpdatesBell({
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+    {/* Ficha completa do processo por cima do painel — carregada só quando
+        alguém pede, porque ela arrasta o formulário inteiro de processos. */}
+    {fichaAberta && processId && (
+      <Suspense fallback={null}>
+        <ProcessQuickSheet processId={processId} onClose={() => setFichaAberta(false)} />
+      </Suspense>
+    )}
     </>
   );
 }

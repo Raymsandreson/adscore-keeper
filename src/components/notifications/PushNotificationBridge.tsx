@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { MessageSquare } from 'lucide-react';
 import { TeamNotificationToast } from '@/components/chat/TeamNotificationToast';
 import { openWhatsAppChatSheet } from '@/lib/whatsappChatSheet';
+import { abrirMovimentacaoSheet } from '@/lib/movimentacaoSheet';
 import { enviarRespostaRapida } from '@/lib/whatsappQuickReply';
 
 // Sugestão de IA e agente da conversa só carregam quando um aviso de WhatsApp
@@ -78,12 +79,14 @@ interface PushPayload {
 
 export type PushTarget =
   | { kind: 'whatsapp'; phone: string; instanceName: string | null }
+  | { kind: 'movimentacao'; updateId: string; processId: string | null }
   | { kind: 'route'; to: string }
   | null;
 
 /**
  * Decide o destino de uma URL de push. Mensagem de WhatsApp abre a conversa na
- * folha; o resto (chat de equipe, funil) navega. URL quebrada não faz nada.
+ * folha; movimentação processual abre o painel de baixo pra cima; o resto (chat
+ * de equipe, funil) navega. URL quebrada não faz nada.
  */
 export function parsePushTarget(rawUrl: string | undefined, origin: string): PushTarget {
   if (!rawUrl) return null;
@@ -98,6 +101,14 @@ export function parsePushTarget(rawUrl: string | undefined, origin: string): Pus
   const phone = url.searchParams.get('openChat');
   if (phone) {
     return { kind: 'whatsapp', phone, instanceName: url.searchParams.get('instance') };
+  }
+
+  // Movimentação processual: painel por cima da tela atual. Navegar para o
+  // kanban do lead (o que a URL antiga fazia) tirava a pessoa de onde ela
+  // estava e ainda escondia a movimentação que motivou o aviso.
+  const updateId = url.searchParams.get('openUpdate');
+  if (updateId) {
+    return { kind: 'movimentacao', updateId, processId: url.searchParams.get('processo') };
   }
 
   return { kind: 'route', to: `${url.pathname}${url.search}` };
@@ -118,6 +129,11 @@ export function PushNotificationBridge() {
           instanceName: target.instanceName,
           contactName,
         });
+        return;
+      }
+
+      if (target.kind === 'movimentacao') {
+        abrirMovimentacaoSheet({ processId: target.processId, updateId: target.updateId });
         return;
       }
 

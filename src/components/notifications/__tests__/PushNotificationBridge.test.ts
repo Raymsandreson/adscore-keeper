@@ -30,6 +30,23 @@ describe('parsePushTarget', () => {
     });
   });
 
+  it('movimentação processual abre o painel, não o kanban do lead', () => {
+    // Formato exato montado em src/hooks/useProcessUpdates.ts (avisarSeForMinha).
+    expect(parsePushTarget('/?openUpdate=upd-1&processo=proc-9', ORIGIN)).toEqual({
+      kind: 'movimentacao',
+      updateId: 'upd-1',
+      processId: 'proc-9',
+    });
+  });
+
+  it('movimentação sem o processo na URL ainda abre — o host resolve pela linha', () => {
+    expect(parsePushTarget('/?openUpdate=upd-1', ORIGIN)).toEqual({
+      kind: 'movimentacao',
+      updateId: 'upd-1',
+      processId: null,
+    });
+  });
+
   it('push de chat de equipe navega — também estava morto pelo mesmo motivo', () => {
     expect(parsePushTarget('/?openTeamChat=abc-123', ORIGIN)).toEqual({
       kind: 'route',
