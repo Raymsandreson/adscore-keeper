@@ -219,54 +219,94 @@ export function extrairPontosPendentes(despacho?: string | null): string | null 
   return prazo ? `${corpo}\n\n⏳ Prazo: ${prazo}` : corpo;
 }
 
+/** O INSS nomeia o documento: procuração, termo de representação, representação processual. */
+const PEDE_PROCURACAO =
+  /procura[çc][ãa]o|(termo|documento|poderes|v[íi]cio|instrumento|saneamento) de representa[çc][ãa]o|representa[çc][ãa]o processual/i;
+
+/**
+ * O INSS recusa a assinatura sem nomear o documento. Acontece em 13 das 74
+ * exigências: "favor reenviar o documento acima citado, assinado de forma
+ * manuscrita", "a assinatura digital no documento não foi reconhecido pelo
+ * sistema ITI". É seguro tratar como procuração — o INSS não discute validade
+ * de assinatura de certidão nem de carteira de trabalho, só do instrumento de
+ * representação.
+ */
+const RECUSA_DE_ASSINATURA =
+  /manuscrit|zapsign|validar\.iti\.gov\.br|assinaturas? (digitais?|eletr[ôo]nicas?)/i;
+
+/**
+ * A exigência pede procuração para assinar à mão?
+ *
+ * O guard da fiança é obrigatório: em pensão por morte, "procuração ou fiança
+ * reciprocamente outorgada" é item da lista de provas de união estável do
+ * art. 22 §3º do Dec. 3.048/99 — papel do casal, e não pedido de procuração
+ * nossa. Mesma armadilha tratada em `separarPendencias`.
+ */
+export function exigeProcuracao(texto?: string | null): boolean {
+  const t = (texto || '').trim();
+  if (!t) return false;
+  const semFianca = t.replace(/procura[çc][ãa]o ou fian[çc]a reciprocamente outorgada/gi, '');
+  return PEDE_PROCURACAO.test(semFianca) || RECUSA_DE_ASSINATURA.test(semFianca);
+}
+
 // ---------------------------------------------------------------------------
 // Pendência do CLIENTE x pendência do ESCRITÓRIO
 //
-// Pedido do usuário (27/08/2026): a mensagem do grupo não pode cobrar do
-// cliente o que é tarefa nossa — procuração sem assinatura válida, documento de
-// identificação do procurador, termo de responsabilidade. O cliente lê aquilo
-// como cobrança e não tem o que fazer; o assessor é quem resolve.
+// Correção do usuário (01/09/2026): a procuração VOLTA a ser pendência do
+// cliente. A regra anterior (27/08/2026) tirava da mensagem tudo que falasse de
+// procuração, representação ou assinatura — 211 fragmentos em 75 exigências —
+// sob o argumento de que "o cliente lê como cobrança e não tem o que fazer".
+// Essa premissa caiu quando o robô passou a anexar o PDF da procuração já
+// preenchida: agora ele tem o que fazer — imprimir, assinar à caneta e
+// devolver, que é exatamente o que o INSS exige ("assinado de forma
+// manuscrita", "procuração física/original").
 //
-// O corte É PELO CONTEXTO, NUNCA PELO NOME DO DOCUMENTO. Medido sobre as 559
-// exigências com despacho (27/08/2026): "CNH" e "OAB" aparecem como documento
-// de identidade DO CLIENTE na exigência de biometria ("Documento de
-// Identificação (RG, Carteira de Trabalho, CNH, Passaporte, Carteira de
-// Profissão - OAB...)"), então filtrar por nome de documento cortaria o pedido
-// legítimo. O que marca a pendência nossa é a palavra da representação:
-// procuração, procurador, advogado, outorgante, termo de responsabilidade.
+// O que continua sendo nosso é UMA coisa só: o pedido do documento pessoal do
+// procurador — "Documento de Identificação do procurador(a)", "documento de
+// identificação com foto do procurador", RG/CPF/OAB do advogado. Isso o cliente
+// não tem como providenciar. Medido sobre as 587 exigências com despacho
+// (01/09/2026): 5 fragmentos, em 5 exigências.
 //
-// Uma armadilha real do corpus, em 6 despachos: "procuração ou fiança
-// reciprocamente outorgada" é EXEMPLO DE PROVA DE UNIÃO ESTÁVEL na lista do
-// art. 22 §3º do Decreto 3.048/99 — é papel do casal, não nosso. Fica com o
-// cliente.
+// Duas armadilhas do corpus, as duas cobertas por `PEDIDO_DO_CLIENTE`:
 //
-// "representante legal" NÃO entra na lista: nas exigências de biometria de BPC
-// e nas de guarda de menor ele é a mãe/tutor do requerente, não o advogado.
-// Cortar por ele derrubaria o pedido de biometria, que é do cliente.
+//   1. O INSS junta os dois pedidos na mesma frase ("-PROCURAÇÃO E DOCUMENTOS
+//      DE IDENTIFICAÇÃO DO PROCURADOR, COM PODERES PERANTE O INSS"). Cortar o
+//      fragmento levaria junto a procuração, que é do cliente. Quando o
+//      fragmento também pede procuração, termo de representação/responsabilidade
+//      ou assinatura, ele FICA na mensagem — a segunda barreira é a instrução do
+//      prompt, em lib/inss-mensagem-cliente, que proíbe repassar ao cliente o
+//      documento do advogado.
+//
+//   2. "CNH" e "OAB" aparecem como documento de identidade DO CLIENTE na
+//      exigência de biometria ("Documento de Identificação (RG, Carteira de
+//      Trabalho, CNH, Passaporte, Carteira de Profissão - OAB...)"). Por isso o
+//      corte exige a palavra da representação (procurador/advogado) perto do
+//      nome do documento, nunca o nome do documento sozinho.
+//
+// "representante legal" NÃO entra: nas exigências de biometria de BPC e nas de
+// guarda de menor ele é a mãe/tutor do requerente, não o advogado.
 // ---------------------------------------------------------------------------
 
-const PENDENCIA_ESCRITORIO: RegExp[] = [
-  /procura[çc][ãa]o|procurador/i,
-  /advogad/i,
-  /outorgante/i,
-  /termo de responsabilidade/i,
-  // O vício de representação vem em frases que não citam "procuração":
-  // "Apresente novo documento de representação com poderes...", "O não
-  // saneamento do vício de representação implica a desistência".
-  /(termo|documento|poderes|v[íi]cio|instrumento|saneamento) de representa[çc][ãa]o/i,
-  // A plataforma de assinatura é do escritório; o INSS cita o nome dela ao
-  // recusar a assinatura ("Assinado por: ZAPSIGN PROCESSAMENTO DE DADOS LTDA").
-  /zapsign/i,
-  // O parágrafo padrão sobre validade de assinatura vem colado na recusa da
-  // procuração e nunca em pedido de documento do cliente — o INSS não discute
-  // assinatura de certidão nem de carteira de trabalho.
-  /assinatura (digital|eletr[ôo]nica)/i,
-  /assinaturas (manuais|v[áa]lidas|digitais|eletr[ôo]nicas)/i,
-  /validar\.iti\.gov\.br/i,
+/**
+ * Pedido do documento PESSOAL do procurador/advogado — a única pendência que
+ * não vai para o grupo. Exige a palavra da representação perto do nome do
+ * documento, para não confundir com a identidade do próprio cliente.
+ */
+const DOC_DO_PROCURADOR: RegExp[] = [
+  /\b(documentos?|c[óo]pias?|identifica[çc][ãa]o|identidade|foto|rg|cpf|oab|carteira)\b[^.;:!?]{0,70}\b(procurador|advogad)/i,
+  /\b(procurador|advogad)\w*\b[^.;:!?]{0,50}\b(documentos? de identifica|identidade|\brg\b|\bcpf\b|foto|oab)/i,
+  /\bdocumento de identifica[çc][ãa]o do outorgad[oa]\b/i,
 ];
 
-/** Prova de união estável com a mesma palavra — é do cliente, não nossa. */
-const NAO_E_DO_ESCRITORIO = /fian[çc]a reciprocamente outorgada/i;
+/**
+ * O que o cliente providencia de próprio punho. Presente no fragmento, ele fica
+ * na mensagem mesmo que o INSS tenha colado o documento do procurador na mesma
+ * frase. Cobre também a "procuração ou fiança reciprocamente outorgada", que na
+ * exigência de pensão por morte é prova de união estável do art. 22 §3º do
+ * Dec. 3.048/99 — papel do casal, nunca nosso.
+ */
+const PEDIDO_DO_CLIENTE =
+  /\b(procura[çc][ãa]o|termo de representa[çc][ãa]o|termo de responsabilidade|assinatura|assinad)/i;
 
 /** Saudação e "solicitamos o envio dos documentos abaixo": não é pendência. */
 const CABECALHO_NEUTRO =
@@ -284,6 +324,13 @@ const LIMITE_FRAGMENTO = new RegExp(
     '[ \\t]+(?=[-–—•*][ \\t]*[A-Za-zÀ-Ú0-9])',
     '[ \\t]*(?=\\?[ \\t]*[A-Za-zÀ-Ú])',
     '[ \\t]+(?=\\d{1,2}[ \\t]*[-.)][ \\t])',
+    // Itens em letra ("a) procuração b) documento de identificação com foto do
+    // procurador"): sem esta quebra os dois pedidos ficam no mesmo fragmento.
+    '[ \\t]+(?=[a-z][ \\t]*\\)[ \\t])',
+    // O INSS emenda o item seguinte sem pontuação nenhuma ("ANEXAR CARTEIRA DA
+    // OAB Apresentar ao menos uma prova documental..."). Quebrar antes do verbo
+    // de pedido evita que remover o item nosso leve junto o do cliente.
+    '[ \\t]+(?=(Apresentar|Anexar|Enviar|Juntar|Informar|Comprovar|Encaminhar|Providenciar)\\b)',
   ].join('|'),
   'g',
 );
@@ -298,8 +345,8 @@ interface Fragmento {
 
 function classificarFragmento(txt: string): TipoFragmento {
   if (CABECALHO_NEUTRO.test(txt.trim())) return 'neutro';
-  if (NAO_E_DO_ESCRITORIO.test(txt)) return 'cliente';
-  return PENDENCIA_ESCRITORIO.some((re) => re.test(txt)) ? 'escritorio' : 'cliente';
+  if (PEDIDO_DO_CLIENTE.test(txt)) return 'cliente';
+  return DOC_DO_PROCURADOR.some((re) => re.test(txt)) ? 'escritorio' : 'cliente';
 }
 
 function fragmentar(texto: string): Fragmento[] {

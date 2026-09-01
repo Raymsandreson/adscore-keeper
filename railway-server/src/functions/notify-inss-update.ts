@@ -1,6 +1,11 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
-import { classifyResultado, extrairPontosPendentes, separarPendencias } from '../lib/inss-despacho';
+import {
+  classifyResultado,
+  exigeProcuracao,
+  extrairPontosPendentes,
+  separarPendencias,
+} from '../lib/inss-despacho';
 import { donoDaAtualizacaoInss } from '../lib/inss-roteamento';
 import { conferirNomeDoSegurado } from '../lib/inss-nome-confere';
 import {
@@ -11,11 +16,13 @@ import {
 } from '../lib/inss-mensagem-cliente';
 import {
   descreverErro,
+  enviarDocumentoAoGrupo,
   enviarTextoAoGrupo,
   jaAvisouEsseTipo,
   montarTextoMensagemCliente,
   resolverGrupoDoLead,
 } from '../lib/inss-zap';
+import { buscarProcuracaoDoCliente } from '../lib/inss-procuracao';
 
 /**
  * Quando chega um update do INSS para processo já vinculado:
@@ -176,6 +183,21 @@ export const handler: RequestHandler = async (req, res) => {
       ehExigencia && exigenciaDeAgendamentoDePericia({ pontosPendentes, despacho: latest.despacho });
     const pendencias = separarPendencias(pontosPendentes);
 
+    // O INSS deixou de aceitar a procuração assinada pelo ZapSign e passou a
+    // pedir assinatura manuscrita — 65 exigências, em 58 requerimentos. O PDF
+    // preenchido e SEM assinatura já existe (`original_file_url`), então não se
+    // gera nada: acha-se o documento do cliente e manda para ele imprimir e
+    // assinar à caneta. Sem chave exata a busca devolve null de propósito; ver
+    // lib/inss-procuracao.
+    const pedeProcuracao = ehExigencia && exigeProcuracao(pontosPendentes);
+    const procuracao = pedeProcuracao
+      ? await buscarProcuracaoDoCliente({
+          leadId,
+          cpfSegurado: proc.cpf_segurado,
+          nomeSegurado: proc.nome_segurado,
+        })
+      : null;
+
     const activityTitle = agendarPericia
       ? `Agendar perícia no INSS — requerimento ${proc.requerimento_number}`
       : `INSS atualizou ${proc.requerimento_number}: ${statusLabel}`;
@@ -223,12 +245,39 @@ export const handler: RequestHandler = async (req, res) => {
           ].filter(Boolean).join('\n')
         : `\n📋 PENDÊNCIAS APONTADAS PELO INSS:\n${pontosPendentes}`;
 
+    // O bloco da procuração é o roteiro da pessoa: com o PDF em mãos, o link
+    // para imprimir; sem ele, o pedido explícito para escolher o documento
+    // certo — nunca um palpite por semelhança de nome (ver lib/inss-procuracao).
+    const blocoProcuracao = !pedeProcuracao
+      ? ''
+      : procuracao
+        ? [
+            '\n📄 PROCURAÇÃO PARA ASSINAR À MÃO:',
+            procuracao.url,
+            `(${procuracao.documentName || 'procuração'}${
+              procuracao.outorganteName ? ` — outorgante ${procuracao.outorganteName}` : ''
+            }, localizada pelo ${procuracao.via}.)`,
+            'Este é o PDF já preenchido e SEM assinatura eletrônica: é só imprimir, assinar à ' +
+              'caneta e anexar ao Meu INSS.',
+          ].join('\n')
+        : [
+            '\n📄 O INSS PEDIU PROCURAÇÃO ASSINADA À MÃO — NÃO LOCALIZEI A DESTE CLIENTE.',
+            'Nenhuma procuração do ZapSign bate com o vínculo do lead, o CPF nem o nome do ' +
+              'segurado deste requerimento. Isso é comum em BPC e maternidade, em que o segurado ' +
+              'é a criança e quem assinou a procuração foi a mãe.',
+            'Abra a conversa do cliente no WhatsApp → menu ⋮ → "Procuração para assinar à mão", ' +
+              'escolha o documento certo e mande. O robô NÃO chuta por semelhança de nome: já foi ' +
+              'medido e isso entregaria a procuração de outra pessoa. Se este cliente nunca teve ' +
+              'procuração, gere uma nova por "Gerar Documento para Assinatura".',
+          ].join('\n');
+
     const activityDesc = [
       agendarPericia
         ? '📞 TAREFA DO ESCRITÓRIO: o INSS mandou AGENDAR a perícia. Ligue no 135 ou agende pelo Meu INSS. O cliente não foi avisado — quem marca somos nós; avise a data a ele depois de marcada.'
         : '',
       `Status mudou de "${latest.from_status || 'sem status anterior'}" → "${statusLabel}".`,
       blocoPendencias,
+      blocoProcuracao,
       `\nAssunto do email: ${latest.email_subject}\nRecebido em: ${latest.email_received_at}`,
       caseInfo ? `\nCaso: ${caseInfo.case_number || ''} — ${caseInfo.title || ''}` : '',
       conferencia.veredito === 'conflito'
@@ -283,6 +332,7 @@ export const handler: RequestHandler = async (req, res) => {
     const tipoMensagem = classificarMensagemCliente(entrada);
     let zapPatch: Record<string, any> = { zap_status: 'silencio' };
     let sentToGroup = false;
+    let procuracaoEnviada = false;
     let humanText: string | null = null;
 
     if (tipoMensagem) {
@@ -328,6 +378,26 @@ export const handler: RequestHandler = async (req, res) => {
               instance_name: destino.grupo.instance_name,
             });
             sentToGroup = sent.ok;
+            // O PDF vai DEPOIS do texto: a mensagem explica o que o INSS pediu,
+            // o anexo chega em seguida. Falha no anexo não derruba o aviso — o
+            // texto já está no grupo e o link continua na atividade.
+            if (sent.ok && procuracao) {
+              const doc = await enviarDocumentoAoGrupo({
+                group_jid: destino.grupo.group_jid,
+                file_url: procuracao.url,
+                doc_name: 'procuracao-para-assinar.pdf',
+                caption:
+                  'Segue a procuração para assinar. É só imprimir, assinar à caneta (a assinatura ' +
+                  'precisa ficar parecida com a do seu documento), tirar foto e mandar aqui.',
+                instance_name: sent.instancia || destino.grupo.instance_name,
+              });
+              procuracaoEnviada = doc.ok;
+              if (!doc.ok) {
+                console.warn(
+                  `[notify-inss-update] procuração não foi ao grupo: ${descreverErro(doc)}`,
+                );
+              }
+            }
             zapPatch = sent.ok
               ? {
                   zap_status: 'enviado',
@@ -380,6 +450,25 @@ export const handler: RequestHandler = async (req, res) => {
         .eq('id', atividade.id);
     }
 
+    // O PDF existe mas não chegou ao cliente (mensagem agendada para a janela,
+    // envio recusado pela instância, ou o evento nem virou mensagem). Quem abre
+    // a atividade precisa saber que o anexo ficou por conta dela.
+    if (procuracao && !procuracaoEnviada && atividade?.id) {
+      const motivo =
+        zapPatch.zap_status === 'agendado'
+          ? 'a mensagem ficou agendada para a janela de 8h às 20h e o PDF vai junto com ela'
+          : `a mensagem não saiu (${zapPatch.zap_status})`;
+      await supabase
+        .from('lead_activities')
+        .update({
+          description:
+            `${atividade.description || activityDesc}\n\n` +
+            `📎 O PDF DA PROCURAÇÃO AINDA NÃO CHEGOU AO CLIENTE: ${motivo}. ` +
+            'Se precisar adiantar, mande o link acima no grupo.',
+        })
+        .eq('id', atividade.id);
+    }
+
     // 3) Marca como notificado. Só o evento mais recente pode virar mensagem;
     // os outros do lote entram como 'suprimido' pra ninguém achar que sumiram.
     const agora = new Date().toISOString();
@@ -394,6 +483,7 @@ export const handler: RequestHandler = async (req, res) => {
       success: true,
       activity_created: true,
       group_message_sent: sentToGroup,
+      procuracao_enviada: procuracaoEnviada,
       humanized_preview: humanText?.slice(0, 200),
       notified_count: ids.length,
     });

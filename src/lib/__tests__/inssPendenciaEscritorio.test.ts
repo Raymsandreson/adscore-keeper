@@ -4,9 +4,13 @@ import { extrairPontosPendentes, separarPendencias } from '../../../railway-serv
 import { exigenciaDeAgendamentoDePericia } from '../../../railway-server/src/lib/inss-mensagem-cliente';
 
 // Todos os textos abaixo são despachos reais de `inss_status_history`
-// (559 exigências com despacho, lidas em 27/08/2026), reduzidos ao miolo.
+// (587 exigências com despacho, relidas em 01/09/2026), reduzidos ao miolo.
+//
+// A regra mudou em 01/09/2026: procuração é pendência DO CLIENTE (ele imprime,
+// assina à caneta e devolve). Só o documento pessoal do procurador continua
+// saindo da mensagem. Ver o bloco de comentário em lib/inss-despacho.
 
-/** a0e76e1d — item 3 é nosso (termo de responsabilidade), 1 e 2 são do cliente. */
+/** a0e76e1d — os três itens são do cliente; o 3 é o termo de responsabilidade. */
 const MISTO =
   'Prezado(a) Senhor(a), Para dar andamento ao processo 126860560, solicitamos o envio ' +
   'eletrônico dos documentos descritos abaixo: 1- APRESENTAR CERTIDÃO DE NASCIMENTO DE ' +
@@ -17,8 +21,8 @@ const MISTO =
   'ALMEIDA OU OUTRA PESSOA QUE ESTEJA COM A GUARDA. O cumprimento de exigência por meio ' +
   'eletrônico é feito diretamente pelo aplicativo ou site do Meu INSS.';
 
-/** 79d6f5d1 — a exigência inteira é nossa. */
-const SO_ESCRITORIO =
+/** 79d6f5d1 — pedido de procuração legível: é o cliente que reenvia. */
+const SO_PROCURACAO =
   'NR: Prezado(a) Senhor(a), * Anexar, em melhor qualidade, a procuração. ' +
   'O cumprimento de exigência por meio eletrônico é feito diretamente pelo aplicativo ou ' +
   'site do Meu INSS.';
@@ -41,7 +45,7 @@ const IDENTIDADE_DO_CLIENTE =
   'Identificação (RG, Carteira de Trabalho, CNH, Passaporte, Carteira de Profissão - OAB e ' +
   'outros, etc); - CPF; - Título de Eleitor; - Comprovante de residência.';
 
-/** 39d99904 — o rótulo '"Assinado por:' só existe para abrir o item nosso. */
+/** 39d99904 — recusa da assinatura eletrônica: quem assina de novo é o cliente. */
 const VICIO_DE_REPRESENTACAO =
   'NR: Prezado(a) Senhor(a), Para dar andamento ao processo 1797976397, solicitamos o ' +
   'envio eletrônico dos documentos descritos abaixo: Observou-se que a assinatura ' +
@@ -49,6 +53,36 @@ const VICIO_DE_REPRESENTACAO =
   'contratante para o serviço. "Assinado por: ZAPSIGN PROCESSAMENTO DE DADOS LTDA". ' +
   'Apresente novo documento de representação com poderes de representação junto ao INSS e ' +
   'com assinaturas válidas.';
+
+/** a2333b41 — itens em letra: b) é nosso, a) e c) são do cliente. */
+const ITENS_EM_LETRA =
+  'NR: Prezado(a) Senhor(a), Para dar andamento ao processo, solicitamos o envio eletrônico ' +
+  'dos documentos descritos abaixo: a) procuração, devidamente datada e assinada (a ' +
+  'assinatura do interessado deverá ser semelhante à do documento de identificação) ' +
+  'b) documento de identificação com foto do procurador c) documento de identificação com ' +
+  'foto do interessado';
+
+/** 78a9c401 — o documento do procurador vem antes da procuração da cliente. */
+const DOC_DO_PROCURADOR_E_PROCURACAO =
+  'NR: Prezado(a) Senhor(a), Para dar andamento ao processo 1088392685, solicitamos o envio ' +
+  'eletrônico dos documentos descritos abaixo: - Documento de Identificação do ' +
+  'procurador(a); - Procuração devidamente assinada pela interessada. Constatamos que a ' +
+  'procuração apresentada não possui assinatura válida da requerente.';
+
+/** 86591c66 — o INSS emenda o item do cliente sem pontuação nenhuma. */
+const OAB_EMENDADA_NA_PROVA =
+  'NR: Prezado(a) Senhor(a), Para dar andamento ao processo 594757727, solicitamos o envio ' +
+  'eletrônico dos documentos descritos abaixo: TENDO EM VISTA DE REQUERIMENTO PROTOCOLADO ' +
+  'POR PROCURADOR: APRESENTAR DOCUMENTO DE IDENTIFICAÇÃO E CPF DO PROCURADOR E CASO O ' +
+  'PROCURADOR SEJA ADVOGADO, ANEXAR CARTEIRA DA OAB Apresentar ao menos uma prova ' +
+  'documental anterior fato gerador, até a data declarada como início da atividade.';
+
+/** 90edde53 — os dois pedidos na MESMA frase: cortar levaria a procuração junto. */
+const NA_MESMA_FRASE =
+  'NR: Prezado(a) Senhor(a), Para dar andamento ao processo 1913451073, solicitamos o envio ' +
+  'eletrônico dos documentos descritos abaixo: -PROCURAÇÃO E DOCUMENTOS DE IDENTIFICAÇÃO DO ' +
+  'PROCURADOR, COM PODERES PERANTE O INSS. -INFORMAMOS AINDA QUE SE A PROCURAÇÃO TIVER ' +
+  'ASSINATURA DIGITAL, DEVE SER POSSÍVEL A SUA VERIFICAÇÃO POR MEIO DO SITE validar.it.gov.br.';
 
 describe('separarPendencias', () => {
   it('não mexe no texto quando não há pendência do escritório', () => {
@@ -58,18 +92,18 @@ describe('separarPendencias', () => {
     expect(cliente).toBe(pontos);
   });
 
-  it('tira o termo de responsabilidade e mantém os documentos do cliente', () => {
+  it('deixa o termo de responsabilidade com o cliente', () => {
+    // Quem assina é a representante legal (mãe, avó, tutor) — não o escritório.
     const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(MISTO));
-    expect(escritorio).toContain('TERMO DE RESPONSABILIDADE');
+    expect(escritorio).toBeNull();
+    expect(cliente).toContain('TERMO DE');
     expect(cliente).toContain('CERTIDÃO DE NASCIMENTO DE CLEITON ALMEIDA');
-    expect(cliente).toContain('APRESENTAR RG E CPF');
-    expect(cliente).not.toContain('TERMO DE RESPONSABILIDADE');
   });
 
-  it('devolve cliente null quando a exigência inteira é do escritório', () => {
-    const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(SO_ESCRITORIO));
-    expect(escritorio).toContain('procuração');
-    expect(cliente).toBeNull();
+  it('deixa o pedido de procuração com o cliente', () => {
+    const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(SO_PROCURACAO));
+    expect(escritorio).toBeNull();
+    expect(cliente).toContain('procuração');
   });
 
   it('deixa com o cliente a "procuração ou fiança reciprocamente outorgada"', () => {
@@ -88,12 +122,43 @@ describe('separarPendencias', () => {
     expect(cliente).toContain('OAB');
   });
 
-  it('leva junto o rótulo órfão do item removido', () => {
+  it('deixa com o cliente a recusa da assinatura eletrônica', () => {
+    // É ele quem assina de novo, à caneta; o robô manda junto o PDF preenchido.
     const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(VICIO_DE_REPRESENTACAO));
-    expect(escritorio).toContain('ZAPSIGN');
-    expect(escritorio).toContain('documento de representação');
-    expect(cliente ?? '').not.toContain('Assinado por');
-    expect(cliente ?? '').not.toContain('ZAPSIGN');
+    expect(escritorio).toBeNull();
+    expect(cliente).toContain('documento de representação');
+  });
+
+  it('corta só o item b) — o documento do procurador', () => {
+    const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(ITENS_EM_LETRA));
+    expect(escritorio).toContain('foto do procurador');
+    expect(cliente).toContain('a) procuração, devidamente datada e assinada');
+    expect(cliente).toContain('foto do interessado');
+    expect(cliente).not.toContain('foto do procurador');
+  });
+
+  it('corta o documento do procurador e mantém a procuração da interessada', () => {
+    const { cliente, escritorio } = separarPendencias(
+      extrairPontosPendentes(DOC_DO_PROCURADOR_E_PROCURACAO),
+    );
+    expect(escritorio).toContain('Documento de Identificação do procurador(a)');
+    expect(cliente).toContain('Procuração devidamente assinada pela interessada');
+    expect(cliente).not.toContain('do procurador(a)');
+  });
+
+  it('corta a OAB sem levar junto o item que o INSS emendou sem pontuação', () => {
+    const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(OAB_EMENDADA_NA_PROVA));
+    expect(escritorio).toContain('CARTEIRA DA OAB');
+    expect(cliente).toContain('prova documental');
+    expect(cliente).not.toContain('CARTEIRA DA OAB');
+  });
+
+  it('não corta quando os dois pedidos estão na mesma frase', () => {
+    // Cortar o fragmento levaria junto a procuração, que é do cliente. Aqui a
+    // barreira é a instrução do prompt, não o corte.
+    const { cliente, escritorio } = separarPendencias(extrairPontosPendentes(NA_MESMA_FRASE));
+    expect(escritorio).toBeNull();
+    expect(cliente).toContain('PROCURAÇÃO E DOCUMENTOS DE IDENTIFICAÇÃO DO PROCURADOR');
   });
 
   it('aceita entrada vazia', () => {

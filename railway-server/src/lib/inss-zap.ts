@@ -191,6 +191,71 @@ export async function enviarTextoUazapi(args: {
   return { ok: resp.ok, status: resp.status, body };
 }
 
+/** Manda um documento (PDF) por UMA instância. */
+export async function enviarDocumentoUazapi(args: {
+  group_jid: string;
+  file_url: string;
+  caption?: string;
+  doc_name?: string;
+  instance_name?: string | null;
+}): Promise<{ ok: boolean; status: number; body?: any }> {
+  let q = supabase
+    .from('whatsapp_instances')
+    .select('id, instance_name, instance_token, base_url')
+    .eq('is_active', true);
+  if (args.instance_name) q = q.eq('instance_name', args.instance_name);
+  const { data: instances } = await q.limit(1);
+  const inst = instances?.[0];
+  if (!inst) return { ok: false, status: 0, body: 'no active instance' };
+  const base = (inst.base_url || 'https://abraci.uazapi.com').replace(/\/$/, '');
+  const resp = await fetch(`${base}/send/media`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', token: inst.instance_token },
+    body: JSON.stringify({
+      number: jidDeGrupo(args.group_jid),
+      type: 'document',
+      file: args.file_url,
+      ...(args.doc_name ? { docName: args.doc_name } : {}),
+      ...(args.caption ? { text: args.caption } : {}),
+    }),
+  });
+  let body: any = null;
+  try {
+    body = await resp.json();
+  } catch {
+    body = await resp.text().catch(() => null);
+  }
+  return { ok: resp.ok, status: resp.status, body };
+}
+
+/**
+ * Manda o PDF da procuração ao grupo, com o mesmo rodízio de instâncias do
+ * texto — o grupo tem várias instâncias-membro e só quem está dentro consegue
+ * enviar.
+ */
+export async function enviarDocumentoAoGrupo(args: {
+  group_jid: string;
+  file_url: string;
+  caption?: string;
+  doc_name?: string;
+  instance_name?: string | null;
+}): Promise<{ ok: boolean; status: number; body?: any; instancia?: string; tentativas: number }> {
+  const candidatas = await instanciasCandidatasDoGrupo(args.group_jid, args.instance_name);
+  if (candidatas.length === 0) {
+    const r = await enviarDocumentoUazapi(args);
+    return { ...r, tentativas: 1 };
+  }
+  let ultimo: { ok: boolean; status: number; body?: any } = { ok: false, status: 0 };
+  let tentativas = 0;
+  for (const inst of candidatas.slice(0, 4)) {
+    tentativas++;
+    ultimo = await enviarDocumentoUazapi({ ...args, instance_name: inst });
+    if (ultimo.ok) return { ...ultimo, instancia: inst, tentativas };
+    console.warn(`[inss-zap] envio de documento falhou por "${inst}": ${descreverErro(ultimo)}`);
+  }
+  return { ...ultimo, tentativas };
+}
+
 /**
  * Envia tentando as instâncias-membro do grupo, uma a uma.
  *

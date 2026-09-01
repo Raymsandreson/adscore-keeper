@@ -22,6 +22,7 @@ import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, Dropdow
 import { useWhatsAppInternalNotes, type InternalNote } from '@/hooks/useWhatsAppInternalNotes';
 import { resolverAtividadeDaNota } from '@/lib/whatsappActivityNotes';
 import { openZapSignDialog } from '@/lib/zapsignDialogEvent';
+import { openProcuracaoPicker } from '@/lib/procuracaoPickerEvent';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { bindDownload } from '@/lib/downloadFile';
 import { mediaThumb, mediaPreview, handleMediaThumbError, THUMB_SUFFIX } from '@/lib/whatsappMediaTransform';
@@ -3877,6 +3878,21 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
               }} className="gap-2">
                 <FileSignature className="h-4 w-4" /> Gerar Documento para Assinatura
               </DropdownMenuItem>
+              {conversation.lead_id && (
+                // O INSS parou de aceitar assinatura eletrônica: manda a
+                // procuração que já existe, sem assinatura, para o cliente
+                // imprimir e assinar à caneta. Ver lib/inss-procuracao.
+                <DropdownMenuItem
+                  onClick={() => openProcuracaoPicker({
+                    leadId: conversation.lead_id!,
+                    leadName: conversation.contact_name || null,
+                    instanceName: conversation.instance_name || null,
+                  })}
+                  className="gap-2"
+                >
+                  <FileSignature className="h-4 w-4" /> Procuração para assinar à mão
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => setShowSessionEditor(true)} className="gap-2">
                 <Pencil className="h-4 w-4" /> Editar Campos da Sessão
               </DropdownMenuItem>

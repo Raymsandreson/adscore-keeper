@@ -157,11 +157,14 @@ const REGRAS_COMUNS = [
   'Nada de termo jurídico, nada de número de lei, nada de "conforme", "referente", "mediante", "providenciar".',
   'Seja breve. É melhor faltar detalhe do que a pessoa não entender.',
   'NUNCA repita número de CPF, RG ou número do benefício que apareça no texto do INSS.',
-  // Pedido do usuário (27/08/2026): pendência de procuração é do escritório. O
-  // cliente lê aquilo como cobrança e não tem o que fazer — quem resolve somos
-  // nós. O corte principal é o `separarPendencias`, em lib/inss-despacho; esta
-  // regra é a segunda barreira, para o caso raro em que o texto cru chega à IA.
-  'NUNCA peça procuração, termo de responsabilidade, documento de representação, documento do advogado ou do procurador, e não fale de assinatura de procuração nem de validação de assinatura: isso é tarefa do escritório, não do cliente.',
+  // Correção do usuário (01/09/2026): procuração é pendência DO CLIENTE — ele
+  // imprime, assina à caneta e devolve, que é o que o INSS passou a exigir. O
+  // que segue sendo nosso é só o documento pessoal do advogado. O corte
+  // principal é o `separarPendencias`, em lib/inss-despacho; esta regra é a
+  // segunda barreira, para o fragmento em que o INSS emenda os dois pedidos na
+  // mesma frase e o corte, de propósito, não separa.
+  'NUNCA peça o documento de identificação, RG, CPF, foto ou carteira da OAB do advogado ou do procurador: esse documento é do escritório e o cliente não tem como conseguir.',
+  'Procuração, termo de representação e termo de responsabilidade SÃO do cliente: pode pedir. Fale deles do jeito simples — "assinar a procuração", "assinar o papel" —, nunca "assinatura digital", "assinatura eletrônica", "validação" nem nome de site.',
   'Não invente prazo, valor, data de pagamento nem motivo que não esteja no texto do INSS.',
   'Não comece com "Bom dia"/"Boa tarde" — não sabemos a hora.',
   'No máximo 2 emojis na mensagem inteira. Não assine.',

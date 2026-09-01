@@ -1,7 +1,14 @@
 import type { RequestHandler } from 'express';
 import { supabase } from '../lib/supabase';
 import { dentroDaJanela, JANELA_FIM_HORA, JANELA_INICIO_HORA } from '../lib/inss-mensagem-cliente';
-import { descreverErro, enviarTextoAoGrupo, resolverGrupoDoLead } from '../lib/inss-zap';
+import {
+  descreverErro,
+  enviarDocumentoAoGrupo,
+  enviarTextoAoGrupo,
+  resolverGrupoDoLead,
+} from '../lib/inss-zap';
+import { exigeProcuracao, extrairPontosPendentes } from '../lib/inss-despacho';
+import { buscarProcuracaoDoCliente } from '../lib/inss-procuracao';
 
 /**
  * Despacha a fila de mensagens do INSS que ficou esperando a janela de 8h–20h.
@@ -31,7 +38,7 @@ export const handler: RequestHandler = async (req, res) => {
   try {
     const { data: fila, error } = await supabase
       .from('inss_status_history')
-      .select('id, process_id, zap_texto, zap_tipo, email_received_at')
+      .select('id, process_id, zap_texto, zap_tipo, email_received_at, despacho')
       .eq('zap_status', 'agendado')
       .order('email_received_at', { ascending: true })
       .limit(LOTE);
@@ -44,13 +51,16 @@ export const handler: RequestHandler = async (req, res) => {
     const processIds = [...new Set(fila.map((f: any) => f.process_id).filter(Boolean))];
     const { data: procs } = await supabase
       .from('inss_admin_processes')
-      .select('id, lead_id, case_id, nome_segurado, legal_cases:case_id(lead_id)')
+      .select('id, lead_id, case_id, nome_segurado, cpf_segurado, legal_cases:case_id(lead_id)')
       .in('id', processIds);
     const leadPorProcesso = new Map<string, string | null>(
       (procs || []).map((p: any) => [p.id, p.lead_id || p.legal_cases?.lead_id || null]),
     );
     // O nome do segurado é uma das provas de que o grupo é mesmo desse cliente
     // quando o vínculo vem do campo legado — ver lib/inss-grupo-certeza.
+    const cpfPorProcesso = new Map<string, string | null>(
+      (procs || []).map((p: any) => [p.id, p.cpf_segurado || null]),
+    );
     const seguradoPorProcesso = new Map<string, string | null>(
       (procs || []).map((p: any) => [p.id, p.nome_segurado || null]),
     );
@@ -87,6 +97,34 @@ export const handler: RequestHandler = async (req, res) => {
             patch.zap_status = 'enviado';
             patch.zap_enviado_at = new Date().toISOString();
             enviados++;
+            // A procuração é recalculada aqui, e não guardada junto do texto:
+            // assim a fila não depende de coluna nova e o PDF que vai é sempre
+            // o mais recente do cliente. Ver lib/inss-procuracao.
+            const pontos = extrairPontosPendentes(item.despacho);
+            if (exigeProcuracao(pontos)) {
+              const procuracao = await buscarProcuracaoDoCliente({
+                leadId: leadPorProcesso.get(item.process_id) || null,
+                cpfSegurado: cpfPorProcesso.get(item.process_id) || null,
+                nomeSegurado: seguradoPorProcesso.get(item.process_id) || null,
+              });
+              if (procuracao) {
+                const doc = await enviarDocumentoAoGrupo({
+                  group_jid: destino.grupo.group_jid,
+                  file_url: procuracao.url,
+                  doc_name: 'procuracao-para-assinar.pdf',
+                  caption:
+                    'Segue a procuração para assinar. É só imprimir, assinar à caneta (a ' +
+                    'assinatura precisa ficar parecida com a do seu documento), tirar foto e ' +
+                    'mandar aqui.',
+                  instance_name: sent.instancia || destino.grupo.instance_name,
+                });
+                if (!doc.ok) {
+                  console.warn(
+                    `[dispatch-inss-zap] procuração não foi ao grupo: ${descreverErro(doc)}`,
+                  );
+                }
+              }
+            }
           } else {
             patch.zap_status = 'erro';
             patch.zap_erro = descreverErro(sent);

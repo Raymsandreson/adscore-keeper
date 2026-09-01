@@ -6,6 +6,7 @@ import { WhatsAppConversationList } from './WhatsAppConversationList';
 import { WhatsAppAssigneeSummary } from './WhatsAppAssigneeSummary';
 import { WhatsAppChat } from './WhatsAppChat';
 import { ZapSignDialogHost } from './ZapSignDialogHost';
+import { ProcuracaoPickerHost } from './ProcuracaoPickerSheet';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -2711,6 +2712,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       )}
       <ZapSignLeadCreationListener />
       <ZapSignDialogHost />
+      <ProcuracaoPickerHost />
 
       <SharedConversationsPanel open={sharedPanelOpen} onOpenChange={setSharedPanelOpen} />
 

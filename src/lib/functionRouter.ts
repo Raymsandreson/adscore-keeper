@@ -53,6 +53,10 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'transcribe-activity-call': 'railway',
   'transcribe-team-audio': 'railway',
   'extract-activity-from-document': 'railway',
+  // Busca e vínculo manual da procuração do lead: lê e escreve em
+  // zapsign_documents, que não responde à anon key sem sessão e cuja escrita
+  // tem que ser por service role.
+  'inss-procuracao-vincular': 'railway',
   'dictate-activity': 'railway',
   'chat-to-activity': 'railway',
   'detect-client-commitments': 'railway', // IA lê a conversa e registra o que o cliente ficou de fazer
