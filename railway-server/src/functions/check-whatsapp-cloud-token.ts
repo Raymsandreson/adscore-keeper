@@ -118,12 +118,16 @@ export const handler: RequestHandler = async (req, res) => {
     businessProbe = { business_id: String(probeBusiness) };
     for (const edge of ['owned_whatsapp_business_accounts', 'client_whatsapp_business_accounts']) {
       try {
-        const url = `${GRAPH}/${API_VERSION}/${probeBusiness}/${edge}?fields=id,name&limit=100`;
+        const url = `${GRAPH}/${API_VERSION}/${probeBusiness}/${edge}?fields=id,name,phone_numbers{id,display_phone_number,verified_name,code_verification_status,quality_rating}&limit=100`;
         const r = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
         const body: any = await r.json();
         businessProbe[edge] = body?.error
           ? { error: body.error.message, code: body.error.code }
-          : (body?.data || []).map((w: any) => ({ id: w.id, name: w.name }));
+          : (body?.data || []).map((w: any) => ({
+              id: w.id,
+              name: w.name,
+              phone_numbers: w.phone_numbers?.data || [],
+            }));
       } catch (e) {
         businessProbe[edge] = { error: e instanceof Error ? e.message : String(e) };
       }
