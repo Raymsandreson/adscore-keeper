@@ -149,11 +149,11 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   // Trava de duplo clique da cobrança, por mensagem.
   const [nudgingId, setNudgingId] = useState<string | null>(null);
   const navigate = useNavigate();
-  // O painel é a lista de Menções. A conversa em si (Chat da Equipe) abre
-  // EMPILHADA por cima daqui — por intent (menção de conversa direta, "no
-  // privado", deep link, toast do chat) ou pelo balão do cabeçalho. A aba
-  // "Chat" saiu: o que ela mostrava já chega pelas menções (privado / grupo /
-  // ficha), e a conversa continua a um toque de distância.
+  // O painel é a lista de Menções, e só. A conversa em si (Chat da Equipe) abre
+  // EMPILHADA por cima daqui, sempre por INTENT — menção de conversa direta,
+  // "no privado" da ficha, deep link, clique no toast. Não existe mais nem aba
+  // nem botão para ela: o que a aba "Chat" mostrava já chega pelas menções
+  // (privado / grupo / ficha).
   const [chatView, setChatView] = useState(false);
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
   const [search, setSearch] = useState('');
@@ -383,17 +383,6 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
               {!chatView && unreadCount > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={markAllAsRead}>
                   <CheckCheck className="h-3.5 w-3.5 mr-1" /> Todas
-                </Button>
-              )}
-              {!chatView && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0"
-                  onClick={() => setChatView(true)}
-                  title="Conversas diretas e em grupo"
-                >
-                  <MessageCircle className="h-4 w-4" />
                 </Button>
               )}
             </SheetTitle>
