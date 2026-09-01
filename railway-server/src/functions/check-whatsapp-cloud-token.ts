@@ -144,6 +144,9 @@ export const handler: RequestHandler = async (req, res) => {
     const calls: Record<string, string> = {
       subscribed_apps: `${probeWaba}/subscribed_apps`,
       info: `${probeWaba}?fields=id,name,owner_business_info,on_behalf_of_business_info,account_review_status`,
+      // assigned_users devolve as TASKS de cada usuario na WABA. A tela escreve
+      // "Acesso total", mas quem alimenta granular_scopes.target_ids e essa lista.
+      assigned_users: `${probeWaba}/assigned_users?fields=id,name,tasks&limit=50`,
     };
     for (const [key, path] of Object.entries(calls)) {
       try {
