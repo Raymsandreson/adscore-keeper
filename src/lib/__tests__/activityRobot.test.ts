@@ -14,6 +14,12 @@ describe('activityRobot — quem criou a atividade', () => {
     expect(robotActivityLabel(a)).toContain('Escavador');
   });
 
+  it('Escavador: o detail é hash de dedupe, não vira nome de robô na tela', () => {
+    const a = { action_source: 'escavador_compromissos', action_source_detail: '1gnyxtwbqje3h', created_by_ai: false };
+    expect(robotActivityLabel(a)).toBe('Criada automaticamente por: Robô de prazos e audiências (Escavador)');
+    expect(robotActivityLabel(a)).not.toContain('1gnyxtwbqje3h');
+  });
+
   it('robô: created_by_ai', () => {
     const a = { action_source: null, action_source_detail: null, created_by_ai: true };
     expect(isRobotActivity(a)).toBe(true);

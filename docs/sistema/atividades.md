@@ -44,7 +44,24 @@ A marca vem do banco, **nunca de heurística na tela**:
 
 Robôs que passaram a carimbar a origem (01/09/2026, antes nasciam sem marca nenhuma): `notify-inss-update` ("Robô do INSS"), `zapsign-webhook` e `zapsign-backfill-from-2026` ("Robô do ZapSign"), `wjia-followup-processor` ("Follow-up automático"), `whatsapp-handoff-dispatch` ("Handoff IA"), `create-whatsapp-group` ("Abertura automática do caso"), `onboarding-checkpoint-execute`, `sheet-lead-ingest`, `whatsapp-webhook` (etiqueta) e `whatsapp-command-processor` ("Assistente do WhatsApp" — o texto é do membro, mas quem cria é o assistente). Já carimbavam antes: `sync-process-compromissos` e `execute-agent-automations`.
 
-**Falta o backfill**: as atividades de robô criadas ANTES desse carimbo continuam sem símbolo. Só um UPDATE em produção resolve, identificando cada lote pela assinatura determinística do robô (descrição/`notes` fixos), nunca por chute.
+**A coluna tem `DEFAULT 'manual'`** — descoberta ao medir o banco em 01/09/2026, e ela muda o quadro: robô que não preenchia `action_source` não ficava nulo, ficava marcado como **pessoa**. Não era omissão, era um dado errado afirmando autoria humana.
+
+**Backfill aplicado em 01/09/2026 — 6.257 atividades** reclassificadas de `manual` para `system`, cada lote pela assinatura determinística do robô (título **e** descrição gerados em código):
+
+| Lote (`action_source_detail`) | Linhas |
+|---|---|
+| Etiqueta do WhatsApp | 4.133 |
+| Robô do ZapSign | 666 |
+| Robô do INSS | 544 |
+| Follow-up automático | 530 |
+| Onboarding automático | 323 |
+| Follow-up automático (assinatura) | 61 |
+
+- **138 linhas ficaram de fora de propósito**: têm o título do robô mas não a descrição dele (clone feito por uma pessoa a partir de uma atividade de robô). Continuam `manual` — na dúvida, não carimba.
+- **Os dois triggers foram desligados dentro da transação**: `update_lead_activities_updated_at` (o painel "Atrasadas de hoje" lê `updated_at >= hoje` e mostraria 6.257 atrasadas como "atualizadas hoje" — mentira na tela) e `trg_activity_audit` (6.257 linhas de auditoria de um UPDATE que não é ação de ninguém). Conferido depois: `updated_at` do dia continuou em 134 linhas e a auditoria em 169; os seis triggers voltaram LIGADOS.
+- **Rollback id a id** em `backfill.action_source_20260901` (schema `backfill`, fora da API — tabela nova em `public` sem RLS seria bug crítico). Scripts: `scratchpad/backfill-action-source-20260901.sql` e `scratchpad/rollback-backfill-action-source-20260901.sql`. Recorte por data foi descartado: as linhas que o robô já carimbou sozinho depois do deploy cairiam junto no rollback.
+
+**O `action_source_detail` do Escavador é hash, não nome** — `sync-process-compromissos` guarda ali o hash de dedupe do compromisso (`1gnyxtwbqje3h`). Por isso `robotActivityLabel` só usa o detail quando o carimbo é `'system'`; no Escavador cai no nome fixo do mapa, senão o tooltip mostraria o hash.
 
 ### Seleção em lote (passar para outro assessor ou excluir)
 Botão **"Selecionar"** acima da lista liga o modo de seleção: cada cartão ganha caixa de marcação, o clique passa a marcar em vez de abrir a ficha (shift+clique marca o intervalo) e as ações individuais do cartão somem. Com algo marcado, o rodapé da coluna mostra a contagem e dois botões: **"Excluir"** e **"Passar para…"** — este último abre um painel lateral com a busca de assessor (`BulkReassignSheet.tsx`).

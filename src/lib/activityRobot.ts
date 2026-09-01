@@ -59,9 +59,13 @@ export function isRobotActivity(activity: ActivityRobotFields | null | undefined
  */
 export function robotActivityLabel(activity: ActivityRobotFields | null | undefined): string | null {
   if (!isRobotActivity(activity)) return null;
-  const detail = activity?.action_source_detail?.trim();
+  const source = activity?.action_source || '';
+  // `action_source_detail` só é nome de robô quando o carimbo é 'system'. Na
+  // sync do Escavador aquela coluna guarda o HASH de dedupe do compromisso
+  // ('1gnyxtwbqje3h') — mostrá-lo viraria "Criada automaticamente por:
+  // 1gnyxtwbqje3h" na tela de quem só quer saber quem criou.
+  const detail = source === ACTIVITY_SOURCE_ROBOT ? activity?.action_source_detail?.trim() : null;
   if (detail) return `Criada automaticamente por: ${detail}`;
   if (activity?.created_by_ai === true) return 'Criada automaticamente pela IA';
-  const source = activity?.action_source || '';
   return `Criada automaticamente por: ${ROBOT_SOURCE_LABELS[source] || 'robô do sistema'}`;
 }
