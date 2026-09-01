@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight, BellOff } from 'lucide-react';
+import { AtSign, Loader2, CheckCheck, Users, ClipboardList, Briefcase, Workflow, ArrowRight, ArrowLeft, MessageCircle, Scale, Search, Timer, Reply, CornerDownRight, BellOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -149,7 +149,12 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   // Trava de duplo clique da cobrança, por mensagem.
   const [nudgingId, setNudgingId] = useState<string | null>(null);
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'mentions' | 'chat'>('chat');
+  // O painel é a lista de Menções. A conversa em si (Chat da Equipe) abre
+  // EMPILHADA por cima daqui — por intent (menção de conversa direta, "no
+  // privado", deep link, toast do chat) ou pelo balão do cabeçalho. A aba
+  // "Chat" saiu: o que ela mostrava já chega pelas menções (privado / grupo /
+  // ficha), e a conversa continua a um toque de distância.
+  const [chatView, setChatView] = useState(false);
   const [chatIntent, setChatIntent] = useState<TeamChatOpenIntent | null>(null);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -161,10 +166,15 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
   const [scopeFilter, setScopeFilter] = useState<'all' | MentionScope>('all');
   const [kindFilter, setKindFilter] = useState<'all' | 'nome' | 'todos'>('all');
 
+  // Fechou o painel, some a pilha: reabrir pelo sino volta nas menções.
+  useEffect(() => {
+    if (!open) setChatView(false);
+  }, [open]);
+
   useEffect(() => {
     return subscribeToTeamChatConversation((intent) => {
       setChatIntent(intent);
-      setActiveTab('chat');
+      setChatView(true);
       onOpenChange(true);
     });
   }, [onOpenChange]);
@@ -346,66 +356,52 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         <div className="shrink-0 px-4 py-3 border-b bg-primary/5">
           <SheetHeader>
             <SheetTitle className="text-sm flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
-                {activeTab === 'mentions' ? (
+              {chatView ? (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="w-8 h-8 rounded-full bg-primary/20 shrink-0"
+                  onClick={() => setChatView(false)}
+                  title="Voltar às menções"
+                >
+                  <ArrowLeft className="h-4 w-4 text-primary" />
+                </Button>
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center">
                   <AtSign className="h-4 w-4 text-primary" />
-                ) : (
-                  <MessageCircle className="h-4 w-4 text-primary" />
-                )}
-              </div>
+                </div>
+              )}
               <div className="flex-1 min-w-0">
-                <div className="truncate text-sm">Chat interno</div>
+                <div className="truncate text-sm">{chatView ? 'Chat interno' : 'Menções'}</div>
                 <div className="text-[10px] text-muted-foreground font-normal">
-                  {activeTab === 'mentions'
-                    ? (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
-                    : 'Conversas diretas e em grupo'
+                  {chatView
+                    ? 'Conversas diretas e em grupo'
+                    : (unreadCount > 0 ? `${unreadCount} não lida${unreadCount > 1 ? 's' : ''}` : 'Todas lidas')
                   }
                 </div>
               </div>
-              {activeTab === 'mentions' && unreadCount > 0 && (
+              {!chatView && unreadCount > 0 && (
                 <Button variant="ghost" size="sm" className="text-xs h-7" onClick={markAllAsRead}>
                   <CheckCheck className="h-3.5 w-3.5 mr-1" /> Todas
                 </Button>
               )}
+              {!chatView && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0"
+                  onClick={() => setChatView(true)}
+                  title="Conversas diretas e em grupo"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
+              )}
             </SheetTitle>
           </SheetHeader>
-
-          {/* Tabs */}
-          <div className="flex gap-1 mt-3 p-0.5 bg-muted/60 rounded-lg">
-            <button
-              onClick={() => setActiveTab('mentions')}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all',
-                activeTab === 'mentions'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <AtSign className="h-3.5 w-3.5" />
-              Menções
-              {unreadCount > 0 && (
-                <span className="w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[9px] font-bold flex items-center justify-center">
-                  {unreadCount}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium transition-all',
-                activeTab === 'chat'
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <MessageCircle className="h-3.5 w-3.5" />
-              Chat
-            </button>
-          </div>
         </div>
 
         {/* Filtros das menções */}
-        {activeTab === 'mentions' && mentions.length > 0 && (
+        {!chatView && mentions.length > 0 && (
           <div className="shrink-0 px-3 py-2 border-b space-y-1.5">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -547,7 +543,7 @@ export function MentionsPanel({ open, onOpenChange }: MentionsPanelProps) {
         )}
 
         {/* Content */}
-        {activeTab === 'chat' ? (
+        {chatView ? (
           <div className="flex-1 min-h-0">
             <TeamDirectChatPanel
               intent={chatIntent}
