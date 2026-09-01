@@ -140,13 +140,16 @@ export const handler: RequestHandler = async (req, res) => {
   let wabaProbe: any = null;
   const probeWaba = (req.body || {}).probe_waba;
   if (probeWaba) {
-    wabaProbe = { waba_id: String(probeWaba) };
+    // Default: portfolio WhatsJudd. Sobrescrevivel por probe_business no body.
+    const probeBusinessForWaba = String((req.body || {}).probe_business || '1511538834012071');
+    wabaProbe = { waba_id: String(probeWaba), business_id: probeBusinessForWaba };
     const calls: Record<string, string> = {
       subscribed_apps: `${probeWaba}/subscribed_apps`,
       info: `${probeWaba}?fields=id,name,owner_business_info,on_behalf_of_business_info,account_review_status`,
       // assigned_users devolve as TASKS de cada usuario na WABA. A tela escreve
       // "Acesso total", mas quem alimenta granular_scopes.target_ids e essa lista.
-      assigned_users: `${probeWaba}/assigned_users?fields=id,name,tasks&limit=50`,
+      // `business` e obrigatorio nessa edge (sem ele a Graph devolve (#100)).
+      assigned_users: `${probeWaba}/assigned_users?business=${probeBusinessForWaba}&fields=id,name,tasks&limit=50`,
     };
     for (const [key, path] of Object.entries(calls)) {
       try {
