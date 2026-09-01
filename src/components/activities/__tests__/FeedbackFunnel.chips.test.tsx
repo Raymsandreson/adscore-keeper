@@ -131,6 +131,17 @@ describe('FeedbackFunnel — chips e quebra por assessor', () => {
     expect(screen.queryByText('Fazer tráfego')).toBeNull();
   });
 
+  it('o chip de concluídas soma tudo que já voltou e lista as atividades', async () => {
+    montar();
+    // 1 a avaliar + 1 satisfeito = 2 concluídas; as 3 atrasadas ficam de fora.
+    const chip = await screen.findByRole('button', { name: /2 concluídas/i });
+    fireEvent.click(chip);
+
+    expect(await screen.findByText('Retorno da campanha')).toBeTruthy();
+    expect(screen.getByText('Retorno do site')).toBeTruthy();
+    expect(screen.queryByText('Fazer tráfego')).toBeNull();
+  });
+
   it('visão "Por assessor" mostra a quantidade de cada status por responsável', async () => {
     montar();
     fireEvent.click(await screen.findByRole('button', { name: /Por assessor/i }));
