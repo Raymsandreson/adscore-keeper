@@ -257,6 +257,10 @@ export const handler: RequestHandler = async (req, res) => {
       case_title: formatLabel(caseInfo?.case_number, caseInfo?.title) || null,
       process_id: process?.id || null,
       process_title: process ? formatLabel(process.process_number, process.title) || null : null,
+      // Carimbo de origem: é robô que cria esta atividade. A tela lê isto para
+      // mostrar o símbolo do robô (src/lib/activityRobot.ts).
+      action_source: 'system',
+      action_source_detail: 'Robô do INSS',
     } as any).select('id, description').maybeSingle();
 
     // 2) Mensagem para o grupo do cliente

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { remapToExternal, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -15,6 +16,10 @@ interface OpenActivity {
   deadline: string | null;
   lead_name: string | null;
   priority: string | null;
+  /** Carimbo de origem: 'system'/'escavador_compromissos' = robô. */
+  action_source: string | null;
+  action_source_detail: string | null;
+  created_by_ai: boolean | null;
 }
 
 export function MemberOpenActivities({ userId }: { userId: string | null | undefined }) {
@@ -33,7 +38,7 @@ export function MemberOpenActivities({ userId }: { userId: string | null | undef
         if (!ext) { setItems([]); return; }
         const { data } = await externalSupabase
           .from('lead_activities')
-          .select('id, title, activity_type, deadline, lead_name, priority')
+          .select('id, title, activity_type, deadline, lead_name, priority, action_source, action_source_detail, created_by_ai')
           .is('deleted_at', null)
           .eq('assigned_to', ext)
           .eq('status', 'pendente')
@@ -83,6 +88,7 @@ export function MemberOpenActivities({ userId }: { userId: string | null | undef
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium truncate">{a.title}</p>
+                          <RobotBadge activity={a} />
                           {a.lead_name && (
                             <p className="text-xs text-muted-foreground truncate">{a.lead_name}</p>
                           )}

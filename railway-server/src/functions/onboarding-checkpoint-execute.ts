@@ -729,6 +729,8 @@ export const handler: RequestHandler = async (req, res) => {
               assigned_to,
               created_by: p.created_by,
               deadline: new Date().toISOString().slice(0, 10),
+              action_source: 'system',
+              action_source_detail: 'Onboarding automático (pós-assinatura)',
             })
             .select('id')
             .maybeSingle();

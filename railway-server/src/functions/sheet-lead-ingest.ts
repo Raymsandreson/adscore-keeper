@@ -126,6 +126,8 @@ export const handler: RequestHandler = async (req, res) => {
             description: `Nova submissão da planilha com mesma identidade.\nDados: ${JSON.stringify(row).slice(0, 800)}`,
             activity_type: 'observacao',
             status: 'concluida',
+            action_source: 'system',
+            action_source_detail: 'Ingestão de planilha',
           });
           results.push({ row_index: i, status: 'duplicate', lead_id: dup.id });
           continue;

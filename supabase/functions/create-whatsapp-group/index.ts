@@ -2021,6 +2021,8 @@ Deno.serve(async (req) => {
             assigned_to: assignedExtId,
             assigned_to_name: assignedName,
             deadline: deadline.toISOString().split('T')[0],
+            action_source: 'system',
+            action_source_detail: 'Abertura automática do caso',
           })
           console.log(`[process] Created activity: ${act.title} -> ${assignedName || 'unassigned'}`)
         }

@@ -157,9 +157,16 @@ interface LeadFunnelProgressBarProps {
    * há atividade — dentro da atividade, quem manda é ela.
    */
   processId?: string | null;
+  /**
+   * De ONDE veio o POP que a barra está medindo. A barra sozinha só conhece o
+   * `boardId` que recebeu — quem sabe se ele é o POP próprio da atividade, o do
+   * processo ou o funil do lead é quem monta a barra. Sem isso a tela dizia
+   * "herdado" sem dizer herdado de quê.
+   */
+  origemDoPop?: 'atividade' | 'processo' | 'lead' | null;
 }
 
-export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, processId = null }: LeadFunnelProgressBarProps) {
+export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, processId = null, origemDoPop = null }: LeadFunnelProgressBarProps) {
   const { user } = useAuthContext();
   const [stages, setStages] = useState<Stage[]>([]);
   const [currentStageId, setCurrentStageId] = useState<string | null>(null);
@@ -1310,14 +1317,37 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
           </button>
         </div>
 
-        {/* Linha de rótulo: fase + marco atual. SEMPRE visível — recolhida ou
-            expandida — para o nome do marco nunca sumir (pedido de 30/08). */}
-        {currentStageId && (
+        {/* Linha de rótulo: POP + fase + marco atual. SEMPRE visível — recolhida
+            ou expandida — para o nome do marco nunca sumir (pedido de 30/08).
+            O nome do POP entrou em 01/09: a barra mostrava a fase sem dizer de
+            qual POP ela é, e o formulário dizia só "herdado", sem dizer de quê. */}
+        {(currentStageId || boardName) && (
           <div className="mt-1.5 text-[11px] text-muted-foreground truncate">
-            <span className="font-medium text-foreground">
-              {stages.find(s => s.id === currentStageId)?.name}
-            </span>
-            <span className="ml-1.5">· fase {currentIdx + 1} de {stages.length}</span>
+            {boardName && (
+              <span
+                className="mr-1.5"
+                title={origemDoPop === 'processo'
+                  ? 'POP do processo vinculado a esta atividade'
+                  : origemDoPop === 'lead'
+                    ? 'A atividade não tem POP próprio: segue o POP/funil do lead'
+                    : origemDoPop === 'atividade'
+                      ? 'POP escolhido nesta atividade'
+                      : undefined}
+              >
+                {boardType === 'workflow' ? 'POP' : 'Funil'}: <span className="font-medium text-foreground">{boardName}</span>
+                {origemDoPop === 'processo' && ' (do processo)'}
+                {origemDoPop === 'lead' && ' (herdado do lead)'}
+              </span>
+            )}
+            {currentStageId && (
+              <>
+                {boardName && <span className="mr-1.5">·</span>}
+                <span className="font-medium text-foreground">
+                  {stages.find(s => s.id === currentStageId)?.name}
+                </span>
+                <span className="ml-1.5">· fase {currentIdx + 1} de {stages.length}</span>
+              </>
+            )}
             {regua.atual && (
               <span className="ml-1.5">
                 · {regua.atual.rotulo}

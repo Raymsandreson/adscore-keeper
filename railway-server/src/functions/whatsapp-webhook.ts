@@ -1176,6 +1176,8 @@ export const handler: RequestHandler = async (req, res) => {
                     activity_type: 'notificacao',
                     status: 'concluida',
                     priority: 'normal',
+                    action_source: 'system',
+                    action_source_detail: 'Etiqueta do WhatsApp',
                   } as any);
                 } catch (e: any) {
                   console.warn('[label-trigger][result] activity log failed:', e?.message);

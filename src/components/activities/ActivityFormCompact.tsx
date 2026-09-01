@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { useCampaigns, useCreateCampaign } from '@/hooks/useCampaigns';
+import { remapToCloudSync } from '@/integrations/supabase/uuid-remap';
+import { robotActivityLabel } from '@/lib/activityRobot';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { isMeetingType } from '@/hooks/useActivityTypes';
 import { Megaphone } from 'lucide-react';
 
@@ -998,9 +1001,40 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
     }
   };
 
+  // Autoria: robô (carimbo do banco) ou pessoa (created_by → nome do membro).
+  // `created_by` guarda UUID do Externo; teamMembers vem com UUID do Cloud.
+  const autoriaDaAtividade = useMemo(() => {
+    const act = props.selectedActivity;
+    if (!act?.id) return '';
+    const quandoISO: string | null = act.created_at || null;
+    const quando = quandoISO
+      ? new Date(quandoISO).toLocaleDateString('pt-BR')
+      : null;
+    const doRobo = robotActivityLabel(act);
+    if (doRobo) return quando ? `${doRobo} em ${quando}` : doRobo;
+    const cloudId = remapToCloudSync(act.created_by) || act.created_by || '';
+    const nome = props.teamMembers.find(m => m.user_id === cloudId)?.full_name;
+    if (nome) return quando ? `Criada por ${nome} em ${quando}` : `Criada por ${nome}`;
+    // Sem created_by e sem carimbo de robô: a linha é antiga demais para saber.
+    // Melhor dizer isso do que chutar um autor.
+    return quando ? `Criada em ${quando} — autor não registrado` : 'Autor não registrado';
+  }, [props.selectedActivity, props.teamMembers]);
+
   return (
     <div className="space-y-3">
       {/* Título foi movido para o cabeçalho fixo (editável inline com ícone de lápis). */}
+
+      {/* Quem criou. A ficha nunca mostrou isso — só a página de Atividades
+          tinha o filtro "Criado por" —, então dentro do caso não dava para
+          saber se a atividade veio de uma pessoa ou de um robô. Robô vem do
+          carimbo do banco (action_source/created_by_ai); pessoa vem do
+          created_by remapeado para o nome do membro. */}
+      {props.selectedActivity?.id && (
+        <p className="text-[10px] text-muted-foreground flex items-center gap-1.5 flex-wrap">
+          <RobotBadge activity={props.selectedActivity} variant="full" />
+          <span>{autoriaDaAtividade}</span>
+        </p>
+      )}
 
       {/* Vínculos (Lead/Caso/Processo/Contato) ficam APENAS no cabeçalho fixo da atividade
           para evitar duplicação visual. Só mostramos os botões de seleção aqui quando NADA está vinculado,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -212,6 +213,10 @@ interface ProcessActivity {
   assigned_to_name: string | null;
   completed_at: string | null;
   created_at: string;
+  /** Carimbo de origem: 'system'/'escavador_compromissos' = robô. */
+  action_source: string | null;
+  action_source_detail: string | null;
+  created_by_ai: boolean | null;
 }
 
 interface ProcessDocument {
@@ -520,7 +525,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
     setLoadingActivities(true);
     const { data } = await externalSupabase
       .from('lead_activities')
-      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, completed_at, created_at')
+      .select('id, title, description, activity_type, status, priority, deadline, assigned_to_name, completed_at, created_at, action_source, action_source_detail, created_by_ai')
       .eq('process_id', process.id)
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
@@ -1708,6 +1713,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
                           <div className="flex items-center gap-2">
                             {isDone ? <CheckCircle2 className="h-3.5 w-3.5 text-muted-foreground" /> : <Clock className="h-3.5 w-3.5 text-primary" />}
                             <span className="text-xs font-medium">{act.title}</span>
+                            <RobotBadge activity={act} />
                           </div>
                           <Badge className={`text-[9px] ${statusColor}`}>{statusLabel}</Badge>
                         </div>
@@ -2011,7 +2017,7 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
             <div className="pt-1">
               {/* Passo marcado daqui nasce no PROCESSO (não numa atividade) —
                   o id vai no log pro detalhe do telão apontar o processo. */}
-              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} processId={process.id} />
+              <LeadFunnelProgressBar leadId={process.lead_id} boardId={form.workflow_id} processId={process.id} origemDoPop="processo" />
             </div>
           )}
           {form.workflow_id && !process?.lead_id && (

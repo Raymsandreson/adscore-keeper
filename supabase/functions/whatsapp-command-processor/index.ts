@@ -1017,6 +1017,10 @@ IMPORTANTE: O assessor pode enviar múltiplas mensagens (áudios, documentos, li
             matrix_quadrant: act.matrix_quadrant || "schedule",
             lead_id: leadId,
             lead_name: act.lead_name || null,
+            // Quem digitou o texto foi o membro, mas quem criou a atividade foi
+            // o assistente. `created_by` guarda a pessoa; isto guarda o robô.
+            action_source: "system",
+            action_source_detail: "Assistente do WhatsApp",
           })
           .select("id, title")
           .single();

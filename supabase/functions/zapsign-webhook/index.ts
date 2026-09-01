@@ -497,6 +497,9 @@ Deno.serve(async (req) => {
           completed_at: isDocFullySigned ? new Date().toISOString() : null,
           case_id: linkedCase?.id || null,
           case_title: linkedCase ? formatCaseLabel(linkedCase.case_number, linkedCase.title) : null,
+          // Carimbo de origem: quem cria é o webhook, não uma pessoa.
+          action_source: 'system',
+          action_source_detail: 'Robô do ZapSign',
         })
         console.log('Activity created for signer:', signerName)
       } catch (actErr) {

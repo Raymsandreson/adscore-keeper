@@ -27,6 +27,24 @@ Documentação funcional das telas de atividades, cronômetro/banco de horas e t
 ### Cartão de atividade
 - Clique — abre a ficha; ícone verde — "Concluir"; duplicar; lixeira — excluir.
 - Indicador de cronômetro rodando mostra quem está executando e há quanto tempo.
+- **Símbolo do robô** (01/09/2026) — 🤖 roxo ao lado do tipo quando a atividade foi criada por robô, com o nome do robô no tooltip ("Criada automaticamente por: Robô do INSS"). Aparece em todas as listas de atividade: tela de Atividades (lista e blocos), aba Atividades do caso, aba do lead, atividades do contato, ficha do processo, "Atrasadas de hoje", pendentes do membro e o histórico de continuidade. Componente único: `src/components/activities/RobotBadge.tsx`.
+
+#### Como se sabe que foi robô (`src/lib/activityRobot.ts`)
+A marca vem do banco, **nunca de heurística na tela**:
+
+| Sinal em `lead_activities` | Significa |
+|---|---|
+| `action_source = 'system'` | robô nosso; qual robô está em `action_source_detail` |
+| `action_source = 'escavador_compromissos'` | sync de prazos/audiências do Escavador |
+| `created_by_ai = true` | a IA gerou (`generate-case-activities`) |
+| `action_source = 'manual'` | pessoa criou pelo formulário |
+| nada preenchido | linha antiga — **não** ganha símbolo, e é isso mesmo: sem marca no banco a tela não inventa uma |
+
+`is_system` ficou **de fora de propósito**: no formulário ele é o botão **"Interna"** (demanda de membro para membro), marcado por gente. Usá-lo como sinal de robô carimbaria de robô atividade digitada por pessoa. Por isso o chip da barra de filtros que era "Do sistema" virou **"Internas"** (`is_system`) e nasceu um chip separado **"Do robô"**, que lê o mesmo carimbo do símbolo.
+
+Robôs que passaram a carimbar a origem (01/09/2026, antes nasciam sem marca nenhuma): `notify-inss-update` ("Robô do INSS"), `zapsign-webhook` e `zapsign-backfill-from-2026` ("Robô do ZapSign"), `wjia-followup-processor` ("Follow-up automático"), `whatsapp-handoff-dispatch` ("Handoff IA"), `create-whatsapp-group` ("Abertura automática do caso"), `onboarding-checkpoint-execute`, `sheet-lead-ingest`, `whatsapp-webhook` (etiqueta) e `whatsapp-command-processor` ("Assistente do WhatsApp" — o texto é do membro, mas quem cria é o assistente). Já carimbavam antes: `sync-process-compromissos` e `execute-agent-automations`.
+
+**Falta o backfill**: as atividades de robô criadas ANTES desse carimbo continuam sem símbolo. Só um UPDATE em produção resolve, identificando cada lote pela assinatura determinística do robô (descrição/`notes` fixos), nunca por chute.
 
 ### Seleção em lote (passar para outro assessor ou excluir)
 Botão **"Selecionar"** acima da lista liga o modo de seleção: cada cartão ganha caixa de marcação, o clique passa a marcar em vez de abrir a ficha (shift+clique marca o intervalo) e as ações individuais do cartão somem. Com algo marcado, o rodapé da coluna mostra a contagem e dois botões: **"Excluir"** e **"Passar para…"** — este último abre um painel lateral com a busca de assessor (`BulkReassignSheet.tsx`).
@@ -66,6 +84,8 @@ Terceira visão da tela, entregue em 17/08/2026. Pedido do escritório: *"uma at
 **Desempenho**: o filtro de prazo acontece no servidor (`in` nas chaves de tipo) e toda busca é paginada de 1000 em 1000 — o PostgREST corta em 1000 sem avisar, e um período de 30 dias sem esse cuidado mostraria "nenhum evento" em dias que têm.
 
 ### Ficha da atividade
+- **Quem criou** (01/09/2026) — primeira linha do formulário, nas duas fichas (`ActivityFullSheet` e a da tela de Atividades, que compartilham o `ActivityFormCompact`): "Criada por Fulano em dd/mm/aaaa", ou o selo do robô com o nome do robô. A ficha nunca mostrou isso: existia só o filtro "Criado por" na barra da tela de Atividades, então quem abria a atividade dentro do caso não tinha como saber a autoria. Sem `created_by` e sem carimbo de robô, diz "autor não registrado" — não chuta.
+- **Clicar no nº do processo abre a ficha do processo** por cima desta (01/09/2026). O chip do processo tinha só lápis (trocar) e X (remover); o nome não abria nada, enquanto na tela de Atividades o mesmo processo já abria a aba lateral. A ficha do processo é carregada com a linha completa de `lead_processes` — o objeto que a atividade tem em memória é parcial e abriria o formulário do processo vazio.
 - Título editável inline; badge com o tempo total dedicado (soma das sessões de cronômetro) e, quando há previsão, no formato `⏱️ 12:40 / 30min` — com o excedente em vermelho quando passa.
 - Menu "Vincular": Caso, Processo, Contato, "Últimas movimentações" do processo.
 - **Vínculo de processo** — o badge mostra sempre `<nº do processo> - <título>` lido de `lead_processes`, não o texto congelado em `lead_activities.process_title`. O snapshot fica desatualizado quando o número é preenchido depois da atividade nascer, e as atividades auto-criadas junto com o caso gravavam só o título (1.352 assim em 03/08/2026) — era isso que fazia aparecer "INDENIZAÇÃO" onde se espera o nº do processo. "Trocar Processo" abre um sheet próprio com os processos do caso, recarregados na abertura; entre 18/05 e 03/08/2026 o botão não fazia nada (o Popover que ele acionava foi removido e o estado ficou órfão). Rótulo centralizado em `src/lib/processLabel.ts`.
@@ -396,6 +416,8 @@ Cadastros e movimentações do funil por período. Conta só cadastro genuíno �
 - Sintoma clássico de "marquei tudo e aparece 0 PASSOS": os logs do dia estão com `retroactive = true`. Confere com `select metadata->>'retroactive', count(*) from user_activity_log where action_type='checklist_item_checked' and created_at >= current_date group by 1`.
 
 **A caixa de timing não fecha mais o painel** (07/08/2026) — `askStepTiming` monta o diálogo direto no `document.body`, fora do portal do `Sheet` aberto por baixo. O `DismissableLayer` do Radix escuta `pointerdown`/`focusin` no document e tratava o clique nos botões como "clique fora": responder "Não, foi em outro dia" recolhia a aba da atividade (e o `pointer-events: none` que o modal põe no body ainda fazia o clique atravessar). O host agora tem `pointer-events: auto` e barra a propagação desses eventos. Mesmo padrão da isenção do toast do sonner em `src/components/ui/sheet.tsx`.
+
+**A barra diz de qual POP ela é, e de onde ele veio** (01/09/2026) — a linha embaixo da barra mostrava só `<fase> · fase 3 de 24 · <marco>`, sem dizer a qual POP aquela fase pertence; e o formulário dizia "(herdado do lead)" sem dizer herdado de quê. Agora a linha começa com `POP: <nome>` e, quando não é POP escolhido na própria atividade, diz a origem: **(do processo)** ou **(herdado do lead)**. Quem sabe a origem é quem monta a barra — a barra só recebe um `boardId` —, então ela ganhou a prop `origemDoPop` (`'atividade' | 'processo' | 'lead'`), preenchida nos três ramos do `ActivityFullSheet`/`ActivitiesPage` (POP próprio da atividade → POP do processo → funil/POP do lead) e no `ProcessDetailSheet`.
 
 **Régua "onde você está" + atualizar passos com IA** (desde 07/08/2026) — no bloco de fases (`LeadFunnelProgressBar`):
 - **Régua**: uma linha diz quantos passos foram marcados **hoje** (com os rótulos) ou, quando não houve nenhum, quantos são de outro dia e a data do último. Fonte: RPC `pop_steps_log` no Externo (migration `20260807120000`), porque a policy de `user_activity_log` é por `auth.uid()` e a sessão do app é anônima — select direto voltaria 0 linhas em silêncio. Se a RPC não existir no ambiente, a régua **não aparece** (nunca mostra "nenhum passo hoje" mentindo).

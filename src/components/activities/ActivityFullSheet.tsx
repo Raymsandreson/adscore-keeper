@@ -76,6 +76,11 @@ const TeamChatSheet = lazy(() =>
 const ActivityChatSheet = lazy(() =>
   import('@/components/activities/ActivityChatSheet').then((m) => ({ default: m.ActivityChatSheet }))
 );
+// Ficha do processo aberta POR CIMA da ficha da atividade (empilhar painel é o
+// padrão — skill `ui-sem-redirecionar`). Antes o chip do processo aqui só tinha
+// lápis e X: o nome não abria nada, enquanto na página de Atividades o mesmo
+// processo já abria a aba lateral. Era essa a divergência entre as duas fichas.
+const ProcessDetailSheet = lazy(() => import('@/components/cases/ProcessDetailSheet'));
 
 /**
  * Tipos-base jurídicos (mesma seed da ActivitiesPage). Usados como fallback do
@@ -157,6 +162,12 @@ type ProcessRow = {
 export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, leadName, onUpdated, mode = 'edit', draft, onCreated, side = 'right', contentClassName }: ActivityFullSheetProps) {
   const isCreate = mode === 'create';
   const [loading, setLoading] = useState(false);
+  // Processo aberto na aba lateral por cima desta ficha. Guarda a LINHA INTEIRA
+  // de `lead_processes`: a ficha do processo monta o formulário a partir do que
+  // recebe, e o objeto que a atividade tem em memória é parcial (só id, número,
+  // título), o que abriria a ficha com os campos vazios.
+  const [processDetail, setProcessDetail] = useState<Record<string, unknown> | null>(null);
+  const [loadingProcessDetail, setLoadingProcessDetail] = useState(false);
   /** Carga da ficha falhou: mostra recuperação em vez do formulário sujo. */
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -451,6 +462,23 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
       .limit(500)
       .then(({ data }) => setAvailableCases(data || []));
   }, [open]);
+
+  /** Abre a ficha do processo vinculado por cima desta, com a linha completa. */
+  const abrirFichaDoProcesso = useCallback(async () => {
+    if (!formProcessId || loadingProcessDetail) return;
+    setLoadingProcessDetail(true);
+    const { data, error } = await externalSupabase
+      .from('lead_processes')
+      .select('*')
+      .eq('id', formProcessId)
+      .maybeSingle();
+    setLoadingProcessDetail(false);
+    if (error || !data) {
+      toast.error('Não consegui abrir o processo agora.');
+      return;
+    }
+    setProcessDetail(data as Record<string, unknown>);
+  }, [formProcessId, loadingProcessDetail]);
 
   const fetchActivity = useCallback(async () => {
     if (!activityId) return;
@@ -1704,9 +1732,16 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                     atividades auto-criadas nasciam só com o título e mostravam
                     "INDENIZAÇÃO" no lugar do nº do processo. */}
                 <FileText className="h-3 w-3 shrink-0" />
-                <span className="truncate" title={displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || 'Processo vinculado'}>
+                {/* O nome abre a ficha do processo aqui do lado, empilhada. */}
+                <button
+                  type="button"
+                  className="truncate underline-offset-2 hover:underline hover:text-primary disabled:opacity-60"
+                  disabled={!formProcessId || loadingProcessDetail}
+                  onClick={abrirFichaDoProcesso}
+                  title={`Abrir detalhes do processo: ${displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || 'processo vinculado'}`}
+                >
                   {displayProcessLabel(linkedProcess || linkedProcessLive, formProcessTitle) || 'Processo vinculado'}
-                </span>
+                </button>
                 {formCaseId && (
                   <button type="button" className="shrink-0 p-0.5 rounded hover:bg-muted hover:text-primary" title="Trocar processo"
                     onClick={() => window.dispatchEvent(new CustomEvent('activity-form:open-link-process'))}>
@@ -1802,11 +1837,11 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               80%" na carteira — mesma régua, duas medidas diferentes na tela. */}
           {formLeadId && (() => {
             if (formWorkflowId) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} processId={formProcessId || null} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={activityId} processId={formProcessId || null} origemDoPop="atividade" />;
             }
             if (formProcessId) {
               if (linkedProcess?.workflow_id) {
-                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} processId={formProcessId} />;
+                return <LeadFunnelProgressBar leadId={formLeadId} boardId={linkedProcess.workflow_id} activityId={activityId} processId={formProcessId} origemDoPop="processo" />;
               }
               return (
                 <p className="text-[10px] text-muted-foreground italic">
@@ -1815,7 +1850,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               );
             }
             if (leadPreview?.lead_status !== 'closed' && leadPreview?.board_id) {
-              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={activityId} />;
+              return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={activityId} origemDoPop="lead" />;
             }
             return null;
           })()}
@@ -2132,6 +2167,18 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
             hasContact={!!formContactId}
             wasResponded={false}
             responseTimeMinutes={null}
+          />
+        </Suspense>
+      )}
+
+      {/* Ficha do processo empilhada por cima desta (nunca redireciona). */}
+      {processDetail && (
+        <Suspense fallback={null}>
+          <ProcessDetailSheet
+            open={!!processDetail}
+            onOpenChange={(aberto) => { if (!aberto) setProcessDetail(null); }}
+            process={processDetail}
+            mode="sheet"
           />
         </Suspense>
       )}

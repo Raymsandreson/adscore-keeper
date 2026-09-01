@@ -48,6 +48,7 @@ import { toast } from 'sonner';
 import AddProcessDialog from '@/components/cases/AddProcessDialog';
 import ProcessDetailSheet from '@/components/cases/ProcessDetailSheet';
 import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { CaseWorkflowBoard } from '@/components/cases/CaseWorkflowBoard';
 import {
   Dialog,
@@ -710,13 +711,13 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
       // Não mistura outros casos: as amarradas a outro caso já têm case_id.
       (legalCase.lead_id
         ? externalSupabase.from('lead_activities')
-            .select('id, title, status, activity_type, deadline, assigned_to_name, process_id, process_title, created_at, completed_at')
+            .select('id, title, status, activity_type, deadline, assigned_to_name, process_id, process_title, created_at, completed_at, action_source, action_source_detail, created_by_ai')
             .or(`case_id.eq.${legalCase.id},and(lead_id.eq.${legalCase.lead_id},case_id.is.null)`)
             .is('deleted_at', null)
             .order('created_at', { ascending: false })
             .limit(50)
         : externalSupabase.from('lead_activities')
-            .select('id, title, status, activity_type, deadline, assigned_to_name, process_id, process_title, created_at, completed_at')
+            .select('id, title, status, activity_type, deadline, assigned_to_name, process_id, process_title, created_at, completed_at, action_source, action_source_detail, created_by_ai')
             .eq('case_id', legalCase.id)
             .is('deleted_at', null)
             .order('created_at', { ascending: false })
@@ -1424,6 +1425,8 @@ function CaseListItem({ legalCase, expanded, onToggle, onCaseUpdated, onOpenLead
                         >
                           <div className="flex items-center gap-2">
                             <p className="text-xs font-medium truncate flex-1 min-w-0">{a.title}</p>
+                            {/* Símbolo do robô quando o banco diz que um robô criou */}
+                            <RobotBadge activity={a} />
                             {overdue && (
                               <Badge className="text-[9px] shrink-0 gap-1 bg-red-500/15 text-red-700 hover:bg-red-500/20 dark:text-red-400">
                                 ⚠ Atrasada

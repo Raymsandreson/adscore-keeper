@@ -7,6 +7,7 @@ import { currentExtUserId } from '@/lib/currentExtUser';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
+import { ACTIVITY_SOURCE_MANUAL } from '@/lib/activityRobot';
 
 // Lock global em memória para impedir cliques duplos / StrictMode duplicar criação
 const inflightCreates = new Set<string>();
@@ -77,6 +78,15 @@ export interface LeadActivity {
   process_title: string | null;
   is_system: boolean | null;
   is_management?: boolean | null;
+  /**
+   * Origem do registro. 'manual' = pessoa criou pela interface; 'system' (ou
+   * 'escavador_compromissos') = robô. É o que o símbolo do robô lê na tela —
+   * ver `src/lib/activityRobot.ts`.
+   */
+  action_source?: string | null;
+  /** Qual robô criou ("Robô do INSS", "Follow-up automático"...). */
+  action_source_detail?: string | null;
+  created_by_ai?: boolean | null;
   client_name_override?: string | null;
   workflow_id?: string | null;
   /** Campanha de CRM vinculada. */
@@ -340,6 +350,10 @@ export function useLeadActivities() {
           process_title: activity.process_title || null,
           is_system: activity.is_system ?? false,
           is_management: activity.is_management ?? false,
+          // Carimbo de quem criou: aqui é sempre gente (formulário do app). Sem
+          // isto, atividade de pessoa e atividade de robô ficam indistinguíveis
+          // no banco e a tela não teria como mostrar o símbolo do robô.
+          action_source: ACTIVITY_SOURCE_MANUAL,
           client_name_override: activity.client_name_override || null,
           workflow_id: activity.workflow_id || null,
           ...(extAssignedToIds ? {

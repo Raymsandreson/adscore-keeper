@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, ListTodo, CheckCircle2, Clock } from 'lucide-react';
 import { format } from 'date-fns';
@@ -19,6 +20,10 @@ interface ContactActivity {
   assigned_to_name: string | null;
   lead_name: string | null;
   created_at: string;
+  /** Carimbo de origem: 'system'/'escavador_compromissos' = robô. */
+  action_source: string | null;
+  action_source_detail: string | null;
+  created_by_ai: boolean | null;
 }
 
 export function ContactActivities({ contactId }: { contactId: string }) {
@@ -34,7 +39,7 @@ export function ContactActivities({ contactId }: { contactId: string }) {
       try {
         const { data } = await externalSupabase
           .from('lead_activities')
-          .select('id, title, description, activity_type, status, priority, deadline, completed_at, assigned_to_name, lead_name, created_at')
+          .select('id, title, description, activity_type, status, priority, deadline, completed_at, assigned_to_name, lead_name, created_at, action_source, action_source_detail, created_by_ai')
           .is('deleted_at', null)
           .eq('contact_id', contactId)
           .order('created_at', { ascending: false })
@@ -82,6 +87,8 @@ export function ContactActivities({ contactId }: { contactId: string }) {
                 <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
               )}
               <p className="font-medium truncate">{a.title}</p>
+              {/* Símbolo do robô: só quando o banco diz que um robô criou */}
+              <RobotBadge activity={a} />
             </div>
             {a.description && (
               <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{a.description}</p>

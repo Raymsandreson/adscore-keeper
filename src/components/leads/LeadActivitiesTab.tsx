@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { Button } from '@/components/ui/button';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
@@ -45,6 +46,9 @@ interface LeadActivity {
   next_steps: string | null;
   notes: string | null;
   matrix_quadrant: string | null;
+  action_source: string | null;
+  action_source_detail: string | null;
+  created_by_ai: boolean | null;
 }
 
 // Module-level cache: instant render on re-open, background revalidation
@@ -63,7 +67,7 @@ const loadLeadActivities = async (leadId: string, force = false): Promise<LeadAc
     try {
       const { data, error } = await externalSupabase
         .from('lead_activities')
-        .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant')
+        .select('id, title, description, activity_type, status, priority, deadline, assigned_to, assigned_to_name, created_at, completed_at, what_was_done, current_status_notes, next_steps, notes, matrix_quadrant, action_source, action_source_detail, created_by_ai')
         .eq('lead_id', leadId)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
@@ -464,6 +468,8 @@ export function LeadActivitiesTab({ leadId, leadName }: LeadActivitiesTabProps) 
                           {quadrantLabels[a.matrix_quadrant]}
                         </span>
                       )}
+                      {/* Símbolo do robô: só quando o banco diz que um robô criou */}
+                      <RobotBadge activity={a} />
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
                       {a.status !== 'concluida' && (

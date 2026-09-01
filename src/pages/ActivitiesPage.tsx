@@ -15,6 +15,8 @@ import { useActivityMessageTemplates } from '@/hooks/useActivityMessageTemplates
 import { useActivityStepContext } from '@/hooks/useActivityStepContext';
 import { useProcessoMarcos, resumirRegua } from '@/hooks/useProcessoMarcos';
 import { ActivityFieldSettingsDialog } from '@/components/activities/ActivityFieldSettingsDialog';
+import { RobotBadge } from '@/components/activities/RobotBadge';
+import { isRobotActivity } from '@/lib/activityRobot';
 import { ActivityTTSButton } from '@/components/voice/ActivityTTSButton';
 import { ActivityFormCompact, SendToGroupSection } from '@/components/activities/ActivityFormCompact';
 import { ClientCommitmentsInbox } from '@/components/activities/ClientCommitmentsInbox';
@@ -269,8 +271,11 @@ const ActivitiesPage = () => {
   // para o UUID do Externo é feito no hook e nas contagens.
   const [filterCreatedBy, setFilterCreatedBy] = usePageState<string[]>('activities_filterCreatedBy', []);
   const [filterHasDocs, setFilterHasDocs] = usePageState<boolean>('activities_filterHasDocs', false);
-  // Só as criadas pelo sistema (is_system): prazos/audiências do robô, INSS, etc.
+  // Internas (is_system): demanda de membro para membro, marcada no botão
+  // "Interna" do formulário. NÃO é sinônimo de robô — ver filterRobot abaixo.
   const [filterSystem, setFilterSystem] = usePageState<boolean>('activities_filterSystem', false);
+  // Só as criadas por robô (carimbo action_source/created_by_ai no banco).
+  const [filterRobot, setFilterRobot] = usePageState<boolean>('activities_filterRobot', false);
   const [activityIdsWithDocs, setActivityIdsWithDocs] = useState<Set<string>>(new Set());
   // Atividades com cronômetro ATIVO AGORA (heartbeat fresco): id -> { secs, userName }
   const [filterInExecution, setFilterInExecution] = usePageState<boolean>('activities_filterInExecution', false);
@@ -2702,6 +2707,9 @@ const ActivitiesPage = () => {
     if (filterSystem) {
       list = list.filter(a => !!(a as any).is_system);
     }
+    if (filterRobot) {
+      list = list.filter(a => isRobotActivity(a));
+    }
     if (filterCase.length > 0) {
       list = list.filter(a => (a as any).case_id && filterCase.includes((a as any).case_id));
     }
@@ -2755,7 +2763,7 @@ const ActivitiesPage = () => {
       const rb = priorityRank[b.priority || 'normal'] ?? 2;
       return ra - rb;
     });
-  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, filterSystem, searchText, availableCases]);
+  }, [activities, selectedCalDays, filterCase, viewMode, calendarMonth, filterStatus, filterHasDocs, activityIdsWithDocs, filterInExecution, execTodayMap, filterSystem, filterRobot, searchText, availableCases]);
 
   // A busca sem teto (filtro Atrasada) pode trazer milhares de linhas; o DOM não aguenta
   // todos os cards de uma vez — renderiza em lotes e revela o resto sob demanda.
@@ -4574,16 +4582,30 @@ const ActivitiesPage = () => {
           )}
         </Button>
 
-        {/* Só as criadas pelo sistema (prazos/audiências do robô, push do INSS...) */}
+        {/* Internas: o botão "Interna" do formulário (demanda de membro para
+            membro). Quem cria é gente — quem carimba é o formulário. */}
         <Button
           variant={filterSystem ? "default" : "outline"}
           size="sm"
           className="h-7 text-xs shrink-0 gap-1"
           onClick={() => setFilterSystem(v => !v)}
-          title="Mostrar só as atividades criadas automaticamente pelo sistema"
+          title="Mostrar só as atividades internas (de equipe, marcadas como 'Interna')"
+        >
+          <Settings2 className="h-3 w-3" />
+          Internas
+        </Button>
+
+        {/* Só as criadas por robô (prazos/audiências do Escavador, robô do INSS,
+            follow-up automático, IA...). Lê o mesmo carimbo do símbolo do robô. */}
+        <Button
+          variant={filterRobot ? "default" : "outline"}
+          size="sm"
+          className="h-7 text-xs shrink-0 gap-1"
+          onClick={() => setFilterRobot(v => !v)}
+          title="Mostrar só as atividades criadas automaticamente por robô"
         >
           <Bot className="h-3 w-3" />
-          Do sistema
+          Do robô
         </Button>
         </>)}
 
@@ -4608,8 +4630,8 @@ const ActivitiesPage = () => {
           )}
         </div>
 
-        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterCreatedBy.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || filterSystem || searchText) && (
-          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setFilterSystem(false); setSearchText(''); }}>
+        {(filterStatus.length > 0 || filterType.length > 0 || filterAssignee.length > 0 || filterCreatedBy.length > 0 || filterLead.length > 0 || filterContact.length > 0 || filterCase.length > 0 || filterWorkflow.length > 0 || selectedCalDays.length > 0 || filterHasDocs || filterInExecution || filterSystem || filterRobot || searchText) && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-destructive shrink-0" onClick={() => { setFilterStatus([]); setFilterType([]); setFilterAssignee([]); setFilterCreatedBy([]); setFilterLead([]); setFilterContact([]); setFilterCase([]); setFilterWorkflow([]); setSelectedCalDays([]); setFilterHasDocs(false); setFilterInExecution(false); setFilterSystem(false); setFilterRobot(false); setSearchText(''); }}>
             <X className="h-3 w-3 mr-1" /> Limpar
           </Button>
         )}
@@ -5050,6 +5072,7 @@ const ActivitiesPage = () => {
                                   <Badge variant={a.status === 'concluida' ? 'default' : 'outline'} className="text-[9px] px-1 py-0 h-4">
                                     {a.status === 'concluida' ? '✓' : a.status === 'em_andamento' ? '▶' : a.status === 'reagendada' ? '↻' : '○'}
                                   </Badge>
+                                  <RobotBadge activity={a} />
                                 </div>
                               </div>
                               {!selectionMode && (
@@ -5427,6 +5450,8 @@ const ActivitiesPage = () => {
                         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                           {ACTIVITY_TYPES.find(t => t.value === activity.activity_type)?.label}
                         </Badge>
+                        {/* Símbolo do robô: só quando o banco diz que um robô criou */}
+                        <RobotBadge activity={activity} />
                         {activity.priority && activity.priority !== 'normal' && (
                           <span className={cn(
                             "flex items-center gap-1 text-[10px] font-medium",
@@ -6253,13 +6278,13 @@ const ActivitiesPage = () => {
                 // POP escolhido na própria atividade tem prioridade — mesma regra
                 // do activeStepBoardId (contexto de passo/modelos).
                 if (formWorkflowId) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={funnelActivityId} />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={funnelActivityId} origemDoPop="atividade" />;
                 }
                 // Se há processo vinculado: só mostra se o processo tem fluxo próprio.
                 // Sem fluxo no processo = sem barra (não cai no funil do lead).
                 if (formProcessId) {
                   if (processWorkflowId) {
-                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} activityId={funnelActivityId} />;
+                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} activityId={funnelActivityId} origemDoPop="processo" />;
                   }
                   return (
                     <p className="text-[10px] text-muted-foreground mt-1.5 italic">
@@ -6269,7 +6294,7 @@ const ActivitiesPage = () => {
                 }
                 // Sem processo vinculado: usa o funil do lead (apenas se ainda em andamento).
                 if (!isLeadClosed && leadPreview?.board_id) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={funnelActivityId} />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={leadPreview.board_id} activityId={funnelActivityId} origemDoPop="lead" />;
                 }
                 return null;
               })()}

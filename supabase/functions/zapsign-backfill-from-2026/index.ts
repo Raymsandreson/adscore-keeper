@@ -589,6 +589,8 @@ Deno.serve(async (req) => {
                     assigned_to: wanessaExtUuid,
                     assigned_to_name: "Wanessa Vitória Rodrigues de Sousa",
                     deadline: new Date().toISOString().split("T")[0],
+                    action_source: "system",
+                    action_source_detail: "Backfill do ZapSign",
                   });
                 } catch (onbErr) {
                   console.warn(`[backfill] onboarding activity ${docToken}:`, onbErr);

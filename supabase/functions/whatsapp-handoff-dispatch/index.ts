@@ -153,6 +153,8 @@ Deno.serve(async (req) => {
         created_by: extUserId,
         deadline,
         notes: `handoff:${kind}`,
+        action_source: "system",
+        action_source_detail: `Handoff IA${agent_name ? ` (${agent_name})` : ""}`,
       }).select("id").maybeSingle();
       if (actErr) console.error("[handoff-dispatch] activity insert", actErr);
 

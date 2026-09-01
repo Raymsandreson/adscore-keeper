@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { useProfilesList } from '@/hooks/useProfilesList';
 import { filterAssignableMembers, ASSIGNEE_BLOCKLIST } from '@/lib/assigneeBlocklist';
 import { useInactiveUserIds } from '@/hooks/useInactiveUserIds';
@@ -28,6 +29,10 @@ interface OverdueActivity {
   lead_name: string | null;
   lead_id: string | null;
   current_status_notes: string | null;
+  /** Carimbo de origem: 'system'/'escavador_compromissos' = robô. */
+  action_source: string | null;
+  action_source_detail: string | null;
+  created_by_ai: boolean | null;
 }
 
 interface TodayChatMessage {
@@ -77,7 +82,7 @@ export function OverdueActivitiesToday() {
       for (let from = 0; ; from += PAGE) {
         const { data } = await externalSupabase
           .from('lead_activities')
-          .select('id, title, activity_type, status, priority, deadline, updated_at, created_at, assigned_to, assigned_to_name, lead_name, lead_id, current_status_notes')
+          .select('id, title, activity_type, status, priority, deadline, updated_at, created_at, assigned_to, assigned_to_name, lead_name, lead_id, current_status_notes, action_source, action_source_detail, created_by_ai')
           .is('deleted_at', null)
           .neq('status', 'concluida')
           .not('deadline', 'is', null)
@@ -333,6 +338,7 @@ export function OverdueActivitiesToday() {
                             <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                               {a.activity_type && <Badge variant="outline" className="text-[10px]">{a.activity_type}</Badge>}
                               <Badge variant="secondary" className="text-[10px] capitalize">{a.status}</Badge>
+                              <RobotBadge activity={a} />
                               {a.lead_name && <span className="truncate">Lead: {a.lead_name}</span>}
                             </div>
                           </td>

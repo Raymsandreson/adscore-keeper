@@ -237,6 +237,7 @@ serve(async (req) => {
             activity_type: step.activity_type || "tarefa", status: "pendente", priority: step.priority || "alta",
             assigned_to: assignedExtId, assigned_to_name: assignedName,
             deadline: new Date().toISOString().split("T")[0],
+            action_source: "system", action_source_detail: "Follow-up automático (assinatura)",
           });
         }
 
@@ -618,6 +619,7 @@ async function processAgentConversationFollowups(supabase: any, extClient: any, 
         assigned_to: assignedExtId,
         assigned_to_name: assignedName,
         deadline: new Date().toISOString().split("T")[0],
+        action_source: "system", action_source_detail: "Follow-up automático",
       });
     }
 

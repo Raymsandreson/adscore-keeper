@@ -17,6 +17,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { externalSupabase } from '@/integrations/supabase/external-client';
+import { RobotBadge } from '@/components/activities/RobotBadge';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -26,7 +27,7 @@ import { CheckCircle2, Circle, CornerDownRight, PanelRightOpen, History, AlertTr
 const CHAIN_COLUMNS =
   'id, title, status, activity_type, created_at, completed_at, completed_by_name, ' +
   'assigned_to_name, deadline, feedback, next_steps, parent_activity_id, chain_root_id, ' +
-  'lead_name, case_title, process_title, is_system';
+  'lead_name, case_title, process_title, is_system, action_source, action_source_detail, created_by_ai';
 
 export interface ChainActivity {
   id: string;
@@ -46,6 +47,9 @@ export interface ChainActivity {
   case_title: string | null;
   process_title: string | null;
   is_system: boolean | null;
+  action_source: string | null;
+  action_source_detail: string | null;
+  created_by_ai: boolean | null;
 }
 
 /** Atividade mínima que o hook precisa pra localizar a cadeia. */
@@ -275,6 +279,7 @@ export function ActivityChainPanel({
                       <Badge className={cn('text-[9px] px-1.5 py-0 font-normal', STATUS_CLASS[statusKey])}>
                         {STATUS_LABEL[statusKey] || statusKey}
                       </Badge>
+                      <RobotBadge activity={item} />
                       {isCurrent && (
                         <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-primary/50 text-primary">
                           você está aqui
