@@ -11,6 +11,12 @@
  *  - list        : lista os Apps inscritos na WABA (não muda nada)
  *  - subscribe   : inscreve o App do token na WABA
  *  - unsubscribe : desfaz — é o rollback do subscribe
+ *  - users       : lista os usuários atribuídos e as TASKS de cada um
+ *  - assign_user : grava as tasks de um usuário na WABA
+ *
+ * Sobre as tasks: `MANAGE` dá administração (ler contas, números, templates) e
+ * `DEVELOP` é a que autoriza ENVIAR pela API. "Acesso total" na tela de ativos
+ * grava só MANAGE — daí gestão funcionar e envio devolver (#200).
  *
  * `subscribe` é aditivo: uma WABA aceita vários Apps inscritos e a inscrição de
  * terceiros não é removida. Efeito colateral a considerar antes de rodar: o
@@ -72,6 +78,49 @@ export const handler: RequestHandler = async (req, res) => {
         graph: out,
         apps_antes: before,
         apps_depois: after,
+      });
+      return;
+    }
+
+    const business = String(body.business_id || '1511538834012071');
+    const usersUrl = `${GRAPH}/${API_VERSION}/${wabaId}/assigned_users?business=${business}&fields=id,name,tasks&limit=50`;
+    const listUsers = async () => {
+      const r = await fetch(usersUrl, { headers: auth });
+      const out: any = await r.json();
+      if (out?.error) return { error: out.error.message, code: out.error.code };
+      return (out?.data || []).map((u: any) => ({ id: u.id, name: u.name, tasks: u.tasks }));
+    };
+
+    if (action === 'users') {
+      res.status(200).json({ success: true, action, waba_id: wabaId, users: await listUsers() });
+      return;
+    }
+
+    if (action === 'assign_user') {
+      const user = String(body.user || '').trim();
+      const tasks: string[] = Array.isArray(body.tasks) ? body.tasks : ['MANAGE', 'DEVELOP'];
+      if (!user) {
+        res.status(400).json({ success: false, error: 'user obrigatório (id do system user)' });
+        return;
+      }
+      const before = await listUsers();
+      const params = new URLSearchParams({ user, tasks: JSON.stringify(tasks) });
+      const r = await fetch(`${GRAPH}/${API_VERSION}/${wabaId}/assigned_users?${params}`, {
+        method: 'POST',
+        headers: auth,
+      });
+      const out: any = await r.json();
+      const after = await listUsers();
+      res.status(200).json({
+        success: r.status < 400 && !out?.error,
+        action,
+        waba_id: wabaId,
+        user,
+        tasks,
+        graph_status: r.status,
+        graph: out,
+        users_antes: before,
+        users_depois: after,
       });
       return;
     }
