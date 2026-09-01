@@ -666,9 +666,11 @@ function RichTextEditorComponent({
       dirtyRef.current = true;
       // No debounced HTML generation during typing — just mark dirty.
       // HTML will be generated on blur or expand for performance.
-      // Exceção: ditado por voz não gera blur no editor (foco fica no botão do mic),
-      // então propagamos o HTML na hora para não perder o texto transcrito.
-      if (tags.has('voice-input')) {
+      // Exceções: ditado por voz e aplicação de sugestão da IA não geram blur no
+      // editor (o foco fica no botão do mic / no card da opção), então propagamos o
+      // HTML na hora. Sem isso a tela mostra o texto novo e o estado do formulário
+      // segue com o antigo — que é o que Copiar, Enviar ao Grupo e Salvar leem.
+      if (tags.has('voice-input') || tags.has('ai-apply')) {
         dirtyRef.current = false;
         flushEditorHtml(editor);
       }
@@ -760,13 +762,16 @@ function RichTextEditorComponent({
   const handleSelectOption = useCallback((text: string) => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.update(() => {
-      const root = $getRoot();
-      root.clear();
-      const p = $createParagraphNode();
-      p.append($createTextNode(text));
-      root.append(p);
-    });
+    editor.update(
+      () => {
+        const root = $getRoot();
+        root.clear();
+        const p = $createParagraphNode();
+        p.append($createTextNode(text));
+        root.append(p);
+      },
+      { tag: 'ai-apply' },
+    );
     setAiOptions([]);
     setLastAiAction(null);
     toast.success('Texto aplicado!');
