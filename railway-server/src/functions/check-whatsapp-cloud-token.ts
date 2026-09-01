@@ -23,7 +23,7 @@ const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
 const API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
 const GRAPH = 'https://graph.facebook.com';
 
-export const handler: RequestHandler = async (_req, res) => {
+export const handler: RequestHandler = async (req, res) => {
   if (!TOKEN) {
     return res.status(200).json({
       success: false,
@@ -108,9 +108,32 @@ export const handler: RequestHandler = async (_req, res) => {
     }
   }
 
+  // 4) Sonda opcional de PROPRIEDADE da WABA. `owned_` sao as contas que o
+  // portfolio POSSUI; `client_` sao as que so foram COMPARTILHADAS com ele por
+  // outra BM. A tela de ativos mostra as duas iguais ("Atribuicao ja feita"),
+  // entao so essa chamada separa uma coisa da outra. Exige business_management.
+  let businessProbe: any = null;
+  const probeBusiness = (req.body || {}).probe_business;
+  if (probeBusiness) {
+    businessProbe = { business_id: String(probeBusiness) };
+    for (const edge of ['owned_whatsapp_business_accounts', 'client_whatsapp_business_accounts']) {
+      try {
+        const url = `${GRAPH}/${API_VERSION}/${probeBusiness}/${edge}?fields=id,name&limit=100`;
+        const r = await fetch(url, { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const body: any = await r.json();
+        businessProbe[edge] = body?.error
+          ? { error: body.error.message, code: body.error.code }
+          : (body?.data || []).map((w: any) => ({ id: w.id, name: w.name }));
+      } catch (e) {
+        businessProbe[edge] = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+  }
+
   return res.status(200).json({
     success: true,
     status: 'valid',
+    business_probe: businessProbe,
     app_id: dataNode?.app_id || null,
     application: dataNode?.application || null,
     type: dataNode?.type || null,
