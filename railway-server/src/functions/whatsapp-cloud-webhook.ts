@@ -65,6 +65,36 @@ interface NormalizedMessage {
   } | null;
 }
 
+interface NormalizedStatus {
+  external_message_id: string;
+  status: string; // sent | delivered | read | failed
+  timestamp: string | null;
+  error: { code?: number; title?: string; message?: string } | null;
+}
+
+// Ordem de avanco. A Meta entrega webhook FORA DE ORDEM: um `sent` atrasado pode
+// chegar depois do `delivered`. Sem essa trava o status andaria pra tras.
+const STATUS_RANK: Record<string, number> = { sent: 1, delivered: 2, read: 3 };
+
+function extractStatuses(body: any): NormalizedStatus[] {
+  const out: NormalizedStatus[] = [];
+  for (const entry of Array.isArray(body?.entry) ? body.entry : []) {
+    for (const change of Array.isArray(entry?.changes) ? entry.changes : []) {
+      for (const st of Array.isArray(change?.value?.statuses) ? change.value.statuses : []) {
+        if (!st?.id || !st?.status) continue;
+        const e = Array.isArray(st.errors) && st.errors.length ? st.errors[0] : null;
+        out.push({
+          external_message_id: String(st.id),
+          status: String(st.status).toLowerCase(),
+          timestamp: st.timestamp ? new Date(Number(st.timestamp) * 1000).toISOString() : null,
+          error: e ? { code: e.code, title: e.title, message: e.message || e.error_data?.details } : null,
+        });
+      }
+    }
+  }
+  return out;
+}
+
 function extractMessages(body: any): NormalizedMessage[] {
   const out: NormalizedMessage[] = [];
   const entries = Array.isArray(body?.entry) ? body.entry : [];
@@ -363,6 +393,37 @@ export async function handler(req: Request, res: Response): Promise<void> {
       } as any);
 
       console.log(`[wa-cloud] msg=${msg.external_message_id} from=${msg.phone} → user=${userId || 'none'} board=${leadBoardId || 'none'} src=${assignmentSource || 'sticky'}`);
+    }
+
+    // Recibos de entrega. Sem isto o sistema so sabia "a Meta aceitou" e nunca
+    // "chegou no aparelho" — falha de entrega era invisivel pra operacao.
+    for (const st of extractStatuses(req.body)) {
+      try {
+        const { data: row } = await supabase
+          .from('whatsapp_messages')
+          .select('id, status, metadata')
+          .eq('external_message_id', st.external_message_id)
+          .maybeSingle();
+        if (!row) continue;
+
+        const atual = String((row as any).status || '');
+        const falhou = st.status === 'failed';
+        // `failed` sempre grava; os demais so avancam.
+        if (!falhou && (STATUS_RANK[st.status] || 0) <= (STATUS_RANK[atual] || 0)) continue;
+
+        const update: Record<string, unknown> = { status: st.status };
+        if (st.status === 'read' && st.timestamp) update.read_at = st.timestamp;
+        if (falhou) {
+          const meta = ((row as any).metadata && typeof (row as any).metadata === 'object')
+            ? { ...(row as any).metadata } : {};
+          meta.delivery_error = { ...st.error, at: st.timestamp };
+          update.metadata = meta;
+          console.error(`[wa-cloud] entrega FALHOU msg=${st.external_message_id} erro=${st.error?.code} ${st.error?.title}`);
+        }
+        await supabase.from('whatsapp_messages').update(update as any).eq('id', (row as any).id);
+      } catch (e) {
+        console.warn('[wa-cloud] status update falhou', e);
+      }
     }
   } catch (err) {
     console.error('[wa-cloud] erro processando webhook:', err);
