@@ -38,7 +38,7 @@ export interface ProcuracaoParaAssinar {
   outorganteName: string | null;
   criadoEm: string | null;
   /** Como o documento foi ligado ao requerimento — vai no texto da atividade. */
-  via: 'vínculo do lead' | 'CPF do segurado' | 'nome do segurado';
+  via: 'vínculo do lead' | 'CPF do segurado' | 'nome do segurado' | 'nome do representante';
 }
 
 const norm = (s?: string | null) =>
@@ -62,7 +62,7 @@ function ehProcuracao(d: { tipo_documento?: string | null }): boolean {
 }
 
 const COLUNAS =
-  'doc_token, lead_id, outorgante_cpf, outorgante_name, signer_name, ' +
+  'doc_token, lead_id, outorgante_cpf, outorgante_name, signer_name, representante_name, ' +
   'original_file_url, document_name, template_name, tipo_documento, created_at';
 
 type Doc = Record<string, any>;
@@ -112,14 +112,31 @@ export async function buscarProcuracaoDoCliente(args: {
   if (nome.length > 8) {
     // `ilike` sem curinga é comparação exata sem diferenciar caixa; o acento é
     // que não normaliza no Postgres, então a conferência final é em JS.
+    //
+    // `representante_name` entra como chave porque a procuração de menor é
+    // lavrada assim: "OUTORGANTE: BENTO DA SILVA EMILIANO, MENOR, NESTE ATO
+    // REPRESENTADO POR SUA GENITORA GABRIELY DA SILVA". O outorgante é a
+    // criança (que é o `nome_segurado` do requerimento) e a mãe é a
+    // representante — então o requerimento casa por um lado ou pelo outro,
+    // conforme em nome de quem ele foi protocolado. Continua sendo nome
+    // IDÊNTICO: casar pedaço de nome segue proibido (ver o cabeçalho).
+    const nomeBruto = String(args.nomeSegurado);
     const { data } = await supabase
       .from('zapsign_documents').select(COLUNAS)
-      .or(`outorgante_name.ilike.${args.nomeSegurado},signer_name.ilike.${args.nomeSegurado}`);
-    const exatos = ((data as Doc[]) || []).filter(
+      .or(
+        `outorgante_name.ilike.${nomeBruto},signer_name.ilike.${nomeBruto},` +
+        `representante_name.ilike.${nomeBruto}`,
+      );
+    const docs = (data as Doc[]) || [];
+    const porOutorgante = docs.filter(
       (d) => norm(d.outorgante_name) === nome || norm(d.signer_name) === nome,
     );
-    const d = melhor(exatos);
+    const d = melhor(porOutorgante);
     if (d) return achar(d, 'nome do segurado');
+    // Requerimento protocolado no nome de quem representa o menor.
+    const porRepresentante = docs.filter((d) => norm(d.representante_name) === nome);
+    const r = melhor(porRepresentante);
+    if (r) return achar(r, 'nome do representante');
   }
 
   return null;
