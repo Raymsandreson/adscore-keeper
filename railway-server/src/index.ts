@@ -56,6 +56,7 @@ import { handler as listStageLabelMappings } from './functions/list-stage-label-
 import { handler as setStageResultKey } from './functions/set-stage-result-key';
 import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
 import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-cloud-token';
+import { handler as whatsappCloudVerifyNumber } from './functions/whatsapp-cloud-verify-number';
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 import { handler as bpcSheetSync } from './functions/bpc-sheet-sync';
@@ -144,6 +145,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'set-stage-result-key': setStageResultKey,
   'send-whatsapp-cloud': sendWhatsappCloud,
   'check-whatsapp-cloud-token': checkWhatsappCloudToken,
+  'whatsapp-cloud-verify-number': whatsappCloudVerifyNumber,
   'meta-call-queue-processor': metaCallQueueProcessor,
   'gmail-inss-sync': gmailInssSync,
   'gmail-message-body': gmailMessageBody,
