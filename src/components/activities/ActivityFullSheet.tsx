@@ -1438,7 +1438,21 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 );
               })()}
             </SheetTitle>
-            <div className="flex items-center gap-1">
+            {/* Duas faixas dentro do cabeçalho:
+
+                - as AÇÕES de trabalho (Renomear, Preencher com, Financeiro,
+                  Próximos passos, sino do processo, WhatsApp) quebram linha
+                  (`flex-wrap`) quando não cabem;
+                - o grupo de JANELA (Atividade, Tela cheia, Fechar) fica ancorado
+                  à direita com `shrink-0`, sempre visível.
+
+                Antes era uma linha só, `nowrap`, com todo botão `shrink-0`: a
+                soma passou da largura da aba (sm:max-w-2xl = 672px) conforme as
+                ações foram sendo acrescentadas, e o excedente escorria para fora
+                da borda direita. Os três últimos da fila — "Atividade", tela
+                cheia e o X — simplesmente sumiam da tela. */}
+            <div className="flex items-start gap-1 min-w-0">
+              <div className="flex flex-wrap items-center justify-end gap-1 min-w-0">
               {/* Renomear o assunto com IA (título de ação a partir do próximo passo + fluxo) */}
               <Button
                 variant="outline"
@@ -1652,6 +1666,10 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
                 onFields={(f) => handleAIFields(f, 'documento')}
               />
 
+              </div>
+
+              {/* Grupo de janela: nunca encolhe e nunca é empurrado para fora. */}
+              <div className="flex items-center gap-1 shrink-0">
               {!isCreate && (
                 <Button variant="ghost" size="sm" onClick={handleOpenInPage} className="gap-1 text-xs shrink-0" title="Abrir na tela de Atividades">
                   <ExternalLink className="h-3 w-3" /> Atividade
@@ -1675,6 +1693,7 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               >
                 <X className="h-4 w-4" />
               </Button>
+              </div>
             </div>
           </div>
 
