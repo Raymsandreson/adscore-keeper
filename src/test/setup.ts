@@ -99,6 +99,27 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+/**
+ * `Range.getBoundingClientRect` não existe no jsdom.
+ *
+ * Depois de mudar a seleção, o Lexical chama
+ * `domSelection.getRangeAt(0).getBoundingClientRect()` para decidir se precisa
+ * rolar o cursor para dentro da vista. No jsdom o Range não tem esse método e o
+ * erro estoura FORA do teste (num microtask do commit), então o vitest registra
+ * "Unhandled Error" e avisa que os testes podem estar dando falso positivo — foi
+ * o que apareceu nos testes da barra do RichTextEditor. Rect zerado resolve:
+ * ninguém mede layout no jsdom mesmo.
+ */
+if (!Range.prototype.getBoundingClientRect) {
+  const rect = () =>
+    ({ x: 0, y: 0, top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0, toJSON: () => ({}) }) as DOMRect;
+  Range.prototype.getBoundingClientRect = rect;
+  if (!Range.prototype.getClientRects) {
+    Range.prototype.getClientRects = () =>
+      ({ length: 0, item: () => null, [Symbol.iterator]: function* () {} }) as unknown as DOMRectList;
+  }
+}
+
 // crypto.randomUUID polyfill (jsdom geralmente já tem, mas garante)
 if (!globalThis.crypto?.randomUUID) {
   (globalThis as any).crypto = (globalThis as any).crypto || {};
