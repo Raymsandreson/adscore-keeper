@@ -418,6 +418,17 @@ O popup de mensagem de WhatsApp responde sem abrir o chat — e agora a resposta
 - **Custo**: cada popup passa a buscar o histórico (20 msgs) e, havendo pendência, faz **1 chamada** ao `ai-text-editor`. O botão de ✨ seguia o caminho barato (só no clique); a sugestão pronta é o preço de não precisar pedir.
 - Código: `WhatsAppSugestaoAutomatica` em `src/components/notifications/WhatsAppToastActions.tsx`, slot `composerHint` em `TeamNotificationToast`, ligado em `PushNotificationBridge`. Testes: `WhatsAppSugestaoAutomatica.test.tsx` (3) e `TeamNotificationToast.popup-actions.test.tsx`.
 
+#### ...e ao abrir a conversa pela notificação, também (01/09/2026)
+
+Faltava o passo seguinte: tocar no aviso abre a conversa no `DashboardChatPreview`, e **ali** a sugestão sumia — quem abria voltava a ter que pedir no botão de ✨. Era o único dos três lugares sem sugestão pronta: o popup tinha (28/08), a conversa completa (`WhatsAppChat`) tinha, o drawer não.
+
+Agora o drawer usa o **mesmo** `useSugestaoAutomatica` da conversa completa, com o mesmo desenho: a sugestão aparece **apagada por baixo do campo** (não é o valor do campo — nada é enviado por acidente), uma linha acima explica o atalho, e vira texto de verdade com **→** ou **Tab**, ou no botão → ao lado do campo. **Esc** dispensa, "Outra" pede outra. Mesma preferência `wa-sugestao-automatica`: desligou no chat, desligou aqui.
+
+- **Só quando há o que responder**: se a última fala da conversa é nossa, `pending` é falso e nada é pedido à IA — abrir uma conversa já respondida continua sem sugestão, de propósito.
+- **Não aparece** com o campo já digitado, gravando áudio ou enviando.
+- **Custo**: 1 chamada ao `ai-text-editor` por conversa aberta com pendência (o histórico já era carregado pelo drawer). Abrir a mesma conversa de novo sem mensagem nova não repete a chamada — a âncora é a última mensagem.
+- Código: `src/components/whatsapp/DashboardChatPreview.tsx` (hook, `usarSugestao`, fantasma sobre o `Textarea`, `handleKeyDown`). O auto-resize do campo passou a considerar a altura da sugestão, senão ela sairia cortada.
+
 ---
 
 ## Campanhas — `/campanhas`
