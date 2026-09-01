@@ -538,6 +538,13 @@ function ToolBtn({
   return (
     <button
       type="button"
+      // Sem isto o mousedown leva o foco pro botão ANTES do onClick: o editor
+      // sofre blur, o handleBlur flusha o HTML de antes da formatação e zera o
+      // dirtyRef; o comando aplica em seguida (o Lexical guarda a seleção) e o
+      // resultado nunca mais é emitido, porque não existe um segundo blur — a
+      // tela fica em negrito e o estado do formulário, sem. Prevenir o foco
+      // mantém o cursor no texto e devolve o flush pro blur de verdade.
+      onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       title={title}
       className={cn(
