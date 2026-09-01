@@ -134,9 +134,32 @@ export const handler: RequestHandler = async (req, res) => {
     }
   }
 
+  // 5) Sonda opcional de uma WABA especifica: quais Apps estao INSCRITOS nela.
+  // Enviar pela Cloud API exige que o App do token esteja em subscribed_apps da
+  // WABA. Sem isso a Graph responde (#200) igualzinho a falta de permissao.
+  let wabaProbe: any = null;
+  const probeWaba = (req.body || {}).probe_waba;
+  if (probeWaba) {
+    wabaProbe = { waba_id: String(probeWaba) };
+    const calls: Record<string, string> = {
+      subscribed_apps: `${probeWaba}/subscribed_apps`,
+      info: `${probeWaba}?fields=id,name,owner_business_info,on_behalf_of_business_info,account_review_status`,
+    };
+    for (const [key, path] of Object.entries(calls)) {
+      try {
+        const r = await fetch(`${GRAPH}/${API_VERSION}/${path}`, { headers: { Authorization: `Bearer ${TOKEN}` } });
+        const body: any = await r.json();
+        wabaProbe[key] = body?.error ? { error: body.error.message, code: body.error.code } : (body?.data ?? body);
+      } catch (e) {
+        wabaProbe[key] = { error: e instanceof Error ? e.message : String(e) };
+      }
+    }
+  }
+
   return res.status(200).json({
     success: true,
     status: 'valid',
+    waba_probe: wabaProbe,
     business_probe: businessProbe,
     app_id: dataNode?.app_id || null,
     application: dataNode?.application || null,
