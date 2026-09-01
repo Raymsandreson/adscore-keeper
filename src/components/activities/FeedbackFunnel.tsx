@@ -79,6 +79,11 @@ const COLUMNS: { key: string; label: string; icon: string; className: string }[]
   { key: 'insatisfeito',label: 'Insatisfeito', icon: '❌', className: 'border-red-300 dark:border-red-800' },
 ];
 
+// Foco do painel: um status do funil ou o agregado "concluídas" (tudo que já
+// voltou, avaliado ou não).
+type FocusKey = FeedbackStatusKey | 'concluidas';
+type ChipDef = { key: FocusKey; label: string; icon: string; className: string };
+
 // Chips do cabeçalho (mesma ordem do funil). Clicar em um deles abre a relação
 // das atividades daquele status — é o atalho de quem só quer ver as atrasadas.
 const CHIPS: { key: FeedbackStatusKey; label: string; icon: string; className: string }[] = [
@@ -88,6 +93,20 @@ const CHIPS: { key: FeedbackStatusKey; label: string; icon: string; className: s
   { key: 'satisfeito',   label: '',             icon: '✅',  className: 'border-green-300 text-green-700 dark:text-green-400' },
   { key: 'incompleto',   label: '',             icon: '⚠️',  className: 'border-amber-300 text-amber-700 dark:text-amber-400' },
   { key: 'insatisfeito', label: '',             icon: '❌',  className: 'border-red-300 text-red-700 dark:text-red-400' },
+];
+
+// No cabeçalho os chips vêm em dois blocos: o que ainda está em aberto (sem
+// retorno) à esquerda e, à direita, o que já foi concluído — primeiro a SOMA
+// das concluídas e dentro dela o detalhamento. Antes só aparecia "a avaliar"
+// solto: dava pra ver 1 a avaliar e não saber quantas atividades voltaram.
+const chipDe = (k: FeedbackStatusKey): ChipDef => CHIPS.find(c => c.key === k)!;
+const CHIPS_ABERTO: ChipDef[] = [chipDe('atrasada'), chipDe('reagendada')];
+const CHIP_CONCLUIDAS: ChipDef = {
+  key: 'concluidas', label: 'concluídas', icon: '🏁',
+  className: 'border-primary/50 text-foreground font-semibold',
+};
+const CHIPS_DETALHE: ChipDef[] = [
+  chipDe('satisfeito'), chipDe('incompleto'), chipDe('insatisfeito'), chipDe('a_avaliar'),
 ];
 
 // Estilo dos chips no calendário, por categoria.
@@ -180,7 +199,7 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const [view, setView] = useState<'funil' | 'calendario' | 'assessores'>('calendario');
   // Status em foco (chip do topo ou célula da tabela por assessor): mostra só as
   // atividades daquele status, sem sair do painel nem trocar de tela.
-  const [focusStatus, setFocusStatus] = useState<FeedbackStatusKey | null>(null);
+  const [focusStatus, setFocusStatus] = useState<FocusKey | null>(null);
   const [calMonth, setCalMonth] = useState(() => new Date());
   const [selectedCalDay, setSelectedCalDay] = useState<string | null>(null);
   const [filterAssessor, setFilterAssessor] = useState('all');
@@ -522,6 +541,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
     incompleto: columnRows('incompleto').length,
     insatisfeito: columnRows('insatisfeito').length,
   };
+  // Concluídas = tudo que já voltou (com retorno), avaliado ou não.
+  const totalConcluidas = counts.a_avaliar + counts.satisfeito + counts.incompleto + counts.insatisfeito;
+  const chipCount = (k: FocusKey) => (k === 'concluidas' ? totalConcluidas : counts[k]);
 
   // Quantidade de cada status por assessor responsável — só das atividades deste
   // painel (as que eu observo/criei). Respeita os filtros de período; o filtro de
@@ -533,11 +555,41 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const totais = useMemo(() => totalGeral(porAssessor), [porAssessor]);
 
   // Atividades de um status (o chip clicado / a célula da tabela).
-  const rowsDoStatus = (key: FeedbackStatusKey) =>
-    (key === 'atrasada' || key === 'reagendada') ? lateColumnRows(key) : columnRows(key);
+  // "concluidas" junta os quatro desfechos, com as que faltam avaliar na frente.
+  const rowsDoStatus = (key: FocusKey): (LateRow | FeedbackRow)[] => {
+    if (key === 'concluidas') {
+      return [...columnRows('a_avaliar'), ...columnRows('satisfeito'), ...columnRows('incompleto'), ...columnRows('insatisfeito')];
+    }
+    return (key === 'atrasada' || key === 'reagendada') ? lateColumnRows(key) : columnRows(key);
+  };
 
-  const toggleFocus = (key: FeedbackStatusKey) =>
+  const toggleFocus = (key: FocusKey) =>
     setFocusStatus(prev => (prev === key ? null : key));
+
+  // Chip do cabeçalho: ícone + número (+ rótulo), clicável — foca aquele status.
+  const renderChip = (c: ChipDef) => {
+    const ativo = focusStatus === c.key;
+    const n = chipCount(c.key);
+    return (
+      <button
+        key={c.key}
+        type="button"
+        onClick={() => toggleFocus(c.key)}
+        title={ativo ? 'Clique para voltar' : `Ver as ${n} ${c.label || COLUMNS.find(col => col.key === c.key)?.label.toLowerCase()}`}
+      >
+        <Badge
+          variant="outline"
+          className={cn(
+            'cursor-pointer transition-all hover:brightness-95',
+            c.className,
+            ativo && 'ring-2 ring-primary ring-offset-1',
+          )}
+        >
+          {c.icon} {n}{c.label ? ` ${c.label}` : ''}
+        </Badge>
+      </button>
+    );
+  };
 
   const linkFor = (row: FeedbackRow) =>
     row.lead_name || row.case_title || row.process_title || row.title;
@@ -771,24 +823,13 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
             </SheetTitle>
             <div className="flex items-center gap-2 text-[11px]">
               {/* Cada chip é um atalho: clicou, o painel mostra só as atividades daquele status. */}
-              {CHIPS.map(c => {
-                const ativo = focusStatus === c.key;
-                const n = counts[c.key];
-                return (
-                  <button key={c.key} type="button" onClick={() => toggleFocus(c.key)} title={ativo ? 'Clique para voltar' : `Ver as ${n} ${c.label || COLUMNS.find(col => col.key === c.key)?.label.toLowerCase()}`}>
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        'cursor-pointer transition-all hover:brightness-95',
-                        c.className,
-                        ativo && 'ring-2 ring-primary ring-offset-1',
-                      )}
-                    >
-                      {c.icon} {n}{c.label ? ` ${c.label}` : ''}
-                    </Badge>
-                  </button>
-                );
-              })}
+              {CHIPS_ABERTO.map(renderChip)}
+              {/* Já voltou: a soma das concluídas e, dentro dela, o detalhamento. */}
+              <div className="flex items-center gap-1 rounded-full border border-dashed border-muted-foreground/40 px-1.5 py-0.5">
+                {renderChip(CHIP_CONCLUIDAS)}
+                <span className="text-muted-foreground/40">·</span>
+                {CHIPS_DETALHE.map(renderChip)}
+              </div>
               <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" onClick={() => navigate('/destaques')} title="Top 5 de Avaliação (modo TV)">
                 <Trophy className="h-3.5 w-3.5 text-amber-500" /> Top 5
               </Button>
@@ -870,7 +911,8 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
             </div>
           ) : focusStatus ? (() => {
             // Chip do topo clicado → relação das atividades daquele status.
-            const col = COLUMNS.find(c => c.key === focusStatus)!;
+            const col = COLUMNS.find(c => c.key === focusStatus)
+              ?? { key: 'concluidas', label: 'Concluídas', icon: '🏁', className: '' };
             const isLate = focusStatus === 'atrasada' || focusStatus === 'reagendada';
             const lista = rowsDoStatus(focusStatus);
             return (

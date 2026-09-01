@@ -26,7 +26,7 @@ import { format, parseISO, isToday, isYesterday } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Loader2, User, Send, MoreVertical, Link2, UserPlus, Plus, Scale, Sparkles, X, Users, Bot, BotOff, Paperclip, Image, FileUp, Lock, LockOpen, FileSignature, FileText, Volume2, VolumeX, BellOff, Bell, Trash2, FastForward, Mic, Copy, Download, ClipboardList, MessageSquare} from 'lucide-react';
 import { Phone as PhoneIcon, PhoneIncoming, PhoneOutgoing, PhoneMissed } from 'lucide-react';
-import { Settings2 } from 'lucide-react';
+import { Settings2, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { VOICE_AUDIO_CONSTRAINTS, VOICE_RECORDER_BITRATE } from '@/lib/voiceRecording';
 import { mediaPreview, handleMediaThumbError } from '@/lib/whatsappMediaTransform';
@@ -53,6 +53,7 @@ import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrati
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
 import { LazyVideo } from '@/components/whatsapp/LazyVideo';
 import { AISuggestReply } from '@/components/ui/AISuggestReply';
+import { useSugestaoAutomatica } from '@/hooks/useSugestaoAutomatica';
 import { useRelacionamentoDoContato } from '@/hooks/useRelacionamentoDoContato';
 import { RelacionamentoBar } from '@/components/whatsapp/RelacionamentoBar';
 import { AITextActions } from '@/components/ui/AITextActions';
@@ -397,14 +398,6 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    const el = messageInputRef.current;
-    if (!el) return;
-
-    el.style.height = '0px';
-    el.style.height = `${el.scrollHeight}px`;
-  }, [newMessage, open]);
 
   // Load identity preferences when phone changes
   useEffect(() => {
@@ -795,6 +788,64 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
   }, [commitments.open, commitments.overdue]);
 
   /**
+   * Sugestão da IA já escrita no campo — o mesmo comportamento da conversa
+   * inteira (`WhatsAppChat`), com o mesmo hook e a mesma preferência
+   * (`wa-sugestao-automatica`). É por aqui que a conversa aberta pelo clique na
+   * notificação chega, então era justamente onde a sugestão faltava: o popup
+   * sugeria sozinho, e ao abrir a conversa a pessoa voltava a ter que pedir no ✨.
+   *
+   * O texto sugerido NÃO é o valor do campo: mora apagado por baixo dele e só
+   * vira texto de verdade com a seta para a direita (→) ou o botão ao lado —
+   * nada é enviado por acidente.
+   */
+  const sugestaoFantasmaRef = useRef<HTMLDivElement>(null);
+  const ultimaMensagem = messages[messages.length - 1];
+  const ancoraDaSugestao = ultimaMensagem
+    ? `${phone || ''}|${instanceName || ''}|${ultimaMensagem.id}`
+    : '';
+  const sugestaoCabeAqui = open && !newMessage.trim() && !isRecording && !sending;
+  const {
+    sugestao: sugestaoAuto,
+    carregando: sugerindo,
+    aceitar: aceitarSugestao,
+    dispensar: dispensarSugestao,
+    regenerar: regerarSugestao,
+  } = useSugestaoAutomatica({
+    ativa: sugestaoCabeAqui,
+    ancora: ancoraDaSugestao,
+    buildContext: buildReplyContext,
+    getState: buildReplyState,
+    getPendenciasDoCliente: () => pendenciasDoClienteParaIA,
+    getContextoDaRelacao: () => relacionamento.linhas,
+  });
+  const temSugestaoNoCampo = sugestaoCabeAqui && !!sugestaoAuto;
+  /** Passa a sugestão para o campo, com o cursor no fim, pronta para editar ou enviar. */
+  const usarSugestao = () => {
+    const texto = aceitarSugestao();
+    if (!texto) return;
+    setNewMessage(texto);
+    requestAnimationFrame(() => {
+      const el = messageInputRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(texto.length, texto.length);
+    });
+  };
+
+  // Altura do campo conforme o que está escrito nele. A sugestão apagada mora
+  // por cima: se ela for mais alta que o texto digitado, o campo cresce junto —
+  // senão a sugestão sairia cortada pela metade.
+  useEffect(() => {
+    const el = messageInputRef.current;
+    if (!el) return;
+    el.style.height = '0px';
+    const alturaDaSugestao = temSugestaoNoCampo || (sugestaoCabeAqui && sugerindo)
+      ? (sugestaoFantasmaRef.current?.scrollHeight ?? 0)
+      : 0;
+    el.style.height = `${Math.min(Math.max(el.scrollHeight, alturaDaSugestao), 160)}px`;
+  }, [newMessage, open, sugestaoAuto, temSugestaoNoCampo, sugestaoCabeAqui, sugerindo]);
+
+  /**
    * "Atividade" na bolha: mesmo caminho da caixa de entrada. A IA lê a mensagem
    * — e o anexo, quando é PDF/print/áudio/link — e devolve a ficha preenchida,
    * já no processo que o documento citar.
@@ -1166,6 +1217,21 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
 
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Sugestão apagada no campo: a seta para a direita (ou Tab) traz o texto para
+    // dentro, pronto para editar ou enviar. Esc joga fora. Só vale com o campo
+    // vazio — com texto digitado, a seta volta a ser só mover o cursor.
+    if (temSugestaoNoCampo) {
+      if (e.key === 'ArrowRight' || e.key === 'Tab') {
+        e.preventDefault();
+        usarSugestao();
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        dispensarSugestao();
+        return;
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -2711,6 +2777,30 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
               </Button>
             </div>
           ) : (
+            <>
+            {/* Aviso de que o texto apagado no campo é da IA e como aceitá-lo. */}
+            {sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) && (
+              <div className="flex items-center gap-2 px-1 pb-1 text-[11px] text-muted-foreground">
+                <Sparkles className="h-3 w-3 shrink-0 text-amber-500" />
+                {sugerindo ? (
+                  <span>A IA está escrevendo uma sugestão de resposta...</span>
+                ) : (
+                  <>
+                    <span className="min-w-0 truncate">
+                      Sugestão da IA — <strong className="font-medium text-foreground">→</strong> para usar,{' '}
+                      <strong className="font-medium text-foreground">Esc</strong> para dispensar.
+                    </span>
+                    <button
+                      type="button"
+                      onClick={regerarSugestao}
+                      className="shrink-0 underline underline-offset-2 hover:text-foreground"
+                    >
+                      Outra
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
             <div className="flex items-end gap-1">
               <DropdownMenu open={showAttachMenu} onOpenChange={setShowAttachMenu}>
                 <DropdownMenuTrigger asChild>
@@ -2755,15 +2845,42 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 targetMessage={replySuggestTarget}
                 hideTrigger
               />
-              <Textarea
-                ref={messageInputRef}
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Digite uma mensagem..."
-                className="min-h-[40px] max-h-40 resize-none overflow-y-auto text-sm flex-1 min-w-0 leading-relaxed"
-                rows={1}
-              />
+              {/* O campo e, por baixo dele, a sugestão apagada. O texto sugerido NÃO é
+                  o valor do campo — só entra quando o usuário aceita, com → ou no botão. */}
+              <div className="relative flex-1 min-w-0">
+                {sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) && (
+                  <div
+                    ref={sugestaoFantasmaRef}
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words rounded-md border border-transparent px-3 py-2 text-sm leading-relaxed text-muted-foreground/60"
+                  >
+                    {temSugestaoNoCampo ? sugestaoAuto : 'Escrevendo uma sugestão de resposta...'}
+                  </div>
+                )}
+                <Textarea
+                  ref={messageInputRef}
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    sugestaoCabeAqui && (temSugestaoNoCampo || sugerindo) ? '' : 'Digite uma mensagem...'
+                  }
+                  className="min-h-[40px] max-h-40 resize-none overflow-y-auto text-sm w-full bg-transparent leading-relaxed"
+                  rows={1}
+                />
+              </div>
+              {/* Aceitar a sugestão: mesma coisa que apertar a seta para a direita. */}
+              {temSugestaoNoCampo && (
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="h-10 w-10 shrink-0 border-primary/40 text-primary hover:bg-primary/10"
+                  title="Usar a sugestão (seta para a direita →)"
+                  onClick={usarSugestao}
+                >
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              )}
               {newMessage.trim() ? (
                 <Button
                   size="icon"
@@ -2786,6 +2903,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
                 </Button>
               )}
             </div>
+            </>
           )}
         </div>
       </DrawerContent>
