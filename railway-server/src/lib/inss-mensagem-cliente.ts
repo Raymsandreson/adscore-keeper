@@ -24,6 +24,8 @@
 // extenso ("nº 732.257.379-0") e o prompt proíbe reproduzir.
 // ============================================================================
 
+import { simplificarPendenciaParaReserva } from './inss-despacho';
+
 export type TipoMensagemCliente =
   | 'protocolado'
   | 'exigencia'
@@ -121,12 +123,17 @@ export function fallbackMensagemCliente(
         `Agora é esperar a análise. Costuma demorar algumas semanas.\n\n` +
         `A gente acompanha e avisa aqui quando tiver novidade.`
       );
-    case 'exigencia':
+    case 'exigencia': {
+      // O parágrafo de recusa de assinatura vira uma frase: sem IA, o texto cru
+      // levaria "ZAPSIGN", o endereço do validador do ITI e a MP 2.200-2 para o
+      // grupo do cliente. Ver `simplificarPendenciaParaReserva`.
+      const pendencias = simplificarPendenciaParaReserva(e.pontosPendentes);
       return (
         `⚠️ O INSS pediu documentos pra continuar ${alvo}.\n\n` +
-        (e.pontosPendentes ? `${e.pontosPendentes}\n\n` : '') +
+        (pendencias ? `${pendencias}\n\n` : '') +
         `Manda aqui no grupo o que você conseguir. A gente envia pro INSS.`
       );
+    }
     case 'deferido':
       return (
         `🎉 ${maiuscula(alvo)} foi aprovado!\n\n` +

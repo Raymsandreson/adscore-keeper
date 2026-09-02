@@ -412,3 +412,78 @@ export function separarPendencias(pontos?: string | null): PendenciasSeparadas {
     escritorio: doEscritorio.map((f) => f.txt.trim()).join('\n'),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Recusa de assinatura em linguagem de gente
+//
+// Quando o Gemini falha, `fallbackMensagemCliente` repete a pendência crua no
+// grupo. Depois que a procuração voltou a ser pendência do cliente (01/09/2026),
+// isso passou a despejar o parágrafo jurídico inteiro do INSS: medido em
+// 02/09/2026 sobre as 40 exigências mais recentes que citam procuração, 28 das
+// 37 elegíveis geravam fallback acima de 700 caracteres, com "ZAPSIGN
+// PROCESSAMENTO DE DADOS LTDA", o endereço do validador do ITI, a MP 2.200-2 e
+// a IN 128/2022 dentro.
+//
+// Nada disso pode chegar ao cliente — o prompt da IA já proíbe nome de site e
+// "assinatura eletrônica", e o fallback não passava por ele. Pior: dizer que
+// quem assinou foi a ZapSign, e não o segurado, lê como confissão do escritório.
+//
+// O corte é só do juridiquês da RECUSA. O fragmento que nomeia o documento
+// ("Deverá apresentar PROCURAÇÃO e o TERMO DE RESPONSABILIDADE...") fica, senão
+// o cliente perde o pedido dos outros papéis junto.
+// ---------------------------------------------------------------------------
+
+/** Uma frase, no lugar de todo o parágrafo de recusa. */
+export const RECUSA_EM_PORTUGUES =
+  'O INSS não aceitou a procuração do jeito que ela foi assinada. ' +
+  'Precisa de uma assinada à mão, à caneta.';
+
+/**
+ * Fundamento legal citado pelo INSS. Sai inteiro do texto de reserva: o cliente
+ * não faz nada com número de lei, e o prompt da IA já proíbe ("nada de número
+ * de lei"). Sem esta regra, dois formatos de despacho escapavam — o da MP
+ * 2.200-2 (que ainda chega picado, porque o corte de fragmento cai no ponto de
+ * "art." e deixa "10 da Medida Provisória…" órfão) e o da Lei 14.063/2020, que
+ * fundamenta sem nunca dizer "assinatura eletrônica".
+ */
+const CITACAO_LEGAL =
+  /\b(lei|decreto|medida provis[óo]ria|instru[çc][ãa]o normativa|portaria|resolu[çc][ãa]o)\b[^.;]{0,40}?n?[º°]?\s*\d|\bart(?:igo)?\.?\s*\d+|\bicp-brasil\b/i;
+
+/**
+ * Troca o parágrafo jurídico de recusa de assinatura por uma frase simples e
+ * tira o fundamento legal, preservando o resto da pendência. Só para o texto de
+ * reserva — o caminho da IA recebe a pendência inteira, porque ela é o contexto
+ * que ele reescreve, e o prompt já proíbe o que aqui é cortado na unha.
+ */
+export function simplificarPendenciaParaReserva(cliente?: string | null): string | null {
+  const txt = (cliente || '').trim();
+  // Só mexe na exigência de procuração. Medido em 02/09/2026 sobre as 400
+  // exigências mais recentes (398 com texto para o cliente): sem este porteiro,
+  // o corte de fundamento legal levava junto a lista de quem é dispensado da
+  // biometria (24 casos, "Maior de 80 anos que apresente documento válido com
+  // foto") e um pedido de CTC do RPPS que cita a Portaria MTP 1.467/2022 —
+  // conteúdo que o cliente precisa ler. Nas outras 334 o texto sai intacto.
+  if (!txt || !exigeProcuracao(txt)) return cliente ?? null;
+
+  let jaTrocou = false;
+  const saida = fragmentar(txt)
+    .map((f) => {
+      // A recusa vem antes da citação: o fragmento que fundamenta a recusa
+      // costuma trazer a lei junto, e checar a citação primeiro o descartaria
+      // sem deixar a frase que explica o pedido ao cliente.
+      if (RECUSA_DE_ASSINATURA.test(f.txt)) {
+        if (jaTrocou) return '';
+        jaTrocou = true;
+        return RECUSA_EM_PORTUGUES + f.sep;
+      }
+      if (CITACAO_LEGAL.test(f.txt) && !f.txt.includes('⏳')) return '';
+      return f.txt + f.sep;
+    })
+    .join('')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  return saida || RECUSA_EM_PORTUGUES;
+}
