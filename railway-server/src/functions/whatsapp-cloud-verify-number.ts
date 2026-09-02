@@ -21,8 +21,10 @@
  * Solution Partner/Tech Provider via Embedded Signup — não a integração direta
  * como a nossa. Confirmar que ninguém usa o chip no app ANTES de registrar.
  *
- * O PIN nunca é logado nem devolvido na resposta. Guardar fora daqui: sem ele,
- * reregistrar o número depois vira chamado com a Meta.
+ * O PIN nunca é logado nem devolvido na resposta. Caminho preferido: variável
+ * `WHATSAPP_CLOUD_REGISTER_PIN` no Railway — assim ele não passa por chat, log
+ * de chamada nem histórico de terminal. Guardar também num cofre de senhas: sem
+ * ele, reregistrar o número depois vira chamado com a Meta.
  */
 
 import { RequestHandler } from 'express';
@@ -112,9 +114,19 @@ export const handler: RequestHandler = async (req, res) => {
     if (action === 'register' || action === 'deregister') {
       const corpo: Record<string, string> = { messaging_product: 'whatsapp' };
       if (action === 'register') {
-        const pin = String(body.pin || '').trim();
+        // O PIN pode vir do Railway em vez do corpo: assim ele nunca transita
+        // por chat, log de chamada ou histórico de terminal. O corpo continua
+        // aceito para o caso de uso pontual, mas a variável tem prioridade.
+        const doAmbiente = String(process.env.WHATSAPP_CLOUD_REGISTER_PIN || '').trim();
+        const pin = doAmbiente || String(body.pin || '').trim();
         if (!/^\d{6}$/.test(pin)) {
-          res.status(400).json({ success: false, error: 'pin obrigatório: exatamente 6 dígitos' });
+          res.status(400).json({
+            success: false,
+            error: doAmbiente
+              ? 'WHATSAPP_CLOUD_REGISTER_PIN não tem 6 dígitos'
+              : 'pin ausente: defina WHATSAPP_CLOUD_REGISTER_PIN no Railway (6 dígitos)',
+            pin_veio_do_ambiente: Boolean(doAmbiente),
+          });
           return;
         }
         corpo.pin = pin;
