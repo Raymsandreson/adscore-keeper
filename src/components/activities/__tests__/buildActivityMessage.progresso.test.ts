@@ -120,9 +120,10 @@ describe('andamento pela régua de marcos', () => {
     expect(msg).not.toMatch(/\d+% concluído/);
   });
 
-  it('o assessor recebe a contagem de marcos no detalhe', () => {
+  it('o assessor recebe a posição do marco no detalhe', () => {
+    // Desde 02/09/2026 previstos/cumpridos são TOTAL da régua e POSIÇÃO atual.
     const msg = buildActivityMessage(ctx({ regua: REGUA }), 'assessor');
-    expect(msg).toContain('2/5 previstos');
+    expect(msg).toContain('marco 2 de 5');
   });
 });
 
