@@ -255,14 +255,25 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     if (!user) return;
 
     try {
+      const forcedName = (forceIncludeInstanceName || '').trim().toLowerCase();
+
+      // Nome forçado que é linha Cloud significa "a página do canal Cloud", e aí
+      // valem TODAS as linhas Cloud — não só a de nome igual. Pelo nome, renomear
+      // a linha ou cadastrar a segunda deixaria a página vazia, sem erro nenhum.
+      const forcandoCloud = ehInstanciaCloud(forcedName);
+
       // Admins see all active instances
       // whatsapp_instances vive no Externo (fonte da verdade) — Cloud é mirror stale.
       if (isAdmin) {
-        const { data, error } = await db
+        let q = db
           .from('whatsapp_instances')
           .select('*')
-          .eq('is_active', true)
-          .order('instance_name');
+          .eq('is_active', true);
+        // A trava do canal Cloud vale para admin TAMBÉM. Sem isto, "Todas as
+        // linhas" na página de WhatsApp API trazia as conversas UazAPI inteiras
+        // (2.047 delas em produção, 02/09/2026) para dentro da caixa da Cloud.
+        if (forcandoCloud) q = q.eq('instance_token', TOKEN_CLOUD_API);
+        const { data, error } = await q.order('instance_name');
         if (error) throw error;
         setInstances((data || []) as WhatsAppInstance[]);
         return;
@@ -273,8 +284,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // Externo é só pra buscar os DADOS das instâncias, filtradas pelos IDs do Cloud.
       const allowedIds = await getMyAllowedInstanceIds(user.id);
 
-      const forcedName = (forceIncludeInstanceName || '').trim().toLowerCase();
-
       if (allowedIds.length === 0 && !forcedName) {
         setInstances([]);
         return;
@@ -284,14 +293,6 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         .from('whatsapp_instances')
         .select('*')
         .eq('is_active', true);
-
-      // Linha Cloud forçada: força TODAS as linhas Cloud, não só a de nome igual.
-      // Pelo nome, a renomeação de `cloud_gerencia` para `abraci` (e a segunda
-      // linha) deixariam a página de WhatsApp API vazia sem nenhum erro.
-      // Nome forçado que é linha Cloud significa "a página do canal Cloud", e aí
-      // valem TODAS as linhas Cloud — não só a de nome igual. Pelo nome, renomear
-      // a linha ou cadastrar a segunda deixaria a página vazia, sem erro nenhum.
-      const forcandoCloud = ehInstanciaCloud(forcedName);
 
       if (forcandoCloud) {
         // SÓ linhas Cloud: misturar as instâncias UazAPI do usuário aqui faria
