@@ -15,6 +15,9 @@
  *                   NOT_APPLICABLE para CLOUD_API — antes disso o número existe
  *                   na WABA e não envia, não recebe e nem aceita foto de perfil.
  *  - deregister   : desfaz o register. É a rota de volta, e existe por isso.
+ *  - set_display_name : pede à Meta o nome que o cliente vê. Entra em revisão
+ *                   (`name_status: PENDING_REVIEW`) e substitui qualquer pedido
+ *                   anterior ainda em análise — não empilha.
  *
  * ATENÇÃO ao registrar: o número sai do aplicativo WhatsApp Business do celular.
  * Rodar nos dois ao mesmo tempo exige Coexistence, que a Meta só oferece a
@@ -156,6 +159,32 @@ export const handler: RequestHandler = async (req, res) => {
         graph: out,
         platform_type_antes: (antes.body as any)?.platform_type,
         platform_type_depois: (depois.body as any)?.platform_type,
+        number: depois.body,
+      });
+      return;
+    }
+
+    if (action === 'set_display_name') {
+      const nome = String(body.display_name || '').trim();
+      if (!nome) {
+        res.status(400).json({ success: false, error: 'display_name obrigatório' });
+        return;
+      }
+      const antes = await readStatus();
+      const r = await fetch(`${GRAPH}/${API_VERSION}/${phoneNumberId}`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_display_name: nome }),
+      });
+      const out: any = await r.json();
+      const depois = await readStatus();
+      res.status(200).json({
+        success: r.status < 400 && !out?.error,
+        action,
+        graph_status: r.status,
+        graph: out,
+        nome_antes: (antes.body as any)?.verified_name,
+        nome_depois: (depois.body as any)?.verified_name,
         number: depois.body,
       });
       return;
