@@ -94,7 +94,33 @@ Deno.serve(async (req) => {
         ? await db.from('whatsapp_cloud_config').update(payload).eq('id', alvo).select().single()
         : await db.from('whatsapp_cloud_config').insert(payload).select().single();
       if (resp.error) return fail(resp.error.message);
-      return ok({ config: resp.data });
+
+      // A linha só existe de verdade quando está nas DUAS tabelas: a config diz
+      // à Meta qual número é, e `whatsapp_instances` é onde o front descobre que
+      // a linha é Cloud. Criar só a config deixava a linha meio viva e a outra
+      // metade virava SQL na mão — que é exatamente o que não deve sobrar aqui.
+      let instancia: string | null = null;
+      if (instanceName) {
+        const { data: existe } = await db
+          .from('whatsapp_instances')
+          .select('id')
+          .eq('instance_name', instanceName)
+          .limit(1);
+        if (!((existe as any[]) || []).length) {
+          const { error: instErr } = await db.from('whatsapp_instances').insert({
+            instance_name: instanceName,
+            instance_token: 'cloud_api_meta',
+            is_active: true,
+            receive_leads: false,
+            is_paused: false,
+          } as any);
+          instancia = instErr ? `falhou: ${instErr.message}` : 'criada';
+        } else {
+          instancia = 'ja_existia';
+        }
+      }
+
+      return ok({ config: resp.data, instancia });
     }
 
     if (action === 'deactivate_config') {
