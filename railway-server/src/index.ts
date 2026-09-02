@@ -106,6 +106,7 @@ import { handler as generateActivityTitle } from './functions/generate-activity-
 import { handler as nearbyEstablishments } from './functions/nearby-establishments';
 import { handler as dailyTeamReport } from './functions/daily-team-report';
 import { handler as reportQuery } from './functions/report-query';
+import { handler as reportConversations } from './functions/report-conversations';
 import { handler as performanceCoach } from './functions/performance-coach';
 import { handler as extractAcordoFromAta } from './functions/extract-acordo-from-ata';
 import { handler as jmDocumentoUrl } from './functions/jm-documento-url';
@@ -200,6 +201,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'nearby-establishments': nearbyEstablishments,
   'daily-team-report': dailyTeamReport,
   'report-query': reportQuery,
+  'report-conversations': reportConversations,
   'performance-coach': performanceCoach,
   'extract-acordo-from-ata': extractAcordoFromAta,
   'jm-documento-url': jmDocumentoUrl,

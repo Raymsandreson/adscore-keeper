@@ -510,12 +510,18 @@ Agora o drawer usa o **mesmo** `useSugestaoAutomatica` da conversa completa, com
 
 ## Relatórios — `/relatorios`
 
-**Propósito**: relatórios em linguagem natural — pergunta em português, a IA gera a consulta (somente leitura) e mostra a tabela na hora. Acesso restrito a diretoria/gestores; CPF e dados bancários mascarados.
+**Propósito**: conversa com o analista de dados. Pergunta em português, a IA consulta o banco (somente leitura), **olha o resultado** e responde: o que os números dizem, o que está estranho no dado e o que dá pra fazer com isso. A tabela vem junto com a resposta, não no lugar dela. Acesso restrito a diretoria/gestores; CPF e dados bancários mascarados.
 
-- Exemplos clicáveis (ex.: "Casos abertos por núcleo", "Leads que viraram cliente esse mês").
-- Campo de pergunta (Enter envia); follow-up mantém o contexto; "Ver a consulta usada" mostra o SQL.
+- Exemplos clicáveis (ex.: "Casos abertos por núcleo", "Quais dados do funil BPC estão furados?").
+- Campo de pergunta (Enter envia); a IA pode rodar **até 3 consultas** na mesma pergunta pra cruzar o que a primeira levantou.
+- Cada consulta aparece num bloco próprio: contagem, tabela e "Ver a consulta usada" (o SQL).
+- Pergunta que não é de dado ("como você chegou nesse número?", "o que dá pra perguntar aqui?") é respondida direto, sem consulta.
+- **As mensagens ficam gravadas**: coluna de conversas à esquerda (Sheet lateral no celular), "Nova conversa", renomear e apagar. F5 não apaga nada e cada pessoa pode ter várias conversas em paralelo. Conversa é **privada de quem criou**.
+- Reabrindo uma conversa antiga, cada tabela mostra até 200 linhas gravadas (a contagem original continua no badge) — pra lista completa, refaça a pergunta.
 
-**Fluxo recomendado**: clicar num exemplo ou perguntar direto → refinar com follow-up.
+**Regra**: a IA aponta valor absurdo no texto, mas **nunca filtra ou esconde linha** do resultado. A tabela mostra o que está no banco; o conserto é na origem.
+
+**Fluxo recomendado**: clicar num exemplo ou perguntar direto → seguir a conversa com follow-up ("e desses, quantos fecharam?") → abrir "Ver a consulta usada" quando quiser conferir o número.
 
 ---
 

@@ -1,52 +1,59 @@
 /**
- * report-query — Gerador de relatórios por IA (seção Relatórios).
+ * report-query — Analista de dados por IA (seção Relatórios).
+ *
+ * Não é mais um "gerador de tabela": é uma CONVERSA. A IA consulta o banco,
+ * OLHA o resultado e responde em português — o que achou, o que está estranho
+ * no dado e o que dá pra fazer a seguir. A tabela vem junto, não no lugar dela.
  *
  * Fluxo:
  *   1. Valida o JWT do Cloud (/auth/v1/user) → identidade real do usuário.
  *   2. Autoriza: só diretoria (org_directors), gestores (team_managers),
  *      quem estiver em ai_user_roles, ou os e-mails admin (bootstrap).
  *   3. Respeita ai_user_limits (bloqueio + teto diário de consultas).
- *   4. Claude (Sonnet) traduz a pergunta em PT → um SELECT, usando um catálogo
- *      curado das tabelas de negócio (só leitura, whitelist).
- *   5. Executa via RPC ai_safe_query (transação READ ONLY, timeout 15s).
- *   6. Mascara campos sensíveis (CPF, RG, conta, etc.) antes de devolver.
- *   7. Registra tudo em ai_query_log (auditoria).
+ *   4. Carrega/cria a conversa (report_conversations + report_messages): o
+ *      histórico não some no F5 e cada pessoa pode ter várias conversas.
+ *   5. Loop de até MAX_SQL_STEPS consultas — a IA chama run_sql, recebe de
+ *      volta uma amostra do resultado e decide se cruza mais alguma coisa ou
+ *      se já pode responder. A última rodada vai SEM ferramenta, o que obriga
+ *      o modelo a escrever a resposta em texto.
+ *   6. Cada SQL roda via RPC ai_safe_query (transação READ ONLY, timeout 15s).
+ *   7. Mascara campos sensíveis (CPF, RG, conta) ANTES de mostrar e de gravar —
+ *      o modelo também só enxerga o dado já mascarado.
+ *   8. Grava pergunta e resposta na conversa + auditoria em ai_query_log.
+ *
+ * REGRA DURA (CLAUDE.md, "solução estrutural, nunca band-aid na tela"): a IA
+ * aponta o dado estranho no texto, mas NUNCA filtra nem esconde linha do
+ * resultado. A tabela mostra o que está no banco; o conserto é na origem.
  *
  * Só devolve dados pra tela — não há geração de arquivo/download.
- * Custo: ~1 chamada Sonnet por pergunta (+1 retry se a SQL falhar).
+ * Custo: 2 a 4 chamadas Gemini Flash por pergunta (1 por consulta + a resposta).
  */
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { aiChat } from '../lib/gemini';
 
 /**
- * Gera a SQL via IA. Tenta o modelo primário (Sonnet, se o Anthropic estiver
- * conectado no Railway) e, em qualquer falha, cai no Gemini — o provedor padrão
- * comprovado da base (GOOGLE_AI_API_KEY, usado por todas as funções de IA que
- * já rodam). aiChat roteia por prefixo do modelo e propaga o erro real.
- * Devolve { completion, engine } pra deixar visível qual motor respondeu.
+ * Chama o LLM. Tenta o modelo primário e, em qualquer falha, cai no fallback —
+ * aiChat roteia por prefixo do modelo e propaga o erro real do provider.
+ *
+ * withTools=false na última rodada: sem ferramenta declarada o modelo não tem
+ * como pedir "mais uma consulta", então a conversa sempre termina em texto.
+ *
+ * thinking_budget: 0 → thinkingLevel mínimo. Sem isso o Gemini 3.x roda com
+ * thinking dinâmico (alto) quando há tools e, em perguntas complexas, consome
+ * todo o max_tokens no raciocínio ANTES de emitir o functionCall — a resposta
+ * volta vazia. max_tokens folgado garante espaço pra SQL longa + análise.
  */
-async function callLLM(messages: any[]): Promise<{ completion: any; engine: string }> {
-  // thinking_budget: 0 → força thinkingLevel mínimo. Sem isso, o Gemini 3.x roda
-  // com thinking dinâmico (alto) quando há tools e, em perguntas complexas, consome
-  // todo o max_tokens no raciocínio ANTES de emitir o functionCall — a resposta volta
-  // sem tool_call e o handler joga "IA não retornou uma consulta". max_tokens folgado
-  // (era 1200) garante espaço pra SQL longa + explicação mesmo com algum thinking residual.
+async function callLLM(messages: any[], withTools = true): Promise<{ completion: any; engine: string }> {
+  const base: any = { max_tokens: 3000, temperature: 0, messages, thinking_budget: 0 };
+  if (withTools) base.tools = [runSqlTool];
   try {
-    const completion = await aiChat({
-      model: PRIMARY_MODEL, max_tokens: 3000, temperature: 0, messages,
-      tools: [emitSqlTool], tool_choice: { function: { name: 'emit_sql' } },
-      thinking_budget: 0,
-    });
+    const completion = await aiChat({ ...base, model: PRIMARY_MODEL });
     return { completion, engine: PRIMARY_MODEL };
   } catch (primaryErr) {
     console.warn(`[report-query] primário (${PRIMARY_MODEL}) falhou, tentando fallback ${FALLBACK_MODEL}:`,
       primaryErr instanceof Error ? primaryErr.message : primaryErr);
-    const completion = await aiChat({
-      model: FALLBACK_MODEL, max_tokens: 3000, temperature: 0, messages,
-      tools: [emitSqlTool], tool_choice: { function: { name: 'emit_sql' } },
-      thinking_budget: 0,
-    });
+    const completion = await aiChat({ ...base, model: FALLBACK_MODEL });
     return { completion, engine: FALLBACK_MODEL };
   }
 }
@@ -207,28 +214,50 @@ activity_types — tipos de atividade. id, key, label.
     ORDER BY l.became_client_date DESC NULLS LAST LIMIT 500;
 `.trim();
 
-const SYSTEM_PROMPT = `Você é um gerador de relatórios SQL para um escritório de advocacia brasileiro.
-Recebe uma pergunta em português e devolve UMA consulta SQL (SELECT) que responde exatamente ao pedido,
-usando apenas o catálogo de schema fornecido. Chame sempre a ferramenta emit_sql.
+// Quantas consultas a IA pode rodar numa mesma pergunta. Definido ANTES do
+// SYSTEM_PROMPT porque o prompt interpola esse número (TDZ se vier depois).
+const MAX_SQL_STEPS = Number(process.env.REPORT_MAX_SQL_STEPS || 3);
+
+const SYSTEM_PROMPT = `Você é o analista de dados do escritório, conversando com a diretoria dentro do sistema WhatsJUD.
+Você tem acesso SOMENTE LEITURA ao banco e a ferramenta run_sql para consultar.
+
+COMO VOCÊ TRABALHA
+- Português brasileiro, direto, sem floreio. Escreva como quem senta do lado e explica — não como relatório formal.
+- Para qualquer pergunta sobre dados, rode run_sql ANTES de afirmar qualquer coisa. Nunca invente número: só afirme o que voltou da consulta.
+- Você pode rodar até ${MAX_SQL_STEPS} consultas na mesma pergunta. Use a segunda ou a terceira quando ela responder algo que a primeira levantou (apareceu coluna vazia demais → meça quantos registros estão assim; apareceu valor fora de escala → veja de onde ele veio; o total não bateu → cruze com a outra tabela).
+- Depois de ver o resultado, responda em até três partes — pule a parte que não tiver o que dizer, não force seção vazia:
+  1. O que os dados dizem: o número que responde a pergunta, em uma ou duas frases.
+  2. O que está estranho no dado, se estiver: campo obrigatório nulo, registro órfão, duplicidade, data impossível, valor fora de escala, tabela que deveria bater com outra e não bate.
+  3. O que dá pra fazer com isso: o próximo recorte que vale a pena, ou o conserto na origem.
+- Pergunta ambígua: escolha a leitura mais útil, rode assim mesmo e diga qual suposição fez. Não devolva a pergunta sem dado.
+- Pergunta que não é sobre dados ("o que dá pra perguntar aqui?", "esse número está certo?", "como você chegou nisso?"): responda direto, sem consultar.
+- Consulta vazia não termina em "nenhum registro encontrado": diga o que isso significa e o que testar em seguida — filtro errado, vocabulário diferente do banco, ou campo que nunca foi preenchido.
+- Consulta que deu erro: explique em uma linha o que o banco recusou e tente de novo com a SQL corrigida.
+
+REGRA DURA — NUNCA ESCONDA DADO
+A tabela mostra exatamente o que está no banco. É PROIBIDO filtrar, zerar, capar ou omitir linha só porque o valor parece errado ou absurdo. Valor improvável CONTINUA no resultado e você APONTA no texto: qual registro, por que parece errado e qual é o conserto na origem (que campo/peça precisa ser preenchido e por quem). Filtrar troca um número errado por outro número errado e ainda esconde o registro que precisa de conserto.
+
+FORMATO DA RESPOSTA
+- Texto curto ou bullets. Sem título de relatório, sem tabela em markdown — a tabela do resultado já aparece sozinha na tela, logo abaixo da sua resposta.
+- Não transcreva a tabela em texto. Cite no máximo 3 exemplos concretos quando ajudar (nome do cliente, número do processo).
+- CPF, RG e conta bancária chegam até você já mascarados — mantenha assim, nunca tente reconstruir.
 
 ${SCHEMA_CATALOG}
 
-Nunca use INSERT/UPDATE/DELETE/DDL. Nunca acesse auth, vault, pg_catalog, information_schema, whatsapp_messages.
-Se o pedido for ambíguo, faça a interpretação mais útil e explique a suposição no campo explanation.`;
+Nunca use INSERT/UPDATE/DELETE/DDL. Nunca acesse auth, vault, pg_catalog, information_schema, whatsapp_messages.`;
 
-const emitSqlTool = {
+const runSqlTool = {
   type: 'function' as const,
   function: {
-    name: 'emit_sql',
-    description: 'Emite a consulta SQL (SELECT) que responde ao pedido do usuário.',
+    name: 'run_sql',
+    description: 'Roda uma consulta SELECT no banco (somente leitura) e devolve as linhas para você analisar antes de responder.',
     parameters: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Título curto do relatório em português (ex: "Processos da Gisele").' },
         sql: { type: 'string', description: 'A consulta SQL (SELECT/WITH) completa, pronta para rodar.' },
-        explanation: { type: 'string', description: 'Explicação curta em português do que a consulta faz e suposições feitas.' },
+        purpose: { type: 'string', description: 'Em uma linha, em português: o que esta consulta responde. Vira o rótulo da tabela na tela (ex: "Processos da Gisele por status").' },
       },
-      required: ['title', 'sql', 'explanation'],
+      required: ['sql', 'purpose'],
     },
   },
 };
@@ -265,7 +294,7 @@ function maskRows(rows: any[]): any[] {
 // ============================================================
 // Auth
 // ============================================================
-async function verifyCloudJwt(authHeader: string | undefined): Promise<{ id: string; email: string } | null> {
+export async function verifyCloudJwt(authHeader: string | undefined): Promise<{ id: string; email: string } | null> {
   if (!authHeader || !authHeader.toLowerCase().startsWith('bearer ')) return null;
   const token = authHeader.slice(7).trim();
   if (!token || token === CLOUD_ANON_KEY) return null;
@@ -282,7 +311,7 @@ async function verifyCloudJwt(authHeader: string | undefined): Promise<{ id: str
   }
 }
 
-async function isAuthorized(userId: string, email: string): Promise<boolean> {
+export async function isAuthorized(userId: string, email: string): Promise<boolean> {
   if (email && ADMIN_EMAILS.includes(email)) return true;
   // diretoria
   const { data: dir } = await supabase.from('org_directors').select('user_id').eq('user_id', userId).limit(1);
@@ -327,12 +356,95 @@ async function logQuery(entry: Record<string, unknown>) {
 }
 
 // ============================================================
+// Conversa — execução das consultas e memória
+// ============================================================
+/** Linhas que ficam GRAVADAS na conversa (a tela do turno atual recebe todas). */
+const STORED_ROWS_PER_QUERY = 200;
+/** Quanto do resultado a IA enxerga pra analisar (não manda 1000 linhas ao modelo). */
+const PREVIEW_ROWS = 20;
+const PREVIEW_CHARS = 6000;
+
+interface QueryRun {
+  sql: string;
+  purpose: string;
+  columns: string[];
+  rows: any[];
+  count: number;
+  truncated: boolean;
+  error?: string;
+}
+
+/** Roda a SQL no executor read-only e já devolve as linhas mascaradas. */
+async function execSql(sql: string): Promise<{ rows: any[]; count: number; error?: string }> {
+  const exec = await supabase.rpc('ai_safe_query', { p_sql: sql });
+  if (exec.error) return { rows: [], count: 0, error: exec.error.message };
+  const result: any = exec.data;
+  if (result?.error) return { rows: [], count: 0, error: result.message || result.error };
+  const rows = maskRows(Array.isArray(result?.rows) ? result.rows : []);
+  return { rows, count: result?.count ?? rows.length };
+}
+
+/** Amostra do resultado devolvida ao modelo (é isto que ele "vê" pra analisar). */
+function previewForModel(run: QueryRun): string {
+  if (run.error) {
+    return `A consulta FALHOU: ${run.error}\nCorrija a SQL e chame run_sql de novo, ou explique em texto o que faltou.`;
+  }
+  let json = JSON.stringify(run.rows.slice(0, PREVIEW_ROWS));
+  if (json.length > PREVIEW_CHARS) json = `${json.slice(0, PREVIEW_CHARS)}…(cortado)`;
+  return [
+    `Linhas retornadas: ${run.count}${run.truncated ? ' (teto de 1000 do executor — pode haver mais)' : ''}.`,
+    `Colunas: ${run.columns.join(', ') || '(nenhuma)'}.`,
+    `Amostra (até ${PREVIEW_ROWS} linhas, JSON): ${json}`,
+  ].join('\n');
+}
+
+function titleFromQuestion(q: string): string {
+  const t = q.replace(/\s+/g, ' ').trim();
+  if (!t) return 'Nova conversa';
+  return t.length > 60 ? `${t.slice(0, 57)}…` : t;
+}
+
+/** Confere que a conversa existe E é do próprio usuário (conversa é privada). */
+async function loadOwnConversation(conversationId: string, userId: string): Promise<boolean> {
+  const { data } = await supabase
+    .from('report_conversations')
+    .select('id, user_id')
+    .eq('id', conversationId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  return !!data && data.user_id === userId;
+}
+
+/**
+ * Histórico da conversa no formato de mensagens do modelo. Nas respostas da IA
+ * vai junto um resumo das SQLs usadas — é o que permite follow-up ("e desses,
+ * quantos fecharam?") sem refazer o raciocínio do zero.
+ */
+async function loadHistory(conversationId: string): Promise<Array<{ role: string; content: string }>> {
+  const { data } = await supabase
+    .from('report_messages')
+    .select('role, content, queries')
+    .eq('conversation_id', conversationId)
+    .order('created_at', { ascending: true })
+    .limit(40);
+  const msgs = (data || []).slice(-12);
+  return msgs.map((m: any) => {
+    if (m.role !== 'assistant') return { role: 'user', content: m.content || '' };
+    const queries: any[] = Array.isArray(m.queries) ? m.queries : [];
+    const sqlNote = queries.length
+      ? `\n\nConsultas que rodei nessa resposta:\n${queries.map((q) => `-- ${q.purpose} (${q.count} linhas)\n${q.sql}`).join('\n')}`
+      : '';
+    return { role: 'assistant', content: `${m.content || ''}${sqlNote}` };
+  });
+}
+
+// ============================================================
 // Handler
 // ============================================================
 export const handler = async (req: Request, res: Response) => {
   const started = Date.now();
   const question: string = (req.body?.question || '').toString().trim();
-  const history: Array<{ role: string; content: string }> = Array.isArray(req.body?.history) ? req.body.history : [];
+  const conversationIdIn: string = (req.body?.conversation_id || '').toString().trim();
 
   const user = await verifyCloudJwt(req.headers['authorization'] as string | undefined);
   if (!user) {
@@ -348,7 +460,7 @@ export const handler = async (req: Request, res: Response) => {
   }
 
   if (!question) {
-    return res.status(400).json({ success: false, error: 'empty_question', message: 'Digite o que você quer no relatório.' });
+    return res.status(400).json({ success: false, error: 'empty_question', message: 'Escreva o que você quer saber.' });
   }
 
   const limitMsg = await checkLimits(user.id, user.email);
@@ -356,102 +468,160 @@ export const handler = async (req: Request, res: Response) => {
     return res.status(429).json({ success: false, error: 'rate_limited', message: limitMsg });
   }
 
-  try {
-    // Contexto de follow-up: perguntas + SQLs anteriores desta conversa.
-    const priorMessages = history.slice(-6).map((m) => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content,
-    }));
+  // ---- Conversa: abre a existente (só se for do próprio usuário) ou cria uma.
+  let conversationId = conversationIdIn;
+  if (conversationId) {
+    const owns = await loadOwnConversation(conversationId, user.id);
+    if (!owns) {
+      return res.status(404).json({ success: false, error: 'not_found', message: 'Conversa não encontrada.' });
+    }
+  } else {
+    const { data: conv, error: convErr } = await supabase
+      .from('report_conversations')
+      .insert({ user_id: user.id, user_email: user.email, title: titleFromQuestion(question) })
+      .select('id')
+      .single();
+    if (convErr || !conv) {
+      console.error('[report-query] falha ao criar conversa:', convErr?.message);
+      return res.status(200).json({ success: false, error: 'internal', message: 'Não consegui abrir a conversa. Tente de novo.' });
+    }
+    conversationId = conv.id;
+  }
 
-    // 1) Gera a SQL
-    const gen = await callLLM([
+  const priorMessages = await loadHistory(conversationId);
+
+  // Grava a pergunta ANTES de chamar a IA — se der erro no meio, a pergunta do
+  // usuário não some da conversa.
+  const { data: userMsg } = await supabase
+    .from('report_messages')
+    .insert({ conversation_id: conversationId, user_id: user.id, role: 'user', content: question })
+    .select('id, created_at')
+    .single();
+
+  const runs: QueryRun[] = [];
+  let engineUsed = PRIMARY_MODEL;
+
+  try {
+    const messages: any[] = [
       { role: 'system', content: SYSTEM_PROMPT },
       ...priorMessages,
       { role: 'user', content: question },
-    ]);
-    let engineUsed = gen.engine;
+    ];
 
-    const rawArgs = gen.completion?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-    if (!rawArgs) throw new Error('IA não retornou uma consulta.');
-    let parsed: { title?: string; sql?: string; explanation?: string };
-    try { parsed = JSON.parse(rawArgs); } catch { throw new Error('IA retornou consulta em formato inválido.'); }
-    let sql = (parsed.sql || '').trim();
-    if (!sql) throw new Error('IA não gerou SQL.');
+    let answer = '';
+    // MAX_SQL_STEPS rodadas com ferramenta + 1 rodada final sem ferramenta —
+    // essa última garante que sempre sai uma resposta em texto.
+    for (let step = 0; step <= MAX_SQL_STEPS; step++) {
+      const withTools = step < MAX_SQL_STEPS;
+      const gen = await callLLM(messages, withTools);
+      engineUsed = gen.engine;
 
-    // 2) Executa (com 1 retry se a SQL falhar)
-    let exec = await supabase.rpc('ai_safe_query', { p_sql: sql });
-    let result: any = exec.data;
-
-    const needsRetry = exec.error || (result && result.error);
-    if (needsRetry) {
-      const errMsg = exec.error?.message || result?.message || 'erro desconhecido';
-      const retry = await callLLM([
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: question },
-        { role: 'assistant', content: `SQL gerada:\n${sql}` },
-        { role: 'user', content: `Essa SQL falhou com o erro: "${errMsg}". Corrija e chame emit_sql de novo com uma SQL válida.` },
-      ]);
-      engineUsed = retry.engine;
-      const retryArgs = retry.completion?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
-      if (retryArgs) {
-        try {
-          const rp = JSON.parse(retryArgs);
-          if (rp.sql) {
-            sql = rp.sql.trim();
-            parsed.title = rp.title || parsed.title;
-            parsed.explanation = rp.explanation || parsed.explanation;
-            exec = await supabase.rpc('ai_safe_query', { p_sql: sql });
-            result = exec.data;
-          }
-        } catch { /* mantém erro original */ }
+      const msg = gen.completion?.choices?.[0]?.message;
+      const call = msg?.tool_calls?.[0];
+      if (!call) {
+        answer = (msg?.content || '').toString().trim();
+        break;
       }
+
+      let args: any = {};
+      try { args = JSON.parse(call.function?.arguments || '{}'); } catch { args = {}; }
+      const sql = (args.sql || '').toString().trim();
+      const purpose = (args.purpose || '').toString().trim() || 'Consulta ao banco';
+      if (!sql) {
+        messages.push({ role: 'user', content: 'Você chamou run_sql sem SQL. Escreva a consulta ou responda em texto.' });
+        continue;
+      }
+
+      const exec = await execSql(sql);
+      const run: QueryRun = {
+        sql, purpose,
+        columns: exec.rows.length ? Object.keys(exec.rows[0]) : [],
+        rows: exec.rows,
+        count: exec.count,
+        truncated: exec.count >= 1000,
+        error: exec.error,
+      };
+      runs.push(run);
+
+      // O conversor do gemini.ts só entende papéis user/assistant (não existe
+      // papel "tool"), então o resultado volta como texto de usuário — funciona
+      // igual nos dois providers.
+      messages.push({ role: 'assistant', content: `Rodei esta consulta (${purpose}):\n${sql}` });
+      messages.push({
+        role: 'user',
+        content: `[resultado da consulta]\n${previewForModel(run)}\n\nAgora responda ao pedido original em português. Rode outra consulta só se ainda faltar dado.`,
+      });
     }
 
-    if (exec.error) throw new Error(`Erro no banco: ${exec.error.message}`);
-    if (result?.error) {
-      await logQuery({
-        user_id: user.id, user_email: user.email, channel: 'reports', question,
-        answer: null, tool_calls: { sql }, model: engineUsed,
-        duration_ms: Date.now() - started, status: 'sql_error', error_message: result.message || result.error,
-      });
-      return res.status(200).json({
-        success: false, error: 'sql_error',
-        message: `Não consegui montar uma consulta válida: ${result.message || result.error}`,
-        sql,
-      });
+    if (!answer) {
+      answer = runs.length
+        ? 'Consultei o banco — o resultado está na tabela abaixo.'
+        : 'Não consegui montar uma resposta pra isso. Pode reformular o pedido?';
     }
 
-    const rawRows: any[] = Array.isArray(result?.rows) ? result.rows : [];
-    const rows = maskRows(rawRows);
-    const columns = rows.length ? Object.keys(rows[0]) : [];
-    const count = result?.count ?? rows.length;
-    const truncated = count >= 1000; // LIMIT de segurança do ai_safe_query
+    const storedQueries = runs.map((r) => ({
+      sql: r.sql,
+      purpose: r.purpose,
+      columns: r.columns,
+      rows: r.rows.slice(0, STORED_ROWS_PER_QUERY),
+      count: r.count,
+      truncated: r.truncated,
+      stored_rows: Math.min(r.rows.length, STORED_ROWS_PER_QUERY),
+      error: r.error || null,
+    }));
+
+    const { data: aiMsg } = await supabase
+      .from('report_messages')
+      .insert({
+        conversation_id: conversationId, user_id: user.id, role: 'assistant',
+        content: answer, queries: storedQueries, engine: engineUsed, status: 'ok',
+      })
+      .select('id, created_at')
+      .single();
+
+    await supabase.from('report_conversations')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', conversationId);
 
     await logQuery({
       user_id: user.id, user_email: user.email, channel: 'reports', question,
-      answer: parsed.explanation || null, tool_calls: { sql, title: parsed.title, count },
+      answer, tool_calls: { conversation_id: conversationId, queries: runs.map((r) => ({ sql: r.sql, count: r.count })) },
       model: engineUsed, duration_ms: Date.now() - started, status: 'ok',
     });
 
     return res.status(200).json({
       success: true,
-      title: parsed.title || 'Relatório',
-      explanation: parsed.explanation || '',
-      sql,
-      columns,
-      rows,
-      count,
-      truncated,
-      engine: engineUsed,
+      conversation_id: conversationId,
+      user_message: { id: userMsg?.id, role: 'user', content: question, created_at: userMsg?.created_at },
+      message: {
+        id: aiMsg?.id, role: 'assistant', content: answer,
+        queries: runs, engine: engineUsed, created_at: aiMsg?.created_at,
+      },
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro desconhecido';
     console.error('[report-query] erro:', message);
+
+    // A falha também vira mensagem na conversa: reabrindo depois, a pessoa vê o
+    // que aconteceu em vez de um buraco entre a pergunta e o nada.
+    await supabase.from('report_messages').insert({
+      conversation_id: conversationId, user_id: user.id, role: 'assistant',
+      content: `Não consegui responder essa: ${message}`,
+      queries: runs.map((r) => ({
+        sql: r.sql, purpose: r.purpose, columns: r.columns,
+        rows: r.rows.slice(0, STORED_ROWS_PER_QUERY), count: r.count,
+        truncated: r.truncated, stored_rows: Math.min(r.rows.length, STORED_ROWS_PER_QUERY),
+        error: r.error || null,
+      })),
+      engine: engineUsed, status: 'error', error_message: message,
+    });
+
     await logQuery({
       user_id: user.id, user_email: user.email, channel: 'reports', question,
-      answer: null, model: PRIMARY_MODEL, duration_ms: Date.now() - started,
+      answer: null, model: engineUsed, duration_ms: Date.now() - started,
       status: 'error', error_message: message,
     });
-    return res.status(200).json({ success: false, error: 'internal', message });
+
+    return res.status(200).json({ success: false, error: 'internal', conversation_id: conversationId, message });
   }
 };
