@@ -526,6 +526,20 @@ O caminho do documento anexado à mão existe ponta a ponta: `usePecasDoProcesso
 
 ---
 
+## Só marcos, só Escavador, percentual por posição (02/09/2026)
+
+Três decisões do usuário, tomadas sobre o caso 60 (`0100419-74.2021.5.01.0281`), que mudam a régua de todos os POPs. Todas medidas no banco antes de aplicar; migrations `20260902140000` a `20260902170000` no Externo.
+
+**1. O DataJud saiu da régua.** A régua dizia "Embargos de declaração (2º grau) · 15/12/2025" enquanto o Escavador mostrava RR juntado em 17/07, concluso para admissibilidade em 12/08 e remessa à CREC em 24/08. O DataJud daquele processo tinha parado em 12/06 e a cadeia recursal só tinha sinal `tpu`. Decisão: *"retire o DataJud, ele só atrapalha, é mais informação só fazendo zoada"*. `vw_pop_marcos_detectados` passou a ler só documento; os 354 sinais `tpu` foram removidos (backup `zz_pop_marco_sinais_tpu_bkp_20260902`). Medido: 73 trabalhistas ficariam sem régua e 126 voltariam de marco — o usuário aceitou. Para compensar entrou o **feed `process_updates`** como fonte de texto (`vw_pop_marcos_feed`: monitoramento do Escavador + push por e-mail do tribunal, sem o teto de 20 movimentações): 73 processos ganharam marco por ele. Resultado líquido: processos com marco foram de 1.341 para 1.330. `jm_movimentos` continua alimentado — a jurimetria (`vw_jm_*`) lê de lá.
+
+**2. Percentual = posição do marco atual ÷ marcos posicionais do POP.** Antes era "cumpridos ÷ previstos" (obrigatório + eventual que aconteceu), e 184 processos trabalhistas mostravam 80%+ sem ter transitado — o dinheiro está depois do trânsito. Agora *"todos os marcos são obrigatórios; o que não se aplica conta como superado"*: `pop_processo_regua` devolve `previstos` = total posicional e `cumpridos` = posição, terminal atingido = 100, nenhum marco = null (a ficha cai nos passos). Média do trabalhista caiu de 44,1% para 37,0%. A barra, a faixa do cabeçalho e a mensagem ao cliente dizem **"marco 11 de 24"** e os segmentos são todos os marcos posicionais (`LeadFunnelProgressBar.tsx`, `ProcessMarcosInline.tsx`, `buildActivityMessage.ts`).
+
+**3. Não existem mais fases, só marcos.** Objetivos e passos moram no marco. Trabalhista: saíram `pericia` (o usuário não a quis na régua de 24), `remessa_stf` e `decisao_stf` → 24 marcos = 24 stages. BPC: 5 fases viraram **26 stages, um por marco posicional** (`m_<chave>`), com dois marcos novos sem detecção automática (`triagem`, `saneamento_cadunico`); os 21 objetivos foram redistribuídos pelo marco que o trâmite pede (mapa em `zz_bpc_mapa_objetivos_20260902`) e as 9.486 instâncias de checklist acompanharam por UPDATE — passo marcado continua marcado. Os 13 marcos que ficaram sem objetivo ganharam objetivo e passos de boas práticas (conferir a decisão → agir no prazo → comunicar o cliente → atualizar o recebível), e "Definição da Estratégia" do trabalhista deixou de ter zero passos. `kanban_boards.stages` continua existindo porque ranking, telão e checklists leem dele, mas é **gerado dos marcos** — ninguém edita fase.
+
+**Junto**: sinais de texto para `admissibilidade_rr` e `agravo_instrumento` (RR juntado, concluso para admissibilidade, remessa à CREC — calibrados contra 553 processos, a admissibilidade do Recurso *Ordinário* ficou de fora de propósito); a carteira judicial inteira (1.083 trabalhistas + 367 BPC com número) foi reconsultada no Escavador por uma fila temporária em pg_cron (`zz_backfill_escavador_fila_20260902`, um lote de 25 a cada 2 min pela edge `backfill-process-marcos`).
+
+Caso 60 depois de tudo: **Admissibilidade do RR · 17/07/2026 · marco 11 de 24 · 46%**.
+
 ## Prazo se cumpre, não se reagenda (31/08/2026)
 
 Três regras nascidas do caso `1017247-47.2025.4.01.3100` (prazo real 16/07 no título da atividade, deadline manual em 31/07, réplica protocolada 03/08 — e o prazo do robô criado 53 dias depois com título errado):
