@@ -263,6 +263,36 @@ Renomear as linhas órfãs para a instância atual **não** é a correção: "Br
 
 ---
 
+## WhatsApp Cloud API (Meta oficial) — canal `cloud_gerencia`
+
+**O que é**: linha oficial da Meta, separada da UazAPI. Config ativa (singleton) em `whatsapp_cloud_config`: `phone_number_id` + `waba_id`. Hoje: `+55 86 8900-9137`, WABA `458751397321968`, nome exibido ao cliente "ABRACI- Associação Brasileira de Combate…" — o nome é propriedade do número e não muda enquanto ele viver nessa WABA.
+
+**Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'`) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
+
+### Janela de 24h — a regra que faz a tela mentir se ignorada
+
+Fora de 24h desde a **última mensagem do cliente**, a Meta só entrega **template aprovado**. Texto livre é **aceito** pela Graph (devolve `wamid`, HTTP 200) e recusado ~1s depois, num webhook de `statuses` separado, com erro `131047`. Sem tratar isso, a bolha diz "enviada" para mensagem que ninguém recebeu.
+
+- `src/lib/whatsapp24hWindow.ts` — `janelaDeAtendimento(instanceName, mensagens)`. Só se aplica ao `cloud_gerencia`; canal sem a regra devolve `aberta: true` e não bloqueia nada. Só inbound reabre a janela — o que **nós** mandamos não conta.
+- `WhatsAppChat` mostra aviso âmbar + botão "Enviar template" quando a janela fecha, e um aviso discreto quando faltam menos de 2h.
+- `src/lib/whatsappDeliveryStatus.ts` traduz o recibo na bolha (`enviada` → `entregue` → `lida`, ou `não entregue` com o motivo em português). `sent` deliberadamente **não** afirma entrega.
+
+### Templates
+
+- **Listagem para a tela**: Railway `whatsapp-cloud-templates` (read-only). Não aceita `waba_id` do chamador — resolve pela config ativa, para usuário logado não conseguir sondar WABA de terceiro. Devolve **todos** com o status: lista vazia porque tudo está `PENDING` é informação que some se filtrar no servidor.
+- **Criação/administração**: Railway `whatsapp-cloud-waba-apps` (ações `templates`, `create_template`, `list`/`subscribe`/`unsubscribe`, `users`, `assign_user`). É função administrativa — **não** expor ao front: `unsubscribe` derruba o webhook da WABA.
+- **Envio**: `send-whatsapp-cloud` com `template_name`, `template_language`, `template_params` (preenchem `{{1}}`, `{{2}}`… em ordem). `template_body_text` leva o texto **já renderizado**, que é o que fica gravado em `whatsapp_messages.message_text`; o nome do template fica em `metadata.template`. Sem ele, a conversa mostraria `[template: nome]`.
+- Template **não** recebe prefixo de remetente: o corpo é o aprovado pela Meta e qualquer texto a mais faria a bolha mentir sobre o que foi entregue.
+
+**Pegadinhas medidas (02/09/2026)**:
+- Rodapé do template tem **limite de 60 caracteres** — estourar devolve `100/2388040` "Character Limit Exceeded".
+- Corpo com `{{n}}` **exige** `example.body_text` com um valor por variável, senão a Meta rejeita.
+- `allow_category_change: true` faz a Meta **reclassificar** em vez de rejeitar quando discorda da categoria; a categoria que valeu volta na resposta.
+- A task `MANAGE` do System User na WABA **já basta** para criar template — não precisa de `MANAGE_TEMPLATES`.
+- Só `status: APPROVED` pode ser enviado. Templates existentes: `contato_inicial_atendimento` e `retomada_atendimento` (ambos UTILITY, pt_BR, 2 variáveis: nome do cliente, nome do atendente).
+
+---
+
 ## Agentes IA do WhatsApp (Configurações → aba "Agentes IA")
 
 **Propósito**: agentes de IA que respondem conversas automaticamente (texto/áudio), fazem follow-up, discam automaticamente e criam leads por campanha.
