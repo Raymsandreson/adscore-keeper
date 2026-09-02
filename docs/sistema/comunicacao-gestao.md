@@ -299,6 +299,14 @@ Já auditadas e limpas: `whatsapp_cloud_assignees` (PK `(phone, instance_name)`,
 
 **Linhas hoje** (02/09/2026): `abraci` (+55 86 8900-9137, WABA 458751397321968) em produção; `prudencio_advogados` (+1 555-964-5799, WABA 1495255778900978) recebendo — é o número de teste da Meta, usado para provar a cadeia multi-número, e o da Prudêncio de verdade será um 0800 ainda não liberado; `quitepay` (+55 86 8876-7464, mesma WABA) cadastrada mas **sem enviar nem receber**: `platform_type: NOT_APPLICABLE`, `code_verification_status: EXPIRED`.
 
+**Onboarding de número — a sequência que funciona** (medida no `quitepay` em 02/09/2026): apagar a conta do app WhatsApp Business no celular → `request_code` → `verify_code` → `register` → foto/perfil → nome. Três pegadinhas, e duas delas mentem:
+
+1. **`request_code` falha enquanto existir conta no app.** A Graph devolve `136024 / 2388091` — *"Our servers are temporarily unavailable. Please wait 1 hour before trying again."* A mensagem manda esperar e aponta a causa errada: falhou igual por SMS e por VOICE, e de novo 69 min depois. Destravou ao apagar a conta no aparelho (Configurações → Conta → Excluir minha conta) e esperar ~3 min. No painel da Meta o mesmo erro aparece com o texto certo; pela API, não.
+2. **Foto não cola em número não registrado** (ver parágrafo abaixo).
+3. **Nome não pode ser editado durante revisão.** `POST /{phone_number_id}` com `new_display_name` devolve *"Display name can't be edited while it is being reviewed."* — bloqueia em vez de substituir o pedido anterior.
+
+O PIN do `register` vem de `WHATSAPP_CLOUD_REGISTER_PIN` no Railway, nunca do corpo da chamada: assim ele não passa por chat, log nem histórico de terminal. `deregister` é a rota de volta e devolve o número ao app.
+
 **Registrar um número não é só cadastrar na WABA.** `platform_type` é o campo que separa os dois estados — `NOT_APPLICABLE` significa que o número existe na WABA e não fala pela Cloud API. A sequência é: verificar (`request_code`/`verify_code`, o código chega no aparelho) → registrar (`POST /{phone_number_id}/register` com `messaging_product` e um PIN de 6 dígitos) → só então o número envia. `action: 'phones'` em `whatsapp-cloud-waba-apps` lê tudo isso de uma vez, mais o perfil de negócio de cada número.
 
 **Foto de perfil exige número registrado, e a Meta não avisa.** `set_business_profile` sobe a imagem pela Resumable Upload API (sessão no App → handle → `profile_picture_handle`; upload usa app access token `app_id|secret`, o perfil usa o token do System User). Medido no `quitepay` em 02/09: upload OK, `POST` do perfil devolveu `success: true`, `description`/`websites`/`vertical` gravaram — e a foto **não colou**, porque `platform_type` era `NOT_APPLICABLE`. Aceita e descartada, sem erro. Por isso a função relê o perfil no fim: a resposta do POST não prova o que ficou gravado.
