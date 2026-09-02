@@ -45,15 +45,19 @@ export function validarAvaliacao(d: AvaliacaoDraft, outcome: FeedbackOutcome): s
   return null;
 }
 
-/** Nome do avaliador no Cloud (aparece pro responsável no aviso). */
-async function nomeDoAvaliador(cloudUserId?: string | null): Promise<string | null> {
+/** Nome de quem agiu, no Cloud (aparece pro responsável no aviso). */
+export async function nomeDoUsuario(cloudUserId?: string | null): Promise<string | null> {
   if (!cloudUserId) return null;
   const { data } = await supabase.from('profiles').select('full_name').eq('user_id', cloudUserId).maybeSingle();
   return (data as { full_name?: string } | null)?.full_name || null;
 }
 
-/** Avisa o responsável — toda avaliação notifica, sem exceção de nota. */
-async function notificar(
+/**
+ * Avisa o responsável — toda avaliação notifica, sem exceção de nota.
+ * Exportada porque a troca de situação pós-avaliação (activityStatusChange)
+ * avisa pela mesma porta; regra do autoaviso mora aqui, num lugar só.
+ */
+export async function notificarResponsavel(
   alvo: FeedbackAlvo,
   type: string,
   title: string,
@@ -101,7 +105,7 @@ export async function salvarAvaliacao({
   extId: string | null;
   cloudUserId?: string | null;
 }): Promise<ResultadoAvaliacao> {
-  const avaliadorNome = await nomeDoAvaliador(cloudUserId);
+  const avaliadorNome = await nomeDoUsuario(cloudUserId);
   const ratedAt = new Date().toISOString();
 
   // Quem chama nem sempre tem o responsável em mãos (o telão só recebe o nome
@@ -135,17 +139,17 @@ export async function salvarAvaliacao({
   let mensagem: string;
 
   if (outcome === 'incompleto') {
-    await notificar(alvo, 'incompleto', '⚠️ Feedback incompleto', `Falta detalhar: ${porque || 'complete o retorno.'}`, extId, avaliadorNome);
+    await notificarResponsavel(alvo, 'incompleto', '⚠️ Feedback incompleto', `Falta detalhar: ${porque || 'complete o retorno.'}`, extId, avaliadorNome);
     mensagem = 'Marcado como incompleto — o responsável foi avisado para completar.';
   } else if (outcome === 'satisfeito') {
     if (draft.rating >= 4) {
-      await notificar(alvo, 'praise', '🌟 Seu trabalho foi elogiado', porque ? `${nota} — ${porque}` : `${nota} pelo retorno.`, extId, avaliadorNome);
+      await notificarResponsavel(alvo, 'praise', '🌟 Seu trabalho foi elogiado', porque ? `${nota} — ${porque}` : `${nota} pelo retorno.`, extId, avaliadorNome);
     } else {
-      await notificar(alvo, 'avaliacao', '✅ Sua atividade foi avaliada', `${nota} · satisfeito${porque ? ` — ${porque}` : ''}`, extId, avaliadorNome);
+      await notificarResponsavel(alvo, 'avaliacao', '✅ Sua atividade foi avaliada', `${nota} · satisfeito${porque ? ` — ${porque}` : ''}`, extId, avaliadorNome);
     }
     mensagem = 'Avaliado como satisfeito!';
   } else {
-    await notificar(
+    await notificarResponsavel(
       alvo,
       'insatisfeito',
       '🔄 Pedido de melhoria na atividade',

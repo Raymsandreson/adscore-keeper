@@ -10,6 +10,14 @@ import {
   type FeedbackAlvo,
   type FeedbackOutcome,
 } from '@/lib/feedbackEvaluation';
+import { useStatusChangePrompt } from '@/components/activities/useStatusChangePrompt';
+
+// Como o desfecho aparece na pergunta de situação que vem logo depois de avaliar.
+const ROTULO_DESFECHO: Record<FeedbackOutcome, string> = {
+  satisfeito: '✅ Satisfeito',
+  incompleto: '⚠️ Incompleto',
+  insatisfeito: '❌ Insatisfeito',
+};
 
 // Avaliar o feedback SEM sair de onde se está — usado no painel "Feedbacks sem
 // avaliar" do telão. Mesmas regras do funil de Atividades (nota obrigatória,
@@ -33,6 +41,9 @@ export default function FeedbackAvaliarInline({
   const [praise, setPraise] = useState('');
   const [salvando, setSalvando] = useState<FeedbackOutcome | null>(null);
   const [pronto, setPronto] = useState<FeedbackOutcome | null>(null);
+  // Mesma pergunta do funil das Atividades: avaliou, confere a situação da
+  // atividade. Aqui o painel só tem o id — a situação atual é lida pelo hook.
+  const { perguntarSituacao, dialog: dialogSituacao } = useStatusChangePrompt();
 
   const shown = hover || rating;
   // Campos que a regra exige aparecem sozinhos, na hora que passam a ser
@@ -49,6 +60,11 @@ export default function FeedbackAvaliarInline({
       toast.success(res.mensagem);
       setPronto(outcome);
       onAvaliado?.(outcome, rating);
+      await perguntarSituacao({
+        activityId: alvo.id,
+        contexto: `Avaliado como ${ROTULO_DESFECHO[outcome]}.`,
+        sugestao: outcome === 'satisfeito' ? undefined : 'em_andamento',
+      });
     } catch (e) {
       console.error('[FeedbackAvaliarInline] avaliar:', e);
       toast.error('Erro ao salvar a avaliação.');
@@ -59,10 +75,13 @@ export default function FeedbackAvaliarInline({
 
   if (pronto) {
     return (
-      <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-400/10 px-2.5 py-2 text-xs font-bold text-emerald-300">
-        <Check className="h-3.5 w-3.5 shrink-0" />
-        Avaliado como {pronto} · {rating}⭐ — o responsável foi avisado.
-      </div>
+      <>
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-emerald-400/10 px-2.5 py-2 text-xs font-bold text-emerald-300">
+          <Check className="h-3.5 w-3.5 shrink-0" />
+          Avaliado como {pronto} · {rating}⭐ — o responsável foi avisado.
+        </div>
+        {dialogSituacao}
+      </>
     );
   }
 

@@ -187,6 +187,19 @@ Aba lateral aberta pelo botão "💬 Feedbacks" do cabeçalho das Atividades. Mo
 
 A contagem vive em `src/lib/feedbackFunnelStats.ts` (`contarPorAssessor`, `totalGeral`, `concluidasDe` — a soma das concluídas mora lá, não na tela, para o chip do topo e a coluna da tabela nunca discordarem) — mesma classificação das colunas do funil (reagendada pelo status; sem `feedback_outcome` = a avaliar; sem responsável cai em "—"). Testes: `src/lib/__tests__/feedbackFunnelStats.test.ts` e `src/components/activities/__tests__/FeedbackFunnel.chips.test.tsx`.
 
+**Avaliou → "A situação da atividade continua essa?"** (desde 02/09/2026). Avaliar um retorno como ⚠️ Incompleto e deixar a atividade em ✅ Concluída era a contradição que o painel deixava passar: o funil cobrava o que faltava e o quadro de atividades dizia que estava pronta — sem ninguém para reabrir. Agora, **depois de gravar qualquer avaliação** (satisfeito, incompleto ou insatisfeito), abre um diálogo que mostra a **situação atual** da atividade (com a cor e o ícone dela, e o prazo/reagendamento que vale hoje) e pergunta **para qual mudar** e **com que data**:
+- Incompleto e Insatisfeito já abrem com 🔄 **Em Andamento** sugerido; Satisfeito abre na própria situação atual (a pergunta é de conferência, não de mudança).
+- A data acompanha a escolha: em 🔁 Reagendada é **obrigatória** e grava em `rescheduled_to` (é o que o funil e o calendário passam a cobrar); nas demais grava em `deadline`. Em branco, o prazo atual continua valendo.
+- "Manter <situação>" fecha sem tocar em nada. Nada mudou (mesma situação, mesma data) = botão desabilitado.
+- Concluir carimba `completed_at/by/by_name`; **sair** de concluída limpa os três — igual ao "Reabrir" da ficha. Situação e carimbo de conclusão não podem discordar.
+- O responsável recebe o aviso `status` ("🔄 Situação da atividade alterada — ✅ Concluída → 🔄 Em Andamento · 05/09/2026"), pela mesma porta dos avisos de avaliação. Nunca a si mesmo.
+- Vale nas **duas telas que avaliam**: o funil (`FeedbackFunnel`) e o painel do telão (`FeedbackAvaliarInline`). Regra em `src/lib/activityStatusChange.ts` (`lerSituacaoAtual`, `alterarSituacaoAtividade`), diálogo em `src/components/activities/useStatusChangePrompt.tsx` (mesma mecânica assíncrona do `useKeepAsObserverPrompt`: a Promise só resolve quando a pessoa decide). No telão a situação atual é **lida do banco** — lá só existe o `activity_id`. Testes: `src/lib/__tests__/activityStatusChange.test.ts`.
+
+**A situação ficou visível** (02/09/2026). Antes ela era um `<select>` cinza igual a todos os outros, lá no meio do formulário: para saber se a atividade estava pendente ou concluída era preciso procurar e **ler**. Agora:
+- o gatilho do select tem a **cor da situação**, ícone e texto maior (`ActivityFormCompact`);
+- o cabeçalho da ficha mostra a situação **ao lado do assunto**, do mesmo jeito que já mostrava o cronômetro — inline, sem cobrir o título (`ActivityFullSheet`);
+- rótulo, ícone e cor de cada situação vivem em `src/lib/activityStatus.ts` (as mesmas cores dos cards da `ActivitiesPage`), não mais copiados tela a tela.
+
 ---
 
 ## Varas e Tribunais — contatos (ícone de tribunal no cabeçalho)
