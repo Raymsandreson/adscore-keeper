@@ -1114,10 +1114,13 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
     return mapa;
   }, [porMarco, regua.marcos, regua.atual, stages]);
 
-  // Marcos PREVISTOS na ordem da régua (obrigatório sempre; eventual só quando
-  // aconteceu; estado que atravessa fora) — os segmentos da barra por marco.
+  // Marcos POSICIONAIS na ordem da régua — os segmentos da barra por marco.
+  // Desde 02/09/2026 TODOS entram, eventual ou não (decisão do usuário: "todos
+  // os marcos são obrigatórios; o que não se aplica conta como superado").
+  // Só o marco de estado (acordo, suspensão — `atravessa_fases`) fica fora,
+  // porque não é posição. É o mesmo denominador do percentual da RPC.
   const marcosPrevistos = useMemo(
-    () => regua.marcos.filter(m => !m.atravessa_fases && (!m.eventual || m.estado !== 'pendente')),
+    () => regua.marcos.filter(m => !m.atravessa_fases),
     [regua.marcos],
   );
 
@@ -1302,7 +1305,7 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
             onClick={() => setExpanded(e => !e)}
             className="flex items-center gap-1.5 text-xs shrink-0 hover:opacity-80 transition-opacity"
             title={porMarco
-              ? `Andamento do processo: ${regua.cumpridos} de ${regua.previstos} marcos.\n`
+              ? `Andamento do processo: marco ${regua.cumpridos} de ${regua.previstos} da régua.\n`
                 + `Vem das movimentações e documentos — não depende de marcar passo.\n`
                 + `Passos executados neste POP: ${Math.round(globalPercent)}%.`
               : 'Percentual por passos marcados no POP'}
@@ -1345,7 +1348,13 @@ export function LeadFunnelProgressBar({ leadId, boardId, activityId = null, proc
                 <span className="font-medium text-foreground">
                   {stages.find(s => s.id === currentStageId)?.name}
                 </span>
-                <span className="ml-1.5">· fase {currentIdx + 1} de {stages.length}</span>
+                {/* Com régua, a posição é a do MARCO (mesmo denominador do
+                    percentual); "fase N de M" só sobra para POP sem marco. */}
+                <span className="ml-1.5">
+                  {porMarco
+                    ? `· marco ${regua.cumpridos} de ${regua.previstos}`
+                    : `· fase ${currentIdx + 1} de ${stages.length}`}
+                </span>
               </>
             )}
             {regua.atual && (

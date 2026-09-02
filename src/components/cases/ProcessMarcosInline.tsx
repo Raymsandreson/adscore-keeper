@@ -87,15 +87,14 @@ export default function ProcessMarcosInline({
   }, [movements, processNumber, caseType]);
 
   /**
-   * Marcos PREVISTOS deste processo, na mesma conta do percentual da régua:
-   * obrigatório sempre entra, eventual só quando aconteceu. Estado (acordo,
-   * suspensão) não disputa posição — `atravessa_fases` existe para isso.
+   * Marcos POSICIONAIS deste POP, na mesma conta do percentual da régua
+   * (02/09/2026): todos entram, eventual ou não — o que não se aplica conta
+   * como superado. Estado (acordo, suspensão) não disputa posição —
+   * `atravessa_fases` existe para isso.
    */
   const reguaDoPop = useMemo(() => {
     if (regua.percentual == null) return null;
-    const lista = regua.marcos.filter(
-      m => !m.atravessa_fases && (!m.eventual || m.estado !== 'pendente'),
-    );
+    const lista = regua.marcos.filter(m => !m.atravessa_fases);
     return lista.length > 0 ? lista : null;
   }, [regua.marcos, regua.percentual]);
 
@@ -115,7 +114,7 @@ export default function ProcessMarcosInline({
             <span className="text-xs text-muted-foreground">em {fmt(regua.atual.data_detectada)}</span>
           )}
           <span className="text-xs text-muted-foreground">
-            · {regua.cumpridos} de {regua.previstos} marcos ({regua.percentual}%)
+            · marco {regua.cumpridos} de {regua.previstos} ({regua.percentual}%)
           </span>
         </div>
         <div className="flex items-center gap-1" title={reguaDoPop.map(m => m.rotulo).join(' → ')}>
