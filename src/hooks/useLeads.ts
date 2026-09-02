@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase, ensureExternalSession } from '@/integrations/supabase/external-client';
 import { toast } from 'sonner';
 import { logAudit } from '@/hooks/useAuditLog';
-import { facebookCAPI } from '@/services/facebookCAPI';
+import { enfileiraConversao } from '@/services/metaCapiQueue';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { applyGeoRuleForLead } from '@/utils/applyGeoRuleForLead';
@@ -602,6 +602,9 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
   // uma segunda criação por aqui — senão o lead nasce com dois grupos.
   const addLead = async (
     lead: Partial<Lead>,
+    // Sem efeito desde 02/09/2026: o envio à Meta passou a ser em fila e o
+    // teste se faz no despachante (meta-capi-dispatch { test_event_code }).
+    // Mantido só para não quebrar a assinatura de quem já chama.
     testEventCode?: string,
     opts?: { skipAutoGroup?: boolean }
   ) => {
@@ -629,21 +632,10 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
       const newLead = data as Lead;
 
-      // Send Lead event to Facebook CAPI
-      facebookCAPI.sendLeadEvent({
-        leadId: newLead.id,
-        email: newLead.lead_email || undefined,
-        phone: newLead.lead_phone || undefined,
-        name: newLead.lead_name || undefined,
-        campaignName: newLead.campaign_name || undefined,
-        value: newLead.conversion_value || 0,
-      }, testEventCode).then(result => {
-        if (result.success) {
-          console.log('CAPI: Lead event sent', testEventCode ? '(test mode)' : '');
-        } else {
-          console.warn('CAPI: Failed to send lead event', result.error);
-        }
-      });
+      // Conversão entra na fila da Meta CAPI (o servidor resolve contato e valor).
+      // Lead sem e-mail nem telefone fica registrado como ignorado em vez de
+      // virar evento que a Meta descarta — é assim que o buraco vira número.
+      void enfileiraConversao({ leadId: newLead.id, evento: 'Lead', origem: 'pipeline' });
 
       toast.success('Lead adicionado com sucesso');
       fetchLeads();
@@ -759,35 +751,11 @@ export const useLeads = (adAccountId?: string, options: UseLeadsOptions = {}) =>
 
       // Send CAPI events based on status change
       if (updates.status === 'qualified') {
-        facebookCAPI.sendQualifiedLeadEvent({
-          leadId: id,
-          email: updatedLead.lead_email || undefined,
-          phone: updatedLead.lead_phone || undefined,
-          name: updatedLead.lead_name || undefined,
-          value: updatedLead.conversion_value || 0,
-        }).then(result => {
-          if (result.success) {
-            console.log('CAPI: Qualified lead event sent');
-          } else {
-            console.warn('CAPI: Failed to send qualified event', result.error);
-          }
-        });
+        void enfileiraConversao({ leadId: id, evento: 'CompleteRegistration', origem: 'pipeline' });
       }
 
       if (updates.status === 'converted') {
-        facebookCAPI.sendPurchaseEvent({
-          leadId: id,
-          email: updatedLead.lead_email || undefined,
-          phone: updatedLead.lead_phone || undefined,
-          name: updatedLead.lead_name || undefined,
-          value: updatedLead.conversion_value || 0,
-        }).then(result => {
-          if (result.success) {
-            console.log('CAPI: Purchase event sent');
-          } else {
-            console.warn('CAPI: Failed to send purchase event', result.error);
-          }
-        });
+        void enfileiraConversao({ leadId: id, evento: 'Purchase', origem: 'pipeline' });
       }
 
       // Roda matcher reverso quando o usuário edita campos-chave para vínculo INSS

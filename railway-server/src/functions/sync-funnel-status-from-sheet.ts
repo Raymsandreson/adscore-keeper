@@ -7,8 +7,9 @@
 // - Desfechos mapeados: fechado→closed, inviável→inviavel, cancelado/nº errado→cancelled,
 //   sem resposta→no_response. Etapas em trabalho NÃO viram lead_status.
 // - Importa órfão SÓ quando o status é "Fechado" (ganho) — não polui o CRM com negativos.
-// - Purchase dispara no máximo 1x por lead (carimbo leads.capi_purchase_sent_at) → idempotente
-//   e permite retry. Mudar status vai-e-volta na planilha NÃO re-cobra o Meta.
+// - Purchase ENFILEIRA no máximo 1x por lead (carimbo leads.capi_purchase_sent_at,
+//   escrito pelo despachante após o 200 da Meta) → idempotente e permite retry.
+//   Mudar status vai-e-volta na planilha NÃO re-cobra o Meta.
 // - Match por telefone TOLERANTE ao 9 do celular: chave = DDD + últimos 8 dígitos.
 //
 // dry_run = true (PADRÃO): não escreve/importa/dispara nada; só devolve o plano.
@@ -162,29 +163,27 @@ async function fetchTab(spreadsheetId: string, meta: { tab: string; operator: st
   return out;
 }
 
-// Dispara Purchase na edge facebook-capi (Externo). Idempotente via event_id.
-async function firePurchase(lead: { id: string; email?: string | null; phone?: string | null; value: number }) {
+// Enfileira o Purchase em vez de mandar direto para a Meta (02/09/2026).
+// O envio direto pela edge morreu calado quando o app da Meta foi apagado:
+// aqui o erro ia para `fire_errors` no corpo da resposta, que ninguém lê num
+// cron de 10 em 10 minutos. Na fila ele fica visível e é retentado sozinho.
+async function firePurchase(lead: { id: string }) {
   try {
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/facebook-capi`, {
+    const resp = await fetch(`http://127.0.0.1:${process.env.PORT || 3000}/functions/meta-capi-enqueue`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        apikey: SUPABASE_SERVICE_ROLE_KEY,
+        'x-internal-key': process.env.LOOPBACK_TOKEN || '',
+        'x-api-key': process.env.API_KEY || '',
       },
-      body: JSON.stringify({
-        events: [{
-          event_name: 'Purchase',
-          event_id: `${lead.id}:Purchase`,
-          action_source: 'system_generated',
-          user_data: { em: lead.email || undefined, ph: lead.phone || undefined },
-          custom_data: { currency: 'BRL', value: lead.value || 0 },
-        }],
-      }),
+      body: JSON.stringify({ lead_id: lead.id, event_name: 'Purchase', origem: 'planilha' }),
     });
     const j: any = await resp.json().catch(() => ({}));
-    if (resp.ok && j?.success) return { ok: true, received: j.events_received as number };
-    return { ok: false, error: JSON.stringify(j).slice(0, 200) };
+    if (!resp.ok) return { ok: false, error: JSON.stringify(j).slice(0, 200) };
+    const r = j?.resultados?.[0];
+    // "ignorado" = lead sem e-mail nem telefone. Não é erro de envio: é lead
+    // que a Meta descartaria. Fica registrado na fila com o motivo.
+    return { ok: true, received: 0, situacao: r?.situacao, motivo: r?.motivo };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
@@ -321,13 +320,16 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     // 6c) Dispara Purchase (idempotente por carimbo) — matched closed + importados
-    let firedCount = 0, receivedCount = 0; const fireErrors: any[] = [];
+    let firedCount = 0; const fireErrors: any[] = [];
     if (doFire) {
       for (const c of convFromMatched) {
         const r = await firePurchase(c);
         if (!r.ok) { fireErrors.push({ lead_id: c.id, error: r.error }); continue; }
-        firedCount++; receivedCount += r.received || 0;
-        await ext.from('leads').update({ capi_purchase_sent_at: now }).eq('id', c.id);
+        firedCount++;
+        // `capi_purchase_sent_at` NÃO é carimbado aqui: enfileirado ainda não é
+        // enviado. Quem carimba é `meta-capi-dispatch`, depois do 200 da Meta.
+        // A idempotência desta função continua de pé pelo próprio carimbo (só
+        // entra na fila quem está sem ele) somada ao UNIQUE de `event_id`.
       }
     }
 
@@ -335,7 +337,8 @@ export const handler: RequestHandler = async (req, res) => {
       success: true, dry_run: false, board: board.name,
       imported_closed: importedCount, import_errors: importErrors.slice(0, 20),
       status_updated: updatedCount, update_errors: updateErrors.slice(0, 20),
-      purchases_fired: firedCount, events_received: receivedCount, fire_errors: fireErrors.slice(0, 20),
+      purchases_fired: firedCount, // enfileirados; o envio é do meta-capi-dispatch
+      fire_errors: fireErrors.slice(0, 20),
       tab_errors: tabErrors,
     });
   } catch (err) {

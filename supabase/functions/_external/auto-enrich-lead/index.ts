@@ -14,6 +14,7 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 const CLOUD_URL = Deno.env.get('CLOUD_FUNCTIONS_URL') || 'https://gliigkupoebmlbwyvijp.supabase.co';
 const CLOUD_ANON = Deno.env.get('CLOUD_ANON_KEY') || '';
+const RAILWAY_URL = Deno.env.get('RAILWAY_URL') || 'https://adscore-keeper-production.up.railway.app';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
@@ -322,13 +323,36 @@ REGRAS:
             to_status: cleaned.lead_status === 'unviable' ? 'inviavel' : cleaned.lead_status,
             reason: cleaned.lead_status_reason, changed_by: null, changed_by_type: 'ai'
           });
-          try {
-            fetch(`${CLOUD_URL}/functions/v1/facebook-capi`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CLOUD_ANON}` },
-              body: JSON.stringify({ lead_id, event_name: 'Lead', custom_data: { lead_event_source: 'lead_unqualified' } })
-            }).catch(()=>{});
-          } catch (_) {}
+          // Conversão para a Meta — só quando a IA fecha o lead.
+          //
+          // O que havia aqui estava quebrado em três níveis e nunca enviou nada:
+          //  1. mandava `{lead_id, event_name}` onde a edge exige `{events:[...]}`
+          //     → resposta 400 em 100% das vezes, engolida pelo `.catch(()=>{})`;
+          //  2. apontava para o Cloud, e a CAPI mora no Externo desde 23/07/2026;
+          //  3. mandava `Lead` também em `refused`/`unviable` — ensinar a Meta a
+          //     buscar mais gente parecida com quem foi RECUSADO é o oposto do
+          //     que se quer. Desfecho negativo agora não gera evento nenhum.
+          if (cleaned.lead_status === 'closed') {
+            try {
+              const railwayKey = Deno.env.get('RAILWAY_API_KEY') ?? '';
+              if (!railwayKey) {
+                console.warn('[auto-enrich] RAILWAY_API_KEY ausente: conversão do lead', lead_id, 'não foi enfileirada');
+              } else {
+                const r = await fetch(`${RAILWAY_URL}/functions/meta-capi-enqueue`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'x-api-key': railwayKey },
+                  body: JSON.stringify({ lead_id, event_name: 'Purchase', origem: 'auto_enrich' }),
+                });
+                if (!r.ok) {
+                  console.error('[auto-enrich] falha ao enfileirar conversão do lead', lead_id, await r.text());
+                }
+              }
+            } catch (err) {
+              // Falha aqui não pode derrubar o enriquecimento, mas também não
+              // pode sumir: era o silêncio que escondia o problema.
+              console.error('[auto-enrich] erro ao enfileirar conversão:', err);
+            }
+          }
         }
       }
     }

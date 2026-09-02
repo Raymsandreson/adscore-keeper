@@ -114,6 +114,16 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'sync-process-compromissos': 'external', // detector de compromissos + feed do sino (dados 100% no Externo)
   'sync-email-push': 'external', // parser do push por e-mail; a aba "Sem vínculo" chama o modo reprocessar ao vincular identificador
   'facebook-capi': 'external', // CAPI Purchase/Lead — migrada do Cloud (Lovable) p/ controle total de deploy+secrets; fallback → Cloud
+
+  // --- Meta CAPI com fila (02/09/2026) ---
+  // A edge `facebook-capi` acima manda direto e esquece: quando o app da Meta
+  // foi apagado (31/07/2026) a integração ficou muda por um mês. Estas duas
+  // ficam no Railway, onde já existe cron in-process e service role:
+  // `enqueue` grava a intenção (recebe só lead_id — PII não trafega pelo
+  // navegador) e `dispatch` drena a fila e carimba o resultado.
+  'meta-capi-enqueue': 'railway',
+  'meta-capi-dispatch': 'railway',
+  'meta-capi-status': 'railway',
   'create-whatsapp-group': 'external', // v12 com tokens de nome (lead_name_upper etc.); cópia do Cloud está desatualizada e criava grupo sem template
   'find-contact-groups': 'external', // instance_name deixou de ser obrigatório na busca por nome; lê instâncias/cache no Externo (onde de fato moram). Fallback → Cloud mantém a versão antiga.
   'sugerir-lancamento': 'external', // lê comprovante/ditado e propõe o lançamento; só existe no Externo

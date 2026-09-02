@@ -64,6 +64,9 @@ import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-p
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
 import { handler as bpcSheetSync } from './functions/bpc-sheet-sync';
 import { handler as syncFunnelStatusFromSheet } from './functions/sync-funnel-status-from-sheet';
+import { handler as metaCapiEnqueue } from './functions/meta-capi-enqueue';
+import { handler as metaCapiDispatch } from './functions/meta-capi-dispatch';
+import { handler as metaCapiStatus } from './functions/meta-capi-status';
 import { handler as syncHearingsFromSheet } from './functions/sync-hearings-from-sheet';
 import { handler as gmailInssSync } from './functions/gmail-inss-sync';
 import { handler as notifyInssUpdate } from './functions/notify-inss-update';
@@ -180,6 +183,9 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'wipe-instance-agent-labels': wipeInstanceAgentLabels,
   'bpc-sheet-sync': bpcSheetSync,
   'sync-funnel-status-from-sheet': syncFunnelStatusFromSheet,
+  'meta-capi-enqueue': metaCapiEnqueue, // conversão entra na fila (nada vai à rede aqui)
+  'meta-capi-dispatch': metaCapiDispatch, // drena a fila -> Graph API; modo probe checa a credencial
+  'meta-capi-status': metaCapiStatus, // leitura do painel (RLS barra o navegador)
   'sync-hearings-from-sheet': syncHearingsFromSheet,
   'transcode-audio-opus': transcodeAudioOpus,
   'extract-activity-from-document': extractActivityFromDocument,
@@ -866,3 +872,58 @@ async function runCelcoinSync() {
   }
 }
 setInterval(runCelcoinSync, 10 * 60 * 1000);
+
+// ============================================================
+// CRON: fila da Meta CAPI.
+//
+// Drena a cada 5 min e faz o probe da credencial de hora em hora.
+// O probe é a peça que faltava: em 31/07/2026 o app da Meta foi apagado e a
+// integração ficou muda por mais de um mês, porque o envio era
+// fire-and-forget e não havia nada medindo. Agora token morto aparece em
+// `meta_capi_status.token_valido` e no log, em horas.
+//
+// Desligar: comentar os dois setInterval abaixo (a fila acumula em `pending`,
+// nada se perde) e subir de novo.
+// ============================================================
+const CAPI_DRENA_MS = 5 * 60 * 1000;
+const CAPI_PROBE_MS = 60 * 60 * 1000;
+
+async function chamaCapi(corpo: Record<string, unknown>, rotulo: string) {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${PORT}/functions/meta-capi-dispatch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-internal-key': LOOPBACK_TOKEN, 'x-api-key': API_KEY },
+      body: JSON.stringify(corpo),
+    });
+    return (await resp.json().catch(() => ({}))) as any;
+  } catch (err) {
+    console.warn(`[cron:capi-${rotulo}] failed:`, err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+async function runCapiDispatch() {
+  const json = await chamaCapi({}, 'dispatch');
+  if (!json) return;
+  // Fila vazia é o caso comum: não polui o log.
+  if (json.drenados > 0 || json.falharam > 0 || json.error) {
+    console.log(
+      `[cron:capi-dispatch] drenados=${json.drenados ?? 0} falharam=${json.falharam ?? 0}` +
+        `${json.credencial_morta ? ' CREDENCIAL-MORTA' : ''}${json.error ? ` error=${json.error}` : ''}`,
+    );
+  }
+}
+
+async function runCapiProbe() {
+  const json = await chamaCapi({ modo: 'probe' }, 'probe');
+  if (!json) return;
+  if (json.token_valido === false || json.dataset_acessivel === false) {
+    console.error(`[cron:capi-probe] credencial da Meta CAPI com problema: ${json.erro || 'sem detalhe'}`);
+  }
+}
+
+// Escalonado dos demais crons de boot (60s/120s/180s).
+setTimeout(runCapiDispatch, 240_000);
+setInterval(runCapiDispatch, CAPI_DRENA_MS);
+setTimeout(runCapiProbe, 300_000);
+setInterval(runCapiProbe, CAPI_PROBE_MS);

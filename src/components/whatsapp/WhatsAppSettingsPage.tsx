@@ -6,9 +6,10 @@ import { ResizableSide } from '@/components/ui/resizable-side';
 
 import { 
   Webhook, BarChart3, Megaphone, ArrowLeft, 
-  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag, Building2
+  ChevronRight, Shield, Zap, ScrollText, Sparkles, Smartphone, Bell, Volume2, Users, Network, Brain, ClipboardCheck, Tag, Building2, Target
 } from 'lucide-react';
 import { OrganizationSettings } from '@/components/settings/OrganizationSettings';
+import { MetaCapiPanel } from '@/components/settings/MetaCapiPanel';
 
 import { OnboardingConfig } from './OnboardingConfig';
 
@@ -99,6 +100,13 @@ const tabs: Tab[] = [
     label: 'Anúncios',
     icon: <Megaphone className="h-5 w-5" />,
     description: 'Vincule instâncias a contas de anúncios',
+    accentColor: 'text-orange-500',
+  },
+  {
+    id: 'conversoes',
+    label: 'Conversões',
+    icon: <Target className="h-5 w-5" />,
+    description: 'O que foi enviado à Meta e o que falhou',
     accentColor: 'text-orange-500',
   },
   {
@@ -297,6 +305,7 @@ export function WhatsAppSettingsPage({ onBack, initialTab = 'instances' }: Props
             {activeTab === 'voice' && <VoiceSettings />}
             {activeTab === 'reports' && <WhatsAppReportSettings />}
             {activeTab === 'ads' && <WhatsAppAdLinkSettings />}
+            {activeTab === 'conversoes' && <MetaCapiPanel />}
             
             {activeTab === 'onboarding' && <OnboardingConfig onOpenAgents={() => setActiveTab('commands')} />}
             {activeTab === 'label-triggers' && <LabelTriggersConfig />}

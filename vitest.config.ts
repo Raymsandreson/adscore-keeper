@@ -8,7 +8,10 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // `railway-server` entra porque a normalização da Meta CAPI vive lá e é
+    // lógica pura cujo erro é invisível em produção (a Meta responde 200 e
+    // não casa ninguém).
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "railway-server/src/**/*.{test,spec}.ts"],
     // Fuso fixo no fuso de quem usa o sistema. Sem isto o resultado depende da
     // MÁQUINA: `format(new Date(iso), 'dd/MM HH:mm')` do date-fns imprime em
     // hora local, então uma sessão rodando em container UTC escreve o teste

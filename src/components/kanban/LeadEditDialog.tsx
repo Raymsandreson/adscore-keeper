@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { safeSelectValue } from '@/utils/selectValue';
 import { sendLeadConversionEvent } from '@/utils/metaConversionTracking';
-import { facebookCAPI } from '@/services/facebookCAPI';
+import { enfileiraConversao } from '@/services/metaCapiQueue';
 import { supabase } from '@/integrations/supabase/client';
 import { externalSupabase } from '@/integrations/supabase/external-client';
 import { useProfilesList } from '@/hooks/useProfilesList';
@@ -1903,22 +1903,14 @@ ${scrapeData.content || ''}
          if (!wasAlreadyClosed) {
            // Also update lead_status
            await externalSupabase.from('leads').update({ lead_status: 'closed' } as any).eq('id', currentLead.id);
-           // Envia conversão ao Meta via Pixel/CAPI (casa por email+telefone hasheados).
-           // Leads vêm de formulário, não de Click-to-WhatsApp: o path CTWA
-           // (metaConversionTracking) exigiria ctwa_clid e abortaria sem enviar nada.
-           facebookCAPI.sendPurchaseEvent({
+           // Conversão entra na fila da Meta CAPI. O valor digitado agora tem
+           // precedência; sem ele o servidor cai no conversion_value salvo e,
+           // se também faltar, na faixa de preço do produto do lead.
+           void enfileiraConversao({
              leadId: currentLead.id,
-             email: (currentLead as any).lead_email || undefined,
-             phone: (currentLead as any).lead_phone || undefined,
-             name: currentLead.lead_name || undefined,
-             // Valor digitado agora; se vazio, cai no que já estava salvo no lead.
-             value: parsedConversionValue ?? ((currentLead as any).conversion_value || 0),
-           }).then((result) => {
-             if (result.success) {
-               console.log('[Meta CAPI] Purchase (Pixel) enviado no fechamento do lead', currentLead.id);
-             } else {
-               console.warn('[Meta CAPI] Falha ao enviar Purchase no fechamento:', result.error);
-             }
+             evento: 'Purchase',
+             origem: 'kanban',
+             valor: parsedConversionValue ?? undefined,
            });
             // Rename WhatsApp group with closed prefix + sync participants/contacts
             if ((currentLead as any).whatsapp_group_id) {
