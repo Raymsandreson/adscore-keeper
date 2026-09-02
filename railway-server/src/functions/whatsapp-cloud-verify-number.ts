@@ -61,7 +61,15 @@ export const handler: RequestHandler = async (req, res) => {
   try {
     if (action === 'status') {
       const cur = await readStatus();
-      res.status(200).json({ success: cur.http < 400, action, number: cur.body });
+      // Só a forma do PIN, nunca o valor: dá pra confirmar que o Railway
+      // reiniciou lendo a variável certa sem que os 6 dígitos apareçam.
+      const pinEnv = String(process.env.WHATSAPP_CLOUD_REGISTER_PIN || '').trim();
+      res.status(200).json({
+        success: cur.http < 400,
+        action,
+        number: cur.body,
+        pin: { definido: Boolean(pinEnv), seis_digitos: /^\d{6}$/.test(pinEnv) },
+      });
       return;
     }
 
