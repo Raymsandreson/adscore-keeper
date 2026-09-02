@@ -22,7 +22,7 @@ import {
 } from '@/lib/whatsappMessageActivities';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { WhatsAppAvatar } from './WhatsAppAvatar';
-import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
+import { ehInstanciaCloud, rotuloDaLinha } from '@/lib/cloudApiInstances';
 
 interface LeadInfo {
   id: string;
@@ -105,6 +105,18 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
   const [search, setSearch] = useState('');
   const [loadingMore, setLoadingMore] = useState(false);
   const loadingMoreRef = useRef(false);
+
+  // Quantas linhas Cloud diferentes aparecem na lista. Com duas ou mais, cada
+  // conversa precisa dizer por qual número entrou — senão "Todas as linhas" vira
+  // uma pilha onde não dá para saber quem falou com quem.
+  const linhasCloudNaLista = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of conversations) {
+      if (ehInstanciaCloud(c.instance_name)) s.add((c.instance_name || '').trim().toLowerCase());
+    }
+    return s;
+  }, [conversations]);
+  const mostrarLinhaNaConversa = linhasCloudNaLista.size > 1;
 
   // Scroll infinito: chegando perto do fim da lista, pede a próxima página
   // de conversas ao servidor (keyset por instância — histórico completo
@@ -1063,6 +1075,19 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                     <span className="truncate">{label.name}</span>
                   </span>
                 ))}
+                {mostrarLinhaNaConversa && ehInstanciaCloud(conv.instance_name) && (
+                  <span
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.5 rounded font-medium",
+                      isSelected
+                        ? "bg-primary-foreground/20 text-primary-foreground"
+                        : "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                    )}
+                    title={`Recebida pela linha ${rotuloDaLinha(conv.instance_name)}`}
+                  >
+                    {rotuloDaLinha(conv.instance_name)}
+                  </span>
+                )}
                 {ehInstanciaCloud(conv.instance_name) && (
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-medium",

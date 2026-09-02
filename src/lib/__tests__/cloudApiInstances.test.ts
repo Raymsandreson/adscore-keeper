@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ehInstanciaCloud, nomesInstanciasCloud, TOKEN_CLOUD_API } from '../cloudApiInstances';
+import { ehInstanciaCloud, nomesInstanciasCloud, rotuloDaLinha, TOKEN_CLOUD_API } from '../cloudApiInstances';
 
 describe('ehInstanciaCloud', () => {
   it('reconhece a linha renomeada e a segunda linha', () => {
@@ -29,5 +29,22 @@ describe('ehInstanciaCloud', () => {
   it('expõe o marcador usado em whatsapp_instances.instance_token', () => {
     expect(TOKEN_CLOUD_API).toBe('cloud_api_meta');
     expect(nomesInstanciasCloud()).toContain('abraci');
+  });
+});
+
+describe('rotuloDaLinha', () => {
+  it('troca underline por espaço e capitaliza', () => {
+    expect(rotuloDaLinha('abraci')).toBe('Abraci');
+    expect(rotuloDaLinha('prudencio_advogados')).toBe('Prudencio Advogados');
+  });
+
+  it('normaliza caixa vinda do banco', () => {
+    expect(rotuloDaLinha('ABRACI')).toBe('Abraci');
+  });
+
+  it('tolera vazio e nulo', () => {
+    expect(rotuloDaLinha('')).toBe('');
+    expect(rotuloDaLinha(null)).toBe('');
+    expect(rotuloDaLinha(undefined)).toBe('');
   });
 });

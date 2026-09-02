@@ -288,18 +288,20 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       // Linha Cloud forçada: força TODAS as linhas Cloud, não só a de nome igual.
       // Pelo nome, a renomeação de `cloud_gerencia` para `abraci` (e a segunda
       // linha) deixariam a página de WhatsApp API vazia sem nenhum erro.
+      // Nome forçado que é linha Cloud significa "a página do canal Cloud", e aí
+      // valem TODAS as linhas Cloud — não só a de nome igual. Pelo nome, renomear
+      // a linha ou cadastrar a segunda deixaria a página vazia, sem erro nenhum.
       const forcandoCloud = ehInstanciaCloud(forcedName);
-      const filtroForcado = forcandoCloud
-        ? `instance_token.eq.${TOKEN_CLOUD_API}`
-        : `instance_name.ilike.${forcedName}`;
 
-      if (forcedName && allowedIds.length > 0) {
-        // Inclui IDs permitidos OU a(s) instância(s) forçada(s)
-        query = query.or(`id.in.(${allowedIds.join(',')}),${filtroForcado}`);
+      if (forcandoCloud) {
+        // SÓ linhas Cloud: misturar as instâncias UazAPI do usuário aqui faria
+        // "Todas as linhas" trazer conversa de outro canal para dentro da caixa.
+        query = query.eq('instance_token', TOKEN_CLOUD_API);
+      } else if (forcedName && allowedIds.length > 0) {
+        // Inclui IDs permitidos OU a instância forçada (por nome, case-insensitive)
+        query = query.or(`id.in.(${allowedIds.join(',')}),instance_name.ilike.${forcedName}`);
       } else if (forcedName) {
-        query = forcandoCloud
-          ? query.eq('instance_token', TOKEN_CLOUD_API)
-          : query.ilike('instance_name', forcedName);
+        query = query.ilike('instance_name', forcedName);
       } else {
         query = query.in('id', allowedIds);
       }

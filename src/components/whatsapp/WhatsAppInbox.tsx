@@ -72,7 +72,7 @@ import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/wha
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
-import { ehInstanciaCloud, carregarInstanciasCloud } from '@/lib/cloudApiInstances';
+import { ehInstanciaCloud, carregarInstanciasCloud, rotuloDaLinha } from '@/lib/cloudApiInstances';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -228,6 +228,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     () => _allInstances.some(i => isCloudApiInstance(i.instance_name)),
     [_allInstances]
   );
+  // Linhas Cloud disponíveis: alimentam o seletor de linha da caixa WhatsApp API.
+  const cloudInstances = useMemo(
+    () => _allInstances.filter(i => isCloudApiInstance(i.instance_name)),
+    [_allInstances]
+  );
   const { statuses, disconnectedInstances, loading: statusLoading, refetchStatus } = useWhatsAppInstanceStatus(instances.length > 0);
   const [dismissedAlert, setDismissedAlert] = useState(false);
   const [reconnectInstance, setReconnectInstance] = useState<{ id: string; name: string } | null>(null);
@@ -343,13 +348,16 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       // 0. lockInstanceName (prop) tem prioridade absoluta — modo embed (ex: WhatsApp API)
       if (lockInstanceName) {
         const target = lockInstanceName.trim().toLowerCase();
-        // Nome exato primeiro; se ele não existir mais (linha renomeada), cai em
-        // qualquer linha Cloud — a página nunca fica vazia por causa do nome.
-        const locked =
-          instances.find(i => (i.instance_name || '').trim().toLowerCase() === target) ||
-          (ehInstanciaCloud(target) ? instances.find(i => ehInstanciaCloud(i.instance_name)) : undefined);
-        if (locked) {
-          setSelectedInstanceId(locked.id);
+        if (ehInstanciaCloud(target)) {
+          // Com mais de uma linha Cloud, abrir fixado numa esconderia as conversas
+          // da outra sem nenhum aviso — que é justamente o que o seletor evita.
+          const cloud = instances.filter(i => ehInstanciaCloud(i.instance_name));
+          setSelectedInstanceId(cloud.length === 1 ? cloud[0].id : 'all');
+        } else {
+          const locked = instances.find(
+            i => (i.instance_name || '').trim().toLowerCase() === target,
+          );
+          if (locked) setSelectedInstanceId(locked.id);
         }
         setDefaultInstanceApplied(true);
         return;
@@ -1864,6 +1872,32 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
                   </SelectItem>
                 );
               })}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Seletor de linha Cloud. Só aparece quando há o que escolher — com uma
+            linha só, um dropdown de um item é ruído. */}
+        {inboxTab === 'cloud_api' && cloudInstances.length > 1 && (
+          <Select
+            value={selectedInstanceId ?? 'all'}
+            onValueChange={(val) => {
+              setSelectedInstanceId(val);
+              setSelectedPhone(null);
+              setSelectedInstance(null);
+            }}
+          >
+            <SelectTrigger className="w-44 h-8 text-xs ml-0 md:ml-2">
+              <Smartphone className="h-3.5 w-3.5 mr-1.5 text-muted-foreground shrink-0" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as linhas</SelectItem>
+              {cloudInstances.map(inst => (
+                <SelectItem key={inst.id} value={inst.id}>
+                  {rotuloDaLinha(inst.instance_name)}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
         )}

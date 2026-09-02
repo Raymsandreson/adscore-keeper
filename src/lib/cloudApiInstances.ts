@@ -59,3 +59,18 @@ export function carregarInstanciasCloud(): Promise<void> {
   })();
   return carregando;
 }
+
+/**
+ * Nome da linha como a equipe lê: `prudencio_advogados` → "Prudencio Advogados".
+ * `whatsapp_instances` não tem coluna de rótulo, então o nome interno é tudo que
+ * temos — mas ele não precisa aparecer cru na tela.
+ */
+export function rotuloDaLinha(nome?: string | null): string {
+  const n = (nome || '').trim();
+  if (!n) return '';
+  return n
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((p) => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase())
+    .join(' ');
+}
