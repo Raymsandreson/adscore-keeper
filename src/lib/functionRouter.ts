@@ -74,7 +74,8 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'suggest-revision-reason': 'railway', // POP: IA sugere motivo+categoria da revisão a partir do diff
   'wipe-instance-agent-labels': 'railway',
   'bpc-sheet-sync': 'railway',
-  'report-query': 'railway', // gerador de relatórios por IA (NL→SQL read-only)
+  'report-query': 'railway', // Relatórios: analista por IA (conversa + NL→SQL read-only)
+  'report-conversations': 'railway', // Relatórios: lista/abre/renomeia/apaga as conversas gravadas
   'performance-coach': 'railway', // coach do telão /tv/atividades (análise + mensagem Corrida Maluca)
   'extract-acordo-from-ata': 'railway', // IA lê ata de audiência e extrai o acordo homologado
   'jm-documento-url': 'railway', // URL assinada de peça dos autos (bucket privado jm-autos)
