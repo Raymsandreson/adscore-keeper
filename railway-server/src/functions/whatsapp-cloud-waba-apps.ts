@@ -18,6 +18,12 @@
  *  - assign_user : grava as tasks de um usuário na WABA
  *  - phones      : estado completo de cada número da WABA (registro, verificação,
  *                  qualidade, nome) + o perfil de negócio de um número. Só LÊ.
+ *  - set_business_profile : sobe a foto de perfil (Resumable Upload API) e grava
+ *                  o perfil de negócio do número. A foto NÃO vai como URL nem
+ *                  como base64 direto: a Meta exige sessão de upload no App,
+ *                  que devolve um handle, e é o handle que entra no perfil.
+ *                  Upload usa app access token; o perfil usa o token do System
+ *                  User — são credenciais diferentes no mesmo fluxo.
  *  - webhook_status : para cada App, diz se existe callback de webhook, para
  *                  onde ele aponta e quais campos estão assinados. É a única
  *                  forma de responder "o webhook está configurado?" sem
@@ -102,6 +108,100 @@ export const handler: RequestHandler = async (req, res) => {
     }
 
     res.status(200).json({ success: true, action, secrets_na_lista: APP_SECRETS.length, apps });
+    return;
+  }
+
+  // Também é config de número, não de WABA — passa antes da exigência de waba_id.
+  if (action === 'set_business_profile') {
+    const phoneNumberId = String(body.phone_number_id || '').trim();
+    const appId = String(body.app_id || '').trim();
+    if (!phoneNumberId) {
+      res.status(400).json({ success: false, error: 'phone_number_id obrigatório' });
+      return;
+    }
+
+    const passos: any[] = [];
+    let handle: string | null = null;
+    const authSU = { Authorization: `Bearer ${TOKEN}` };
+
+    // 1) Foto, se veio. Resumable Upload API, em duas chamadas.
+    if (body.image_base64 && appId) {
+      const bin = Buffer.from(String(body.image_base64), 'base64');
+      const fileName = String(body.file_name || 'avatar.png');
+      const fileType = String(body.file_type || 'image/png');
+
+      let appToken: string | null = null;
+      for (const sec of APP_SECRETS) {
+        const probe = await fetch(
+          `${GRAPH}/${API_VERSION}/${appId}/subscriptions?access_token=${encodeURIComponent(`${appId}|${sec}`)}`,
+        );
+        const pj: any = await probe.json();
+        if (!pj?.error) { appToken = `${appId}|${sec}`; break; }
+      }
+      if (!appToken) {
+        res.status(200).json({ success: false, error: 'nenhum App Secret da lista abre o app_id informado' });
+        return;
+      }
+
+      const sessUrl = `${GRAPH}/${API_VERSION}/${appId}/uploads?file_name=${encodeURIComponent(fileName)}`
+        + `&file_length=${bin.length}&file_type=${encodeURIComponent(fileType)}`
+        + `&access_token=${encodeURIComponent(appToken)}`;
+      const sessResp = await fetch(sessUrl, { method: 'POST' });
+      const sess: any = await sessResp.json();
+      passos.push({ passo: 'sessao_upload', ok: !sess?.error, id: sess?.id, erro: sess?.error?.message });
+      if (sess?.error || !sess?.id) {
+        res.status(200).json({ success: false, error: sess?.error?.message || 'falha abrindo sessão de upload', passos });
+        return;
+      }
+
+      const upResp = await fetch(`${GRAPH}/${API_VERSION}/${sess.id}`, {
+        method: 'POST',
+        headers: {
+          Authorization: `OAuth ${appToken}`,
+          file_offset: '0',
+          'Content-Type': 'application/octet-stream',
+        },
+        body: bin,
+      });
+      const up: any = await upResp.json();
+      passos.push({ passo: 'upload', ok: !up?.error && !!up?.h, erro: up?.error?.message });
+      if (up?.error || !up?.h) {
+        res.status(200).json({ success: false, error: up?.error?.message || 'falha no upload da imagem', passos });
+        return;
+      }
+      handle = up.h;
+    }
+
+    // 2) Perfil de negócio. Só manda o que veio — campo ausente fica como está.
+    const perfil: Record<string, unknown> = { messaging_product: 'whatsapp' };
+    if (handle) perfil.profile_picture_handle = handle;
+    for (const campo of ['about', 'address', 'description', 'email', 'vertical'] as const) {
+      if (body[campo] !== undefined) perfil[campo] = body[campo];
+    }
+    if (Array.isArray(body.websites)) perfil.websites = body.websites;
+
+    const prResp = await fetch(`${GRAPH}/${API_VERSION}/${phoneNumberId}/whatsapp_business_profile`, {
+      method: 'POST',
+      headers: { ...authSU, 'Content-Type': 'application/json' },
+      body: JSON.stringify(perfil),
+    });
+    const pr: any = await prResp.json();
+    passos.push({ passo: 'perfil', ok: !pr?.error, erro: pr?.error?.message, code: pr?.error?.code });
+
+    // Relê: a resposta do POST é só {success:true}, não prova o que ficou gravado.
+    const conf = await fetch(
+      `${GRAPH}/${API_VERSION}/${phoneNumberId}/whatsapp_business_profile?fields=about,description,email,profile_picture_url,websites,vertical`,
+      { headers: authSU },
+    );
+    const cj: any = await conf.json();
+
+    res.status(200).json({
+      success: !pr?.error,
+      action,
+      error: pr?.error?.message,
+      passos,
+      perfil_agora: cj?.error ? { erro: cj.error.message } : (cj?.data || [])[0] || null,
+    });
     return;
   }
 
