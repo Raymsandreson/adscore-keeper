@@ -6198,6 +6198,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       <CloudTemplateDialog
         open={showTemplateDialog}
         onOpenChange={setShowTemplateDialog}
+        instanceName={effectiveInstanceName}
         sugestoes={[
           primeiroNome(conversation.contact_name),
           primeiroNome(profile?.full_name),

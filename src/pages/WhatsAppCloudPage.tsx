@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { Loader2, Plus, RefreshCw, Trash2, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { useProfilesList } from '@/hooks/useProfilesList';
+import { rotuloDaLinha } from '@/lib/cloudApiInstances';
 
 interface Rule {
   id?: string;
@@ -25,6 +26,7 @@ interface Rule {
 
 interface Config {
   id?: string;
+  instance_name?: string | null;
   phone_number_id: string;
   waba_id: string;
   display_phone?: string | null;
@@ -32,6 +34,8 @@ interface Config {
   status?: string;
   last_heartbeat_at?: string | null;
 }
+
+const linhaVazia: Config = { instance_name: '', phone_number_id: '', waba_id: '', display_phone: '', display_name: '' };
 
 const emptyRule: Rule = {
   name: '',
@@ -46,8 +50,12 @@ export default function WhatsAppCloudPage() {
   const { toast } = useToast();
   const profiles = useProfilesList();
   const [loading, setLoading] = useState(true);
-  const [config, setConfig] = useState<Config | null>(null);
-  const [configDraft, setConfigDraft] = useState<Config>({ phone_number_id: '', waba_id: '' });
+  const [configs, setConfigs] = useState<Config[]>([]);
+  const [configDraft, setConfigDraft] = useState<Config>(linhaVazia);
+  const config = useMemo(
+    () => configs.find((c) => c.id && c.id === configDraft.id) || null,
+    [configs, configDraft.id],
+  );
   const [rules, setRules] = useState<Rule[]>([]);
   const [log, setLog] = useState<any[]>([]);
   const [editingRule, setEditingRule] = useState<Rule | null>(null);
@@ -63,8 +71,10 @@ export default function WhatsAppCloudPage() {
     try {
       const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', { body: { action: 'overview' } });
       if (data?.success) {
-        setConfig(data.config || null);
-        setConfigDraft(data.config || { phone_number_id: '', waba_id: '' });
+        const linhas: Config[] = data.configs || (data.config ? [data.config] : []);
+        setConfigs(linhas);
+        // Mantém a linha aberta depois de salvar; só cai na primeira se ela sumiu.
+        setConfigDraft((atual) => linhas.find((c) => c.id === atual.id) || linhas[0] || linhaVazia);
         setRules(data.rules || []);
         setLog(data.log || []);
       }
@@ -82,8 +92,11 @@ export default function WhatsAppCloudPage() {
     const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', {
       body: { action: 'save_config', ...configDraft },
     });
-    if (data?.success) { toast({ title: 'Configuração salva' }); load(); }
-    else toast({ title: 'Erro', description: data?.error, variant: 'destructive' });
+    if (data?.success) {
+      toast({ title: 'Linha salva', description: 'As outras linhas ativas continuam como estavam.' });
+      setConfigDraft((atual) => ({ ...atual, id: data.config?.id || atual.id }));
+      load();
+    } else toast({ title: 'Erro', description: data?.error, variant: 'destructive' });
   };
 
   const saveRule = async () => {
@@ -99,7 +112,7 @@ export default function WhatsAppCloudPage() {
     // 1) Valida se o Phone Number ID salvo bate com o que está na WABA
     if (!skipValidation) {
       const { data: v } = await cloudFunctions.invoke('whatsapp-cloud-admin', {
-        body: { action: 'validate_phone_number_id' },
+        body: { action: 'validate_phone_number_id', phone_number_id: configDraft.phone_number_id },
       });
       const validation = v?.validation;
       if (v?.success && validation && validation.matches === false) {
@@ -121,7 +134,9 @@ export default function WhatsAppCloudPage() {
       }
     }
 
-    const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', { body: { action: 'check_meta_status' } });
+    const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', {
+      body: { action: 'check_meta_status', phone_number_id: configDraft.phone_number_id },
+    });
     if (data?.success) {
       const meta = data.meta || {};
       toast({
@@ -139,10 +154,24 @@ export default function WhatsAppCloudPage() {
           ? 'Salve a configuração (phone_number_id e waba_id) antes.'
           : err.includes('phone_number_id_mismatch')
           ? 'O Phone Number ID salvo não pertence à WABA configurada.'
+          : err.includes('ambiguous_config')
+          ? 'Há mais de uma linha ativa: escolha qual no seletor antes de consultar.'
           : err,
         variant: 'destructive',
       });
     }
+  };
+
+  const desativarLinha = async (id: string) => {
+    const alvo = configs.find((c) => c.id === id);
+    const nome = rotuloDaLinha(alvo?.instance_name) || alvo?.display_phone || id.slice(0, 8);
+    if (!window.confirm(`Desativar a linha ${nome}? Ela para de enviar e some da caixa, mas o histórico fica.`)) return;
+    const { data } = await cloudFunctions.invoke('whatsapp-cloud-admin', { body: { action: 'deactivate_config', id } });
+    if (data?.success) {
+      toast({ title: 'Linha desativada', description: `Restam ${data.ativos_restantes ?? '?'} linha(s) ativa(s).` });
+      setConfigDraft(linhaVazia);
+      load();
+    } else toast({ title: 'Erro', description: data?.error, variant: 'destructive' });
   };
 
   const deleteRule = async (rule_id: string) => {
@@ -155,8 +184,8 @@ export default function WhatsAppCloudPage() {
     <div className="container mx-auto p-4 space-y-6 max-w-6xl">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">WhatsApp Cloud — Número de Gerência</h1>
-          <p className="text-sm text-muted-foreground">Porta de entrada única via Meta oficial. Distribui leads entre atendentes.</p>
+          <h1 className="text-2xl font-bold">WhatsApp Cloud — Linhas e roteamento</h1>
+          <p className="text-sm text-muted-foreground">Números oficiais da Meta. Cada linha tem caixa própria e as regras distribuem os leads entre atendentes.</p>
         </div>
         <Button variant="outline" size="sm" onClick={load} disabled={loading}>
           <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} /> Atualizar
@@ -164,14 +193,44 @@ export default function WhatsAppCloudPage() {
       </header>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+        <CardHeader className="space-y-3">
+          <CardTitle className="flex items-center gap-2 flex-wrap">
             {config ? <ShieldCheck className="h-5 w-5 text-emerald-500" /> : <ShieldAlert className="h-5 w-5 text-amber-500" />}
-            Configuração Meta
+            {config ? 'Linha conectada' : 'Nova linha'}
             {config?.status && <Badge variant="outline">{config.status}</Badge>}
           </CardTitle>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Select
+              value={configDraft.id || 'nova'}
+              onValueChange={(v) => setConfigDraft(v === 'nova' ? linhaVazia : configs.find((c) => c.id === v) || linhaVazia)}
+            >
+              <SelectTrigger className="w-full sm:w-[320px]"><SelectValue placeholder="Escolha a linha" /></SelectTrigger>
+              <SelectContent>
+                {configs.map((c) => (
+                  <SelectItem key={c.id} value={c.id || 'sem-id'}>
+                    {rotuloDaLinha(c.instance_name) || 'Sem nome'} — {c.display_phone || c.phone_number_id}
+                  </SelectItem>
+                ))}
+                <SelectItem value="nova">+ Adicionar linha</SelectItem>
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground">
+              {configs.length} {configs.length === 1 ? 'linha ativa' : 'linhas ativas'}
+            </span>
+          </div>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label>Nome da linha</Label>
+            <Input
+              value={configDraft.instance_name || ''}
+              onChange={(e) => setConfigDraft({ ...configDraft, instance_name: e.target.value })}
+              placeholder="prudencio_advogados"
+            />
+            <p className="text-xs text-muted-foreground">
+              É o que carimba cada mensagem e separa as caixas. Minúsculas, números e <code>_</code>. Não mude depois de ter conversa.
+            </p>
+          </div>
           <div className="space-y-2">
             <Label>Phone Number ID</Label>
             <Input value={configDraft.phone_number_id} onChange={(e) => setConfigDraft({ ...configDraft, phone_number_id: e.target.value })} placeholder="123456789012345" />
@@ -192,11 +251,16 @@ export default function WhatsAppCloudPage() {
             <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
               Os secrets <code>WHATSAPP_CLOUD_ACCESS_TOKEN</code>, <code>WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN</code> e <code>WHATSAPP_CLOUD_APP_SECRET</code> precisam estar configurados nos servidores antes de o webhook funcionar.
             </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => checkMetaStatus()} disabled={!config?.phone_number_id}>
+            <div className="flex gap-2 flex-wrap">
+              {config?.id && configs.length > 1 && (
+                <Button variant="outline" onClick={() => desativarLinha(config.id!)}>
+                  Desativar linha
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => checkMetaStatus()} disabled={!configDraft.phone_number_id}>
                 <RefreshCw className="h-4 w-4 mr-2" /> Consultar status na Meta
               </Button>
-              <Button onClick={saveConfig}>Salvar configuração</Button>
+              <Button onClick={saveConfig}>{config ? 'Salvar linha' : 'Criar linha'}</Button>
             </div>
           </div>
 

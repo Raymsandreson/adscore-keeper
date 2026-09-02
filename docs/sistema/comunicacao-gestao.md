@@ -278,7 +278,15 @@ Antes existia uma linha só, chamada `cloud_gerencia`, e esse nome vivia hardcod
 
 **Seletor de linha** (`/whatsapp-api/conversas`): a barra ganha um dropdown "Todas as linhas" + uma entrada por linha, e ele **só aparece com 2+ linhas** — dropdown de um item é ruído. Com mais de uma linha a caixa abre em "Todas", porque abrir fixado numa esconderia as conversas da outra sem aviso. Quando duas ou mais linhas aparecem na lista, cada conversa ganha um selo cinza com o nome da linha (`rotuloDaLinha`), ao lado do selo azul do dono — sem isso "Todas as linhas" vira uma pilha onde não dá para saber por qual número a pessoa falou. `lockInstanceName` com nome de linha Cloud passou a significar "trava no CANAL Cloud", não naquela linha.
 
-**Para adicionar um número** (ex: Prudêncio Advogados, `prudencio_advogados`): (1) linha em `whatsapp_cloud_config` com `instance_name`; (2) linha em `whatsapp_instances` com `instance_token='cloud_api_meta'`; (3) app secret do App daquela WABA acrescentado à lista; (4) webhook do App apontando pro nosso Railway. **Pegadinha**: a edge `whatsapp-cloud-admin` (tela de config) ainda não manda `instance_name` no `save_config` — por isso a coluna aceita nulo, e cadastrar linha nova é por SQL até ela ser atualizada (deploy só pelo Lovable).
+**Para adicionar um número** (ex: Prudêncio Advogados, `prudencio_advogados`): (1) linha em `whatsapp_cloud_config` com `instance_name` — pela tela `/whatsapp-cloud`, no seletor "+ Adicionar linha"; (2) linha em `whatsapp_instances` com `instance_token='cloud_api_meta'`; (3) app secret do App daquela WABA acrescentado à lista (vírgula separa, **trocar derruba a outra WABA**); (4) webhook do App apontando pro nosso Railway.
+
+**A tela de config era singleton, e isso era uma armadilha** (corrigido em 02/09/2026). `whatsapp-cloud-admin` tratava `whatsapp_cloud_config` como linha única em três pontos, e cada um quebrava de um jeito diferente assim que existisse um segundo número:
+
+- `overview` lia com `maybeSingle()`. Medido contra o banco real: com mais de uma linha o PostgREST devolve **HTTP 406 / `PGRST116`**, não a primeira linha — o painel receberia `config: null` e apareceria vazio, como se nada estivesse configurado.
+- `save_config` **desativava todas as linhas ativas e inseria outra**. Cadastrar a Prudêncio pela tela desligaria a ABRACI, silenciosamente. É o que já tinha acontecido: a tabela guardava 7 linhas para 2 números, 6 delas mortas, cada uma um "Salvar" anterior.
+- `check_meta_status` tinha o mesmo `maybeSingle()`.
+
+Hoje: `overview` devolve `configs` (todas as ativas) e mantém `config` só por compatibilidade com o `WhatsAppApiPage`; `save_config` **atualiza a linha** (por `id`, ou pelo `phone_number_id` quando é a primeira vez) e não toca nas vizinhas; desligar virou ação explícita (`deactivate_config`, com confirmação na tela e só quando há mais de uma linha); `check_meta_status` aceita `phone_number_id` e recusa com `ambiguous_config` em vez de escolher sozinho. A tela ganhou seletor de linha, campo **Nome da linha** e o botão vira "Criar linha" quando é nova.
 
 **Estado das WABAs**: a da ABRACI (`458751397321968`) **não** tem o nosso App inscrito — tem "Dashboard de Marketing Digital" (da BM1) e Kommo; o inbound chega porque o webhook do App da BM1 aponta pra cá. A da WhatsJudd (`1495255778900978`) tem o `BussinesMessagerAPI` (nosso).
 
@@ -294,7 +302,7 @@ Fora de 24h desde a **última mensagem do cliente**, a Meta só entrega **templa
 
 ### Templates
 
-- **Listagem para a tela**: Railway `whatsapp-cloud-templates` (read-only). Não aceita `waba_id` do chamador — resolve pela config ativa, para usuário logado não conseguir sondar WABA de terceiro. Devolve **todos** com o status: lista vazia porque tudo está `PENDING` é informação que some se filtrar no servidor.
+- **Listagem para a tela**: Railway `whatsapp-cloud-templates` (read-only). Recebe o `instance_name` da conversa e resolve a WABA por ele; **não** aceita `waba_id` do chamador, para usuário logado não conseguir sondar WABA de terceiro. Template é **por WABA**: oferecer a lista da ABRACI numa conversa da Prudêncio faria a Meta recusar no envio. Devolve **todos** com o status: lista vazia porque tudo está `PENDING` é informação que some se filtrar no servidor.
 - **Criação/administração**: Railway `whatsapp-cloud-waba-apps` (ações `templates`, `create_template`, `list`/`subscribe`/`unsubscribe`, `users`, `assign_user`). É função administrativa — **não** expor ao front: `unsubscribe` derruba o webhook da WABA.
 - **Envio**: `send-whatsapp-cloud` com `template_name`, `template_language`, `template_params` (preenchem `{{1}}`, `{{2}}`… em ordem). `template_body_text` leva o texto **já renderizado**, que é o que fica gravado em `whatsapp_messages.message_text`; o nome do template fica em `metadata.template`. Sem ele, a conversa mostraria `[template: nome]`.
 - Template **não** recebe prefixo de remetente: o corpo é o aprovado pela Meta e qualquer texto a mais faria a bolha mentir sobre o que foi entregue.

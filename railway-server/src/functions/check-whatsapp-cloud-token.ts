@@ -38,17 +38,25 @@ export const handler: RequestHandler = async (req, res) => {
     });
   }
 
-  // 1) Lookup phone_number_id ativo
+  // 1) Lookup das linhas ativas. maybeSingle() aqui devolvia erro (e config
+  // nenhuma) assim que existisse mais de um número — o diagnóstico perdia o
+  // número justamente quando havia mais coisa pra diagnosticar.
   let phoneNumberId: string | null = null;
   let displayPhone: string | null = null;
+  let linhas: Array<{ instance_name: string | null; phone_number_id: string; display_phone: string | null }> = [];
   try {
-    const { data: cfg } = await supabase
+    const { data: cfgs } = await supabase
       .from('whatsapp_cloud_config')
-      .select('phone_number_id, display_phone, display_name, waba_id')
+      .select('instance_name, phone_number_id, display_phone, display_name, waba_id')
       .eq('is_active', true)
-      .maybeSingle();
-    phoneNumberId = (cfg as any)?.phone_number_id || null;
-    displayPhone = (cfg as any)?.display_phone || null;
+      .order('instance_name');
+    linhas = ((cfgs as any[]) || []).map((c) => ({
+      instance_name: c.instance_name || null,
+      phone_number_id: c.phone_number_id,
+      display_phone: c.display_phone || null,
+    }));
+    phoneNumberId = linhas[0]?.phone_number_id || null;
+    displayPhone = linhas[0]?.display_phone || null;
   } catch (e) {
     // segue mesmo sem config — checa só o token
   }
@@ -210,6 +218,7 @@ export const handler: RequestHandler = async (req, res) => {
     never_expires: neverExpires,
     phone_number_id: phoneNumberId,
     display_phone: displayPhone,
+    linhas,
     phone_check: phoneCheck,
     checked_at: new Date().toISOString(),
   });

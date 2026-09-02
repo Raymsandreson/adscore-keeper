@@ -25,6 +25,8 @@ import {
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Linha da conversa: template é por WABA, e cada linha tem a sua. */
+  instanceName?: string | null;
   /** Valores iniciais das variáveis, na ordem ({{1}}, {{2}}...). */
   sugestoes?: string[];
   /** Devolve `true` quando o envio deu certo — aí o diálogo fecha sozinho. */
@@ -36,7 +38,7 @@ interface Props {
   }) => Promise<boolean>;
 }
 
-export function CloudTemplateDialog({ open, onOpenChange, sugestoes, onEnviar }: Props) {
+export function CloudTemplateDialog({ open, onOpenChange, instanceName, sugestoes, onEnviar }: Props) {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [todos, setTodos] = useState<CloudTemplate[]>([]);
@@ -50,7 +52,7 @@ export function CloudTemplateDialog({ open, onOpenChange, sugestoes, onEnviar }:
     setCarregando(true);
     setErro(null);
     cloudFunctions
-      .invoke('whatsapp-cloud-templates', { body: {} })
+      .invoke('whatsapp-cloud-templates', { body: { instance_name: instanceName || undefined } })
       .then(({ data, error }) => {
         if (!vivo) return;
         if (error) throw error;
@@ -60,7 +62,7 @@ export function CloudTemplateDialog({ open, onOpenChange, sugestoes, onEnviar }:
       .catch((e: any) => vivo && setErro(e?.message || 'Falha lendo os templates'))
       .finally(() => vivo && setCarregando(false));
     return () => { vivo = false; };
-  }, [open]);
+  }, [open, instanceName]);
 
   const aprovados = useMemo(() => templatesEnviaveis(todos), [todos]);
   const emAnalise = useMemo(

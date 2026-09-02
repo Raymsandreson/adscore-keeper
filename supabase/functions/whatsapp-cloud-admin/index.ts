@@ -1,4 +1,4 @@
-// Edge function: CRUD de configuração e regras de roteamento do número de gerência (Meta Cloud API).
+// Edge function: CRUD das linhas (uma por número) e das regras de roteamento da Meta Cloud API.
 // Lê/escreve no Supabase Externo (regra do projeto).
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
@@ -42,29 +42,74 @@ Deno.serve(async (req) => {
 
   try {
     if (action === 'overview') {
-      const [{ data: config }, { data: rules }, { data: log }] = await Promise.all([
-        db.from('whatsapp_cloud_config').select('*').eq('is_active', true).maybeSingle(),
+      // Multi-linha: com dois números ativos o maybeSingle() antigo devolvia erro,
+      // o painel via config: null e o próximo "Salvar" desligava a linha vizinha.
+      // `config` continua no retorno só por compatibilidade com o WhatsAppApiPage.
+      const [{ data: configs }, { data: rules }, { data: log }] = await Promise.all([
+        db.from('whatsapp_cloud_config').select('*').eq('is_active', true).order('instance_name'),
         db.from('whatsapp_cloud_routing_rules').select('*').is('deleted_at', null).order('priority'),
         db.from('whatsapp_cloud_routing_log').select('*').order('created_at', { ascending: false }).limit(50),
       ]);
-      return ok({ config, rules: rules || [], log: log || [] });
+      const linhas = configs || [];
+      return ok({ config: linhas[0] || null, configs: linhas, rules: rules || [], log: log || [] });
     }
 
     if (action === 'save_config') {
-      const payload = {
-        phone_number_id: body.phone_number_id,
-        waba_id: body.waba_id,
+      const phoneNumberId = String(body.phone_number_id || '').trim();
+      const wabaId = String(body.waba_id || '').trim();
+      if (!phoneNumberId || !wabaId) return fail('phone_number_id e waba_id sao obrigatorios');
+
+      const instanceName = String(body.instance_name || '').trim().toLowerCase() || null;
+      if (instanceName && !/^[a-z0-9_]+$/.test(instanceName)) {
+        return fail('instance_name aceita so letras minusculas, numeros e _ (ex: prudencio_advogados)');
+      }
+
+      const payload: any = {
+        phone_number_id: phoneNumberId,
+        waba_id: wabaId,
+        instance_name: instanceName,
         display_phone: body.display_phone || null,
         display_name: body.display_name || null,
         status: body.status || 'pending',
         is_active: true,
         updated_at: new Date().toISOString(),
       };
-      // singleton: apaga ativos anteriores
-      await db.from('whatsapp_cloud_config').update({ is_active: false } as any).eq('is_active', true);
-      const { data, error } = await db.from('whatsapp_cloud_config').insert(payload as any).select().single();
+
+      // Uma linha por numero, e salvar NAO desliga as outras. O comportamento
+      // antigo (desativa todas + insere) derrubava a linha vizinha e deixou 6
+      // linhas mortas na tabela. Desligar agora é acao explicita.
+      let alvo = String(body.id || '').trim() || null;
+      if (!alvo) {
+        const { data: achadas } = await db
+          .from('whatsapp_cloud_config')
+          .select('id')
+          .eq('phone_number_id', phoneNumberId)
+          .order('is_active', { ascending: false })
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        alvo = ((achadas || [])[0] as any)?.id || null;
+      }
+
+      const resp: any = alvo
+        ? await db.from('whatsapp_cloud_config').update(payload).eq('id', alvo).select().single()
+        : await db.from('whatsapp_cloud_config').insert(payload).select().single();
+      if (resp.error) return fail(resp.error.message);
+      return ok({ config: resp.data });
+    }
+
+    if (action === 'deactivate_config') {
+      const alvo = String(body.id || '').trim();
+      if (!alvo) return fail('id e obrigatorio');
+      const { error } = await db
+        .from('whatsapp_cloud_config')
+        .update({ is_active: false, updated_at: new Date().toISOString() } as any)
+        .eq('id', alvo);
       if (error) return fail(error.message);
-      return ok({ config: data });
+      const { count } = await db
+        .from('whatsapp_cloud_config')
+        .select('id', { count: 'exact', head: true })
+        .eq('is_active', true);
+      return ok({ ativos_restantes: count ?? null });
     }
 
     if (action === 'save_rule') {
@@ -111,11 +156,25 @@ Deno.serve(async (req) => {
       // Externo. WHATSAPP_CLOUD_TOKEN entra como alias (é o nome usado no Railway).
       const token = (Deno.env.get('WHATSAPP_CLOUD_ACCESS_TOKEN') || Deno.env.get('WHATSAPP_CLOUD_TOKEN') || Deno.env.get('META_ACCESS_TOKEN') || '').trim();
       if (!token) return fail('missing_secret:WHATSAPP_CLOUD_ACCESS_TOKEN');
-      const { data: cfg } = await db
-        .from('whatsapp_cloud_config')
-        .select('*')
-        .eq('is_active', true)
-        .maybeSingle();
+      // Multi-linha: sem numero explicito so resolve sozinho se houver uma linha ativa.
+      const pedidoNumero = String(body.phone_number_id || '').trim();
+      const pedidoLinha = String(body.instance_name || '').trim();
+      let sel: any = db.from('whatsapp_cloud_config').select('*').eq('is_active', true);
+      if (pedidoNumero) sel = sel.eq('phone_number_id', pedidoNumero);
+      else if (pedidoLinha) sel = sel.eq('instance_name', pedidoLinha);
+      const { data: cfgs } = await sel.order('instance_name');
+      const linhas: any[] = cfgs || [];
+      if (linhas.length > 1) {
+        return fail('ambiguous_config', {
+          linhas: linhas.map((c: any) => ({
+            id: c.id,
+            instance_name: c.instance_name,
+            phone_number_id: c.phone_number_id,
+            display_phone: c.display_phone,
+          })),
+        });
+      }
+      const cfg: any = linhas[0];
       if (!cfg?.phone_number_id) return fail('no_active_config');
 
       // Validação: lista phone numbers da WABA e confere se o phone_number_id salvo existe
