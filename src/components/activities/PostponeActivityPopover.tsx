@@ -13,6 +13,10 @@ interface PostponeActivityPopoverProps {
   /** Prazo atual (`yyyy-MM-dd`), só para mostrar de onde a atividade está saindo. */
   currentDeadline?: string | null;
   className?: string;
+  /** Texto do botão. Em lote vira "Adiar 12". */
+  label?: string;
+  /** Linha de aviso do topo. Em lote diz o que fica de fora (concluídas). */
+  hint?: string;
 }
 
 /**
@@ -30,6 +34,8 @@ export function PostponeActivityPopover({
   disabled,
   currentDeadline,
   className,
+  label = 'Adiar',
+  hint,
 }: PostponeActivityPopoverProps) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,12 +66,14 @@ export function PostponeActivityPopover({
           className={cn('h-8 text-xs gap-1', className)}
           title="Adiar: só troca o prazo, sem concluir nem criar outra atividade"
         >
-          <CalendarClock className="h-3.5 w-3.5" /> Adiar
+          <CalendarClock className="h-3.5 w-3.5" /> {label}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-2">
         <p className="px-1 pb-1.5 text-[11px] text-muted-foreground">
-          Só muda o prazo — a atividade <strong>não</strong> é concluída e nenhuma cópia é criada.
+          {hint || (
+            <>Só muda o prazo — a atividade <strong>não</strong> é concluída e nenhuma cópia é criada.</>
+          )}
         </p>
 
         <div className="flex flex-col gap-1">

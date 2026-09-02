@@ -546,7 +546,13 @@ export function BulkReassignSheet({
               )}
               {plano.jaSao.length > 0 && (
                 <p className="text-xs text-muted-foreground">
-                  {plano.jaSao.length} já {plano.jaSao.length !== 1 ? 'são' : 'é'} de {target?.full_name || 'destino'}.
+                  {plano.jaSao.length} já {plano.jaSao.length !== 1 ? 'são' : 'é'} de {target?.full_name || 'destino'}
+                  {/* Escolher o próprio nome aqui para "adiar" não funciona: quem
+                      já é do destino não é reescrita, nem o prazo. O caminho de
+                      mudar só a data é o botão "Adiar" da barra de seleção. */}
+                  {dataAlvo
+                    ? ` — o prazo ${plano.jaSao.length !== 1 ? 'delas' : 'dela'} não muda por aqui; para isso use o botão "Adiar" da barra de seleção.`
+                    : '.'}
                 </p>
               )}
 

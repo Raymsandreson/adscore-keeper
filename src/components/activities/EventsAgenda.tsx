@@ -18,6 +18,7 @@ import {
 import { cn } from '@/lib/utils';
 import { remapToExternal } from '@/integrations/supabase/uuid-remap';
 import { useEventosDaJanela } from '@/hooks/useEventosDaJanela';
+import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
 import { FAMILIAS, type FamiliaCaso } from '@/lib/casoSequencia';
 import {
   CATEGORIAS, CATEGORIA_LABEL, aplicarFiltrosDeEvento, contarPorCategoria,
@@ -140,7 +141,7 @@ export interface FiltrosDaPagina {
  * véspera; a véspera continua sendo como a tela abre, porque é o pedido
  * original. Nos dois modos o que se escolhe é a data do EVENTO.
  */
-export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExcluirLote, onPassarPara, compacto }: {
+export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExcluirLote, onPassarPara, onAdiarLote, compacto }: {
   /** Abre a ficha da atividade em painel, por cima da tela (nunca redireciona). */
   onAbrirAtividade?: (atividadeId: string) => void;
   /** Filtros herdados da barra da página. */
@@ -149,6 +150,8 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
   /** Ações em lote sobre as atividades marcadas. */
   onExcluirLote?: (ids: string[]) => void;
   onPassarPara?: (ids: string[]) => void;
+  /** Adia as marcadas (`yyyy-MM-dd`): troca só o prazo, sem mudar o responsável. */
+  onAdiarLote?: (ids: string[], dateStr: string) => Promise<void> | void;
   /**
    * Coluna estreita: a agenda divide a tela com a ficha aberta.
    *
@@ -224,7 +227,7 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
     () => [...new Set(marcaveis.filter(e => marcados.has(e.chave)).map(e => e.atividadeId!))],
     [marcaveis, marcados],
   );
-  const podeSelecionar = Boolean(onExcluirLote || onPassarPara);
+  const podeSelecionar = Boolean(onExcluirLote || onPassarPara || onAdiarLote);
 
   // Marcação some quando a janela ou o filtro muda: manter linha marcada que
   // saiu da tela viraria ação em lote sobre o que a pessoa não está vendo.
@@ -610,6 +613,18 @@ export function EventsAgenda({ onAbrirAtividade, filtros, onLimparFiltros, onExc
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Excluir
                 </Button>
+              )}
+              {onAdiarLote && (
+                <PostponeActivityPopover
+                  label={`Adiar ${idsMarcados.length}`}
+                  hint={`Troca só o prazo das ${idsMarcados.length} marcadas — nada é concluído e o responsável não muda. Concluídas ficam de fora.`}
+                  onPostpone={async (dateStr) => {
+                    await onAdiarLote(idsMarcados, dateStr);
+                    // A agenda recarrega com as datas novas; manter a marcação
+                    // velha deixaria linha marcada em outro dia da janela.
+                    setMarcados(new Set());
+                  }}
+                />
               )}
               {onPassarPara && (
                 <Button size="sm" className="h-8 text-xs gap-1.5" onClick={() => onPassarPara(idsMarcados)}>

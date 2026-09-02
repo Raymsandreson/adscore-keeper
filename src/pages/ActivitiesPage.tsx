@@ -97,6 +97,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuSub, ContextMenuSubContent, ContextMenuSubTrigger, ContextMenuTrigger } from '@/components/ui/context-menu';
 import { PostponeActivityPopover } from '@/components/activities/PostponeActivityPopover';
 import { buildPostponeOptions, formatPostponeDate } from '@/lib/postponeDates';
+import { planejarAdiamento, responsaveisNoCloud } from '@/lib/bulkPostpone';
+import { getTimeOffConflicts, describeTimeOff } from '@/lib/timeOff';
 import { buildMotherContentPatch } from '@/lib/activityChainMother';
 import { cn } from '@/lib/utils';
 import { displayProcessLabel, displayCaseLabel } from '@/lib/processLabel';
@@ -2902,6 +2904,166 @@ const ActivitiesPage = () => {
     );
   }, [selectedActivities, confirmDelete, exitSelection, fetchActivities, selectedActivity]);
 
+  const [bulkPostponing, setBulkPostponing] = useState(false);
+
+  /**
+   * Adiar o lote marcado: reescreve só o prazo (`deadline` + `notification_date`),
+   * sem concluir nada e sem criar filha — a mesma semântica do "Adiar" da ficha
+   * (PostponeActivityPopover), agora sobre várias de uma vez. O responsável não
+   * muda: quem quer trocar de dono usa o "Passar para...", que já escolhe data.
+   *
+   * Duas exceções saem do lote e são relatadas, em vez de derrubar tudo
+   * (`planejarAdiamento`):
+   *  - concluída não se adia — a data dela registra quando o trabalho foi feito;
+   *  - prazo que cai em ausência registrada de algum responsável, que é a mesma
+   *    trava que o `updateActivity` aplica no adiar individual.
+   *
+   * `updated_by` explícito porque a sessão do Externo é anônima — sem ele a ficha
+   * passa a exibir "atualizada por —". E `.select('id')` porque update que não
+   * casa linha nenhuma (RLS com sessão expirada) volta SEM erro: sem conferir a
+   * contagem, a tela diria "adiadas" com nada gravado.
+   */
+  const handleBulkPostpone = useCallback(async (dateStr: string, idsExplicitos?: string[]) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return;
+
+    // Aba Eventos: as linhas de lá saem de outras tabelas e a marcada pode nem
+    // estar em `displayedActivities` — os objetos completos vêm por id, mesmo
+    // caminho do `passarParaDeEventos`.
+    let alvo: LeadActivity[] = selectedActivities;
+    if (idsExplicitos?.length) {
+      const { data, error } = await externalSupabase
+        .from('lead_activities')
+        .select('*')
+        .in('id', idsExplicitos)
+        .is('deleted_at', null);
+      if (error) {
+        toast.error('Não deu para carregar as atividades marcadas');
+        return;
+      }
+      alvo = (data || []) as unknown as LeadActivity[];
+    }
+    if (!alvo.length) return;
+
+    setBulkPostponing(true);
+    try {
+      // member_time_off guarda Cloud UUID; `assigned_to` da atividade é do Externo.
+      await ensureRemapCache();
+      const paraCloud = (ext: string | null | undefined) => (ext ? remapToCloudSync(ext) || null : null);
+      const conflitos = await getTimeOffConflicts(responsaveisNoCloud(alvo, paraCloud), dateStr);
+      const ausentes = new Map(
+        conflitos.map(t => [t.user_id, `${t.user_name || 'Responsável'} — ${describeTimeOff(t)}`]),
+      );
+      const plano = planejarAdiamento(alvo, ausentes, paraCloud);
+
+      if (plano.adiar.length === 0) {
+        toast.error(
+          plano.ausentes.length > 0
+            ? `Nada foi adiado: ${plano.ausentes[0].motivo}. Escolha outra data.`
+            : 'Nada foi adiado: só há atividades concluídas na seleção.',
+          { duration: 8000 },
+        );
+        return;
+      }
+
+      const autor = await currentExtUserId();
+      const ids = plano.adiar.map(a => a.id);
+      const CHUNK = 200;
+      let gravadas = 0;
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const { data, error } = await externalSupabase
+          .from('lead_activities')
+          .update({ deadline: dateStr, notification_date: dateStr, updated_by: autor } as any)
+          .in('id', ids.slice(i, i + CHUNK))
+          .select('id');
+        if (error) throw error;
+        gravadas += (data || []).length;
+      }
+      if (gravadas === 0) {
+        toast.error(
+          'Nada foi salvo: as atividades não foram encontradas ou sua sessão expirou. Recarregue a página e tente de novo.',
+          { duration: 10000 },
+        );
+        return;
+      }
+
+      await logAudit({
+        action: 'update',
+        entityType: 'adiamento_atividades',
+        entityName: `${ids.length} atividade${ids.length !== 1 ? 's' : ''}`,
+        details: {
+          novo_prazo: dateStr,
+          total: ids.length,
+          ids,
+          concluidas_ignoradas: plano.concluidas.length,
+          puladas_por_ausencia: plano.ausentes.map(({ a, motivo }) => ({ id: a.id, motivo })),
+        },
+      });
+
+      // Adiar atividade dos outros mexe na agenda deles: um aviso por pessoa
+      // (não um por atividade), no tipo 'rescheduled' que o listener já rotula.
+      try {
+        const porDono = new Map<string, { nome: string | null; itens: LeadActivity[] }>();
+        for (const a of plano.adiar) {
+          const dono = a.assigned_to;
+          if (!dono || dono === autor) continue;
+          const atual = porDono.get(dono) || { nome: a.assigned_to_name || null, itens: [] };
+          atual.itens.push(a);
+          porDono.set(dono, atual);
+        }
+        if (porDono.size > 0) {
+          const { data: prof } = await (externalSupabase as any)
+            .from('profiles').select('full_name').eq('user_id', autor || '').maybeSingle();
+          const actorName = (prof as any)?.full_name || null;
+          const quando = formatPostponeDate(dateStr);
+          await (externalSupabase as any).from('activity_notifications').insert(
+            [...porDono.entries()].map(([dono, { nome, itens }]) => ({
+              activity_id: itens.length === 1 ? itens[0].id : null,
+              recipient_id: dono,
+              recipient_name: nome,
+              type: 'rescheduled',
+              title: itens.length === 1
+                ? `Atividade adiada para ${quando}`
+                : `${itens.length} atividades suas foram adiadas para ${quando}`,
+              body: itens.length === 1
+                ? (itens[0].title || 'Atividade')
+                : 'Abra a tela de Atividades para ver a sua fila.',
+              actor_id: autor,
+              actor_name: actorName,
+            })),
+          );
+        }
+      } catch (e) {
+        console.warn('[bulkPostpone] notificação falhou:', e);
+      }
+
+      const pulou = plano.concluidas.length + plano.ausentes.length;
+      toast.success(
+        `${ids.length} atividade${ids.length !== 1 ? 's' : ''} adiada${ids.length !== 1 ? 's' : ''} para ${formatPostponeDate(dateStr)}` +
+          (plano.concluidas.length > 0 ? ` · ${plano.concluidas.length} concluída${plano.concluidas.length !== 1 ? 's' : ''} fora do lote` : '') +
+          (plano.ausentes.length > 0 ? ` · ${plano.ausentes.length} em ausência registrada` : ''),
+        { duration: pulou > 0 ? 8000 : 4000 },
+      );
+
+      // Ficha aberta dentro do lote: sincroniza o formulário, senão um Salvar
+      // logo depois regrava o prazo antigo por cima do adiamento.
+      if (selectedActivity && ids.includes(selectedActivity.id)) {
+        setFormDeadline(dateStr);
+        setFormNotificationDate(dateStr);
+        setSelectedActivity(prev => prev ? ({ ...prev, deadline: dateStr, notification_date: dateStr } as any) : prev);
+      }
+      exitSelection();
+      fetchActivities(getFilterParams());
+    } catch (e: any) {
+      console.error('[bulkPostpone] falhou', e);
+      toast.error(e?.message || 'Erro ao adiar as atividades');
+    } finally {
+      setBulkPostponing(false);
+    }
+    // getFilterParams/setForm* são redefinidos a cada render (mesmo critério do
+    // handleBulkDelete logo acima).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedActivities, exitSelection, fetchActivities, selectedActivity]);
+
   /**
    * Abre a ficha de uma atividade a partir do id, em painel por cima da tela.
    *
@@ -3055,18 +3217,28 @@ const ActivitiesPage = () => {
         size="sm"
         className="h-8 text-xs gap-1.5 shrink-0 text-destructive border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
         onClick={() => handleBulkDelete()}
-        disabled={bulkDeleting}
+        disabled={bulkDeleting || bulkPostponing}
       >
         {bulkDeleting
           ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
           : <Trash2 className="h-3.5 w-3.5" />}
         Excluir
       </Button>
+      {/* Adiar em lote: só troca o prazo e mantém o dono. É o caminho curto para
+          "não vou dar conta disto hoje" numa fila inteira — sem ele, adiar 20
+          atividades era abrir 20 fichas. */}
+      <PostponeActivityPopover
+        className="shrink-0"
+        disabled={bulkDeleting || bulkPostponing}
+        label={bulkPostponing ? 'Adiando...' : `Adiar ${selectedIds.size}`}
+        hint={`Troca só o prazo das ${selectedIds.size} selecionadas — nada é concluído, nenhuma cópia é criada e o responsável não muda. Concluídas ficam de fora.`}
+        onPostpone={(dateStr) => handleBulkPostpone(dateStr)}
+      />
       <Button
         size="sm"
         className="h-8 text-xs gap-1.5 shrink-0"
         onClick={() => setBulkReassignOpen(true)}
-        disabled={bulkDeleting}
+        disabled={bulkDeleting || bulkPostponing}
       >
         <ArrowRightLeft className="h-3.5 w-3.5" />
         Passar para...
@@ -5118,6 +5290,7 @@ const ActivitiesPage = () => {
               onLimparFiltros={() => { setFilterAssignee([]); setFilterLead([]); setFilterCase([]); setSearchText(''); }}
               onExcluirLote={(ids) => handleBulkDelete(ids)}
               onPassarPara={passarParaDeEventos}
+              onAdiarLote={(ids, dateStr) => handleBulkPostpone(dateStr, ids)}
               compacto={isEditing}
             />
           </div>
