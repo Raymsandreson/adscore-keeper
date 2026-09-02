@@ -265,15 +265,28 @@ Renomear as linhas órfãs para a instância atual **não** é a correção: "Br
 
 ## WhatsApp Cloud API (Meta oficial) — canal `cloud_gerencia`
 
-**O que é**: linha oficial da Meta, separada da UazAPI. Config ativa (singleton) em `whatsapp_cloud_config`: `phone_number_id` + `waba_id`. Hoje: `+55 86 8900-9137`, WABA `458751397321968`, nome exibido ao cliente "ABRACI- Associação Brasileira de Combate…" — o nome é propriedade do número e não muda enquanto ele viver nessa WABA.
+**O que é**: linhas oficiais da Meta, separadas da UazAPI. Cada número é uma linha em `whatsapp_cloud_config` (`instance_name` + `phone_number_id` + `waba_id`), e `instance_name` é o mesmo que vai em `whatsapp_messages`. Hoje existe uma: **`abraci`** — `+55 86 8900-9137`, WABA `458751397321968`, nome exibido ao cliente "ABRACI- Associação Brasileira de Combate…" (o nome é propriedade do número e não muda enquanto ele viver nessa WABA).
 
-**Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'`) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
+### Multi-número (desde 02/09/2026)
+
+Antes existia uma linha só, chamada `cloud_gerencia`, e esse nome vivia hardcoded em ~20 comparações de string. Renomeada para `abraci` (750 linhas: 674 mensagens, 75 atribuições, 1 instância).
+
+- **"É Cloud?" pergunta ao dado**, não à string: `src/lib/cloudApiInstances.ts` (front) e `railway-server/src/lib/cloudInstances.ts` (servidor). O marcador é `whatsapp_instances.instance_token = 'cloud_api_meta'`; a semente cobre os nomes conhecidos e `carregarInstanciasCloud()` acrescenta os cadastrados depois, sem release.
+- **Webhook carimba a linha certa**: `value.metadata.phone_number_id` do payload resolve qual `whatsapp_cloud_config` recebeu (cache de 60s). Sem match, cai em `cloud_gerencia`.
+- **Envio escolhe a linha pelo `instance_name` da conversa**, não pela "config ativa". `maybeSingle()` ali seria uma bomba: com duas linhas ativas ele **erra**.
+- **`WHATSAPP_CLOUD_APP_SECRET` aceita lista separada por vírgula.** Cada WABA pode estar inscrita num App diferente e cada App assina com o seu secret — com um secret só, ligar o 2º número derruba o inbound do 1º com 401, que não aparece em lugar nenhum daqui.
+
+**Para adicionar um número** (ex: Prudêncio Advogados, `prudencio_advogados`): (1) linha em `whatsapp_cloud_config` com `instance_name`; (2) linha em `whatsapp_instances` com `instance_token='cloud_api_meta'`; (3) app secret do App daquela WABA acrescentado à lista; (4) webhook do App apontando pro nosso Railway. **Pegadinha**: a edge `whatsapp-cloud-admin` (tela de config) ainda não manda `instance_name` no `save_config` — por isso a coluna aceita nulo, e cadastrar linha nova é por SQL até ela ser atualizada (deploy só pelo Lovable).
+
+**Estado das WABAs**: a da ABRACI (`458751397321968`) **não** tem o nosso App inscrito — tem "Dashboard de Marketing Digital" (da BM1) e Kommo; o inbound chega porque o webhook do App da BM1 aponta pra cá. A da WhatsJudd (`1495255778900978`) tem o `BussinesMessagerAPI` (nosso).
+
+**Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'` e `instance_name` da conversa) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
 
 ### Janela de 24h — a regra que faz a tela mentir se ignorada
 
 Fora de 24h desde a **última mensagem do cliente**, a Meta só entrega **template aprovado**. Texto livre é **aceito** pela Graph (devolve `wamid`, HTTP 200) e recusado ~1s depois, num webhook de `statuses` separado, com erro `131047`. Sem tratar isso, a bolha diz "enviada" para mensagem que ninguém recebeu.
 
-- `src/lib/whatsapp24hWindow.ts` — `janelaDeAtendimento(instanceName, mensagens)`. Só se aplica ao `cloud_gerencia`; canal sem a regra devolve `aberta: true` e não bloqueia nada. Só inbound reabre a janela — o que **nós** mandamos não conta.
+- `src/lib/whatsapp24hWindow.ts` — `janelaDeAtendimento(instanceName, mensagens)`. Só se aplica às linhas Cloud; canal sem a regra devolve `aberta: true` e não bloqueia nada. Só inbound reabre a janela — o que **nós** mandamos não conta.
 - `WhatsAppChat` mostra aviso âmbar + botão "Enviar template" quando a janela fecha, e um aviso discreto quando faltam menos de 2h.
 - `src/lib/whatsappDeliveryStatus.ts` traduz o recibo na bolha (`enviada` → `entregue` → `lida`, ou `não entregue` com o motivo em português). `sent` deliberadamente **não** afirma entrega.
 
