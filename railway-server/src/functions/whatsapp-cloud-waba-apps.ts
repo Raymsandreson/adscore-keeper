@@ -16,6 +16,8 @@
  *                  janela de 24h — texto livre volta 131047 no recibo)
  *  - users       : lista os usuários atribuídos e as TASKS de cada um
  *  - assign_user : grava as tasks de um usuário na WABA
+ *  - phones      : estado completo de cada número da WABA (registro, verificação,
+ *                  qualidade, nome) + o perfil de negócio de um número. Só LÊ.
  *  - webhook_status : para cada App, diz se existe callback de webhook, para
  *                  onde ele aponta e quais campos estão assinados. É a única
  *                  forma de responder "o webhook está configurado?" sem
@@ -126,6 +128,37 @@ export const handler: RequestHandler = async (req, res) => {
   try {
     if (action === 'list') {
       res.status(200).json({ success: true, action, waba_id: wabaId, apps: await listApps() });
+      return;
+    }
+
+    // Só leitura. `platform_type` é o campo que diz se o número está de fato
+    // registrado na Cloud API: NOT_APPLICABLE = existe na WABA mas não envia.
+    if (action === 'phones') {
+      const campos = [
+        'id', 'display_phone_number', 'verified_name', 'name_status',
+        'code_verification_status', 'quality_rating', 'platform_type',
+        'status', 'messaging_limit_tier', 'is_official_business_account',
+      ].join(',');
+      const r = await fetch(`${GRAPH}/${API_VERSION}/${wabaId}/phone_numbers?fields=${campos}`, { headers: auth });
+      const out: any = await r.json();
+      if (out?.error) {
+        res.status(200).json({ success: false, error: out.error.message, code: out.error.code });
+        return;
+      }
+      const numeros = out?.data || [];
+
+      // Perfil de negócio é por número, não por WABA — busca um a um.
+      const perfis: Record<string, unknown> = {};
+      for (const n of numeros) {
+        const pr = await fetch(
+          `${GRAPH}/${API_VERSION}/${n.id}/whatsapp_business_profile?fields=about,address,description,email,profile_picture_url,websites,vertical`,
+          { headers: auth },
+        );
+        const pj: any = await pr.json();
+        perfis[n.id] = pj?.error ? { erro: pj.error.message } : (pj?.data || [])[0] || null;
+      }
+
+      res.status(200).json({ success: true, action, waba_id: wabaId, numeros, perfis });
       return;
     }
 
