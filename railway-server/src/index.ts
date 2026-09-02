@@ -58,6 +58,7 @@ import { handler as sendWhatsappCloud } from './functions/send-whatsapp-cloud';
 import { handler as checkWhatsappCloudToken } from './functions/check-whatsapp-cloud-token';
 import { handler as whatsappCloudVerifyNumber } from './functions/whatsapp-cloud-verify-number';
 import { handler as whatsappCloudWabaApps } from './functions/whatsapp-cloud-waba-apps';
+import { handler as whatsappCloudTemplates } from './functions/whatsapp-cloud-templates';
 import { handler as inssProcuracaoVincular } from './functions/inss-procuracao-vincular';
 import { handler as metaCallQueueProcessor } from './functions/meta-call-queue-processor';
 import { handler as sheetLeadIngest } from './functions/sheet-lead-ingest';
@@ -149,6 +150,7 @@ const functionHandlers: Record<string, express.RequestHandler> = {
   'check-whatsapp-cloud-token': checkWhatsappCloudToken,
   'whatsapp-cloud-verify-number': whatsappCloudVerifyNumber,
   'whatsapp-cloud-waba-apps': whatsappCloudWabaApps,
+  'whatsapp-cloud-templates': whatsappCloudTemplates,
   'inss-procuracao-vincular': inssProcuracaoVincular,
   'meta-call-queue-processor': metaCallQueueProcessor,
   'gmail-inss-sync': gmailInssSync,

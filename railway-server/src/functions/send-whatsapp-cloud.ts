@@ -130,6 +130,10 @@ interface SendBody {
   template_language?: string; // ex: pt_BR
   template_params?: string[]; // preenchem {{1}}, {{2}}... do corpo, em ordem
   template_components?: unknown[]; // escape: components crus da Graph
+  // Texto JÁ renderizado ({{n}} trocados pelos params), do jeito que o cliente
+  // vai ler. Quem manda pela tela conhece o corpo aprovado; gravar isso evita
+  // que a conversa fique com "[template: nome]" no lugar da mensagem real.
+  template_body_text?: string;
 }
 
 function mediaKindFromMime(mime: string | undefined): 'image' | 'audio' | 'video' | 'document' {
@@ -356,7 +360,8 @@ export const handler: RequestHandler = async (req, res) => {
         // Template nao tem texto livre: guarda nome + parametros pra conversa nao
         // aparecer vazia na tela enquanto o corpo real vive no WhatsApp Manager.
         message_text: isTemplate
-          ? `[template: ${body.template_name}]${(body.template_params || []).length ? ' ' + (body.template_params || []).join(' | ') : ''}`
+          ? (String(body.template_body_text || '').trim()
+              || `[template: ${body.template_name}]${(body.template_params || []).length ? ' ' + (body.template_params || []).join(' | ') : ''}`)
           : (isMedia ? (caption || null) : text),
         message_type: dbMessageType,
         direction: 'outbound',
@@ -368,6 +373,17 @@ export const handler: RequestHandler = async (req, res) => {
         action_source_detail: 'outbound',
         media_url: isMedia ? body.media_url : null,
         media_type: isMedia ? (body.media_type || null) : null,
+        // Qual template saiu fica registrado mesmo quando message_text guarda o
+        // texto renderizado — sem isso não dá pra auditar depois.
+        metadata: isTemplate
+          ? {
+              template: {
+                name: body.template_name,
+                language: body.template_language || 'pt_BR',
+                params: body.template_params || [],
+              },
+            }
+          : null,
       } as any)
       .select('id')
       .single();

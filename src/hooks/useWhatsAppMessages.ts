@@ -799,6 +799,13 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
     extra?: {
       replyid?: string | null;
       onSent?: (r: { message_id?: string | null; external_message_id?: string | null; text: string }) => void;
+      /**
+       * Envio de TEMPLATE da Cloud API. Fora da janela de 24h esse é o único
+       * caminho que entrega — texto livre é aceito pela Graph e recusado depois,
+       * no recibo (131047). Quando vem preenchido, `message` deve ser o texto JÁ
+       * renderizado, que é o que o cliente vai ler e o que gravamos na conversa.
+       */
+      template?: { name: string; language?: string; params?: string[] };
     }
   ) => {
     const debugId = Math.random().toString(36).slice(2, 8);
@@ -839,7 +846,9 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
       }
 
 
-      if (user && identifySender) {
+      // Template não recebe prefixo de remetente: o corpo é o aprovado pela Meta,
+      // e qualquer texto a mais faria a bolha mentir sobre o que foi entregue.
+      if (user && identifySender && !extra?.template) {
         const fmt = nameFormatOverride || 'first_last';
 
         finalMessage = prefixarRemetente(message, {
@@ -879,6 +888,17 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
         // Comparação case-insensitive + trim: instance_name pode vir com variação de caixa.
         channel: (conversationInstanceName || '').trim().toLowerCase() === 'cloud_gerencia' ? 'cloud' : undefined,
+        // Template aprovado (Cloud API). `template_body_text` é o texto já
+        // renderizado — o Railway grava ele na conversa em vez de "[template: x]".
+        ...(extra?.template
+          ? {
+              action: 'send_template',
+              template_name: extra.template.name,
+              template_language: extra.template.language || 'pt_BR',
+              template_params: extra.template.params || [],
+              template_body_text: finalMessage,
+            }
+          : {}),
       };
 
 
@@ -891,7 +911,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         phone: conversationPhone,
         contact_name: null,
         message_text: finalMessage,
-        message_type: 'text',
+        message_type: extra?.template ? 'template' : 'text',
         media_url: null,
         media_type: null,
         direction: 'outbound',

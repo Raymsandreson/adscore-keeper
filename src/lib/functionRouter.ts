@@ -44,6 +44,9 @@ const FUNCTION_ROUTES: Record<string, FunctionTarget> = {
   'apply-label-event': 'railway',
   'list-stage-label-mappings': 'railway',
   'set-stage-result-key': 'railway',
+  // Lista os templates aprovados da WABA ativa. Só existe no Railway (usa o
+  // WHATSAPP_CLOUD_TOKEN, que não sai de lá).
+  'whatsapp-cloud-templates': 'railway',
   'get-whatsapp-group-info': 'railway',
   'get-group-participants': 'railway', // lia whatsapp_instances/groups_cache do Cloud (moram no Externo) e descartava participante @lid
   'sync-group-contacts': 'railway', // blocklist de equipe lia instances/profiles do Cloud; ilike não casava telefone formatado (criava contato duplicado); @lid descartado e nome do roster ignorado

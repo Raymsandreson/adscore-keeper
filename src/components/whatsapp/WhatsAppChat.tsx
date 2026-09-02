@@ -19,6 +19,8 @@ import { Send, User, Users, Link2, UserPlus, ExternalLink, Plus, Loader2, Phone,
 import { FastForward, FileText, ClipboardCheck, ArrowRight, CalendarClock, Settings2, ChevronsUp, ChevronsDown, Instagram } from 'lucide-react';
 import { Check, CheckCheck, AlertTriangle } from 'lucide-react';
 import { deliveryBadge } from '@/lib/whatsappDeliveryStatus';
+import { janelaDeAtendimento, formatarRestante } from '@/lib/whatsapp24hWindow';
+import { CloudTemplateDialog } from '@/components/whatsapp/CloudTemplateDialog';
 import { TestimonialPostSheet } from './TestimonialPostSheet';
 import { DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { useWhatsAppInternalNotes, type InternalNote } from '@/hooks/useWhatsAppInternalNotes';
@@ -155,6 +157,8 @@ interface Props {
     extra?: {
       replyid?: string | null;
       onSent?: (r: { message_id?: string | null; external_message_id?: string | null; text: string }) => void;
+      /** Template aprovado da Cloud API — único caminho fora da janela de 24h. */
+      template?: { name: string; language?: string; params?: string[] };
     }
   ) => Promise<boolean>;
   onSendMedia: (
@@ -355,6 +359,14 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const [availableInstances, setAvailableInstances] = useState<{ id: string; instance_name: string }[]>([]);
   const [sendInstanceOverride, setSendInstanceOverride] = useState<string | null>(null);
   const effectiveInstanceName = sendInstanceOverride || conversation.instance_name;
+
+  // Janela de 24h da Cloud API: fora dela o WhatsApp recusa texto livre, e a
+  // recusa chega só no recibo — a tela precisa avisar ANTES de a pessoa digitar.
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const janela = useMemo(
+    () => janelaDeAtendimento(effectiveInstanceName, conversation.messages),
+    [effectiveInstanceName, conversation.messages],
+  );
 
   // Reset override quando trocar de conversa.
   useEffect(() => {
@@ -5560,6 +5572,37 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           : inputMode === 'chat' ? "bg-blue-50/80 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800"
           : "bg-card"
       )}>
+        {/* Janela de 24h da Cloud API fechada: texto livre não é entregue. */}
+        {janela.aplicavel && !janela.aberta && inputMode === 'message' && (
+          <div className="flex items-start gap-2 px-3 py-2 rounded-lg text-xs bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium text-amber-900 dark:text-amber-200">
+                {janela.ultimoInboundEm
+                  ? 'O cliente não escreve há mais de 24 horas.'
+                  : 'O cliente nunca escreveu por este canal.'}
+              </p>
+              <p className="text-amber-800/80 dark:text-amber-300/80">
+                O WhatsApp só entrega template aprovado agora. Texto livre é aceito no envio e
+                recusado no recibo — a mensagem aparece como enviada e não chega.
+              </p>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              className="h-7 text-xs shrink-0"
+              onClick={() => setShowTemplateDialog(true)}
+            >
+              Enviar template
+            </Button>
+          </div>
+        )}
+        {/* Aviso de janela prestes a fechar: menos de 2h para falar livremente. */}
+        {janela.aplicavel && janela.aberta && janela.restanteMs < 2 * 60 * 60 * 1000 && inputMode === 'message' && (
+          <p className="px-3 text-[11px] text-muted-foreground">
+            Janela de resposta livre acaba em {formatarRestante(janela.restanteMs)}.
+          </p>
+        )}
         {/* Internal mode banner */}
         {(inputMode === 'note' || inputMode === 'chat') && (
           <div className={cn(
@@ -6149,6 +6192,41 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
           />
         </Suspense>
       )}
+
+      {/* Reabrir conversa fora da janela de 24h: só template entrega. */}
+      <CloudTemplateDialog
+        open={showTemplateDialog}
+        onOpenChange={setShowTemplateDialog}
+        sugestoes={[
+          primeiroNome(conversation.contact_name),
+          primeiroNome(profile?.full_name),
+        ]}
+        onEnviar={async ({ name, language, params, textoRenderizado }) => {
+          // O texto renderizado vai como `message`: é o que a bolha mostra e o
+          // que o servidor grava, no lugar de "[template: nome]".
+          return await onSendMessage(
+            conversation.phone,
+            textoRenderizado,
+            conversation.contact_id || undefined,
+            conversation.lead_id || undefined,
+            effectiveInstanceName,
+            false,
+            undefined,
+            null,
+            undefined,
+            null,
+            undefined,
+            { template: { name, language, params } },
+          );
+        }}
+      />
     </div>
   );
+}
+
+/** "Ana Paula Souza" → "Ana Paula". Nome inteiro no template soa protocolar. */
+function primeiroNome(nome: string | null | undefined): string {
+  const partes = String(nome || '').trim().split(/\s+/).filter(Boolean);
+  if (!partes.length) return '';
+  return partes.slice(0, 2).join(' ');
 }
