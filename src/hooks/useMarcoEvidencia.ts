@@ -37,22 +37,6 @@ export interface RegraDoMarco {
   motivo: string | null;
 }
 
-export interface MovimentoDataJud {
-  id: number;
-  codigo: number;
-  nome: string | null;
-  grau: string | null;
-  orgao_julgador: string | null;
-  tribunal: string | null;
-  data: string | null;
-  data_hora: string | null;
-  complementos: unknown;
-  sinal_codigo: number | null;
-  sinal_grau: string | null;
-  /** Foi esta linha que ditou a data do marco (a mais antiga que casou). */
-  usado: boolean;
-}
-
 export interface PecaCasadaComMarco {
   documento_id: number;
   titulo: string | null;
@@ -112,7 +96,6 @@ export interface EvidenciaDoMarco {
   };
   cnj: string;
   regras: RegraDoMarco[];
-  datajud: Lista<MovimentoDataJud>;
   documento: Lista<PecaCasadaComMarco>;
   escavador: Lista<PublicacaoEscavador>;
   email: Lista<EventoEmail>;
@@ -120,7 +103,6 @@ export interface EvidenciaDoMarco {
   candidatas: FonteCandidata[];
   /** Quanto existe deste processo em cada fonte — fonte vazia explica silêncio. */
   cobertura: {
-    movimentos_datajud: number;
     documentos: number;
     movimentacoes_escavador: number;
   };

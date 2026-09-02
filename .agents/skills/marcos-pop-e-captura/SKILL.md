@@ -37,6 +37,24 @@ Decisões do usuário, aplicadas em produção (migrations `20260902140000`…`2
   fazem o processo sair dele (conferir decisão → agir no prazo → comunicar cliente →
   atualizar recebível). Os 13 do BPC estão em `20260902170000`.
 
+### Complemento do mesmo dia (02/09/2026, noite)
+
+- **Sinal de texto tem grau opcional.** `pop_marco_sinais.grau` (G1/G2/SUP) agora vale também para
+  `tipo = 'texto'`: é o que separa "embargos de declaração" do 1º grau do 2º, e o acórdão do TST
+  (SUP) do acórdão do TRT. `vw_pop_marcos_escavador` respeita; o feed (`process_updates`) não tem
+  grau, então `vw_pop_marcos_feed` só aplica sinal sem grau.
+- **Os atos que as movimentações anunciam são marco** — pedido literal do usuário: "não são
+  documentos, mas podem ser usados para conferir os marcos". 14 sinais de texto calibrados na
+  classe `classificacao_predita.nome` do Escavador (ED 1º/2º grau, RO, agravo interno, RE, acórdão
+  do TST, liquidação, constrição, depósito/pagamento espontâneo — excluindo depósito **recursal** —,
+  levantamento; no BPC: ED, recurso inominado/apelação, REsp/TNU, levantamento/RPV). Migration
+  `20260902180000`. Regra de calibração: **classe ancorada no início** (`^recurso ordin`), nunca
+  substring solta — "admissibilidade do recurso" sem "de revista" é o RO no 1º grau.
+- **`pop_marco_evidencia` sem DataJud** e com o feed: espelha exatamente o que a régua lê. O
+  diálogo "por que este marco" perdeu o bloco do DataJud.
+- Os 9 links de objetivos das fases antigas do BPC (pré-30/08) foram apagados; as instâncias
+  ficaram (histórico), invisíveis como já eram.
+
 ## 1. Marco é fase. Estado não é marco.
 
 Regra do usuário, literal: *"marco pela etimologia da palavra não pode ser um estado"*.
