@@ -297,6 +297,12 @@ O primeiro deu a prova do conserto do `save_config`: com o código antigo a sequ
 
 Já auditadas e limpas: `whatsapp_cloud_assignees` (PK `(phone, instance_name)`, nasceu multi-linha), `whatsapp_cloud_routing_rules`, e nenhum CHECK ou constraint de exclusão nas três.
 
+**Linhas hoje** (02/09/2026): `abraci` (+55 86 8900-9137, WABA 458751397321968) em produção; `prudencio_advogados` (+1 555-964-5799, WABA 1495255778900978) recebendo — é o número de teste da Meta, usado para provar a cadeia multi-número, e o da Prudêncio de verdade será um 0800 ainda não liberado; `quitepay` (+55 86 8876-7464, mesma WABA) cadastrada mas **sem enviar nem receber**: `platform_type: NOT_APPLICABLE`, `code_verification_status: EXPIRED`.
+
+**Registrar um número não é só cadastrar na WABA.** `platform_type` é o campo que separa os dois estados — `NOT_APPLICABLE` significa que o número existe na WABA e não fala pela Cloud API. A sequência é: verificar (`request_code`/`verify_code`, o código chega no aparelho) → registrar (`POST /{phone_number_id}/register` com `messaging_product` e um PIN de 6 dígitos) → só então o número envia. `action: 'phones'` em `whatsapp-cloud-waba-apps` lê tudo isso de uma vez, mais o perfil de negócio de cada número.
+
+**Foto de perfil exige número registrado, e a Meta não avisa.** `set_business_profile` sobe a imagem pela Resumable Upload API (sessão no App → handle → `profile_picture_handle`; upload usa app access token `app_id|secret`, o perfil usa o token do System User). Medido no `quitepay` em 02/09: upload OK, `POST` do perfil devolveu `success: true`, `description`/`websites`/`vertical` gravaram — e a foto **não colou**, porque `platform_type` era `NOT_APPLICABLE`. Aceita e descartada, sem erro. Por isso a função relê o perfil no fim: a resposta do POST não prova o que ficou gravado.
+
 **Estado das WABAs**: a da ABRACI (`458751397321968`) **não** tem o nosso App inscrito — tem "Dashboard de Marketing Digital" (da BM1) e Kommo; o inbound chega porque o webhook do App da BM1 aponta pra cá. A da WhatsJudd (`1495255778900978`) tem o `BussinesMessagerAPI` (nosso).
 
 **Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'` e `instance_name` da conversa) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
