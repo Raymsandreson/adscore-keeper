@@ -10,10 +10,19 @@
  *  - status       : lê a situação atual do número (não muda nada)
  *  - request_code : pede à Meta que dispare o código (SMS ou VOICE)
  *  - verify_code  : confirma o código de 6 dígitos
+ *  - register     : registra na Cloud API (exige PIN de 6 dígitos da verificação
+ *                   em duas etapas). É o passo que faz `platform_type` sair de
+ *                   NOT_APPLICABLE para CLOUD_API — antes disso o número existe
+ *                   na WABA e não envia, não recebe e nem aceita foto de perfil.
+ *  - deregister   : desfaz o register. É a rota de volta, e existe por isso.
  *
- * Deliberadamente NÃO implementa `register` (POST /{id}/register): esse exige o
- * PIN da verificação em duas etapas e mexe no registro do número na Cloud API.
- * Fica de fora até ser comprovadamente necessário.
+ * ATENÇÃO ao registrar: o número sai do aplicativo WhatsApp Business do celular.
+ * Rodar nos dois ao mesmo tempo exige Coexistence, que a Meta só oferece a
+ * Solution Partner/Tech Provider via Embedded Signup — não a integração direta
+ * como a nossa. Confirmar que ninguém usa o chip no app ANTES de registrar.
+ *
+ * O PIN nunca é logado nem devolvido na resposta. Guardar fora daqui: sem ele,
+ * reregistrar o número depois vira chamado com a Meta.
  */
 
 import { RequestHandler } from 'express';
@@ -96,6 +105,38 @@ export const handler: RequestHandler = async (req, res) => {
         graph_status: r.status,
         graph: out,
         number: cur.body,
+      });
+      return;
+    }
+
+    if (action === 'register' || action === 'deregister') {
+      const corpo: Record<string, string> = { messaging_product: 'whatsapp' };
+      if (action === 'register') {
+        const pin = String(body.pin || '').trim();
+        if (!/^\d{6}$/.test(pin)) {
+          res.status(400).json({ success: false, error: 'pin obrigatório: exatamente 6 dígitos' });
+          return;
+        }
+        corpo.pin = pin;
+      }
+
+      const antes = await readStatus();
+      const r = await fetch(`${GRAPH}/${API_VERSION}/${phoneNumberId}/${action}`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo),
+      });
+      const out: any = await r.json();
+      // A resposta é só {success:true}: quem prova é o platform_type na releitura.
+      const depois = await readStatus();
+      res.status(200).json({
+        success: r.status < 400 && !out?.error,
+        action,
+        graph_status: r.status,
+        graph: out,
+        platform_type_antes: (antes.body as any)?.platform_type,
+        platform_type_depois: (depois.body as any)?.platform_type,
+        number: depois.body,
       });
       return;
     }
