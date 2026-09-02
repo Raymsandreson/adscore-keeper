@@ -2,11 +2,18 @@ import { describe, it, expect } from 'vitest';
 import { ehInstanciaCloud, nomesInstanciasCloud, rotuloDaLinha, TOKEN_CLOUD_API } from '../cloudApiInstances';
 
 describe('ehInstanciaCloud', () => {
-  it('reconhece a linha renomeada e a segunda linha', () => {
+  it('reconhece a linha renomeada', () => {
     // A razão de existir: depois do rename, comparar com 'cloud_gerencia'
     // deixaria de reconhecer a conversa como Cloud — e o envio iria pra UazAPI.
     expect(ehInstanciaCloud('abraci')).toBe(true);
-    expect(ehInstanciaCloud('prudencio_advogados')).toBe(true);
+  });
+
+  it('não exige edição de código para linha criada pelo painel', () => {
+    // Linha nova NÃO entra na semente — quem a ensina é o banco (e, do segundo
+    // render em diante, o cache). Se alguém voltar a listar nomes novos aqui,
+    // este teste falha e lembra que o caminho certo é o painel.
+    expect(nomesInstanciasCloud()).not.toContain('quitepay');
+    expect(nomesInstanciasCloud()).not.toContain('prudencio_advogados');
   });
 
   it('mantém o nome histórico enquanto houver mensagem antiga com ele', () => {
