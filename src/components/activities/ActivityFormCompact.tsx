@@ -42,6 +42,7 @@ import { gerarCamposDoProcesso, rascunhoParaHtml, type CamposGerados } from '@/l
 import { toast } from 'sonner';
 import type { TemplateVariation } from '@/hooks/useChecklists';
 import { cn } from '@/lib/utils';
+import { STATUS_ATIVIDADE, statusAtividadeDef } from '@/lib/activityStatus';
 import { formatProcessLabel } from '@/lib/processLabel';
 import { isInstanceDisconnectedError, showInstanceDisconnectedToast } from '@/lib/whatsappReconnectEvent';
 import { sendVoiceToWa } from '@/lib/whatsappVoiceSend';
@@ -1409,13 +1410,28 @@ export function ActivityFormCompact(props: ActivityFormCompactProps) {
 
         <div>
           <span className="text-[10px] text-muted-foreground uppercase tracking-wider">Situação</span>
+          {/* A situação era um select cinza igual a todos os outros: pra saber se
+              a atividade estava concluída ou pendente era preciso procurar e
+              LER. Agora o próprio gatilho é da cor da situação, com ícone e
+              texto maior — reconhece antes de ler. Cores em
+              src/lib/activityStatus.ts (as mesmas dos cards da ActivitiesPage). */}
           <Select value={props.formStatus} onValueChange={props.setFormStatus}>
-            <SelectTrigger className="h-8 text-xs mt-0.5"><SelectValue /></SelectTrigger>
+            <SelectTrigger
+              className={cn(
+                'h-10 mt-0.5 text-sm font-bold border-2',
+                statusAtividadeDef(props.formStatus).className,
+                statusAtividadeDef(props.formStatus).border,
+              )}
+              title={`Situação da atividade: ${statusAtividadeDef(props.formStatus).label}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
             <SelectContent>
-              <SelectItem value="pendente" className="text-xs">Pendente</SelectItem>
-              <SelectItem value="em_andamento" className="text-xs">Em Andamento</SelectItem>
-              <SelectItem value="concluida" className="text-xs">Concluída</SelectItem>
-              <SelectItem value="reagendada" className="text-xs">Reagendada</SelectItem>
+              {STATUS_ATIVIDADE.map(st => (
+                <SelectItem key={st.value} value={st.value} className="text-xs">
+                  <span className="font-semibold">{st.icon} {st.label}</span>
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           {props.formStatus === 'reagendada' && props.setFormRescheduledTo && (
