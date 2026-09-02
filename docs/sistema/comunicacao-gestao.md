@@ -288,6 +288,15 @@ Antes existia uma linha só, chamada `cloud_gerencia`, e esse nome vivia hardcod
 
 Hoje: `overview` devolve `configs` (todas as ativas) e mantém `config` só por compatibilidade com o `WhatsAppApiPage`; `save_config` **atualiza a linha** (por `id`, ou pelo `phone_number_id` quando é a primeira vez) e não toca nas vizinhas; desligar virou ação explícita (`deactivate_config`, com confirmação na tela e só quando há mais de uma linha); `check_meta_status` aceita `phone_number_id` e recusa com `ambiguous_config` em vez de escolher sozinho. A tela ganhou seletor de linha, campo **Nome da linha** e o botão vira "Criar linha" quando é nova.
 
+**Dois índices singleton bloqueavam o segundo número** (removidos em 02/09/2026). Nenhum dos dois estava em migration do repo — a tabela nasceu fora dele:
+
+- `whatsapp_cloud_config_singleton`: `UNIQUE ((true)) WHERE is_active = true`. Índice sobre uma constante, ou seja **no máximo uma linha ativa**. Era o que garantia que o `maybeSingle()` do código nunca visse duas. Trocado por `whatsapp_cloud_config_phone_ativo_key` — `UNIQUE (phone_number_id) WHERE is_active`, que é o invariante que sobrevive a N números: o mesmo número não fica ativo em duas linhas.
+- `whatsapp_instances_instance_token_key`: `UNIQUE (instance_token)`. Correto no mundo UazAPI, onde o token **é** a credencial da conexão. Mas linha Cloud não tem token próprio — guarda a sentinela constante `cloud_api_meta` só para marcar o canal, então a segunda linha colidia com a ABRACI. Virou índice parcial `WHERE instance_token <> 'cloud_api_meta'`: token de verdade continua único, a sentinela fica de fora.
+
+O primeiro deu a prova do conserto do `save_config`: com o código antigo a sequência seria *desativa todas → insert falha no 23505 → nenhuma linha ativa*, derrubando envio e recebimento por um clique em Salvar. Com o novo, a tentativa falhou e a ABRACI não foi tocada.
+
+Já auditadas e limpas: `whatsapp_cloud_assignees` (PK `(phone, instance_name)`, nasceu multi-linha), `whatsapp_cloud_routing_rules`, e nenhum CHECK ou constraint de exclusão nas três.
+
 **Estado das WABAs**: a da ABRACI (`458751397321968`) **não** tem o nosso App inscrito — tem "Dashboard de Marketing Digital" (da BM1) e Kommo; o inbound chega porque o webhook do App da BM1 aponta pra cá. A da WhatsJudd (`1495255778900978`) tem o `BussinesMessagerAPI` (nosso).
 
 **Envio**: front → edge `send-whatsapp` (com `channel: 'cloud'` e `instance_name` da conversa) → Railway `send-whatsapp-cloud`. A edge repassa o corpo verbatim, então campo novo no envio **não exige deploy de edge**.
