@@ -19,6 +19,8 @@ import { ActivityFullSheet } from '@/components/activities/ActivityFullSheet';
 import { useLeadActivities } from '@/hooks/useLeadActivities';
 import { validarAvaliacao, salvarAvaliacao, type FeedbackOutcome } from '@/lib/feedbackEvaluation';
 import { contarPorAssessor, totalGeral, concluidasDe, type FeedbackStatusKey } from '@/lib/feedbackFunnelStats';
+import { useStatusChangePrompt } from '@/components/activities/useStatusChangePrompt';
+import { type StatusAtividade } from '@/lib/activityStatus';
 
 // Um feedback = uma atividade com retorno preenchido. O observador avalia.
 export interface FeedbackRow {
@@ -127,6 +129,13 @@ const CAT_STYLE: Record<string, { chip: string; label: string }> = {
 
 const WEEK_DAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom'];
 
+// Como o desfecho aparece na pergunta de situação que vem logo depois de avaliar.
+const ROTULO_DESFECHO: Record<FeedbackOutcome, string> = {
+  satisfeito: '✅ Satisfeito',
+  incompleto: '⚠️ Incompleto',
+  insatisfeito: '❌ Insatisfeito',
+};
+
 function StarPicker({ value, onChange }: { value: number; onChange: (n: number) => void }) {
   const [hover, setHover] = useState(0);
   return (
@@ -196,6 +205,10 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
   const navigate = useNavigate();
   // Mesma exclusão do resto do sistema: soft delete + auditoria + limpeza do cronômetro.
   const { deleteActivity } = useLeadActivities();
+  // Avaliou? Confere a situação da atividade na sequência (regra em
+  // useStatusChangePrompt — avaliar "incompleto" numa atividade "concluída" era
+  // a contradição que o painel deixava passar).
+  const { perguntarSituacao, dialog: dialogSituacao } = useStatusChangePrompt();
   const [extId, setExtId] = useState<string | null>(null);
   const [rows, setRows] = useState<FeedbackRow[]>([]);
   const [lateRows, setLateRows] = useState<LateRow[]>([]);
@@ -476,18 +489,39 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
         cloudUserId: user?.id,
       });
 
-      if (res.pedeFollowUp) {
-        onCreateFollowUp({ source: row, praise: d.praise.trim(), reason: d.justification.trim() });
-        toast.info('Abrindo nova atividade de melhoria…');
-      } else {
-        toast.success(res.mensagem);
-      }
+      toast.success(res.mensagem);
 
       // Atualiza a lista localmente.
       setRows(prev => prev.map(r => r.id === row.id
         ? { ...r, feedback_rating: d.rating, feedback_outcome: outcome, feedback_rated_by_name: res.avaliadorNome, feedback_rated_at: res.ratedAt }
         : r));
       setDraft(prev => { const n = { ...prev }; delete n[row.id]; return n; });
+
+      // A situação da atividade tem que combinar com a avaliação: retorno
+      // incompleto ou insatisfeito sugere devolver pra "Em Andamento" — quem
+      // avalia confirma (ou mantém) e ajusta a data no mesmo diálogo.
+      const mudou = await perguntarSituacao({
+        activityId: row.id,
+        contexto: `Avaliado como ${ROTULO_DESFECHO[outcome]}.`,
+        sugestao: outcome === 'satisfeito' ? undefined : 'em_andamento',
+        situacao: {
+          id: row.id,
+          status: (row.status || 'pendente') as StatusAtividade,
+          deadline: row.deadline,
+          rescheduled_to: row.rescheduled_to,
+          assigned_to: row.assigned_to,
+          assigned_to_name: row.assigned_to_name,
+          title: row.title,
+        },
+      });
+      if (mudou) {
+        setRows(prev => prev.map(r => r.id === row.id ? { ...r, ...mudou.patch as Partial<FeedbackRow> } : r));
+      }
+
+      if (res.pedeFollowUp) {
+        onCreateFollowUp({ source: row, praise: d.praise.trim(), reason: d.justification.trim() });
+        toast.info('Abrindo nova atividade de melhoria…');
+      }
     } catch (e: any) {
       console.error('[FeedbackFunnel] evaluate error:', e);
       toast.error('Erro ao salvar a avaliação');
@@ -1172,6 +1206,9 @@ export function FeedbackFunnel({ open, onOpenChange, onCreateFollowUp }: Props) 
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* "A situação continua essa?" — abre logo depois de avaliar. */}
+      {dialogSituacao}
     </>
   );
 }

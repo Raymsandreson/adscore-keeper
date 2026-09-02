@@ -49,6 +49,10 @@ export const FONTE_LABEL: Record<string, string> = {
   // Quinta fonte (24/08/2026): e-mail do INSS, ligado pelo protocolo
   // administrativo. É a única que alcança requerimento sem CNJ.
   email: 'e-mail do INSS',
+  // Sexta fonte (02/09/2026): o feed process_updates — push por e-mail do
+  // tribunal, sem o teto de 20 movimentações. Linha do monitoramento do
+  // Escavador nesse feed sai como 'escavador_texto', acima.
+  email_push: 'e-mail do tribunal (push)',
 };
 
 export interface ReguaDoProcesso {

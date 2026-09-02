@@ -11,6 +11,50 @@ a mesma coisa: cada fase do POP É um marco. A **captura** é quem lê as placas
 
 ---
 
+## 0. Regras de 02/09/2026 — prevalecem sobre o que vem abaixo
+
+Decisões do usuário, aplicadas em produção (migrations `20260902140000`…`20260902170000`):
+
+- **DataJud não entra na régua.** `vw_pop_marcos_detectados` lê só documento; os sinais `tpu`
+  foram apagados (backup `zz_pop_marco_sinais_tpu_bkp_20260902`). Quem detecta marco é:
+  texto do Escavador (`lead_processes.movimentacoes`, janela de 20), **feed `process_updates`**
+  (`vw_pop_marcos_feed`: monitoramento Escavador + push do tribunal, sem teto), `grau` do
+  Escavador, documento (`jm_documentos`), capa e e-mail do INSS. `jm_movimentos` continua sendo
+  alimentado só para a jurimetria. Tudo que a seção 3 diz sobre "DataJud como fonte de marco"
+  está superado.
+- **Percentual = posição do marco atual ÷ marcos posicionais do POP.** `pop_processo_regua`:
+  `previstos` = total posicional, `cumpridos` = posição; terminal atingido = 100; marco
+  anterior ao atual é `presumido` mesmo se eventual ("não se aplica, mas conta"). Tela e
+  mensagem dizem "marco N de M". A conta antiga (cumpridos/previstos) mostrava 80%+ em 184
+  processos sem trânsito.
+- **Não existem fases, só marcos.** `kanban_boards.stages` é gerado de `pop_marcos`
+  (posicionais, `m_<chave>`); objetivos (`checklist_stage_links`) e instâncias moram no
+  marco. Trabalhista = 24 marcos (sem `pericia`, `remessa_stf`, `decisao_stf`); BPC = 26
+  posicionais + 7 estados (novos: `triagem`, `saneamento_cadunico`). Ao criar marco novo:
+  inserir em `pop_marcos` com `stage_id = 'm_<chave>'`, regenerar `stages` do board e criar
+  o objetivo — nunca criar "fase" à mão.
+- **Marco sem objetivo é bug.** Cada marco tem ao menos um objetivo com os passos que
+  fazem o processo sair dele (conferir decisão → agir no prazo → comunicar cliente →
+  atualizar recebível). Os 13 do BPC estão em `20260902170000`.
+
+### Complemento do mesmo dia (02/09/2026, noite)
+
+- **Sinal de texto tem grau opcional.** `pop_marco_sinais.grau` (G1/G2/SUP) agora vale também para
+  `tipo = 'texto'`: é o que separa "embargos de declaração" do 1º grau do 2º, e o acórdão do TST
+  (SUP) do acórdão do TRT. `vw_pop_marcos_escavador` respeita; o feed (`process_updates`) não tem
+  grau, então `vw_pop_marcos_feed` só aplica sinal sem grau.
+- **Os atos que as movimentações anunciam são marco** — pedido literal do usuário: "não são
+  documentos, mas podem ser usados para conferir os marcos". 14 sinais de texto calibrados na
+  classe `classificacao_predita.nome` do Escavador (ED 1º/2º grau, RO, agravo interno, RE, acórdão
+  do TST, liquidação, constrição, depósito/pagamento espontâneo — excluindo depósito **recursal** —,
+  levantamento; no BPC: ED, recurso inominado/apelação, REsp/TNU, levantamento/RPV). Migration
+  `20260902180000`. Regra de calibração: **classe ancorada no início** (`^recurso ordin`), nunca
+  substring solta — "admissibilidade do recurso" sem "de revista" é o RO no 1º grau.
+- **`pop_marco_evidencia` sem DataJud** e com o feed: espelha exatamente o que a régua lê. O
+  diálogo "por que este marco" perdeu o bloco do DataJud.
+- Os 9 links de objetivos das fases antigas do BPC (pré-30/08) foram apagados; as instâncias
+  ficaram (histórico), invisíveis como já eram.
+
 ## 1. Marco é fase. Estado não é marco.
 
 Regra do usuário, literal: *"marco pela etimologia da palavra não pode ser um estado"*.

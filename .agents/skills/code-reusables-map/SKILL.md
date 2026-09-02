@@ -63,6 +63,12 @@ Estas eu abri o código e confirmei o que faz. Para o resto, use `describe-funct
 - **Toda** origem de rascunho cai no mesmo lugar: `ActivityFullSheet` com `mode="create"` + `draft: ActivityDraft` → `initFromDraft`. Não criar formulário próprio (ver skill/doc de formulários únicos).
 - `src/components/activities/richTextFields.ts` → `draftRichText` (texto puro → `<p>`), `callFieldTextToHtml`, `stripHtmlToText`. **Obrigatório** pra qualquer campo longo que vá pro `RichTextEditor`: o Lexical só aceita nó de bloco na raiz e **descarta texto puro em silêncio** (campo abre vazio). Coberto por testes em `src/components/activities/__tests__/`.
 
+### Atividade — situação e avaliação de feedback
+- `src/lib/feedbackEvaluation.ts` → **regra única** de avaliar feedback (valida, grava em `lead_activities`, avisa o responsável). Exporta também `nomeDoUsuario` e `notificarResponsavel`, reusados por quem precisa avisar o responsável pela mesma porta. Chamada pelo `FeedbackFunnel` (Atividades) e pelo `FeedbackAvaliarInline` (telão).
+- `src/lib/activityStatusChange.ts` → **regra única** de trocar a situação da atividade fora do formulário (`lerSituacaoAtual`, `alterarSituacaoAtividade`). Carimba/limpa `completed_*` e avisa o responsável. Não reescreva esse update em tela nenhuma.
+- `src/components/activities/useStatusChangePrompt.tsx` → o diálogo "A situação da atividade continua essa?", que abre depois de avaliar. `perguntarSituacao()` devolve Promise (mesma mecânica do `useKeepAsObserverPrompt`).
+- `src/lib/activityStatus.ts` → rótulo, ícone e cor das 4 situações (`pendente`/`em_andamento`/`concluida`/`reagendada`). **Antes de escrever paleta de status em tela nova, use esta.**
+
 ### INSS administrativo — vínculo protocolo ↔ caso
 - `src/lib/inssVinculoCaso.ts` → **front, use este**. `buscarSugestoesDeCaso` (requerimento → CPF → nome, em contatos/leads/grupos, Externo + Cloud), `buscarCasosPorTexto` (busca manual) e `vincularProtocoloAoCaso` (grava em `inss_admin_processes`, `lead_custom_field_values` e `lead_processes`; cria o `legal_case` quando a opção é lead sem caso). Nasceu dentro do `InssAdminProcessesTab` e saiu de lá em 17/08/2026 — **não reimplemente busca de caso em tela nova**.
 - `src/components/protocolos/VincularCasoDialog.tsx` → a UI desse fluxo, usada pela aba Processos INSS e pela lista de protocolos da Visão Geral.

@@ -78,6 +78,11 @@ export function ProcessMovimentacoesTab({
 }) {
   const [filtro, setFiltro] = useState<Filtro>('todas');
   const [categoriaById, setCategoriaById] = useState<Record<string, UpdateCategoria>>({});
+  // O que o tribunal quis dizer, em português — `process_updates.resumo_ia`,
+  // escrito na captura pelo cron `summarize-process-updates` (Railway). O sino
+  // já mostrava; esta aba lia só a categoria e deixava o resumo pronto no
+  // banco sem uso (caso 60, 02/09/2026). Ler não custa chamada de IA nenhuma.
+  const [resumoById, setResumoById] = useState<Record<string, string>>({});
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const itens = useMemo(() => normalizeMovs(movimentacoes), [movimentacoes]);
@@ -91,15 +96,18 @@ export function ProcessMovimentacoesTab({
         const client = db as any;
         const { data } = await client
           .from('process_updates')
-          .select('escavador_movimentacao_id, categoria')
+          .select('escavador_movimentacao_id, categoria, resumo_ia')
           .eq('process_id', processId)
           .not('escavador_movimentacao_id', 'is', null);
         if (cancelled) return;
         const map: Record<string, UpdateCategoria> = {};
-        for (const r of (data || []) as Array<{ escavador_movimentacao_id: string; categoria: UpdateCategoria }>) {
+        const resumos: Record<string, string> = {};
+        for (const r of (data || []) as Array<{ escavador_movimentacao_id: string; categoria: UpdateCategoria; resumo_ia: string | null }>) {
           map[r.escavador_movimentacao_id] = r.categoria;
+          if (r.resumo_ia) resumos[r.escavador_movimentacao_id] = r.resumo_ia;
         }
         setCategoriaById(map);
+        setResumoById(resumos);
       } catch (err) {
         console.error('Error fetching update categories:', err);
       }
@@ -160,6 +168,7 @@ export function ProcessMovimentacoesTab({
       <div className="space-y-1.5">
         {visiveis.map((item) => {
           const categoria = item.escavadorId ? categoriaById[item.escavadorId] : undefined;
+          const resumo = item.escavadorId ? resumoById[item.escavadorId] : undefined;
           const style = categoria ? CATEGORIAS[categoria] : null;
           const Icon = style?.icon;
           const isOpen = expanded.has(item.key);
@@ -208,6 +217,14 @@ export function ProcessMovimentacoesTab({
                   </button>
                 )}
               </div>
+              {/* Resumo por IA em cima, texto cru embaixo: resumo não substitui
+                  o que o tribunal comunicou oficialmente (mesma regra do sino). */}
+              {resumo && (
+                <p className="text-[11px] mt-1 leading-snug flex gap-1">
+                  <Sparkles className="h-3 w-3 shrink-0 mt-px text-primary" />
+                  <span className="text-foreground/90">{resumo}</span>
+                </p>
+              )}
               <p className={cn('text-[11px] mt-1 text-muted-foreground whitespace-pre-wrap', !isOpen && 'line-clamp-3')}>
                 {item.conteudo || '(sem conteúdo)'}
               </p>

@@ -6277,14 +6277,23 @@ const ActivitiesPage = () => {
 
                 // POP escolhido na própria atividade tem prioridade — mesma regra
                 // do activeStepBoardId (contexto de passo/modelos).
+                //
+                // `processId` NÃO é opcional quando a atividade tem processo: sem ele a
+                // barra não carrega a régua de marcos (useProcessoMarcos(null) volta vazio),
+                // cai no percentual de PASSOS EXECUTADOS e ainda perde a fase gravada em
+                // lead_processes.workflow_stage_id — voltando pra 1ª fase do POP. Era o que
+                // fazia o caso 60 aparecer "Pré-Processual · fase 1 de 24 · 3%" aqui e
+                // "Embargos de declaração (2º grau) · fase 10 de 24 · 80%" na ficha do
+                // processo. Mesma correção que a ActivityFullSheet recebeu em 30/08/2026
+                // (caso 88) e que esta tela gêmea tinha ficado sem.
                 if (formWorkflowId) {
-                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={funnelActivityId} origemDoPop="atividade" />;
+                  return <LeadFunnelProgressBar leadId={formLeadId} boardId={formWorkflowId} activityId={funnelActivityId} processId={formProcessId || null} origemDoPop="atividade" />;
                 }
                 // Se há processo vinculado: só mostra se o processo tem fluxo próprio.
                 // Sem fluxo no processo = sem barra (não cai no funil do lead).
                 if (formProcessId) {
                   if (processWorkflowId) {
-                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} activityId={funnelActivityId} origemDoPop="processo" />;
+                    return <LeadFunnelProgressBar leadId={formLeadId} boardId={processWorkflowId} activityId={funnelActivityId} processId={formProcessId} origemDoPop="processo" />;
                   }
                   return (
                     <p className="text-[10px] text-muted-foreground mt-1.5 italic">

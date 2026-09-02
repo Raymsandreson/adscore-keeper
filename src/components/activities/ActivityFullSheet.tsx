@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ActivityChainPanel, useActivityChain } from '@/components/activities/ActivityChainPanel';
 import { cn } from '@/lib/utils';
+import { statusAtividadeDef } from '@/lib/activityStatus';
 import { toast } from 'sonner';
 import { Save, Loader2, CheckCircle2, Trash2, ExternalLink, X, Plus, Building2, Briefcase, UserPlus, FileText, Sparkles, ChevronDown, Mic, Pencil, DollarSign, MoreVertical, Copy, RotateCcw, Users, MessageCircle, Maximize2, Minimize2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -1408,6 +1409,21 @@ export function ActivityFullSheet({ open, onOpenChange, activityId, leadId, lead
               title={formTitle || undefined}
             >
               {formTitle || (isCreate ? 'Nova atividade' : 'Atividade')}
+              {/* Situação, ao lado do assunto: quem abre a ficha vê de cara se a
+                  atividade está pendente, andando ou concluída — antes isso só
+                  aparecia num select cinza lá embaixo do formulário. Inline
+                  (não flutuante) pra não cobrir o título. */}
+              {!isCreate && (() => {
+                const st = statusAtividadeDef(formStatus);
+                return (
+                  <span
+                    className={cn('ml-2 align-middle inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-bold', st.className)}
+                    title={`Situação da atividade: ${st.label}`}
+                  >
+                    {st.icon} {st.label}
+                  </span>
+                );
+              })()}
               {/* Tempo gasto x previsto, ao lado do assunto: quem abre a atividade
                   já vê quanto ela custou até agora sem descer até o formulário.
                   Fica no fluxo do texto (inline) pra não cobrir o título. */}

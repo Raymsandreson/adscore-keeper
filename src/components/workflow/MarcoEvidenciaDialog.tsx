@@ -25,7 +25,7 @@ import { useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { AlertTriangle, CheckCircle2, FileText, Paperclip, ScrollText, Scale } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, FileText, Paperclip, ScrollText } from 'lucide-react';
 import { useMarcoEvidencia, type FonteCandidata } from '@/hooks/useMarcoEvidencia';
 import { FONTE_LABEL } from '@/hooks/useProcessoMarcos';
 import { PerguntarAPecaBox } from './PerguntarAPecaBox';
@@ -42,18 +42,6 @@ const fonteLabel = (f: string | null | undefined) =>
   (f && (FONTE_LABEL[f] || f)) || 'sem fonte';
 
 /** `{"nome": "x"}` vira "x" — complemento do TPU é ruído em JSON e frase em texto. */
-function complementoEmTexto(v: unknown): string | null {
-  if (!v) return null;
-  const achatar = (x: unknown): string[] => {
-    if (x == null) return [];
-    if (Array.isArray(x)) return x.flatMap(achatar);
-    if (typeof x === 'object') return Object.values(x as Record<string, unknown>).flatMap(achatar);
-    return [String(x)];
-  };
-  const partes = achatar(v).filter(s => s && s !== 'null');
-  return partes.length ? partes.join(' · ') : null;
-}
-
 function Bloco({ titulo, contagem, children }: {
   titulo: string; contagem?: string; children: React.ReactNode;
 }) {
@@ -214,57 +202,9 @@ export function MarcoEvidenciaDialog({ alvo, onClose, pecas, onAbrirPeca, pecaDo
               ))}
             </Bloco>
 
-            {/* 3. O DataJud, que é a pergunta que originou esta tela */}
-            <Bloco
-              titulo="Movimentos do DataJud que casaram"
-              contagem={`${evidencia.datajud.total} de ${evidencia.cobertura.movimentos_datajud} no processo`}
-            >
-              {evidencia.cobertura.movimentos_datajud === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Este processo não tem UM movimento do DataJud. A régua dele anda só pelo Escavador e
-                  pelas peças — não é falha da regra deste marco.
-                </p>
-              ) : evidencia.datajud.total === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  Nenhum dos {evidencia.cobertura.movimentos_datajud} movimentos casa com a regra deste marco.
-                </p>
-              ) : (
-                <>
-                  {evidencia.datajud.linhas.map(m => {
-                    const compl = complementoEmTexto(m.complementos);
-                    return (
-                      <div
-                        key={m.id}
-                        className={`rounded-md border p-1.5 text-[11px] ${m.usado ? 'bg-muted/40' : 'opacity-70'}`}
-                      >
-                        <div className="flex items-start gap-2">
-                          <Scale className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 flex-1">
-                            <span className="font-mono text-[10px] text-muted-foreground">{m.codigo}</span>{' '}
-                            <span className="font-medium">{m.nome || '(sem nome)'}</span>
-                          </span>
-                          <Usou usado={m.usado} />
-                          <span className="w-20 shrink-0 text-right text-muted-foreground">{dataBR(m.data)}</span>
-                        </div>
-                        <div className="pl-5 text-muted-foreground">
-                          {m.grau && <>{GRAU_LABEL[m.grau] || m.grau}</>}
-                          {m.orgao_julgador && <> · {m.orgao_julgador}</>}
-                          {m.tribunal && <> · {m.tribunal}</>}
-                          {compl && <> · {compl}</>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {evidencia.datajud.total > evidencia.datajud.linhas.length && (
-                    <p className="text-[10px] text-muted-foreground">
-                      mostrando {evidencia.datajud.linhas.length} de {evidencia.datajud.total} — regra que
-                      casa com dezenas de movimentos é regra frouxa.
-                    </p>
-                  )}
-                </>
-              )}
-            </Bloco>
-
+            {/* O bloco do DataJud saiu em 02/09/2026: a régua não lê mais o
+                DataJud (decisão do usuário — "só faz zoada"). Ficam peças,
+                Escavador, e-mail e capa. */}
             {/* 4. Peças */}
             {evidencia.documento.total > 0 && (
               <Bloco

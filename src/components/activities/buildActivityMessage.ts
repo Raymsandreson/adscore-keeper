@@ -418,7 +418,7 @@ export function buildActivityMessage(
           full: [
             linha,
             marco && `• Marco atual: ${marco}`,
-            `• Marcos: ${regua.cumpridos}/${regua.previstos} previstos para este processo`,
+            `• Posição: marco ${regua.cumpridos} de ${regua.previstos} da régua deste POP`,
           ].filter(Boolean).join('\n'),
         };
       }

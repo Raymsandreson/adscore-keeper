@@ -187,6 +187,19 @@ Aba lateral aberta pelo botão "💬 Feedbacks" do cabeçalho das Atividades. Mo
 
 A contagem vive em `src/lib/feedbackFunnelStats.ts` (`contarPorAssessor`, `totalGeral`, `concluidasDe` — a soma das concluídas mora lá, não na tela, para o chip do topo e a coluna da tabela nunca discordarem) — mesma classificação das colunas do funil (reagendada pelo status; sem `feedback_outcome` = a avaliar; sem responsável cai em "—"). Testes: `src/lib/__tests__/feedbackFunnelStats.test.ts` e `src/components/activities/__tests__/FeedbackFunnel.chips.test.tsx`.
 
+**Avaliou → "A situação da atividade continua essa?"** (desde 02/09/2026). Avaliar um retorno como ⚠️ Incompleto e deixar a atividade em ✅ Concluída era a contradição que o painel deixava passar: o funil cobrava o que faltava e o quadro de atividades dizia que estava pronta — sem ninguém para reabrir. Agora, **depois de gravar qualquer avaliação** (satisfeito, incompleto ou insatisfeito), abre um diálogo que mostra a **situação atual** da atividade (com a cor e o ícone dela, e o prazo/reagendamento que vale hoje) e pergunta **para qual mudar** e **com que data**:
+- Incompleto e Insatisfeito já abrem com 🔄 **Em Andamento** sugerido; Satisfeito abre na própria situação atual (a pergunta é de conferência, não de mudança).
+- A data acompanha a escolha: em 🔁 Reagendada é **obrigatória** e grava em `rescheduled_to` (é o que o funil e o calendário passam a cobrar); nas demais grava em `deadline`. Em branco, o prazo atual continua valendo.
+- "Manter <situação>" fecha sem tocar em nada. Nada mudou (mesma situação, mesma data) = botão desabilitado.
+- Concluir carimba `completed_at/by/by_name`; **sair** de concluída limpa os três — igual ao "Reabrir" da ficha. Situação e carimbo de conclusão não podem discordar.
+- O responsável recebe o aviso `status` ("🔄 Situação da atividade alterada — ✅ Concluída → 🔄 Em Andamento · 05/09/2026"), pela mesma porta dos avisos de avaliação. Nunca a si mesmo.
+- Vale nas **duas telas que avaliam**: o funil (`FeedbackFunnel`) e o painel do telão (`FeedbackAvaliarInline`). Regra em `src/lib/activityStatusChange.ts` (`lerSituacaoAtual`, `alterarSituacaoAtividade`), diálogo em `src/components/activities/useStatusChangePrompt.tsx` (mesma mecânica assíncrona do `useKeepAsObserverPrompt`: a Promise só resolve quando a pessoa decide). No telão a situação atual é **lida do banco** — lá só existe o `activity_id`. Testes: `src/lib/__tests__/activityStatusChange.test.ts`.
+
+**A situação ficou visível** (02/09/2026). Antes ela era um `<select>` cinza igual a todos os outros, lá no meio do formulário: para saber se a atividade estava pendente ou concluída era preciso procurar e **ler**. Agora:
+- o gatilho do select tem a **cor da situação**, ícone e texto maior (`ActivityFormCompact`);
+- o cabeçalho da ficha mostra a situação **ao lado do assunto**, do mesmo jeito que já mostrava o cronômetro — inline, sem cobrir o título (`ActivityFullSheet`);
+- rótulo, ícone e cor de cada situação vivem em `src/lib/activityStatus.ts` (as mesmas cores dos cards da `ActivitiesPage`), não mais copiados tela a tela.
+
 ---
 
 ## Varas e Tribunais — contatos (ícone de tribunal no cabeçalho)
@@ -486,6 +499,21 @@ Agora `buildActivityMessage` recebe `regua` (`useProcessoMarcos` / RPC `pop_proc
 
 A linha `*Etapa:* / *Objetivo:* / *Passo atual:*` continua sendo a do POP: **andamento** (onde o processo está) e **trabalho** (o que a equipe executou) são duas medidas com dois nomes, e por isso a linha da régua se chama `Marco atual`, não `Etapa`. Vale nas três telas que montam mensagem: `ActivityFullSheet`, `ActivitiesPage` e o sino (`ProcessUpdatesBell`, via `fetchProcessoRegua`).
 
+### A barra da tela de Atividades ficou sem a régua (02/09/2026)
+
+A correção acima chegou ao `ActivityFullSheet` e ao `ProcessDetailSheet`, mas **não** à tela gêmea `ActivitiesPage` — a barra era montada lá sem a prop `processId`. Sem ela, `useProcessoMarcos(null)` volta vazio e a barra faz duas coisas erradas de uma vez (`src/components/activities/LeadFunnelProgressBar.tsx:226-228`, `:259-262`, `:283-286`, `:1094-1095`):
+
+1. cai no percentual de **passos marcados à mão** em vez da régua;
+2. deixa de ler `lead_processes.workflow_stage_id` e volta para a **1ª fase do POP**.
+
+Caso 60 (`0100419-74.2021.5.01.0281`, POP "Trabalhistas judicial — marcos"): a tela de Atividades dizia *"Pré-Processual · fase 1 de 24 · 3%"* e a ficha do processo, *"Embargos de declaração (2º grau) · fase 10 de 24 · 80%"*. Os dois números estavam certos para o motor que os produziu — 2,58% pelos 8 passos vivos marcados de 184, e 80% pelos 8 marcos cumpridos de 10 previstos (`pop_processo_regua`).
+
+Alcance medido no Externo em 02/09/2026: dos **1.290** processos com esse POP, **1.290** têm régua com percentual e **999** têm `workflow_stage_id` diferente da 1ª fase — todos exibiam a fase errada nessa tela. Não é backfill: nada de errado estava gravado, era render.
+
+Regressão coberta por `src/components/activities/__tests__/LeadFunnelProgressBar.processId-obrigatorio.test.ts`, que varre o `src/` e exige `processId` em todo ponto de montagem da barra que não seja o funil do lead (`origemDoPop="lead"`).
+
+**Não são bug** (conferidos no mesmo caso, para não virarem chamado de novo): o chip *"há N sem andamento efetivo"* lê `lead_processes.data_ultima_movimentacao` (`ActivitiesPage.tsx:6136-6139`) e o *"Atualizado dd/MM HH:mm"* lê `leads.updated_at` (`:6239`) — nenhum dos dois é o progresso do POP, e por isso não mudam quando ele muda.
+
 ### A faixa de marcos do cabeçalho lia a régua errada
 
 `ProcessMarcosInline` (só usado no cabeçalho da atividade) lia `process_movements` — as **12 estações**, a régua antiga, que na prática só cobre o trabalhista. Em previdenciário ela está vazia: o cabeçalho dizia *"Nenhum marco registrado neste processo ainda"* no mesmo lugar em que a barra logo abaixo mostrava 40% pela régua do POP. Passou a ler `useProcessoMarcos` primeiro (marcos previstos: obrigatório sempre, eventual só quando aconteceu, estado que `atravessa_fases` fora) e só cai nas 12 estações quando a régua do POP não tem nada.
@@ -510,6 +538,20 @@ O caminho do documento anexado à mão existe ponta a ponta: `usePecasDoProcesso
 - A régua previdenciária **não tem marco de contestação/réplica nem de liquidação** (planilha, comprovante). Os sinais de `documento` cobrem laudo pericial, sentença, acórdão, certidão de trânsito, IDPJ, recuperação judicial e penhora negativa. Enquanto não existir marco para elas, anexar a planilha de liquidação não move percentual nenhum — é configuração de POP a decidir, não código.
 
 ---
+
+## Só marcos, só Escavador, percentual por posição (02/09/2026)
+
+Três decisões do usuário, tomadas sobre o caso 60 (`0100419-74.2021.5.01.0281`), que mudam a régua de todos os POPs. Todas medidas no banco antes de aplicar; migrations `20260902140000` a `20260902170000` no Externo.
+
+**1. O DataJud saiu da régua.** A régua dizia "Embargos de declaração (2º grau) · 15/12/2025" enquanto o Escavador mostrava RR juntado em 17/07, concluso para admissibilidade em 12/08 e remessa à CREC em 24/08. O DataJud daquele processo tinha parado em 12/06 e a cadeia recursal só tinha sinal `tpu`. Decisão: *"retire o DataJud, ele só atrapalha, é mais informação só fazendo zoada"*. `vw_pop_marcos_detectados` passou a ler só documento; os 354 sinais `tpu` foram removidos (backup `zz_pop_marco_sinais_tpu_bkp_20260902`). Medido: 73 trabalhistas ficariam sem régua e 126 voltariam de marco — o usuário aceitou. Para compensar entrou o **feed `process_updates`** como fonte de texto (`vw_pop_marcos_feed`: monitoramento do Escavador + push por e-mail do tribunal, sem o teto de 20 movimentações): 73 processos ganharam marco por ele. Resultado líquido: processos com marco foram de 1.341 para 1.330. `jm_movimentos` continua alimentado — a jurimetria (`vw_jm_*`) lê de lá.
+
+**2. Percentual = posição do marco atual ÷ marcos posicionais do POP.** Antes era "cumpridos ÷ previstos" (obrigatório + eventual que aconteceu), e 184 processos trabalhistas mostravam 80%+ sem ter transitado — o dinheiro está depois do trânsito. Agora *"todos os marcos são obrigatórios; o que não se aplica conta como superado"*: `pop_processo_regua` devolve `previstos` = total posicional e `cumpridos` = posição, terminal atingido = 100, nenhum marco = null (a ficha cai nos passos). Média do trabalhista caiu de 44,1% para 37,0%. A barra, a faixa do cabeçalho e a mensagem ao cliente dizem **"marco 11 de 24"** e os segmentos são todos os marcos posicionais (`LeadFunnelProgressBar.tsx`, `ProcessMarcosInline.tsx`, `buildActivityMessage.ts`).
+
+**3. Não existem mais fases, só marcos.** Objetivos e passos moram no marco. Trabalhista: saíram `pericia` (o usuário não a quis na régua de 24), `remessa_stf` e `decisao_stf` → 24 marcos = 24 stages. BPC: 5 fases viraram **26 stages, um por marco posicional** (`m_<chave>`), com dois marcos novos sem detecção automática (`triagem`, `saneamento_cadunico`); os 21 objetivos foram redistribuídos pelo marco que o trâmite pede (mapa em `zz_bpc_mapa_objetivos_20260902`) e as 9.486 instâncias de checklist acompanharam por UPDATE — passo marcado continua marcado. Os 13 marcos que ficaram sem objetivo ganharam objetivo e passos de boas práticas (conferir a decisão → agir no prazo → comunicar o cliente → atualizar o recebível), e "Definição da Estratégia" do trabalhista deixou de ter zero passos. `kanban_boards.stages` continua existindo porque ranking, telão e checklists leem dele, mas é **gerado dos marcos** — ninguém edita fase.
+
+**Junto**: sinais de texto para `admissibilidade_rr` e `agravo_instrumento` (RR juntado, concluso para admissibilidade, remessa à CREC — calibrados contra 553 processos, a admissibilidade do Recurso *Ordinário* ficou de fora de propósito); a carteira judicial inteira (1.083 trabalhistas + 367 BPC com número) foi reconsultada no Escavador por uma fila temporária em pg_cron (`zz_backfill_escavador_fila_20260902`, um lote de 25 a cada 2 min pela edge `backfill-process-marcos`).
+
+Caso 60 depois de tudo: **Admissibilidade do RR · 17/07/2026 · marco 11 de 24 · 46%**.
 
 ## Prazo se cumpre, não se reagenda (31/08/2026)
 
