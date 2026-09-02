@@ -12,6 +12,8 @@
  *  - subscribe   : inscreve o App do token na WABA
  *  - unsubscribe : desfaz — é o rollback do subscribe
  *  - templates   : lista os templates da WABA e o status de aprovação de cada um
+ *  - create_template : cria template (é o único jeito de INICIAR conversa fora da
+ *                  janela de 24h — texto livre volta 131047 no recibo)
  *  - users       : lista os usuários atribuídos e as TASKS de cada um
  *  - assign_user : grava as tasks de um usuário na WABA
  *
@@ -113,6 +115,92 @@ export const handler: RequestHandler = async (req, res) => {
           body_params: (((t.components || []).find((c: any) => c.type === 'BODY')?.text || '')
             .match(/\{\{\d+\}\}/g) || []).length,
         })),
+      });
+      return;
+    }
+
+    if (action === 'create_template') {
+      // POST /{waba_id}/message_templates. A Meta valida nome (minusculo+underline),
+      // idioma, categoria e — quando o corpo tem {{n}} — exige `example` com um
+      // valor por variavel, senao rejeita com 100/2388023.
+      const name = String(body.name || '').trim();
+      const language = String(body.language || 'pt_BR').trim();
+      const category = String(body.category || 'UTILITY').trim().toUpperCase();
+      const bodyText = String(body.body_text || '').trim();
+      const footerText = String(body.footer_text || '').trim();
+      const examples: string[] = Array.isArray(body.body_example) ? body.body_example.map(String) : [];
+
+      if (!name || (!bodyText && !Array.isArray(body.components))) {
+        res.status(400).json({ success: false, error: 'name e body_text obrigatórios' });
+        return;
+      }
+      if (!/^[a-z0-9_]+$/.test(name)) {
+        res.status(400).json({ success: false, error: `nome inválido: "${name}" — só minúsculas, dígitos e _` });
+        return;
+      }
+
+      const varCount = (bodyText.match(/\{\{\d+\}\}/g) || []).length;
+      if (!Array.isArray(body.components) && varCount !== examples.length) {
+        res.status(400).json({
+          success: false,
+          error: `corpo tem ${varCount} variável(is) mas vieram ${examples.length} exemplo(s) — a Meta rejeita`,
+        });
+        return;
+      }
+
+      // Idempotencia: a Graph devolve erro opaco quando o par nome+idioma ja existe.
+      const existentes = await fetch(
+        `${GRAPH}/${API_VERSION}/${wabaId}/message_templates?fields=name,language,status&limit=200`,
+        { headers: auth },
+      ).then((r) => r.json() as any).catch(() => null);
+      const jaExiste = (existentes?.data || []).find(
+        (t: any) => t.name === name && t.language === language,
+      );
+      if (jaExiste) {
+        res.status(200).json({
+          success: true,
+          action,
+          ja_existia: true,
+          template: { name: jaExiste.name, language: jaExiste.language, status: jaExiste.status },
+        });
+        return;
+      }
+
+      const components = Array.isArray(body.components)
+        ? body.components
+        : [
+            {
+              type: 'BODY',
+              text: bodyText,
+              ...(examples.length ? { example: { body_text: [examples] } } : {}),
+            },
+            ...(footerText ? [{ type: 'FOOTER', text: footerText }] : []),
+          ];
+
+      const payload: Record<string, unknown> = {
+        name,
+        language,
+        category,
+        components,
+        // Deixa a Meta reclassificar em vez de REJEITAR quando discorda da
+        // categoria. A categoria que valeu volta na resposta — sem isso, a
+        // recusa vira um erro sem recurso.
+        allow_category_change: body.allow_category_change !== false,
+      };
+
+      const r = await fetch(`${GRAPH}/${API_VERSION}/${wabaId}/message_templates`, {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const out: any = await r.json();
+      res.status(200).json({
+        success: r.status < 400 && !out?.error,
+        action,
+        waba_id: wabaId,
+        enviado: { name, language, category, variaveis: varCount, tem_rodape: Boolean(footerText) },
+        graph_status: r.status,
+        graph: out,
       });
       return;
     }
