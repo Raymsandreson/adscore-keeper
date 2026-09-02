@@ -16,6 +16,11 @@
  *                  janela de 24h — texto livre volta 131047 no recibo)
  *  - users       : lista os usuários atribuídos e as TASKS de cada um
  *  - assign_user : grava as tasks de um usuário na WABA
+ *  - webhook_status : para cada App, diz se existe callback de webhook, para
+ *                  onde ele aponta e quais campos estão assinados. É a única
+ *                  forma de responder "o webhook está configurado?" sem
+ *                  depender de alguém achar a tela certa no painel da Meta.
+ *                  Não exige waba_id (é config de App, não de WABA).
  *
  * Sobre as tasks: `MANAGE` dá administração (ler contas, números, templates) e
  * `DEVELOP` é a que autoriza ENVIAR pela API. "Acesso total" na tela de ativos
@@ -29,6 +34,11 @@
 import { RequestHandler } from 'express';
 
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
+// Mesma lista do webhook: um App Secret por App, separados por vírgula.
+const APP_SECRETS = (process.env.WHATSAPP_CLOUD_APP_SECRET || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 // Token de ADMIN humano, opcional e temporario. Conceder DEVELOP e escalada de
 // privilegio: a Meta responde 403 quando o proprio System User tenta se elevar.
 // Usado EXCLUSIVAMENTE em assign_user - nunca para enviar, listar ou inscrever.
@@ -46,6 +56,52 @@ export const handler: RequestHandler = async (req, res) => {
   const body = req.body || {};
   const action: string = body.action || 'list';
   const wabaId: string = String(body.waba_id || '').trim();
+
+  // webhook_status é config de App, não de WABA: passa antes da exigência de waba_id.
+  //
+  // Consultar /{app-id}/subscriptions exige app access token (`app_id|app_secret`).
+  // Como efeito, provar qual secret abre qual App separa App Secret de Token de
+  // Cliente — os dois são 32 hex e o diagnóstico de tamanho não distingue um do
+  // outro. O valor do secret NUNCA sai daqui: só o índice dele na lista.
+  if (action === 'webhook_status') {
+    const appIds: string[] = Array.isArray(body.app_ids) && body.app_ids.length
+      ? body.app_ids.map(String)
+      : ['1921976208531040', '1356890262959552'];
+
+    const apps: any[] = [];
+    for (const appId of appIds) {
+      let casou = false;
+      for (let i = 0; i < APP_SECRETS.length; i++) {
+        const r = await fetch(
+          `${GRAPH}/${API_VERSION}/${appId}/subscriptions?access_token=${encodeURIComponent(`${appId}|${APP_SECRETS[i]}`)}`,
+        );
+        const out: any = await r.json();
+        if (out?.error) continue;
+        casou = true;
+        apps.push({
+          app_id: appId,
+          secret_indice: i,
+          assinaturas: (out?.data || []).map((sub: any) => ({
+            objeto: sub.object,
+            callback_url: sub.callback_url,
+            ativo: sub.active,
+            campos: (sub.fields || []).map((f: any) => f.name),
+          })),
+        });
+        break;
+      }
+      if (!casou) {
+        apps.push({
+          app_id: appId,
+          secret_indice: null,
+          erro: 'nenhum secret da lista abre este App (secret errado, ou é Token de Cliente)',
+        });
+      }
+    }
+
+    res.status(200).json({ success: true, action, secrets_na_lista: APP_SECRETS.length, apps });
+    return;
+  }
 
   if (!wabaId) {
     res.status(400).json({ success: false, error: 'waba_id obrigatório' });
