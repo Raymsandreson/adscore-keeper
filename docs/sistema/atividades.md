@@ -486,6 +486,21 @@ Agora `buildActivityMessage` recebe `regua` (`useProcessoMarcos` / RPC `pop_proc
 
 A linha `*Etapa:* / *Objetivo:* / *Passo atual:*` continua sendo a do POP: **andamento** (onde o processo está) e **trabalho** (o que a equipe executou) são duas medidas com dois nomes, e por isso a linha da régua se chama `Marco atual`, não `Etapa`. Vale nas três telas que montam mensagem: `ActivityFullSheet`, `ActivitiesPage` e o sino (`ProcessUpdatesBell`, via `fetchProcessoRegua`).
 
+### A barra da tela de Atividades ficou sem a régua (02/09/2026)
+
+A correção acima chegou ao `ActivityFullSheet` e ao `ProcessDetailSheet`, mas **não** à tela gêmea `ActivitiesPage` — a barra era montada lá sem a prop `processId`. Sem ela, `useProcessoMarcos(null)` volta vazio e a barra faz duas coisas erradas de uma vez (`src/components/activities/LeadFunnelProgressBar.tsx:226-228`, `:259-262`, `:283-286`, `:1094-1095`):
+
+1. cai no percentual de **passos marcados à mão** em vez da régua;
+2. deixa de ler `lead_processes.workflow_stage_id` e volta para a **1ª fase do POP**.
+
+Caso 60 (`0100419-74.2021.5.01.0281`, POP "Trabalhistas judicial — marcos"): a tela de Atividades dizia *"Pré-Processual · fase 1 de 24 · 3%"* e a ficha do processo, *"Embargos de declaração (2º grau) · fase 10 de 24 · 80%"*. Os dois números estavam certos para o motor que os produziu — 2,58% pelos 8 passos vivos marcados de 184, e 80% pelos 8 marcos cumpridos de 10 previstos (`pop_processo_regua`).
+
+Alcance medido no Externo em 02/09/2026: dos **1.290** processos com esse POP, **1.290** têm régua com percentual e **999** têm `workflow_stage_id` diferente da 1ª fase — todos exibiam a fase errada nessa tela. Não é backfill: nada de errado estava gravado, era render.
+
+Regressão coberta por `src/components/activities/__tests__/LeadFunnelProgressBar.processId-obrigatorio.test.ts`, que varre o `src/` e exige `processId` em todo ponto de montagem da barra que não seja o funil do lead (`origemDoPop="lead"`).
+
+**Não são bug** (conferidos no mesmo caso, para não virarem chamado de novo): o chip *"há N sem andamento efetivo"* lê `lead_processes.data_ultima_movimentacao` (`ActivitiesPage.tsx:6136-6139`) e o *"Atualizado dd/MM HH:mm"* lê `leads.updated_at` (`:6239`) — nenhum dos dois é o progresso do POP, e por isso não mudam quando ele muda.
+
 ### A faixa de marcos do cabeçalho lia a régua errada
 
 `ProcessMarcosInline` (só usado no cabeçalho da atividade) lia `process_movements` — as **12 estações**, a régua antiga, que na prática só cobre o trabalhista. Em previdenciário ela está vazia: o cabeçalho dizia *"Nenhum marco registrado neste processo ainda"* no mesmo lugar em que a barra logo abaixo mostrava 40% pela régua do POP. Passou a ler `useProcessoMarcos` primeiro (marcos previstos: obrigatório sempre, eventual só quando aconteceu, estado que `atravessa_fases` fora) e só cai nas 12 estações quando a régua do POP não tem nada.

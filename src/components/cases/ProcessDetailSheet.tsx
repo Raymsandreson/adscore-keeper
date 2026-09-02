@@ -736,15 +736,27 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
 
       // Insert documents that don't already exist
       let inserted = 0;
+      let jaExistiam = 0;
+      let primeiroErro: string | null = null;
+      let falhas = 0;
       for (const doc of docs) {
         const escId = String(doc.id || doc.documento_id || '');
-        if (!escId) continue;
+        if (!escId) { falhas++; primeiroErro = primeiroErro || 'item do Escavador veio sem id'; continue; }
         
         // Check if already imported
         const existing = documents.find(d => d.escavador_document_id === escId);
-        if (existing) continue;
+        if (existing) { jaExistiam++; continue; }
 
         const docType = classifyDocumentType(doc.tipo || doc.descricao || doc.titulo || '');
+
+        // `/documentos-publicos` devolve a data como OBJETO {date}; `/autos` devolve
+        // string (a mesma normalização da edge esc-autos, supabase/functions/esc-autos
+        // /index.ts:37-40). Mandar o objeto para a coluna `date` fazia TODO insert
+        // falhar — e o erro era só console.error, então a tela dizia "0 documento(s)
+        // importado(s)" como se o Escavador não tivesse peça. Era esse o bug.
+        const docData: string | null = typeof doc.data === 'string'
+          ? doc.data
+          : (doc.data?.date ?? null);
         
         // Grava no Externo — é de lá que a lista acima lê. Gravar no Cloud fazia o
         // documento importado nunca aparecer na aba.
@@ -757,16 +769,31 @@ export default function ProcessDetailSheet({ open, onOpenChange, process, onUpda
           description: doc.conteudo || doc.descricao || null,
           source: 'escavador',
           escavador_document_id: escId,
-          original_url: doc.url || null,
-          document_date: doc.data || null,
+          // O item traz o link em `links.api`; `url` é o formato antigo.
+          original_url: doc.links?.api || doc.url || null,
+          document_date: docData,
           metadata: doc,
         } as any);
         
-        if (insertErr) console.error('Error inserting process document:', insertErr);
-        else inserted++;
+        if (insertErr) {
+          falhas++;
+          primeiroErro = primeiroErro || insertErr.message;
+          console.error('Error inserting process document:', insertErr);
+        } else inserted++;
       }
 
-      toast.success(`${inserted} documento(s) importado(s) do Escavador`);
+      // Toast honesto: "0 importados" com peça na mão é FALHA, não resultado.
+      // Antes o erro de gravação virava sucesso silencioso na tela.
+      if (falhas > 0) {
+        toast.error(
+          `${docs.length} peça(s) no Escavador, ${inserted} gravada(s), ${falhas} falharam: ${primeiroErro}`,
+          { duration: 10000 },
+        );
+      } else if (inserted === 0 && jaExistiam > 0) {
+        toast.info(`Nada novo: as ${jaExistiam} peça(s) do Escavador já estavam importadas`);
+      } else {
+        toast.success(`${inserted} documento(s) importado(s) do Escavador`);
+      }
 
       // Refresh documents list
       const { data: refreshed } = await externalSupabase
