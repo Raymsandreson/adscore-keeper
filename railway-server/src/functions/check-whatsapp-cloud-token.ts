@@ -19,6 +19,12 @@ import { RequestHandler } from 'express';
 import { createHash } from 'crypto';
 import { supabase } from '../lib/supabase';
 
+// Mesma leitura que o webhook faz — se divergir, o diagnóstico mente.
+const SECRETS = (process.env.WHATSAPP_CLOUD_APP_SECRET || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
 const API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
 const GRAPH = 'https://graph.facebook.com';
@@ -181,6 +187,20 @@ export const handler: RequestHandler = async (req, res) => {
     // o mesmo system user gerando um token novo repete o user_id.
     issued_at: dataNode?.issued_at ?? null,
     token_fingerprint: createHash('sha256').update(TOKEN).digest('hex').slice(0, 12),
+    // App secrets do webhook. Uma WABA por App = um secret por App, e a lista é
+    // separada por vírgula. Trocar o valor em vez de somar derruba o inbound da
+    // outra WABA com 401 — que a Meta não reporta em lugar nenhum daqui, então
+    // sem esta contagem a única forma de descobrir é mensagem que não chega.
+    // Só o fingerprint sai: o valor nunca.
+    app_secrets: {
+      quantos: SECRETS.length,
+      fingerprints: SECRETS.map((sec) => createHash('sha256').update(sec).digest('hex').slice(0, 12)),
+      // Comprimento ajuda a pegar o erro clássico de colar o App ID no lugar do
+      // secret: App Secret da Meta tem 32 caracteres hex.
+      tamanhos: SECRETS.map((sec) => sec.length),
+      parece_hex32: SECRETS.map((sec) => /^[0-9a-f]{32}$/i.test(sec)),
+      verify_token_definido: Boolean(process.env.WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN),
+    },
     granular_scopes: (dataNode?.granular_scopes || []).filter(
       (g: any) => typeof g?.scope === 'string' && g.scope.includes('whatsapp'),
     ),
