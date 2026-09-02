@@ -30,6 +30,7 @@ import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { traceHook } from '@/utils/hookTracer';
 import { requestWhatsAppReconnect } from '@/lib/whatsappReconnectEvent';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { ehInstanciaCloud, TOKEN_CLOUD_API } from '@/lib/cloudApiInstances';
 
 const showDisconnectedToast = (instanceId: string | undefined, instanceName: string | undefined) => {
   toast.error(
@@ -284,11 +285,21 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         .select('*')
         .eq('is_active', true);
 
+      // Linha Cloud forçada: força TODAS as linhas Cloud, não só a de nome igual.
+      // Pelo nome, a renomeação de `cloud_gerencia` para `abraci` (e a segunda
+      // linha) deixariam a página de WhatsApp API vazia sem nenhum erro.
+      const forcandoCloud = ehInstanciaCloud(forcedName);
+      const filtroForcado = forcandoCloud
+        ? `instance_token.eq.${TOKEN_CLOUD_API}`
+        : `instance_name.ilike.${forcedName}`;
+
       if (forcedName && allowedIds.length > 0) {
-        // Inclui IDs permitidos OU a instância forçada (por nome, case-insensitive)
-        query = query.or(`id.in.(${allowedIds.join(',')}),instance_name.ilike.${forcedName}`);
+        // Inclui IDs permitidos OU a(s) instância(s) forçada(s)
+        query = query.or(`id.in.(${allowedIds.join(',')}),${filtroForcado}`);
       } else if (forcedName) {
-        query = query.ilike('instance_name', forcedName);
+        query = forcandoCloud
+          ? query.eq('instance_token', TOKEN_CLOUD_API)
+          : query.ilike('instance_name', forcedName);
       } else {
         query = query.in('id', allowedIds);
       }
@@ -887,7 +898,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         replyid: extra?.replyid || undefined,
         // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
         // Comparação case-insensitive + trim: instance_name pode vir com variação de caixa.
-        channel: (conversationInstanceName || '').trim().toLowerCase() === 'cloud_gerencia' ? 'cloud' : undefined,
+        channel: ehInstanciaCloud(conversationInstanceName) ? 'cloud' : undefined,
         // Template aprovado (Cloud API). `template_body_text` é o texto já
         // renderizado — o Railway grava ele na conversa em vez de "[template: x]".
         ...(extra?.template
@@ -1021,7 +1032,7 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
         return false;
       }
 
-      const isCloud = (conversationInstanceName || '').trim().toLowerCase() === 'cloud_gerencia';
+      const isCloud = ehInstanciaCloud(conversationInstanceName);
       const { data, error } = await cloudFunctions.invoke('send-whatsapp', {
         body: {
           action: 'send_media',
@@ -1036,6 +1047,8 @@ export function useWhatsAppMessages(selectedInstanceId?: string | null, forceInc
           instance_id: targetInstanceId,
           // Cloud API (Meta oficial) → proxy reroteia pra Railway send-whatsapp-cloud.
           channel: isCloud ? 'cloud' : undefined,
+          // Com mais de uma linha Cloud, o servidor precisa saber qual delas manda.
+          instance_name: isCloud ? (conversationInstanceName || undefined) : undefined,
         },
       });
       if (error) throw error;

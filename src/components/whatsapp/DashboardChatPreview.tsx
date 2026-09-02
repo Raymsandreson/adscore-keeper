@@ -70,6 +70,7 @@ import { bindDownload } from '@/lib/downloadFile';
 import { midiasDaMensagem, rotuloDaMidia } from '@/lib/midiaDaConversa';
 import { avisarLeituraDeAnexos, gerarRascunhoDaConversa } from '@/lib/rascunhoDaConversa';
 import { linkWhatsAppMessagesToActivity } from '@/lib/whatsappMessageActivities';
+import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 const TREATMENT_OPTIONS = ['', 'Dr.', 'Dra.', 'Sr.', 'Sra.', 'Prof.', 'Profa.'];
 const NAME_FORMAT_OPTIONS = [
@@ -985,7 +986,7 @@ export function DashboardChatPreview({ open, onOpenChange, phone: phoneProp, con
           instance_id: instanceId,
           replyid: cobrancaEmCurso?.replyExternalId || undefined,
           // Canal Cloud API (Meta oficial) → edge proxy reroteia pra Railway send-whatsapp-cloud.
-          channel: msgInstanceName === 'cloud_gerencia' ? 'cloud' : undefined,
+          channel: ehInstanciaCloud(msgInstanceName) ? 'cloud' : undefined,
         },
       });
       if (error) throw error;

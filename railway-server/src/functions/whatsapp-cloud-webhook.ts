@@ -7,8 +7,13 @@ import { supabase } from '../lib/supabase';
  *
  * Fluxo:
  *  1. Valida assinatura X-Hub-Signature-256 com WHATSAPP_CLOUD_APP_SECRET.
- *  2. Normaliza o payload Meta para o formato interno (`whatsapp_messages`)
- *     usando `instance_name = 'cloud_gerencia'`.
+ *     Aceita LISTA separada por vírgula: cada número pode viver numa WABA
+ *     inscrita num App diferente, e cada App assina com o seu próprio secret.
+ *     Com um secret só, ligar o segundo número derruba o inbound do primeiro
+ *     com 401 — e 401 no webhook da Meta não aparece em lugar nenhum daqui.
+ *  2. Normaliza o payload Meta para o formato interno (`whatsapp_messages`),
+ *     carimbando a LINHA certa: o `phone_number_id` do payload resolve qual
+ *     `whatsapp_cloud_config` recebeu, e daí sai o `instance_name`.
  *  3. Faz upsert do contato + lead (se não existir).
  *  4. Roteia para um atendente seguindo as regras (funil/produto/keyword/default)
  *     com round-robin no pool elegível, transação SELECT FOR UPDATE.
@@ -20,24 +25,73 @@ import { supabase } from '../lib/supabase';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_CLOUD_WEBHOOK_VERIFY_TOKEN || '';
 const APP_SECRET = process.env.WHATSAPP_CLOUD_APP_SECRET || '';
-const INSTANCE_NAME = 'cloud_gerencia';
+// Linha usada quando o phone_number_id do payload não bate com nenhuma config
+// cadastrada. É o nome histórico — mantém o comportamento de antes do multi-número.
+const INSTANCE_NAME_PADRAO = 'cloud_gerencia';
+
+/** Secrets aceitos na assinatura, um por App inscrito nas nossas WABAs. */
+function appSecrets(): string[] {
+  return APP_SECRET.split(',').map((s) => s.trim()).filter(Boolean);
+}
+
+/**
+ * phone_number_id → instance_name, pela whatsapp_cloud_config. Cache curto: o
+ * webhook roda a cada mensagem e a config quase nunca muda, mas número novo tem
+ * que ser reconhecido sem redeploy.
+ */
+const CACHE_TTL_MS = 60_000;
+let cacheLinhas: { em: number; mapa: Map<string, string> } | null = null;
+
+async function instanceNamePorPhoneNumberId(phoneNumberId: string | null): Promise<string> {
+  if (!phoneNumberId) return INSTANCE_NAME_PADRAO;
+  const agora = Date.now();
+  if (!cacheLinhas || agora - cacheLinhas.em > CACHE_TTL_MS) {
+    const mapa = new Map<string, string>();
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_cloud_config')
+        .select('phone_number_id, instance_name');
+      if (error) console.warn('[wa-cloud] whatsapp_cloud_config ilegível:', error.message);
+      for (const linha of (data || []) as any[]) {
+        if (linha?.phone_number_id && linha?.instance_name) {
+          mapa.set(String(linha.phone_number_id), String(linha.instance_name));
+        }
+      }
+    } catch (e) {
+      console.warn('[wa-cloud] falha lendo whatsapp_cloud_config para resolver a linha', e);
+    }
+    cacheLinhas = { em: agora, mapa };
+  }
+  return cacheLinhas.mapa.get(String(phoneNumberId)) || INSTANCE_NAME_PADRAO;
+}
 
 function verifySignature(rawBody: string, signatureHeader: string | undefined): boolean {
-  if (!APP_SECRET) {
+  const secrets = appSecrets();
+  if (!secrets.length) {
     console.warn('[wa-cloud] WHATSAPP_CLOUD_APP_SECRET ausente — webhook aceitando sem validação. CONFIGURE EM PRODUÇÃO.');
     return true;
   }
   if (!signatureHeader || !signatureHeader.startsWith('sha256=')) return false;
-  const expected = crypto
-    .createHmac('sha256', APP_SECRET)
-    .update(rawBody)
-    .digest('hex');
   const provided = signatureHeader.slice('sha256='.length);
+  let providedBuf: Buffer;
   try {
-    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(provided, 'hex'));
+    providedBuf = Buffer.from(provided, 'hex');
   } catch {
     return false;
   }
+  // Basta UM secret casar: cada App que assina por nós tem o seu. Percorre todos
+  // sempre (sem short-circuit no sucesso não faria diferença de segurança aqui,
+  // mas o timingSafeEqual por secret preserva a comparação constante de cada um).
+  let ok = false;
+  for (const secret of secrets) {
+    const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+    try {
+      if (crypto.timingSafeEqual(Buffer.from(expected, 'hex'), providedBuf)) ok = true;
+    } catch {
+      // tamanho diferente: assinatura malformada, segue tentando os outros
+    }
+  }
+  return ok;
 }
 
 function normalizePhone(raw: string): string {
@@ -49,6 +103,8 @@ function normalizePhone(raw: string): string {
 }
 
 interface NormalizedMessage {
+  /** Qual dos nossos números recebeu — resolve a linha (instance_name). */
+  phone_number_id: string | null;
   phone: string;
   contact_name: string | null;
   message_text: string;
@@ -139,6 +195,10 @@ function extractMessages(body: any): NormalizedMessage[] {
         }
 
         out.push({
+          // Vem em value.metadata: é o NOSSO número que recebeu, não o do cliente.
+          phone_number_id: value?.metadata?.phone_number_id
+            ? String(value.metadata.phone_number_id)
+            : null,
           phone: normalizePhone(m.from),
           contact_name: nameByWaId[m.from] || null,
           message_text: text,
@@ -237,6 +297,8 @@ export async function handler(req: Request, res: Response): Promise<void> {
   try {
     const messages = extractMessages(req.body);
     for (const msg of messages) {
+      // Qual das nossas linhas recebeu. Sem match, cai no nome histórico.
+      const instanceName = await instanceNamePorPhoneNumberId(msg.phone_number_id);
       // Insere no whatsapp_messages (mesma tabela do resto do sistema).
       // Para mídias da Cloud API, guarda media_id no metadata pra permitir
       // download posterior via Graph API (/{media_id} → url → bytes).
@@ -254,7 +316,7 @@ export async function handler(req: Request, res: Response): Promise<void> {
         : null;
       await supabase.from('whatsapp_messages').insert({
         phone: msg.phone,
-        instance_name: INSTANCE_NAME,
+        instance_name: instanceName,
         message_text: msg.message_text,
         message_type: msg.message_type,
         direction: 'inbound',
@@ -327,7 +389,7 @@ export async function handler(req: Request, res: Response): Promise<void> {
         .from('whatsapp_cloud_assignees')
         .select('assigned_user_id')
         .eq('phone', msg.phone)
-        .eq('instance_name', INSTANCE_NAME)
+        .eq('instance_name', instanceName)
         .maybeSingle();
 
       let userId: string | null =
@@ -367,7 +429,7 @@ export async function handler(req: Request, res: Response): Promise<void> {
         if (userId) {
           await supabase.from('whatsapp_cloud_assignees').upsert({
             phone: msg.phone,
-            instance_name: INSTANCE_NAME,
+            instance_name: instanceName,
             assigned_user_id: userId,
             updated_at: new Date().toISOString(),
           } as any, { onConflict: 'phone,instance_name' });

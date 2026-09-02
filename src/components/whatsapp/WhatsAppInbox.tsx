@@ -72,6 +72,7 @@ import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/wha
 import { LEAD_FIELD_REGISTRY } from '@/components/leads/leadFormFields';
 import { remapToExternal, remapToCloudSync, ensureRemapCache } from '@/integrations/supabase/uuid-remap';
 import { sanitizeLeadDateFields } from '@/utils/sanitizeLeadDateFields';
+import { ehInstanciaCloud, carregarInstanciasCloud } from '@/lib/cloudApiInstances';
 
 const FIELD_LABELS: Record<string, string> = {
   lead_name: 'Nome do Lead', victim_name: 'Nome da Vítima', lead_email: 'E-mail', lead_phone: 'Telefone',
@@ -152,10 +153,9 @@ const normalizeInstanceName = (instanceName?: string | null) =>
   (instanceName || '').trim().toLowerCase();
 
 // Instâncias da WhatsApp Business Cloud API (WhatsJUD API) — vivem em aba separada
-// da inbox UazAPI para não misturar conversas de canais diferentes.
-const CLOUD_API_INSTANCE_NAMES = new Set<string>(['cloud_gerencia']);
-const isCloudApiInstance = (instanceName?: string | null) =>
-  CLOUD_API_INSTANCE_NAMES.has(normalizeInstanceName(instanceName));
+// da inbox UazAPI para não misturar conversas de canais diferentes. O conjunto
+// mora em @/lib/cloudApiInstances porque agora é mais de uma linha.
+const isCloudApiInstance = (instanceName?: string | null) => ehInstanciaCloud(instanceName);
 
 // Force clean rebuild
 interface WhatsAppInboxProps {
@@ -171,7 +171,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   const isMinimal = chrome === 'minimal';
   // Aba: separa conversas das instâncias UazAPI da instância WhatsJUD API (Cloud).
   const [inboxTab, setInboxTab] = useState<'whatsapp' | 'cloud_api'>(() => {
-    if (lockInstanceName && CLOUD_API_INSTANCE_NAMES.has(lockInstanceName.trim().toLowerCase())) return 'cloud_api';
+    if (lockInstanceName && ehInstanciaCloud(lockInstanceName)) return 'cloud_api';
     const saved = typeof window !== 'undefined' ? localStorage.getItem('whatsapp_inbox_tab') : null;
     return (saved === 'cloud_api' ? 'cloud_api' : 'whatsapp');
   });
@@ -179,13 +179,16 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
     if (lockInstanceName) return;
     try { localStorage.setItem('whatsapp_inbox_tab', inboxTab); } catch {}
   }, [inboxTab, lockInstanceName]);
+  // Linha Cloud cadastrada depois deste deploy passa a ser reconhecida sem
+  // precisar de release — a semente já cobre as conhecidas hoje.
+  useEffect(() => { void carregarInstanciasCloud(); }, []);
   // WhatsApp API: usuário pode escolher ver TODAS as conversas (pool inteiro) ou só as suas atribuídas.
   // Default = false (só as minhas + sem dono). Persiste por usuário no localStorage.
   const [cloudShowAll, setCloudShowAll] = usePageState<boolean>('wa_cloud_show_all', false);
   // Contexto WhatsApp Cloud API (Meta oficial). 'cloud_gerencia' NÃO é uma sessão UazAPI:
   // não tem status /instance/status nem exige instância padrão para atender. Status real vem da Meta.
   const isCloudInstanceName = useCallback(
-    (name?: string | null) => (name || '').trim().toLowerCase() === 'cloud_gerencia',
+    (name?: string | null) => ehInstanciaCloud(name),
     [],
   );
   const isCloudContext = isCloudInstanceName(lockInstanceName);
@@ -340,9 +343,11 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       // 0. lockInstanceName (prop) tem prioridade absoluta — modo embed (ex: WhatsApp API)
       if (lockInstanceName) {
         const target = lockInstanceName.trim().toLowerCase();
-        const locked = instances.find(i =>
-          (i.instance_name || '').trim().toLowerCase() === target,
-        );
+        // Nome exato primeiro; se ele não existir mais (linha renomeada), cai em
+        // qualquer linha Cloud — a página nunca fica vazia por causa do nome.
+        const locked =
+          instances.find(i => (i.instance_name || '').trim().toLowerCase() === target) ||
+          (ehInstanciaCloud(target) ? instances.find(i => ehInstanciaCloud(i.instance_name)) : undefined);
         if (locked) {
           setSelectedInstanceId(locked.id);
         }
@@ -430,7 +435,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       .select('phone, instance_name, assigned_user_id');
     const rows = (data || []) as Array<{ phone: string; instance_name: string; assigned_user_id: string }>;
     setCloudAssignees(new Map(
-      rows.filter(r => (r.instance_name || '').toLowerCase() === 'cloud_gerencia')
+      rows.filter(r => ehInstanciaCloud(r.instance_name))
         .map(r => [r.phone, r.assigned_user_id])
     ));
     setConversationOwners(new Map(
@@ -443,7 +448,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
   // no primeiro contato — sticky). Assinatura estável pelos telefones cloud evita refetch a cada msg.
   const cloudPhonesSig = useMemo(
     () => conversations
-      .filter(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia')
+      .filter(c => ehInstanciaCloud(c.instance_name))
       .map(c => c.phone)
       .sort()
       .join(','),
@@ -476,7 +481,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
           const removeu = payload.eventType === 'DELETE' || !payload.new?.assigned_user_id;
           const dono = payload.new?.assigned_user_id as string | undefined;
 
-          if (instancia.toLowerCase() === 'cloud_gerencia') {
+          if (ehInstanciaCloud(instancia)) {
             setCloudAssignees((prev) => {
               const next = new Map(prev);
               if (removeu) next.delete(phone); else next.set(phone, dono as string);
@@ -881,7 +886,7 @@ export function WhatsAppInbox({ lockInstanceName, chrome = 'full', backTo }: Wha
       // WhatsApp API (cloud_gerencia): visibilidade por atendente.
       // Supervisor (canViewPrivate, que já inclui admin) vê tudo; sem dono = pool comum
       // visível a todos; com dono = só o dono. Não vale para instâncias UazAPI.
-      if ((conv.instance_name || '').toLowerCase() === 'cloud_gerencia') {
+      if (ehInstanciaCloud(conv.instance_name)) {
         if (canViewPrivate) return true;
         if (cloudShowAll) return true;
         const owner = cloudAssignees.get(conv.phone);

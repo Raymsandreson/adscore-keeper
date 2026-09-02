@@ -6,10 +6,11 @@
  *
  * Fluxo:
  *  1. Valida WHATSAPP_CLOUD_TOKEN + body (phone, message).
- *  2. Busca phone_number_id do registro ativo em whatsapp_cloud_config.
+ *  2. Busca o phone_number_id da LINHA da conversa em whatsapp_cloud_config
+ *     (body.instance_name); sem ela, cai no registro ativo.
  *  3. POST Graph API v21.0/{phone_number_id}/messages.
  *  4. Trata erros conhecidos (token, janela 24h, recipient).
- *  5. INSERT outbound em whatsapp_messages com instance_name='cloud_gerencia'.
+ *  5. INSERT outbound em whatsapp_messages com o instance_name da linha usada.
  *  6. Responde {success, message_id, external_message_id, instance_name}.
  */
 
@@ -24,7 +25,9 @@ import { supabase } from '../lib/supabase';
 const TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
 const API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
 const GRAPH = 'https://graph.facebook.com';
-const INSTANCE_NAME = 'cloud_gerencia';
+// Linha usada quando o chamador não diz qual. É o nome histórico — mantém o
+// comportamento de antes do multi-número.
+const INSTANCE_NAME_PADRAO = 'cloud_gerencia';
 
 // Mimes que a WhatsApp Cloud API aceita pra áudio. Qualquer coisa fora dessa
 // lista (ex: audio/webm gravado pelo Chrome) é aceito pelo Graph mas NÃO entrega
@@ -115,6 +118,8 @@ async function transcodeAudioToOpus(
 interface SendBody {
   action?: string;
   phone?: string;
+  /** Qual das nossas linhas Cloud manda. Sem isso, usa a config ativa. */
+  instance_name?: string | null;
   message?: string;
   contact_id?: string | null;
   lead_id?: string | null;
@@ -213,12 +218,17 @@ export const handler: RequestHandler = async (req, res) => {
     return;
   }
 
-  // Lookup do phone_number_id ativo
-  const { data: cfg, error: cfgErr } = await supabase
+  // Lookup da linha que vai mandar. Com mais de um número cadastrado, "a config
+  // ativa" deixa de identificar quem envia — quem manda é a linha da conversa.
+  // `maybeSingle()` aqui seria uma bomba: com duas linhas ativas ele ERRA.
+  const linhaPedida = (body.instance_name || '').trim();
+  let query = supabase
     .from('whatsapp_cloud_config')
-    .select('phone_number_id')
-    .eq('is_active', true)
-    .maybeSingle();
+    .select('phone_number_id, instance_name, is_active');
+  query = linhaPedida
+    ? (query as any).eq('instance_name', linhaPedida)
+    : (query as any).eq('is_active', true);
+  const { data: cfgs, error: cfgErr } = await (query as any).limit(1);
 
   if (cfgErr) {
     console.error(`[send-cloud ${rid}] erro lendo whatsapp_cloud_config:`, cfgErr);
@@ -226,9 +236,12 @@ export const handler: RequestHandler = async (req, res) => {
     return;
   }
 
+  const cfg = Array.isArray(cfgs) ? cfgs[0] : cfgs;
   const phoneNumberId = (cfg as any)?.phone_number_id;
+  // A linha gravada na conversa tem que ser a que de fato enviou.
+  const instanceName = (cfg as any)?.instance_name || linhaPedida || INSTANCE_NAME_PADRAO;
   if (!phoneNumberId) {
-    console.error(`[send-cloud ${rid}] whatsapp_cloud_config sem registro ativo`);
+    console.error(`[send-cloud ${rid}] whatsapp_cloud_config sem linha "${linhaPedida || '(ativa)'}"`);
     res.status(412).json({
       success: false,
       error: 'Cloud API não configurada — salve phone_number_id pela tela WhatsApp Cloud',
@@ -356,7 +369,7 @@ export const handler: RequestHandler = async (req, res) => {
       .from('whatsapp_messages')
       .insert({
         phone,
-        instance_name: INSTANCE_NAME,
+        instance_name: instanceName,
         // Template nao tem texto livre: guarda nome + parametros pra conversa nao
         // aparecer vazia na tela enquanto o corpo real vive no WhatsApp Manager.
         message_text: isTemplate
@@ -401,6 +414,6 @@ export const handler: RequestHandler = async (req, res) => {
     success: true,
     message_id: dbId,
     external_message_id: externalId,
-    instance_name: INSTANCE_NAME,
+    instance_name: instanceName,
   });
 };

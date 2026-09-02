@@ -22,6 +22,7 @@ import {
 } from '@/lib/whatsappMessageActivities';
 import { normalizeWhatsAppConversationPhone, isWhatsAppGroupId } from '@/lib/whatsappPhone';
 import { WhatsAppAvatar } from './WhatsAppAvatar';
+import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 interface LeadInfo {
   id: string;
@@ -450,12 +451,12 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     if (quickFilter === 'activity_pending' && !phonesWithPendingActivity.has(c.phone)) return false;
     // Filtros de atribuição (só fazem sentido para WhatsApp API: cloud_gerencia)
     if (quickFilter === 'mine') {
-      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      if (!ehInstanciaCloud(c.instance_name)) return false;
       const owner = cloudAssignees?.get(c.phone);
       if (!owner || !currentUserId || owner !== currentUserId) return false;
     }
     if (quickFilter === 'unassigned') {
-      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      if (!ehInstanciaCloud(c.instance_name)) return false;
       const owner = cloudAssignees?.get(c.phone);
       if (owner) return false;
     }
@@ -567,7 +568,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
 
   // Detecta se há conversas da WhatsApp API (cloud_gerencia) para mostrar os filtros de atribuição
   const hasCloudConvs = useMemo(
-    () => conversations.some(c => (c.instance_name || '').toLowerCase() === 'cloud_gerencia'),
+    () => conversations.some(c => ehInstanciaCloud(c.instance_name)),
     [conversations]
   );
 
@@ -606,12 +607,12 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
     shared: conversations.filter(c => sharedPhonesAll.has(c.phone)).length,
     activity_pending: conversations.filter(c => phonesWithPendingActivity.has(c.phone)).length,
     mine: conversations.filter(c => {
-      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      if (!ehInstanciaCloud(c.instance_name)) return false;
       const owner = cloudAssignees?.get(c.phone);
       return !!owner && !!currentUserId && owner === currentUserId;
     }).length,
     unassigned: conversations.filter(c => {
-      if ((c.instance_name || '').toLowerCase() !== 'cloud_gerencia') return false;
+      if (!ehInstanciaCloud(c.instance_name)) return false;
       return !cloudAssignees?.get(c.phone);
     }).length,
   };
@@ -1043,7 +1044,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
               </div>
             </div>
 
-            {(conversationLabels.length > 0 || board || stage || (conv.instance_name || '').toLowerCase() === 'cloud_gerencia') && (
+            {(conversationLabels.length > 0 || board || stage || ehInstanciaCloud(conv.instance_name)) && (
               <div className="flex items-center gap-1 mt-1 flex-wrap">
                 {conversationLabels.slice(0, 2).map((label) => (
                   <span
@@ -1062,7 +1063,7 @@ export function WhatsAppConversationList({ conversations, loading, instanceSwitc
                     <span className="truncate">{label.name}</span>
                   </span>
                 ))}
-                {(conv.instance_name || '').toLowerCase() === 'cloud_gerencia' && (
+                {ehInstanciaCloud(conv.instance_name) && (
                   <span className={cn(
                     "text-[10px] px-1.5 py-0.5 rounded font-medium",
                     isSelected

@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import * as nodeCrypto from 'crypto';
 import { supabase as ext } from '../lib/supabase';
 import { uploadImageThumb } from '../lib/imageThumb';
+import { ehInstanciaCloud } from '../lib/cloudInstances';
 
 const CLOUD_FUNCTIONS_URL =
   process.env.CLOUD_FUNCTIONS_URL ||
@@ -103,7 +104,7 @@ const META_API_VERSION = process.env.WHATSAPP_CLOUD_API_VERSION || 'v21.0';
 const META_TOKEN = process.env.WHATSAPP_CLOUD_TOKEN || '';
 
 function isCloudApiMessage(msg: any): boolean {
-  if ((msg?.instance_name || '').toLowerCase() === 'cloud_gerencia') return true;
+  if (ehInstanciaCloud(msg?.instance_name)) return true;
   if (typeof msg?.external_message_id === 'string' && msg.external_message_id.startsWith('wamid.')) return true;
   if (msg?.metadata?.cloud_media?.id) return true;
   return false;

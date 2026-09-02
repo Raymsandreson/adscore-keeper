@@ -14,12 +14,15 @@ interface CloudConfig {
   waba_id: string;
   display_phone?: string | null;
   display_name?: string | null;
+  /** Nome interno da linha (whatsapp_messages.instance_name). */
+  instance_name?: string | null;
   status?: string;
   last_heartbeat_at?: string | null;
   is_active?: boolean;
 }
 
-const INSTANCE_NAME = 'cloud_gerencia';
+// Só fallback: o nome da linha agora vive em whatsapp_cloud_config.instance_name.
+const INSTANCE_NAME_PADRAO = 'cloud_gerencia';
 
 export default function WhatsAppApiPage() {
   const navigate = useNavigate();
@@ -100,7 +103,7 @@ export default function WhatsAppApiPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-emerald-500" />
-              {config.display_name || INSTANCE_NAME}
+              {config.display_name || config.instance_name || INSTANCE_NAME_PADRAO}
               {config.status && <Badge variant="outline">{config.status}</Badge>}
             </CardTitle>
           </CardHeader>
@@ -120,7 +123,7 @@ export default function WhatsAppApiPage() {
               </div>
               <div>
                 <span className="text-muted-foreground">Instância interna:</span>{' '}
-                <span className="font-mono text-xs">{INSTANCE_NAME}</span>
+                <span className="font-mono text-xs">{config.instance_name || INSTANCE_NAME_PADRAO}</span>
               </div>
               {config.last_heartbeat_at && (
                 <div className="md:col-span-2">

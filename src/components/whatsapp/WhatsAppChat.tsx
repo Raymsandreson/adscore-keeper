@@ -78,6 +78,7 @@ import { useKanbanBoards } from '@/hooks/useKanbanBoards';
 import { useWhatsAppTimeTracker } from '@/hooks/useWhatsAppTimeTracker';
 import { logGroupAudit } from '@/lib/groupAuditLog';
 import { normalizeWhatsAppConversationPhone } from '@/lib/whatsappPhone';
+import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 import { dispararPrimeiraMensagemProativa } from '@/lib/agentePrimeiraMensagem';
 import { abrirConfigDoAgente } from '@/lib/agentConfigSheet';
 import { WhatsAppAvatar } from './WhatsAppAvatar';
@@ -1052,7 +1053,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
   const autoSyncAttemptedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const instName = (conversation.instance_name || '').trim().toLowerCase();
-    if (instName !== 'cloud_gerencia') return;
+    if (!ehInstanciaCloud(instName)) return;
     const pending = (conversation.messages || []).filter(
       (m: any) =>
         m?.message_type === 'audio' &&
@@ -3275,7 +3276,7 @@ export function WhatsAppChat({ conversation, onBack, onSendMessage, onSendMedia,
       // Cloud API (Meta) NÃO aceita audio/webm — só ogg/mpeg/mp4/amr/aac.
       // Para conversas Cloud, grava direto em audio/ogg;codecs=opus (suportado em Chromium/Firefox).
       // UazAPI aceita ambos, então ogg é seguro como padrão universal.
-      const isCloud = (conversation.instance_name || '').trim().toLowerCase() === 'cloud_gerencia';
+      const isCloud = ehInstanciaCloud(conversation.instance_name);
       const preferredMime = isCloud ? 'audio/ogg;codecs=opus' : 'audio/webm';
       const fallbackMime = 'audio/webm';
       const chosenMime = (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported?.(preferredMime))

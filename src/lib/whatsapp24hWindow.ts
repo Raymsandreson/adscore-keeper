@@ -13,8 +13,9 @@
  * bloquear quem não está sujeito a ela.
  */
 
+import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
+
 export const JANELA_MS = 24 * 60 * 60 * 1000;
-export const INSTANCIA_CLOUD = 'cloud_gerencia';
 
 export interface JanelaAtendimento {
   /** O canal está sujeito à regra? Só a Cloud API está. */
@@ -28,7 +29,7 @@ export interface JanelaAtendimento {
 }
 
 export function ehCanalCloud(instanceName: string | null | undefined): boolean {
-  return (instanceName || '').trim().toLowerCase() === INSTANCIA_CLOUD;
+  return ehInstanciaCloud(instanceName);
 }
 
 export function janelaDeAtendimento(

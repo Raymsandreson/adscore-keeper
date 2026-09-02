@@ -1,6 +1,7 @@
 import { authClient, db, ensureExternalSession } from '@/integrations/supabase';
 import { cloudFunctions } from '@/lib/lovableCloudFunctions';
 import { isWhatsAppGroupId } from '@/lib/whatsappPhone';
+import { ehInstanciaCloud } from '@/lib/cloudApiInstances';
 
 /**
  * Responder uma conversa do WhatsApp de FORA da tela do WhatsApp.
@@ -229,7 +230,7 @@ export async function enviarRespostaRapida({ phone, instanceName, message, histo
       message: finalMessage,
       instance_name: instancia,
       // Canal Cloud API (Meta oficial) → a edge reroteia pra Railway.
-      channel: instancia.trim().toLowerCase() === 'cloud_gerencia' ? 'cloud' : undefined,
+      channel: ehInstanciaCloud(instancia) ? 'cloud' : undefined,
     },
   });
 
