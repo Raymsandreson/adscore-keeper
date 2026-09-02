@@ -20,7 +20,7 @@ export const TOKEN_CLOUD_API = 'cloud_api_meta';
 
 // Nomes conhecidos no momento do deploy. `cloud_gerencia` é o nome histórico e
 // fica aqui enquanto existir mensagem antiga com ele.
-const NOMES_CLOUD = new Set<string>(['cloud_gerencia', 'abraci', 'prudencio_advogados']);
+const NOMES_CLOUD = new Set<string>(['cloud_gerencia', 'abraci', 'prudencio_advogados', 'quitepay']);
 
 const normalizar = (nome?: string | null) => (nome || '').trim().toLowerCase();
 
