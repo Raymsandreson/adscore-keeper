@@ -113,7 +113,7 @@ async function inventario() {
 
   for (const c of contas?.data ?? []) {
     const ads = await g(
-      `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object&limit=200`,
+      `${c.id}/adsets?fields=name,effective_status,optimization_goal,promoted_object,destination_type&limit=200`,
     );
     if (ads?.error) {
       resultado.push({ conta: c.name, id: c.id, erro: ads.error.message });
@@ -130,7 +130,10 @@ async function inventario() {
       const pid = a?.promoted_object?.pixel_id;
       if (!pid) {
         semPixel.push(a.name);
-        const meta = a?.optimization_goal || 'sem_objetivo';
+        // `destination_type` decide se o lead nasce num formulario da Meta
+        // (ON_AD) ou cai no WhatsApp/Messenger. Sem isso nao da para saber se
+        // existe lead preso na Meta que nunca chegou ao CRM.
+        const meta = `${a?.optimization_goal || 'sem_objetivo'} -> ${a?.destination_type || 'sem_destino'}`;
         metasSemPixel[meta] = (metasSemPixel[meta] ?? 0) + 1;
         continue;
       }
