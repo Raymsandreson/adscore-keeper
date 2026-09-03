@@ -156,7 +156,20 @@ Aceita também os nomes antigos (`FACEBOOK_CAPI_ACCESS_TOKEN`,
 `FACEBOOK_PIXEL_ID`) como fallback.
 
 O `auto-enrich-lead` (edge do Externo) precisa de `RAILWAY_API_KEY` para
-enfileirar; sem ela, registra aviso no log em vez de falhar calado.
+enfileirar; sem ela, registra aviso no log em vez de falhar calado. **Criada em
+03/09/2026** (34 secrets no projeto) e a edge foi publicada na **versão 44** —
+deploy multi-arquivo, porque ela importa `_shared/gemini.ts`. Rollback pelo git
+(`c46520106`), não pelo `/body`, que devolve ESZIP binário. Script:
+`_deploy_auto_enrich_lead.mjs` (local, o `.gitignore` cobre `_deploy_*.mjs`).
+
+> **Frente de segurança aberta, anterior a esta entrega.** A `auto-enrich-lead`
+> roda com `verify_jwt: false` e **não tem gate de autenticação no código**,
+> usando `SERVICE_ROLE_KEY`. O parâmetro `apply_fields` grava os campos recebidos
+> no `lead_id` que vem do corpo, então quem tem a anon key (pública, está no
+> bundle) sobrescreve campo de qualquer lead e gasta token de IA. Consertar exige
+> mapear antes os chamadores legítimos (webhook, front, ZapSign) — pôr trava sem
+> isso quebra o enriquecimento. Mesmo padrão já catalogado no
+> `create-whatsapp-group`.
 
 > **Trocar de portfólio empresarial invalida o pixel.** O pixel
 > `4333420420303120` vivia na BM "Mais esperto que a Dor". Com a mudança para o
